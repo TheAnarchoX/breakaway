@@ -22,7 +22,7 @@ const declarations = (block) =>
 const CARBON_THEME = declarations(/^:root\s*\{([^}]*)\}/mu.exec(TOKENS)[1]);
 const CHALK_THEME = {
   ...CARBON_THEME,
-  ...declarations(/^:root\[data-theme='light'\]\s*\{([^}]*)\}/mu.exec(TOKENS)[1]),
+  ...declarations(/^:root\[data-theme=['"]light['"]\]\s*\{([^}]*)\}/mu.exec(TOKENS)[1]),
 };
 const RED = CARBON_THEME['--red'];
 // Red as small text fails on carbon (4.2:1), so labels in red use the accent, like the board does.
@@ -446,29 +446,14 @@ function typeSheet() {
       MUTED_DARK,
     ).svg,
   );
-  // The race board: the story's approved numbers.
-  const stats = [
-    ['160', 'pull requests'],
-    ['<48', 'hours'],
-    ['1', 'person'],
-    ['0', 'editors opened'],
-  ];
-  stats.forEach(([n, label], i) => {
-    const x = PAD + i * 366;
-    parts.push(`<rect x="${x}" y="944" width="340" height="5" fill="${i ? CHALK : RED}"/>`);
-    parts.push(line(n, 'display', 112, x - 4, 1084, CHALK).svg);
-    parts.push(line(label, 'label', 15, x, 1124, MUTED_DARK).svg);
-  });
+  // The headline rhythm: short sentences in a row, in display type.
+  parts.push(line('Write the work down.', 'display', 76, PAD - 4, 1000, CHALK).svg);
+  parts.push(line('Agents claim it. You merge it.', 'display', 76, PAD - 4, 1096, CHALK).svg);
   parts.push(
-    line(
-      'The race board: big numbers in display type, labels in mono. Real numbers only.',
-      'mono',
-      16,
-      PAD,
-      1190,
-      MUTED_DARK,
-    ).svg,
+    line('The headline rhythm: short sentences in a row, each with a full stop.', 'mono', 16, PAD, 1190, MUTED_DARK)
+      .svg,
   );
+
   return svg([0, 0, W, 1240], parts.join('\n'), { title: 'breakaway type: Archivo and Chivo Mono' });
 }
 
