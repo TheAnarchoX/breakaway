@@ -107,10 +107,6 @@ npx breakaway list --ready
   </tr>
 </table>
 
-## One person's real run
-
-Agents claimed the work and opened the pull requests. It happened once, and these are the numbers: **160 pull requests in under 48 hours. One person. No editor opened.**
-
 ## What it is, and isn't
 
 - **Self-hosted.** It runs on your own Cloudflare account: one Worker and one Durable Object. There's no hosted breakaway, and no accounts, teams, or pricing.

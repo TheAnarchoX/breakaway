@@ -162,11 +162,10 @@ describe('the site', () => {
     expect(lint(files)).toEqual([]);
   });
 
-  it('keeps the story to what the owner approved, and the licence to “free” and “fair source”', () => {
+  it('says what the board does, never what someone shipped with it (ID-3), and calls the licence “free” and “fair source”', () => {
+    for (const [path, html] of built)
+      expect(visible(html), path).not.toMatch(/\b160\b|pull requests in|editors? opened|real run/iu);
     const text = visible(built.get('index.html'));
-    expect(text).toContain('160');
-    expect(text).toMatch(/48/u);
-    expect(text).toContain('editors opened');
     expect(text).toContain('FSL-1.1-Apache-2.0');
     expect(text).toContain('samewave');
     expect(text).toMatch(/non-commercial/u);
