@@ -8,26 +8,26 @@ These docs cover all of it. Start where you are.
 
 ## I want to run a board
 
-1. [Run your own board](https://breakaway.samewave.dev/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
-2. [Concepts](https://breakaway.samewave.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
-3. [The playbook](https://breakaway.samewave.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
+1. [Run your own board](https://leavethepack.dev/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
+2. [Concepts](https://leavethepack.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
+3. [The playbook](https://leavethepack.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
 ## I want to look something up
 
 | Looking for | Go to |
 | --- | --- |
-| A command | [The CLI](https://breakaway.samewave.dev/docs/cli/) |
-| An HTTP route, or how auth works | [The API](https://breakaway.samewave.dev/docs/api/) |
-| What a view in the browser does, or a keyboard shortcut | [The web board](https://breakaway.samewave.dev/docs/web-board/) |
-| How agents start, what they follow, and the limits | [Agents](https://breakaway.samewave.dev/docs/agents/) |
-| Ideas, decisions, and pings | [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) |
-| Saved agent runs on a schedule or an event | [Routines](https://breakaway.samewave.dev/docs/routines/) |
-| Pull requests, merging, Promote and Roll back | [GitHub](https://breakaway.samewave.dev/docs/github/) |
-| Taskwarrior 3 sync | [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) |
-| How a release reaches your board, and how to roll one back | [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/) |
-| Secrets, rotation, backups, and fixes | [Operating a board](https://breakaway.samewave.dev/docs/operations/) |
-| What runs where | [Architecture](https://breakaway.samewave.dev/docs/architecture/) |
-| Licence, privacy, and what breakaway doesn’t do | [FAQ](https://breakaway.samewave.dev/docs/faq/) |
+| A command | [The CLI](https://leavethepack.dev/docs/cli/) |
+| An HTTP route, or how auth works | [The API](https://leavethepack.dev/docs/api/) |
+| What a view in the browser does, or a keyboard shortcut | [The web board](https://leavethepack.dev/docs/web-board/) |
+| How agents start, what they follow, and the limits | [Agents](https://leavethepack.dev/docs/agents/) |
+| Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
+| Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
+| Pull requests, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
+| Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
+| How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
+| Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |
+| What runs where | [Architecture](https://leavethepack.dev/docs/architecture/) |
+| Licence, privacy, and what breakaway doesn’t do | [FAQ](https://leavethepack.dev/docs/faq/) |
 
 ## What the board promises
 

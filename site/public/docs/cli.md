@@ -105,7 +105,7 @@ Picking a plan, closing a horizon, and creating routines or registering reposito
 | `repos setup <slug\|owner/name>` | The Add a repository wizard’s steps for it. Read only. |
 | `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. |
 | `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
-| `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://breakaway.samewave.dev/docs/routines/). |
+| `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://leavethepack.dev/docs/routines/). |
 
 ## Setup and secrets
 
@@ -115,7 +115,7 @@ Picking a plan, closing a horizon, and creating routines or registering reposito
 | `setup` | Connects this machine’s Taskwarrior: writes `taskrc` and runs the first `task sync`. |
 | `github-connect <code>` | Stores the GitHub App’s keys. |
 | `agents-connect [--repo <slug>]` | Stores an agent routine’s URL and token. |
-| `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](https://breakaway.samewave.dev/docs/operations/#rotating-secrets). |
+| `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](https://leavethepack.dev/docs/operations/#rotating-secrets). |
 
 ## The install repository
 

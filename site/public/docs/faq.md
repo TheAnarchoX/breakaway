@@ -10,7 +10,7 @@ There is no hosted version, and no accounts, teams, pricing, paid features, or a
 
 ## Who hosts this site?
 
-samewave hosts this page. It’s a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](https://breakaway.samewave.dev/releases.json), to show the latest release.
+breakaway’s maintainer hosts it, as a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](https://leavethepack.dev/releases.json), to show the latest release.
 
 ## Where does my data live?
 
@@ -42,7 +42,7 @@ They can’t. The Durable Object checks and sets the claim in one step, so one w
 
 ## Does a release update my board by itself?
 
-Only if you choose the `main` channel, where the board starts your own Deploy workflow when there’s a newer pre-release. On `stable`, a newer release is a pull request in your install repository, and nothing deploys until you merge it. Either way Deploy goes back by itself if the new version doesn’t answer. See [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/).
+Only if you choose the `main` channel, where the board starts your own Deploy workflow when there’s a newer pre-release. On `stable`, a newer release is a pull request in your install repository, and nothing deploys until you merge it. Either way Deploy goes back by itself if the new version doesn’t answer. See [Deploying and updating](https://leavethepack.dev/docs/deploying/).
 
 ## How do I stay on top of what agents are doing?
 

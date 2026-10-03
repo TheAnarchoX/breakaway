@@ -6,7 +6,7 @@ Task: IDEA-13 on the board · Status: draft
 
 The task board (`tools/tasks/`, the CLI in `scripts/tasks.mjs`, the routine prompt) changed how the owner works: no editor, Claude Code to brainstorm and fix, claude.ai to update the routine, 160 pull requests in under 48 hours, alone. Other people should be able to work like that. It has to leave samewave's repository without breaking the board the owner uses every day.
 
-The owner's decisions (30 Sep 2026) are in the idea and are not reopened here: the name **breakaway**; free, with the source public under **FSL-1.1-Apache-2.0** (fair source: each release turns Apache 2.0 two years after it ships); its own public repository with **fresh history**; **samewave runs breakaway and breakaway runs breakaway** (one install, samewave's, tracks both repositories); the landing page at **breakaway.samewave.dev**; samewave's repository is never made public.
+The owner's decisions (30 Sep 2026) are in the idea and are not reopened here: the name **breakaway**; free, with the source public under **FSL-1.1-Apache-2.0** (fair source: each release turns Apache 2.0 two years after it ships); its own public repository with **fresh history**; **samewave runs breakaway and breakaway runs breakaway** (one install, samewave's, tracks both repositories); the landing page at **leavethepack.dev**; samewave's repository is never made public.
 
 ## Fit
 
@@ -65,7 +65,7 @@ A loud, fast voice and a logo with forward motion: the opposite of samewave's ca
 
 ### 6. Landing page
 
-A static page on a Worker at `breakaway.samewave.dev`: the pitch, the 48-hour story, the repository link, how to self-host. No pricing, sign-ups, or ads, no analytics beyond what samewave itself uses (none), and it says samewave hosts the page and is non-commercial. Adding the custom domain is the owner's (the pipeline stops on custom domains).
+A static page on a Worker at `leavethepack.dev`: the pitch, the 48-hour story, the repository link, how to self-host. No pricing, sign-ups, or ads, no analytics beyond what samewave itself uses (none), and it says samewave hosts the page and is non-commercial. Adding the custom domain is the owner's (the pipeline stops on custom domains).
 
 ### 7. Launch
 

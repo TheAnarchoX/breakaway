@@ -10,7 +10,7 @@ Decided on 3 Oct 2026 to come **after launch**: until then the template's bump p
 
 ## Fit
 
-- **Reads** the feed from `BRK-8` ([the feed](../../site/README.md)) at `breakaway.samewave.dev/releases.json`: per channel, the version, bundle, manifest, and checksum URLs, `manual`, `manualSteps`, and `updatesFrom`.
+- **Reads** the feed from `BRK-8` ([the feed](../../site/README.md)) at `leavethepack.dev/releases.json`: per channel, the version, bundle, manifest, and checksum URLs, `manual`, `manualSteps`, and `updatesFrom`.
 - **Reuses** what the install template's deploy does (`BRK-9`): upload a Worker version, deploy it, check `/api/ping` reports the new version, roll back if not. The difference is who runs it: the install's own Worker, not a workflow.
 - **Rides on** the board's version and channel (`BRK-10`): Connections' Version row is where the Update button lives.
 - **Settled rules it keeps** (`AGENTS.md`): the person who runs the board decides (an update only starts when the owner presses Update, never by itself, and never on an agent's word); an install keeps its data (the one call it makes that the owner didn't connect is the feed, and it is the owner who turns self-update on, so it's a connection like GitHub or push); free and self-hosted (the feed is a static file, with no account and no tracking: the install sends nothing about itself); breakaway still holds no Cloudflare credentials.

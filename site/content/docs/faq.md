@@ -12,7 +12,7 @@ There is no hosted version, and no accounts, teams, pricing, paid features, or a
 
 ## Who hosts this site?
 
-samewave hosts this page. It’s a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](/releases.json), to show the latest release.
+breakaway’s maintainer hosts it, as a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](/releases.json), to show the latest release.
 
 ## Where does my data live?
 

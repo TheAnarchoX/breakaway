@@ -14,7 +14,7 @@
   <a href="#run-your-own"><b>Run your own</b></a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#docs">Docs</a> ·
-  <a href="https://breakaway.samewave.dev">Website</a> ·
+  <a href="https://leavethepack.dev">Website</a> ·
   <a href="#licence">Licence</a>
 </p>
 
@@ -29,7 +29,7 @@
 Paste this into [Claude Code](https://claude.com/claude-code), in an empty folder:
 
 ```text
-Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it.
+Set up a breakaway board for me. Read https://leavethepack.dev/install.md and follow it.
 ```
 
 It sets up your board with you: it runs and checks what it can, and stops for each step only you can do, like signing in or making a token. It never asks for a secret in the chat.
@@ -122,22 +122,22 @@ npx breakaway list --ready
   <img alt="How breakaway is built. Three ways in: the web board, the CLI, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/built-dark.png" width="100%">
 </picture>
 
-One Cloudflare Worker serves the API, the web app (Preact), and Taskwarrior sync, and one SQLite Durable Object holds every task, claim, comment, and change. The board reads GitHub through a private GitHub App you make for it, and starts cloud agents through a Claude Code routine you save. [Architecture](https://breakaway.samewave.dev/docs/architecture/) has the rest.
+One Cloudflare Worker serves the API, the web app (Preact), and Taskwarrior sync, and one SQLite Durable Object holds every task, claim, comment, and change. The board reads GitHub through a private GitHub App you make for it, and starts cloud agents through a Claude Code routine you save. [Architecture](https://leavethepack.dev/docs/architecture/) has the rest.
 
 ## Docs
 
 | Read | For |
 | --- | --- |
-| [Run your own board](https://breakaway.samewave.dev/docs/quickstart/) | From nothing to a board that starts agents and updates itself |
-| [Concepts](https://breakaway.samewave.dev/docs/concepts/) | Tasks and work IDs, areas, horizons, claims, dependencies, and how a pull request closes a task |
-| [Playbook](https://breakaway.samewave.dev/docs/playbook/) | Write tasks agents finish, run many agents without collisions, and keep the review load to one person |
-| [Agents](https://breakaway.samewave.dev/docs/agents/) | Cloud agents from the board, local agents, limits, live output, and messaging a running agent |
-| [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
-| [The CLI](https://breakaway.samewave.dev/docs/cli/) | Every command of `npx breakaway` |
-| [GitHub](https://breakaway.samewave.dev/docs/github/) | Your own private App, how pull requests link to tasks, and merging, promoting, and rolling back |
-| [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) | Sync, reports, and contexts with Taskwarrior 3 |
-| [Deploying](https://breakaway.samewave.dev/docs/deploying/) | Releases, channels, the Deploy and Update workflows, and rollbacks |
-| [FAQ](https://breakaway.samewave.dev/docs/faq/) | The licence, your data, what it works with, and what it won't do |
+| [Run your own board](https://leavethepack.dev/docs/quickstart/) | From nothing to a board that starts agents and updates itself |
+| [Concepts](https://leavethepack.dev/docs/concepts/) | Tasks and work IDs, areas, horizons, claims, dependencies, and how a pull request closes a task |
+| [Playbook](https://leavethepack.dev/docs/playbook/) | Write tasks agents finish, run many agents without collisions, and keep the review load to one person |
+| [Agents](https://leavethepack.dev/docs/agents/) | Cloud agents from the board, local agents, limits, live output, and messaging a running agent |
+| [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
+| [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
+| [GitHub](https://leavethepack.dev/docs/github/) | Your own private App, how pull requests link to tasks, and merging, promoting, and rolling back |
+| [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) | Sync, reports, and contexts with Taskwarrior 3 |
+| [Deploying](https://leavethepack.dev/docs/deploying/) | Releases, channels, the Deploy and Update workflows, and rollbacks |
+| [FAQ](https://leavethepack.dev/docs/faq/) | The licence, your data, what it works with, and what it won't do |
 
 <details>
 <summary><b>Run it locally</b></summary>
