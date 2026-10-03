@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.png">
-    <img alt="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it. Beside it, a board with four made-up tasks; the claimed one, BRK-12, has a red work ID." src="docs/media/hero-light.png" width="100%">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/hero-light.png">
+    <img alt="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it. Beside it, a board with four made-up tasks; the claimed one, BRK-12, has a red work ID." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/hero-dark.png" width="100%">
   </picture>
 </p>
 
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/breakaway"><img alt="npm" src="https://img.shields.io/npm/v/breakaway?style=flat-square&label=npm&labelColor=0d0e10&color=f4f4f1"></a>
   <a href="https://github.com/TheAnarchoX/breakaway/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheAnarchoX/breakaway/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="LICENSE"><img alt="Licence: FSL-1.1-Apache-2.0" src="https://img.shields.io/badge/licence-FSL--1.1--Apache--2.0-f4f4f1?style=flat-square&labelColor=0d0e10"></a>
+  <a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE"><img alt="Licence: FSL-1.1-Apache-2.0" src="https://img.shields.io/badge/licence-FSL--1.1--Apache--2.0-f4f4f1?style=flat-square&labelColor=0d0e10"></a>
 </p>
 
 ## Run your own
@@ -36,20 +36,20 @@ It sets up your board with you: it runs and checks what it can, and stops for ea
 
 You need a Cloudflare account, a GitHub account, and Node 20 or later. A Claude plan with routines lets the board start agents for you. Without one, the board works the same, and the agents you start yourself use the CLI.
 
-Rather do it by hand? [The self-hosting guide](docs/self-hosting.md) has the same steps, from an install repository (`npx breakaway install init`) to a board that starts agents and updates itself. Each step ends in a check on the board's Connections view.
+Rather do it by hand? [The self-hosting guide](https://github.com/TheAnarchoX/breakaway/blob/main/docs/self-hosting.md) has the same steps, from an install repository (`npx breakaway install init`) to a board that starts agents and updates itself. Each step ends in a check on the board's Connections view.
 
 ## See it
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/board-dark.png">
-  <img alt="The board in the browser, with made-up work in a repository called widgets: columns from Needs a decision to Done, and the Now horizon's tasks. Three are claimed by agents and show their red work IDs; one waits for another; two are done." src="docs/media/board-light.png" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/board-light.png">
+  <img alt="The board in the browser, with made-up work in a repository called widgets: columns from Needs a decision to Done, and the Now horizon's tasks. Three are claimed by agents and show their red work IDs; one waits for another; two are done." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/board-dark.png" width="100%">
 </picture>
 
 ## How it works
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/how-dark.png">
-  <img alt="Agents claim the work. You merge it. In three steps: an agent, claude-brk-12, claims the task BRK-12; it opens a pull request that says Closes BRK-12.; you merge, and the task is done." src="docs/media/how-light.png" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/how-light.png">
+  <img alt="Agents claim the work. You merge it. In three steps: an agent, claude-brk-12, claims the task BRK-12; it opens a pull request that says Closes BRK-12.; you merge, and the task is done." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/how-dark.png" width="100%">
 </picture>
 
 1. **Write the work down.** Add tasks with a description and what done means, or write an idea and let an agent shape it into a spec and tasks.
@@ -63,8 +63,8 @@ Rather do it by hand? [The self-hosting guide](docs/self-hosting.md) has the sam
   <tr>
     <td width="42%" valign="top">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/media/task-dark.png">
-        <img alt="A task's panel: APP-2, Sort the inbox by age, claimed by claude-app-2, with its live output: what it read, what it's thinking, the files it edited, and the tests it ran." src="docs/media/task-light.png" width="100%">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/task-light.png">
+        <img alt="A task's panel: APP-2, Sort the inbox by age, claimed by claude-app-2, with its live output: what it read, what it's thinking, the files it edited, and the tests it ran." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/task-dark.png" width="100%">
       </picture>
     </td>
     <td valign="top">
@@ -79,8 +79,8 @@ Rather do it by hand? [The self-hosting guide](docs/self-hosting.md) has the sam
 </table>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/inbox-dark.png">
-  <img alt="A ping in the inbox: a question from claude-api-3 on API-3, Name a widget only once: A taken name: answer 409, or suggest the name with a number after it? With buttons Handled and Dismiss." src="docs/media/inbox-light.png" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/inbox-light.png">
+  <img alt="A ping in the inbox: a question from claude-api-3 on API-3, Name a widget only once: A taken name: answer 409, or suggest the name with a number after it? With buttons Handled and Dismiss." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/inbox-dark.png" width="100%">
 </picture>
 
 **Agents ping you when they need you.** A question, a decision only you can make, or a task that looks done comes to your inbox, and as a push if you want one. The rest waits on the board.
@@ -100,8 +100,8 @@ npx breakaway list --ready
   </td>
     <td width="30%" valign="top">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/media/phone-dark.png">
-        <img alt="The board on a phone: the Now horizon's tasks in one column, with filters and a search above." src="docs/media/phone-light.png" width="100%">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/phone-light.png">
+        <img alt="The board on a phone: the Now horizon's tasks in one column, with filters and a search above." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/phone-dark.png" width="100%">
       </picture>
     </td>
   </tr>
@@ -118,8 +118,8 @@ npx breakaway list --ready
 ## How it's built
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/built-dark.png">
-  <img alt="How breakaway is built. Three ways in: the web board, the CLI, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI." src="docs/media/built-light.png" width="100%">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/built-light.png">
+  <img alt="How breakaway is built. Three ways in: the web board, the CLI, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/built-dark.png" width="100%">
 </picture>
 
 One Cloudflare Worker serves the API, the web app (Preact), and Taskwarrior sync, and one SQLite Durable Object holds every task, claim, comment, and change. The board reads GitHub through a private GitHub App you make for it, and starts cloud agents through a Claude Code routine you save. [Architecture](https://breakaway.samewave.dev/docs/architecture/) has the rest.
@@ -181,10 +181,10 @@ breakaway publishes releases and never deploys. Every install, the owner's inclu
 
 ## Who builds it
 
-breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else: [`CONTRIBUTING.md`](CONTRIBUTING.md) says what you can do instead. Report a security problem privately, as [`SECURITY.md`](SECURITY.md) says. The agents follow [`AGENTS.md`](AGENTS.md), and anything people see or read follows the [brand guide](brand/README.md).
+breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else: [`CONTRIBUTING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/CONTRIBUTING.md) says what you can do instead. Report a security problem privately, as [`SECURITY.md`](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. The agents follow [`AGENTS.md`](https://github.com/TheAnarchoX/breakaway/blob/main/AGENTS.md), and anything people see or read follows the [brand guide](https://github.com/TheAnarchoX/breakaway/blob/main/brand/README.md).
 
 ## Licence
 
-Free to use, change, and self-host for anything except offering a competing service, under [FSL-1.1-Apache-2.0](LICENSE). Each release becomes Apache 2.0 two years after it ships.
+Free to use, change, and self-host for anything except offering a competing service, under [FSL-1.1-Apache-2.0](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE). Each release becomes Apache 2.0 two years after it ships.
 
 breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it.
