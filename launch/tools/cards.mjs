@@ -23,7 +23,10 @@ const CSS = `
 .step b{font:700 38px var(--font-body)}
 .step code{font:600 28px var(--font-mono);color:var(--muted);margin-left:auto}
 .cmd{position:absolute;left:84px;right:84px;top:560px;padding:36px 40px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3);font:600 44px var(--font-mono)}
-.cmd i{font-style:normal;color:var(--muted)}`;
+.cmd i{font-style:normal;color:var(--muted)}
+.prompt{position:absolute;left:84px;right:84px;top:640px;padding:30px 40px 34px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3)}
+.prompt .label{margin-bottom:14px}
+.prompt p{font:600 34px/1.4 var(--font-mono)}`;
 
 const frame = ({ kicker, foot, footNote, body }) => `
 <div class="stage">
@@ -76,14 +79,14 @@ const CARDS = {
     }),
   },
   '04-run-your-own': {
-    alt: 'A card headed "Run your own." with the command npx breakaway install init, and the line: free, and the source is public.',
+    alt: 'A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read breakaway.samewave.dev/install.md and follow it. And the line: free, and the source is public.',
     html: frame({
       kicker: 'Self-hosting',
       foot: 'breakaway',
       footNote: 'Free · the source is public',
-      body: `<div class="copy"><div class="display">Run<br>your <span class="red">own.</span></div>
-          <p class="lede">On your own Cloudflare account. The guide takes you from nothing to a board that starts agents and updates itself.</p></div>
-        <div class="cmd" style="top:760px"><i>$</i> npx breakaway install init</div>`,
+      body: `<div class="copy" style="top:200px"><div class="display">Run<br>your <span class="red">own.</span></div>
+          <p class="lede">Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you.</p></div>
+        <div class="prompt"><div class="label">Claude Code</div><p>Set up a breakaway board for me.<br>Read breakaway.samewave.dev/install.md<br>and follow it.</p></div>`,
     }),
   },
 };

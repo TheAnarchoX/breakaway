@@ -52,6 +52,8 @@ const ALLOWED = {
   'site/content/docs/quickstart.md': [1, 'the site’s address: the install prompt people paste into Claude Code'],
   'site/content/index.html': [2, 'the site’s address: the install prompt people paste into Claude Code'],
   'test/site-pages.test.js': [2, 'checks the site’s address and that it says who hosts it'],
+  'launch/posts.md': [2, 'the site’s address: when to post, and the install prompt on post 4’s card'],
+  'launch/tools/cards.mjs': [2, 'the site’s address: the install prompt on the Run your own card'],
   // The licensor: the owner's account, which the repository lives under.
   LICENSE: [1, 'the licence’s notice names the licensor'],
   // History.

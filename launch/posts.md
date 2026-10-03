@@ -4,7 +4,7 @@ Drafts for the owner to post: agents never post. The post and thread point to th
 
 Each post fits X (280 characters, a link counts as 23) and Bluesky (300), and stands on its own. Post to both from the same text. Put the media on the post it's listed under, with its alt text. Counts are as X counts them.
 
-Before posting, check the repository link below is the one that will be public (`LCH-3` changes the repository's history before it goes public).
+Post once the site is live (`LCH-5`): post 4 sends people to the README's install prompt, which reads `breakaway.samewave.dev/install.md`.
 
 ## 1. The launch post
 
@@ -46,15 +46,15 @@ Before posting, check the repository link below is the one that will be public (
 
 **Media:** [`media/04-run-your-own.png`](media/04-run-your-own.png)
 
-> Run your own, on your own Cloudflare account:
+> Run your own, on your own Cloudflare account: paste one prompt into Claude Code, and it sets up the board with you. It stops for each step only you can do, and never asks for a secret in the chat.
 >
-> npx breakaway install init
+> The prompt is at the top of the README:
 >
-> The guide takes you from nothing to a board that starts agents and updates itself.
->
-> https://github.com/TheAnarchoX/breakaway/blob/main/docs/self-hosting.md
+> https://github.com/TheAnarchoX/breakaway
 
-**Alt text:** A card headed "Run your own." with the command npx breakaway install init, and the line "Free, the source is public."
+The post points to the README rather than carrying the prompt: X and Bluesky shorten a long link's text, so a prompt copied from the post would break.
+
+**Alt text:** A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read breakaway.samewave.dev/install.md and follow it. And the line "Free, the source is public."
 
 ## 5. The licence
 
