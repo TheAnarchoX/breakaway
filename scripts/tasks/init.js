@@ -24,12 +24,11 @@ export const CLI_PACKAGE = 'breakaway@next';
  */
 export const CLI_ENTRIES = ['scripts/tasks.mjs', 'scripts/tasks/session-hook.mjs', 'scripts/tasks/message-wait.mjs'];
 /**
- * While breakaway is private, nothing reaches npm (BRK-57), so `npx breakaway@next hook …` fails silently in another
- * repository and a started agent's live output never reaches the board (BRK-64). Until it is public, repos init copies
- * the two hooks and what they import under HOOKS_DIR and settings.json runs them from there. Once breakaway is
- * public, set this to false: the hooks run through npx again, and `repos init --update` removes the copy.
+ * While breakaway was private, nothing reached npm (BRK-57), so repos init copied the two hooks and what they import
+ * under HOOKS_DIR and settings.json ran them from there (BRK-64). breakaway is public and on npm now, so the hooks run
+ * through npx again (BRK-69), and `repos init --update` removes a copy an older repos init left.
  */
-export const HOOKS_FROM_COPY = true;
+export const HOOKS_FROM_COPY = false;
 /** The session hooks' entry files, and where their copy goes: its own folder, so it never touches the repository's src/. */
 export const HOOK_ENTRIES = ['scripts/tasks/session-hook.mjs', 'scripts/tasks/message-wait.mjs'];
 export const HOOKS_DIR = 'tools/tasks/cli/';
