@@ -95,7 +95,18 @@ jobs:
         if: ${{ !github.event.repository.private }}
         run: |
           npm install -g npm@^11.5.1
-          npm publish --provenance --access public --tag next
+          # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show npm's
+          # usual lines, and on a failure its oidc lines: the Actions logs are public, so never the whole verbose log.
+          if npm publish --provenance --access public --tag next --loglevel verbose > "$RUNNER_TEMP/npm.log" 2>&1; then
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+          else
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+            echo "npm's trusted publishing (OIDC):"
+            oidc=$(grep -i 'oidc' "$RUNNER_TEMP/npm.log" | grep -v 'eyJ' | cut -c1-300 || true)
+            echo "${oidc:-npm logged nothing about it.}"
+            echo "::error title=npm refused the publish::Check that npm's trusted publisher for this package names exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, and no environment."
+            exit 1
+          fi
 
   stable:
     name: stable
@@ -151,4 +162,15 @@ jobs:
           git checkout --detach "$commit"
           node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
           npm install -g npm@^11.5.1
-          npm publish --provenance --access public --tag latest
+          # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show npm's
+          # usual lines, and on a failure its oidc lines: the Actions logs are public, so never the whole verbose log.
+          if npm publish --provenance --access public --tag latest --loglevel verbose > "$RUNNER_TEMP/npm.log" 2>&1; then
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+          else
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+            echo "npm's trusted publishing (OIDC):"
+            oidc=$(grep -i 'oidc' "$RUNNER_TEMP/npm.log" | grep -v 'eyJ' | cut -c1-300 || true)
+            echo "${oidc:-npm logged nothing about it.}"
+            echo "::error title=npm refused the publish::Check that npm's trusted publisher for this package names exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, and no environment."
+            exit 1
+          fi
