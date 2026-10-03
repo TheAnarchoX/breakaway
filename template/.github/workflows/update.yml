@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # Reads breakaway's releases: a read-only token while its repository is private, else this repository's own.
+      # Reads breakaway's releases with this repository's own token, or BREAKAWAY_READ_TOKEN for a private BREAKAWAY_REPO.
       READ_TOKEN: ${{ secrets.BREAKAWAY_READ_TOKEN || github.token }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -48,7 +48,7 @@ jobs:
           # Node, no npm package, so it works while breakaway's repository is private.
           newest=$(GH_TOKEN="$READ_TOKEN" gh release list --repo "$BREAKAWAY_REPO" --limit 1 --json tagName --jq '.[0].tagName // empty') || newest=""
           if [ -z "$newest" ]; then
-            echo "::error title=No release to read::This repository can't read a release of $BREAKAWAY_REPO. While breakaway's repository is private, add BREAKAWAY_READ_TOKEN as a repository secret: a fine-grained token with read access to its contents."
+            echo "::error title=No release to read::This repository can't read a release of $BREAKAWAY_REPO. If that repository is private, add BREAKAWAY_READ_TOKEN as a repository secret: a fine-grained token with read access to its contents."
             exit 1
           fi
           dir="$RUNNER_TEMP/breakaway-$newest"
@@ -65,7 +65,7 @@ jobs:
           mkdir -p release
           out=$(plan)
           if ! printf '%s\n' "$out" | grep -q '^action=\(bump\|deploy\)'; then
-            # The feed has nothing (breakaway's repository is private, or the feed is down): ask GitHub.
+            # The feed has nothing (it's down, or has none of BREAKAWAY_REPO's): ask GitHub.
             GH_TOKEN="$READ_TOKEN" gh api "repos/$BREAKAWAY_REPO/releases?per_page=100" > releases.json || true
             out=$(plan)
           fi

@@ -40,7 +40,7 @@ It also writes `installRepository` (the repository's `origin`, or what you type)
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 
-1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`. While breakaway's own repository is private, also add a repository secret (Settings, Secrets and variables, Actions), `BREAKAWAY_READ_TOKEN`: a fine-grained token that can read breakaway's contents. Both workflows read breakaway's releases with it, and the update workflow can't see the environment's secrets.
+1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`.
 2. Turn on Settings, Actions, General, "Allow GitHub Actions to create and approve pull requests". The update workflow needs it.
 
 **Check:** nothing on Connections yet, because there's no board. The files are in the repository, and the environment has its secrets.
