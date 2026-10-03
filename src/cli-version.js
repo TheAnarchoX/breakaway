@@ -5,5 +5,5 @@
  * bump CLI_VERSION and set CLI_FINGERPRINT to the value it prints. Constants only: the board's Worker imports it,
  * so it lives in the board's package (CLD-135) and the CLI imports it from here.
  */
-export const CLI_VERSION = 34;
-export const CLI_FINGERPRINT = '66f46467aee6bf20';
+export const CLI_VERSION = 35;
+export const CLI_FINGERPRINT = '38b6844e896df3f7';

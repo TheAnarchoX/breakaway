@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CLI_PACKAGE } from './init.js';
-import { ideaTask, NO_ARGUMENTS, SUBCOMMANDS, staleCliWarning, unknownSubcommand } from './cli.js';
+import { githubRequest, ideaTask, NO_ARGUMENTS, SUBCOMMANDS, staleCliWarning, unknownSubcommand } from './cli.js';
 
 describe('unknown subcommands (CLD-193)', () => {
   it('fails on one a command doesn’t have, naming the ones it has', () => {
@@ -79,5 +79,17 @@ describe('an idea (BRK-71)', () => {
     expect(task.autostart).toBe('yes');
     expect(task.tags).toContain('horizon-auto');
     expect(task.description).toBe(`${'a'.repeat(117)}…`);
+  });
+});
+
+describe('the GitHub view (BRK-72)', () => {
+  it('asks for the repository of the checkout it runs in', () => {
+    expect(githubRequest('widgets')).toEqual(['GET', 'github?repo=widgets', undefined]);
+    expect(githubRequest('widgets', { sync: true })).toEqual(['POST', 'github/sync', { repo: 'widgets' }]);
+  });
+
+  it('leaves the repository to the board outside a known checkout', () => {
+    expect(githubRequest(null)).toEqual(['GET', 'github', undefined]);
+    expect(githubRequest(null, { sync: true })).toEqual(['POST', 'github/sync', undefined]);
   });
 });
