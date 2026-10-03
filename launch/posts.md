@@ -1,6 +1,6 @@
 # Launch post and thread
 
-Drafts for the owner to post: agents never post. The post and thread point to the repository, the self-hosting guide, and `npx breakaway`. Public copy states only the facts the owner approved ([the story](../brand/README.md#the-story)): 160 pull requests in under 48 hours, one person, no editor opened. The licence is called "free" and "fair source".
+Drafts for the owner to post: agents never post. The post and thread point to the repository, the self-hosting guide, and `npx breakaway`. Public copy says what the board does, never what someone shipped with it ([Say what it does](../brand/README.md#say-what-it-does)). The licence is called "free" and "fair source".
 
 Each post fits X (280 characters, a link counts as 23) and Bluesky (300), and stands on its own. Post to both from the same text. Put the media on the post it's listed under, with its alt text. Counts are as X counts them.
 
@@ -10,15 +10,13 @@ Post once the site is live (`LCH-5`): post 4 sends people to the README's instal
 
 **Media:** [`media/launch.mp4`](media/launch.mp4), 16 s, 1080 × 1080, no sound. Pin it for launch week. Poster frame: [`media/launch-poster.png`](media/launch-poster.png).
 
-> 160 pull requests in under 48 hours. One person. No editor opened.
->
 > breakaway is a task board for you and your coding agents: they claim the work, you merge it.
 >
-> Free, and the source is public.
+> It runs on your own Cloudflare account. Free, and the source is public.
 >
 > https://github.com/TheAnarchoX/breakaway
 
-**Alt text:** A dark video of big white italic type, one fact at a time: 160 pull requests (the 160 in red), under 48 hours, one person, 0 editors opened. Then "Agents claim the work. You merge it." with the last sentence in red, and last the breakaway logo, "Leave the pack.", the command npx breakaway, and "Free, the source is public."
+**Alt text:** A dark video of big white italic type, one line at a time: "Write the work down.", "Agents claim it.", "You merge it." with "merge it." in red, and "Yours to run." Then the breakaway mark arrives big as one piece, a white slab with a red one against it, and the red slab snaps off into its place. The mark becomes the logo as the name appears beside it, and "Leave the pack.", the command npx breakaway, and "Free, the source is public" join it one after another.
 
 ## 2. How it works
 
@@ -63,9 +61,3 @@ No media.
 > Free to use, change, and self-host. The licence is FSL-1.1-Apache-2.0: fair source, and each release becomes Apache 2.0 two years after it ships.
 >
 > breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it.
-
-## Spare image
-
-[`media/01-race-board.png`](media/01-race-board.png): the three approved facts as a race board, for a later quote or reply.
-
-**Alt text:** Four big numbers on a dark ground: 160 pull requests (in red), under 48 hours, 1 person, 0 editors opened.
