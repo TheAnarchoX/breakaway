@@ -93,6 +93,17 @@ describe('the site', () => {
     ).toEqual([]);
   });
 
+  it('shows the social card when a page is shared (LCH-12)', () => {
+    expect(assets.has('/social.png')).toBe(true);
+    for (const [path, html] of built) {
+      expect(html, path).toContain(`<meta property="og:image" content="${SITE.url}/social.png">`);
+      expect(html, path).toContain('<meta property="og:image:width" content="2560">');
+      expect(html, path).toContain('<meta property="og:image:height" content="1280">');
+      expect(html, path).toMatch(/<meta property="og:image:alt" content="breakaway: Leave the pack\. [^"]+">/u);
+      expect(html, path).toContain('<meta name="twitter:card" content="summary_large_image">');
+    }
+  });
+
   it('is committed as it builds (run node site/build.mjs)', () => {
     for (const [path, html] of built) expect(BUILT[`../site/public/${path}`], path).toBe(html);
     expect(Object.keys(BUILT).length).toBe(built.size);
