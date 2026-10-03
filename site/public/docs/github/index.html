@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub · breakaway</title>
+<meta name="description" content="How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/github/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="GitHub · breakaway">
+<meta property="og:description" content="How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/github/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/" aria-current="page">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Connect</p>
+    <h1>GitHub</h1>
+    <p class="lede">How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.</p>
+    <p>The board reads each registered repository through a <strong>private GitHub App</strong> that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote and Roll back, which start two workflows. Nothing else writes to GitHub.</p>
+<h2 id="connecting-it"><a class="anchor" href="#connecting-it" aria-label="Link to this section">#</a>Connecting it</h2>
+<ol><li>Open the board’s <strong>GitHub</strong> view and select <strong>Create the App on GitHub</strong>. GitHub shows the App and its permissions; create it. GitHub sends you back to the board.</li><li>The view shows <code>npx breakaway github-connect &lt;code&gt;</code>. Run it in a checkout of the board’s repository, with <code>wrangler</code> logged in, within the hour. It trades the code for the App’s ID, private key, and webhook secret and stores them as the board’s secrets. They never pass through the board or a command line.</li><li>Open the install link it prints, choose <strong>Only select repositories</strong>, pick the repository, and install.</li><li>In the repository’s settings, turn on <strong>Allow auto-merge</strong>.</li></ol>
+<p>The App needs read and write on <strong>Pull requests</strong> and <strong>Contents</strong>, read and write on <strong>Actions</strong> where a repository has a deploy pipeline, and read on the rest (metadata, checks, commit statuses, deployments, Dependabot alerts). An App made from the board’s manifest has them. If you made yours before a permission was added, the buttons say so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions &amp; events, then accept the request on the installation.</p>
+<p>Install the App on every repository you register. One App serves them all.</p>
+<h2 id="pull-requests-and-tasks"><a class="anchor" href="#pull-requests-and-tasks" aria-label="Link to this section">#</a>Pull requests and tasks</h2>
+<p>A pull request <strong>closes</strong> a task when a sentence or line of its title or description *starts* with a closing word directly followed by the work IDs: <code>Closes BRK-12.</code>, <code>- Fixes BRK-5, BRK-12 and WEB-1</code>, <code>Resolves: DOC-6</code>. It also closes a task whose <code>pr</code> field is its number. Everything else is a <strong>mention</strong>. A pending task with an open closing pull request is <strong>In review</strong>; when the pull request merges the task is done, and when it’s closed without merging it gets a note and leaves review. Write <code>Part of &lt;ID&gt;.</code> in a spec or planning pull request.</p>
+<h3 id="how-it-stays-current"><a class="anchor" href="#how-it-stays-current" aria-label="Link to this section">#</a>How it stays current</h3>
+<p>Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, Dependabot alerts, deployments, and releases schedule a sync 5 seconds later (a burst becomes one). A cron syncs every registered repository every 5 minutes in case one went missing, each on its own, so one repository’s failure or rate limit never stops another. <strong>Sync now</strong> in the GitHub view, or <code>npx breakaway github --sync</code>, does it at once.</p>
+<h2 id="the-pull-request-page"><a class="anchor" href="#the-pull-request-page" aria-label="Link to this section">#</a>The pull request page</h2>
+<p>Select a pull request in the GitHub view to read it without leaving the board: a <strong>verdict</strong>, its checks (each linking to the run and its log), reviews, the conversation, and the diff, file by file. The verdict comes from GitHub’s <code>mergeable_state</code>:</p>
+<p><strong>Ready to merge</strong>, <strong>Has conflicts</strong>, <strong>Checks failing</strong>, <strong>Behind main</strong>, <strong>Checks running</strong>, <strong>Waiting on review</strong>, or <strong>Draft</strong>. The open list sorts by it, and the GitHub item in the sidebar counts what’s ready to merge. The page is read live through the installation token, and diffs are never stored.</p>
+<h3 id="publish-update-branch-merge-merge-when-green"><a class="anchor" href="#publish-update-branch-merge-merge-when-green" aria-label="Link to this section">#</a>Publish, Update branch, Merge, Merge when green</h3>
+<ul><li><strong>Publish…</strong> marks a draft ready for review.</li><li><strong>Update branch</strong> merges the default branch into the pull request’s branch (a merge commit, never a rebase or force-push), when it’s behind.</li><li><strong>Merge…</strong> opens a dialog with the method (squash or merge commit), the tasks it finishes, and whether merging deploys a Worker. The head commit the page showed goes to GitHub with the request, so a push in between refuses the merge instead of merging code you haven’t seen.</li><li><strong>Merge when green…</strong> turns on GitHub’s auto-merge while checks are still running. It needs <strong>Allow auto-merge</strong> in the repository’s settings.</li></ul>
+<p>These are <strong>cookie only</strong>: they accept only the signed-in web board, from its own origin. The bearer token that agents, the CLI, and cloud sessions hold gets a 403, so none of them can merge, whatever they try. <strong>The repository’s rules stay in charge:</strong> the board refuses to merge drafts, closed pull requests, and ones that are behind, blocked, or conflicting, and if GitHub refuses anyway (a required check, a ruleset) it shows GitHub’s own message and changes nothing. Conflicts go to an agent.</p>
+<h3 id="two-standing-settings"><a class="anchor" href="#two-standing-settings" aria-label="Link to this section">#</a>Two standing settings</h3>
+<p>The board’s <strong>Settings</strong> has two switches under <strong>Pull requests</strong>, both off until you turn them on. They’re a standing “press it for me”, with the same refusals.</p>
+<ul><li><strong>Keep branches up to date.</strong> When the default branch moves on, the board updates the branch of every open pull request that’s behind. It skips drafts and pull requests with conflicts.</li><li><strong>Merge when green.</strong> Every open pull request that isn’t a draft merges once its required checks pass, Dependabot’s included. It uses the method you last chose in the merge dialog. In a repository with a pipeline, merging deploys to staging, so turning it on asks first and says how many pull requests are ready to merge straight away.</li></ul>
+<p>They’re kept in the browser’s local storage, not on the server, so they’re on only where you turned them on, and only while the board is open there. Agents can’t turn them on.</p>
+<h2 id="fix-with-an-agent"><a class="anchor" href="#fix-with-an-agent" aria-label="Link to this section">#</a>Fix with an agent</h2>
+<p>On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, <strong>Fix with an agent</strong> (or <strong>Address review comments</strong>) starts an agent on the pull request’s own task. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges.</p>
+<h2 id="deploys-releases-promote-and-roll-back"><a class="anchor" href="#deploys-releases-promote-and-roll-back" aria-label="Link to this section">#</a>Deploys, releases, Promote and Roll back</h2>
+<p>A repository with a <strong>deploy pipeline</strong> gets Releases, Promote, Roll back, and the warnings that merging deploys. Set it with <code>npx breakaway repos modify &lt;slug&gt; --pipeline pipeline.json</code>:</p>
+<pre data-lang="json"><code>{
+  &quot;workers&quot;: { &quot;staging&quot;: &quot;widgets-staging&quot;, &quot;production&quot;: &quot;widgets&quot; },
+  &quot;workflows&quot;: { &quot;deploy&quot;: &quot;deploy.yml&quot;, &quot;promote&quot;: &quot;promote.yml&quot;, &quot;rollback&quot;: &quot;rollback.yml&quot; },
+  &quot;deployPaths&quot;: &quot;.github/deploy-paths.json&quot;
+}</code></pre>
+<p><code>workers</code> is required. <code>workflows</code> and <code>deployPaths</code> are optional. Without a pipeline, merging deploys nothing and the GitHub view shows none of this.</p>
+<ul><li>A repository’s <strong>Deploy</strong>, <strong>Promote</strong>, and <strong>Roll back</strong> workflows record each deploy as a GitHub Deployment. The board reads them and shows a card for staging and one for production, with the commit, version, when it went live, and the tasks it carries.</li><li>When a deploy succeeds, the board finds the merged pull requests since the previous successful deploy and marks the tasks they closed <strong>On staging</strong> or <strong>Live</strong>.</li><li><strong>Promote to production…</strong> asks first, listing the tasks and migrations, and starts the repository’s <code>promote.yml</code> with the latest successful staging deploy. A destructive migration needs a tick. <strong>Roll back…</strong> asks for the version to go back to and what broke, and starts <code>rollback.yml</code>. Both are cookie only, and the workflows check everything again.</li><li>A merged pull request that changes only docs, skills, or CI shows “No deploy needed”.</li></ul>
+<p>The scripts those workflows run (<code>record-deployment.mjs</code>, <code>promote-check.mjs</code>, <code>release-notes.mjs</code>, <code>check-migrations.mjs</code>, <code>release-artifact.mjs</code>) are copied into a repository by <code>repos init</code>, so every repository makes the same checks.</p>
+<h2 id="several-repositories"><a class="anchor" href="#several-repositories" aria-label="Link to this section">#</a>Several repositories</h2>
+<p>A webhook syncs the repository its delivery names; one that isn’t registered gets a <code>202</code> and is ignored. A pull request closes only tasks of its own repository: <code>Closes BRK-3.</code> in another repository’s pull request is a mention. The GitHub App is one; its installations are per repository.</p>
+<h2 id="disconnecting-and-a-leaked-key"><a class="anchor" href="#disconnecting-and-a-leaked-key" aria-label="Link to this section">#</a>Disconnecting, and a leaked key</h2>
+<p>To disconnect, uninstall the App on GitHub. If the App’s key leaks, generate a new private key in the App’s settings, store it as the board’s <code>GITHUB_KEY</code> secret as one line of base64 PKCS#8, then delete the old key on GitHub. Because the App can merge, treat this as urgent.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/routines/"><span class="label">Previous</span><span>Routines</span></a><a class="pager-next" href="/docs/taskwarrior/"><span class="label">Next</span><span>Taskwarrior</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#connecting-it">Connecting it</a></li><li><a href="#pull-requests-and-tasks">Pull requests and tasks</a></li><li><a href="#the-pull-request-page">The pull request page</a></li><li><a href="#fix-with-an-agent">Fix with an agent</a></li><li><a href="#deploys-releases-promote-and-roll-back">Deploys, releases, Promote and Roll back</a></li><li><a href="#several-repositories">Several repositories</a></li><li><a href="#disconnecting-and-a-leaked-key">Disconnecting, and a leaked key</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

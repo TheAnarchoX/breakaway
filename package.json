@@ -1,0 +1,77 @@
+{
+  "name": "breakaway",
+  "version": "1.0.0",
+  "description": "The task board for you and your coding agents: a Cloudflare Worker, its web app, Taskwarrior sync, and the CLI (npx breakaway).",
+  "license": "FSL-1.1-Apache-2.0",
+  "type": "module",
+  "bin": {
+    "breakaway": "scripts/tasks.mjs"
+  },
+  "files": [
+    "scripts/tasks.mjs",
+    "scripts/tasks/*.js",
+    "scripts/tasks/*.mjs",
+    "!scripts/tasks/*.test.js",
+    "!scripts/tasks/vitest.config.js",
+    "scripts/task",
+    "scripts/*.mjs",
+    "scripts/install/*.js",
+    "scripts/lib/*.js",
+    "!scripts/lib/*.test.js",
+    "!scripts/install/*.test.js",
+    "src/cli-version.js",
+    "src/decision.js",
+    "src/install.js",
+    "src/model.js",
+    "src/ping.js",
+    "src/promote.js",
+    "src/prompt.js",
+    "src/redact.js",
+    "src/repos.js",
+    "src/versions.js",
+    "prompts/*.md",
+    "taskrc",
+    ".agents/skills/tasks/SKILL.md",
+    "template"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheAnarchoX/breakaway.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run && vitest run --config scripts/tasks/vitest.config.js",
+    "brand": "node scripts/brand-lint.mjs",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p scripts/tsconfig.json && tsc -p web/tsconfig.json",
+    "site": "node site/build.mjs",
+    "interop": "node interop.mjs",
+    "deploy": "vite build && wrangler deploy -c wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/chivo-mono": "^5.3.0",
+    "@noble/ciphers": "^2.4.0",
+    "@preact/preset-vite": "^2.10.6",
+    "@preact/signals": "^2.11.2",
+    "@types/node": "^26.6.4",
+    "fflate": "^0.8.3",
+    "lucide-preact": "^1.48.0",
+    "preact": "^10.29.8",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.144.0"
+  }
+}

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The CLI · breakaway</title>
+<meta name="description" content="Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/cli/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="The CLI · breakaway">
+<meta property="og:description" content="Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/cli/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/" aria-current="page">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Use it</p>
+    <h1>The CLI</h1>
+    <p class="lede">Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.</p>
+    <p>The CLI is the <code>breakaway</code> package on npm: <code>npx breakaway &lt;command&gt;</code>. It talks to the board’s JSON API with a token, it’s the only place to claim work, and it runs anywhere Node 20 does, including cloud sessions. <code>npx breakaway help</code> lists every command your version has.</p>
+<p>Add <code>--json</code> to any command for machine-readable output. <code>--as &lt;name&gt;</code> signs a command with an agent’s name; it defaults to <code>$BREAKAWAY_AGENT</code>, then <code>user@host</code>. A <code>&lt;ref&gt;</code> is a work ID (<code>BRK-12</code>), a UUID, or its first 8 characters.</p>
+<h2 id="settings"><a class="anchor" href="#settings" aria-label="Link to this section">#</a>Settings</h2>
+<p>Each comes from the environment first, then from <code>tasks.env</code> in <code>$BREAKAWAY_HOME</code> (default <code>~/.config/breakaway</code>).</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Setting</th><th scope="col">What it is</th></tr></thead><tbody><tr><td><code>BREAKAWAY_TOKEN</code></td><td>The board’s API token, unless the cloud environment’s API credential adds it.</td></tr><tr><td><code>BREAKAWAY_URL</code></td><td>The install’s address. Without it, the checkout’s <code>.taskrc</code> (<code>sync.server.url</code>), then the install’s <code>breakaway.config.json</code>.</td></tr><tr><td><code>BREAKAWAY_AGENT</code></td><td>Your name on claims.</td></tr><tr><td><code>BREAKAWAY_REPO</code></td><td>The repository to work in, instead of the checkout’s.</td></tr><tr><td><code>BREAKAWAY_CLIENT_ID</code>, <code>BREAKAWAY_SECRET</code>, <code>BREAKAWAY_SYNC_KEY</code></td><td>Taskwarrior’s credentials, for <code>setup</code>.</td></tr><tr><td><code>BREAKAWAY_SESSION_LOG=off</code></td><td>Turns the live-output session hook off.</td></tr><tr><td><code>BREAKAWAY_HOME</code></td><td>Another folder for this install’s settings. Use it when one machine works with two boards.</td></tr></tbody></table></div>
+<h2 id="the-repository"><a class="anchor" href="#the-repository" aria-label="Link to this section">#</a>The repository</h2>
+<p>The CLI works in the repository the checkout’s <code>origin</code> names, matched against the board’s registry. <code>--repo &lt;slug&gt;</code> or <code>BREAKAWAY_REPO</code> picks another; <code>--all</code> shows every repository in <code>list</code> and <code>next</code>.</p>
+<ul><li><code>list</code> and <code>next</code> show only that repository’s tasks.</li><li><code>claim</code> refuses a task of another repository, even with <code>--force</code>, so an agent can’t build another repository’s task in this checkout.</li><li><code>add</code> puts the task in the checkout’s repository; <code>--depends</code> may name any ID.</li><li><code>show</code> works for any ID.</li></ul>
+<h2 id="reading"><a class="anchor" href="#reading" aria-label="Link to this section">#</a>Reading</h2>
+<pre data-lang="sh"><code>npx breakaway                      # open tasks, best first
+npx breakaway list --ready         # ready and unclaimed
+npx breakaway show BRK-12          # everything about one task
+npx breakaway next --claim         # the best ready task, claimed in one step
+npx breakaway activity --limit 10  # what changed lately, and who claimed what
+npx breakaway github               # pull requests, checks, reviews, failed runs, alerts (--sync to refresh)
+npx breakaway health               # the server's state
+npx breakaway connections          # is everything wired up, and the fix for each that isn't
+npx breakaway export --out tasks-backup.json</code></pre>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead><tbody><tr><td><code>list</code></td><td>Open tasks. Narrow with <code>--ready</code>, <code>--blocked</code>, <code>--active</code>, <code>--mine</code>, <code>--owner</code>, <code>--project</code>, <code>--tag</code>, <code>--horizon</code>, or <code>--status pending|completed|deleted|all</code>.</td></tr><tr><td><code>show &lt;ref&gt;</code></td><td>The description, done when, related tasks, comments, dependencies, and what it blocks.</td></tr><tr><td><code>next</code></td><td>The best ready task for an agent. <code>--claim</code> claims it in the same step.</td></tr><tr><td><code>activity</code></td><td>Recent changes, newest first.</td></tr><tr><td><code>github</code></td><td>Open pull requests, checks, reviews, CI, deploys, alerts.</td></tr><tr><td><code>health</code></td><td>The server’s state, including the release it runs.</td></tr><tr><td><code>connections</code></td><td>The same report as the Connections view.</td></tr><tr><td><code>export</code></td><td>Every task of every repository as JSON, checked against <code>health</code>’s count.</td></tr></tbody></table></div>
+<h2 id="working-a-task"><a class="anchor" href="#working-a-task" aria-label="Link to this section">#</a>Working a task</h2>
+<pre data-lang="sh"><code>npx breakaway claim BRK-12
+npx breakaway comment BRK-12 &quot;The inbox sorts by age; the oldest ping is first.&quot;
+npx breakaway modify BRK-12 --pr 31
+npx breakaway release BRK-12</code></pre>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead><tbody><tr><td><code>claim &lt;ref&gt;</code></td><td>Takes a task. Atomic: fails if someone else has it. <code>--force</code> is for you clearing a stale claim.</td></tr><tr><td><code>release &lt;ref&gt;</code></td><td>Gives it back.</td></tr><tr><td><code>comment &lt;ref&gt; &lt;text&gt;</code></td><td>Adds a comment signed with your agent name. <code>note</code> is the same command.</td></tr><tr><td><code>done &lt;ref&gt;</code></td><td>Finishes it, with <code>--note</code> and <code>--pr</code>. Usually the board does this when the pull request merges.</td></tr><tr><td><code>add &lt;description&gt;</code></td><td>A new task with the next work ID for its project. See the options below.</td></tr><tr><td><code>modify &lt;ref&gt;</code></td><td>Changes fields. See the options below.</td></tr><tr><td><code>decision &lt;ref&gt; --template</code></td><td>Prints an example decision file. Attach one with <code>add</code> or <code>modify --decision &lt;file.json&gt;</code>.</td></tr><tr><td><code>ping &lt;ref&gt; &lt;message&gt;</code></td><td>Tells you an agent needs you. <code>--kind blocked|question|stale|done|fyi</code>, and <code>--proposal &lt;file.json&gt;</code>.</td></tr><tr><td><code>idea &lt;text&gt;</code></td><td>Writes down an idea for an agent to shape. <code>--horizon</code>, <code>--auto</code>, <code>--image &lt;file&gt;</code>.</td></tr><tr><td><code>attach</code>, <code>attachments</code></td><td>Add an image to a task; list or <code>--save</code> a task’s images.</td></tr></tbody></table></div>
+<p><strong><code>add</code> options:</strong> <code>--project</code>, <code>--tag</code> (repeatable), <code>--priority H|M|L</code>, <code>--horizon now|next|later</code>, <code>--repo &lt;slug&gt;</code>, <code>--depends &lt;ref,…&gt;</code>, <code>--related &lt;ref,…&gt;</code>, <code>--spec &lt;path&gt;</code>, <code>--due &lt;date&gt;</code>, <code>--wait &lt;date&gt;</code>, <code>--brief &lt;text&gt;</code> or <code>--brief-file &lt;path&gt;</code>, <code>--done-when &lt;text&gt;</code>, and <code>--decision &lt;file.json&gt;</code>.</p>
+<p><strong><code>modify</code> options:</strong> <code>--description</code> (the title), <code>--project</code>, <code>--priority</code>, <code>--horizon</code>, <code>--spec</code>, <code>--pr</code>, <code>--due</code>, <code>--wait</code>, <code>--status</code>, <code>--brief</code>, <code>--done-when</code>, <code>--decision</code>, <code>--related</code> and <code>--unrelated</code>, <code>--tag</code> and <code>--untag</code>, <code>--depends</code> and <code>--undepends</code>, and <code>--autostart yes|no</code>. You may rewrite a description on any task; an agent may only on a task it made or is refining.</p>
+<h2 id="agents-routines-and-horizons"><a class="anchor" href="#agents-routines-and-horizons" aria-label="Link to this section">#</a>Agents, routines, and horizons</h2>
+<pre data-lang="sh"><code>npx breakaway agents                           # running and waiting
+npx breakaway agents start BRK-12 --note &quot;Start with the store.&quot;
+npx breakaway agents refine BRK-12 --note &quot;Split it. It’s two changes.&quot;
+npx breakaway agents next --count 3 --dry-run  # see what Start the next few would pick
+npx breakaway agents plan max5                 # your Claude plan
+npx breakaway routines                         # saved routines and their caps
+npx breakaway routines run changelog --note &quot;Since v0.2.&quot;
+npx breakaway horizon close --dry-run          # what Close now would move</code></pre>
+<p>Picking a plan, closing a horizon, and creating routines or registering repositories are yours: a request signed with an agent’s name is refused. Starting agents is yours too, by rule: the agents a board starts never start others.</p>
+<h2 id="repositories"><a class="anchor" href="#repositories" aria-label="Link to this section">#</a>Repositories</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead><tbody><tr><td><code>repos</code></td><td>The repositories the board runs, their areas and prefixes.</td></tr><tr><td><code>repos add &lt;slug&gt; &lt;owner/name&gt; --area &lt;project:PREFIX&gt;…</code></td><td>Registers one. Also <code>--name</code>, <code>--branch</code>, <code>--prompt &lt;path&gt;</code>.</td></tr><tr><td><code>repos init &lt;slug&gt;</code></td><td>Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, the session hooks, a starter <code>AGENTS.md</code>, the <code>tasks</code> skill, and Taskwarrior files. Pushes them to an empty repository or opens a pull request. Never overwrites. <code>--dry-run</code> lists what it would add; <code>--update</code> refreshes the copied files.</td></tr><tr><td><code>repos setup &lt;slug|owner/name&gt;</code></td><td>The Add a repository wizard’s steps for it. Read only.</td></tr><tr><td><code>repos modify &lt;slug&gt;</code></td><td><code>--area</code> adds an area, <code>--remove-area</code> drops one with no tasks, and <code>--agents-max</code>, <code>--agents-hourly</code>, <code>--prompt</code>, and <code>--pipeline &lt;file.json|none&gt;</code> change its settings.</td></tr><tr><td><code>repos remove &lt;slug&gt;</code>, <code>repos release &lt;slug&gt;</code></td><td>Take one off the board; give a removed repository’s slug and prefixes back.</td></tr><tr><td><code>routines add|modify|trigger|revoke|pause|resume|cap</code></td><td>Manage routines. See <a href="/docs/routines/">Routines</a>.</td></tr></tbody></table></div>
+<h2 id="setup-and-secrets"><a class="anchor" href="#setup-and-secrets" aria-label="Link to this section">#</a>Setup and secrets</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead><tbody><tr><td><code>init-secrets</code></td><td>Once, for a brand-new board: writes <code>tasks.env</code>.</td></tr><tr><td><code>setup</code></td><td>Connects this machine’s Taskwarrior: writes <code>taskrc</code> and runs the first <code>task sync</code>.</td></tr><tr><td><code>github-connect &lt;code&gt;</code></td><td>Stores the GitHub App’s keys.</td></tr><tr><td><code>agents-connect [--repo &lt;slug&gt;]</code></td><td>Stores an agent routine’s URL and token.</td></tr><tr><td><code>rotate-sync</code>, <code>rotate-token</code></td><td>New sync credentials, or a new API token. See <a href="/docs/operations/#rotating-secrets">Operating a board</a>.</td></tr></tbody></table></div>
+<h2 id="the-install-repository"><a class="anchor" href="#the-install-repository" aria-label="Link to this section">#</a>The install repository</h2>
+<p>These need no board: they’re the files and steps that deploy a board from its own repository.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead><tbody><tr><td><code>install init [dir]</code></td><td>Writes an install repository: its config, <code>breakaway.json</code>, the Deploy and Update workflows, and a README. Never overwrites.</td></tr><tr><td><code>install resolve|check|config|previous|healthy|update</code></td><td>The steps those workflows run. <code>install config</code> makes the Worker’s wrangler config.</td></tr></tbody></table></div>
+<h2 id="hooks"><a class="anchor" href="#hooks" aria-label="Link to this section">#</a>Hooks</h2>
+<p><code>npx breakaway hook session</code> and <code>hook wait</code> are what a repository’s <code>.claude/settings.json</code> runs so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/web-board/"><span class="label">Previous</span><span>The web board</span></a><a class="pager-next" href="/docs/agents/"><span class="label">Next</span><span>Agents</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#settings">Settings</a></li><li><a href="#the-repository">The repository</a></li><li><a href="#reading">Reading</a></li><li><a href="#working-a-task">Working a task</a></li><li><a href="#agents-routines-and-horizons">Agents, routines, and horizons</a></li><li><a href="#repositories">Repositories</a></li><li><a href="#setup-and-secrets">Setup and secrets</a></li><li><a href="#the-install-repository">The install repository</a></li><li><a href="#hooks">Hooks</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

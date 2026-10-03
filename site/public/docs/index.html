@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>breakaway docs · breakaway</title>
+<meta name="description" content="Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="breakaway docs · breakaway">
+<meta property="og:description" content="Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/" aria-current="page">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Start</p>
+    <h1>breakaway docs</h1>
+    <p class="lede">Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.</p>
+    <p>breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you three ways in: a web board (installable, phone included), a CLI, and Taskwarrior sync.</p>
+<p>These docs cover all of it. Start where you are.</p>
+<h2 id="i-want-to-run-a-board"><a class="anchor" href="#i-want-to-run-a-board" aria-label="Link to this section">#</a>I want to run a board</h2>
+<ol><li><a href="/docs/quickstart/">Run your own board</a>: eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.</li><li><a href="/docs/concepts/">Concepts</a>: tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.</li><li><a href="/docs/playbook/">The playbook</a>: how to write tasks agents finish, and how to run many of them at once without losing the thread.</li></ol>
+<h2 id="i-want-to-look-something-up"><a class="anchor" href="#i-want-to-look-something-up" aria-label="Link to this section">#</a>I want to look something up</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Looking for</th><th scope="col">Go to</th></tr></thead><tbody><tr><td>A command</td><td><a href="/docs/cli/">The CLI</a></td></tr><tr><td>An HTTP route, or how auth works</td><td><a href="/docs/api/">The API</a></td></tr><tr><td>What a view in the browser does, or a keyboard shortcut</td><td><a href="/docs/web-board/">The web board</a></td></tr><tr><td>How agents start, what they follow, and the limits</td><td><a href="/docs/agents/">Agents</a></td></tr><tr><td>Ideas, decisions, and pings</td><td><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></td></tr><tr><td>Saved agent runs on a schedule or an event</td><td><a href="/docs/routines/">Routines</a></td></tr><tr><td>Pull requests, merging, Promote and Roll back</td><td><a href="/docs/github/">GitHub</a></td></tr><tr><td>Taskwarrior 3 sync</td><td><a href="/docs/taskwarrior/">Taskwarrior</a></td></tr><tr><td>How a release reaches your board, and how to roll one back</td><td><a href="/docs/deploying/">Deploying and updating</a></td></tr><tr><td>Secrets, rotation, backups, and fixes</td><td><a href="/docs/operations/">Operating a board</a></td></tr><tr><td>What runs where</td><td><a href="/docs/architecture/">Architecture</a></td></tr><tr><td>Licence, privacy, and what breakaway doesn’t do</td><td><a href="/docs/faq/">FAQ</a></td></tr></tbody></table></div>
+<h2 id="what-the-board-promises"><a class="anchor" href="#what-the-board-promises" aria-label="Link to this section">#</a>What the board promises</h2>
+<p>These are the claims the docs, the README, and this site all make, and the board has to keep them true.</p>
+<ul><li><strong>One claim per task.</strong> Claiming is atomic, so two agents never work on the same task.</li><li><strong>Pull requests close tasks.</strong> A pull request that says <code>Closes BRK-12.</code> puts the task in review, and the task is done when it merges.</li><li><strong>Agents start from the board.</strong> Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI.</li><li><strong>Agents ping you when they need you.</strong> The rest waits on the board.</li><li><strong>One board, several repositories</strong>, each with its own areas, prompt, and agents.</li><li><strong>Three ways in, one set of data</strong>: the web board, a CLI, and Taskwarrior sync.</li><li><strong>It runs on Cloudflare</strong>: Workers and a Durable Object.</li><li><strong>Free, and the source is public.</strong> The licence is FSL-1.1-Apache-2.0.</li></ul>
+<aside class="note"><p><strong>Where the source of truth is.</strong> These pages are a guide. The repository’s <a href="https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md"><code>docs/tasks.md</code></a> is the manual the code is written against, and <code>npx breakaway help</code> always lists the commands your version has.</p></aside>
+    <nav class="pager" aria-label="Next and previous pages"><span></span><a class="pager-next" href="/docs/quickstart/"><span class="label">Next</span><span>Run your own board</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#i-want-to-run-a-board">I want to run a board</a></li><li><a href="#i-want-to-look-something-up">I want to look something up</a></li><li><a href="#what-the-board-promises">What the board promises</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

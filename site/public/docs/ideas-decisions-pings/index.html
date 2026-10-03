@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideas, decisions, and pings · breakaway</title>
+<meta name="description" content="The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/ideas-decisions-pings/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Ideas, decisions, and pings · breakaway">
+<meta property="og:description" content="The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/ideas-decisions-pings/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/" aria-current="page">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Use it</p>
+    <h1>Ideas, decisions, and pings</h1>
+    <p class="lede">The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.</p>
+    <h2 id="ideas"><a class="anchor" href="#ideas" aria-label="Link to this section">#</a>Ideas</h2>
+<p>When you’d rather write down an idea than fill in a task, use <strong>New idea</strong> (<code>i</code> on the board, or the Idea tab in the New task dialog; <code>npx breakaway idea &quot;…&quot;</code> on the command line). It takes your words as they are and makes a task in the Ideas area (<code>IDEA-12</code>) with them as its description.</p>
+<ul><li><strong>You choose whether an agent starts on it by itself.</strong> *Start its agent as soon as there’s room* sets the idea’s <code>autostart</code> when you save it. Off, the idea waits until you start its agent from the task or the Agents view. Agents never change this setting, for the idea or for any task they make.</li><li><strong>You choose the horizon too:</strong> Now, Next, Later, or Auto. The choice is kept on the idea as a tag (<code>horizon-now</code>, …) and every task the agent makes gets exactly that horizon. With Auto, the agent picks one for each task from what’s already on the board.</li><li><strong>The agent shapes it, it doesn’t build it.</strong> It checks the idea against the repository’s settled decisions, looks at the board for overlaps and blockers, writes a spec in <code>docs/specs/IDEA-12-&lt;slug&gt;.md</code>, and adds the real tasks with area, horizon, tags, dependencies, description, and done when filled in. Every one of them waits for the idea’s own ID, so nothing is built before you’ve read the spec.</li><li><strong>One pull request, yours to merge.</strong> It holds the spec and closes the idea. Merging it releases the tasks. A task that needs a decision from you is tagged <code>+decide</code> and carries its questions.</li></ul>
+<p>If an idea breaks a settled decision or something the repository isn’t doing, the agent doesn’t turn it into agent work: the spec says so plainly and asks you a question.</p>
+<p>Ideas take images too: the New idea form takes them by button, drag and drop, or paste, and <code>idea &quot;…&quot; --image shot.png</code> on the command line. PNG, JPEG, WebP, and GIF, up to 1 MB each and 4 per task. They stay on the board, never public, and the agent fetches and reads them before it starts.</p>
+<h2 id="decisions"><a class="anchor" href="#decisions" aria-label="Link to this section">#</a>Decisions</h2>
+<p>A <strong>decision</strong> is how an agent asks you for a choice. A task can carry an ordered list of questions of seven types:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Type</th><th scope="col">You answer with</th></tr></thead><tbody><tr><td><code>open</code></td><td>Free text</td></tr><tr><td><code>yesno</code></td><td>Yes or no</td></tr><tr><td><code>choice</code></td><td>Pick one option</td></tr><tr><td><code>multi</code></td><td>Pick any, with optional <code>min</code> and <code>max</code></td></tr><tr><td><code>rank</code></td><td>Put the options in order</td></tr><tr><td><code>scale</code></td><td>A whole number between two labelled ends</td></tr><tr><td><code>date</code></td><td>A date</td></tr></tbody></table></div>
+<p>Each question has a stable <code>id</code>, a prompt, optional help, and, for choices, options that say what picking them means. Every answer can take a short comment. A task with questions gets <code>+decide</code>.</p>
+<ul><li><strong>Asking.</strong> <code>npx breakaway decision --template</code> prints an example file. Attach it with <code>add … --decision &lt;file.json&gt;</code> or <code>modify &lt;ID&gt; --decision &lt;file.json&gt;</code>. Up to 20 questions and 20 KB; no personal data and no secrets. Work that waits for the answer depends on the task.</li><li><strong>Answering (you only).</strong> In the task’s view on the board the questions are a form. <strong>Send answers</strong> turns on when every required question has an answer, and a draft stays in your browser. Sending stores the answers, removes <code>+decide</code>, marks the task done, and adds a comment that summarises them, so whatever waited for it is released. The CLI has no command to answer: an agent can’t decide for you.</li><li><strong>Reopening.</strong> Reopen a submitted decision on the board to change an answer.</li></ul>
+<p>Settled decisions that every change must respect go in the repository’s decision log (<code>docs/decisions.md</code>). If a task would break one, the agent stops and asks you instead of working around it.</p>
+<h2 id="pings"><a class="anchor" href="#pings" aria-label="Link to this section">#</a>Pings</h2>
+<p>An agent that can’t finish a task because only you can help, or whose task turns out to be done or not reproducible, <strong>pings</strong> you instead of leaving a comment nobody sees. <code>ping &lt;ID&gt; --kind &lt;kind&gt; &quot;&lt;message&gt;&quot;</code> (the agent must hold the task) writes a comment and an entry in your inbox.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Kind</th><th scope="col">Means</th><th scope="col">Push</th></tr></thead><tbody><tr><td><code>blocked</code></td><td>It can’t finish because only you can give it something: a dashboard change, a production step, an account, a secret.</td><td>Yes</td></tr><tr><td><code>question</code></td><td>It needs an answer that isn’t worth a full decision.</td><td>Yes</td></tr><tr><td><code>stale</code></td><td>The task can’t be reproduced or already behaves as expected, so it should be closed instead of built.</td><td>Yes</td></tr><tr><td><code>done</code></td><td>The work looks finished already, so you should confirm.</td><td>Yes</td></tr><tr><td><code>fyi</code></td><td>Something you should know now that needs no action. Inbox only.</td><td>No</td></tr></tbody></table></div>
+<p>The message is up to 500 characters and is refused if it looks like a token. There are at most 3 pings per task and 10 per agent a day, and a repeat of the same kind and message is dropped. A ping stays open until you resolve it or the task is finished.</p>
+<h3 id="proposals"><a class="anchor" href="#proposals" aria-label="Link to this section">#</a>Proposals</h3>
+<p>A ping can carry a <strong>proposal</strong>: up to 10 changes and 20 KB you can apply in one press. <code>ping --template</code> prints an example.</p>
+<ul><li><code>add</code> tasks, with local <code>ref</code>s so they can depend on each other.</li><li><code>depend</code>: add or remove dependencies between existing tasks.</li><li><code>modify</code>: horizon, tags, brief, or done when.</li><li><code>done</code>, with a note; and <code>release</code>.</li></ul>
+<p>The server checks it when it’s proposed, refusing cycles, dependencies another path already implies, <code>autostart</code>, changes to <code>horizon-*</code> tags, and finishing a task in review. Agents propose; only you apply, dismiss, or mark a ping handled, in the signed-in browser. Apply checks every change again against the board as it is then and, if any no longer holds, changes nothing and tells you why.</p>
+<h3 id="push-notifications"><a class="anchor" href="#push-notifications" aria-label="Link to this section">#</a>Push notifications</h3>
+<p>The push goes to the installed board app, with Web Push. It’s off until you turn on <strong>Notifications</strong> in the board’s Settings, per browser, and it needs the VAPID key pair. Until then pings show in the inbox only. When a connection has needed attention for 10 minutes, the inbox also gets a note, with no push.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/agents/"><span class="label">Previous</span><span>Agents</span></a><a class="pager-next" href="/docs/routines/"><span class="label">Next</span><span>Routines</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#ideas">Ideas</a></li><li><a href="#decisions">Decisions</a></li><li><a href="#pings">Pings</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

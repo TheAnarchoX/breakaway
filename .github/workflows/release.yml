@@ -1,0 +1,154 @@
+# Releases (BRK-6). breakaway publishes releases and never deploys: every install deploys a release from
+# its own repository, so this repository holds no Cloudflare credentials. Keep this file's name: npm's
+# trusted publisher (BRK-7) is set to it, with no environment, and `npm publish` has to run from a job in this file.
+name: Release
+
+on:
+  # Every push to main, once CI has passed on it: a pre-release on the main channel.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # The owner promotes a chosen pre-release to stable. Agents never run this.
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: The pre-release to promote, like v0.2.0-main.5
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  AREAS: BRK:Board,WEB:Web,DOC:Docs,LCH:Launch,ID:Brand
+
+jobs:
+  prerelease:
+    name: pre-release
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      # The notes read each pull request's title, which a private repository answers 403 without (BRK-57).
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Pick the version
+        id: next
+        run: |
+          git tag -l > "$RUNNER_TEMP/tags"
+          node scripts/release/plan.mjs prerelease "$RUNNER_TEMP/tags" >> "$GITHUB_OUTPUT"
+          git tag -l 'v*' --sort=-creatordate | head -1 > "$RUNNER_TEMP/previous"
+      - name: Build once
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          pnpm install --frozen-lockfile
+          node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.VERSION;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          pnpm build
+          mkdir -p out/bundle/worker
+          cp -r src package.json release.json out/bundle/worker/
+          cp -r dist out/bundle/dist
+          # The packages the Worker imports, as the lockfile pins them, so a Deploy runs no npm install (BRK-56).
+          node scripts/release/vendor.mjs out/bundle
+          tar -czf out/breakaway-bundle.tar.gz -C out/bundle .
+      - name: Manifest, checksums, notes
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          node scripts/release/plan.mjs manifest main "$VERSION" "$SHA" > out/manifest.json
+          (cd out && sha256sum breakaway-bundle.tar.gz manifest.json > SHA256SUMS)
+          from=$(cat "$RUNNER_TEMP/previous"); from=${from:-$(git rev-list --max-parents=0 "$SHA" | tail -1)}
+          node scripts/release-notes.mjs --title breakaway --version "v$VERSION" --from "$from" --to "$SHA" --areas "$AREAS" > out/notes.md
+          node scripts/release/plan.mjs manual >> out/notes.md
+      - name: Publish the pre-release
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          gh release create "$TAG" out/breakaway-bundle.tar.gz out/manifest.json out/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "$TAG" --notes-file out/notes.md --prerelease
+      # The CLI (BRK-7): the same version, on the next dist-tag. Trusted publishing needs npm 11.5.1 or newer, and no token.
+      # Only from a public repository: npm refuses provenance from a private one, and nothing goes to npm before launch (BRK-57).
+      - name: Publish the CLI to npm
+        if: ${{ !github.event.repository.private }}
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish --provenance --access public --tag next
+
+  stable:
+    name: stable
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      PRIVATE: ${{ github.event.repository.private }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Promote the bundle unchanged
+        run: |
+          set -euo pipefail
+          version=$(node scripts/release/plan.mjs stable "$PRERELEASE" | sed 's/^version=//')
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then echo "v$version already exists." >&2; exit 1; fi
+          mkdir -p in out
+          gh release download "$PRERELEASE" --repo "$GITHUB_REPOSITORY" --dir in
+          (cd in && sha256sum --check SHA256SUMS)
+          cp in/breakaway-bundle.tar.gz out/
+          commit=$(node -p "require('./in/manifest.json').commit")
+          # The stable's manifest is the pre-release's with the new version; the bundle itself is untouched.
+          export V=$version
+          node -e "
+            const fs=require('fs');const m=JSON.parse(fs.readFileSync('in/manifest.json'));
+            m.builtAs=m.version;m.version=process.env.V;m.channel='stable';m.created=new Date().toISOString();
+            fs.writeFileSync('out/manifest.json',JSON.stringify(m,null,2)+'\n');"
+          (cd out && sha256sum breakaway-bundle.tar.gz manifest.json > SHA256SUMS)
+          from=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+          from=${from:-$(git rev-list --max-parents=0 "$commit" | tail -1)}
+          node scripts/release-notes.mjs --title breakaway --version "v$version" --from "$from" --to "$commit" --areas "$AREAS" > out/notes.md
+          node -e "
+            const m=require('./out/manifest.json');
+            if(m.manual)process.stdout.write('\n### Manual steps\n\n'+m.manualSteps.map(s=>'- '+s).join('\n')+'\n');" >> out/notes.md
+          gh release create "v$version" out/breakaway-bundle.tar.gz out/manifest.json out/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$commit" --title "v$version" --notes-file out/notes.md --latest
+          # The CLI (BRK-7): the commit's files under the stable version, as latest. Trusted publishing needs npm 11.5.1 or newer, and no token.
+          # Only from a public repository, as in the pre-release (BRK-57).
+          if [ "$PRIVATE" = true ]; then echo "The repository is private: v$version isn't published to npm."; exit 0; fi
+          git checkout --detach "$commit"
+          node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          npm install -g npm@^11.5.1
+          npm publish --provenance --access public --tag latest

@@ -1,0 +1,16 @@
+{
+  // The update feed (BRK-8) and the landing page and docs (LCH-2). Nothing here deploys them: an install's own repository
+  // does, under its own name and route (site/README.md). This file is what `wrangler dev` and that workflow build from.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "breakaway-releases",
+  "main": "./src/worker.js",
+  "compatibility_date": "2026-09-26",
+  "workers_dev": false,
+  // The pages are static files in public/ (built from content/ by `node site/build.mjs` and committed). Only the feed
+  // runs the Worker; everything else is served by the assets, with a real 404 page.
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/releases.json"], "not_found_handling": "404-page", "html_handling": "auto-trailing-slash" },
+  "preview_urls": false,
+  // No invocation logs (request metadata): the feed keeps nothing about who asked.
+  "observability": { "enabled": false },
+  "vars": { "RELEASES_REPO": "TheAnarchoX/breakaway" }
+}

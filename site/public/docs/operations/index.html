@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operating a board · breakaway</title>
+<meta name="description" content="Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/operations/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Operating a board · breakaway">
+<meta property="og:description" content="Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/operations/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/" aria-current="page">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Run it</p>
+    <h1>Operating a board</h1>
+    <p class="lede">Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.</p>
+    <h2 id="connections"><a class="anchor" href="#connections" aria-label="Link to this section">#</a>Connections</h2>
+<p><code>npx breakaway connections</code> (or the <strong>Connections</strong> view, <code>w</code>) lists everything the board leans on. Each row is <strong>Working</strong>, <strong>Needs attention</strong>, or <strong>Not connected</strong>, with what the board saw, when, and the exact fix for each failure it can tell apart.</p>
+<ul><li><strong>Cloudflare:</strong> the Worker’s version, each secret binding as <code>set</code> or <code>unset</code> (by name only, never a value), the 5-minute cron’s last run and first error, and whether the sync server reads its history and the stored secrets match after a rotation.</li><li><strong>GitHub:</strong> the App (GitHub refusing its key), whether it’s installed on each registered repository, its permissions against what the board needs, <strong>Allow auto-merge</strong>, the webhook (when it last got one, signatures it refused, and failures from GitHub’s delivery log), and the sync: last success, last error, and requests left.</li><li><strong>Claude:</strong> the routine connected or not, the last start’s result, routines switched off after three failed starts, the shared budget, and whether a started session is sending live output.</li><li><strong>Per repository:</strong> each registered repository gets its own rows: the App installed on it, its permissions, auto-merge, its sync, and its agent routine.</li><li><strong>Taskwarrior</strong> (when a replica last synced) and <strong>Push</strong> (keys set, browsers subscribed, the last send).</li><li><strong>Version:</strong> what the board runs and the latest release in its channel.</li></ul>
+<p>A check only reads. It never writes to GitHub, never starts an agent, and never costs a Claude start. The GitHub checks run once an hour from the cron, and again when you press <strong>Check now</strong> (the signed-in browser only, once every 30 seconds). How many rows need attention shows as a count on Connections and on Settings, and as a dot on the phone’s menu button. When a connection has needed attention for 10 minutes, your inbox gets a note, and another when it works again.</p>
+<p>Connections lists what it can’t check: the routine’s cloud environment and prompt on claude.ai, and Cloudflare’s own settings.</p>
+<h2 id="secrets"><a class="anchor" href="#secrets" aria-label="Link to this section">#</a>Secrets</h2>
+<p>On an install with a Secrets Store, the secrets are in it (scope <code>workers</code>), bound in the Worker’s config, with names that start with the install’s <code>secretsPrefix</code> (<code>BREAKAWAY_</code> by default). Without one, they’re Worker secrets under their binding names.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Secrets Store name</th><th scope="col">Binding</th><th scope="col">What</th></tr></thead><tbody><tr><td><code>BREAKAWAY_CLIENT_ID</code></td><td><code>TASKS_CLIENT_ID</code></td><td>The Taskwarrior client ID. Anyone with it and the secret can read and write the board through Taskwarrior.</td></tr><tr><td><code>BREAKAWAY_SYNC_KEY</code></td><td><code>TASKS_SYNC_KEY</code></td><td>PBKDF2-HMAC-SHA256(secret, client ID, 600000) as base64. Not the secret itself.</td></tr><tr><td><code>BREAKAWAY_API_TOKEN</code></td><td><code>TASKS_API_TOKEN</code></td><td>The API and web token, at least 32 characters. Also signs the web cookie.</td></tr><tr><td><code>BREAKAWAY_ROUTINE_URL</code>, <code>BREAKAWAY_ROUTINE_TOKEN</code></td><td><code>TASKS_ROUTINE_*</code></td><td>The default repository’s agent routine: its <code>/fire</code> URL and token. The token can only start that routine.</td></tr><tr><td><code>BREAKAWAY_ROUTINES</code></td><td><code>TASKS_ROUTINES</code></td><td>Every other repository’s routine, as JSON keyed by slug.</td></tr><tr><td><code>BREAKAWAY_VAPID_KEY</code> (and the var <code>TASKS_VAPID_PUBLIC</code>)</td><td><code>TASKS_VAPID_KEY</code></td><td>The VAPID key pair for Web Push on pings. <code>unset</code> means notifications are off.</td></tr><tr><td><code>BREAKAWAY_GITHUB_APP_ID</code>, <code>…_GITHUB_KEY</code>, <code>…_GITHUB_WEBHOOK_SECRET</code></td><td><code>TASKS_GITHUB_*</code></td><td>The GitHub App’s ID, private key, and webhook secret, written by <code>github-connect</code>.</td></tr></tbody></table></div>
+<p><code>unset</code> means not connected. On an install without a Secrets Store, the commands that write secrets (<code>github-connect</code>, <code>agents-connect</code>, <code>rotate-sync</code>, <code>rotate-token</code>) set them with <code>wrangler secret put</code>, and each deploys a new version of the Worker.</p>
+<h3 id="rotating-secrets"><a class="anchor" href="#rotating-secrets" aria-label="Link to this section">#</a>Rotating secrets</h3>
+<p>Both rotations are one command on your machine (with <code>wrangler</code> logged in). Each writes the new values to <code>tasks.env.next</code> before anything changes, keeps the old file as <code>tasks.env.&lt;time&gt;.bak</code> (its values stop working, so delete it once you’ve updated your password manager), and never puts a secret on a command line.</p>
+<p><strong>Rotate the sync credentials</strong> when the client ID or secret leaked, or a machine that had them is gone:</p>
+<pre data-lang="sh"><code>npx breakaway rotate-sync</code></pre>
+<p>It makes a new client ID and secret and sends only the derived key to the server, which decrypts every stored version and the snapshot with the old key and seals them again with the new one, <strong>keeping every version ID</strong>, in one transaction. No history is lost and every replica carries on, including work it hadn’t synced yet. From that moment the old client ID gets a 403, and a replica syncs again once it has the new values (copy <code>tasks.env</code> to it and run <code>npx breakaway setup</code>). Cloud agents only use the token, so they need nothing.</p>
+<p><strong>Rotate the API token</strong> when it leaked, or someone should lose access:</p>
+<pre data-lang="sh"><code>npx breakaway rotate-token</code></pre>
+<p>It updates the stored secret, waits until the server accepts the new token, and saves it. Every browser is signed out. Update <code>BREAKAWAY_TOKEN</code>, or the API credential, in your cloud environments.</p>
+<h2 id="health"><a class="anchor" href="#health" aria-label="Link to this section">#</a>Health</h2>
+<p><code>GET /api/ping</code> is public and says only that the Worker answers: <code>{ &quot;ok&quot;: true, &quot;version&quot;: &quot;&lt;Cloudflare version ID&gt;&quot;, &quot;release&quot;: &quot;&lt;semver&gt;&quot; }</code>. Nothing about tasks. A check after a deploy uses it. <code>npx breakaway health</code> (<code>GET /api/health</code>) is the signed-in version with the task count, the CLI version the board was built with, and a Connections count.</p>
+<h2 id="backups-and-export"><a class="anchor" href="#backups-and-export" aria-label="Link to this section">#</a>Backups and export</h2>
+<p>The Durable Object’s SQLite storage has Cloudflare’s point-in-time recovery for the last 30 days. For a copy of your own:</p>
+<pre data-lang="sh"><code>npx breakaway export --out tasks-backup.json</code></pre>
+<p>It writes every task in every repository, with status and horizon, as the board’s JSON with comments, and checks the count against <code>health</code>, failing when they differ. Keep the file out of Git. A Taskwarrior replica is a full copy only while it syncs: compare <code>task count</code> with <code>health</code>’s total. A point-in-time restore of the Durable Object puts every replica that synced after the restore point in the same state: each one gets <code>410 Gone</code> and has to be started again.</p>
+<h2 id="the-install"><a class="anchor" href="#the-install" aria-label="Link to this section">#</a>The install</h2>
+<p>What makes one board itself and not another is one file, <code>breakaway.config.json</code>:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Setting</th><th scope="col">What</th><th scope="col">A new install’s default</th></tr></thead><tbody><tr><td><code>name</code></td><td>The name people see: push notifications, the GitHub App</td><td><code>breakaway</code></td></tr><tr><td><code>worker</code></td><td>The Worker’s name on Cloudflare</td><td><code>breakaway</code></td></tr><tr><td><code>url</code></td><td>Where the board answers</td><td>none: workers.dev, and the address it was opened at</td></tr><tr><td><code>secretsPrefix</code></td><td>Starts every secret’s name in the Secrets Store</td><td><code>BREAKAWAY_</code></td></tr><tr><td><code>secretsStore</code></td><td>The Secrets Store’s ID</td><td>none: the secrets are Worker secrets</td></tr><tr><td><code>store</code></td><td>The Durable Object’s name. Changing it starts an empty board</td><td><code>breakaway</code></td></tr><tr><td><code>installRepository</code>, <code>channel</code></td><td>The repository the install deploys from and the channel it follows</td><td>none, <code>stable</code></td></tr><tr><td><code>jurisdiction</code></td><td>The Durable Object’s jurisdiction (<code>eu</code> or <code>fedramp</code>)</td><td>none</td></tr></tbody></table></div>
+<p><code>node install.mjs</code> turns it into the Worker’s wrangler config. Never change <code>store</code> on a running install.</p>
+<h2 id="when-somethings-wrong"><a class="anchor" href="#when-somethings-wrong" aria-label="Link to this section">#</a>When something’s wrong</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">What you see</th><th scope="col">What to do</th></tr></thead><tbody><tr><td>A button on the board doesn’t work, or something seems off</td><td>Run <code>npx breakaway connections</code>: it says which connection is broken and how to fix it.</td></tr><tr><td><code>Could not read include file '~/.config/breakaway/taskrc'</code></td><td>Run <code>npx breakaway setup</code> (it needs <code>tasks.env</code>).</td></tr><tr><td><code>task sync</code> fails with a 403</td><td>This replica has another client ID. Run <code>npx breakaway setup</code> again.</td></tr><tr><td><code>task sync</code> fails with <code>410 Gone</code> on <code>get-child-version</code></td><td>This replica last synced with another server. Start it again: <code>mv .task .task-stale</code>, then <code>scripts/task sync</code>.</td></tr><tr><td><code>health</code> says the server can’t read its history</td><td>A replica synced with the right client ID but a different secret. Set that replica’s secret right, remove what it added, then rebuild with <code>POST /api/admin/rebuild</code>.</td></tr><tr><td>A claim fails with “claimed by …”</td><td>Someone has it. Pick another, or ask the owner. <code>--force</code> is for the owner clearing a stale claim.</td></tr><tr><td>“can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session</td><td>The environment’s network settings don’t allow the board’s host. See <a href="/docs/agents/#the-cloud-environment">Agents</a>.</td></tr><tr><td>The GitHub view says the last sync failed</td><td>A 401 or 404 means the App was uninstalled or its key changed: reinstall it, or store the current key. A 403 on Dependabot alerts is fine.</td></tr><tr><td>A merged pull request didn’t finish its task</td><td>The pull request has to close it: <code>Closes &lt;ID&gt;.</code> in its title or description, or its number in the task’s <code>pr</code> field. A branch name only mentions.</td></tr><tr><td>The web board keeps asking for the token</td><td>The token was rotated, or the cookie expired after 180 days. Sign in again.</td></tr><tr><td>An agent never shows live output</td><td>The session hook can’t reach the board. Check the environment’s allowed hosts and <code>claim</code>’s warning.</td></tr><tr><td>Deploy stopped with a message</td><td>A release needs manual steps, or <code>breakaway.config.json</code> changed something Deploy can’t deploy. Do what the message says, then run Deploy again.</td></tr><tr><td>Version says a release “isn’t running yet”</td><td>Open Actions on the install repository: the Deploy run says why it stopped.</td></tr></tbody></table></div>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/deploying/"><span class="label">Previous</span><span>Deploying and updating</span></a><a class="pager-next" href="/docs/architecture/"><span class="label">Next</span><span>Architecture</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#connections">Connections</a></li><li><a href="#secrets">Secrets</a></li><li><a href="#health">Health</a></li><li><a href="#backups-and-export">Backups and export</a></li><li><a href="#the-install">The install</a></li><li><a href="#when-somethings-wrong">When something’s wrong</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

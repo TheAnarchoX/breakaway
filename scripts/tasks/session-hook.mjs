@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+/**
+ * Claude Code hook (async, see .claude/settings.json): sends one short entry about what this
+ * session just did to the task it has claimed, so the board can show the session live
+ * (docs/specs/CLD-35-cloud-agents.md). For watching only; the board keeps it 14 days at most.
+ * The board answers with the owner's messages waiting for this agent, which the hook prints as
+ * additionalContext so Claude gets them on its next turn (docs/specs/IDEA-15-message-a-running-agent.md).
+ *
+ * Quiet by design: without a claimed task (.task-session, written by `tasks claim`), with
+ * BREAKAWAY_SESSION_LOG=off (or SAMEWAVE_TASKS_SESSION_LOG=off), or on any error, it does nothing and exits 0.
+ */
+import { boardConfig, claimedTask, projectRoot } from './hook-config.js';
+import { routeThroughSessionProxy } from './proxy.js';
+import { entryFor } from './session-log.js';
+import { CONTEXT_EVENTS, messageOutput } from './session-messages.js';
+
+async function main() {
+  const root = projectRoot();
+  const claim = claimedTask(root);
+  if (!claim) return;
+
+  let input = '';
+  for await (const chunk of process.stdin) input += chunk;
+  const hook = JSON.parse(input || '{}');
+  const entry = entryFor(hook, root);
+  if (!entry) return;
+
+  const { base, headers } = boardConfig(root);
+  if (!base) return;
+  routeThroughSessionProxy();
+  const res = await fetch(`${base}/api/tasks/${encodeURIComponent(claim.uuid)}/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({
+      agent: claim.agent,
+      session: hook.session_id ?? null,
+      remote: process.env.CLAUDE_CODE_REMOTE === 'true',
+      entries: [entry],
+      // A Stop hook's output can't reach Claude, so it leaves the messages for the next event.
+      messages: CONTEXT_EVENTS.has(hook.hook_event_name),
+    }),
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) return;
+  const output = messageOutput(await res.json(), hook.hook_event_name);
+  if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+}
+
+main()
+  .catch(() => {})
+  .finally(() => process.exit(0));

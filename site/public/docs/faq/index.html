@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ · breakaway</title>
+<meta name="description" content="The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/faq/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="FAQ · breakaway">
+<meta property="og:description" content="The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/faq/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/" aria-current="page">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">More</p>
+    <h1>FAQ</h1>
+    <p class="lede">The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.</p>
+    <h2 id="is-breakaway-free"><a class="anchor" href="#is-breakaway-free" aria-label="Link to this section">#</a>Is breakaway free?</h2>
+<p>Yes. It’s free to run, free to change, and free to self-host. The licence is <strong>FSL-1.1-Apache-2.0</strong>, the Functional Source License: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s <a href="https://fair.io/licenses/">fair source</a>. The source is public. The Open Source Initiative doesn’t count a fair source licence as open source until the Apache date, so breakaway calls itself free and fair source.</p>
+<p>There is no hosted version, and no accounts, teams, pricing, paid features, or ads.</p>
+<h2 id="who-hosts-this-site"><a class="anchor" href="#who-hosts-this-site" aria-label="Link to this section">#</a>Who hosts this site?</h2>
+<p>samewave hosts this page. It’s a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the <a href="/releases.json">update feed</a>, to show the latest release.</p>
+<h2 id="where-does-my-data-live"><a class="anchor" href="#where-does-my-data-live" aria-label="Link to this section">#</a>Where does my data live?</h2>
+<p>On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), and Web Push (if you turn on notifications).</p>
+<h2 id="does-it-run-my-code-or-deploy-it"><a class="anchor" href="#does-it-run-my-code-or-deploy-it" aria-label="Link to this section">#</a>Does it run my code, or deploy it?</h2>
+<p>No. The board starts agents, and agents open pull requests. <strong>You</strong> merge and deploy. Nothing in breakaway merges or deploys on an agent’s word. The merge, update-branch, Promote, and Roll back routes accept only the signed-in browser. The bearer token that agents and the CLI hold gets a 403.</p>
+<h2 id="what-does-it-work-with"><a class="anchor" href="#what-does-it-work-with" aria-label="Link to this section">#</a>What does it work with?</h2>
+<p>Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it. Cloud agents start through Claude Code’s routines, so starting agents from the board needs a Claude plan that has them. Local Claude Code sessions use the CLI and need nothing more.</p>
+<h2 id="can-i-use-it-without-claude"><a class="anchor" href="#can-i-use-it-without-claude" aria-label="Link to this section">#</a>Can I use it without Claude?</h2>
+<p>Yes. The board is useful on its own as a task board with atomic claims, and any agent that can run <code>npx breakaway</code> can claim tasks and open pull requests. Starting agents from the board is Claude Code’s cloud routines today.</p>
+<h2 id="can-i-use-it-without-taskwarrior"><a class="anchor" href="#can-i-use-it-without-taskwarrior" aria-label="Link to this section">#</a>Can I use it without Taskwarrior?</h2>
+<p>Yes. The web board and the CLI work without it. Taskwarrior 3 is a first-class way in if you want filters, reports, and offline work.</p>
+<h2 id="how-many-repositories-can-one-board-run"><a class="anchor" href="#how-many-repositories-can-one-board-run" aria-label="Link to this section">#</a>How many repositories can one board run?</h2>
+<p>Several. Each has its own areas, prompt, agents, and GitHub App installation. The board shares the Worker, sign-in, inbox, and the limits on how many agents run at once.</p>
+<h2 id="what-happens-if-two-agents-claim-the-same-task"><a class="anchor" href="#what-happens-if-two-agents-claim-the-same-task" aria-label="Link to this section">#</a>What happens if two agents claim the same task?</h2>
+<p>They can’t. The Durable Object checks and sets the claim in one step, so one wins and the other gets a <code>409</code>.</p>
+<h2 id="does-a-release-update-my-board-by-itself"><a class="anchor" href="#does-a-release-update-my-board-by-itself" aria-label="Link to this section">#</a>Does a release update my board by itself?</h2>
+<p>Only if you choose the <code>main</code> channel, where the board starts your own Deploy workflow when there’s a newer pre-release. On <code>stable</code>, a newer release is a pull request in your install repository, and nothing deploys until you merge it. Either way Deploy goes back by itself if the new version doesn’t answer. See <a href="/docs/deploying/">Deploying and updating</a>.</p>
+<h2 id="how-do-i-stay-on-top-of-what-agents-are-doing"><a class="anchor" href="#how-do-i-stay-on-top-of-what-agents-are-doing" aria-label="Link to this section">#</a>How do I stay on top of what agents are doing?</h2>
+<p>Open the Agents view for the running ones and their latest line, open a task for its live output, and read the Activity view for the stream. Pings arrive in your inbox, and as a push if you turned notifications on.</p>
+<h2 id="what-does-leave-the-pack-mean"><a class="anchor" href="#what-does-leave-the-pack-mean" aria-label="Link to this section">#</a>What does “leave the pack” mean?</h2>
+<p>A breakaway is the rider who leaves the pack and holds the lead alone. That’s the idea: one person with one tool, moving fast.</p>
+<h2 id="how-do-i-report-a-problem-or-a-security-issue"><a class="anchor" href="#how-do-i-report-a-problem-or-a-security-issue" aria-label="Link to this section">#</a>How do I report a problem or a security issue?</h2>
+<p>Report a security issue privately, as breakaway’s <a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">security policy</a> says. breakaway takes no issues or pull requests otherwise: it’s built by its owner and their agents. The licence lets you fix your own copy.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/api/"><span class="label">Previous</span><span>The API</span></a><span></span></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#is-breakaway-free">Is breakaway free?</a></li><li><a href="#who-hosts-this-site">Who hosts this site?</a></li><li><a href="#where-does-my-data-live">Where does my data live?</a></li><li><a href="#does-it-run-my-code-or-deploy-it">Does it run my code, or deploy it?</a></li><li><a href="#what-does-it-work-with">What does it work with?</a></li><li><a href="#can-i-use-it-without-claude">Can I use it without Claude?</a></li><li><a href="#can-i-use-it-without-taskwarrior">Can I use it without Taskwarrior?</a></li><li><a href="#how-many-repositories-can-one-board-run">How many repositories can one board run?</a></li><li><a href="#what-happens-if-two-agents-claim-the-same-task">What happens if two agents claim the same task?</a></li><li><a href="#does-a-release-update-my-board-by-itself">Does a release update my board by itself?</a></li><li><a href="#how-do-i-stay-on-top-of-what-agents-are-doing">How do I stay on top of what agents are doing?</a></li><li><a href="#what-does-leave-the-pack-mean">What does “leave the pack” mean?</a></li><li><a href="#how-do-i-report-a-problem-or-a-security-issue">How do I report a problem or a security issue?</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

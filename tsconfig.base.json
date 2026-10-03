@@ -1,0 +1,18 @@
+{
+  // Type-checks the board's JavaScript with JSDoc (BRK-38): `pnpm typecheck`, also in CI.
+  // A first step: strict, except implicit `any`, null checks, and unknown catch variables, which each
+  // need JSDoc across the code first. Each project below adds the globals its code runs with.
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "useUnknownInCatchVariables": false
+  }
+}

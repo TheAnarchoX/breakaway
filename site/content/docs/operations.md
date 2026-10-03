@@ -1,0 +1,104 @@
+---
+title: Operating a board
+description: Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
+---
+
+## Connections
+
+`npx breakaway connections` (or the **Connections** view, `w`) lists everything the board leans on. Each row is **Working**, **Needs attention**, or **Not connected**, with what the board saw, when, and the exact fix for each failure it can tell apart.
+
+- **Cloudflare:** the Worker’s version, each secret binding as `set` or `unset` (by name only, never a value), the 5-minute cron’s last run and first error, and whether the sync server reads its history and the stored secrets match after a rotation.
+- **GitHub:** the App (GitHub refusing its key), whether it’s installed on each registered repository, its permissions against what the board needs, **Allow auto-merge**, the webhook (when it last got one, signatures it refused, and failures from GitHub’s delivery log), and the sync: last success, last error, and requests left.
+- **Claude:** the routine connected or not, the last start’s result, routines switched off after three failed starts, the shared budget, and whether a started session is sending live output.
+- **Per repository:** each registered repository gets its own rows: the App installed on it, its permissions, auto-merge, its sync, and its agent routine.
+- **Taskwarrior** (when a replica last synced) and **Push** (keys set, browsers subscribed, the last send).
+- **Version:** what the board runs and the latest release in its channel.
+
+A check only reads. It never writes to GitHub, never starts an agent, and never costs a Claude start. The GitHub checks run once an hour from the cron, and again when you press **Check now** (the signed-in browser only, once every 30 seconds). How many rows need attention shows as a count on Connections and on Settings, and as a dot on the phone’s menu button. When a connection has needed attention for 10 minutes, your inbox gets a note, and another when it works again.
+
+Connections lists what it can’t check: the routine’s cloud environment and prompt on claude.ai, and Cloudflare’s own settings.
+
+## Secrets
+
+On an install with a Secrets Store, the secrets are in it (scope `workers`), bound in the Worker’s config, with names that start with the install’s `secretsPrefix` (`BREAKAWAY_` by default). Without one, they’re Worker secrets under their binding names.
+
+| Secrets Store name | Binding | What |
+| --- | --- | --- |
+| `BREAKAWAY_CLIENT_ID` | `TASKS_CLIENT_ID` | The Taskwarrior client ID. Anyone with it and the secret can read and write the board through Taskwarrior. |
+| `BREAKAWAY_SYNC_KEY` | `TASKS_SYNC_KEY` | PBKDF2-HMAC-SHA256(secret, client ID, 600000) as base64. Not the secret itself. |
+| `BREAKAWAY_API_TOKEN` | `TASKS_API_TOKEN` | The API and web token, at least 32 characters. Also signs the web cookie. |
+| `BREAKAWAY_ROUTINE_URL`, `BREAKAWAY_ROUTINE_TOKEN` | `TASKS_ROUTINE_*` | The default repository’s agent routine: its `/fire` URL and token. The token can only start that routine. |
+| `BREAKAWAY_ROUTINES` | `TASKS_ROUTINES` | Every other repository’s routine, as JSON keyed by slug. |
+| `BREAKAWAY_VAPID_KEY` (and the var `TASKS_VAPID_PUBLIC`) | `TASKS_VAPID_KEY` | The VAPID key pair for Web Push on pings. `unset` means notifications are off. |
+| `BREAKAWAY_GITHUB_APP_ID`, `…_GITHUB_KEY`, `…_GITHUB_WEBHOOK_SECRET` | `TASKS_GITHUB_*` | The GitHub App’s ID, private key, and webhook secret, written by `github-connect`. |
+
+`unset` means not connected. On an install without a Secrets Store, the commands that write secrets (`github-connect`, `agents-connect`, `rotate-sync`, `rotate-token`) set them with `wrangler secret put`, and each deploys a new version of the Worker.
+
+### Rotating secrets
+
+Both rotations are one command on your machine (with `wrangler` logged in). Each writes the new values to `tasks.env.next` before anything changes, keeps the old file as `tasks.env.<time>.bak` (its values stop working, so delete it once you’ve updated your password manager), and never puts a secret on a command line.
+
+**Rotate the sync credentials** when the client ID or secret leaked, or a machine that had them is gone:
+
+```sh
+npx breakaway rotate-sync
+```
+
+It makes a new client ID and secret and sends only the derived key to the server, which decrypts every stored version and the snapshot with the old key and seals them again with the new one, **keeping every version ID**, in one transaction. No history is lost and every replica carries on, including work it hadn’t synced yet. From that moment the old client ID gets a 403, and a replica syncs again once it has the new values (copy `tasks.env` to it and run `npx breakaway setup`). Cloud agents only use the token, so they need nothing.
+
+**Rotate the API token** when it leaked, or someone should lose access:
+
+```sh
+npx breakaway rotate-token
+```
+
+It updates the stored secret, waits until the server accepts the new token, and saves it. Every browser is signed out. Update `BREAKAWAY_TOKEN`, or the API credential, in your cloud environments.
+
+## Health
+
+`GET /api/ping` is public and says only that the Worker answers: `{ "ok": true, "version": "<Cloudflare version ID>", "release": "<semver>" }`. Nothing about tasks. A check after a deploy uses it. `npx breakaway health` (`GET /api/health`) is the signed-in version with the task count, the CLI version the board was built with, and a Connections count.
+
+## Backups and export
+
+The Durable Object’s SQLite storage has Cloudflare’s point-in-time recovery for the last 30 days. For a copy of your own:
+
+```sh
+npx breakaway export --out tasks-backup.json
+```
+
+It writes every task in every repository, with status and horizon, as the board’s JSON with comments, and checks the count against `health`, failing when they differ. Keep the file out of Git. A Taskwarrior replica is a full copy only while it syncs: compare `task count` with `health`’s total. A point-in-time restore of the Durable Object puts every replica that synced after the restore point in the same state: each one gets `410 Gone` and has to be started again.
+
+## The install
+
+What makes one board itself and not another is one file, `breakaway.config.json`:
+
+| Setting | What | A new install’s default |
+| --- | --- | --- |
+| `name` | The name people see: push notifications, the GitHub App | `breakaway` |
+| `worker` | The Worker’s name on Cloudflare | `breakaway` |
+| `url` | Where the board answers | none: workers.dev, and the address it was opened at |
+| `secretsPrefix` | Starts every secret’s name in the Secrets Store | `BREAKAWAY_` |
+| `secretsStore` | The Secrets Store’s ID | none: the secrets are Worker secrets |
+| `store` | The Durable Object’s name. Changing it starts an empty board | `breakaway` |
+| `installRepository`, `channel` | The repository the install deploys from and the channel it follows | none, `stable` |
+| `jurisdiction` | The Durable Object’s jurisdiction (`eu` or `fedramp`) | none |
+
+`node install.mjs` turns it into the Worker’s wrangler config. Never change `store` on a running install.
+
+## When something’s wrong
+
+| What you see | What to do |
+| --- | --- |
+| A button on the board doesn’t work, or something seems off | Run `npx breakaway connections`: it says which connection is broken and how to fix it. |
+| `Could not read include file '~/.config/breakaway/taskrc'` | Run `npx breakaway setup` (it needs `tasks.env`). |
+| `task sync` fails with a 403 | This replica has another client ID. Run `npx breakaway setup` again. |
+| `task sync` fails with `410 Gone` on `get-child-version` | This replica last synced with another server. Start it again: `mv .task .task-stale`, then `scripts/task sync`. |
+| `health` says the server can’t read its history | A replica synced with the right client ID but a different secret. Set that replica’s secret right, remove what it added, then rebuild with `POST /api/admin/rebuild`. |
+| A claim fails with “claimed by …” | Someone has it. Pick another, or ask the owner. `--force` is for the owner clearing a stale claim. |
+| “can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session | The environment’s network settings don’t allow the board’s host. See [Agents](/docs/agents/#the-cloud-environment). |
+| The GitHub view says the last sync failed | A 401 or 404 means the App was uninstalled or its key changed: reinstall it, or store the current key. A 403 on Dependabot alerts is fine. |
+| A merged pull request didn’t finish its task | The pull request has to close it: `Closes <ID>.` in its title or description, or its number in the task’s `pr` field. A branch name only mentions. |
+| The web board keeps asking for the token | The token was rotated, or the cookie expired after 180 days. Sign in again. |
+| An agent never shows live output | The session hook can’t reach the board. Check the environment’s allowed hosts and `claim`’s warning. |
+| Deploy stopped with a message | A release needs manual steps, or `breakaway.config.json` changed something Deploy can’t deploy. Do what the message says, then run Deploy again. |
+| Version says a release “isn’t running yet” | Open Actions on the install repository: the Deploy run says why it stopped. |

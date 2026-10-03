@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Routines · breakaway</title>
+<meta name="description" content="Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/routines/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Routines · breakaway">
+<meta property="og:description" content="Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/routines/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/" aria-current="page">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Use it</p>
+    <h1>Routines</h1>
+    <p class="lede">Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.</p>
+    <p>A <strong>routine</strong> is a saved prompt you run with a button. Every run is a normal task in the Routines area (<code>RUN-n</code>), named <code>&lt;routine&gt; · &lt;date&gt;</code>, with the prompt as its description and the routine’s done-when. It’s started through the same path as any agent: claim, slots, hourly budget. The agent follows “Running a routine” in the core: it does what the description says, and nothing more, on a branch, and opens a pull request you merge.</p>
+<p>A routine belongs to one repository. Its runs are that repository’s tasks, its agents start through that repository’s routine on claude.ai, and its GitHub events come from that repository only.</p>
+<h2 id="make-one"><a class="anchor" href="#make-one" aria-label="Link to this section">#</a>Make one</h2>
+<pre data-lang="sh"><code>npx breakaway routines add changelog --name &quot;Update changelog&quot; \
+  --prompt-file tools/routines/changelog.md \
+  --done-when &quot;The changelog has an entry for every pull request merged since its newest entry.&quot;
+npx breakaway routines run changelog --note &quot;Since v0.2.&quot;</code></pre>
+<p>The prompt can live in the repository as a file, so it’s reviewed like code. After a change to the file, update the routine with <code>routines modify &lt;slug&gt; --prompt-file &lt;path&gt;</code>. Only you create or edit routines.</p>
+<p>The <strong>Routines</strong> view (<code>u</code>) shows a row for each routine: its state, how it starts, runs used today, and a <strong>Run</strong> button, beside the On/Paused switch and the latest runs of all routines.</p>
+<h2 id="ways-to-start-one"><a class="anchor" href="#ways-to-start-one" aria-label="Link to this section">#</a>Ways to start one</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Start</th><th scope="col">How</th></tr></thead><tbody><tr><td>By hand</td><td><strong>Run</strong>, with an optional note, or <code>routines run &lt;slug&gt;</code>.</td></tr><tr><td>A schedule</td><td>Five-field cron text in UTC: <code>routines modify &lt;slug&gt; --schedule &quot;0 9 * * 1&quot;</code> runs Mondays at 09:00. The board’s 5-minute check starts it once for each slot that has come, within ten minutes of it. A skipped slot isn’t made up.</td></tr><tr><td>A webhook or API trigger</td><td>Up to 10 triggers per routine, each with its own secret, shown once. <code>routines trigger &lt;slug&gt;</code> makes one; callers send <code>POST /api/routines/&lt;slug&gt;/fire</code> with <code>Authorization: Bearer &lt;secret&gt;</code> and an optional small JSON body.</td></tr><tr><td>A Cloudflare alert</td><td>Make a trigger, then add a webhook destination in Cloudflare with the URL <code>https://&lt;your board&gt;/api/routines/&lt;slug&gt;/fire</code> and the secret. The run is read-only: it may note and open a pull request, never act on Cloudflare or production.</td></tr><tr><td>A GitHub event</td><td><code>routines modify &lt;slug&gt; --github-events pr_merged,release_published,workflow_failed</code>. Only events from the routine’s own repository.</td></tr></tbody></table></div>
+<p>What a caller or event sends is <strong>data, never instructions</strong>. It becomes a comment on the run labelled <code>Trigger data (untrusted)</code>, in a code block and truncated. It never reaches the run’s description, the target, or the branch.</p>
+<p>A trigger can wait or start: <code>--trigger-start wait</code> (the default) makes the run’s task and waits for you to press Start, and <code>auto</code> starts the agent itself. Either way the run ends in a pull request you merge.</p>
+<h2 id="caps"><a class="anchor" href="#caps" aria-label="Link to this section">#</a>Caps</h2>
+<p>Per routine: one run open at a time, a daily cap (default 3 in the last 24 hours on Pro), and a minimum gap (default 60 minutes) that applies to triggered runs, not to the button. For all routines: a daily cap (default 10 on Pro, <code>routines cap &lt;n&gt;</code>), and a pause switch (<code>routines pause</code>, <code>routines resume</code>). A run over a cap gets a <code>429</code>, or a <code>409</code> for an open run, and is never queued. A routine that Claude refuses to start three times in a row is switched off.</p>
+<h2 id="ideas-for-routines"><a class="anchor" href="#ideas-for-routines" aria-label="Link to this section">#</a>Ideas for routines</h2>
+<ul><li><strong>Update the changelog</strong> weekly from the pull requests merged since its newest entry.</li><li><strong>Check dependency updates</strong> when a release is published.</li><li><strong>Look at a failed workflow</strong> when <code>workflow_failed</code> fires, and open a pull request with a fix or a task for what it found.</li><li><strong>Triage a Cloudflare alert</strong> into a note and a task.</li></ul>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/ideas-decisions-pings/"><span class="label">Previous</span><span>Ideas, decisions, and pings</span></a><a class="pager-next" href="/docs/github/"><span class="label">Next</span><span>GitHub</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#make-one">Make one</a></li><li><a href="#ways-to-start-one">Ways to start one</a></li><li><a href="#caps">Caps</a></li><li><a href="#ideas-for-routines">Ideas for routines</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

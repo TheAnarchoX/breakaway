@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run your own board · breakaway</title>
+<meta name="description" content="Eight steps from nothing to a board that starts agents and updates itself. Each step ends with a check on Connections, the board’s own list of what it leans on.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/quickstart/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Run your own board · breakaway">
+<meta property="og:description" content="Eight steps from nothing to a board that starts agents and updates itself. Each step ends with a check on Connections, the board’s own list of what it leans on.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/quickstart/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/" aria-current="page">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Start</p>
+    <h1>Run your own board</h1>
+    <p class="lede">Eight steps from nothing to a board that starts agents and updates itself. Each step ends with a check on Connections, the board’s own list of what it leans on.</p>
+    <p>breakaway is free, and it runs on your own Cloudflare account. This guide takes you from nothing to a board that starts agents and updates itself. It has eight steps, and each one ends with a check on <strong>Connections</strong>, the board’s own list of what it leans on. A check is a row that reads <strong>Working</strong>. If it reads <strong>Needs attention</strong>, the row says what’s wrong and how to fix it.</p>
+<p>The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s fair source.</p>
+<h2 id="with-claude-code"><a class="anchor" href="#with-claude-code" aria-label="Link to this section">#</a>With Claude Code</h2>
+<p>Paste this into <a href="https://claude.com/claude-code">Claude Code</a>, in an empty folder:</p>
+<pre data-lang="text"><code>Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it.</code></pre>
+<p>It works through the steps below with you. It runs and checks what it can, and stops for each step only you can do: signing in, making a token, anything with a secret. It never asks for a secret in the chat. The prompt it reads is <a href="https://github.com/TheAnarchoX/breakaway/blob/main/prompts/install.md"><code>prompts/install.md</code></a> in breakaway’s repository.</p>
+<p>Rather do it by hand? The steps follow.</p>
+<h2 id="what-you-need"><a class="anchor" href="#what-you-need" aria-label="Link to this section">#</a>What you need</h2>
+<ul><li>A Cloudflare account, and a token that can edit Workers on it.</li><li>A GitHub account that can make a private repository, and one for the code the agents work on.</li><li>Node 20 or later, and <a href="https://developers.cloudflare.com/workers/wrangler/"><code>wrangler</code></a> signed in to your Cloudflare account. The commands that store secrets call it.</li><li>A Claude plan that has <a href="https://claude.ai/code/routines">routines</a>, to start agents from the board. The board works without one: agents you start yourself use the CLI.</li><li>Taskwarrior 3, if you want it. It’s optional: the web board and the CLI work without it.</li></ul>
+<p>You’ll use two repositories. The <strong>install repository</strong> holds your board’s settings and the workflows that deploy it. The other is the code your agents work on.</p>
+<h2 id="1-make-the-install-repository"><a class="anchor" href="#1-make-the-install-repository" aria-label="Link to this section">#</a>1. Make the install repository</h2>
+<pre data-lang="sh"><code>mkdir my-board &amp;&amp; cd my-board
+git init
+npx breakaway install init</code></pre>
+<p>It asks for the board’s name, the Worker’s name, an address on your own domain (blank is fine: the board answers on workers.dev), and a Secrets Store ID (blank is fine: the secrets go on the Worker). It writes the settings, the Deploy and Update workflows, and a README. It never overwrites a file.</p>
+<p>Then open <code>breakaway.config.json</code> and add one line, so the board can look for updates on its own: <code>&quot;installRepository&quot;: &quot;&lt;you&gt;/my-board&quot;</code>. Keep <code>channel</code> the same as in <code>breakaway.json</code>: <code>stable</code> pins a release and sends you a pull request to move it, and <code>main</code> follows every merge to breakaway.</p>
+<p>Push it to a <strong>private</strong> GitHub repository, and keep it private. Then, on GitHub:</p>
+<ol><li>Make an environment named <code>production</code> (Settings, Environments) with two secrets: <code>CLOUDFLARE_API_TOKEN</code>, a token that can edit Workers on your account, and <code>CLOUDFLARE_ACCOUNT_ID</code>. If breakaway’s own repository isn’t public when you read this, also add a repository secret (Settings, Secrets and variables, Actions), <code>BREAKAWAY_READ_TOKEN</code>: a fine-grained token that can read breakaway’s contents. You don’t need one once it is.</li><li>Turn on Settings, Actions, General, “Allow GitHub Actions to create and approve pull requests”. The update workflow needs it.</li></ol>
+<p><strong>Check:</strong> nothing on Connections yet, because there’s no board. The files are in the repository, and the environment has its secrets.</p>
+<h2 id="2-set-the-boards-secrets"><a class="anchor" href="#2-set-the-boards-secrets" aria-label="Link to this section">#</a>2. Set the board’s secrets</h2>
+<pre data-lang="sh"><code>npx breakaway init-secrets</code></pre>
+<p>It writes <code>tasks.env</code> in <code>~/.config/breakaway</code> and says which value goes where. Three are required: <code>TASKS_API_TOKEN</code>, <code>TASKS_CLIENT_ID</code>, and <code>TASKS_SYNC_KEY</code>. Set each as a Worker secret (Cloudflare, Workers, your Worker, Settings, Variables and Secrets), or in your Secrets Store if you gave a Secrets Store ID. Without a Secrets Store, the Worker doesn’t exist until its first deploy: set them right after step 3’s deploy. <code>.dev.vars.example</code> in the repository lists them.</p>
+<aside class="note"><p><code>tasks.env</code> holds the only copy of the sync secret. Keep it in your password manager too.</p></aside>
+<p><strong>Check:</strong> you can’t read the board yet, so this step is checked in step 3: the <strong>Secrets Store bindings</strong> row under Cloudflare reads <strong>Working</strong>. If it says <code>TASKS_API_TOKEN is unset</code>, that secret isn’t on the Worker yet.</p>
+<h2 id="3-deploy-it"><a class="anchor" href="#3-deploy-it" aria-label="Link to this section">#</a>3. Deploy it</h2>
+<p>On GitHub, open the install repository’s Actions tab, pick <strong>Deploy</strong>, and run it with <strong>dry-run</strong> on. It checks the release and builds it, and stops before it touches the Worker. When it passes, run it again with dry-run off. It deploys, checks that the Worker answers <code>/api/ping</code>, and goes back to the previous version if it doesn’t.</p>
+<p>It stops with a message when something needs your hands: a release that has manual steps, or a change in <code>breakaway.config.json</code> the workflow can’t deploy (the address, cron triggers, or Durable Object classes). Do what the message says, then run Deploy again.</p>
+<p><strong>Check:</strong> the run is green. Then, once you’re signed in (next step), the Cloudflare rows read <strong>Working</strong>: <strong>Worker</strong>, <strong>Secrets Store bindings</strong>, <strong>Cron (every 5 minutes)</strong> (it reads “no run recorded yet” until the first run, within 5 minutes), and <strong>TaskChampion sync server</strong>.</p>
+<h2 id="4-sign-in"><a class="anchor" href="#4-sign-in" aria-label="Link to this section">#</a>4. Sign in</h2>
+<p>Open the board’s address (the workers.dev address Cloudflare shows for the Worker, or your own). Sign in with <code>BREAKAWAY_TOKEN</code> from <code>tasks.env</code>.</p>
+<p>Every view says “This board has no repository yet” and points to Connections. Open it. <strong>Set up the board</strong> lists the rest of this guide’s steps, and ticks each one when its connection works.</p>
+<p><strong>Check:</strong> you’re in. A wrong token keeps asking for it; copy <code>BREAKAWAY_TOKEN</code> again.</p>
+<h2 id="5-register-a-repository"><a class="anchor" href="#5-register-a-repository" aria-label="Link to this section">#</a>5. Register a repository</h2>
+<p>Register the repository your agents work on: on Connections, in <strong>Set up the board</strong>, fill in its short name, its GitHub <code>owner/name</code>, and its areas, each an area and a work-ID prefix like <code>product:PRD</code>. Or from a terminal:</p>
+<pre data-lang="sh"><code>npx breakaway repos add &lt;slug&gt; &lt;owner/name&gt; --area product:PRD</code></pre>
+<p>The first repository you register is the board’s default. A prefix belongs to one repository and never changes.</p>
+<p><strong>Check:</strong> <strong>Registered repository</strong> reads <strong>Working</strong>, and <strong>Register a repository</strong> is ticked.</p>
+<h2 id="6-connect-github"><a class="anchor" href="#6-connect-github" aria-label="Link to this section">#</a>6. Connect GitHub</h2>
+<p>The board reads GitHub through a private GitHub App that you make for it.</p>
+<ol><li>On the board’s GitHub view, press <strong>Connect GitHub</strong>, make the App, and copy the code it shows.</li><li>Run <code>npx breakaway github-connect &lt;code&gt;</code>. It stores the App’s keys as secrets and deploys a new version of the Worker.</li><li>Install the App on the repository you registered, and on the install repository if you chose <code>main</code>: the board starts its Deploy workflow, which needs read and write on Actions.</li><li>On the repository’s GitHub settings, General, Pull Requests, turn on <strong>Allow auto-merge</strong>.</li><li>Add the board’s files to the repository: <code>npx breakaway repos init &lt;slug&gt;</code>. In a terminal it asks for each part of the agent prompt. It pushes the files as the first commit of an empty repository, or opens a pull request. Then fill in anything left in <code>&lt;…&gt;</code> in the agent prompt and <code>AGENTS.md</code>, and merge it.</li></ol>
+<p><strong>Check:</strong> press <strong>Check now</strong> on Connections. These rows read <strong>Working</strong>: <strong>GitHub App</strong>, <strong>Webhook</strong> (once GitHub has sent one), <strong>Installed on <code>owner/name</code></strong>, <strong>Permissions on <code>owner/name</code></strong>, <strong>Allow auto-merge on <code>owner/name</code></strong>, and <strong>Sync with <code>owner/name</code></strong>.</p>
+<p>Each says what to change when it doesn’t. Pull requests and Contents need write, and Actions needs write on a repository with a deploy pipeline. An agent prompt with a <code>&lt;…&gt;</code> left in it makes <strong>Agent routine</strong> need attention until you fill it in.</p>
+<h2 id="7-connect-a-claude-routine"><a class="anchor" href="#7-connect-a-claude-routine" aria-label="Link to this section">#</a>7. Connect a Claude routine</h2>
+<p>The board starts agents through a routine you save on claude.ai.</p>
+<ol><li>At <a href="https://claude.ai/code/routines">claude.ai/code/routines</a>, make a new routine: name it after the repository, add the repository, and pick a cloud environment. In the environment, set <strong>Network access</strong> to <strong>Custom</strong> and allow the board’s host, add the board’s token as an API credential (or set <code>BREAKAWAY_TOKEN</code>), and set <code>BREAKAWAY_AGENT=claude-cloud</code>.</li><li>Paste the stub as its instructions. The Agents view shows it, and <code>repos init</code> copied it into the repository.</li><li>Add an <strong>API</strong> trigger, generate its token, and copy the URL and the token. The token shows once.</li><li>Run <code>npx breakaway agents-connect</code> and paste both. For another repository, add <code>--repo &lt;slug&gt;</code>.</li></ol>
+<p><strong>Check:</strong> <strong>Agent routine</strong> reads <strong>Working</strong>. Start an agent on a task: <strong>Live output from sessions</strong> reads <strong>Working</strong> once a session sends something back. If it says a started session sends nothing back, the environment doesn’t allow the board’s host. <a href="/docs/agents/">Agents</a> has the environment settings in full.</p>
+<aside class="note"><p><strong>What Connections can’t check.</strong> It can’t see claude.ai or Cloudflare’s own settings, so these are yours to check: the routine’s cloud environment (the allowed hosts: the board’s, <code>api.githubcopilot.com</code>, <code>registry.npmjs.org</code>, and the common package managers), the routine’s prompt (it should match the stub the Agents view shows), and Cloudflare’s custom domain, Secrets Store, and cron triggers.</p></aside>
+<h2 id="8-connect-the-cli-and-taskwarrior"><a class="anchor" href="#8-connect-the-cli-and-taskwarrior" aria-label="Link to this section">#</a>8. Connect the CLI and Taskwarrior</h2>
+<p>On the machine you work from, <code>tasks.env</code> needs the board’s address too. Add <code>BREAKAWAY_URL=&lt;the board’s address&gt;</code>, then:</p>
+<pre data-lang="sh"><code>npx breakaway health
+npx breakaway setup</code></pre>
+<p><code>health</code> checks that the CLI reaches the board. <code>setup</code> writes Taskwarrior’s settings and runs the first <code>task sync</code>. To use Taskwarrior in a checkout, <a href="/docs/taskwarrior/">Taskwarrior</a> shows the three lines for its <code>.taskrc</code>.</p>
+<p><strong>Check:</strong> <strong>Taskwarrior sync</strong> reads <strong>Working</strong>, and <strong>Connect the CLI and Taskwarrior</strong> is ticked. Then <strong>Set up the board</strong> disappears: every step is done.</p>
+<p>Add a first task and claim it from a checkout of the repository:</p>
+<pre data-lang="sh"><code>npx breakaway add &quot;Write the README’s install section&quot; --project docs --tag agent --horizon now \
+  --brief &quot;Say how to install and run it.&quot; --done-when &quot;A newcomer can run it from the README alone.&quot;
+npx breakaway claim DOC-1</code></pre>
+<p>That’s the board, working. Next: <a href="/docs/concepts/">Concepts</a> explains what you just made, and <a href="/docs/playbook/">the playbook</a> covers how to get agents to finish what you hand them.</p>
+<h2 id="when-somethings-wrong"><a class="anchor" href="#when-somethings-wrong" aria-label="Link to this section">#</a>When something’s wrong</h2>
+<p>Run <code>npx breakaway connections</code>. It lists every row with its state and the fix, the same as the Connections view. <a href="/docs/operations/#when-somethings-wrong">Operating a board</a> covers the rest.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/"><span class="label">Previous</span><span>Overview</span></a><a class="pager-next" href="/docs/concepts/"><span class="label">Next</span><span>Concepts</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#with-claude-code">With Claude Code</a></li><li><a href="#what-you-need">What you need</a></li><li><a href="#1-make-the-install-repository">1. Make the install repository</a></li><li><a href="#2-set-the-boards-secrets">2. Set the board’s secrets</a></li><li><a href="#3-deploy-it">3. Deploy it</a></li><li><a href="#4-sign-in">4. Sign in</a></li><li><a href="#5-register-a-repository">5. Register a repository</a></li><li><a href="#6-connect-github">6. Connect GitHub</a></li><li><a href="#7-connect-a-claude-routine">7. Connect a Claude routine</a></li><li><a href="#8-connect-the-cli-and-taskwarrior">8. Connect the CLI and Taskwarrior</a></li><li><a href="#when-somethings-wrong">When something’s wrong</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

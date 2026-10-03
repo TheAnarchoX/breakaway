@@ -1,0 +1,22 @@
+#!/bin/sh
+# Taskwarrior on the task board: this checkout's .taskrc and its own .task/ database, so
+# worktrees and parallel agents never share one SQLite file. See docs/tasks.md.
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export TASKRC="$repo/.taskrc" TASKDATA="$repo/.task"
+[ "$1" = sync ] || exec task "$@"
+
+# Taskwarrior says only "410 Gone" when this replica last synced with another server (CLD-195).
+out=$(mktemp) || exec task "$@"
+task "$@" 2>"$out"
+status=$?
+cat "$out" >&2
+if [ "$status" -ne 0 ] && grep -q '410 Gone' "$out"; then
+  cat >&2 <<EOF
+
+This replica last synced with another server, so it can't sync with the board again.
+Start it again: move $TASKDATA aside, then run scripts/task sync.
+Check the old one for changes that never reached the board first (docs/tasks.md, "When something's wrong").
+EOF
+fi
+rm -f "$out"
+exit "$status"

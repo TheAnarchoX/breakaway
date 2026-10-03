@@ -1,0 +1,7 @@
+{
+  // The Worker: Workers' runtime types, from `wrangler types`.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "lib": ["es2024"], "types": [] },
+  "include": ["worker-configuration.d.ts", "src/**/*.js"],
+  "exclude": ["**/*.test.js"]
+}

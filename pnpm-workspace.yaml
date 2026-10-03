@@ -1,0 +1,12 @@
+allowBuilds:
+  esbuild: false
+  workerd: false
+# The older miniflare (via @cloudflare/vitest-pool-workers) pins sharp 0.35.2, which
+# bundles a vulnerable libheif (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545). Fixed in
+# 0.35.4. Remove once vitest-pool-workers pulls in a miniflare that pins >= 0.35.4.
+overrides:
+  sharp: 0.35.4
+# miniflare pins undici 7.29.0, which has a WebSocket permessage-deflate denial of
+# service (GHSA-3wwx-pv8p-q78v). Fixed in 7.29.1. Remove once the miniflare versions
+# we use pin undici >= 7.29.1.
+  undici: 7.29.1

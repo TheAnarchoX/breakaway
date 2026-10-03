@@ -1,0 +1,12 @@
+{
+  "name": "breakaway",
+  "worker": "breakaway",
+  "url": null,
+  "secretsPrefix": "BREAKAWAY_",
+  "secretsStore": null,
+  "store": "breakaway",
+  "jurisdiction": null,
+  "repository": null,
+  "docs": null,
+  "vapidPublic": null
+}

@@ -1,0 +1,16 @@
+{
+  "name": "breakaway-launch-tools",
+  "private": true,
+  "type": "module",
+  "description": "Builds the launch images (PNG cards) and the launch video (MP4) in launch/media from the brand's tokens, fonts, and logo files.",
+  "scripts": {
+    "cards": "node cards.mjs",
+    "video": "node video.mjs",
+    "build": "node cards.mjs && node video.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/chivo-mono": "^5.3.0",
+    "playwright-core": "^1.55.0"
+  }
+}

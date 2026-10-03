@@ -1,0 +1,7 @@
+{
+  // The CLI and the release scripts: Node.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "lib": ["es2024"], "types": ["node"] },
+  "include": ["./**/*.js", "./**/*.mjs"],
+  "exclude": ["**/*.test.js", "vitest.config.js"]
+}

@@ -1,0 +1,503 @@
+/* breakaway's base styles: type, buttons, fields, pills, focus, and motion, on the tokens in brand/tokens.css.
+   The rules behind them are in brand/README.md: flat color, hard edges, one red thing per view. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(var(--topbar-h) + 16px);
+  /* Keyboard focus scrolls clear of the phone nav, too. */
+  scroll-padding-bottom: var(--dock-space);
+}
+
+/* Safety net: nothing should make a phone scroll sideways. */
+html,
+body {
+  overflow-x: clip;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px / 1.55 var(--font-body);
+  font-stretch: 100%;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+img,
+canvas,
+video {
+  display: block;
+  max-width: 100%;
+}
+svg {
+  flex: none;
+  vertical-align: middle;
+}
+img {
+  height: auto;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+p {
+  margin: 0 0 1em;
+}
+/* Headings are Archivo at its normal width; the wide italic display face is only for .display. */
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+::selection {
+  background: var(--red);
+  color: var(--on-red);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-xs);
+}
+/* Where focus lands after a page change (the page's heading or main): a reading point, not a control. */
+#main:focus,
+#main :is(h1, h2, h3, section)[tabindex="-1"]:focus,
+[data-focus-target]:focus {
+  outline: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 300;
+  padding: 10px 16px;
+  border-radius: var(--radius-s);
+  background: var(--invert);
+  color: var(--on-invert);
+  font-weight: 700;
+  transform: translateY(-160%);
+  transition: transform var(--dur) var(--ease);
+}
+.skip-link:focus {
+  transform: none;
+}
+
+/* Hidden like .visually-hidden until something inside has keyboard focus, then shown in place. */
+.reveal-on-focus:not(:focus-within) {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- type helpers ---------- */
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 11px / 1.2 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.display {
+  font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
+  font-weight: var(--display-weight);
+  font-style: italic;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.accent-text {
+  color: var(--accent);
+}
+.muted {
+  color: var(--muted);
+}
+.faint {
+  color: var(--faint);
+}
+.mono {
+  font-family: var(--font-mono);
+}
+.nowrap {
+  white-space: nowrap;
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ---------- buttons ---------- */
+.btn {
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-s);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    opacity var(--dur);
+}
+/* Pressing nudges a button forward, the way everything moves. */
+.btn:active:not(:disabled) {
+  transform: translateX(1px);
+}
+.btn:disabled {
+  opacity: 0.55;
+}
+.btn svg {
+  flex: none;
+}
+/* Primary is the pack's color, chalk on carbon: red stays rare, for the one action that leads (.btn-red). */
+.btn-primary {
+  --btn-bg: var(--invert);
+  --btn-fg: var(--on-invert);
+}
+.btn-primary:hover:not(:disabled) {
+  --btn-bg: color-mix(in srgb, var(--invert) 86%, var(--bg));
+}
+.btn-red {
+  --btn-bg: var(--red);
+  --btn-fg: var(--on-red);
+}
+.btn-red:hover:not(:disabled) {
+  --btn-bg: color-mix(in srgb, var(--red) 88%, var(--carbon));
+}
+.btn-accent {
+  --btn-bg: var(--accent);
+  --btn-fg: var(--on-accent);
+}
+.btn-accent:hover:not(:disabled) {
+  --btn-bg: color-mix(in srgb, var(--accent) 88%, var(--bg));
+}
+.btn-outline {
+  --btn-bg: transparent;
+  border-color: var(--line-strong);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.btn-quiet {
+  --btn-bg: transparent;
+}
+.btn-quiet:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.btn-danger {
+  --btn-bg: var(--danger-bg);
+  --btn-fg: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+.btn-sm {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.btn-lg {
+  min-height: 54px;
+  padding: 0 28px;
+  font-size: 16px;
+}
+.btn-icon {
+  min-height: 40px;
+  width: 40px;
+  padding: 0;
+}
+.btn-icon.btn-sm {
+  width: 36px;
+}
+.btn-block {
+  width: 100%;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- forms ---------- */
+.field {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.field > label,
+.field-label {
+  font-weight: 650;
+  font-size: 14px;
+}
+.field-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+.field-error {
+  font-size: 13px;
+  color: var(--danger);
+}
+.input,
+.textarea,
+.select {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border-radius: var(--radius-s);
+  /* --faint: an input's edge is a UI part, so it needs 3:1, which --line-strong doesn't reach. */
+  border: 1px solid var(--faint);
+  background: var(--bg-2);
+  transition:
+    border-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.input:focus,
+.textarea:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.input-prefix {
+  position: relative;
+}
+.input-prefix > span {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.input-prefix > .input {
+  padding-left: 32px;
+}
+.counter {
+  font: 500 12px var(--font-mono);
+  color: var(--muted);
+  justify-self: end;
+}
+
+.check {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  cursor: pointer;
+  line-height: 1.45;
+}
+.check input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  flex: none;
+}
+.check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.radio-cards {
+  display: grid;
+  gap: 10px;
+}
+.radio-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  align-items: start;
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast),
+    background var(--dur-fast);
+}
+.radio-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.radio-card:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-2));
+}
+.radio-card:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.radio-card .radio-icon {
+  grid-row: span 2;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+}
+.radio-card b {
+  font-weight: 700;
+}
+.radio-card small {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ---------- surfaces ---------- */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow);
+}
+.card-pad {
+  padding: clamp(20px, 3vw, 32px);
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  font: 600 11px / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.pill-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.pill-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 60%, transparent);
+  animation: pulse 2s infinite;
+  flex: none;
+}
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.divider {
+  height: 1px;
+  background: var(--line);
+  border: 0;
+  margin: 24px 0;
+}
+
+/* ---------- motion preferences ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}

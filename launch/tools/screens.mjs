@@ -1,0 +1,60 @@
+// The README's screenshots of the board (DOC-7): docs/media/<name>-dark.png and -light.png, in carbon and chalk.
+// They're of a local board seeded with made-up work (seed.sh), never a real one. Run: node screens.mjs [name ...]
+// with the board's web app at BOARD (default http://localhost:5173) and its token in BREAKAWAY_TOKEN.
+import { chromium } from 'playwright-core';
+
+const OUT = new URL('../../docs/media/', import.meta.url);
+const BOARD = process.env.BOARD ?? 'http://localhost:5173';
+const TOKEN = process.env.BREAKAWAY_TOKEN;
+if (!TOKEN) throw new Error('Set BREAKAWAY_TOKEN to the local board’s token.');
+
+const VIEWS = {
+  // The board, as you first see it.
+  board: { hash: '#/board', viewport: { width: 1440, height: 900 } },
+  // A task with an agent's live output: the panel only.
+  task: {
+    hash: '#/board?task=APP-2',
+    viewport: { width: 1440, height: 1020 },
+    clip: { x: 982, y: 168, width: 458, height: 852 },
+  },
+  // An agent's question in the inbox: the card only.
+  inbox: { hash: '#/inbox', viewport: { width: 1440, height: 900 }, clip: { x: 236, y: 158, width: 852, height: 164 } },
+  // The board on a phone.
+  phone: { hash: '#/board', viewport: { width: 390, height: 844 }, mobile: true },
+};
+
+const only = process.argv.slice(2);
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/sbin/chromium' });
+try {
+  for (const [name, v] of Object.entries(VIEWS)) {
+    if (only.length && !only.includes(name)) continue;
+    for (const scheme of ['dark', 'light']) {
+      const context = await browser.newContext({
+        viewport: v.viewport,
+        deviceScaleFactor: 2,
+        isMobile: Boolean(v.mobile),
+        hasTouch: Boolean(v.mobile),
+        colorScheme: scheme,
+        reducedMotion: 'reduce',
+        extraHTTPHeaders: { Authorization: `Bearer ${TOKEN}` },
+      });
+      const page = await context.newPage();
+      // A local board has no agent routine; a set-up board does, so its hints for setting one up stay out of the shot.
+      await page.route('**/api/agents', async (route) => {
+        const json = await (await route.fetch()).json();
+        await route.fulfill({ json: { ...json, connected: true } });
+      });
+      await page.goto(`${BOARD}/${v.hash}`);
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1200);
+      await page.screenshot({
+        path: new URL(`${name}-${scheme}.png`, OUT).pathname,
+        ...(v.clip ? { clip: v.clip } : {}),
+      });
+      console.log(`wrote docs/media/${name}-${scheme}.png`);
+      await context.close();
+    }
+  }
+} finally {
+  await browser.close();
+}

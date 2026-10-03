@@ -1,0 +1,11 @@
+{
+  // The web app: the browser and Preact.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  },
+  "include": ["src/**/*.js", "src/**/*.jsx"]
+}

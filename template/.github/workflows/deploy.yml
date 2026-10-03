@@ -1,0 +1,178 @@
+# Deploys a breakaway release to this install's Worker: the release breakaway.json pins (stable), or the latest
+# pre-release (main). Runs on a push to main, which is how a merged update pull request deploys, and by hand.
+# It stops with a plain message when the release needs steps by hand, or when breakaway.config.json changed
+# something it can't deploy (the address, cron triggers, or Durable Object classes): those are yours to deploy.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Check and build the release, and stop before it touches the Worker
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  # Where the releases come from. A fork changes both.
+  BREAKAWAY_REPO: TheAnarchoX/breakaway
+  BREAKAWAY_FEED: ${{ vars.BREAKAWAY_FEED }}
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are secrets of this environment. While breakaway's repository is
+    # private, BREAKAWAY_READ_TOKEN is a repository secret (Update reads it too): a read-only token for breakaway's
+    # releases. Once it is public, none.
+    environment: production
+    env:
+      GH_TOKEN: ${{ secrets.BREAKAWAY_READ_TOKEN || github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DRY_RUN: ${{ inputs.dry-run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Pick the release
+        id: release
+        run: |
+          set -euo pipefail
+          # breakaway's CLI comes from a release's own source on GitHub, read with the same token as the release's files
+          # (BRK-61): it needs only Node, no npm package, so it works while breakaway's repository is private.
+          unpack() {
+            dir="$RUNNER_TEMP/breakaway-$1"
+            if [ ! -d "$dir" ]; then
+              mkdir -p "$dir"
+              gh release download "$1" --repo "$BREAKAWAY_REPO" --archive tar.gz -O - | tar -xz -C "$dir" --strip-components 1
+            fi
+            echo "$dir/scripts/tasks.mjs"
+          }
+          # The newest release's CLI picks the release to deploy.
+          newest=$(gh release list --repo "$BREAKAWAY_REPO" --limit 1 --json tagName --jq '.[0].tagName // empty') || newest=""
+          if [ -z "$newest" ]; then
+            echo "::error title=No release to read::This repository can't read a release of $BREAKAWAY_REPO. While breakaway's repository is private, add BREAKAWAY_READ_TOKEN as a repository secret: a fine-grained token with read access to its contents."
+            exit 1
+          fi
+          picker=$(unpack "$newest")
+          curl -fsS --retry 3 "$BREAKAWAY_FEED" -o releases.json || echo '{}' > releases.json
+          if ! node "$picker" install resolve --releases releases.json --repo "$BREAKAWAY_REPO" > release.out; then
+            # The feed has no release (breakaway's repository is private, or the feed is down): ask GitHub.
+            gh api "repos/$BREAKAWAY_REPO/releases?per_page=100" > releases.json
+            node "$picker" install resolve --releases releases.json --repo "$BREAKAWAY_REPO" > release.out
+          fi
+          cat release.out >> "$GITHUB_OUTPUT"
+          # The steps after this one run the chosen release's own CLI, which makes that release's Worker config.
+          echo "cli=$(unpack "$(sed -n 's/^tag=//p' release.out)")" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify the release
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          gh release download "$TAG" --repo "$BREAKAWAY_REPO" --dir release \
+            --pattern breakaway-bundle.tar.gz --pattern manifest.json --pattern SHA256SUMS
+          (cd release && sha256sum --check SHA256SUMS)
+
+      - name: Check it can deploy by itself
+        env:
+          CLI: ${{ steps.release.outputs.cli }}
+          VERSION: ${{ steps.release.outputs.version }}
+          BEFORE: ${{ github.event.before }}
+          ADDRESS: ${{ vars.BREAKAWAY_URL }}
+        run: |
+          set -euo pipefail
+          # Nothing is deployed yet on the first run, so there is no running release to compare with.
+          address=${ADDRESS:-$(node -p "require('./breakaway.config.json').url || ''")}
+          running=""
+          # A board that doesn't say its release (one from before BRK-10) runs none this check knows.
+          if [ -n "$address" ]; then running=$(curl -fsS --max-time 20 "$address/api/ping" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).release ?? ''" 2>/dev/null || true); fi
+          # The config as it was before this push, to see whether it changed what a deploy can't.
+          rm -f before.json
+          case "$BEFORE" in ''|0000000000000000000000000000000000000000) ;; *) git show "$BEFORE:breakaway.config.json" > before.json 2>/dev/null || rm -f before.json ;; esac
+          node "$CLI" install check --version "$VERSION" --manifest release/manifest.json --running "$running" --before before.json
+
+      - name: Make the Worker config
+        env:
+          CLI: ${{ steps.release.outputs.cli }}
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          tar -xzf release/breakaway-bundle.tar.gz -C bundle
+          # A release carries the packages the Worker imports in its bundle (BRK-56), so nothing is installed. Only a release
+          # from before that, which this workflow can still be told to deploy, has none: those two go in bundle/ at the
+          # versions it lists (npm run in bundle/worker works out all of breakaway's devDependencies first, and Node 22's
+          # npm fails on them, BRK-65). Node and wrangler find them there, walking up from bundle/worker.
+          if [ ! -d bundle/node_modules/fflate ] || [ ! -d bundle/node_modules/@noble/ciphers ]; then
+            specs=$(node -p "const p = require('./bundle/worker/package.json'), v = { ...p.dependencies, ...p.devDependencies }; ['fflate', '@noble/ciphers'].map((n) => n + '@' + (v[n] ?? 'latest')).join(' ')")
+            npm install --prefix bundle --no-save --no-package-lock --no-audit --no-fund $specs
+          fi
+          node "$CLI" install config --bundle bundle --out wrangler.generated.json
+
+      - name: Dry run
+        if: ${{ inputs.dry-run }}
+        run: npx --yes wrangler@4 deploy --dry-run --outdir "$RUNNER_TEMP/dry" -c wrangler.generated.json
+
+      - name: Upload and deploy
+        if: ${{ !inputs.dry-run }}
+        env:
+          CLI: ${{ steps.release.outputs.cli }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ADDRESS: ${{ vars.BREAKAWAY_URL }}
+        run: |
+          set -euo pipefail
+          wrangler() { npx --yes wrangler@4 "$@" -c wrangler.generated.json; }
+          # The Worker the new version replaces. A first run has none, and `wrangler deploy` makes the Worker and its
+          # Durable Object; every run after that uploads a version and deploys it, so it can be rolled back. Only a Worker
+          # that doesn't exist is a first run: any other failure to list (a wrong account ID, a token that can't read
+          # Workers) stops here, because deploying over a live Worker with nothing to roll back to is not safe.
+          if npx --yes wrangler@4 deployments list --json -c wrangler.generated.json > deployments.json 2> list-error.txt; then
+            previous=$(node "$CLI" install previous < deployments.json | sed 's/^previous=//')
+          else
+            cat deployments.json list-error.txt | node "$CLI" install missing > /dev/null
+            previous=""
+          fi
+          if [ -z "$previous" ]; then
+            wrangler deploy --var "BREAKAWAY_VERSION:$VERSION"
+          else
+            export WRANGLER_OUTPUT_FILE_PATH="$RUNNER_TEMP/wrangler-output.ndjson"
+            wrangler versions upload --var "BREAKAWAY_VERSION:$VERSION" --message "breakaway $VERSION"
+            uploaded=$(node -e "const l=require('fs').readFileSync(process.env.WRANGLER_OUTPUT_FILE_PATH,'utf8').split('\\n').filter(Boolean).map(JSON.parse).filter(e=>e.type==='version-upload').pop();if(!l)process.exit(1);console.log(l.version_id)")
+            wrangler versions deploy "$uploaded@100%" --yes
+          fi
+          # Health check: the new release answers /api/ping. Without it, go back to the previous version.
+          address=${ADDRESS:-$(node -p "require('./breakaway.config.json').url || ''")}
+          if [ -z "$address" ]; then
+            echo "::warning title=Not checked::There is no address to check. Set the repository variable BREAKAWAY_URL to where the board answers (a workers.dev address, say) and the next deploy checks it."
+            exit 0
+          fi
+          for attempt in $(seq 1 12); do
+            if curl -fsS --max-time 15 "$address/api/ping" | node "$CLI" install healthy --version "$VERSION"; then
+              echo "breakaway $VERSION is running at $address."
+              exit 0
+            fi
+            sleep 5
+          done
+          if [ -n "$previous" ]; then
+            wrangler rollback "$previous" --message "breakaway $VERSION failed its check" --yes
+            echo "::error title=Rolled back::breakaway $VERSION didn't answer $address/api/ping within a minute, so the Worker went back to its previous version. Nothing is lost; read the Worker's logs on Cloudflare."
+          else
+            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping within a minute, and this was the first deploy, so there is no version to go back to. Read the Worker's logs on Cloudflare."
+          fi
+          exit 1

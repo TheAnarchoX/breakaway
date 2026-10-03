@@ -1,0 +1,1460 @@
+# breakaway: the docs
+
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. Free, fair source, and self-hosted on your own Cloudflare account.
+
+Source: https://breakaway.samewave.dev/docs/
+
+# breakaway docs
+
+> Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
+
+breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you three ways in: a web board (installable, phone included), a CLI, and Taskwarrior sync.
+
+These docs cover all of it. Start where you are.
+
+## I want to run a board
+
+1. [Run your own board](https://breakaway.samewave.dev/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
+2. [Concepts](https://breakaway.samewave.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
+3. [The playbook](https://breakaway.samewave.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
+
+## I want to look something up
+
+| Looking for | Go to |
+| --- | --- |
+| A command | [The CLI](https://breakaway.samewave.dev/docs/cli/) |
+| An HTTP route, or how auth works | [The API](https://breakaway.samewave.dev/docs/api/) |
+| What a view in the browser does, or a keyboard shortcut | [The web board](https://breakaway.samewave.dev/docs/web-board/) |
+| How agents start, what they follow, and the limits | [Agents](https://breakaway.samewave.dev/docs/agents/) |
+| Ideas, decisions, and pings | [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) |
+| Saved agent runs on a schedule or an event | [Routines](https://breakaway.samewave.dev/docs/routines/) |
+| Pull requests, merging, Promote and Roll back | [GitHub](https://breakaway.samewave.dev/docs/github/) |
+| Taskwarrior 3 sync | [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) |
+| How a release reaches your board, and how to roll one back | [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/) |
+| Secrets, rotation, backups, and fixes | [Operating a board](https://breakaway.samewave.dev/docs/operations/) |
+| What runs where | [Architecture](https://breakaway.samewave.dev/docs/architecture/) |
+| Licence, privacy, and what breakaway doesn’t do | [FAQ](https://breakaway.samewave.dev/docs/faq/) |
+
+## What the board promises
+
+These are the claims the docs, the README, and this site all make, and the board has to keep them true.
+
+- **One claim per task.** Claiming is atomic, so two agents never work on the same task.
+- **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
+- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI.
+- **Agents ping you when they need you.** The rest waits on the board.
+- **One board, several repositories**, each with its own areas, prompt, and agents.
+- **Three ways in, one set of data**: the web board, a CLI, and Taskwarrior sync.
+- **It runs on Cloudflare**: Workers and a Durable Object.
+- **Free, and the source is public.** The licence is FSL-1.1-Apache-2.0.
+
+> **Where the source of truth is.** These pages are a guide. The repository’s [`docs/tasks.md`](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md) is the manual the code is written against, and `npx breakaway help` always lists the commands your version has.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/quickstart/
+
+# Run your own board
+
+> Eight steps from nothing to a board that starts agents and updates itself. Each step ends with a check on Connections, the board’s own list of what it leans on.
+
+breakaway is free, and it runs on your own Cloudflare account. This guide takes you from nothing to a board that starts agents and updates itself. It has eight steps, and each one ends with a check on **Connections**, the board’s own list of what it leans on. A check is a row that reads **Working**. If it reads **Needs attention**, the row says what’s wrong and how to fix it.
+
+The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s fair source.
+
+## With Claude Code
+
+Paste this into [Claude Code](https://claude.com/claude-code), in an empty folder:
+
+```text
+Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it.
+```
+
+It works through the steps below with you. It runs and checks what it can, and stops for each step only you can do: signing in, making a token, anything with a secret. It never asks for a secret in the chat. The prompt it reads is [`prompts/install.md`](https://github.com/TheAnarchoX/breakaway/blob/main/prompts/install.md) in breakaway’s repository.
+
+Rather do it by hand? The steps follow.
+
+## What you need
+
+- A Cloudflare account, and a token that can edit Workers on it.
+- A GitHub account that can make a private repository, and one for the code the agents work on.
+- Node 20 or later, and [`wrangler`](https://developers.cloudflare.com/workers/wrangler/) signed in to your Cloudflare account. The commands that store secrets call it.
+- A Claude plan that has [routines](https://claude.ai/code/routines), to start agents from the board. The board works without one: agents you start yourself use the CLI.
+- Taskwarrior 3, if you want it. It’s optional: the web board and the CLI work without it.
+
+You’ll use two repositories. The **install repository** holds your board’s settings and the workflows that deploy it. The other is the code your agents work on.
+
+## 1. Make the install repository
+
+```sh
+mkdir my-board && cd my-board
+git init
+npx breakaway install init
+```
+
+It asks for the board’s name, the Worker’s name, an address on your own domain (blank is fine: the board answers on workers.dev), and a Secrets Store ID (blank is fine: the secrets go on the Worker). It writes the settings, the Deploy and Update workflows, and a README. It never overwrites a file.
+
+Then open `breakaway.config.json` and add one line, so the board can look for updates on its own: `"installRepository": "<you>/my-board"`. Keep `channel` the same as in `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows every merge to breakaway.
+
+Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
+
+1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`. If breakaway’s own repository isn’t public when you read this, also add a repository secret (Settings, Secrets and variables, Actions), `BREAKAWAY_READ_TOKEN`: a fine-grained token that can read breakaway’s contents. You don’t need one once it is.
+2. Turn on Settings, Actions, General, “Allow GitHub Actions to create and approve pull requests”. The update workflow needs it.
+
+**Check:** nothing on Connections yet, because there’s no board. The files are in the repository, and the environment has its secrets.
+
+## 2. Set the board’s secrets
+
+```sh
+npx breakaway init-secrets
+```
+
+It writes `tasks.env` in `~/.config/breakaway` and says which value goes where. Three are required: `TASKS_API_TOKEN`, `TASKS_CLIENT_ID`, and `TASKS_SYNC_KEY`. Set each as a Worker secret (Cloudflare, Workers, your Worker, Settings, Variables and Secrets), or in your Secrets Store if you gave a Secrets Store ID. Without a Secrets Store, the Worker doesn’t exist until its first deploy: set them right after step 3’s deploy. `.dev.vars.example` in the repository lists them.
+
+> `tasks.env` holds the only copy of the sync secret. Keep it in your password manager too.
+
+**Check:** you can’t read the board yet, so this step is checked in step 3: the **Secrets Store bindings** row under Cloudflare reads **Working**. If it says `TASKS_API_TOKEN is unset`, that secret isn’t on the Worker yet.
+
+## 3. Deploy it
+
+On GitHub, open the install repository’s Actions tab, pick **Deploy**, and run it with **dry-run** on. It checks the release and builds it, and stops before it touches the Worker. When it passes, run it again with dry-run off. It deploys, checks that the Worker answers `/api/ping`, and goes back to the previous version if it doesn’t.
+
+It stops with a message when something needs your hands: a release that has manual steps, or a change in `breakaway.config.json` the workflow can’t deploy (the address, cron triggers, or Durable Object classes). Do what the message says, then run Deploy again.
+
+**Check:** the run is green. Then, once you’re signed in (next step), the Cloudflare rows read **Working**: **Worker**, **Secrets Store bindings**, **Cron (every 5 minutes)** (it reads “no run recorded yet” until the first run, within 5 minutes), and **TaskChampion sync server**.
+
+## 4. Sign in
+
+Open the board’s address (the workers.dev address Cloudflare shows for the Worker, or your own). Sign in with `BREAKAWAY_TOKEN` from `tasks.env`.
+
+Every view says “This board has no repository yet” and points to Connections. Open it. **Set up the board** lists the rest of this guide’s steps, and ticks each one when its connection works.
+
+**Check:** you’re in. A wrong token keeps asking for it; copy `BREAKAWAY_TOKEN` again.
+
+## 5. Register a repository
+
+Register the repository your agents work on: on Connections, in **Set up the board**, fill in its short name, its GitHub `owner/name`, and its areas, each an area and a work-ID prefix like `product:PRD`. Or from a terminal:
+
+```sh
+npx breakaway repos add <slug> <owner/name> --area product:PRD
+```
+
+The first repository you register is the board’s default. A prefix belongs to one repository and never changes.
+
+**Check:** **Registered repository** reads **Working**, and **Register a repository** is ticked.
+
+## 6. Connect GitHub
+
+The board reads GitHub through a private GitHub App that you make for it.
+
+1. On the board’s GitHub view, press **Connect GitHub**, make the App, and copy the code it shows.
+2. Run `npx breakaway github-connect <code>`. It stores the App’s keys as secrets and deploys a new version of the Worker.
+3. Install the App on the repository you registered, and on the install repository if you chose `main`: the board starts its Deploy workflow, which needs read and write on Actions.
+4. On the repository’s GitHub settings, General, Pull Requests, turn on **Allow auto-merge**.
+5. Add the board’s files to the repository: `npx breakaway repos init <slug>`. In a terminal it asks for each part of the agent prompt. It pushes the files as the first commit of an empty repository, or opens a pull request. Then fill in anything left in `<…>` in the agent prompt and `AGENTS.md`, and merge it.
+
+**Check:** press **Check now** on Connections. These rows read **Working**: **GitHub App**, **Webhook** (once GitHub has sent one), **Installed on `owner/name`**, **Permissions on `owner/name`**, **Allow auto-merge on `owner/name`**, and **Sync with `owner/name`**.
+
+Each says what to change when it doesn’t. Pull requests and Contents need write, and Actions needs write on a repository with a deploy pipeline. An agent prompt with a `<…>` left in it makes **Agent routine** need attention until you fill it in.
+
+## 7. Connect a Claude routine
+
+The board starts agents through a routine you save on claude.ai.
+
+1. At [claude.ai/code/routines](https://claude.ai/code/routines), make a new routine: name it after the repository, add the repository, and pick a cloud environment. In the environment, set **Network access** to **Custom** and allow the board’s host, add the board’s token as an API credential (or set `BREAKAWAY_TOKEN`), and set `BREAKAWAY_AGENT=claude-cloud`.
+2. Paste the stub as its instructions. The Agents view shows it, and `repos init` copied it into the repository.
+3. Add an **API** trigger, generate its token, and copy the URL and the token. The token shows once.
+4. Run `npx breakaway agents-connect` and paste both. For another repository, add `--repo <slug>`.
+
+**Check:** **Agent routine** reads **Working**. Start an agent on a task: **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn’t allow the board’s host. [Agents](https://breakaway.samewave.dev/docs/agents/) has the environment settings in full.
+
+> **What Connections can’t check.** It can’t see claude.ai or Cloudflare’s own settings, so these are yours to check: the routine’s cloud environment (the allowed hosts: the board’s, `api.githubcopilot.com`, `registry.npmjs.org`, and the common package managers), the routine’s prompt (it should match the stub the Agents view shows), and Cloudflare’s custom domain, Secrets Store, and cron triggers.
+
+## 8. Connect the CLI and Taskwarrior
+
+On the machine you work from, `tasks.env` needs the board’s address too. Add `BREAKAWAY_URL=<the board’s address>`, then:
+
+```sh
+npx breakaway health
+npx breakaway setup
+```
+
+`health` checks that the CLI reaches the board. `setup` writes Taskwarrior’s settings and runs the first `task sync`. To use Taskwarrior in a checkout, [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) shows the three lines for its `.taskrc`.
+
+**Check:** **Taskwarrior sync** reads **Working**, and **Connect the CLI and Taskwarrior** is ticked. Then **Set up the board** disappears: every step is done.
+
+Add a first task and claim it from a checkout of the repository:
+
+```sh
+npx breakaway add "Write the README’s install section" --project docs --tag agent --horizon now \
+  --brief "Say how to install and run it." --done-when "A newcomer can run it from the README alone."
+npx breakaway claim DOC-1
+```
+
+That’s the board, working. Next: [Concepts](https://breakaway.samewave.dev/docs/concepts/) explains what you just made, and [the playbook](https://breakaway.samewave.dev/docs/playbook/) covers how to get agents to finish what you hand them.
+
+## When something’s wrong
+
+Run `npx breakaway connections`. It lists every row with its state and the fix, the same as the Connections view. [Operating a board](https://breakaway.samewave.dev/docs/operations/#when-somethings-wrong) covers the rest.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/concepts/
+
+# Concepts
+
+> The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.
+
+A board is small. Once you know these ideas, every view, command, and message makes sense.
+
+## The board and its three doors
+
+An install is **one board on your Cloudflare account**. One board can run several repositories. There are three ways in, and all of them read and write the same data:
+
+| Way in | For | How |
+| --- | --- | --- |
+| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. The only place to claim work. |
+| **Taskwarrior** (`task`, 3.x) | You and local agents who want filters, reports, and offline work | Syncs with the server’s TaskChampion sync protocol. |
+| **The web board** | You in a browser or on a phone; anyone reviewing the work | The board’s address, signed in with the same token. |
+
+## Tasks and work IDs
+
+Every task is a Taskwarrior task with a few fields of the board’s own.
+
+| Field | Meaning |
+| --- | --- |
+| `wid` | The **work ID**, like `BRK-12`: the area’s prefix and a number. New numbers are the highest in use for that prefix plus one, and are never reused. |
+| `project` | The **area**: the part of a repository the task belongs to, with its prefix. |
+| `repo` | The repository the task belongs to. A task stays in its repository. |
+| `horizon` | `now`, `next`, `later`, or `archive`. |
+| `priority` | `H` for the horizon’s top priorities; `M` and `L` if useful. |
+| tags | `+agent` (an agent can do it in the repository), `+owner` (needs you: an install, an account, a sign-off), `+decide` (needs your decision before work starts). Tasks often carry two. |
+| `depends` | What must be finished first. A task with open dependencies is **blocked**. |
+| `claim` | Who is working on it: an agent name like `claude-brk-12`, or `owner`. Set only through `claim`. |
+| `spec` | Path to a spec in `docs/specs/`, when the task needs one. |
+| `pr` | The pull request that delivers it. |
+| `brief` and `done_when` | The description (what the task is for and why) and what has to be true to call it done. |
+| comments | An append-only thread of findings, progress, questions, and hand-overs, each with an author. |
+
+Titles, descriptions, and comments are small Markdown: `code`, **bold**, links, and `- ` lists. Never put personal data about anyone, or any secret, in a task. The board is project work only.
+
+### Ready for an agent
+
+A task is **ready for an agent** when it is pending, tagged `+agent`, not tagged `+decide`, has no open dependencies, isn’t waiting for a date, and isn’t claimed. That is what `next` hands out and what `task agent` lists.
+
+## Areas and horizons
+
+An **area** groups a repository’s work, and its prefix names the work IDs. breakaway’s own are `board` (BRK), `web` (WEB), `docs` (DOC), `launch` (LCH), and `brand` (ID). Two areas belong to the whole board: **ideas** (IDEA) and **routines** (RUN).
+
+**Horizons** are how soon: `now`, `next`, `later`. **Close now** archives the finished tasks in now, makes next the new now, and makes later the new next. Unfinished tasks in now stay in now. Closing a horizon is yours; agents never do it.
+
+## Claims
+
+A **claim** says who is working on a task. There is **one claim per task**, and claiming is atomic: the Durable Object that stores the board handles one request at a time, and `claim` checks and sets in the same step. Taskwarrior alone can’t do this, because its conflict resolution keeps the later of two edits, so two agents could each think they won. That is why the CLI is the only place to claim.
+
+A claim that fails says who has it. You can clear a stale claim with `--force`; agents don’t take another’s claim.
+
+## Dependencies
+
+`depends` is the only thing that blocks. “See also” links (`related`) never do. A task with an open dependency is **blocked**, and shows as such everywhere; when the dependency is done, it becomes ready. Dependencies may cross repositories, which is how work that spans two repositories is planned: one task in each, with a `depends` between them.
+
+## Pull requests close tasks
+
+A pull request **closes** a task when a sentence or line of its title or description *starts* with a closing word followed by work IDs:
+
+```text
+Closes BRK-12.
+- Fixes BRK-5, BRK-12 and WEB-1
+Resolves: DOC-6
+```
+
+The closing words are close, closes, closed, fix, fixes, fixed, resolve, resolves, and resolved. A task whose `pr` field holds a pull request’s number is closed by it too. Everything else is a **mention**: IDs in prose, in code blocks, or in the branch name.
+
+A pending task with an open closing pull request is **In review**. When the pull request merges, the task is **Done**, with the note “Merged in #31: …”. When it’s closed without merging, the task gets a note and leaves review. Write `Part of BRK-12.` in a spec or planning pull request that shouldn’t finish the task.
+
+A pull request closes only tasks of its own repository.
+
+## Repositories
+
+The board keeps a registry. Each repository has a slug (`breakaway`), its GitHub `owner/name`, and its areas, each with a work-ID prefix.
+
+- **A fresh install starts with no repository.** It refuses tasks until one is registered, and the first one registered is the board’s default.
+- **A prefix belongs to one repository** and never changes, so a work ID means one task across the board.
+- **Ideas and routines are shared** by the whole board: one number sequence, whichever repository they’re in.
+- **The CLI works in the checkout’s repository.** It reads `origin` and matches it against the registry. `list` and `next` show only that repository’s tasks, and `claim` refuses another repository’s task.
+- **Per repository:** its areas, tasks, GitHub App installation, agent prompt, agent routine, and caps. **For the whole board:** the Worker, sign-in, inbox, pings, push, and the limits on how many agents run at once.
+
+## The loop
+
+This is a day on the board, from the first task to a merged change.
+
+1. You (or an agent shaping your idea) add a task with a brief and a done-when.
+2. An agent claims it, by `next --claim`, or because you started one from the board.
+3. The agent reads the task and the repository’s `AGENTS.md`, works on a branch, and comments what it learns.
+4. It opens a pull request that says `Closes <ID>.`, sets the task’s `pr`, and keeps watching the pull request.
+5. The task is **In review**. You read it on the board, check the diff and the checks, and merge.
+6. The board marks the task **Done**, and whatever depended on it becomes ready.
+7. If an agent is stuck on something only you can do, it **pings** you, and releases the task.
+
+Next: [the playbook](https://breakaway.samewave.dev/docs/playbook/) turns this loop into habits that keep many agents productive.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/playbook/
+
+# The playbook
+
+> How to get the most out of a board: write tasks agents finish, shape work before you build it, run many agents without collisions, and keep the review load down to one person.
+
+This page is advice, not features. It’s what makes the difference between agents that open pull requests you merge and agents that open pull requests you rewrite. Everything here uses features documented elsewhere in these docs.
+
+## Write tasks one pull request can finish
+
+An agent works best on a task that fits one pull request. If you can’t say what done looks like, the agent can’t either.
+
+- **Give every task a brief and a done-when.** The brief says what and why. The done-when says what has to be true to call it done, and the agent checks its pull request against it.
+- **One outcome per task.** If the brief has an “and” joining two outcomes, make two tasks and add a `depends` where one waits.
+- **Name the files and the behaviour you care about,** not the steps. “The inbox sorts by age; the oldest ping is first” beats “edit `Inbox.jsx`”.
+- **Put the checks in the repository,** not in the task. The agent follows the repository’s **Checks** (see below), so a task never has to say “and run the tests”.
+- **Tag honestly.** `+agent` for work an agent can do in the repository, `+owner` for production, accounts, and sign-offs, and `+decide` when you have to choose first. An agent never starts a `+decide` task.
+
+```sh
+npx breakaway add "Sort the inbox by age" --project web --tag agent --horizon now \
+  --brief "The inbox lists pings in the order they arrived. The oldest should be first, so nothing waits unseen." \
+  --done-when "The inbox shows the oldest open ping first, in both themes, narrow and wide."
+```
+
+## Write down ideas, shape them, then build
+
+When you don’t know the task yet, write an **idea** (`i` on the board, or `npx breakaway idea "…"`). An agent turns it into a spec and a set of filled-in tasks in one pull request. You read one spec instead of ten tasks, and nothing is built until you merge it. [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) has the details.
+
+Use a spec for any change with real choices: a protocol, a data model, a flow people will use. Specs live in `docs/specs/<ID>-<slug>.md` with the problem, what was chosen and why, what’s out of scope, open questions, and done when.
+
+## Ask for decisions as questions
+
+If an agent needs your choice, it asks a structured **decision**: a form with up to 20 questions of seven types, and a recommendation in the help text. You answer them in one sitting, and the answer finishes the task and releases everything waiting on it. Prefer this to prose in a comment, which nobody answers in order.
+
+## Give each repository an agent prompt that says how to build
+
+An agent gets its instructions from two places in the repository it works in: its **agent prompt** and its **`AGENTS.md`**. The prompt starts from the board’s shared core and says, under fixed headings, what each step means in your repository:
+
+| Heading | Say |
+| --- | --- |
+| **Checks** | The commands that must pass before a pull request: tests, build, lint. |
+| **Pull requests** | How titles and descriptions look, and what the description must hold. |
+| **Direction** | What the project is and isn’t; what needs your decision first. |
+| **Building** | How to build here: where tests go, conventions, which skills to use. |
+| **Dependency updates** | What extra to run when an update touches certain packages. |
+| **Never share** | What must never leave the repository: secrets, other projects’ work, people’s details. |
+
+`AGENTS.md` holds the project’s rules: what agents never do (deploy, merge, push to the default branch), the code conventions, and a map of where things are. The better these two files are, the less each task has to say. `repos init` writes a starter for both. Fill in every `<…>`: the board won’t start agents in a repository whose prompt still has one.
+
+## Keep agents from colliding
+
+- **Use areas and dependencies, not hope.** “Start the next few” starts at most one task per area, so two agents rarely touch the same part of the code. Put a `depends` between tasks that do.
+- **Claim before you build.** If you work a task yourself, claim it first. The claim is what stops an agent from picking it up.
+- **Cap the agents.** The board runs a few agents at once (3 on Pro by default, up to 6) and a number of starts an hour. Raise them as your review speed allows, not before.
+- **Merge when green, update when behind.** The board’s two pull request settings keep branches up to date and merge pull requests as soon as their required checks pass. Turn them on once you trust your checks.
+
+## Keep the review load low
+
+The point of the board is that you merge and the agents do the rest. Protect your attention:
+
+- **Make CI the first reviewer.** An agent watches its pull request and fixes failing checks, so the better your tests, the less you read. The agent follows the checks you list in **Checks**.
+- **Read the task, not the chat.** Agents write what they learn as comments on the task. You see decisions, findings, and hand-overs in one thread.
+- **Let pings be the only interruption.** An agent pings when only you can help, when a task can’t be reproduced, or when it looks already done. Anything else waits on the board.
+- **Message an agent instead of re-reading its work.** Under a running agent’s live output, send a note. It reads it before its next action.
+- **Fix with an agent.** A pull request with a merge conflict, failing checks, or review comments can go back to an agent from its page on the board.
+
+## Use routines for the chores
+
+A **routine** is a saved prompt you run with a button, on a schedule, or on a GitHub event. Good ones: update the changelog from merged pull requests each week; check dependency updates; triage a failing workflow. Every run is a task and ends in a pull request you merge, so chores stay reviewable. See [Routines](https://breakaway.samewave.dev/docs/routines/).
+
+## Keep installs boring
+
+Releases don’t deploy themselves. On the `stable` channel, a newer release arrives as a pull request in your install repository; merge it and Deploy runs, then rolls back if the new version doesn’t answer. On `main`, the board starts the Deploy for you. Read [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/) once, and pick the channel that matches how much you want to be on the frontier.
+
+## A good first week
+
+1. Run the [guide](https://breakaway.samewave.dev/docs/quickstart/) and get every Connections row to **Working**.
+2. Fill in the agent prompt and `AGENTS.md`, and make your checks fast.
+3. Add five small tasks with briefs and done-whens. Start one agent by hand and watch its live output.
+4. Merge the first pull request. Notice what the agent got wrong, and put the lesson in `AGENTS.md`, not in the next task.
+5. Turn on Start the next few for a single area, then widen it.
+6. Write your first idea, and read the spec it returns.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/web-board/
+
+# The web board
+
+> Every view in the browser, what it shows, how to install it on a phone, and the keyboard shortcuts.
+
+Open the board’s address and paste the token once. Let your password manager keep it: the form has a username field with the install’s name. The browser stays signed in for 180 days; rotating the token signs every browser out.
+
+## On a phone
+
+Add the board to your home screen (Safari: Share, Add to Home Screen; Chrome: the menu, Add to Home screen) and it opens like an app, with the views behind the menu button at the top left. The web board is the supported way to use breakaway on a phone.
+
+## The frame
+
+The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server and opens **Settings**. On a phone the sidebar is a drawer. The top bar keeps search, **New task**, and the bell.
+
+## The views
+
+| View | What it shows |
+| --- | --- |
+| **Board** | A column per state (needs a decision, ready, in progress, in review, blocked or waiting, done in the last 30 days) and a row per horizon or area. Cards show their pull request’s number, checks, and review. On a phone you pick the column at the top. **Close now** is here. |
+| **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
+| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. |
+| **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
+| **Inbox** | Pings from agents and notes from the board. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
+| **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, the Agents settings, and the agent prompts. |
+| **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
+| **GitHub** | Open pull requests with checks and reviews, Dependabot alerts, deploys, CI runs, and commits on `main`. Select a pull request to read, update, and merge it without leaving the board. |
+| **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
+| **Settings** | The name your claims use, how tasks open, notifications, and the two pull request settings. |
+
+## A task
+
+A task opens beside the view, or in a modal with the description and thread on the left and the fields, dependencies, pull request, and agent run in a rail on the right. On a phone it is full screen. Everything is editable in place: the title, area, horizon, priority, tags, dates, spec, pull request, and dependencies. You can add comments, claim or release, mark done, open again, or delete. Claims you make here use the name in Settings (`owner` by default).
+
+The **Agent** section of a task starts an agent on it, with an optional note, and refines it with an agent instead of building it. Under a running agent’s live output you can send it a message.
+
+Filters (area, horizon, who can move it, claimed, finished) and search live in the URL, so every view and every task has a link.
+
+## Keyboard shortcuts
+
+| Key | Does |
+| --- | --- |
+| `/` | Search |
+| `n` | New task |
+| `i` | New idea |
+| `b` `l` `g` `o` `a` `h` `x` `u` | Switch views |
+| `w` | Connections |
+| `[` | Collapse or expand the sidebar |
+| `s` | Switch repository (with several) |
+| `j` `k` | Next and previous task |
+| `c` | Claim or release |
+| `d` | Done |
+| `Esc` | Close |
+| `?` | Show all shortcuts |
+
+## Several repositories
+
+With a second repository registered, the sidebar gets a switcher: one repository, or all of them. Board, list, dependencies, the activity stream, the inbox, Agents, and Routines follow it, and it’s kept in the browser and in the URL as `?repo=<slug>`. Every task, card, and row shows a small chip with its repository. While there’s only one repository, none of this shows.
+
+To add one, use **Add a repository** (`#/add-repo`). It lists every step in order and ticks each one itself from what the board can see, so it never asks you to confirm what it can check.
+
+## Themes and motion
+
+Carbon (dark) is the default, and chalk (light) follows the system or your choice. The board respects the system’s reduced-motion setting.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/cli/
+
+# The CLI
+
+> Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.
+
+The CLI is the `breakaway` package on npm: `npx breakaway <command>`. It talks to the board’s JSON API with a token, it’s the only place to claim work, and it runs anywhere Node 20 does, including cloud sessions. `npx breakaway help` lists every command your version has.
+
+Add `--json` to any command for machine-readable output. `--as <name>` signs a command with an agent’s name; it defaults to `$BREAKAWAY_AGENT`, then `user@host`. A `<ref>` is a work ID (`BRK-12`), a UUID, or its first 8 characters.
+
+## Settings
+
+Each comes from the environment first, then from `tasks.env` in `$BREAKAWAY_HOME` (default `~/.config/breakaway`).
+
+| Setting | What it is |
+| --- | --- |
+| `BREAKAWAY_TOKEN` | The board’s API token, unless the cloud environment’s API credential adds it. |
+| `BREAKAWAY_URL` | The install’s address. Without it, the checkout’s `.taskrc` (`sync.server.url`), then the install’s `breakaway.config.json`. |
+| `BREAKAWAY_AGENT` | Your name on claims. |
+| `BREAKAWAY_REPO` | The repository to work in, instead of the checkout’s. |
+| `BREAKAWAY_CLIENT_ID`, `BREAKAWAY_SECRET`, `BREAKAWAY_SYNC_KEY` | Taskwarrior’s credentials, for `setup`. |
+| `BREAKAWAY_SESSION_LOG=off` | Turns the live-output session hook off. |
+| `BREAKAWAY_HOME` | Another folder for this install’s settings. Use it when one machine works with two boards. |
+
+## The repository
+
+The CLI works in the repository the checkout’s `origin` names, matched against the board’s registry. `--repo <slug>` or `BREAKAWAY_REPO` picks another; `--all` shows every repository in `list` and `next`.
+
+- `list` and `next` show only that repository’s tasks.
+- `claim` refuses a task of another repository, even with `--force`, so an agent can’t build another repository’s task in this checkout.
+- `add` puts the task in the checkout’s repository; `--depends` may name any ID.
+- `show` works for any ID.
+
+## Reading
+
+```sh
+npx breakaway                      # open tasks, best first
+npx breakaway list --ready         # ready and unclaimed
+npx breakaway show BRK-12          # everything about one task
+npx breakaway next --claim         # the best ready task, claimed in one step
+npx breakaway activity --limit 10  # what changed lately, and who claimed what
+npx breakaway github               # pull requests, checks, reviews, failed runs, alerts (--sync to refresh)
+npx breakaway health               # the server's state
+npx breakaway connections          # is everything wired up, and the fix for each that isn't
+npx breakaway export --out tasks-backup.json
+```
+
+| Command | What it does |
+| --- | --- |
+| `list` | Open tasks. Narrow with `--ready`, `--blocked`, `--active`, `--mine`, `--owner`, `--project`, `--tag`, `--horizon`, or `--status pending\|completed\|deleted\|all`. |
+| `show <ref>` | The description, done when, related tasks, comments, dependencies, and what it blocks. |
+| `next` | The best ready task for an agent. `--claim` claims it in the same step. |
+| `activity` | Recent changes, newest first. |
+| `github` | Open pull requests, checks, reviews, CI, deploys, alerts. |
+| `health` | The server’s state, including the release it runs. |
+| `connections` | The same report as the Connections view. |
+| `export` | Every task of every repository as JSON, checked against `health`’s count. |
+
+## Working a task
+
+```sh
+npx breakaway claim BRK-12
+npx breakaway comment BRK-12 "The inbox sorts by age; the oldest ping is first."
+npx breakaway modify BRK-12 --pr 31
+npx breakaway release BRK-12
+```
+
+| Command | What it does |
+| --- | --- |
+| `claim <ref>` | Takes a task. Atomic: fails if someone else has it. `--force` is for you clearing a stale claim. |
+| `release <ref>` | Gives it back. |
+| `comment <ref> <text>` | Adds a comment signed with your agent name. `note` is the same command. |
+| `done <ref>` | Finishes it, with `--note` and `--pr`. Usually the board does this when the pull request merges. |
+| `add <description>` | A new task with the next work ID for its project. See the options below. |
+| `modify <ref>` | Changes fields. See the options below. |
+| `decision <ref> --template` | Prints an example decision file. Attach one with `add` or `modify --decision <file.json>`. |
+| `ping <ref> <message>` | Tells you an agent needs you. `--kind blocked\|question\|stale\|done\|fyi`, and `--proposal <file.json>`. |
+| `idea <text>` | Writes down an idea for an agent to shape. `--horizon`, `--auto`, `--image <file>`. |
+| `attach`, `attachments` | Add an image to a task; list or `--save` a task’s images. |
+
+**`add` options:** `--project`, `--tag` (repeatable), `--priority H|M|L`, `--horizon now|next|later`, `--repo <slug>`, `--depends <ref,…>`, `--related <ref,…>`, `--spec <path>`, `--due <date>`, `--wait <date>`, `--brief <text>` or `--brief-file <path>`, `--done-when <text>`, and `--decision <file.json>`.
+
+**`modify` options:** `--description` (the title), `--project`, `--priority`, `--horizon`, `--spec`, `--pr`, `--due`, `--wait`, `--status`, `--brief`, `--done-when`, `--decision`, `--related` and `--unrelated`, `--tag` and `--untag`, `--depends` and `--undepends`, and `--autostart yes|no`. You may rewrite a description on any task; an agent may only on a task it made or is refining.
+
+## Agents, routines, and horizons
+
+```sh
+npx breakaway agents                           # running and waiting
+npx breakaway agents start BRK-12 --note "Start with the store."
+npx breakaway agents refine BRK-12 --note "Split it. It’s two changes."
+npx breakaway agents next --count 3 --dry-run  # see what Start the next few would pick
+npx breakaway agents plan max5                 # your Claude plan
+npx breakaway routines                         # saved routines and their caps
+npx breakaway routines run changelog --note "Since v0.2."
+npx breakaway horizon close --dry-run          # what Close now would move
+```
+
+Picking a plan, closing a horizon, and creating routines or registering repositories are yours: a request signed with an agent’s name is refused. Starting agents is yours too, by rule: the agents a board starts never start others.
+
+## Repositories
+
+| Command | What it does |
+| --- | --- |
+| `repos` | The repositories the board runs, their areas and prefixes. |
+| `repos add <slug> <owner/name> --area <project:PREFIX>…` | Registers one. Also `--name`, `--branch`, `--prompt <path>`. |
+| `repos init <slug>` | Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, the session hooks, a starter `AGENTS.md`, the `tasks` skill, and Taskwarrior files. Pushes them to an empty repository or opens a pull request. Never overwrites. `--dry-run` lists what it would add; `--update` refreshes the copied files. |
+| `repos setup <slug\|owner/name>` | The Add a repository wizard’s steps for it. Read only. |
+| `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. |
+| `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
+| `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://breakaway.samewave.dev/docs/routines/). |
+
+## Setup and secrets
+
+| Command | What it does |
+| --- | --- |
+| `init-secrets` | Once, for a brand-new board: writes `tasks.env`. |
+| `setup` | Connects this machine’s Taskwarrior: writes `taskrc` and runs the first `task sync`. |
+| `github-connect <code>` | Stores the GitHub App’s keys. |
+| `agents-connect [--repo <slug>]` | Stores an agent routine’s URL and token. |
+| `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](https://breakaway.samewave.dev/docs/operations/#rotating-secrets). |
+
+## The install repository
+
+These need no board: they’re the files and steps that deploy a board from its own repository.
+
+| Command | What it does |
+| --- | --- |
+| `install init [dir]` | Writes an install repository: its config, `breakaway.json`, the Deploy and Update workflows, and a README. Never overwrites. |
+| `install resolve\|check\|config\|previous\|healthy\|update` | The steps those workflows run. `install config` makes the Worker’s wrangler config. |
+
+## Hooks
+
+`npx breakaway hook session` and `hook wait` are what a repository’s `.claude/settings.json` runs so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/agents/
+
+# Agents
+
+> How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.
+
+An **agent** is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.
+
+## Local agents
+
+A local agent works in a checkout of the repository with the CLI. The `tasks` skill, which `repos init` copies into the repository, tells it the loop:
+
+1. Name yourself: `export BREAKAWAY_AGENT=claude-brk-12`.
+2. `npx breakaway health` to check the board answers.
+3. `npx breakaway next --claim`, or `claim <ID>` for a specific task. A `409` means someone has it or it’s blocked.
+4. `show <ID>`, then work on a branch, commenting what it learns.
+5. Open a pull request with `Closes <ID>.` in the description, then `modify <ID> --pr <number>` and a `comment` with the result.
+6. If it stops before a pull request: `comment` where it got to, then `release <ID>`.
+
+## Cloud agents from the board
+
+The board starts Claude Code cloud sessions on tasks and shows what each one is doing. Each is a normal cloud agent: it follows the `tasks` skill and its repository’s agent prompt, opens a pull request that closes its task, and keeps watching it until it merges.
+
+### Five ways to start one
+
+- **On a task.** **Start an agent**, with an optional note, in the task’s Agent section.
+- **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon `now` first, then by priority.
+- **By itself when ready.** Tick **Start by itself when ready** on a task (`modify <ID> --autostart yes`). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.
+- **For a Dependabot pull request.** **Safe to merge?** on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.
+- **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings, you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
+
+Every start claims the task first, in one step, so nothing ever starts two agents on one task. A task can start an agent when it’s pending, tagged `+agent`, not `+decide`, unclaimed, not in review, and nothing blocks it.
+
+### Modes
+
+An agent has a mode, set by how it was started.
+
+| Mode | What it does |
+| --- | --- |
+| Build (default) | Does the task and opens a pull request that closes it. |
+| Idea | An `IDEA-` task: shapes the idea into a spec and tasks. It doesn’t build. |
+| Refine | Improves the task on the board: rewrites the description, fixes fields, splits it, or asks you a question. It doesn’t build. `agents refine <ID> --note "…"`; the note is required. |
+| Review | Tests a Dependabot pull request and reports a verdict. It never merges. |
+| Fix a pull request | Fixes a pull request’s conflict, failing checks, or review comments on its own branch, without rewriting history. |
+| Routine | Does what a saved routine says. See [Routines](https://breakaway.samewave.dev/docs/routines/). |
+
+### What an agent follows
+
+Three files, so a change to the instructions needs no re-paste on claude.ai:
+
+- **The stub**, pasted as the routine’s instructions on claude.ai. It only says to read the repository’s prompt in the checkout.
+- **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://breakaway.samewave.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
+- **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, decisions, and pings. It never says how to build.
+
+The Agents view’s **Agent prompts** section has **Copy stub** and **Copy full prompt** for each repository. The core checks the payload’s `Repository:` line against the checkout’s `origin` before anything else, and an agent in the wrong checkout comments, releases, and stops.
+
+### What agents never do
+
+These are the board’s rules, and a repository can add more:
+
+- Deploy, or touch production: databases, secrets stores, DNS, dashboards.
+- Merge, or push to the default branch. Changes reach it through pull requests you merge.
+- Start other agents, or set `--autostart`.
+- Share a secret, another repository’s work, or a person’s details.
+
+The only merge button is in the signed-in web board. The bearer token that agents and the CLI hold gets a 403 from every merge, publish, and update-branch route.
+
+## Limits
+
+At most **3 agents** work at once on Pro (up to 6, in the Agents settings). An agent counts while its task is claimed by it and has no open pull request, for up to 12 hours; once its pull request is open, the task is In review and the slot is free. At most **20 starts an hour** by default on Pro (1 to 30 in the settings; Claude allows 30 for each routine). Every start uses your Claude subscription.
+
+Claude has no API that says which plan an account is on, so you pick it at the top of the Agents settings (or `agents plan max5`). The plan sets how high the board’s own limits go:
+
+| Plan | Agents at once | Starts an hour | All routines a day | One routine a day |
+| --- | --- | --- | --- | --- |
+| Pro (the default) | 3, up to 6 | 20 | 10, up to 100 | 3, up to 50 |
+| Max 5x | 6, up to 12 | 30 | 25, up to 250 | 6, up to 100 |
+| Max 20x | 10, up to 24 | 60 | 50, up to 500 | 10, up to 200 |
+
+Each repository’s routine is held to Claude’s 30 starts an hour, and a repository can be capped below the board’s limits (`repos modify <slug> --agents-max <n> --agents-hourly <n>`) so a busy one can’t take every slot.
+
+## Connecting the routine
+
+You do this once per repository. The Agents view walks you through it.
+
+1. At [claude.ai/code/routines](https://claude.ai/code/routines), select **New routine**: name it after the repository, add the repository, pick the cloud environment, and paste the stub as its instructions. Choose the model there.
+2. Save it, and under **Select a trigger** add an **API** trigger; select **Generate token**. Copy the URL and the token. The token shows once.
+3. Run `npx breakaway agents-connect` and paste both. They’re stored as the board’s secrets and never go onto a command line. For another repository, add `--repo <slug>`.
+
+### The cloud environment
+
+Claude Code on the web and similar cloud agents don’t have Taskwarrior 3, so they use `npx breakaway`. In the routine’s cloud environment:
+
+- **Best: an API credential** (Pro and Max plans). Add a Bearer credential for the board’s host, with the token as the `Authorization` header’s value. The proxy adds it to every request after it leaves the session, so the token never enters the session. Leave `BREAKAWAY_TOKEN` unset.
+- **Network access.** Set it to **Custom**, add the board’s host under **Allowed domains** (and `api.githubcopilot.com`, for the GitHub MCP server), and tick **Also include default list of common package managers** so installs keep working. With the credential alone, every call from the agents comes back 403.
+- **Otherwise: an environment variable.** `BREAKAWAY_TOKEN=<token>` plus the same network access. Values there are visible to anyone using the environment.
+- Either way, set `BREAKAWAY_AGENT=claude-cloud`, or pass `--as` each time.
+
+If the CLI says “can’t reach https://…” or “HTTP 403 from the session’s proxy”, the network settings don’t allow the board’s host. If it says “no token”, neither the credential nor the variable is set.
+
+## Watching a session
+
+No API reads a session’s output, so the session sends it. A repository’s `.claude/settings.json` has `async` hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.
+
+A task shows **Quiet** when its session hasn’t sent anything for 2 minutes: it may be waiting on something, or done.
+
+## Messaging a running agent
+
+Under a running agent’s live output, and from **Message** in the Agents view, you can send it a note of up to 2,000 characters. The board queues it for the agent that holds the claim. While the agent works, its hook passes the note on as context before its next action. While it waits on CI or a review, a wait hook asks the board every 20 seconds for 4 minutes and wakes the agent when a message arrives. After that, the message waits for the agent’s next turn.
+
+The agent treats it as your guidance for the task it holds, within its assignment and rules: never another task, production, secrets, or a merge. It answers with a comment on the task. Only the signed-in web board can send one. No secrets or personal data in a message.
+
+## Several repositories
+
+Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. One-per-area is per repository. `agents next --repo <slug>` picks from one repository only.
+
+## When something’s off
+
+- An agent that stays “Starting” never claimed its task: open its session.
+- One that comments “Started in …, but … is …’s” was started by a routine saved with the wrong repository: fix the routine’s repository on claude.ai.
+- A task that never shows live output while its agent works means the hook can’t reach the board: look for `claim`’s warning in the session, and check the environment’s allowed hosts.
+- “The routine’s token was refused” means the token was regenerated on claude.ai: run `npx breakaway agents-connect` again.
+- No agent starts in a repository whose prompt still has a `<…>` placeholder. Fill it in and merge it.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/ideas-decisions-pings/
+
+# Ideas, decisions, and pings
+
+> The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.
+
+## Ideas
+
+When you’d rather write down an idea than fill in a task, use **New idea** (`i` on the board, or the Idea tab in the New task dialog; `npx breakaway idea "…"` on the command line). It takes your words as they are and makes a task in the Ideas area (`IDEA-12`) with them as its description.
+
+- **You choose whether an agent starts on it by itself.** *Start its agent as soon as there’s room* sets the idea’s `autostart` when you save it. Off, the idea waits until you start its agent from the task or the Agents view. Agents never change this setting, for the idea or for any task they make.
+- **You choose the horizon too:** Now, Next, Later, or Auto. The choice is kept on the idea as a tag (`horizon-now`, …) and every task the agent makes gets exactly that horizon. With Auto, the agent picks one for each task from what’s already on the board.
+- **The agent shapes it, it doesn’t build it.** It checks the idea against the repository’s settled decisions, looks at the board for overlaps and blockers, writes a spec in `docs/specs/IDEA-12-<slug>.md`, and adds the real tasks with area, horizon, tags, dependencies, description, and done when filled in. Every one of them waits for the idea’s own ID, so nothing is built before you’ve read the spec.
+- **One pull request, yours to merge.** It holds the spec and closes the idea. Merging it releases the tasks. A task that needs a decision from you is tagged `+decide` and carries its questions.
+
+If an idea breaks a settled decision or something the repository isn’t doing, the agent doesn’t turn it into agent work: the spec says so plainly and asks you a question.
+
+Ideas take images too: the New idea form takes them by button, drag and drop, or paste, and `idea "…" --image shot.png` on the command line. PNG, JPEG, WebP, and GIF, up to 1 MB each and 4 per task. They stay on the board, never public, and the agent fetches and reads them before it starts.
+
+## Decisions
+
+A **decision** is how an agent asks you for a choice. A task can carry an ordered list of questions of seven types:
+
+| Type | You answer with |
+| --- | --- |
+| `open` | Free text |
+| `yesno` | Yes or no |
+| `choice` | Pick one option |
+| `multi` | Pick any, with optional `min` and `max` |
+| `rank` | Put the options in order |
+| `scale` | A whole number between two labelled ends |
+| `date` | A date |
+
+Each question has a stable `id`, a prompt, optional help, and, for choices, options that say what picking them means. Every answer can take a short comment. A task with questions gets `+decide`.
+
+- **Asking.** `npx breakaway decision --template` prints an example file. Attach it with `add … --decision <file.json>` or `modify <ID> --decision <file.json>`. Up to 20 questions and 20 KB; no personal data and no secrets. Work that waits for the answer depends on the task.
+- **Answering (you only).** In the task’s view on the board the questions are a form. **Send answers** turns on when every required question has an answer, and a draft stays in your browser. Sending stores the answers, removes `+decide`, marks the task done, and adds a comment that summarises them, so whatever waited for it is released. The CLI has no command to answer: an agent can’t decide for you.
+- **Reopening.** Reopen a submitted decision on the board to change an answer.
+
+Settled decisions that every change must respect go in the repository’s decision log (`docs/decisions.md`). If a task would break one, the agent stops and asks you instead of working around it.
+
+## Pings
+
+An agent that can’t finish a task because only you can help, or whose task turns out to be done or not reproducible, **pings** you instead of leaving a comment nobody sees. `ping <ID> --kind <kind> "<message>"` (the agent must hold the task) writes a comment and an entry in your inbox.
+
+| Kind | Means | Push |
+| --- | --- | --- |
+| `blocked` | It can’t finish because only you can give it something: a dashboard change, a production step, an account, a secret. | Yes |
+| `question` | It needs an answer that isn’t worth a full decision. | Yes |
+| `stale` | The task can’t be reproduced or already behaves as expected, so it should be closed instead of built. | Yes |
+| `done` | The work looks finished already, so you should confirm. | Yes |
+| `fyi` | Something you should know now that needs no action. Inbox only. | No |
+
+The message is up to 500 characters and is refused if it looks like a token. There are at most 3 pings per task and 10 per agent a day, and a repeat of the same kind and message is dropped. A ping stays open until you resolve it or the task is finished.
+
+### Proposals
+
+A ping can carry a **proposal**: up to 10 changes and 20 KB you can apply in one press. `ping --template` prints an example.
+
+- `add` tasks, with local `ref`s so they can depend on each other.
+- `depend`: add or remove dependencies between existing tasks.
+- `modify`: horizon, tags, brief, or done when.
+- `done`, with a note; and `release`.
+
+The server checks it when it’s proposed, refusing cycles, dependencies another path already implies, `autostart`, changes to `horizon-*` tags, and finishing a task in review. Agents propose; only you apply, dismiss, or mark a ping handled, in the signed-in browser. Apply checks every change again against the board as it is then and, if any no longer holds, changes nothing and tells you why.
+
+### Push notifications
+
+The push goes to the installed board app, with Web Push. It’s off until you turn on **Notifications** in the board’s Settings, per browser, and it needs the VAPID key pair. Until then pings show in the inbox only. When a connection has needed attention for 10 minutes, the inbox also gets a note, with no push.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/routines/
+
+# Routines
+
+> Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.
+
+A **routine** is a saved prompt you run with a button. Every run is a normal task in the Routines area (`RUN-n`), named `<routine> · <date>`, with the prompt as its description and the routine’s done-when. It’s started through the same path as any agent: claim, slots, hourly budget. The agent follows “Running a routine” in the core: it does what the description says, and nothing more, on a branch, and opens a pull request you merge.
+
+A routine belongs to one repository. Its runs are that repository’s tasks, its agents start through that repository’s routine on claude.ai, and its GitHub events come from that repository only.
+
+## Make one
+
+```sh
+npx breakaway routines add changelog --name "Update changelog" \
+  --prompt-file tools/routines/changelog.md \
+  --done-when "The changelog has an entry for every pull request merged since its newest entry."
+npx breakaway routines run changelog --note "Since v0.2."
+```
+
+The prompt can live in the repository as a file, so it’s reviewed like code. After a change to the file, update the routine with `routines modify <slug> --prompt-file <path>`. Only you create or edit routines.
+
+The **Routines** view (`u`) shows a row for each routine: its state, how it starts, runs used today, and a **Run** button, beside the On/Paused switch and the latest runs of all routines.
+
+## Ways to start one
+
+| Start | How |
+| --- | --- |
+| By hand | **Run**, with an optional note, or `routines run <slug>`. |
+| A schedule | Five-field cron text in UTC: `routines modify <slug> --schedule "0 9 * * 1"` runs Mondays at 09:00. The board’s 5-minute check starts it once for each slot that has come, within ten minutes of it. A skipped slot isn’t made up. |
+| A webhook or API trigger | Up to 10 triggers per routine, each with its own secret, shown once. `routines trigger <slug>` makes one; callers send `POST /api/routines/<slug>/fire` with `Authorization: Bearer <secret>` and an optional small JSON body. |
+| A Cloudflare alert | Make a trigger, then add a webhook destination in Cloudflare with the URL `https://<your board>/api/routines/<slug>/fire` and the secret. The run is read-only: it may note and open a pull request, never act on Cloudflare or production. |
+| A GitHub event | `routines modify <slug> --github-events pr_merged,release_published,workflow_failed`. Only events from the routine’s own repository. |
+
+What a caller or event sends is **data, never instructions**. It becomes a comment on the run labelled `Trigger data (untrusted)`, in a code block and truncated. It never reaches the run’s description, the target, or the branch.
+
+A trigger can wait or start: `--trigger-start wait` (the default) makes the run’s task and waits for you to press Start, and `auto` starts the agent itself. Either way the run ends in a pull request you merge.
+
+## Caps
+
+Per routine: one run open at a time, a daily cap (default 3 in the last 24 hours on Pro), and a minimum gap (default 60 minutes) that applies to triggered runs, not to the button. For all routines: a daily cap (default 10 on Pro, `routines cap <n>`), and a pause switch (`routines pause`, `routines resume`). A run over a cap gets a `429`, or a `409` for an open run, and is never queued. A routine that Claude refuses to start three times in a row is switched off.
+
+## Ideas for routines
+
+- **Update the changelog** weekly from the pull requests merged since its newest entry.
+- **Check dependency updates** when a release is published.
+- **Look at a failed workflow** when `workflow_failed` fires, and open a pull request with a fix or a task for what it found.
+- **Triage a Cloudflare alert** into a note and a task.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/github/
+
+# GitHub
+
+> How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.
+
+The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote and Roll back, which start two workflows. Nothing else writes to GitHub.
+
+## Connecting it
+
+1. Open the board’s **GitHub** view and select **Create the App on GitHub**. GitHub shows the App and its permissions; create it. GitHub sends you back to the board.
+2. The view shows `npx breakaway github-connect <code>`. Run it in a checkout of the board’s repository, with `wrangler` logged in, within the hour. It trades the code for the App’s ID, private key, and webhook secret and stores them as the board’s secrets. They never pass through the board or a command line.
+3. Open the install link it prints, choose **Only select repositories**, pick the repository, and install.
+4. In the repository’s settings, turn on **Allow auto-merge**.
+
+The App needs read and write on **Pull requests** and **Contents**, read and write on **Actions** where a repository has a deploy pipeline, and read on the rest (metadata, checks, commit statuses, deployments, Dependabot alerts). An App made from the board’s manifest has them. If you made yours before a permission was added, the buttons say so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
+
+Install the App on every repository you register. One App serves them all.
+
+## Pull requests and tasks
+
+A pull request **closes** a task when a sentence or line of its title or description *starts* with a closing word directly followed by the work IDs: `Closes BRK-12.`, `- Fixes BRK-5, BRK-12 and WEB-1`, `Resolves: DOC-6`. It also closes a task whose `pr` field is its number. Everything else is a **mention**. A pending task with an open closing pull request is **In review**; when the pull request merges the task is done, and when it’s closed without merging it gets a note and leaves review. Write `Part of <ID>.` in a spec or planning pull request.
+
+### How it stays current
+
+Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, Dependabot alerts, deployments, and releases schedule a sync 5 seconds later (a burst becomes one). A cron syncs every registered repository every 5 minutes in case one went missing, each on its own, so one repository’s failure or rate limit never stops another. **Sync now** in the GitHub view, or `npx breakaway github --sync`, does it at once.
+
+## The pull request page
+
+Select a pull request in the GitHub view to read it without leaving the board: a **verdict**, its checks (each linking to the run and its log), reviews, the conversation, and the diff, file by file. The verdict comes from GitHub’s `mergeable_state`:
+
+**Ready to merge**, **Has conflicts**, **Checks failing**, **Behind main**, **Checks running**, **Waiting on review**, or **Draft**. The open list sorts by it, and the GitHub item in the sidebar counts what’s ready to merge. The page is read live through the installation token, and diffs are never stored.
+
+### Publish, Update branch, Merge, Merge when green
+
+- **Publish…** marks a draft ready for review.
+- **Update branch** merges the default branch into the pull request’s branch (a merge commit, never a rebase or force-push), when it’s behind.
+- **Merge…** opens a dialog with the method (squash or merge commit), the tasks it finishes, and whether merging deploys a Worker. The head commit the page showed goes to GitHub with the request, so a push in between refuses the merge instead of merging code you haven’t seen.
+- **Merge when green…** turns on GitHub’s auto-merge while checks are still running. It needs **Allow auto-merge** in the repository’s settings.
+
+These are **cookie only**: they accept only the signed-in web board, from its own origin. The bearer token that agents, the CLI, and cloud sessions hold gets a 403, so none of them can merge, whatever they try. **The repository’s rules stay in charge:** the board refuses to merge drafts, closed pull requests, and ones that are behind, blocked, or conflicting, and if GitHub refuses anyway (a required check, a ruleset) it shows GitHub’s own message and changes nothing. Conflicts go to an agent.
+
+### Two standing settings
+
+The board’s **Settings** has two switches under **Pull requests**, both off until you turn them on. They’re a standing “press it for me”, with the same refusals.
+
+- **Keep branches up to date.** When the default branch moves on, the board updates the branch of every open pull request that’s behind. It skips drafts and pull requests with conflicts.
+- **Merge when green.** Every open pull request that isn’t a draft merges once its required checks pass, Dependabot’s included. It uses the method you last chose in the merge dialog. In a repository with a pipeline, merging deploys to staging, so turning it on asks first and says how many pull requests are ready to merge straight away.
+
+They’re kept in the browser’s local storage, not on the server, so they’re on only where you turned them on, and only while the board is open there. Agents can’t turn them on.
+
+## Fix with an agent
+
+On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, **Fix with an agent** (or **Address review comments**) starts an agent on the pull request’s own task. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges.
+
+## Deploys, releases, Promote and Roll back
+
+A repository with a **deploy pipeline** gets Releases, Promote, Roll back, and the warnings that merging deploys. Set it with `npx breakaway repos modify <slug> --pipeline pipeline.json`:
+
+```json
+{
+  "workers": { "staging": "widgets-staging", "production": "widgets" },
+  "workflows": { "deploy": "deploy.yml", "promote": "promote.yml", "rollback": "rollback.yml" },
+  "deployPaths": ".github/deploy-paths.json"
+}
+```
+
+`workers` is required. `workflows` and `deployPaths` are optional. Without a pipeline, merging deploys nothing and the GitHub view shows none of this.
+
+- A repository’s **Deploy**, **Promote**, and **Roll back** workflows record each deploy as a GitHub Deployment. The board reads them and shows a card for staging and one for production, with the commit, version, when it went live, and the tasks it carries.
+- When a deploy succeeds, the board finds the merged pull requests since the previous successful deploy and marks the tasks they closed **On staging** or **Live**.
+- **Promote to production…** asks first, listing the tasks and migrations, and starts the repository’s `promote.yml` with the latest successful staging deploy. A destructive migration needs a tick. **Roll back…** asks for the version to go back to and what broke, and starts `rollback.yml`. Both are cookie only, and the workflows check everything again.
+- A merged pull request that changes only docs, skills, or CI shows “No deploy needed”.
+
+The scripts those workflows run (`record-deployment.mjs`, `promote-check.mjs`, `release-notes.mjs`, `check-migrations.mjs`, `release-artifact.mjs`) are copied into a repository by `repos init`, so every repository makes the same checks.
+
+## Several repositories
+
+A webhook syncs the repository its delivery names; one that isn’t registered gets a `202` and is ignored. A pull request closes only tasks of its own repository: `Closes BRK-3.` in another repository’s pull request is a mention. The GitHub App is one; its installations are per repository.
+
+## Disconnecting, and a leaked key
+
+To disconnect, uninstall the App on GitHub. If the App’s key leaks, generate a new private key in the App’s settings, store it as the board’s `GITHUB_KEY` secret as one line of base64 PKCS#8, then delete the old key on GitHub. Because the App can merge, treat this as urgent.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/taskwarrior/
+
+# Taskwarrior
+
+> Use Taskwarrior 3 with the board: sync, the reports and contexts breakaway adds, how a checkout is set up, and why the web board and the CLI are enough without it.
+
+Taskwarrior stays a first-class way in. The board speaks the **TaskChampion sync protocol**, the same one Taskwarrior 3 uses, so `task sync` reads and writes the board like any other replica. Taskwarrior is optional: the web board and the CLI work without it, and cloud agents use the CLI because Ubuntu ships Taskwarrior 2.6.
+
+## Connect a machine
+
+On your machine, after `init-secrets` and with `BREAKAWAY_URL` in `tasks.env`:
+
+```sh
+npx breakaway setup
+```
+
+It writes `taskrc` in `~/.config/breakaway` (the credentials, and each repository’s report and context) and runs the first `task sync`. Then use `scripts/task …`, or install [direnv](https://direnv.net/) and run `direnv allow` once in the checkout so plain `task` uses the board. Each checkout and worktree keeps its own replica in `.task/` (ignored by Git), so parallel agents never share one database file.
+
+### A checkout
+
+Taskwarrior can’t read the environment, so a checkout’s `.taskrc` names the server and the file with this machine’s credentials:
+
+```text
+include tools/tasks/taskrc
+sync.server.url=https://tasks.example.org
+include ~/.config/breakaway/taskrc
+```
+
+`repos init` writes these lines for a new repository. The first line includes the board’s shared `taskrc`.
+
+### Another machine
+
+Copy `tasks.env` to `~/.config/breakaway/tasks.env` on the other machine (mode 0600) and run `npx breakaway setup`. Without Taskwarrior, the CLI still works with just the token.
+
+## Reports and contexts
+
+```sh
+task sync            # before reading and after changing: it's not automatic
+task board           # open work, best first
+task agent           # ready for an agent
+task claimed         # in progress, oldest claim first
+task owner           # needs you: owner work and open decisions
+task breakaway       # one report per repository
+task context breakaway   # only that repository's work
+task wid:BRK-12 info # one task
+task +BLOCKED        # anything Taskwarrior can filter
+```
+
+Taskwarrior’s numeric IDs belong to one replica; use the `wid` (or the UUID) when talking about a task anywhere else.
+
+## Fields
+
+The board’s fields are Taskwarrior UDAs (`wid`, `repo`, `horizon`, `claim`, `spec`, `pr`, `brief`, `done_when`, and more), declared in the shared `taskrc`. Taskwarrior carries `repo` like any field, so `repo:breakaway` filters. Tasks you make in Taskwarrior get their work IDs from the server.
+
+> **Claims go through the CLI.** Taskwarrior’s conflict resolution keeps the later of two edits, so two agents could each think they won a claim. The claim is atomic only through the board’s API.
+
+## If sync breaks
+
+- `task sync` fails with a 403: this replica has another client ID. Run `npx breakaway setup` again.
+- `410 Gone` on `get-child-version`: this replica last synced with another server, so the board doesn’t have its version. Start the replica again: `mv .task .task-stale`, then `scripts/task sync`, which fetches every task from the board’s snapshot. If the old one had changes that never reached the board, look them up with `TASKDATA=.task-stale task export` and make them again.
+- `Could not read include file '~/.config/breakaway/taskrc'`: run `npx breakaway setup`.
+
+More in [Operating a board](https://breakaway.samewave.dev/docs/operations/#when-somethings-wrong).
+
+---
+
+Source: https://breakaway.samewave.dev/docs/deploying/
+
+# Deploying and updating
+
+> How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
+
+breakaway **publishes releases and never deploys**. Every install, the maintainers’ own included, deploys a release from its own repository, and breakaway’s repository holds no Cloudflare credentials. Nothing runs new code on your board until you decide to update it.
+
+## The shape of it
+
+```text
+merge to breakaway's main
+        |
+        v
+CI passes -> a pre-release vX.Y.Z-main.N is published (the main channel)
+        |
+        v   (the maintainer runs the Release workflow)
+a stable release vX.Y.Z (the stable channel)
+
+your install repository ──reads── the update feed (/releases.json)
+        |
+        v
+Update workflow -> a pull request that moves breakaway.json   (stable)
+Update workflow / the board -> starts Deploy                  (main)
+        |
+        v
+Deploy -> checks -> wrangler deploy -> /api/ping -> keep it, or go back
+```
+
+## Releases
+
+- **Every merge to `main`**, once CI passes, publishes a GitHub pre-release `vX.Y.Z-main.N` on the **main** channel. It carries the bundle (`breakaway-bundle.tar.gz`: the Worker’s files and the web app’s `dist`), a `manifest.json`, and `SHA256SUMS`. The notes list the merged pull requests by title.
+- **A stable release** `vX.Y.Z` is the maintainer’s: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release’s, unchanged, and the notes cover everything since the last stable.
+- **The CLI** is on npm as [`breakaway`](https://www.npmjs.com/package/breakaway), published by the same workflow with trusted publishing (no token stored, with provenance). Every pre-release goes out under the `next` dist-tag, and a stable release as `latest`.
+- **The version** is what `GET /api/ping` and `GET /api/health` report as `release`.
+
+A **manifest** records the version, channel, commit, whether the release needs steps by hand (`manual`), and the lowest version it updates from (`updatesFrom`).
+
+### Major releases and manual steps
+
+A **major release** is one where an install has to do something by hand: a config or binding change, a Durable Object class or migration, a route or cron. Its notes have a **Manual steps** section and its manifest says `manual: true`, which an install’s Deploy stops on. Data the Durable Object stores changes forward-only and additively, so an install can always go back one release.
+
+## Choosing a channel
+
+| Channel | What you get | How it reaches you |
+| --- | --- | --- |
+| `stable` | A release the maintainer promoted. | The Update workflow looks hourly and opens a pull request that moves `breakaway.json`, with the release’s notes. You merge it, and Deploy runs. The board adds a note to your inbox, once per release. |
+| `main` | The latest pre-release, one per merge. | The board starts your Deploy workflow by itself when there’s a newer one, so the GitHub App needs read and write on Actions on the install repository. The hourly Update run is the fallback. |
+
+Keep `channel` in `breakaway.config.json` the same as in `breakaway.json`: `install init` writes both. An install with no `installRepository` makes no call and shows only what it runs.
+
+## The install repository
+
+`npx breakaway install init` writes five things:
+
+| File | What |
+| --- | --- |
+| `breakaway.config.json` | The install’s names: the board’s name, Worker, address, Secrets Store, and Durable Object. |
+| `breakaway.json` | The release this board runs (`version`) and how it updates (`channel`). |
+| `.github/workflows/deploy.yml` | Deploys the release to the Worker, checks that it answers, and goes back if it doesn’t. |
+| `.github/workflows/update.yml` | Looks for a newer release every hour. |
+| `.dev.vars.example` | The board’s secrets, and where each comes from. |
+
+Keep it private. Both workflows run breakaway’s CLI from the release’s own source on GitHub, with Node; apart from `wrangler`, nothing comes from npm.
+
+### What Deploy does
+
+1. Picks the release: `breakaway.json`’s pinned version on `stable`, or the latest pre-release on `main`. It reads the update feed named by the repository variable `BREAKAWAY_FEED`, and asks GitHub when the feed has nothing. Then it downloads the release’s bundle and checks it against `SHA256SUMS`.
+2. Stops, deploying nothing, if the release needs manual steps or you changed something in `breakaway.config.json` the workflow can’t deploy: the address, cron triggers, or Durable Object classes.
+3. Builds the Worker’s config (`install config`). A **dry-run** run stops here, after `wrangler deploy --dry-run`.
+4. Uploads a new version and deploys it (the very first run creates the Worker and its Durable Object), so every later deploy can be rolled back.
+5. Asks the Worker for `/api/ping` for up to a minute and checks it reports the new release. If it doesn’t, it goes back to the previous version and the run fails.
+
+Deploy runs on every push to `main` of the install repository, so editing `breakaway.config.json` and merging it is how you change the install. Set the repository variable `BREAKAWAY_URL` so the post-deploy check knows where to ask.
+
+### Updating
+
+For `stable`, merge the Update workflow’s pull request. For `main`, do nothing. To update by hand, edit `breakaway.json`'s `version` and merge, or run Deploy from the Actions tab.
+
+The board’s **Connections** page has a **Version** row that says what the board runs and the latest release in its channel. If it says a release “isn’t running yet”, open Actions on the install repository: the Deploy run says why it stopped.
+
+### Doing a manual step
+
+When Deploy stops on **Manual steps**, read the release notes, do the steps (for example, a new binding), and deploy with `wrangler` yourself. `npx breakaway install config` makes the Worker’s config. Then run Deploy again so the board records the release.
+
+## Rolling back
+
+Deploy checks that the new release answers and goes back by itself when it doesn’t. To go back by hand:
+
+1. **`stable`:** revert the pull request that moved `breakaway.json`, and merge the revert. Deploy runs the old release.
+2. **Either channel, right now:** run `wrangler rollback <version-id>`. The Worker’s versions are on Cloudflare.
+
+The board’s data only changes forward, and only by adding, so an install can always go back one release.
+
+## The update feed
+
+An install reads **one public feed** instead of GitHub’s API, which limits requests per address, and Workers share addresses. This site serves it at [`/releases.json`](https://breakaway.samewave.dev/releases.json):
+
+```json
+{
+  "repository": "TheAnarchoX/breakaway",
+  "channels": {
+    "stable": { "version": "0.2.0", "tag": "v0.2.0", "bundle": "https://…/breakaway-bundle.tar.gz", "manifest": "https://…/manifest.json", "checksums": "https://…/SHA256SUMS", "notes": "https://github.com/…/releases/tag/v0.2.0", "manual": false, "updatesFrom": "0.1.0", "published": "2026-10-03T09:00:00Z" },
+    "main": { "version": "0.2.1-main.4", "tag": "v0.2.1-main.4" }
+  }
+}
+```
+
+A channel with no usable release (none yet, or its assets or manifest are missing) is `null`. Releases are ordered by version and pre-release number, never by date. The feed is cached for ten minutes, has open CORS, and keeps nothing about who asked: no cookies, no analytics, no request logs. If GitHub can’t be reached and nothing is cached, it answers `503` with `Retry-After`.
+
+You can run your own copy of the feed from `site/` in the repository (`wrangler dev -c site/wrangler.jsonc`), pointed at a fork with the `RELEASES_REPO` variable. To host it, copy `site/deploy.yml` into the repository that deploys your board: it deploys the site from the latest stable release on your own domain, and again each time a new one comes out (`site/README.md` has the steps).
+
+## Deploying a repository your agents work on
+
+A different matter: a repository the board tracks can have its own **deploy pipeline** (staging and production Workers, and Deploy, Promote, and Roll back workflows). The board shows what’s on staging and what’s live, and you press **Promote** and **Roll back** in the browser. See [GitHub](https://breakaway.samewave.dev/docs/github/#deploys-releases-promote-and-roll-back).
+
+Agents never deploy. Merging to a repository’s default branch deploys to staging only if its pipeline says so, and the merge dialog warns you first.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/operations/
+
+# Operating a board
+
+> Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
+
+## Connections
+
+`npx breakaway connections` (or the **Connections** view, `w`) lists everything the board leans on. Each row is **Working**, **Needs attention**, or **Not connected**, with what the board saw, when, and the exact fix for each failure it can tell apart.
+
+- **Cloudflare:** the Worker’s version, each secret binding as `set` or `unset` (by name only, never a value), the 5-minute cron’s last run and first error, and whether the sync server reads its history and the stored secrets match after a rotation.
+- **GitHub:** the App (GitHub refusing its key), whether it’s installed on each registered repository, its permissions against what the board needs, **Allow auto-merge**, the webhook (when it last got one, signatures it refused, and failures from GitHub’s delivery log), and the sync: last success, last error, and requests left.
+- **Claude:** the routine connected or not, the last start’s result, routines switched off after three failed starts, the shared budget, and whether a started session is sending live output.
+- **Per repository:** each registered repository gets its own rows: the App installed on it, its permissions, auto-merge, its sync, and its agent routine.
+- **Taskwarrior** (when a replica last synced) and **Push** (keys set, browsers subscribed, the last send).
+- **Version:** what the board runs and the latest release in its channel.
+
+A check only reads. It never writes to GitHub, never starts an agent, and never costs a Claude start. The GitHub checks run once an hour from the cron, and again when you press **Check now** (the signed-in browser only, once every 30 seconds). How many rows need attention shows as a count on Connections and on Settings, and as a dot on the phone’s menu button. When a connection has needed attention for 10 minutes, your inbox gets a note, and another when it works again.
+
+Connections lists what it can’t check: the routine’s cloud environment and prompt on claude.ai, and Cloudflare’s own settings.
+
+## Secrets
+
+On an install with a Secrets Store, the secrets are in it (scope `workers`), bound in the Worker’s config, with names that start with the install’s `secretsPrefix` (`BREAKAWAY_` by default). Without one, they’re Worker secrets under their binding names.
+
+| Secrets Store name | Binding | What |
+| --- | --- | --- |
+| `BREAKAWAY_CLIENT_ID` | `TASKS_CLIENT_ID` | The Taskwarrior client ID. Anyone with it and the secret can read and write the board through Taskwarrior. |
+| `BREAKAWAY_SYNC_KEY` | `TASKS_SYNC_KEY` | PBKDF2-HMAC-SHA256(secret, client ID, 600000) as base64. Not the secret itself. |
+| `BREAKAWAY_API_TOKEN` | `TASKS_API_TOKEN` | The API and web token, at least 32 characters. Also signs the web cookie. |
+| `BREAKAWAY_ROUTINE_URL`, `BREAKAWAY_ROUTINE_TOKEN` | `TASKS_ROUTINE_*` | The default repository’s agent routine: its `/fire` URL and token. The token can only start that routine. |
+| `BREAKAWAY_ROUTINES` | `TASKS_ROUTINES` | Every other repository’s routine, as JSON keyed by slug. |
+| `BREAKAWAY_VAPID_KEY` (and the var `TASKS_VAPID_PUBLIC`) | `TASKS_VAPID_KEY` | The VAPID key pair for Web Push on pings. `unset` means notifications are off. |
+| `BREAKAWAY_GITHUB_APP_ID`, `…_GITHUB_KEY`, `…_GITHUB_WEBHOOK_SECRET` | `TASKS_GITHUB_*` | The GitHub App’s ID, private key, and webhook secret, written by `github-connect`. |
+
+`unset` means not connected. On an install without a Secrets Store, the commands that write secrets (`github-connect`, `agents-connect`, `rotate-sync`, `rotate-token`) set them with `wrangler secret put`, and each deploys a new version of the Worker.
+
+### Rotating secrets
+
+Both rotations are one command on your machine (with `wrangler` logged in). Each writes the new values to `tasks.env.next` before anything changes, keeps the old file as `tasks.env.<time>.bak` (its values stop working, so delete it once you’ve updated your password manager), and never puts a secret on a command line.
+
+**Rotate the sync credentials** when the client ID or secret leaked, or a machine that had them is gone:
+
+```sh
+npx breakaway rotate-sync
+```
+
+It makes a new client ID and secret and sends only the derived key to the server, which decrypts every stored version and the snapshot with the old key and seals them again with the new one, **keeping every version ID**, in one transaction. No history is lost and every replica carries on, including work it hadn’t synced yet. From that moment the old client ID gets a 403, and a replica syncs again once it has the new values (copy `tasks.env` to it and run `npx breakaway setup`). Cloud agents only use the token, so they need nothing.
+
+**Rotate the API token** when it leaked, or someone should lose access:
+
+```sh
+npx breakaway rotate-token
+```
+
+It updates the stored secret, waits until the server accepts the new token, and saves it. Every browser is signed out. Update `BREAKAWAY_TOKEN`, or the API credential, in your cloud environments.
+
+## Health
+
+`GET /api/ping` is public and says only that the Worker answers: `{ "ok": true, "version": "<Cloudflare version ID>", "release": "<semver>" }`. Nothing about tasks. A check after a deploy uses it. `npx breakaway health` (`GET /api/health`) is the signed-in version with the task count, the CLI version the board was built with, and a Connections count.
+
+## Backups and export
+
+The Durable Object’s SQLite storage has Cloudflare’s point-in-time recovery for the last 30 days. For a copy of your own:
+
+```sh
+npx breakaway export --out tasks-backup.json
+```
+
+It writes every task in every repository, with status and horizon, as the board’s JSON with comments, and checks the count against `health`, failing when they differ. Keep the file out of Git. A Taskwarrior replica is a full copy only while it syncs: compare `task count` with `health`’s total. A point-in-time restore of the Durable Object puts every replica that synced after the restore point in the same state: each one gets `410 Gone` and has to be started again.
+
+## The install
+
+What makes one board itself and not another is one file, `breakaway.config.json`:
+
+| Setting | What | A new install’s default |
+| --- | --- | --- |
+| `name` | The name people see: push notifications, the GitHub App | `breakaway` |
+| `worker` | The Worker’s name on Cloudflare | `breakaway` |
+| `url` | Where the board answers | none: workers.dev, and the address it was opened at |
+| `secretsPrefix` | Starts every secret’s name in the Secrets Store | `BREAKAWAY_` |
+| `secretsStore` | The Secrets Store’s ID | none: the secrets are Worker secrets |
+| `store` | The Durable Object’s name. Changing it starts an empty board | `breakaway` |
+| `installRepository`, `channel` | The repository the install deploys from and the channel it follows | none, `stable` |
+| `jurisdiction` | The Durable Object’s jurisdiction (`eu` or `fedramp`) | none |
+
+`node install.mjs` turns it into the Worker’s wrangler config. Never change `store` on a running install.
+
+## When something’s wrong
+
+| What you see | What to do |
+| --- | --- |
+| A button on the board doesn’t work, or something seems off | Run `npx breakaway connections`: it says which connection is broken and how to fix it. |
+| `Could not read include file '~/.config/breakaway/taskrc'` | Run `npx breakaway setup` (it needs `tasks.env`). |
+| `task sync` fails with a 403 | This replica has another client ID. Run `npx breakaway setup` again. |
+| `task sync` fails with `410 Gone` on `get-child-version` | This replica last synced with another server. Start it again: `mv .task .task-stale`, then `scripts/task sync`. |
+| `health` says the server can’t read its history | A replica synced with the right client ID but a different secret. Set that replica’s secret right, remove what it added, then rebuild with `POST /api/admin/rebuild`. |
+| A claim fails with “claimed by …” | Someone has it. Pick another, or ask the owner. `--force` is for the owner clearing a stale claim. |
+| “can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session | The environment’s network settings don’t allow the board’s host. See [Agents](https://breakaway.samewave.dev/docs/agents/#the-cloud-environment). |
+| The GitHub view says the last sync failed | A 401 or 404 means the App was uninstalled or its key changed: reinstall it, or store the current key. A 403 on Dependabot alerts is fine. |
+| A merged pull request didn’t finish its task | The pull request has to close it: `Closes <ID>.` in its title or description, or its number in the task’s `pr` field. A branch name only mentions. |
+| The web board keeps asking for the token | The token was rotated, or the cookie expired after 180 days. Sign in again. |
+| An agent never shows live output | The session hook can’t reach the board. Check the environment’s allowed hosts and `claim`’s warning. |
+| Deploy stopped with a message | A release needs manual steps, or `breakaway.config.json` changed something Deploy can’t deploy. Do what the message says, then run Deploy again. |
+| Version says a release “isn’t running yet” | Open Actions on the install repository: the Deploy run says why it stopped. |
+
+---
+
+Source: https://breakaway.samewave.dev/docs/architecture/
+
+# Architecture
+
+> What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.
+
+The board is **one Cloudflare Worker** on the install’s address. It has no build step for the server, and a Preact web app built with Vite served as static files.
+
+## The pieces
+
+- **`/v1/client/*`** is the [TaskChampion sync protocol](https://gothenburgbitfactory.org/taskchampion/), the same one as `taskchampion-sync-server`: a linear chain of encrypted versions, each a batch of Taskwarrior operations, plus snapshots. It accepts only the install’s client ID.
+- **One SQLite Durable Object** (`TaskStore`) stores the chain. It also holds the **derived sync key**: the client decrypts with PBKDF2 of the secret, and the Worker only ever sees the result. So it decrypts every version as it arrives and keeps the tasks in a table. Changes made through the API are written back as ordinary encrypted versions, so `task sync` picks them up like any other replica’s. The server takes its own snapshot every 50 versions, so a new replica starts fast.
+- **Claims are atomic.** The Durable Object runs one request at a time, and `claim` checks and sets in the same step.
+- **`/api/*`** is the JSON API behind the CLI and the web board. It needs the token as a bearer token, or the cookie the web board gets at `/login`; cookie requests that change something must come from the same origin. See [the API](https://breakaway.samewave.dev/docs/api/).
+- **`/`** is the web board: a Preact app on `@preact/signals`, built by Vite on breakaway’s design tokens and self-hosted fonts.
+- **GitHub.** `/github/webhook` checks each delivery’s signature and schedules a Durable Object alarm; the alarm and a 5-minute cron reconcile with GitHub’s REST API using a short-lived installation token kept in memory only, and store pull requests, runs, commits, alerts, and events in the same SQLite.
+- **Agents.** The board calls the Claude routine’s `/fire` endpoint to start a session. The session’s hooks send its output back to the board.
+
+The Worker logs nothing about tasks and has no invocation logs. Pages and API answers are `noindex` and never cached.
+
+## Data
+
+Everything is in the Durable Object’s SQLite. Task fields are Taskwarrior properties (UDAs), so `task sync` carries them. Short-lived things (session output, owner messages) live in their own tables and are deleted after 14 days; images are stored in an `attachments` table, never public. Data changes forward-only and additively, which is why an install can go back one release.
+
+## What leaves your account
+
+An install keeps its data. It calls only what you connect:
+
+- **GitHub**, through your private App, to read repositories and to do the five things you press.
+- **Claude**, to start the sessions you ask for.
+- **Web Push**, if you turn on notifications.
+
+No analytics, no telemetry, no tracking, and no other service.
+
+## Tests
+
+`pnpm test` runs the server’s tests: crypto against TaskChampion’s own test vector, the protocol, the replica, the API, sign-in, rotation, activity, and more. Nothing reaches the network: GitHub, Claude, and Web Push are mocked. `pnpm interop` checks the Worker against real Taskwarrior 3: two and three replicas, API changes and claims, conflicting edits, and a replica that starts from the server’s snapshot. Run it after changing sync, the replica, or the task model.
+
+## How breakaway is built
+
+breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else. The agents follow the repository’s `AGENTS.md`: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in `brand/`. The licence lets you change your own copy as much as you like.
+
+```sh
+pnpm install
+pnpm dev        # the board, locally
+pnpm test       # the tests
+pnpm build      # the web app
+pnpm interop    # checks sync against real Taskwarrior 3
+```
+
+---
+
+Source: https://breakaway.samewave.dev/docs/api/
+
+# The API
+
+> The board’s JSON API: how to sign in, the routes for tasks, agents, GitHub, repositories, and routines, which ones only the signed-in browser may call, and how to fire a routine from a webhook.
+
+The CLI and the web board are both clients of one JSON API on the board’s address. You can call it from scripts too. The CLI (`npx breakaway`) is the supported client; it tracks the API’s changes, so prefer it when a command exists.
+
+## Authentication
+
+Every `/api/*` route except `/api/ping` and a routine’s `/fire` needs the board’s token:
+
+```sh
+export BREAKAWAY_URL=https://board.example.com
+curl -H "Authorization: Bearer $BREAKAWAY_TOKEN" "$BREAKAWAY_URL/api/health"
+```
+
+- **The bearer token** is what agents, the CLI, and cloud sessions hold. Without it, or with a wrong one, the answer is `401`.
+- **The cookie** is what the web board gets when you sign in at `/login` (a form post with a `token` field, from the board’s own origin). It lasts 180 days. A cookie request that changes something must come from the same origin; a cross-origin one gets a `403`.
+- **Owner-only routes** accept the cookie and refuse the bearer token with a `403`. They’re what you can do and an agent can’t: merging, promoting, rolling back, applying a ping, messaging an agent, turning on notifications, and Check now. Routes that make you the actor (changing a repository, a routine, or a plan) refuse a request signed with an agent’s name.
+- Request bodies are JSON. Errors are `{ "error": "…" }` with a status that says what failed: `400` for input, `404`, `409` for a conflict (a claim someone else holds), `429` for a limit.
+
+## Health
+
+| Route | Answers |
+| --- | --- |
+| `GET /api/ping` | Public. `{ ok, version, release }`: the Cloudflare version ID and the semver release. Nothing about tasks. |
+| `GET /api/session` | Which board this is: its name and address. |
+| `GET /api/health` | The server’s state, with task counts, the CLI version, and the release. |
+| `GET /api/connections` | The Connections report. |
+| `GET /api/activity?limit=&before=` | Recent changes, newest first. |
+| `GET /api/stats?days=&tz=&repo=` | The Activity view’s numbers. |
+
+## Tasks
+
+| Route | Does |
+| --- | --- |
+| `GET /api/tasks?status=pending` | Lists tasks. `status` is `pending`, `completed`, `deleted`, or `all`. |
+| `POST /api/tasks` | Creates a task, or several: send one object, an array, or `{ tasks: […] }`. Later items may depend on earlier ones by work ID. Answers `201` with `{ tasks }`. |
+| `GET /api/tasks/<ref>` | One task in full: fields, comments, dependencies, and what it blocks. `<ref>` is a work ID, a UUID, or its first 8 characters. |
+| `PATCH /api/tasks/<ref>` | Changes fields. |
+| `POST /api/tasks/<ref>/claim` | `{ agent, force?, repo? }`. Atomic: `409` if someone else has it, or it’s blocked, or it belongs to another repository. |
+| `POST /api/tasks/<ref>/release` | `{ agent, force? }`. |
+| `POST /api/tasks/<ref>/done` | `{ note?, by? }`. |
+| `POST /api/tasks/<ref>/comments` | `{ text, by? }`. Append-only. |
+| `POST /api/tasks/<ref>/pings` | An agent pings you: `{ kind, message, proposal? }`. |
+| `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. |
+| `POST /api/next` | The best ready task; with `claim: true`, claims it in one step. |
+
+A task you create or change takes these fields: `description` (the title), `brief`, `done_when`, `project` (the area), `priority`, `horizon`, `spec`, `pr`, `due`, `wait`, `scheduled`, `status`, `autostart`, `decision`, and `repo` (on create). A create also takes `tags`, `depends`, `related`, and `note`; a change takes `addTags`, `removeTags`, `addDepends`, `removeDepends`, `addRelated`, `removeRelated`, and `annotate`.
+
+```sh
+curl -X POST -H "Authorization: Bearer $BREAKAWAY_TOKEN" -H "Content-Type: application/json" \
+  "$BREAKAWAY_URL/api/tasks" -d '{
+    "description": "Sort the inbox by age",
+    "project": "web",
+    "horizon": "now",
+    "tags": ["agent"],
+    "brief": "The oldest ping should be first, so nothing waits unseen.",
+    "done_when": "The inbox shows the oldest open ping first."
+  }'
+```
+
+Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with `X-Attachment-Name` and an optional `X-Attachment-Alt`), `GET` to list, and `GET /api/attachments/<id>` for the bytes: PNG, JPEG, WebP, and GIF, up to 1 MB each and 4 per task.
+
+## Agents, pings, and routines
+
+| Route | Does |
+| --- | --- |
+| `GET /api/agents` | Running and waiting agents, limits, and settings. |
+| `POST /api/agents/start` | `{ ref, note?, mode? }`. Starts an agent (`mode: "refine"` to refine). |
+| `POST /api/agents/next` | `{ count, horizon?, repo?, dryRun? }`. Start the next few. |
+| `PATCH /api/agents/settings` | The limits, plan, auto-start, and alert severity. |
+| `GET /api/agents/prompt?repo=` | A repository’s agent prompt as it is on its default branch. |
+| `GET /api/pings` | Your inbox: open pings and notices. |
+| `POST /api/pings/<id>/apply`, `/dismiss`, `/handled` | Owner only (the cookie). |
+| `GET /api/tasks/<ref>/session`, `POST …/session` | A session’s live output; the hooks send it. |
+| `POST /api/tasks/<ref>/messages` | Owner only: message a running agent. `GET …/messages` lists them. |
+| `GET /api/routines`, `POST /api/routines` | List or create routines. |
+| `PATCH /api/routines/<slug>` | Change one. |
+| `POST /api/routines/<slug>/run` | Run it now. |
+| `POST /api/routines/<slug>/triggers`, `DELETE …/triggers/<id>` | Make or revoke a webhook trigger. |
+| `POST /api/horizons/close` | Close now; `{ dryRun: true }` only counts. |
+
+### Firing a routine from outside
+
+A routine’s webhook trigger has its own secret and no board token:
+
+```sh
+curl -X POST "$BREAKAWAY_URL/api/routines/changelog/fire" \
+  -H "Authorization: Bearer swr_…" -H "Content-Type: application/json" \
+  -d '{ "note": "Release v0.3 is out.", "data": { "tag": "v0.3.0" } }'
+```
+
+The secret may also come in an `X-Routine-Secret` header. The body is at most 16 KB with an optional `note` (up to 1,000 characters) and `data` (up to 10 short keys). Nothing else is read, and what you send is stored as an untrusted comment, never as instructions. A wrong, revoked, or other routine’s secret gets `401`, the same answer whether or not the routine exists. `429` means a cap or the gap stopped it, `409` that the routine is off, `413` that the body was too big. See [Routines](https://breakaway.samewave.dev/docs/routines/).
+
+## GitHub
+
+| Route | Does |
+| --- | --- |
+| `GET /api/github?repo=` | Pull requests, checks, runs, deploys, alerts for a repository. |
+| `GET /api/github/pulls/<n>?repo=` | One pull request page, read live. |
+| `POST /api/github/sync` | Sync now. |
+| `POST /api/github/pulls/<n>/fix`, `…/review` | Start an agent on a pull request, or review a Dependabot one. |
+| `POST /api/github/alerts/<n>/fix` | Start an agent on a Dependabot alert. |
+| `POST /api/github/pulls/<n>/publish`, `update-branch`, `merge`, `auto-merge` | **Owner only.** The signed-in browser. |
+| `POST /api/github/promote`, `/rollback` | **Owner only.** Start the repository’s Promote or Roll back workflow. |
+
+Without `repo`, the default repository is read.
+
+## Repositories
+
+| Route | Does |
+| --- | --- |
+| `GET /api/repos` | The registry: repositories, areas, the default, and `firstRun`. |
+| `POST /api/repos` | Register one (`dryRun: true` only checks). Owner. |
+| `PATCH /api/repos/<slug>`, `DELETE /api/repos/<slug>` | Change or take one off the board. Owner. |
+| `POST /api/repos/<slug>/release` | Give a removed repository’s slug and prefixes back. Owner. |
+| `GET /api/repos/setup?slug=` | The Add a repository wizard’s state. |
+
+## The sync protocol
+
+`/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/).
+
+> **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. The board reports the CLI version it was built with in the `X-Tasks-Cli` header of every answer; a copy of the CLI that’s too old says how to update.
+
+---
+
+Source: https://breakaway.samewave.dev/docs/faq/
+
+# FAQ
+
+> The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.
+
+## Is breakaway free?
+
+Yes. It’s free to run, free to change, and free to self-host. The licence is **FSL-1.1-Apache-2.0**, the Functional Source License: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s [fair source](https://fair.io/licenses/). The source is public. The Open Source Initiative doesn’t count a fair source licence as open source until the Apache date, so breakaway calls itself free and fair source.
+
+There is no hosted version, and no accounts, teams, pricing, paid features, or ads.
+
+## Who hosts this site?
+
+samewave hosts this page. It’s a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](https://breakaway.samewave.dev/releases.json), to show the latest release.
+
+## Where does my data live?
+
+On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), and Web Push (if you turn on notifications).
+
+## Does it run my code, or deploy it?
+
+No. The board starts agents, and agents open pull requests. **You** merge and deploy. Nothing in breakaway merges or deploys on an agent’s word. The merge, update-branch, Promote, and Roll back routes accept only the signed-in browser. The bearer token that agents and the CLI hold gets a 403.
+
+## What does it work with?
+
+Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it. Cloud agents start through Claude Code’s routines, so starting agents from the board needs a Claude plan that has them. Local Claude Code sessions use the CLI and need nothing more.
+
+## Can I use it without Claude?
+
+Yes. The board is useful on its own as a task board with atomic claims, and any agent that can run `npx breakaway` can claim tasks and open pull requests. Starting agents from the board is Claude Code’s cloud routines today.
+
+## Can I use it without Taskwarrior?
+
+Yes. The web board and the CLI work without it. Taskwarrior 3 is a first-class way in if you want filters, reports, and offline work.
+
+## How many repositories can one board run?
+
+Several. Each has its own areas, prompt, agents, and GitHub App installation. The board shares the Worker, sign-in, inbox, and the limits on how many agents run at once.
+
+## What happens if two agents claim the same task?
+
+They can’t. The Durable Object checks and sets the claim in one step, so one wins and the other gets a `409`.
+
+## Does a release update my board by itself?
+
+Only if you choose the `main` channel, where the board starts your own Deploy workflow when there’s a newer pre-release. On `stable`, a newer release is a pull request in your install repository, and nothing deploys until you merge it. Either way Deploy goes back by itself if the new version doesn’t answer. See [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/).
+
+## How do I stay on top of what agents are doing?
+
+Open the Agents view for the running ones and their latest line, open a task for its live output, and read the Activity view for the stream. Pings arrive in your inbox, and as a push if you turned notifications on.
+
+## What does “leave the pack” mean?
+
+A breakaway is the rider who leaves the pack and holds the lead alone. That’s the idea: one person with one tool, moving fast.
+
+## How do I report a problem or a security issue?
+
+Report a security issue privately, as breakaway’s [security policy](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. breakaway takes no issues or pull requests otherwise: it’s built by its owner and their agents. The licence lets you fix your own copy.
+
+---

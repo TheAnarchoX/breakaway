@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+/**
+ * The release workflow's helper (.github/workflows/release.yml). Prints key=value lines for $GITHUB_OUTPUT.
+ *   node scripts/release/plan.mjs prerelease <tags-file>        the next pre-release's version and tag
+ *   node scripts/release/plan.mjs stable <prerelease-tag>       the stable version a pre-release becomes
+ *   node scripts/release/plan.mjs manifest <channel> <version> <commit> [builtAs]    writes manifest.json to stdout
+ *   node scripts/release/plan.mjs manual                         the Manual steps section for the notes, if any
+ * Reads package.json and release.json from the working directory.
+ */
+import { readFileSync } from 'node:fs';
+import { manifestOf, manualSection, nextPrerelease, stableOf } from './lib.js';
+
+const [command, ...args] = process.argv.slice(2);
+const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
+try {
+  if (command === 'prerelease') {
+    const tags = readFileSync(args[0], 'utf8')
+      .split('\n')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const { version, tag } = nextPrerelease(json('package.json').version, tags);
+    console.log(`version=${version}\ntag=${tag}`);
+  } else if (command === 'stable') {
+    console.log(`version=${stableOf(args[0])}`);
+  } else if (command === 'manifest') {
+    const [channel, version, commit, builtAs] = args;
+    process.stdout.write(
+      `${JSON.stringify(manifestOf({ version, channel: /** @type {'main' | 'stable'} */ (channel), commit, builtAs, config: json('release.json'), created: new Date().toISOString() }), null, 2)}\n`,
+    );
+  } else if (command === 'manual') {
+    process.stdout.write(manualSection(json('release.json')));
+  } else {
+    throw new Error(
+      'Usage: plan.mjs prerelease <tags-file> | stable <tag> | manifest <channel> <version> <commit> [builtAs] | manual',
+    );
+  }
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}

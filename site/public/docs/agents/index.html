@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents · breakaway</title>
+<meta name="description" content="How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/agents/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Agents · breakaway">
+<meta property="og:description" content="How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/agents/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/" aria-current="page">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Use it</p>
+    <h1>Agents</h1>
+    <p class="lede">How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.</p>
+    <p>An <strong>agent</strong> is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.</p>
+<h2 id="local-agents"><a class="anchor" href="#local-agents" aria-label="Link to this section">#</a>Local agents</h2>
+<p>A local agent works in a checkout of the repository with the CLI. The <code>tasks</code> skill, which <code>repos init</code> copies into the repository, tells it the loop:</p>
+<ol><li>Name yourself: <code>export BREAKAWAY_AGENT=claude-brk-12</code>.</li><li><code>npx breakaway health</code> to check the board answers.</li><li><code>npx breakaway next --claim</code>, or <code>claim &lt;ID&gt;</code> for a specific task. A <code>409</code> means someone has it or it’s blocked.</li><li><code>show &lt;ID&gt;</code>, then work on a branch, commenting what it learns.</li><li>Open a pull request with <code>Closes &lt;ID&gt;.</code> in the description, then <code>modify &lt;ID&gt; --pr &lt;number&gt;</code> and a <code>comment</code> with the result.</li><li>If it stops before a pull request: <code>comment</code> where it got to, then <code>release &lt;ID&gt;</code>.</li></ol>
+<h2 id="cloud-agents-from-the-board"><a class="anchor" href="#cloud-agents-from-the-board" aria-label="Link to this section">#</a>Cloud agents from the board</h2>
+<p>The board starts Claude Code cloud sessions on tasks and shows what each one is doing. Each is a normal cloud agent: it follows the <code>tasks</code> skill and its repository’s agent prompt, opens a pull request that closes its task, and keeps watching it until it merges.</p>
+<h3 id="five-ways-to-start-one"><a class="anchor" href="#five-ways-to-start-one" aria-label="Link to this section">#</a>Five ways to start one</h3>
+<ul><li><strong>On a task.</strong> <strong>Start an agent</strong>, with an optional note, in the task’s Agent section.</li><li><strong>The next few.</strong> In the Agents view, <strong>Start the next N</strong>. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon <code>now</code> first, then by priority.</li><li><strong>By itself when ready.</strong> Tick <strong>Start by itself when ready</strong> on a task (<code>modify &lt;ID&gt; --autostart yes</code>). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.</li><li><strong>For a Dependabot pull request.</strong> <strong>Safe to merge?</strong> on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.</li><li><strong>For a security alert.</strong> <strong>Fix with an agent</strong> on a Dependabot alert makes a task from it and starts an agent. In the Agents settings, you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.</li></ul>
+<p>Every start claims the task first, in one step, so nothing ever starts two agents on one task. A task can start an agent when it’s pending, tagged <code>+agent</code>, not <code>+decide</code>, unclaimed, not in review, and nothing blocks it.</p>
+<h3 id="modes"><a class="anchor" href="#modes" aria-label="Link to this section">#</a>Modes</h3>
+<p>An agent has a mode, set by how it was started.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Mode</th><th scope="col">What it does</th></tr></thead><tbody><tr><td>Build (default)</td><td>Does the task and opens a pull request that closes it.</td></tr><tr><td>Idea</td><td>An <code>IDEA-</code> task: shapes the idea into a spec and tasks. It doesn’t build.</td></tr><tr><td>Refine</td><td>Improves the task on the board: rewrites the description, fixes fields, splits it, or asks you a question. It doesn’t build. <code>agents refine &lt;ID&gt; --note &quot;…&quot;</code>; the note is required.</td></tr><tr><td>Review</td><td>Tests a Dependabot pull request and reports a verdict. It never merges.</td></tr><tr><td>Fix a pull request</td><td>Fixes a pull request’s conflict, failing checks, or review comments on its own branch, without rewriting history.</td></tr><tr><td>Routine</td><td>Does what a saved routine says. See <a href="/docs/routines/">Routines</a>.</td></tr></tbody></table></div>
+<h3 id="what-an-agent-follows"><a class="anchor" href="#what-an-agent-follows" aria-label="Link to this section">#</a>What an agent follows</h3>
+<p>Three files, so a change to the instructions needs no re-paste on claude.ai:</p>
+<ul><li><strong>The stub</strong>, pasted as the routine’s instructions on claude.ai. It only says to read the repository’s prompt in the checkout.</li><li><strong>The repository’s prompt</strong>, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see <a href="/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build">the playbook</a>).</li><li><strong>The core</strong>, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, decisions, and pings. It never says how to build.</li></ul>
+<p>The Agents view’s <strong>Agent prompts</strong> section has <strong>Copy stub</strong> and <strong>Copy full prompt</strong> for each repository. The core checks the payload’s <code>Repository:</code> line against the checkout’s <code>origin</code> before anything else, and an agent in the wrong checkout comments, releases, and stops.</p>
+<h3 id="what-agents-never-do"><a class="anchor" href="#what-agents-never-do" aria-label="Link to this section">#</a>What agents never do</h3>
+<p>These are the board’s rules, and a repository can add more:</p>
+<ul><li>Deploy, or touch production: databases, secrets stores, DNS, dashboards.</li><li>Merge, or push to the default branch. Changes reach it through pull requests you merge.</li><li>Start other agents, or set <code>--autostart</code>.</li><li>Share a secret, another repository’s work, or a person’s details.</li></ul>
+<p>The only merge button is in the signed-in web board. The bearer token that agents and the CLI hold gets a 403 from every merge, publish, and update-branch route.</p>
+<h2 id="limits"><a class="anchor" href="#limits" aria-label="Link to this section">#</a>Limits</h2>
+<p>At most <strong>3 agents</strong> work at once on Pro (up to 6, in the Agents settings). An agent counts while its task is claimed by it and has no open pull request, for up to 12 hours; once its pull request is open, the task is In review and the slot is free. At most <strong>20 starts an hour</strong> by default on Pro (1 to 30 in the settings; Claude allows 30 for each routine). Every start uses your Claude subscription.</p>
+<p>Claude has no API that says which plan an account is on, so you pick it at the top of the Agents settings (or <code>agents plan max5</code>). The plan sets how high the board’s own limits go:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Plan</th><th scope="col">Agents at once</th><th scope="col">Starts an hour</th><th scope="col">All routines a day</th><th scope="col">One routine a day</th></tr></thead><tbody><tr><td>Pro (the default)</td><td>3, up to 6</td><td>20</td><td>10, up to 100</td><td>3, up to 50</td></tr><tr><td>Max 5x</td><td>6, up to 12</td><td>30</td><td>25, up to 250</td><td>6, up to 100</td></tr><tr><td>Max 20x</td><td>10, up to 24</td><td>60</td><td>50, up to 500</td><td>10, up to 200</td></tr></tbody></table></div>
+<p>Each repository’s routine is held to Claude’s 30 starts an hour, and a repository can be capped below the board’s limits (<code>repos modify &lt;slug&gt; --agents-max &lt;n&gt; --agents-hourly &lt;n&gt;</code>) so a busy one can’t take every slot.</p>
+<h2 id="connecting-the-routine"><a class="anchor" href="#connecting-the-routine" aria-label="Link to this section">#</a>Connecting the routine</h2>
+<p>You do this once per repository. The Agents view walks you through it.</p>
+<ol><li>At <a href="https://claude.ai/code/routines">claude.ai/code/routines</a>, select <strong>New routine</strong>: name it after the repository, add the repository, pick the cloud environment, and paste the stub as its instructions. Choose the model there.</li><li>Save it, and under <strong>Select a trigger</strong> add an <strong>API</strong> trigger; select <strong>Generate token</strong>. Copy the URL and the token. The token shows once.</li><li>Run <code>npx breakaway agents-connect</code> and paste both. They’re stored as the board’s secrets and never go onto a command line. For another repository, add <code>--repo &lt;slug&gt;</code>.</li></ol>
+<h3 id="the-cloud-environment"><a class="anchor" href="#the-cloud-environment" aria-label="Link to this section">#</a>The cloud environment</h3>
+<p>Claude Code on the web and similar cloud agents don’t have Taskwarrior 3, so they use <code>npx breakaway</code>. In the routine’s cloud environment:</p>
+<ul><li><strong>Best: an API credential</strong> (Pro and Max plans). Add a Bearer credential for the board’s host, with the token as the <code>Authorization</code> header’s value. The proxy adds it to every request after it leaves the session, so the token never enters the session. Leave <code>BREAKAWAY_TOKEN</code> unset.</li><li><strong>Network access.</strong> Set it to <strong>Custom</strong>, add the board’s host under <strong>Allowed domains</strong> (and <code>api.githubcopilot.com</code>, for the GitHub MCP server), and tick <strong>Also include default list of common package managers</strong> so installs keep working. With the credential alone, every call from the agents comes back 403.</li><li><strong>Otherwise: an environment variable.</strong> <code>BREAKAWAY_TOKEN=&lt;token&gt;</code> plus the same network access. Values there are visible to anyone using the environment.</li><li>Either way, set <code>BREAKAWAY_AGENT=claude-cloud</code>, or pass <code>--as</code> each time.</li></ul>
+<p>If the CLI says “can’t reach https://…” or “HTTP 403 from the session’s proxy”, the network settings don’t allow the board’s host. If it says “no token”, neither the credential nor the variable is set.</p>
+<h2 id="watching-a-session"><a class="anchor" href="#watching-a-session" aria-label="Link to this section">#</a>Watching a session</h2>
+<p>No API reads a session’s output, so the session sends it. A repository’s <code>.claude/settings.json</code> has <code>async</code> hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.</p>
+<p>A task shows <strong>Quiet</strong> when its session hasn’t sent anything for 2 minutes: it may be waiting on something, or done.</p>
+<h2 id="messaging-a-running-agent"><a class="anchor" href="#messaging-a-running-agent" aria-label="Link to this section">#</a>Messaging a running agent</h2>
+<p>Under a running agent’s live output, and from <strong>Message</strong> in the Agents view, you can send it a note of up to 2,000 characters. The board queues it for the agent that holds the claim. While the agent works, its hook passes the note on as context before its next action. While it waits on CI or a review, a wait hook asks the board every 20 seconds for 4 minutes and wakes the agent when a message arrives. After that, the message waits for the agent’s next turn.</p>
+<p>The agent treats it as your guidance for the task it holds, within its assignment and rules: never another task, production, secrets, or a merge. It answers with a comment on the task. Only the signed-in web board can send one. No secrets or personal data in a message.</p>
+<h2 id="several-repositories"><a class="anchor" href="#several-repositories" aria-label="Link to this section">#</a>Several repositories</h2>
+<p>Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. One-per-area is per repository. <code>agents next --repo &lt;slug&gt;</code> picks from one repository only.</p>
+<h2 id="when-somethings-off"><a class="anchor" href="#when-somethings-off" aria-label="Link to this section">#</a>When something’s off</h2>
+<ul><li>An agent that stays “Starting” never claimed its task: open its session.</li><li>One that comments “Started in …, but … is …’s” was started by a routine saved with the wrong repository: fix the routine’s repository on claude.ai.</li><li>A task that never shows live output while its agent works means the hook can’t reach the board: look for <code>claim</code>’s warning in the session, and check the environment’s allowed hosts.</li><li>“The routine’s token was refused” means the token was regenerated on claude.ai: run <code>npx breakaway agents-connect</code> again.</li><li>No agent starts in a repository whose prompt still has a <code>&lt;…&gt;</code> placeholder. Fill it in and merge it.</li></ul>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/cli/"><span class="label">Previous</span><span>The CLI</span></a><a class="pager-next" href="/docs/ideas-decisions-pings/"><span class="label">Next</span><span>Ideas, decisions, and pings</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#local-agents">Local agents</a></li><li><a href="#cloud-agents-from-the-board">Cloud agents from the board</a></li><li><a href="#limits">Limits</a></li><li><a href="#connecting-the-routine">Connecting the routine</a></li><li><a href="#watching-a-session">Watching a session</a></li><li><a href="#messaging-a-running-agent">Messaging a running agent</a></li><li><a href="#several-repositories">Several repositories</a></li><li><a href="#when-somethings-off">When something’s off</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

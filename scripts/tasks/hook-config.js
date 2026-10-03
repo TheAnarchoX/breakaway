@@ -1,0 +1,57 @@
+/**
+ * What the session hooks share: the task this checkout claimed (.task-session, written by
+ * `tasks claim`) and where the board is, found the same way as the CLI (scripts/tasks/settings.js).
+ * Each returns null/undefined rather than throwing when something's missing, because the hooks stay quiet.
+ */
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { boardUrl, configDir, parseEnvFile, readSetting } from './settings.js';
+
+/** The project's root, as Claude Code gives it to hooks. */
+export function projectRoot() {
+  return process.env.CLAUDE_PROJECT_DIR || process.cwd();
+}
+
+/** A file's text, or null when it can't be read. */
+function readOptional(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** This machine's tasks.env, as `{ NAME: value }`. */
+function envFile() {
+  const dir = configDir({ env: process.env, home: homedir(), exists: existsSync });
+  return parseEnvFile(readOptional(join(dir, 'tasks.env')));
+}
+
+/** `{ uuid, agent, … }` from .task-session, or null without one (or with BREAKAWAY_SESSION_LOG=off). */
+export function claimedTask(root = projectRoot()) {
+  if (readSetting('SESSION_LOG', { env: process.env, file: envFile() }) === 'off') return null;
+  const marker = join(root, '.task-session');
+  if (!existsSync(marker)) return null;
+  try {
+    const claim = JSON.parse(readFileSync(marker, 'utf8'));
+    return claim?.uuid ? claim : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The board's base URL (null when nothing says which board) and, outside a cloud session, its token. */
+export function boardConfig(root = projectRoot()) {
+  const file = envFile();
+  let config = null;
+  try {
+    config = JSON.parse(readOptional(join(root, 'tools', 'tasks', 'breakaway.config.json')) ?? 'null');
+  } catch {
+    /* the CLI says what's wrong with it */
+  }
+  const { url } = boardUrl({ env: process.env, file, taskrc: readOptional(join(root, '.taskrc')), config });
+  // In a cloud session there's no token here: the environment's API credential adds it.
+  const token = readSetting('TOKEN', { env: process.env, file });
+  return { base: url, headers: token ? { Authorization: `Bearer ${token}` } : {} };
+}

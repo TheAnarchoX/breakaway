@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture · breakaway</title>
+<meta name="description" content="What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://breakaway.samewave.dev/docs/architecture/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Architecture · breakaway">
+<meta property="og:description" content="What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.">
+<meta property="og:url" content="https://breakaway.samewave.dev/docs/architecture/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu">
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/" aria-current="page">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Run it</p>
+    <h1>Architecture</h1>
+    <p class="lede">What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.</p>
+    <p>The board is <strong>one Cloudflare Worker</strong> on the install’s address. It has no build step for the server, and a Preact web app built with Vite served as static files.</p>
+<h2 id="the-pieces"><a class="anchor" href="#the-pieces" aria-label="Link to this section">#</a>The pieces</h2>
+<ul><li><strong><code>/v1/client/*</code></strong> is the <a href="https://gothenburgbitfactory.org/taskchampion/">TaskChampion sync protocol</a>, the same one as <code>taskchampion-sync-server</code>: a linear chain of encrypted versions, each a batch of Taskwarrior operations, plus snapshots. It accepts only the install’s client ID.</li><li><strong>One SQLite Durable Object</strong> (<code>TaskStore</code>) stores the chain. It also holds the <strong>derived sync key</strong>: the client decrypts with PBKDF2 of the secret, and the Worker only ever sees the result. So it decrypts every version as it arrives and keeps the tasks in a table. Changes made through the API are written back as ordinary encrypted versions, so <code>task sync</code> picks them up like any other replica’s. The server takes its own snapshot every 50 versions, so a new replica starts fast.</li><li><strong>Claims are atomic.</strong> The Durable Object runs one request at a time, and <code>claim</code> checks and sets in the same step.</li><li><strong><code>/api/*</code></strong> is the JSON API behind the CLI and the web board. It needs the token as a bearer token, or the cookie the web board gets at <code>/login</code>; cookie requests that change something must come from the same origin. See <a href="/docs/api/">the API</a>.</li><li><strong><code>/</code></strong> is the web board: a Preact app on <code>@preact/signals</code>, built by Vite on breakaway’s design tokens and self-hosted fonts.</li><li><strong>GitHub.</strong> <code>/github/webhook</code> checks each delivery’s signature and schedules a Durable Object alarm; the alarm and a 5-minute cron reconcile with GitHub’s REST API using a short-lived installation token kept in memory only, and store pull requests, runs, commits, alerts, and events in the same SQLite.</li><li><strong>Agents.</strong> The board calls the Claude routine’s <code>/fire</code> endpoint to start a session. The session’s hooks send its output back to the board.</li></ul>
+<p>The Worker logs nothing about tasks and has no invocation logs. Pages and API answers are <code>noindex</code> and never cached.</p>
+<h2 id="data"><a class="anchor" href="#data" aria-label="Link to this section">#</a>Data</h2>
+<p>Everything is in the Durable Object’s SQLite. Task fields are Taskwarrior properties (UDAs), so <code>task sync</code> carries them. Short-lived things (session output, owner messages) live in their own tables and are deleted after 14 days; images are stored in an <code>attachments</code> table, never public. Data changes forward-only and additively, which is why an install can go back one release.</p>
+<h2 id="what-leaves-your-account"><a class="anchor" href="#what-leaves-your-account" aria-label="Link to this section">#</a>What leaves your account</h2>
+<p>An install keeps its data. It calls only what you connect:</p>
+<ul><li><strong>GitHub</strong>, through your private App, to read repositories and to do the five things you press.</li><li><strong>Claude</strong>, to start the sessions you ask for.</li><li><strong>Web Push</strong>, if you turn on notifications.</li></ul>
+<p>No analytics, no telemetry, no tracking, and no other service.</p>
+<h2 id="tests"><a class="anchor" href="#tests" aria-label="Link to this section">#</a>Tests</h2>
+<p><code>pnpm test</code> runs the server’s tests: crypto against TaskChampion’s own test vector, the protocol, the replica, the API, sign-in, rotation, activity, and more. Nothing reaches the network: GitHub, Claude, and Web Push are mocked. <code>pnpm interop</code> checks the Worker against real Taskwarrior 3: two and three replicas, API changes and claims, conflicting edits, and a replica that starts from the server’s snapshot. Run it after changing sync, the replica, or the task model.</p>
+<h2 id="how-breakaway-is-built"><a class="anchor" href="#how-breakaway-is-built" aria-label="Link to this section">#</a>How breakaway is built</h2>
+<p>breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else. The agents follow the repository’s <code>AGENTS.md</code>: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in <code>brand/</code>. The licence lets you change your own copy as much as you like.</p>
+<pre data-lang="sh"><code>pnpm install
+pnpm dev        # the board, locally
+pnpm test       # the tests
+pnpm build      # the web app
+pnpm interop    # checks sync against real Taskwarrior 3</code></pre>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/operations/"><span class="label">Previous</span><span>Operating a board</span></a><a class="pager-next" href="/docs/api/"><span class="label">Next</span><span>The API</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#the-pieces">The pieces</a></li><li><a href="#data">Data</a></li><li><a href="#what-leaves-your-account">What leaves your account</a></li><li><a href="#tests">Tests</a></li><li><a href="#how-breakaway-is-built">How breakaway is built</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>
