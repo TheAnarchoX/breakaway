@@ -1,4 +1,4 @@
-# The site (LCH-15): breakaway.samewave.dev, the landing page, the docs, the install prompt, and the update feed.
+# The site (LCH-15): leavethepack.dev, the landing page, the docs, the install prompt, and the update feed.
 # Cloudflare's Workers Builds deploys it from the `site` branch, so no Cloudflare credentials live here. This workflow
 # moves that branch: the stable release calls it with the released tag, so the docs follow what `npx breakaway`
 # installs, and the owner runs it by hand to put a fix live before the next release. A ruleset lets only deploy keys
