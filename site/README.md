@@ -58,7 +58,8 @@ In the Cloudflare dashboard, on the account that holds the site's domain:
 
 1. **Workers & Pages, Create, Import a repository**: connect `TheAnarchoX/breakaway` (Cloudflare's GitHub app asks for access to it).
 2. **Worker name** `breakaway-releases`, the `name` in [`wrangler.jsonc`](wrangler.jsonc). **Root directory** `site`. **Build command** empty. **Deploy command** `npx wrangler deploy`.
-3. **Branch control**: production branch `site`, and builds for non-production branches off, so no other branch builds anything.
+3. **Build variable** `SKIP_DEPENDENCY_INSTALL` set to `1`. The site installs nothing: `npx` fetches Wrangler, and the Worker imports nothing from npm. Without it, Workers Builds runs `pnpm install` and stops on the repository's `pnpm-workspace.yaml`, which its older pnpm doesn't read.
+4. **Branch control**: production branch `site`, and builds for non-production branches off, so no other branch builds anything. The dashboard only offers branches that exist, so `site` has to be there first: the first stable release's site job creates it, or the Site workflow run by hand on `main`.
 
 The custom domain is in `wrangler.jsonc`, so the first deploy sets it up. Keep `RELEASES_REPO` as `TheAnarchoX/breakaway` unless you run a fork; a fork changes the domain and `RELEASES_REPO` with it.
 
