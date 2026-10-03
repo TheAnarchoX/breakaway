@@ -3,7 +3,7 @@ title: Deploying and updating
 description: How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
 ---
 
-breakaway **publishes releases and never deploys**. Every install, the maintainers’ own included, deploys a release from its own repository, and breakaway’s repository holds no Cloudflare credentials. Nothing runs new code on your board until you decide to update it.
+breakaway **publishes releases and never deploys an install**. Every install, the maintainers’ own included, deploys a release from its own repository, and breakaway’s repository holds no Cloudflare credentials: even this site is deployed by Cloudflare, from a branch each stable release moves. Nothing runs new code on your board until you decide to update it.
 
 ## The shape of it
 

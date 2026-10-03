@@ -169,7 +169,7 @@ pnpm interop    # checks sync against real Taskwarrior 3
 <details>
 <summary><b>Releases</b></summary>
 
-breakaway publishes releases and never deploys. Every install, the owner's included, deploys a release from its own repository, and this repository holds no Cloudflare credentials.
+breakaway publishes releases and never deploys an install. Every install, the owner's included, deploys a release from its own repository, and this repository holds no Cloudflare credentials. Its website follows the latest stable release: the release moves the `site` branch, and Cloudflare deploys it ([`site/README.md`](https://github.com/TheAnarchoX/breakaway/blob/main/site/README.md#deploy-it)).
 
 - **Every merge to `main`**, once CI passes, publishes a GitHub pre-release `vX.Y.Z-main.N` on the `main` channel. It carries the bundle (`breakaway-bundle.tar.gz`: the Worker's files and the web app's `dist`), a `manifest.json` (version, channel, commit, `manual`, and the lowest version it updates from), and `SHA256SUMS`. The notes list the merged pull requests by title.
 - **A stable release** `vX.Y.Z` is the owner's: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release's, unchanged, and the notes cover everything since the last stable.

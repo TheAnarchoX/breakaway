@@ -122,6 +122,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: npm
+    outputs:
+      version: ${{ steps.promote.outputs.version }}
     permissions:
       contents: write
       id-token: write
@@ -192,3 +194,14 @@ jobs:
             echo "::error title=npm refused to stage it::Until npm reads GitHub's immutable OIDC subjects (npm/cli#9969), the npm environment needs NPM_TOKEN: a granular token with read and write access to this package that doesn't bypass 2FA. After that, npm's trusted publisher must name exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, environment npm."
             exit 1
           fi
+
+  # The site follows the stable release (LCH-15): the Site workflow moves the site branch to it, and Cloudflare's
+  # Workers Builds deploys that branch.
+  site:
+    name: site
+    needs: stable
+    permissions:
+      contents: read
+    uses: ./.github/workflows/site.yml
+    with:
+      ref: v${{ needs.stable.outputs.version }}
