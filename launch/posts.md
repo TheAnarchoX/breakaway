@@ -4,7 +4,7 @@ Drafts for the owner to post: agents never post. The post and thread point to th
 
 Each post fits X (280 characters, a link counts as 23) and Bluesky (300), and stands on its own. Post to both from the same text. Put the media on the post it's listed under, with its alt text. Counts are as X counts them.
 
-Post once the site is live (`LCH-5`): post 4 sends people to the README's install prompt, which reads `breakaway.samewave.dev/install.md`.
+Post once the site is live (`LCH-5`): post 4 sends people to the README's install prompt, which reads `leavethepack.dev/install.md`.
 
 ## 1. The launch post
 
@@ -52,7 +52,7 @@ Post once the site is live (`LCH-5`): post 4 sends people to the README's instal
 
 The post points to the README rather than carrying the prompt: X and Bluesky shorten a long link's text, so a prompt copied from the post would break.
 
-**Alt text:** A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read breakaway.samewave.dev/install.md and follow it. And the line "Free, the source is public."
+**Alt text:** A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read leavethepack.dev/install.md and follow it. And the line "Free, the source is public."
 
 ## 5. The licence
 

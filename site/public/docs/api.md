@@ -90,7 +90,7 @@ curl -X POST "$BREAKAWAY_URL/api/routines/changelog/fire" \
   -d '{ "note": "Release v0.3 is out.", "data": { "tag": "v0.3.0" } }'
 ```
 
-The secret may also come in an `X-Routine-Secret` header. The body is at most 16 KB with an optional `note` (up to 1,000 characters) and `data` (up to 10 short keys). Nothing else is read, and what you send is stored as an untrusted comment, never as instructions. A wrong, revoked, or other routine’s secret gets `401`, the same answer whether or not the routine exists. `429` means a cap or the gap stopped it, `409` that the routine is off, `413` that the body was too big. See [Routines](https://breakaway.samewave.dev/docs/routines/).
+The secret may also come in an `X-Routine-Secret` header. The body is at most 16 KB with an optional `note` (up to 1,000 characters) and `data` (up to 10 short keys). Nothing else is read, and what you send is stored as an untrusted comment, never as instructions. A wrong, revoked, or other routine’s secret gets `401`, the same answer whether or not the routine exists. `429` means a cap or the gap stopped it, `409` that the routine is off, `413` that the body was too big. See [Routines](https://leavethepack.dev/docs/routines/).
 
 ## GitHub
 
@@ -118,6 +118,6 @@ Without `repo`, the default repository is read.
 
 ## The sync protocol
 
-`/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/).
+`/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/).
 
 > **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. The board reports the CLI version it was built with in the `X-Tasks-Cli` header of every answer; a copy of the CLI that’s too old says how to update.

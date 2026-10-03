@@ -11,7 +11,7 @@ The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anythi
 Paste this into [Claude Code](https://claude.com/claude-code), in an empty folder:
 
 ```text
-Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it.
+Set up a breakaway board for me. Read https://leavethepack.dev/install.md and follow it.
 ```
 
 It works through the steps below with you. It runs and checks what it can, and stops for each step only you can do: signing in, making a token, anything with a secret. It never asks for a secret in the chat. The prompt it reads is [`prompts/install.md`](https://github.com/TheAnarchoX/breakaway/blob/main/prompts/install.md) in breakaway’s repository.
@@ -110,7 +110,7 @@ The board starts agents through a routine you save on claude.ai.
 3. Add an **API** trigger, generate its token, and copy the URL and the token. The token shows once.
 4. Run `npx breakaway agents-connect` and paste both. For another repository, add `--repo <slug>`.
 
-**Check:** **Agent routine** reads **Working**. Start an agent on a task: **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn’t allow the board’s host. [Agents](https://breakaway.samewave.dev/docs/agents/) has the environment settings in full.
+**Check:** **Agent routine** reads **Working**. Start an agent on a task: **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn’t allow the board’s host. [Agents](https://leavethepack.dev/docs/agents/) has the environment settings in full.
 
 > **What Connections can’t check.** It can’t see claude.ai or Cloudflare’s own settings, so these are yours to check: the routine’s cloud environment (the allowed hosts: the board’s, `api.githubcopilot.com`, `registry.npmjs.org`, and the common package managers), the routine’s prompt (it should match the stub the Agents view shows), and Cloudflare’s custom domain, Secrets Store, and cron triggers.
 
@@ -123,7 +123,7 @@ npx breakaway health
 npx breakaway setup
 ```
 
-`health` checks that the CLI reaches the board. `setup` writes Taskwarrior’s settings and runs the first `task sync`. To use Taskwarrior in a checkout, [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) shows the three lines for its `.taskrc`.
+`health` checks that the CLI reaches the board. `setup` writes Taskwarrior’s settings and runs the first `task sync`. To use Taskwarrior in a checkout, [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) shows the three lines for its `.taskrc`.
 
 **Check:** **Taskwarrior sync** reads **Working**, and **Connect the CLI and Taskwarrior** is ticked. Then **Set up the board** disappears: every step is done.
 
@@ -135,8 +135,8 @@ npx breakaway add "Write the README’s install section" --project docs --tag ag
 npx breakaway claim DOC-1
 ```
 
-That’s the board, working. Next: [Concepts](https://breakaway.samewave.dev/docs/concepts/) explains what you just made, and [the playbook](https://breakaway.samewave.dev/docs/playbook/) covers how to get agents to finish what you hand them.
+That’s the board, working. Next: [Concepts](https://leavethepack.dev/docs/concepts/) explains what you just made, and [the playbook](https://leavethepack.dev/docs/playbook/) covers how to get agents to finish what you hand them.
 
 ## When something’s wrong
 
-Run `npx breakaway connections`. It lists every row with its state and the fix, the same as the Connections view. [Operating a board](https://breakaway.samewave.dev/docs/operations/#when-somethings-wrong) covers the rest.
+Run `npx breakaway connections`. It lists every row with its state and the fix, the same as the Connections view. [Operating a board](https://leavethepack.dev/docs/operations/#when-somethings-wrong) covers the rest.

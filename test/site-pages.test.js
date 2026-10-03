@@ -167,8 +167,7 @@ describe('the site', () => {
       expect(visible(html), path).not.toMatch(/\b160\b|pull requests in|editors? opened|real run/iu);
     const text = visible(built.get('index.html'));
     expect(text).toContain('FSL-1.1-Apache-2.0');
-    expect(text).toContain('samewave');
-    expect(text).toMatch(/non-commercial/u);
+    expect(text).toMatch(/no accounts, pricing, ads, or analytics/u);
     // The FAQ may name the term once, to say why the licence isn’t called that.
     for (const html of built.values())
       expect(
@@ -187,7 +186,7 @@ describe('the site', () => {
       );
       expect(visible(html), path).not.toMatch(/\$\d|per month|\/month|free trial|sign up|\bsubscribe\b|pricing plan/iu);
     }
-    expect(SITE.url).toBe('https://breakaway.samewave.dev');
+    expect(SITE.url).toBe('https://leavethepack.dev');
   });
 
   it('never says the name wrong or leans on the words the guide rules out', () => {

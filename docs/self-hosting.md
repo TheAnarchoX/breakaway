@@ -9,7 +9,7 @@ The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anythi
 Paste this into [Claude Code](https://claude.com/claude-code), in an empty folder:
 
 ```text
-Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it.
+Set up a breakaway board for me. Read https://leavethepack.dev/install.md and follow it.
 ```
 
 It works through the steps below with you. It runs and checks what it can, and stops for each step only you can do: signing in, making a token, anything with a secret. It never asks for a secret in the chat. The prompt it reads is [`prompts/install.md`](https://github.com/TheAnarchoX/breakaway/blob/main/prompts/install.md) in breakaway's repository.

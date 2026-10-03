@@ -1,6 +1,6 @@
 # The site: the landing page, the docs, and the update feed
 
-This folder is what breakaway.samewave.dev serves: a landing page and the docs (`public/`, static files) and the update feed (`src/`, a Worker). Both are deployed together from `site/wrangler.jsonc`.
+This folder is what leavethepack.dev serves: a landing page and the docs (`public/`, static files) and the update feed (`src/`, a Worker). Both are deployed together from `site/wrangler.jsonc`.
 
 ## The landing page and the docs
 

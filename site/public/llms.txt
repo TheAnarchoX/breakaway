@@ -6,41 +6,41 @@ breakaway is one Cloudflare Worker and one Durable Object that each person runs 
 
 ## Set it up
 
-- [The install prompt](https://breakaway.samewave.dev/install.md): paste "Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it." into Claude Code, and it sets up a board with its owner, step by step.
+- [The install prompt](https://leavethepack.dev/install.md): paste "Set up a breakaway board for me. Read https://leavethepack.dev/install.md and follow it." into Claude Code, and it sets up a board with its owner, step by step.
 
 ## Start
 
-- [breakaway docs](https://breakaway.samewave.dev/docs/index.md): Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
-- [Run your own board](https://breakaway.samewave.dev/docs/quickstart.md): Eight steps from nothing to a board that starts agents and updates itself. Each step ends with a check on Connections, the board’s own list of what it leans on.
-- [Concepts](https://breakaway.samewave.dev/docs/concepts.md): The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.
-- [The playbook](https://breakaway.samewave.dev/docs/playbook.md): How to get the most out of a board: write tasks agents finish, shape work before you build it, run many agents without collisions, and keep the review load down to one person.
+- [breakaway docs](https://leavethepack.dev/docs/index.md): Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
+- [Run your own board](https://leavethepack.dev/docs/quickstart.md): Eight steps from nothing to a board that starts agents and updates itself. Each step ends with a check on Connections, the board’s own list of what it leans on.
+- [Concepts](https://leavethepack.dev/docs/concepts.md): The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.
+- [The playbook](https://leavethepack.dev/docs/playbook.md): How to get the most out of a board: write tasks agents finish, shape work before you build it, run many agents without collisions, and keep the review load down to one person.
 
 ## Use it
 
-- [The web board](https://breakaway.samewave.dev/docs/web-board.md): Every view in the browser, what it shows, how to install it on a phone, and the keyboard shortcuts.
-- [The CLI](https://breakaway.samewave.dev/docs/cli.md): Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.
-- [Agents](https://breakaway.samewave.dev/docs/agents.md): How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.
-- [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings.md): The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.
-- [Routines](https://breakaway.samewave.dev/docs/routines.md): Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.
+- [The web board](https://leavethepack.dev/docs/web-board.md): Every view in the browser, what it shows, how to install it on a phone, and the keyboard shortcuts.
+- [The CLI](https://leavethepack.dev/docs/cli.md): Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.
+- [Agents](https://leavethepack.dev/docs/agents.md): How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.
+- [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings.md): The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.
+- [Routines](https://leavethepack.dev/docs/routines.md): Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.
 
 ## Connect
 
-- [GitHub](https://breakaway.samewave.dev/docs/github.md): How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.
-- [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior.md): Use Taskwarrior 3 with the board: sync, the reports and contexts breakaway adds, how a checkout is set up, and why the web board and the CLI are enough without it.
+- [GitHub](https://leavethepack.dev/docs/github.md): How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.
+- [Taskwarrior](https://leavethepack.dev/docs/taskwarrior.md): Use Taskwarrior 3 with the board: sync, the reports and contexts breakaway adds, how a checkout is set up, and why the web board and the CLI are enough without it.
 
 ## Run it
 
-- [Deploying and updating](https://breakaway.samewave.dev/docs/deploying.md): How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
-- [Operating a board](https://breakaway.samewave.dev/docs/operations.md): Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
-- [Architecture](https://breakaway.samewave.dev/docs/architecture.md): What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.
-- [The API](https://breakaway.samewave.dev/docs/api.md): The board’s JSON API: how to sign in, the routes for tasks, agents, GitHub, repositories, and routines, which ones only the signed-in browser may call, and how to fire a routine from a webhook.
+- [Deploying and updating](https://leavethepack.dev/docs/deploying.md): How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
+- [Operating a board](https://leavethepack.dev/docs/operations.md): Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
+- [Architecture](https://leavethepack.dev/docs/architecture.md): What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.
+- [The API](https://leavethepack.dev/docs/api.md): The board’s JSON API: how to sign in, the routes for tasks, agents, GitHub, repositories, and routines, which ones only the signed-in browser may call, and how to fire a routine from a webhook.
 
 ## More
 
-- [FAQ](https://breakaway.samewave.dev/docs/faq.md): The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.
+- [FAQ](https://leavethepack.dev/docs/faq.md): The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.
 
 ## Optional
 
-- [Every docs page in one file](https://breakaway.samewave.dev/llms-full.txt)
+- [Every docs page in one file](https://leavethepack.dev/llms-full.txt)
 - [The source](https://github.com/TheAnarchoX/breakaway): the Worker, the web app, the CLI, and the agents' prompts
-- [The update feed](https://breakaway.samewave.dev/releases.json): the latest release in each channel, as JSON
+- [The update feed](https://leavethepack.dev/releases.json): the latest release in each channel, as JSON

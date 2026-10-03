@@ -22,7 +22,7 @@ npx breakaway add "Sort the inbox by age" --project web --tag agent --horizon no
 
 ## Write down ideas, shape them, then build
 
-When you don’t know the task yet, write an **idea** (`i` on the board, or `npx breakaway idea "…"`). An agent turns it into a spec and a set of filled-in tasks in one pull request. You read one spec instead of ten tasks, and nothing is built until you merge it. [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) has the details.
+When you don’t know the task yet, write an **idea** (`i` on the board, or `npx breakaway idea "…"`). An agent turns it into a spec and a set of filled-in tasks in one pull request. You read one spec instead of ten tasks, and nothing is built until you merge it. [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) has the details.
 
 Use a spec for any change with real choices: a protocol, a data model, a flow people will use. Specs live in `docs/specs/<ID>-<slug>.md` with the problem, what was chosen and why, what’s out of scope, open questions, and done when.
 
@@ -64,15 +64,15 @@ The point of the board is that you merge and the agents do the rest. Protect you
 
 ## Use routines for the chores
 
-A **routine** is a saved prompt you run with a button, on a schedule, or on a GitHub event. Good ones: update the changelog from merged pull requests each week; check dependency updates; triage a failing workflow. Every run is a task and ends in a pull request you merge, so chores stay reviewable. See [Routines](https://breakaway.samewave.dev/docs/routines/).
+A **routine** is a saved prompt you run with a button, on a schedule, or on a GitHub event. Good ones: update the changelog from merged pull requests each week; check dependency updates; triage a failing workflow. Every run is a task and ends in a pull request you merge, so chores stay reviewable. See [Routines](https://leavethepack.dev/docs/routines/).
 
 ## Keep installs boring
 
-Releases don’t deploy themselves. On the `stable` channel, a newer release arrives as a pull request in your install repository; merge it and Deploy runs, then rolls back if the new version doesn’t answer. On `main`, the board starts the Deploy for you. Read [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/) once, and pick the channel that matches how much you want to be on the frontier.
+Releases don’t deploy themselves. On the `stable` channel, a newer release arrives as a pull request in your install repository; merge it and Deploy runs, then rolls back if the new version doesn’t answer. On `main`, the board starts the Deploy for you. Read [Deploying and updating](https://leavethepack.dev/docs/deploying/) once, and pick the channel that matches how much you want to be on the frontier.
 
 ## A good first week
 
-1. Run the [guide](https://breakaway.samewave.dev/docs/quickstart/) and get every Connections row to **Working**.
+1. Run the [guide](https://leavethepack.dev/docs/quickstart/) and get every Connections row to **Working**.
 2. Fill in the agent prompt and `AGENTS.md`, and make your checks fast.
 3. Add five small tasks with briefs and done-whens. Start one agent by hand and watch its live output.
 4. Merge the first pull request. Notice what the agent got wrong, and put the lesson in `AGENTS.md`, not in the next task.

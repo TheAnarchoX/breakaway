@@ -6,7 +6,7 @@
 import { compareVersions, isVersion } from './versions.js';
 
 /** The update feed (site/README.md), and breakaway's own repository, which the board reads instead while the feed has nothing. */
-export const FEED_URL = 'https://breakaway.samewave.dev/releases.json';
+export const FEED_URL = 'https://leavethepack.dev/releases.json';
 export const BREAKAWAY_REPO = 'TheAnarchoX/breakaway';
 /** The install repository's workflows (template/.github/workflows) and the branch its update pull request is on. */
 export const DEPLOY_WORKFLOW = 'deploy.yml';

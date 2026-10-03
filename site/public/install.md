@@ -2,7 +2,7 @@
 
 You're helping someone set up their own breakaway board: a task board for them and their coding agents, on their own Cloudflare account. It's theirs: they own it, run it, and decide. You do the typing. This file is the whole job. Read it to the end before you start, then work through it one step at a time.
 
-The owner started you with something like: "Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it." The full guide behind these steps is at https://breakaway.samewave.dev/docs/quickstart/, if a step needs more detail.
+The owner started you with something like: "Set up a breakaway board for me. Read https://leavethepack.dev/install.md and follow it." The full guide behind these steps is at https://leavethepack.dev/docs/quickstart/, if a step needs more detail.
 
 ## How you work
 
@@ -125,4 +125,4 @@ Only with a Claude plan that has routines. Otherwise skip to step 7.
 
 Run `npx breakaway connections` and go through anything that still needs attention, with the fix each row gives. Taskwarrior is optional: if they use it, `npx breakaway setup` connects it.
 
-Then add a first task together, in a checkout of the repository: `npx breakaway add "<something small that needs doing>" --project <area> --tag agent --horizon now`. Show them the board. Tell them where things are: the board in their browser, `npx breakaway help` for the CLI, and the docs at https://breakaway.samewave.dev/docs/. Then stop. From here on, the board is theirs.
+Then add a first task together, in a checkout of the repository: `npx breakaway add "<something small that needs doing>" --project <area> --tag agent --horizon now`. Show them the board. Tell them where things are: the board in their browser, `npx breakaway help` for the CLI, and the docs at https://leavethepack.dev/docs/. Then stop. From here on, the board is theirs.

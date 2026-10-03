@@ -93,4 +93,4 @@ This is a day on the board, from the first task to a merged change.
 6. The board marks the task **Done**, and whatever depended on it becomes ready.
 7. If an agent is stuck on something only you can do, it **pings** you, and releases the task.
 
-Next: [the playbook](https://breakaway.samewave.dev/docs/playbook/) turns this loop into habits that keep many agents productive.
+Next: [the playbook](https://leavethepack.dev/docs/playbook/) turns this loop into habits that keep many agents productive.

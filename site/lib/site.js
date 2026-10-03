@@ -4,7 +4,7 @@ import { escape, frontMatter, inline, render } from './markdown.js';
 
 export const SITE = {
   name: 'breakaway',
-  url: 'https://breakaway.samewave.dev',
+  url: 'https://leavethepack.dev',
   repo: 'https://github.com/TheAnarchoX/breakaway',
 };
 
@@ -77,7 +77,7 @@ const footer = () => `<footer class="site-footer">
         </ul>
       </nav>
     </div>
-    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page is hosted by samewave, a non-commercial project. It has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
   </div>
 </footer>`;
 

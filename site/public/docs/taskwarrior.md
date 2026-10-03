@@ -58,4 +58,4 @@ The board’s fields are Taskwarrior UDAs (`wid`, `repo`, `horizon`, `claim`, `s
 - `410 Gone` on `get-child-version`: this replica last synced with another server, so the board doesn’t have its version. Start the replica again: `mv .task .task-stale`, then `scripts/task sync`, which fetches every task from the board’s snapshot. If the old one had changes that never reached the board, look them up with `TASKDATA=.task-stale task export` and make them again.
 - `Could not read include file '~/.config/breakaway/taskrc'`: run `npx breakaway setup`.
 
-More in [Operating a board](https://breakaway.samewave.dev/docs/operations/#when-somethings-wrong).
+More in [Operating a board](https://leavethepack.dev/docs/operations/#when-somethings-wrong).

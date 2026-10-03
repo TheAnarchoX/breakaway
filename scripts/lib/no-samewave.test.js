@@ -24,7 +24,6 @@ const ALLOWED = {
   // The first install, as a Worker without TASKS_INSTALL.
   'src/install.js': [9, LEGACY_INSTALL],
   'src/repos.js': [4, LEGACY_INSTALL],
-  'src/updates.js': [1, 'the update feed’s address: samewave hosts breakaway’s page and feed'],
   'src/release.js': [2, LEGACY_INSTALL],
   'src/default-deploy-paths.json': [1, LEGACY_INSTALL],
   'src/backfill-shipped.js': [6, 'its first deployments are recorded under the first install’s Worker names'],
@@ -40,20 +39,6 @@ const ALLOWED = {
   'scripts/tasks/message-wait.mjs': [1, LEGACY_SETTINGS],
   'interop.mjs': [1, LEGACY_INSTALL],
   'docs/tasks.md': [8, LEGACY_SETTINGS],
-  // The site: samewave hosts breakaway’s page, so its address and the footer name it.
-  'site/public/': [0, 'the built pages carry the site’s address and say samewave hosts it'],
-  'site/lib/site.js': [2, 'the site’s address and the footer say samewave hosts it'],
-  'site/content/docs/faq.md': [1, 'says who hosts the site'],
-  'site/README.md': [1, 'the site’s address'],
-  // The install prompt (DOC-8) lives on the site, so the line people paste into Claude Code names its address.
-  'prompts/install.md': [2, 'the site’s address: where the install prompt and the docs live'],
-  'README.md': [13, 'the site’s address: the install prompt, the website, and the docs it links'],
-  'docs/self-hosting.md': [1, 'the site’s address: the install prompt people paste into Claude Code'],
-  'site/content/docs/quickstart.md': [1, 'the site’s address: the install prompt people paste into Claude Code'],
-  'site/content/index.html': [2, 'the site’s address: the install prompt people paste into Claude Code'],
-  'test/site-pages.test.js': [2, 'checks the site’s address and that it says who hosts it'],
-  'launch/posts.md': [2, 'the site’s address: when to post, and the install prompt on post 4’s card'],
-  'launch/tools/cards.mjs': [2, 'the site’s address: the install prompt on the Run your own card'],
   // The licensor: the owner's account, which the repository lives under.
   LICENSE: [1, 'the licence’s notice names the licensor'],
   // History.

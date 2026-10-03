@@ -40,14 +40,14 @@ An agent has a mode, set by how it was started.
 | Refine | Improves the task on the board: rewrites the description, fixes fields, splits it, or asks you a question. It doesn’t build. `agents refine <ID> --note "…"`; the note is required. |
 | Review | Tests a Dependabot pull request and reports a verdict. It never merges. |
 | Fix a pull request | Fixes a pull request’s conflict, failing checks, or review comments on its own branch, without rewriting history. |
-| Routine | Does what a saved routine says. See [Routines](https://breakaway.samewave.dev/docs/routines/). |
+| Routine | Does what a saved routine says. See [Routines](https://leavethepack.dev/docs/routines/). |
 
 ### What an agent follows
 
 Three files, so a change to the instructions needs no re-paste on claude.ai:
 
 - **The stub**, pasted as the routine’s instructions on claude.ai. It only says to read the repository’s prompt in the checkout.
-- **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://breakaway.samewave.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
+- **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://leavethepack.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
 - **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, decisions, and pings. It never says how to build.
 
 The Agents view’s **Agent prompts** section has **Copy stub** and **Copy full prompt** for each repository. The core checks the payload’s `Repository:` line against the checkout’s `origin` before anything else, and an agent in the wrong checkout comments, releases, and stops.

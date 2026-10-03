@@ -2,7 +2,7 @@
 
 > breakaway is a task board for you and your coding agents: they claim the work, you merge it. Free, fair source, and self-hosted on your own Cloudflare account.
 
-Source: https://breakaway.samewave.dev/docs/
+Source: https://leavethepack.dev/docs/
 
 # breakaway docs
 
@@ -14,26 +14,26 @@ These docs cover all of it. Start where you are.
 
 ## I want to run a board
 
-1. [Run your own board](https://breakaway.samewave.dev/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
-2. [Concepts](https://breakaway.samewave.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
-3. [The playbook](https://breakaway.samewave.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
+1. [Run your own board](https://leavethepack.dev/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
+2. [Concepts](https://leavethepack.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
+3. [The playbook](https://leavethepack.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
 ## I want to look something up
 
 | Looking for | Go to |
 | --- | --- |
-| A command | [The CLI](https://breakaway.samewave.dev/docs/cli/) |
-| An HTTP route, or how auth works | [The API](https://breakaway.samewave.dev/docs/api/) |
-| What a view in the browser does, or a keyboard shortcut | [The web board](https://breakaway.samewave.dev/docs/web-board/) |
-| How agents start, what they follow, and the limits | [Agents](https://breakaway.samewave.dev/docs/agents/) |
-| Ideas, decisions, and pings | [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) |
-| Saved agent runs on a schedule or an event | [Routines](https://breakaway.samewave.dev/docs/routines/) |
-| Pull requests, merging, Promote and Roll back | [GitHub](https://breakaway.samewave.dev/docs/github/) |
-| Taskwarrior 3 sync | [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) |
-| How a release reaches your board, and how to roll one back | [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/) |
-| Secrets, rotation, backups, and fixes | [Operating a board](https://breakaway.samewave.dev/docs/operations/) |
-| What runs where | [Architecture](https://breakaway.samewave.dev/docs/architecture/) |
-| Licence, privacy, and what breakaway doesn’t do | [FAQ](https://breakaway.samewave.dev/docs/faq/) |
+| A command | [The CLI](https://leavethepack.dev/docs/cli/) |
+| An HTTP route, or how auth works | [The API](https://leavethepack.dev/docs/api/) |
+| What a view in the browser does, or a keyboard shortcut | [The web board](https://leavethepack.dev/docs/web-board/) |
+| How agents start, what they follow, and the limits | [Agents](https://leavethepack.dev/docs/agents/) |
+| Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
+| Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
+| Pull requests, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
+| Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
+| How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
+| Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |
+| What runs where | [Architecture](https://leavethepack.dev/docs/architecture/) |
+| Licence, privacy, and what breakaway doesn’t do | [FAQ](https://leavethepack.dev/docs/faq/) |
 
 ## What the board promises
 
@@ -52,7 +52,7 @@ These are the claims the docs, the README, and this site all make, and the board
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/quickstart/
+Source: https://leavethepack.dev/docs/quickstart/
 
 # Run your own board
 
@@ -67,7 +67,7 @@ The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anythi
 Paste this into [Claude Code](https://claude.com/claude-code), in an empty folder:
 
 ```text
-Set up a breakaway board for me. Read https://breakaway.samewave.dev/install.md and follow it.
+Set up a breakaway board for me. Read https://leavethepack.dev/install.md and follow it.
 ```
 
 It works through the steps below with you. It runs and checks what it can, and stops for each step only you can do: signing in, making a token, anything with a secret. It never asks for a secret in the chat. The prompt it reads is [`prompts/install.md`](https://github.com/TheAnarchoX/breakaway/blob/main/prompts/install.md) in breakaway’s repository.
@@ -166,7 +166,7 @@ The board starts agents through a routine you save on claude.ai.
 3. Add an **API** trigger, generate its token, and copy the URL and the token. The token shows once.
 4. Run `npx breakaway agents-connect` and paste both. For another repository, add `--repo <slug>`.
 
-**Check:** **Agent routine** reads **Working**. Start an agent on a task: **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn’t allow the board’s host. [Agents](https://breakaway.samewave.dev/docs/agents/) has the environment settings in full.
+**Check:** **Agent routine** reads **Working**. Start an agent on a task: **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn’t allow the board’s host. [Agents](https://leavethepack.dev/docs/agents/) has the environment settings in full.
 
 > **What Connections can’t check.** It can’t see claude.ai or Cloudflare’s own settings, so these are yours to check: the routine’s cloud environment (the allowed hosts: the board’s, `api.githubcopilot.com`, `registry.npmjs.org`, and the common package managers), the routine’s prompt (it should match the stub the Agents view shows), and Cloudflare’s custom domain, Secrets Store, and cron triggers.
 
@@ -179,7 +179,7 @@ npx breakaway health
 npx breakaway setup
 ```
 
-`health` checks that the CLI reaches the board. `setup` writes Taskwarrior’s settings and runs the first `task sync`. To use Taskwarrior in a checkout, [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/) shows the three lines for its `.taskrc`.
+`health` checks that the CLI reaches the board. `setup` writes Taskwarrior’s settings and runs the first `task sync`. To use Taskwarrior in a checkout, [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) shows the three lines for its `.taskrc`.
 
 **Check:** **Taskwarrior sync** reads **Working**, and **Connect the CLI and Taskwarrior** is ticked. Then **Set up the board** disappears: every step is done.
 
@@ -191,15 +191,15 @@ npx breakaway add "Write the README’s install section" --project docs --tag ag
 npx breakaway claim DOC-1
 ```
 
-That’s the board, working. Next: [Concepts](https://breakaway.samewave.dev/docs/concepts/) explains what you just made, and [the playbook](https://breakaway.samewave.dev/docs/playbook/) covers how to get agents to finish what you hand them.
+That’s the board, working. Next: [Concepts](https://leavethepack.dev/docs/concepts/) explains what you just made, and [the playbook](https://leavethepack.dev/docs/playbook/) covers how to get agents to finish what you hand them.
 
 ## When something’s wrong
 
-Run `npx breakaway connections`. It lists every row with its state and the fix, the same as the Connections view. [Operating a board](https://breakaway.samewave.dev/docs/operations/#when-somethings-wrong) covers the rest.
+Run `npx breakaway connections`. It lists every row with its state and the fix, the same as the Connections view. [Operating a board](https://leavethepack.dev/docs/operations/#when-somethings-wrong) covers the rest.
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/concepts/
+Source: https://leavethepack.dev/docs/concepts/
 
 # Concepts
 
@@ -296,11 +296,11 @@ This is a day on the board, from the first task to a merged change.
 6. The board marks the task **Done**, and whatever depended on it becomes ready.
 7. If an agent is stuck on something only you can do, it **pings** you, and releases the task.
 
-Next: [the playbook](https://breakaway.samewave.dev/docs/playbook/) turns this loop into habits that keep many agents productive.
+Next: [the playbook](https://leavethepack.dev/docs/playbook/) turns this loop into habits that keep many agents productive.
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/playbook/
+Source: https://leavethepack.dev/docs/playbook/
 
 # The playbook
 
@@ -326,7 +326,7 @@ npx breakaway add "Sort the inbox by age" --project web --tag agent --horizon no
 
 ## Write down ideas, shape them, then build
 
-When you don’t know the task yet, write an **idea** (`i` on the board, or `npx breakaway idea "…"`). An agent turns it into a spec and a set of filled-in tasks in one pull request. You read one spec instead of ten tasks, and nothing is built until you merge it. [Ideas, decisions, and pings](https://breakaway.samewave.dev/docs/ideas-decisions-pings/) has the details.
+When you don’t know the task yet, write an **idea** (`i` on the board, or `npx breakaway idea "…"`). An agent turns it into a spec and a set of filled-in tasks in one pull request. You read one spec instead of ten tasks, and nothing is built until you merge it. [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) has the details.
 
 Use a spec for any change with real choices: a protocol, a data model, a flow people will use. Specs live in `docs/specs/<ID>-<slug>.md` with the problem, what was chosen and why, what’s out of scope, open questions, and done when.
 
@@ -368,15 +368,15 @@ The point of the board is that you merge and the agents do the rest. Protect you
 
 ## Use routines for the chores
 
-A **routine** is a saved prompt you run with a button, on a schedule, or on a GitHub event. Good ones: update the changelog from merged pull requests each week; check dependency updates; triage a failing workflow. Every run is a task and ends in a pull request you merge, so chores stay reviewable. See [Routines](https://breakaway.samewave.dev/docs/routines/).
+A **routine** is a saved prompt you run with a button, on a schedule, or on a GitHub event. Good ones: update the changelog from merged pull requests each week; check dependency updates; triage a failing workflow. Every run is a task and ends in a pull request you merge, so chores stay reviewable. See [Routines](https://leavethepack.dev/docs/routines/).
 
 ## Keep installs boring
 
-Releases don’t deploy themselves. On the `stable` channel, a newer release arrives as a pull request in your install repository; merge it and Deploy runs, then rolls back if the new version doesn’t answer. On `main`, the board starts the Deploy for you. Read [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/) once, and pick the channel that matches how much you want to be on the frontier.
+Releases don’t deploy themselves. On the `stable` channel, a newer release arrives as a pull request in your install repository; merge it and Deploy runs, then rolls back if the new version doesn’t answer. On `main`, the board starts the Deploy for you. Read [Deploying and updating](https://leavethepack.dev/docs/deploying/) once, and pick the channel that matches how much you want to be on the frontier.
 
 ## A good first week
 
-1. Run the [guide](https://breakaway.samewave.dev/docs/quickstart/) and get every Connections row to **Working**.
+1. Run the [guide](https://leavethepack.dev/docs/quickstart/) and get every Connections row to **Working**.
 2. Fill in the agent prompt and `AGENTS.md`, and make your checks fast.
 3. Add five small tasks with briefs and done-whens. Start one agent by hand and watch its live output.
 4. Merge the first pull request. Notice what the agent got wrong, and put the lesson in `AGENTS.md`, not in the next task.
@@ -385,7 +385,7 @@ Releases don’t deploy themselves. On the `stable` channel, a newer release arr
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/web-board/
+Source: https://leavethepack.dev/docs/web-board/
 
 # The web board
 
@@ -453,7 +453,7 @@ Carbon (dark) is the default, and chalk (light) follows the system or your choic
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/cli/
+Source: https://leavethepack.dev/docs/cli/
 
 # The CLI
 
@@ -562,7 +562,7 @@ Picking a plan, closing a horizon, and creating routines or registering reposito
 | `repos setup <slug\|owner/name>` | The Add a repository wizard’s steps for it. Read only. |
 | `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. |
 | `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
-| `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://breakaway.samewave.dev/docs/routines/). |
+| `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://leavethepack.dev/docs/routines/). |
 
 ## Setup and secrets
 
@@ -572,7 +572,7 @@ Picking a plan, closing a horizon, and creating routines or registering reposito
 | `setup` | Connects this machine’s Taskwarrior: writes `taskrc` and runs the first `task sync`. |
 | `github-connect <code>` | Stores the GitHub App’s keys. |
 | `agents-connect [--repo <slug>]` | Stores an agent routine’s URL and token. |
-| `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](https://breakaway.samewave.dev/docs/operations/#rotating-secrets). |
+| `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](https://leavethepack.dev/docs/operations/#rotating-secrets). |
 
 ## The install repository
 
@@ -589,7 +589,7 @@ These need no board: they’re the files and steps that deploy a board from its 
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/agents/
+Source: https://leavethepack.dev/docs/agents/
 
 # Agents
 
@@ -633,14 +633,14 @@ An agent has a mode, set by how it was started.
 | Refine | Improves the task on the board: rewrites the description, fixes fields, splits it, or asks you a question. It doesn’t build. `agents refine <ID> --note "…"`; the note is required. |
 | Review | Tests a Dependabot pull request and reports a verdict. It never merges. |
 | Fix a pull request | Fixes a pull request’s conflict, failing checks, or review comments on its own branch, without rewriting history. |
-| Routine | Does what a saved routine says. See [Routines](https://breakaway.samewave.dev/docs/routines/). |
+| Routine | Does what a saved routine says. See [Routines](https://leavethepack.dev/docs/routines/). |
 
 ### What an agent follows
 
 Three files, so a change to the instructions needs no re-paste on claude.ai:
 
 - **The stub**, pasted as the routine’s instructions on claude.ai. It only says to read the repository’s prompt in the checkout.
-- **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://breakaway.samewave.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
+- **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://leavethepack.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
 - **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, decisions, and pings. It never says how to build.
 
 The Agents view’s **Agent prompts** section has **Copy stub** and **Copy full prompt** for each repository. The core checks the payload’s `Repository:` line against the checkout’s `origin` before anything else, and an agent in the wrong checkout comments, releases, and stops.
@@ -715,7 +715,7 @@ Each registered repository starts its agents through its own routine, because a 
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/ideas-decisions-pings/
+Source: https://leavethepack.dev/docs/ideas-decisions-pings/
 
 # Ideas, decisions, and pings
 
@@ -787,7 +787,7 @@ The push goes to the installed board app, with Web Push. It’s off until you tu
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/routines/
+Source: https://leavethepack.dev/docs/routines/
 
 # Routines
 
@@ -837,7 +837,7 @@ Per routine: one run open at a time, a daily cap (default 3 in the last 24 hours
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/github/
+Source: https://leavethepack.dev/docs/github/
 
 # GitHub
 
@@ -923,7 +923,7 @@ To disconnect, uninstall the App on GitHub. If the App’s key leaks, generate a
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/taskwarrior/
+Source: https://leavethepack.dev/docs/taskwarrior/
 
 # Taskwarrior
 
@@ -985,11 +985,11 @@ The board’s fields are Taskwarrior UDAs (`wid`, `repo`, `horizon`, `claim`, `s
 - `410 Gone` on `get-child-version`: this replica last synced with another server, so the board doesn’t have its version. Start the replica again: `mv .task .task-stale`, then `scripts/task sync`, which fetches every task from the board’s snapshot. If the old one had changes that never reached the board, look them up with `TASKDATA=.task-stale task export` and make them again.
 - `Could not read include file '~/.config/breakaway/taskrc'`: run `npx breakaway setup`.
 
-More in [Operating a board](https://breakaway.samewave.dev/docs/operations/#when-somethings-wrong).
+More in [Operating a board](https://leavethepack.dev/docs/operations/#when-somethings-wrong).
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/deploying/
+Source: https://leavethepack.dev/docs/deploying/
 
 # Deploying and updating
 
@@ -1085,7 +1085,7 @@ The board’s data only changes forward, and only by adding, so an install can a
 
 ## The update feed
 
-An install reads **one public feed** instead of GitHub’s API, which limits requests per address, and Workers share addresses. This site serves it at [`/releases.json`](https://breakaway.samewave.dev/releases.json):
+An install reads **one public feed** instead of GitHub’s API, which limits requests per address, and Workers share addresses. This site serves it at [`/releases.json`](https://leavethepack.dev/releases.json):
 
 ```json
 {
@@ -1103,13 +1103,13 @@ You can run your own copy of the feed from `site/` in the repository (`wrangler 
 
 ## Deploying a repository your agents work on
 
-A different matter: a repository the board tracks can have its own **deploy pipeline** (staging and production Workers, and Deploy, Promote, and Roll back workflows). The board shows what’s on staging and what’s live, and you press **Promote** and **Roll back** in the browser. See [GitHub](https://breakaway.samewave.dev/docs/github/#deploys-releases-promote-and-roll-back).
+A different matter: a repository the board tracks can have its own **deploy pipeline** (staging and production Workers, and Deploy, Promote, and Roll back workflows). The board shows what’s on staging and what’s live, and you press **Promote** and **Roll back** in the browser. See [GitHub](https://leavethepack.dev/docs/github/#deploys-releases-promote-and-roll-back).
 
 Agents never deploy. Merging to a repository’s default branch deploys to staging only if its pipeline says so, and the merge dialog warns you first.
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/operations/
+Source: https://leavethepack.dev/docs/operations/
 
 # Operating a board
 
@@ -1207,7 +1207,7 @@ What makes one board itself and not another is one file, `breakaway.config.json`
 | `task sync` fails with `410 Gone` on `get-child-version` | This replica last synced with another server. Start it again: `mv .task .task-stale`, then `scripts/task sync`. |
 | `health` says the server can’t read its history | A replica synced with the right client ID but a different secret. Set that replica’s secret right, remove what it added, then rebuild with `POST /api/admin/rebuild`. |
 | A claim fails with “claimed by …” | Someone has it. Pick another, or ask the owner. `--force` is for the owner clearing a stale claim. |
-| “can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session | The environment’s network settings don’t allow the board’s host. See [Agents](https://breakaway.samewave.dev/docs/agents/#the-cloud-environment). |
+| “can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session | The environment’s network settings don’t allow the board’s host. See [Agents](https://leavethepack.dev/docs/agents/#the-cloud-environment). |
 | The GitHub view says the last sync failed | A 401 or 404 means the App was uninstalled or its key changed: reinstall it, or store the current key. A 403 on Dependabot alerts is fine. |
 | A merged pull request didn’t finish its task | The pull request has to close it: `Closes <ID>.` in its title or description, or its number in the task’s `pr` field. A branch name only mentions. |
 | The web board keeps asking for the token | The token was rotated, or the cookie expired after 180 days. Sign in again. |
@@ -1217,7 +1217,7 @@ What makes one board itself and not another is one file, `breakaway.config.json`
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/architecture/
+Source: https://leavethepack.dev/docs/architecture/
 
 # Architecture
 
@@ -1230,7 +1230,7 @@ The board is **one Cloudflare Worker** on the install’s address. It has no bui
 - **`/v1/client/*`** is the [TaskChampion sync protocol](https://gothenburgbitfactory.org/taskchampion/), the same one as `taskchampion-sync-server`: a linear chain of encrypted versions, each a batch of Taskwarrior operations, plus snapshots. It accepts only the install’s client ID.
 - **One SQLite Durable Object** (`TaskStore`) stores the chain. It also holds the **derived sync key**: the client decrypts with PBKDF2 of the secret, and the Worker only ever sees the result. So it decrypts every version as it arrives and keeps the tasks in a table. Changes made through the API are written back as ordinary encrypted versions, so `task sync` picks them up like any other replica’s. The server takes its own snapshot every 50 versions, so a new replica starts fast.
 - **Claims are atomic.** The Durable Object runs one request at a time, and `claim` checks and sets in the same step.
-- **`/api/*`** is the JSON API behind the CLI and the web board. It needs the token as a bearer token, or the cookie the web board gets at `/login`; cookie requests that change something must come from the same origin. See [the API](https://breakaway.samewave.dev/docs/api/).
+- **`/api/*`** is the JSON API behind the CLI and the web board. It needs the token as a bearer token, or the cookie the web board gets at `/login`; cookie requests that change something must come from the same origin. See [the API](https://leavethepack.dev/docs/api/).
 - **`/`** is the web board: a Preact app on `@preact/signals`, built by Vite on breakaway’s design tokens and self-hosted fonts.
 - **GitHub.** `/github/webhook` checks each delivery’s signature and schedules a Durable Object alarm; the alarm and a 5-minute cron reconcile with GitHub’s REST API using a short-lived installation token kept in memory only, and store pull requests, runs, commits, alerts, and events in the same SQLite.
 - **Agents.** The board calls the Claude routine’s `/fire` endpoint to start a session. The session’s hooks send its output back to the board.
@@ -1269,7 +1269,7 @@ pnpm interop    # checks sync against real Taskwarrior 3
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/api/
+Source: https://leavethepack.dev/docs/api/
 
 # The API
 
@@ -1363,7 +1363,7 @@ curl -X POST "$BREAKAWAY_URL/api/routines/changelog/fire" \
   -d '{ "note": "Release v0.3 is out.", "data": { "tag": "v0.3.0" } }'
 ```
 
-The secret may also come in an `X-Routine-Secret` header. The body is at most 16 KB with an optional `note` (up to 1,000 characters) and `data` (up to 10 short keys). Nothing else is read, and what you send is stored as an untrusted comment, never as instructions. A wrong, revoked, or other routine’s secret gets `401`, the same answer whether or not the routine exists. `429` means a cap or the gap stopped it, `409` that the routine is off, `413` that the body was too big. See [Routines](https://breakaway.samewave.dev/docs/routines/).
+The secret may also come in an `X-Routine-Secret` header. The body is at most 16 KB with an optional `note` (up to 1,000 characters) and `data` (up to 10 short keys). Nothing else is read, and what you send is stored as an untrusted comment, never as instructions. A wrong, revoked, or other routine’s secret gets `401`, the same answer whether or not the routine exists. `429` means a cap or the gap stopped it, `409` that the routine is off, `413` that the body was too big. See [Routines](https://leavethepack.dev/docs/routines/).
 
 ## GitHub
 
@@ -1391,13 +1391,13 @@ Without `repo`, the default repository is read.
 
 ## The sync protocol
 
-`/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://breakaway.samewave.dev/docs/taskwarrior/).
+`/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/).
 
 > **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. The board reports the CLI version it was built with in the `X-Tasks-Cli` header of every answer; a copy of the CLI that’s too old says how to update.
 
 ---
 
-Source: https://breakaway.samewave.dev/docs/faq/
+Source: https://leavethepack.dev/docs/faq/
 
 # FAQ
 
@@ -1411,7 +1411,7 @@ There is no hosted version, and no accounts, teams, pricing, paid features, or a
 
 ## Who hosts this site?
 
-samewave hosts this page. It’s a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](https://breakaway.samewave.dev/releases.json), to show the latest release.
+breakaway’s maintainer hosts it, as a non-commercial project. The page has no accounts, pricing, ads, or analytics. The only request it makes of its own is an optional fetch of the [update feed](https://leavethepack.dev/releases.json), to show the latest release.
 
 ## Where does my data live?
 
@@ -1443,7 +1443,7 @@ They can’t. The Durable Object checks and sets the claim in one step, so one w
 
 ## Does a release update my board by itself?
 
-Only if you choose the `main` channel, where the board starts your own Deploy workflow when there’s a newer pre-release. On `stable`, a newer release is a pull request in your install repository, and nothing deploys until you merge it. Either way Deploy goes back by itself if the new version doesn’t answer. See [Deploying and updating](https://breakaway.samewave.dev/docs/deploying/).
+Only if you choose the `main` channel, where the board starts your own Deploy workflow when there’s a newer pre-release. On `stable`, a newer release is a pull request in your install repository, and nothing deploys until you merge it. Either way Deploy goes back by itself if the new version doesn’t answer. See [Deploying and updating](https://leavethepack.dev/docs/deploying/).
 
 ## How do I stay on top of what agents are doing?
 

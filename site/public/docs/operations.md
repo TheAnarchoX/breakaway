@@ -94,7 +94,7 @@ What makes one board itself and not another is one file, `breakaway.config.json`
 | `task sync` fails with `410 Gone` on `get-child-version` | This replica last synced with another server. Start it again: `mv .task .task-stale`, then `scripts/task sync`. |
 | `health` says the server can’t read its history | A replica synced with the right client ID but a different secret. Set that replica’s secret right, remove what it added, then rebuild with `POST /api/admin/rebuild`. |
 | A claim fails with “claimed by …” | Someone has it. Pick another, or ask the owner. `--force` is for the owner clearing a stale claim. |
-| “can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session | The environment’s network settings don’t allow the board’s host. See [Agents](https://breakaway.samewave.dev/docs/agents/#the-cloud-environment). |
+| “can’t reach https://…” or “HTTP 403 from the session’s proxy” in a cloud session | The environment’s network settings don’t allow the board’s host. See [Agents](https://leavethepack.dev/docs/agents/#the-cloud-environment). |
 | The GitHub view says the last sync failed | A 401 or 404 means the App was uninstalled or its key changed: reinstall it, or store the current key. A 403 on Dependabot alerts is fine. |
 | A merged pull request didn’t finish its task | The pull request has to close it: `Closes <ID>.` in its title or description, or its number in the task’s `pr` field. A branch name only mentions. |
 | The web board keeps asking for the token | The token was rotated, or the cookie expired after 180 days. Sign in again. |
