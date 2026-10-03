@@ -455,32 +455,6 @@ figcaption {
   color: var(--muted);
 }
 
-/* The race board: real numbers, set big */
-.race {
-  display: grid;
-  gap: 0;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  margin-top: 40px;
-  border-top: 1px solid var(--line-strong);
-}
-.race > div {
-  padding: 28px 24px 28px 0;
-  border-bottom: 1px solid var(--line);
-}
-.race .num {
-  font-size: clamp(56px, 8vw, 96px);
-  display: block;
-  font-variant-numeric: tabular-nums;
-}
-.race .what {
-  display: block;
-  margin-top: 10px;
-  font: 600 12px / 1.3 var(--font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
 .section-head {
   max-width: 760px;
   margin-bottom: 40px;
