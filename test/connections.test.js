@@ -1,6 +1,7 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { comparePermissions, routineFix, summarizeDeliveries } from '../src/connections.js';
+import { connectionsMethods } from '../src/store-connections.js';
 import { ORIGIN, TEST_API_TOKEN, TEST_CLIENT_ID, TEST_GITHUB_WEBHOOK_SECRET, TEST_SYNC_KEY } from './constants.js';
 import { api, latestVersion, pushOps, sync, twCreate } from './helpers.js';
 
@@ -765,6 +766,24 @@ describe('connections per repository (CLD-129)', () => {
       before.attention +
         after.connections.filter((c) => ['breakaway', 'scratch'].includes(c.repo) && c.state === 'attention').length,
     );
+  });
+
+  it('says each routine holds its stub, and names each repository’s own prompt (BRK-73)', async () => {
+    const { routineInstructions } = connectionsMethods;
+    const widgets = { slug: 'widgets', routine: { prompt: 'prompts/widgets.md' } };
+    const gadgets = { slug: 'gadgets', routine: null };
+    expect(routineInstructions.call({ repos: () => [gadgets] })).toMatchObject({
+      name: 'The routine’s instructions',
+      why: 'They should be the stub from the Agents view, which sends each agent to tools/tasks/routine-prompt.md in its checkout.',
+    });
+    expect(routineInstructions.call({ repos: () => [gadgets, widgets] })).toMatchObject({
+      name: 'Each routine’s instructions',
+      why: 'Each should be its repository’s stub from the Agents view, which sends agents to that repository’s prompt (gadgets: tools/tasks/routine-prompt.md, widgets: prompts/widgets.md).',
+    });
+    // The report carries it, and no longer the old note about a prompt on main.
+    const names = (await checkNow()).cannotCheck.map((x) => x.name);
+    expect(names.filter((n) => /instructions$/u.test(n))).toHaveLength(1);
+    expect(names).not.toContain('The routine’s prompt');
   });
 
   it('keeps each repository’s last start and live output to itself', async () => {

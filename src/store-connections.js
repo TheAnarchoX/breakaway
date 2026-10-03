@@ -9,7 +9,7 @@
  */
 import { GitHubClient, GitHubError, appCredentials, appGet } from './github.js';
 import { AgentError, connectCommand, routineCredentials } from './store-agents.js';
-import { repoSlugOf } from './repos.js';
+import { promptPathOf, repoSlugOf } from './repos.js';
 import { CLAUDE_LIMITS } from './plans.js';
 import { vapidKeys } from './push.js';
 import { docsLink, install, secretName } from './install.js';
@@ -362,17 +362,32 @@ export const connectionsMethods = {
               why: `It must allow ${host} for the CLI and live output; the board can’t see claude.ai’s settings.`,
               link: ROUTINES_URL,
             },
-        {
-          name: 'The routine’s prompt',
-          why: 'It should match tools/tasks/routine-prompt.md on main; the Agents view shows that file.',
-          link: ROUTINES_URL,
-        },
+        this.routineInstructions(),
         {
           name: 'Cloudflare itself',
           why: 'The board has no Cloudflare API token, so the custom domain, Secrets Store, and dashboard settings show only as this Worker sees them.',
           link: 'https://dash.cloudflare.com',
         },
       ],
+    };
+  },
+
+  /**
+   * What a routine's instructions on claude.ai should be (BRK-73): the stub the Agents view gives, which sends each
+   * agent to its repository's own prompt. The board can't read claude.ai, so this is in what it can't check.
+   */
+  routineInstructions() {
+    const repos = this.repos();
+    if (repos.length > 1)
+      return {
+        name: 'Each routine’s instructions',
+        why: `Each should be its repository’s stub from the Agents view, which sends agents to that repository’s prompt (${repos.map((r) => `${r.slug}: ${promptPathOf(r)}`).join(', ')}).`,
+        link: ROUTINES_URL,
+      };
+    return {
+      name: 'The routine’s instructions',
+      why: `They should be the stub from the Agents view, which sends each agent to ${promptPathOf(repos[0])} in its checkout.`,
+      link: ROUTINES_URL,
     };
   },
 
