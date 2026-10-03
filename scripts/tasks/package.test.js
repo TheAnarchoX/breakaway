@@ -59,3 +59,24 @@ describe('the npm package (BRK-7)', () => {
         expect(m[1], `${path} imports ${m[1]}`).toMatch(/^node:/u);
   });
 });
+
+// DOC-10: npm shows the README as the package's page and rewrites none of its paths, so every image and link in it is
+// absolute, and each picture falls back to carbon, since npm ignores its theme sources.
+describe('the README on npm (DOC-10)', () => {
+  const readme = read('README.md');
+
+  it('points every image and link somewhere that loads outside GitHub', () => {
+    const refs = [...readme.matchAll(/(?:src|srcset|href)="([^"]+)"|\]\(([^)]+)\)/gu)].map((m) => m[1] ?? m[2]);
+    expect(refs.length).toBeGreaterThan(20);
+    for (const ref of refs) expect(ref, ref).toMatch(/^(https:\/\/|#)/u);
+  });
+
+  it('falls back to carbon, with chalk for light mode', () => {
+    const pictures = [...readme.matchAll(/<picture>([\s\S]*?)<\/picture>/gu)].map((m) => m[1]);
+    expect(pictures).toHaveLength(7);
+    for (const picture of pictures) {
+      expect(picture).toMatch(/<source media="\(prefers-color-scheme: light\)" srcset="[^"]+-light\.png">/u);
+      expect(picture).toMatch(/<img [^>]*src="[^"]+-dark\.png"/u);
+    }
+  });
+});
