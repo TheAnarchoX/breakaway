@@ -16,11 +16,15 @@ const BEATS = [
   { at: [8.1, 10.7], big: 'Yours<br>to run.', label: 'On your own Cloudflare account' },
 ];
 
-// The mark's two slabs from the brand's own file: the pack, and the rider off the front, which breaks away.
-const MARK = readFileSync(new URL('../../brand/logo/mark-on-dark.svg', import.meta.url), 'utf8');
-const [pack, rider] = MARK.match(/<path [^>]+\/>/gu);
-const BREAK = 48; // how far the rider goes, in the mark's units (the mark is 94.78 wide)
-const VIEW = 94.78 + BREAK;
+// The logo from the brand's own file: the pack, the rider off the front, and the name. The rider starts against the
+// pack, closing the gap, and snaps off into its place.
+const LOGO = readFileSync(new URL('../../brand/logo/logo-on-dark.svg', import.meta.url), 'utf8');
+const [pack, rider, name] = LOGO.match(/<path [^>]+\/>/gu);
+const VIEW = LOGO.match(/viewBox="([^"]+)"/u)[1];
+const [, , VW, VH] = VIEW.split(' ').map(Number);
+const GAP = 16; // the gap between the slabs, in the logo's units (the rider's edge sits 16 to the right of the pack's)
+const BIG = 440 / 72.48; // px per unit while the mark is alone and big: 440 px tall
+const END = 760 / VW; // px per unit at the end: the whole logo, 760 px wide
 
 const css = `
 .beat{position:absolute;left:84px;right:0;top:300px;opacity:0}
@@ -29,20 +33,20 @@ const css = `
 .ticks{position:absolute;left:84px;bottom:84px;display:flex;gap:14px}
 .tick{width:56px;height:14px;background:var(--surface-3);transform:skewX(-10deg)}
 .tick.on{background:var(--red)}
-.mark{position:absolute;left:84px;top:0;height:440px;opacity:0;transform-origin:0 0}
-.mark svg{height:100%;width:auto;display:block;overflow:visible}
+.logo-move{position:absolute;left:0;top:0;opacity:0;transform-origin:0 0}
+.logo-move svg{width:${VW * BIG}px;height:${VH * BIG}px;display:block}
 .join{position:absolute;left:84px;right:84px;opacity:0}
-.join.display{top:430px;font-size:132px;line-height:1}
-.join.cmd{top:800px;font:600 44px var(--font-mono)}
+.join.display{top:480px;font-size:132px;line-height:1}
+.join.cmd{top:810px;font:600 44px var(--font-mono)}
 .join.cmd i{font-style:normal;color:var(--muted)}
-.join.label{top:890px}`;
+.join.label{top:900px}`;
 
 const body = `
 <div class="stage">
   ${BEATS.map((b, i) => `<div class="beat" id="b${i}"><div class="display">${b.big}</div><div class="label">${b.label}</div></div>`).join('')}
   <div class="ticks" id="ticks">${BEATS.map(() => '<i class="tick"></i>').join('')}</div>
-  <div class="mark" id="mark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -72.48 ${VIEW} 72.48" role="img" aria-label="breakaway">
-    ${pack}<g id="rider">${rider}</g></svg></div>
+  <div class="logo-move" id="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="${VIEW}" role="img" aria-label="breakaway">
+    ${pack}<g id="rider">${rider}</g><g id="name" opacity="0">${name}</g></svg></div>
   <div class="join display" id="line">Leave the pack.</div>
   <div class="join cmd" id="cmd"><i>$</i> npx breakaway</div>
   <div class="join label" id="note">Free · the source is public</div>
@@ -50,7 +54,7 @@ const body = `
 
 const script = `
 const BEATS = ${JSON.stringify(BEATS.map((b) => b.at))};
-const BREAK = ${BREAK};
+const GAP = ${GAP}, SHRINK = ${END / BIG};
 const clamp = (x) => Math.max(0, Math.min(1, x));
 const out = (x) => 1 - Math.pow(1 - clamp(x), 4);       // fast out, no overshoot
 const IN = 0.28, OUT = 0.18;                             // the guide's 280 ms and 180 ms
@@ -61,22 +65,26 @@ function show(el, t, [a, b], last) {
   el.style.opacity = inn * (1 - gone);
   el.style.transform = 'translateX(' + (-70 * (1 - inn) + 90 * gone) + 'px)';
 }
-// The ending: the mark arrives big, the rider breaks away to the right, and the mark rises to make room for the
-// line, the command, and the note, which join it one after another.
-const ARRIVE = 10.9, BREAKS = [11.6, 12.1], RISE = [12.6, 13.1], JOIN = [12.9, 13.15, 13.4];
+// The ending: the mark arrives big, one piece; the rider snaps off into its place; the mark becomes the logo and the
+// name appears beside it; then the line, the command, and the note join it one after another.
+const ARRIVE = 10.9, SNAP = [11.6, 11.8], SETTLE = [12.3, 12.8], NAME = 12.75, JOIN = [13.05, 13.3, 13.55];
 window.render = (t) => {
   BEATS.forEach((w, i) => show(document.getElementById('b' + i), t, w));
   document.querySelectorAll('.tick').forEach((el, i) => el.classList.toggle('on', t >= BEATS[i][0] && t < BEATS[i][1]));
   document.getElementById('ticks').style.opacity = t < BEATS.at(-1)[1] ? 1 : 0;
 
-  const mark = document.getElementById('mark');
+  const logo = document.getElementById('logo');
   const arrive = out((t - ARRIVE) / IN);
-  const rise = out((t - RISE[0]) / (RISE[1] - RISE[0]));
-  mark.style.opacity = arrive;
-  mark.style.transform =
-    'translate(' + -70 * (1 - arrive) + 'px,' + lerp(320, 150, rise) + 'px) scale(' + lerp(1, 0.5, rise) + ')';
-  const gap = out((t - BREAKS[0]) / (BREAKS[1] - BREAKS[0]));
-  document.getElementById('rider').setAttribute('transform', 'translate(' + BREAK * gap + ' 0)');
+  const settle = out((t - SETTLE[0]) / (SETTLE[1] - SETTLE[0]));
+  logo.style.opacity = arrive;
+  logo.style.transform =
+    'translate(' + (84 - 70 * (1 - arrive)) + 'px,' + lerp(320, 250, settle) + 'px) scale(' + lerp(1, SHRINK, settle) + ')';
+  const snap = out((t - SNAP[0]) / (SNAP[1] - SNAP[0]));
+  document.getElementById('rider').setAttribute('transform', 'translate(' + -GAP * (1 - snap) + ' 0)');
+  const named = out((t - NAME) / IN);
+  const nameEl = document.getElementById('name');
+  nameEl.setAttribute('opacity', named);
+  nameEl.setAttribute('transform', 'translate(' + -24 * (1 - named) + ' 0)');
 
   ['line', 'cmd', 'note'].forEach((id, i) => show(document.getElementById(id), t, [JOIN[i], 99], true));
 };

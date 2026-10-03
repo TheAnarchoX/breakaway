@@ -16,7 +16,7 @@ Post once the site is live (`LCH-5`): post 4 sends people to the README's instal
 >
 > https://github.com/TheAnarchoX/breakaway
 
-**Alt text:** A dark video of big white italic type, one line at a time: "Write the work down.", "Agents claim it.", "You merge it." with "merge it." in red, and "Yours to run." Then the breakaway mark arrives big, a white slab and a red one, and the red slab breaks away to the right. The mark rises, and "Leave the pack.", the command npx breakaway, and "Free, the source is public" join it one after another.
+**Alt text:** A dark video of big white italic type, one line at a time: "Write the work down.", "Agents claim it.", "You merge it." with "merge it." in red, and "Yours to run." Then the breakaway mark arrives big as one piece, a white slab with a red one against it, and the red slab snaps off into its place. The mark becomes the logo as the name appears beside it, and "Leave the pack.", the command npx breakaway, and "Free, the source is public" join it one after another.
 
 ## 2. How it works
 
