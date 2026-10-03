@@ -44,7 +44,7 @@ import { sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import { CLI_PACKAGE, PROMPT_SECTIONS, initPlan, machineTaskrc, promptSections } from './tasks/init.js';
-import { ideaTask, staleCliWarning, unknownSubcommand } from './tasks/cli.js';
+import { githubRequest, ideaTask, staleCliWarning, unknownSubcommand } from './tasks/cli.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { LEGACY, parseInstall, secretName } from '../src/install.js';
 import {
@@ -143,7 +143,7 @@ Reading                (list, next, claim, and add work in this checkout's repos
   routines               saved prompts the owner runs with a button, and their caps
   routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>]
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
-  github                 open pull requests, checks, reviews, CI, deploys, alerts  [--sync]
+  github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
   export                 every task (all repositories, statuses, and horizons) as JSON, checked against health's count  [--out <file>]
@@ -1188,7 +1188,7 @@ const commands = {
     );
   },
   async github() {
-    const g = opts.sync ? await call('POST', 'github/sync') : await call('GET', 'github');
+    const g = await call(...githubRequest((await checkoutRepo()).slug, { sync: Boolean(opts.sync) }));
     print(g, (d) => {
       if (!d.connected) return "GitHub isn't connected yet: open the GitHub view on the board (docs/tasks.md#github).";
       const checks = (c) => (c.state === 'none' ? 'no checks' : `checks ${c.state} (${c.passed}/${c.total})`);
@@ -1214,7 +1214,7 @@ const commands = {
         out.push('', `Deploys (${d.deploys.length})`);
         for (const x of d.deploys.slice(0, 8))
           out.push(
-            `  ${x.state.padEnd(8)} ${x.env} ${(x.version ?? x.sha).slice(0, 8)} (${x.sha.slice(0, 7)}, ${(x.updated ?? '').slice(0, 16).replace('T', ' ')})${x.shipped?.length ? `: ${x.env === 'samewave-staging' ? 'on staging' : 'live'} ${x.shipped.map((t) => t.wid).join(', ')}` : ''}`,
+            `  ${x.state.padEnd(8)} ${x.env} ${(x.version ?? x.sha).slice(0, 8)} (${x.sha.slice(0, 7)}, ${(x.updated ?? '').slice(0, 16).replace('T', ' ')})${x.shipped?.length ? `: ${x.env === d.pipeline?.staging ? 'on staging' : 'live'} ${x.shipped.map((t) => t.wid).join(', ')}` : ''}`,
           );
       }
       if (d.releases?.length) out.push('', `Releases: ${d.releases.map((r) => r.tag).join(', ')}`);

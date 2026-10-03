@@ -63,6 +63,18 @@ export function staleCliWarning({ own, board, boardCheckout, slug, packaged = fa
 }
 
 /**
+ * The request behind `npx breakaway github` (`--sync` for a fresh one): the view of the checkout's repository (BRK-72),
+ * as `list` and `next` stay in it. Without one, the board answers with its default repository's.
+ * @param {string | null} repo
+ * @param {{ sync?: boolean }} [options]
+ * @returns {[string, string, { repo: string } | undefined]}
+ */
+export function githubRequest(repo, { sync = false } = {}) {
+  if (sync) return ['POST', 'github/sync', repo ? { repo } : undefined];
+  return ['GET', repo ? `github?repo=${encodeURIComponent(repo)}` : 'github', undefined];
+}
+
+/**
  * The task an idea becomes (`npx breakaway idea`): its first line, kept short, as the title, and the whole text as its
  * description. Like `add`, it lands in the repository of the checkout it was written in (BRK-71): without one, the
  * board would file it in its default repository.
