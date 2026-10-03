@@ -8,9 +8,6 @@ const CSS = `
 .copy{position:absolute;left:84px;right:84px;top:220px}
 .copy .display{font-size:132px}
 .copy .lede{margin-top:40px;max-width:880px}
-.board{position:absolute;left:84px;right:84px;top:290px;display:grid;grid-template-columns:1fr 1fr;gap:96px 48px}
-.board .display{font-size:176px;line-height:.9}
-.board .label{margin-top:14px}
 .rows{position:absolute;left:84px;right:84px;top:690px;display:grid;gap:12px}
 .row{display:flex;align-items:center;gap:20px;height:84px;padding:0 24px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--surface-3)}
 .row .id{font:700 26px var(--font-mono);min-width:150px}
@@ -37,20 +34,6 @@ const frame = ({ kicker, foot, footNote, body }) => `
 </div>`;
 
 const CARDS = {
-  // The race board: the three approved facts, set big. Real numbers only.
-  '01-race-board': {
-    alt: 'Four big numbers on a dark ground: 160 pull requests, under 48 hours, 1 person, 0 editors opened. The 160 is red.',
-    html: frame({
-      kicker: 'The run',
-      foot: 'breakaway',
-      footNote: 'Leave the pack.',
-      body: `<div class="board">
-        <div><div class="display red">160</div><div class="label">pull requests</div></div>
-        <div><div class="display">&lt;48</div><div class="label">hours</div></div>
-        <div><div class="display">1</div><div class="label">person</div></div>
-        <div><div class="display">0</div><div class="label">editors opened</div></div></div>`,
-    }),
-  },
   '02-one-claim': {
     alt: 'A card headed "One claim per task." with a list of three made-up tasks. BRK-12 has a red work ID and is claimed by claude-a; WEB-3 and DOC-7 are unclaimed. Below: "Claiming is atomic, so two agents never work on the same task."',
     html: frame({
