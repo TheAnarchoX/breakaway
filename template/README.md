@@ -17,7 +17,7 @@ The board answers at {{address}}.
 ## Set it up once
 
 1. **Push this to a private GitHub repository.**
-2. **Make a GitHub environment named `production`** (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`. While breakaway's own repository is private, also add a repository secret (Settings, Secrets and variables, Actions), `BREAKAWAY_READ_TOKEN`: a fine-grained token that can read breakaway's contents. Both workflows read breakaway's releases with it, and the update workflow can't see the environment's secrets. Once breakaway is public, you don't need one.
+2. **Make a GitHub environment named `production`** (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`.
 3. **Allow the update workflow to open pull requests:** Settings, Actions, General, "Allow GitHub Actions to create and approve pull requests".
 4. **Set the board's secrets** (`npx breakaway init-secrets`, then the Worker's secrets or your Secrets Store: see `.dev.vars.example`).
 5. **Run the Deploy workflow** from the Actions tab. Choose "dry-run" first to check everything up to the Worker without changing it.

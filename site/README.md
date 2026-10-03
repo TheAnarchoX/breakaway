@@ -29,7 +29,7 @@ A channel with no usable release (none yet, or its assets or manifest are missin
 
 - **Built from GitHub's releases** with a ten-minute cache, so GitHub sees a few requests an hour. If GitHub can't be reached and nothing is cached, the feed answers `503` with `Retry-After`.
 - **Nothing about who asked.** Open CORS, no cookies, no analytics, no logging of requests, and no secrets: the repository's releases are public.
-- **Never deployed from this repository**, which holds no Cloudflare credentials. Until the repository is public, GitHub's API returns no releases to an anonymous reader, so the feed's channels are `null`.
+- **Never deployed from this repository**, which holds no Cloudflare credentials.
 
 ## Run it
 

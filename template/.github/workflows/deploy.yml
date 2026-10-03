@@ -31,9 +31,9 @@ jobs:
     name: deploy
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are secrets of this environment. While breakaway's repository is
-    # private, BREAKAWAY_READ_TOKEN is a repository secret (Update reads it too): a read-only token for breakaway's
-    # releases. Once it is public, none.
+    # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are secrets of this environment. breakaway's repository is public,
+    # so this repository's own token reads its releases; BREAKAWAY_READ_TOKEN, a repository secret (Update reads it
+    # too), is only for a BREAKAWAY_REPO that's private, like a private fork: a read-only token for its releases.
     environment: production
     env:
       GH_TOKEN: ${{ secrets.BREAKAWAY_READ_TOKEN || github.token }}
@@ -66,13 +66,13 @@ jobs:
           # The newest release's CLI picks the release to deploy.
           newest=$(gh release list --repo "$BREAKAWAY_REPO" --limit 1 --json tagName --jq '.[0].tagName // empty') || newest=""
           if [ -z "$newest" ]; then
-            echo "::error title=No release to read::This repository can't read a release of $BREAKAWAY_REPO. While breakaway's repository is private, add BREAKAWAY_READ_TOKEN as a repository secret: a fine-grained token with read access to its contents."
+            echo "::error title=No release to read::This repository can't read a release of $BREAKAWAY_REPO. If that repository is private, add BREAKAWAY_READ_TOKEN as a repository secret: a fine-grained token with read access to its contents."
             exit 1
           fi
           picker=$(unpack "$newest")
           curl -fsS --retry 3 "$BREAKAWAY_FEED" -o releases.json || echo '{}' > releases.json
           if ! node "$picker" install resolve --releases releases.json --repo "$BREAKAWAY_REPO" > release.out; then
-            # The feed has no release (breakaway's repository is private, or the feed is down): ask GitHub.
+            # The feed has no release (it's down, or has none of BREAKAWAY_REPO's): ask GitHub.
             gh api "repos/$BREAKAWAY_REPO/releases?per_page=100" > releases.json
             node "$picker" install resolve --releases releases.json --repo "$BREAKAWAY_REPO" > release.out
           fi

@@ -44,7 +44,7 @@ Then open `breakaway.config.json` and add one line, so the board can look for up
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 
-1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`. If breakaway’s own repository isn’t public when you read this, also add a repository secret (Settings, Secrets and variables, Actions), `BREAKAWAY_READ_TOKEN`: a fine-grained token that can read breakaway’s contents. You don’t need one once it is.
+1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`.
 2. Turn on Settings, Actions, General, “Allow GitHub Actions to create and approve pull requests”. The update workflow needs it.
 
 **Check:** nothing on Connections yet, because there’s no board. The files are in the repository, and the environment has its secrets.
