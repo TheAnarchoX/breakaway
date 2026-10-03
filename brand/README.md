@@ -29,7 +29,7 @@ breakaway sounds like the rider who just went clear: sure of the move, short of 
 
 ### Writing it
 
-- **Headlines** are 2 to 6 words with a full stop, never an exclamation mark: "Leave the pack." "Agents claim the work. You merge it." Rhythm comes from short sentences in a row: "160 pull requests. Under 48 hours. One person."
+- **Headlines** are 2 to 6 words with a full stop, never an exclamation mark: "Leave the pack." "Agents claim the work. You merge it." Rhythm comes from short sentences in a row: "Write the work down. Agents claim it. You merge it."
 - **Sentence case** for everything: headings, buttons, menu items, dialog titles.
 - **Buttons are verbs** that say what happens: "Claim", "Release", "Start the next few", "Merge". Never "OK", "Submit", or "Yes". A confirm dialog asks the question ("Release BRK-12?") and says what follows ("Anyone can claim it after.").
 - **Errors** say what failed and what to do, in one line, without blame or codes: "Couldn't claim BRK-12: claude-a has it." Never "Oops", and never "Something went wrong" on its own.
@@ -65,7 +65,7 @@ Leave out the insider words ("peloton", "domestique", "lanterne rouge"), "attack
 | Are you sure you want to release this task? | Release BRK-12? Anyone can claim it after. |
 | Supercharge your workflow with AI agents 🚀 | Agents claim the work. You merge it. |
 | breakaway is a revolutionary, next-gen platform for AI-powered development. | breakaway is a task board for you and your coding agents. |
-| Ship 10x faster. | 160 pull requests in under 48 hours. One person. No editor opened. |
+| Ship 10x faster. | One claim per task, so two agents never work on the same one. |
 
 **Words that are never breakaway's:** revolutionary, game-changing, next-gen, seamless, supercharge, unleash, unlock, magic, effortless, blazing fast, 10x, AI-powered, cutting-edge, world-class. Each says "fast" or "new" without saying how; say what the board does instead.
 
@@ -113,9 +113,9 @@ Say these only once they ship: self-hosting on your own Cloudflare account, and 
 
 breakaway's licence is FSL-1.1-Apache-2.0, the Functional Source License: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That's [Fair Source](https://fair.io/licenses/), and the Open Source Initiative doesn't count it as open source until the Apache date. So say "free", "fair source", or "the source is public", name the licence, and say "open source" only of releases that have turned Apache 2.0. Loud and true: "Free to run. Free to change. Apache 2.0 in two years."
 
-### The story
+### Say what it does
 
-The owner approved three facts for public pages and posts: **160 pull requests in under 48 hours**, **one person**, and **no editor opened**. Tell it as one person's real run, in the past tense: never as a promise ("you'll ship 160 pull requests"), a benchmark, or an average. Nothing else about the run is public.
+breakaway talks about what the board does, never about what someone shipped with it: no counts of pull requests, hours, or people, no benchmarks, and no before-and-after. Where a sentence reaches for speed, say how the board works instead: one claim per task, pull requests close tasks, and agents ping you when they're stuck.
 
 ## Logo
 
@@ -184,7 +184,7 @@ All colors are tokens in [`tokens.css`](tokens.css), with the same names the boa
 
 Two open-source families (SIL Open Font License), self-hosted from `@fontsource-variable/archivo` and `@fontsource-variable/chivo-mono`, so no font requests go to a third party. Both come from the same foundry, Omnibus-Type.
 
-![Type: "Leave the pack." in wide heavy italic, a heading and body text in Archivo, work IDs and labels in Chivo Mono with BRK-27 on a red chip, and the race board of 160 pull requests, under 48 hours, 1 person, 0 editors opened.](previews/type.svg)
+![Type: "Leave the pack." in wide heavy italic, a heading and body text in Archivo, work IDs and labels in Chivo Mono with BRK-27 on a red chip, and the headline rhythm: Write the work down. Agents claim it. You merge it.](previews/type.svg)
 
 | Role | Set in | Use |
 | --- | --- | --- |
@@ -211,7 +211,6 @@ Two open-source families (SIL Open Font License), self-hosted from `@fontsource-
 ## Signature moves
 
 - **The red number.** The task being worked, the one with a claim, shows its work ID in white on red (`--red`, `--on-red`, Chivo Mono, `--radius-xs`), like the most combative rider's race number. One per claim; nothing else wears it.
-- **The race board.** Numbers that matter, set big in display type with a mono label under each: 160 pull requests, under 48 hours. Real numbers only.
 - **The gap.** Give the thing that leads some room. The primary action stands apart, not in a row of equals.
 
 ## Imagery
@@ -227,7 +226,7 @@ Before handing back anything people see or read:
 
 - [ ] "breakaway" is lowercase, and the terms match [the word list](#words-breakaway-uses).
 - [ ] Headlines are short and end in a full stop; no exclamation marks, no words from the never list.
-- [ ] Every claim is one from [Claims that must stay true](#claims-that-must-stay-true); the story uses only the approved facts.
+- [ ] Every claim is one from [Claims that must stay true](#claims-that-must-stay-true), and nothing counts what someone shipped with it.
 - [ ] Buttons, statuses, and errors are plain; cycling words only in headlines, one per screen at most.
 - [ ] Only tokens; one red thing per view; no red text below display size.
 - [ ] It works in carbon and chalk, narrow and wide, and the contrast test passes.

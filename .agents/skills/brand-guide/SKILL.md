@@ -10,7 +10,7 @@ The source is [`brand/README.md`](../../../brand/README.md). Read the parts your
 ## Before you write or design
 
 - **Words:** read Voice, Writing it, and Words breakaway uses. breakaway is always lowercase, the board talks to "you", agents go by their name or "agent", and everyone else is "people". Buttons are verbs, errors say what failed and what to do, and success is a word or two.
-- **Claims:** anything breakaway says about itself must be on the list of Claims that must stay true, or ship in the same pull request as the feature it describes. Say "free", "fair source", or "the source is public", and "open source" only of a release that has turned Apache 2.0. The story uses only the three approved facts, in the past tense.
+- **Claims:** anything breakaway says about itself must be on the list of Claims that must stay true, or ship in the same pull request as the feature it describes. Say "free", "fair source", or "the source is public", and "open source" only of a release that has turned Apache 2.0. Say what the board does, never what someone shipped with it: no run numbers, benchmarks, or before-and-after.
 - **Look:** read Color, Type, and Shape and motion. Use the tokens in `brand/tokens.css` (the board's stylesheet reads the same names), never hex values. One red thing leads each view; red text only at display size, `--accent` below it. Carbon is the default theme and chalk must work too.
 - **Never** the words on the never list, exclamation marks, emoji, "powered by", another product's logo next to breakaway's, mascots, gradients, or a real repository's private work in a screenshot or fixture.
 
