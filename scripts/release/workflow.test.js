@@ -21,3 +21,22 @@ describe('the release’s npm publish (BRK-74)', () => {
     expect(WORKFLOW).not.toMatch(/--loglevel (silly|sill)/u);
   });
 });
+
+// BRK-75: npm's trusted publishing can't read this repository's immutable OIDC subject yet (npm/cli#9969), so a
+// publish-only token stands in. It lives in the npm environment, which only main can use, and reaches npm publish only.
+describe('the npm token (BRK-75)', () => {
+  it('runs both publishing jobs in the npm environment', () => {
+    expect(WORKFLOW.match(/^ {4}environment: npm$/gmu)).toHaveLength(2);
+  });
+
+  it('reaches only the two publish steps', () => {
+    const uses = WORKFLOW.split('\n').filter((line) => /secrets\./u.test(line));
+    expect(uses).toEqual([
+      '          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}',
+      '          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}',
+    ]);
+    const steps = WORKFLOW.split(/\n {6}- /u).filter((step) => step.includes('secrets.NPM_TOKEN'));
+    expect(steps).toHaveLength(2);
+    for (const step of steps) expect(step).toMatch(/^name: Publish the CLI to npm\n/u);
+  });
+});

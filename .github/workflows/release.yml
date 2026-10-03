@@ -1,6 +1,6 @@
 # Releases (BRK-6). breakaway publishes releases and never deploys: every install deploys a release from
 # its own repository, so this repository holds no Cloudflare credentials. Keep this file's name: npm's
-# trusted publisher (BRK-7) is set to it, with no environment, and `npm publish` has to run from a job in this file.
+# trusted publisher (BRK-7) is set to it, with the npm environment, and `npm publish` has to run from a job in this file.
 name: Release
 
 on:
@@ -32,6 +32,8 @@ jobs:
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The npm environment holds NPM_TOKEN, and only main can use it (BRK-75).
+    environment: npm
     permissions:
       contents: write
       id-token: write
@@ -89,10 +91,13 @@ jobs:
         run: |
           gh release create "$TAG" out/breakaway-bundle.tar.gz out/manifest.json out/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "$TAG" --notes-file out/notes.md --prerelease
-      # The CLI (BRK-7): the same version, on the next dist-tag. Trusted publishing needs npm 11.5.1 or newer, and no token.
+      # The CLI (BRK-7): the same version, on the next dist-tag. npm tries trusted publishing first (npm 11.5.1 or newer).
+      # It can't read this repository's OIDC subject yet (npm/cli#9969), so until it can, NPM_TOKEN stands in (BRK-75).
       # Only from a public repository: npm refuses provenance from a private one, and nothing goes to npm before launch (BRK-57).
       - name: Publish the CLI to npm
         if: ${{ !github.event.repository.private }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           npm install -g npm@^11.5.1
           # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show npm's
@@ -104,7 +109,7 @@ jobs:
             echo "npm's trusted publishing (OIDC):"
             oidc=$(grep -i 'oidc' "$RUNNER_TEMP/npm.log" | grep -v 'eyJ' | cut -c1-300 || true)
             echo "${oidc:-npm logged nothing about it.}"
-            echo "::error title=npm refused the publish::Check that npm's trusted publisher for this package names exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, and no environment."
+            echo "::error title=npm refused the publish::Until npm reads GitHub's immutable OIDC subjects (npm/cli#9969), the npm environment needs NPM_TOKEN: a granular token that can publish this package. After that, npm's trusted publisher must name exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, environment npm."
             exit 1
           fi
 
@@ -113,6 +118,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: npm
     permissions:
       contents: write
       id-token: write
@@ -121,7 +127,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
       PRERELEASE: ${{ inputs.prerelease }}
-      PRIVATE: ${{ github.event.repository.private }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,6 +137,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - name: Promote the bundle unchanged
+        id: promote
         run: |
           set -euo pipefail
           version=$(node scripts/release/plan.mjs stable "$PRERELEASE" | sed 's/^version=//')
@@ -156,10 +162,18 @@ jobs:
             if(m.manual)process.stdout.write('\n### Manual steps\n\n'+m.manualSteps.map(s=>'- '+s).join('\n')+'\n');" >> out/notes.md
           gh release create "v$version" out/breakaway-bundle.tar.gz out/manifest.json out/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$commit" --title "v$version" --notes-file out/notes.md --latest
-          # The CLI (BRK-7): the commit's files under the stable version, as latest. Trusted publishing needs npm 11.5.1 or newer, and no token.
-          # Only from a public repository, as in the pre-release (BRK-57).
-          if [ "$PRIVATE" = true ]; then echo "The repository is private: v$version isn't published to npm."; exit 0; fi
-          git checkout --detach "$commit"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      # The CLI (BRK-7): the commit's files under the stable version, as latest, and only from a public repository, as in
+      # the pre-release (BRK-57). The same npm and NPM_TOKEN as there (BRK-75).
+      - name: Publish the CLI to npm
+        if: ${{ !github.event.repository.private }}
+        env:
+          V: ${{ steps.promote.outputs.version }}
+          COMMIT: ${{ steps.promote.outputs.commit }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          git checkout --detach "$COMMIT"
           node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
           npm install -g npm@^11.5.1
           # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show npm's
@@ -171,6 +185,6 @@ jobs:
             echo "npm's trusted publishing (OIDC):"
             oidc=$(grep -i 'oidc' "$RUNNER_TEMP/npm.log" | grep -v 'eyJ' | cut -c1-300 || true)
             echo "${oidc:-npm logged nothing about it.}"
-            echo "::error title=npm refused the publish::Check that npm's trusted publisher for this package names exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, and no environment."
+            echo "::error title=npm refused the publish::Until npm reads GitHub's immutable OIDC subjects (npm/cli#9969), the npm environment needs NPM_TOKEN: a granular token that can publish this package. After that, npm's trusted publisher must name exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, environment npm."
             exit 1
           fi
