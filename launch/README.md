@@ -18,7 +18,7 @@ npm install
 node cards.mjs                 # every card
 node cards.mjs 02-one-claim    # one card
 node video.mjs                 # the video
-node readme.mjs                # the README's hero and diagrams, in carbon and chalk
+node readme.mjs                # the README's hero and diagrams, in carbon and chalk, and the social card
 ```
 
 The README's screenshots are of the real board, run locally with made-up work, never a real install's. Start it (`wrangler dev` with a local config from `node install.mjs --local`, and `pnpm dev` for the web app), then:
@@ -35,7 +35,7 @@ Take them within two minutes of seeding, while the seeded agent's output still r
 | `kit.mjs` | The shared parts: tokens and fonts as one page, a still renderer, a frame-by-frame video renderer that pipes to `ffmpeg` |
 | `cards.mjs` | A card is an entry in `CARDS`: a kicker, a display headline, a body. Output is `media/<name>.png` |
 | `video.mjs` | The video is one HTML scene whose `render(t)` draws the frame for time `t`, so it renders the same every time |
-| `readme.mjs` | The README's hero, How it works, and How it's built, each in carbon and chalk: `docs/media/<name>-dark.png` and `-light.png` |
+| `readme.mjs` | The README's hero, How it works, and How it's built, each in carbon and chalk: `docs/media/<name>-dark.png` and `-light.png`. And the social card, the hero at 1280 by 640 in carbon: `site/public/social.png`, which the site's pages name as `og:image`. The same file is the repository's social preview: upload it in the repository's Settings, under General, Social preview |
 | `seed.sh` | Fills a local board with made-up work (`acme/widgets`) for the screenshots |
 | `screens.mjs` | The README's screenshots of that board: the board, a task's live output, the inbox, and a phone |
 

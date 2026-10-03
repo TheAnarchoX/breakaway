@@ -1,6 +1,7 @@
 // Builds the README's images (DOC-7): docs/media/<name>-dark.png and -light.png, in carbon and chalk, so GitHub shows
 // the one that matches the reader's theme. Each is a wide scene drawn from the brand's own tokens, fonts, and logo,
-// with made-up tasks. Run: node readme.mjs [name ...]
+// with made-up tasks. It also builds the social card (LCH-12), site/public/social.png: the hero at 1280 by 640, carbon only,
+// which the site names as og:image and the owner uploads as the repository's social preview. Run: node readme.mjs [name ...]
 import { logoOnDark, logoOnLight, page, still, withBrowser } from './kit.mjs';
 
 const OUT = new URL('../../docs/media/', import.meta.url);
@@ -30,6 +31,10 @@ html,body{width:${WIDTH}px;height:auto;overflow:hidden}
 .task-title{font:600 17px var(--font-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .task-meta{grid-column:2;font:500 13px var(--font-mono);color:var(--muted);display:flex;gap:8px;align-items:center}
 
+/* The social card: the hero at a fixed 2:1, its board centred in what's left below the logo. */
+.stage.social{height:640px;display:flex;flex-direction:column}
+.social .hero{margin:auto 0}
+
 /* How it works: three steps in a row. */
 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:34px}
 .step{position:relative;padding:24px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3);min-height:196px;display:flex;flex-direction:column}
@@ -57,11 +62,8 @@ const logo = (theme) => (theme === 'dark' ? logoOnDark : logoOnLight);
 const top = (theme, kicker) =>
   `<div class="top"><div class="logo">${logo(theme)}</div><div class="label">${kicker}</div></div>`;
 
-const SCENES = {
-  hero: {
-    alt: 'breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it. Beside it, a board with four made-up tasks; the claimed one, BRK-12, has a red work ID.',
-    html: (theme) => `
-<div class="stage">
+// The hero: the tagline set big, beside a board with made-up tasks.
+const hero = (theme) => `
   ${top(theme, 'A task board for coding agents')}
   <div class="hero">
     <div>
@@ -75,8 +77,19 @@ const SCENES = {
       <div class="task"><span class="wid">BRK-13</span><span class="task-title">Check the inbox order after the deploy</span><span class="task-meta"><span class="state">BLOCKED</span>waits for BRK-12</span></div>
       <div class="task"><span class="wid">DOC-4</span><span class="task-title">Explain the update feed</span><span class="task-meta"><span class="state">READY</span>an agent can claim it</span></div>
     </div>
-  </div>
-</div>`,
+  </div>`;
+
+const SCENES = {
+  hero: {
+    alt: 'breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it. Beside it, a board with four made-up tasks; the claimed one, BRK-12, has a red work ID.',
+    html: (theme) => `<div class="stage">${hero(theme)}</div>`,
+  },
+  social: {
+    alt: 'breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.',
+    themes: ['dark'],
+    out: new URL('../../site/public/social.png', import.meta.url),
+    size: { width: WIDTH, height: 640 },
+    html: (theme) => `<div class="stage social">${hero(theme)}</div>`,
   },
   how: {
     alt: 'Agents claim the work. You merge it. In three steps: 1, an agent, claude-brk-12, claims the task BRK-12. 2, it opens a pull request that says Closes BRK-12. 3, you merge, and the task is done.',
@@ -125,11 +138,13 @@ await withBrowser(
   async (context) => {
     for (const [name, scene] of Object.entries(SCENES)) {
       if (only.length && !only.includes(name)) continue;
-      for (const theme of ['dark', 'light']) {
-        const out = new URL(`${name}-${theme}.png`, OUT).pathname;
+      for (const theme of scene.themes ?? ['dark', 'light']) {
+        const out = (scene.out ?? new URL(`${name}-${theme}.png`, OUT)).pathname;
         const html = page({ body: scene.html(theme), css: CSS, theme });
-        await still(context, html, out, { width: WIDTH, height: 1200 });
-        console.log(`wrote docs/media/${name}-${theme}.png`);
+        await still(context, html, out, scene.size ?? { width: WIDTH, height: 1200 });
+        console.log(
+          `wrote ${out.slice(out.indexOf('/site/') >= 0 ? out.indexOf('/site/') + 1 : out.indexOf('/docs/') + 1)}`,
+        );
       }
     }
   },

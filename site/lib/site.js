@@ -8,6 +8,14 @@ export const SITE = {
   repo: 'https://github.com/TheAnarchoX/breakaway',
 };
 
+/** The picture a shared link shows (LCH-12): built by launch/tools/readme.mjs, also the repository's social preview. */
+const CARD = {
+  path: '/social.png',
+  width: 2560,
+  height: 1280,
+  alt: 'breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.',
+};
+
 /** The docs, in reading order, in groups. `file` is in site/content/docs. */
 export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },
@@ -91,7 +99,11 @@ function shell({ title, description, path, body, bodyClass = '' }) {
 <meta property="og:description" content="${escape(description)}">
 <meta property="og:url" content="${SITE.url}${path}">
 <meta property="og:type" content="website">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${SITE.url}${CARD.path}">
+<meta property="og:image:width" content="${CARD.width}">
+<meta property="og:image:height" content="${CARD.height}">
+<meta property="og:image:alt" content="${escape(CARD.alt)}">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/site.css">
