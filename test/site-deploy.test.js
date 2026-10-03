@@ -19,7 +19,7 @@ describe('the site’s deploy', () => {
     expect(SITE).toMatch(/workflow_call:\n\s+inputs:\n\s+ref:/u);
     expect(SITE).not.toMatch(/^\s+(push|schedule|pull_request):/mu);
     expect(RELEASE).toMatch(
-      / {2}site:\n[\s\S]*?needs: stable\n[\s\S]*?uses: \.\/\.github\/workflows\/site\.yml\n\s+with:\n\s+ref: v\$\{\{ needs\.stable\.outputs\.version \}\}/u,
+      / {2}site:\n[\s\S]*?needs: stable\n[\s\S]*?uses: \.\/\.github\/workflows\/site\.yml\n\s+with:\n\s+ref: v\$\{\{ needs\.stable\.outputs\.version \}\}\n\s+secrets: inherit\n/u,
     );
   });
 

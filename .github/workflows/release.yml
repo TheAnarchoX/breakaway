@@ -196,7 +196,8 @@ jobs:
           fi
 
   # The site follows the stable release (LCH-15): the Site workflow moves the site branch to it, and Cloudflare's
-  # Workers Builds deploys that branch.
+  # Workers Builds deploys that branch. A called workflow sees only the secrets it inherits, so this passes them on
+  # (LCH-18) and the site environment's deploy key reaches it; the repository has no other secrets to pass.
   site:
     name: site
     needs: stable
@@ -205,3 +206,4 @@ jobs:
     uses: ./.github/workflows/site.yml
     with:
       ref: v${{ needs.stable.outputs.version }}
+    secrets: inherit
