@@ -56,7 +56,7 @@
     <p class="label kicker">Run it</p>
     <h1>Deploying and updating</h1>
     <p class="lede">How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.</p>
-    <p>breakaway <strong>publishes releases and never deploys</strong>. Every install, the maintainers’ own included, deploys a release from its own repository, and breakaway’s repository holds no Cloudflare credentials. Nothing runs new code on your board until you decide to update it.</p>
+    <p>breakaway <strong>publishes releases and never deploys an install</strong>. Every install, the maintainers’ own included, deploys a release from its own repository, and breakaway’s repository holds no Cloudflare credentials: even this site is deployed by Cloudflare, from a branch each stable release moves. Nothing runs new code on your board until you decide to update it.</p>
 <h2 id="the-shape-of-it"><a class="anchor" href="#the-shape-of-it" aria-label="Link to this section">#</a>The shape of it</h2>
 <pre data-lang="text"><code>merge to breakaway's main
         |

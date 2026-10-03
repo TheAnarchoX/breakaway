@@ -29,7 +29,7 @@ A channel with no usable release (none yet, or its assets or manifest are missin
 
 - **Built from GitHub's releases** with a ten-minute cache, so GitHub sees a few requests an hour. If GitHub can't be reached and nothing is cached, the feed answers `503` with `Retry-After`.
 - **Nothing about who asked.** Open CORS, no cookies, no analytics, no logging of requests, and no secrets: the repository's releases are public.
-- **Never deployed from this repository**, which holds no Cloudflare credentials.
+- **Deployed by Cloudflare from this repository**, which still holds no Cloudflare credentials: Workers Builds pulls the `site` branch itself.
 
 ## Run it
 
@@ -42,13 +42,24 @@ Point it at another repository, or at a stand-in for GitHub's API, with the `REL
 
 ## Deploy it
 
-The site deploys itself from breakaway's latest stable release, so the docs follow what `npx breakaway` installs. [`deploy.yml`](deploy.yml) is the workflow, and it runs in the repository that deploys your board, never here:
+Cloudflare's [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) deploys the site from this repository's `site` branch, so no Cloudflare credentials live in GitHub. The branch follows breakaway's latest stable release, so the docs and the install prompt match what `npx breakaway` installs: the Release workflow's stable job calls the [Site workflow](../.github/workflows/site.yml), which moves `site` to the released tag.
 
-1. Copy `site/deploy.yml` into that repository as `.github/workflows/site.yml`.
-2. Set the repository variable `SITE_HOST` to the site's host, like `breakaway.example.com`. The workflow deploys the site there as a custom domain.
-3. It uses the same `production` environment secrets as the board's Deploy: `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_API_TOKEN`, which needs Workers Scripts Edit and, for the custom domain, Workers Routes Edit on the host's zone.
-4. Run it once by hand to put the site live.
+The site serves the prompt people paste into Claude Code, so `site` is guarded like `main`:
 
-From then on it looks for a new stable release every hour and deploys it, and does nothing when the site already runs it. Each deploy writes `deployed.txt` (the tag or branch, the commit, and when) and checks the site serves it and the feed answers. Run it by hand with a tag or branch to put a fix live before the next release: a fix stays until a newer stable release comes out. Keep `RELEASES_REPO` as `TheAnarchoX/breakaway` unless you run a fork, and change `BREAKAWAY_REPO` in the workflow with it.
+- **A ruleset** lets only deploy keys create, move, or delete `site`: not agents, and not the owner's own credentials.
+- **The deploy key** is the `SITE_DEPLOY_KEY` secret in the `site` environment, which only `main` can use. The Site workflow is the only thing that holds it.
+- **Only merged work goes live.** The Site workflow refuses a tag or commit that isn't on `main`.
+
+To put a fix live before the next release, the owner runs the Site workflow by hand on `main` with that commit. It stays until the next stable release moves the branch again. Agents never run it.
+
+### Set it up once
+
+In the Cloudflare dashboard, on the account that holds the site's domain:
+
+1. **Workers & Pages, Create, Import a repository**: connect `TheAnarchoX/breakaway` (Cloudflare's GitHub app asks for access to it).
+2. **Worker name** `breakaway-releases`, the `name` in [`wrangler.jsonc`](wrangler.jsonc). **Root directory** `site`. **Build command** empty. **Deploy command** `npx wrangler deploy`.
+3. **Branch control**: production branch `site`, and builds for non-production branches off, so no other branch builds anything.
+
+The custom domain is in `wrangler.jsonc`, so the first deploy sets it up. Keep `RELEASES_REPO` as `TheAnarchoX/breakaway` unless you run a fork; a fork changes the domain and `RELEASES_REPO` with it.
 
 Only `/releases.json` runs the Worker; every other path is a static file, and unknown paths get `404.html`.

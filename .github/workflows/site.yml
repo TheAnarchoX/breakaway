@@ -1,0 +1,71 @@
+# The site (LCH-15): breakaway.samewave.dev, the landing page, the docs, the install prompt, and the update feed.
+# Cloudflare's Workers Builds deploys it from the `site` branch, so no Cloudflare credentials live here. This workflow
+# moves that branch: the stable release calls it with the released tag, so the docs follow what `npx breakaway`
+# installs, and the owner runs it by hand to put a fix live before the next release. A ruleset lets only deploy keys
+# move `site`, and the key is in the site environment, which only main can use. The site serves the prompt people
+# paste into Claude Code, so only a commit already on main goes there: never a branch's unreviewed work.
+name: Site
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: A tag or commit of breakaway that's on main, to put on the site
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+jobs:
+  site:
+    name: site
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # SITE_DEPLOY_KEY: a write deploy key, the only thing the ruleset lets move `site`.
+    environment: site
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Move the site branch
+        env:
+          REF: ${{ inputs.ref }}
+          DEPLOY_KEY: ${{ secrets.SITE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::error title=No deploy key::Add SITE_DEPLOY_KEY to the site environment: a write deploy key the site branch's ruleset lets through (site/README.md)."
+            exit 1
+          fi
+          commit=$(git rev-parse --verify --quiet "$REF^{commit}" || true)
+          if [ -z "$commit" ]; then
+            echo "::error title=Not found::$REF isn't a tag or commit in this repository."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error title=Not on main::$REF ($commit) isn't on main. Only merged work goes on the site."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/site-deploy-key"
+          (umask 077 && printf '%s\n' "$DEPLOY_KEY" > "$key")
+          # GitHub's published SSH host key, so the push goes nowhere else.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts -o StrictHostKeyChecking=yes"
+          # Forced, so a fix that's newer than the release, or a step back to an older one, both land.
+          git push --force "git@github.com:$GITHUB_REPOSITORY.git" "$commit:refs/heads/site"
+          rm -f "$key"
+          echo "::notice title=Site::The site branch is at $REF ($commit). Workers Builds deploys it in a minute or two."
