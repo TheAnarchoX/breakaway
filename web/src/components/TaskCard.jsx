@@ -45,6 +45,7 @@ export function TaskCard({ task: t, hide = [], compact = false }) {
       href={hashFor({ task: ref(t) })}
       aria-current={open ? 'true' : undefined}
       data-task={t.uuid}
+      data-task-menu={t.uuid}
     >
       <span class="card-top">
         <span class={widClass(t)}>{ref(t)}</span>

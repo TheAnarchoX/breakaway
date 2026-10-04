@@ -63,24 +63,26 @@ export function ForcedMark() {
   );
 }
 
+/** Why Refine with an agent is off right now, or null when it can start. */
+export function refineReason(t) {
+  if (t.status !== 'pending') return 'it isn’t open';
+  const { loaded, data } = agents.value;
+  return refineBlocker(t) ?? (loaded && !data?.connected ? 'the agent routine isn’t connected yet' : null);
+}
+
 /**
- * In the Agent section, beside Start an agent, and its modal: a required request, kept on failure.
+ * Refine with an agent's dialog: a required request, kept on failure. Opened by RefineButton and the task menu.
  * @param {Record<string, any>} props
  */
-export function RefineButton({ task: t }) {
-  const [open, setOpen] = useState(false);
+export function RefineDialog({ task: t, open, onClose }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const connected = agents.value.data?.connected;
-  const loaded = agents.value.loaded;
-  const reason =
-    t.status !== 'pending'
-      ? 'it isn’t open'
-      : (refineBlocker(t) ?? (loaded && !connected ? 'the agent routine isn’t connected yet' : null));
-  if (t.status !== 'pending') return null;
+  useEffect(() => {
+    if (open) setError(null);
+  }, [open]);
   const close = () => {
-    if (!busy) setOpen(false);
+    if (!busy) onClose();
   };
   const submit = async (e) => {
     e.preventDefault();
@@ -90,16 +92,66 @@ export function RefineButton({ task: t }) {
     }
     setBusy(true);
     const finish = () => {
-      setOpen(false);
+      onClose();
       setText('');
     };
     const result = await actions.refineAgent(t, text.trim(), finish);
     setBusy(false);
-    if (result) {
-      setOpen(false);
-      setText('');
-    }
+    if (result) finish();
   };
+  return (
+    <Dialog open={open} onClose={close} labelledBy="refine-title">
+      <form class="sheet" onSubmit={submit} noValidate>
+        <h2 id="refine-title">Refine {ref(t)} with an agent</h2>
+        <label class="field">
+          <span class="field-label">What should it look at or change?</span>
+          <textarea
+            class="textarea"
+            rows={6}
+            maxLength={4000}
+            required
+            autoFocus
+            value={text}
+            aria-describedby={error ? 'refine-error refine-hint' : 'refine-hint'}
+            onInput={(e) => {
+              setText(e.currentTarget.value);
+              setError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+            }}
+          />
+          {error && (
+            <span class="field-error" id="refine-error">
+              {error}
+            </span>
+          )}
+          <span class="field-hint" id="refine-hint">
+            It improves the task on the board: notes, area, horizon, what it waits for, or splitting it. It doesn’t
+            build it. Ctrl + Enter starts it.
+          </span>
+        </label>
+        <div class="sheet-actions">
+          <button type="button" class="btn btn-quiet" disabled={busy} onClick={close}>
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary" disabled={busy}>
+            {busy ? 'Starting…' : 'Start refining'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/**
+ * In the Agent section, beside Start an agent: opens RefineDialog.
+ * @param {Record<string, any>} props
+ */
+export function RefineButton({ task: t }) {
+  const [open, setOpen] = useState(false);
+  const reason = refineReason(t);
+  if (t.status !== 'pending') return null;
   const hintId = `refine-hint-${t.uuid}`;
   return (
     <>
@@ -109,10 +161,7 @@ export function RefineButton({ task: t }) {
         disabled={Boolean(reason)}
         aria-describedby={reason ? hintId : undefined}
         title={reason ? `Can’t refine: ${reason}` : undefined}
-        onClick={() => {
-          setError(null);
-          setOpen(true);
-        }}
+        onClick={() => setOpen(true)}
       >
         <Sparkles size={16} aria-hidden="true" />
         Refine with an agent
@@ -122,47 +171,7 @@ export function RefineButton({ task: t }) {
           Can’t refine: {reason}.
         </span>
       )}
-      <Dialog open={open} onClose={close} labelledBy="refine-title">
-        <form class="sheet" onSubmit={submit} noValidate>
-          <h2 id="refine-title">Refine {ref(t)} with an agent</h2>
-          <label class="field">
-            <span class="field-label">What should it look at or change?</span>
-            <textarea
-              class="textarea"
-              rows={6}
-              maxLength={4000}
-              required
-              autoFocus
-              value={text}
-              aria-describedby={error ? 'refine-error refine-hint' : 'refine-hint'}
-              onInput={(e) => {
-                setText(e.currentTarget.value);
-                setError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-              }}
-            />
-            {error && (
-              <span class="field-error" id="refine-error">
-                {error}
-              </span>
-            )}
-            <span class="field-hint" id="refine-hint">
-              It improves the task on the board: notes, area, horizon, what it waits for, or splitting it. It doesn’t
-              build it. Ctrl + Enter starts it.
-            </span>
-          </label>
-          <div class="sheet-actions">
-            <button type="button" class="btn btn-quiet" disabled={busy} onClick={close}>
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary" disabled={busy}>
-              {busy ? 'Starting…' : 'Start refining'}
-            </button>
-          </div>
-        </form>
-      </Dialog>
+      <RefineDialog task={t} open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
@@ -525,6 +534,31 @@ export function MessageButton({ run: r }) {
   );
 }
 
+/** Turns Start by itself when ready on or off. */
+export const setAutostart = (t, on) =>
+  actions.update(
+    t,
+    { autostart: on ? 'yes' : null },
+    on ? `${ref(t)} will start an agent by itself when it’s ready.` : `${ref(t)} won’t start by itself.`,
+  );
+
+/**
+ * Which start controls a task shows, by the panel's rules (the task menu uses the same): why it can't start
+ * (`blocker`), whether Start by itself when ready applies (`canAuto`), whether Start an agent shows (`canStart`),
+ * and the queue entry while it waits for the board's room (`queued`, with `forceable` when Force start applies).
+ */
+export function startState(t) {
+  const blocker = agentBlocker(t);
+  const canAuto = t.status === 'pending' && t.tags.includes('agent') && !t.tags.includes('decide');
+  const canStart = canAuto && !blocker && Boolean(agents.value.data?.connected);
+  // Start when ready, and held back by the board's room (a general agent waits here until there's a slot).
+  const queued =
+    canAuto && !blocker && t.autostart && !t.claim
+      ? (agents.value.data?.queue?.find((q) => q.uuid === t.uuid && !q.ready) ?? null)
+      : null;
+  return { blocker, canAuto, canStart, queued };
+}
+
 /**
  * In a task, right below its actions: start or refine an agent, Start when ready, and the session's live output.
  * @param {Record<string, any>} props
@@ -534,17 +568,10 @@ export function AgentSection({ task: t }) {
   const [writing, setWriting] = useState(false);
   const [busy, setBusy] = useState(false);
   const connected = agents.value.data?.connected;
-  const blocker = agentBlocker(t);
+  const { blocker, canAuto, canStart, queued } = startState(t);
   const run = t.agentRun;
   const hasSession = Boolean(run?.url || run?.lastAt);
   const open = t.status === 'pending';
-  const canAuto = open && t.tags.includes('agent') && !t.tags.includes('decide');
-  const canStart = canAuto && !blocker && connected;
-  // Start when ready, and held back by the board's room (a general agent waits here until there's a slot).
-  const queued =
-    canAuto && !blocker && t.autostart && !t.claim
-      ? (agents.value.data?.queue?.find((q) => q.uuid === t.uuid && !q.ready) ?? null)
-      : null;
   // Every open task can be refined, so the section shows on all of them.
   if (!hasSession && !open) return null;
   const start = async () => {
@@ -610,19 +637,7 @@ export function AgentSection({ task: t }) {
       )}
       {canAuto && !t.claim && (
         <label class="check-row agent-auto">
-          <input
-            type="checkbox"
-            checked={t.autostart}
-            onChange={(e) =>
-              actions.update(
-                t,
-                { autostart: e.currentTarget.checked ? 'yes' : null },
-                e.currentTarget.checked
-                  ? `${ref(t)} will start an agent by itself when it’s ready.`
-                  : `${ref(t)} won’t start by itself.`,
-              )
-            }
-          />
+          <input type="checkbox" checked={t.autostart} onChange={(e) => setAutostart(t, e.currentTarget.checked)} />
           <span>
             <Zap size={14} aria-hidden="true" /> Start by itself when ready
             {blocker && !t.autostart ? ` (${blocker})` : ''}

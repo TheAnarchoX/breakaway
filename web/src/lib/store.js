@@ -715,6 +715,10 @@ export const focusPing = signal(null); // the ping the inbox scrolls to and focu
 export const newTask = signal(null); // null, or the defaults for the new-task dialog
 /** Whether the New agent dialog is open (docs/specs/IDEA-30-new-agent.md, section 5). */
 export const newAgent = signal(false);
+/** The task menu (WEB-24), open on a task: `{ uuid, x, y, from, selection }`, or null. */
+export const taskMenu = signal(null);
+/** A task to open at its comment field, set by the task menu's Add a comment; the panel focuses it and clears it. */
+export const focusComment = signal(null);
 export const helpOpen = signal(false);
 /** The repository the Add a repository wizard is on: `{ slug }` once registered, `{ github }` before, or null to pick one. */
 export const addRepoTarget = signal(null);
@@ -972,6 +976,16 @@ async function change(request, message, { forceable = false, force = false, afte
 }
 
 const path = (t) => `tasks/${enc(t.uuid)}`;
+
+/** Releases someone else's claim, once the owner confirms: they may still be working on it. */
+export async function releaseOther(t) {
+  const ok = await confirmDialog({
+    title: `Release ${t.claim}’s claim?`,
+    body: `${t.claim} may still be working on ${ref(t)}. Check its notes first, and tell them if you can.`,
+    confirmLabel: 'Release it',
+  });
+  if (ok) actions.release(t, true);
+}
 
 export const actions = {
   claim: (t) =>
