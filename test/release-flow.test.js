@@ -2,6 +2,7 @@ import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_TOKEN, TEST_GITHUB_APP_ID } from './constants.js';
 import { api, setPipeline } from './helpers.js';
+import { releaseOffer, releasedFrom } from '../src/release.js';
 import { ORIGIN } from './constants.js';
 
 // Promote and Roll back on the board (CLD-105), against a pretend GitHub. Its own file: the
@@ -407,6 +408,111 @@ describe('the release flow: Promote and Roll back', () => {
       expect(gh.writes).toHaveLength(1);
     });
 
+    it('passes next for minor or major, and leaves patch, the default, out (WEB-39)', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([['1.4.0-main.4', 'staged']]);
+      const post = await browser();
+      expect((await post('github/release', { version: '1.4.0-main.4', next: 'minor' })).status).toBe(200);
+      expect(gh.writes[0][2]).toEqual({ ref: 'main', inputs: { prerelease: 'v1.4.0-main.4', next: 'minor' } });
+      expect((await post('github/release', { version: '1.4.0-main.4', next: 'patch' })).status).toBe(200);
+      expect(gh.writes[1][2]).toEqual({ ref: 'main', inputs: { prerelease: 'v1.4.0-main.4' } });
+      expect(JSON.stringify(await body(await api('activity')))).toContain('"version":"1.4.0","next":"minor"');
+      expect((await post('github/release', { version: '1.4.0-main.4', next: 'huge' })).status).toBe(400);
+      expect(gh.writes).toHaveLength(2);
+    });
+
+    it('marks each pre-release with its Release, the later ones it leaves out, and the next version it asks', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([
+        ['1.3.1-main.4', 'published'],
+        ['1.3.1-main.5', 'published'],
+        ['1.3.1-main.7', 'staged'],
+      ]);
+      const versions = (await body(await api('github?repo=widgets'))).packages;
+      const of = (v) => versions.find((x) => x.version === v).release;
+      expect(of('1.3.1-main.4')).toMatchObject({
+        allowed: true,
+        leavesOut: ['1.3.1-main.5', '1.3.1-main.7'],
+        next: { ask: true, choices: [{ next: 'patch', version: '1.3.2' }, { next: 'minor', version: '1.4.0' }, { next: 'major', version: '2.0.0' }] },
+      });
+      expect(of('1.3.1-main.7')).toMatchObject({ allowed: true, leavesOut: [] });
+    });
+
+    it('once a stable is staged or published, blocks every pre-release of it, before and after; a failed one blocks nothing', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([
+        ['1.3.1-main.3', 'published'],
+        ['1.3.1-main.4', 'published'],
+        ['1.3.1-main.6', 'staged'],
+        ['1.3.2-main.1', 'staged'],
+      ]);
+      // A stable that failed was never staged, so the feed doesn't have it: nothing is blocked.
+      let versions = (await body(await api('github?repo=widgets'))).packages;
+      expect(versions.find((v) => v.version === '1.3.1-main.3').release.allowed).toBe(true);
+      await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (store) => {
+        store.setGhMeta(
+          'gh_tags',
+          'widgets',
+          JSON.stringify([
+            { name: 'v1.3.1-main.3', sha: 'c3' },
+            { name: 'v1.3.1-main.4', sha: 'c4' },
+            { name: 'v1.3.1', sha: 'c4' },
+          ]),
+        );
+      });
+      await feed([
+        ['1.3.1-main.3', 'published'],
+        ['1.3.1-main.4', 'published'],
+        ['1.3.1-main.6', 'staged'],
+        ['1.3.1', 'staged'],
+        ['1.3.2-main.1', 'staged'],
+      ]);
+      versions = (await body(await api('github?repo=widgets'))).packages;
+      for (const v of ['1.3.1-main.3', '1.3.1-main.4', '1.3.1-main.6'])
+        expect(versions.find((x) => x.version === v).release).toMatchObject({
+          allowed: false,
+          superseded: { version: '1.3.1', state: 'staged', from: '1.3.1-main.4' },
+        });
+      expect(versions.find((x) => x.version === '1.3.2-main.1').release.allowed).toBe(true);
+      expect(versions.find((x) => x.version === '1.3.1').release).toBeUndefined();
+      const post = await browser();
+      const refused = await body(await post('github/release', { version: '1.3.1-main.6' }));
+      expect(refused).toMatchObject({ status: 409, superseded: { version: '1.3.1', from: '1.3.1-main.4' } });
+      expect(refused.error).toMatch(/1.3.1 is already out, from 1.3.1-main.4/u);
+      expect(gh.writes).toEqual([]);
+    });
+
+    it('doesn’t ask when a later pre-release already sets the next version, and refuses minor or major then', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([
+        ['1.4.0-main.2', 'published'],
+        ['1.4.1-main.1', 'staged'],
+      ]);
+      const versions = (await body(await api('github?repo=widgets'))).packages;
+      expect(versions.find((v) => v.version === '1.4.0-main.2').release.next).toEqual({
+        ask: false,
+        version: '1.4.1',
+        why: 'prerelease',
+        prerelease: '1.4.1-main.1',
+      });
+      const post = await browser();
+      const refused = await body(await post('github/release', { version: '1.4.0-main.2', next: 'major' }));
+      expect(refused).toMatchObject({ status: 409 });
+      expect(refused.error).toMatch(/next version is already 1.4.1 \(1.4.1-main.1 is already out\): release it with patch/u);
+      expect(gh.writes).toEqual([]);
+      expect((await post('github/release', { version: '1.4.0-main.2' })).status).toBe(200);
+    });
+
+    it('says what to do when the repository’s release.yml doesn’t take next yet', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([['1.4.0-main.1', 'staged']]);
+      const post = await browser();
+      gh.writeError = [422, 'Unexpected inputs provided: ["next"]'];
+      const old = await body(await post('github/release', { version: '1.4.0-main.1', next: 'minor' }));
+      expect(old).toMatchObject({ status: 409, workflow: 'release.yml' });
+      expect(old.error).toMatch(/doesn’t take next yet: render it again with npx breakaway pipeline init/u);
+    });
+
     it('refuses a repository that releases no package, and says so plainly when the App can’t start workflows', async () => {
       const post = await browser();
       const none = await body(await post('github/release', { version: '1.4.0-main.1' }));
@@ -420,6 +526,76 @@ describe('the release flow: Promote and Roll back', () => {
       const denied = await body(await post('github/release', { version: '1.4.0-main.1' }));
       expect(denied).toMatchObject({ status: 403, permission: true, workflow: 'release.yml' });
       expect(await count()).toBe(before);
+    });
+  });
+});
+
+describe('Release on each pre-release (WEB-39): the rules', () => {
+  const feed = (...pairs) => pairs.map(([version, state = 'staged']) => ({ version, state }));
+
+  it('asks patch, minor, or major from the stable it makes, and names the later pre-releases it leaves out', () => {
+    const versions = feed(['1.3.1-main.1'], ['1.3.1-main.4'], ['1.3.1-main.7'], ['1.3.1-main.5']);
+    expect(releaseOffer(versions, '1.3.1-main.4')).toEqual({
+      stable: '1.3.1',
+      allowed: true,
+      superseded: null,
+      leavesOut: ['1.3.1-main.5', '1.3.1-main.7'],
+      next: {
+        ask: true,
+        choices: [
+          { next: 'patch', version: '1.3.2' },
+          { next: 'minor', version: '1.4.0' },
+          { next: 'major', version: '2.0.0' },
+        ],
+      },
+    });
+    expect(releaseOffer(versions, '1.3.1-main.7').leavesOut).toEqual([]);
+    expect(releaseOffer(versions, '1.3.1')).toBeNull();
+  });
+
+  it('blocks every pre-release of a stable that is staged or published, and nothing for one that failed', () => {
+    const versions = feed(['1.3.1-main.3'], ['1.3.1-main.4'], ['1.3.1-main.9'], ['1.3.1', 'published']);
+    for (const v of ['1.3.1-main.3', '1.3.1-main.9'])
+      expect(releaseOffer(versions, v, { from: { '1.3.1': '1.3.1-main.4' } })).toMatchObject({
+        allowed: false,
+        superseded: { version: '1.3.1', state: 'published', from: '1.3.1-main.4' },
+      });
+    // A stable that failed or was never staged isn't in the feed.
+    expect(releaseOffer(feed(['1.3.1-main.3']), '1.3.1-main.3').allowed).toBe(true);
+    expect(releaseOffer(feed(['1.3.1-main.3'], ['1.3.0', 'published']), '1.3.1-main.3').allowed).toBe(true);
+  });
+
+  it('skips the question when a later pre-release or an open +version task already sets the next version', () => {
+    expect(releaseOffer(feed(['1.4.0-main.2'], ['1.4.1-main.1'], ['1.4.1-main.3']), '1.4.0-main.2').next).toEqual({
+      ask: false,
+      version: '1.4.1',
+      why: 'prerelease',
+      prerelease: '1.4.1-main.3',
+    });
+    // 1.10.0 is later than 1.9.0, by number.
+    expect(releaseOffer(feed(['1.9.0-main.2'], ['1.10.0-main.1']), '1.9.0-main.2').next.version).toBe('1.10.0');
+    const preparing = { uuid: 'u1', wid: 'BRK-9', version: '1.5.0' };
+    expect(releaseOffer(feed(['1.4.0-main.2']), '1.4.0-main.2', { preparing }).next).toEqual({
+      ask: false,
+      version: '1.5.0',
+      why: 'preparing',
+      task: preparing,
+    });
+  });
+
+  it('finds which pre-release a stable came from by its tags’ commit, then by the board’s own events', () => {
+    const tags = [
+      { name: 'v1.3.1-main.3', sha: 'c3' },
+      { name: 'v1.3.1-main.4', sha: 'c4' },
+      { name: 'v1.3.1', sha: 'c4' },
+      { name: 'v1.2.0', sha: 'zz' },
+    ];
+    expect(releasedFrom(tags, [{ prerelease: '1.2.0-main.8', version: '1.2.0' }], 'v')).toEqual({
+      '1.3.1': '1.3.1-main.4',
+      '1.2.0': '1.2.0-main.8',
+    });
+    expect(releasedFrom([{ name: 'w@2.0.0-main.1', sha: 'a' }, { name: 'w@2.0.0', sha: 'a' }], [], 'w@')).toEqual({
+      '2.0.0': '2.0.0-main.1',
     });
   });
 });

@@ -8,6 +8,7 @@
 import { candidate, checkCandidate, productionSha } from './promote.js';
 import { shippedPrs } from './github.js';
 import { isPackageName } from './packages.js';
+import { compareVersions } from './versions.js';
 
 const NAME = /^[\w.-]{1,100}$/u;
 const name = (value) => (typeof value === 'string' && NAME.test(value) ? value : null);
@@ -54,6 +55,97 @@ export function packageOf(repo) {
 /** A pre-release the release flow stages, `X.Y.Z-main.N`, and the stable `X.Y.Z` it becomes. */
 const PRERELEASE = /^(\d+\.\d+\.\d+)-main\.\d+$/u;
 export const stableOf = (version) => PRERELEASE.exec(String(version ?? ''))?.[1] ?? null;
+
+/** What the stable job's `next` input takes: patch counts by itself, minor or major opens the pull request that sets it. */
+export const NEXT_STEPS = ['patch', 'minor', 'major'];
+
+/** The version each next step makes main work toward after stable `X.Y.Z`. */
+export function nextAfter(stable) {
+  const [maj, min, pat] = stable.split('.').map(Number);
+  return [
+    { next: 'patch', version: `${maj}.${min}.${pat + 1}` },
+    { next: 'minor', version: `${maj}.${min + 1}.0` },
+    { next: 'major', version: `${maj + 1}.0.0` },
+  ];
+}
+
+const preNumber = (version) => Number(String(version).split('-main.')[1]);
+
+/**
+ * Release on one pre-release of a package (WEB-39, IDEA-27 section 2b), worked out from the Packages feed: `versions`
+ * are the feed's `{ version, state }` for that package. Null for anything but a pre-release.
+ *
+ * - `superseded`: once `X.Y.Z` is staged or published, npm can't take it again, so every `X.Y.Z-main.N` is blocked.
+ *   `from` is the pre-release it was released from, when `from` (stable to pre-release) knows it. A stable that failed
+ *   or was never staged isn't in the feed, and blocks nothing.
+ * - `leavesOut`: the later pre-releases of the same `X.Y.Z`, which aren't in this stable and ship in the next
+ *   version's pre-releases instead.
+ * - `next`: what main works toward afterwards. `ask` with the three choices, or already set, with `why`: a pre-release
+ *   of a later version is out (`prerelease`, the newest), or an open +version task (`preparing`) is setting it. Then it
+ *   releases with patch.
+ * @param {{ version: string, state: string }[]} versions
+ * @param {string} version
+ * @param {{ from?: Record<string, string>, preparing?: { uuid: string, wid?: string | null, short?: string, version?: string | null } | null }} [context]
+ */
+export function releaseOffer(versions, version, { from = {}, preparing = null } = {}) {
+  const stable = stableOf(version);
+  if (!stable) return null;
+  const out = versions.find((v) => v.version === stable && ['staged', 'published'].includes(v.state));
+  if (out) {
+    return {
+      stable,
+      allowed: false,
+      superseded: { version: stable, state: out.state, from: from[stable] ?? null },
+      leavesOut: [],
+      next: null,
+    };
+  }
+  const n = preNumber(version);
+  const leavesOut = versions
+    .filter((v) => stableOf(v.version) === stable && preNumber(v.version) > n)
+    .map((v) => v.version)
+    .sort((a, b) => preNumber(a) - preNumber(b));
+  const later = versions
+    .filter((v) => stableOf(v.version) && compareVersions(/** @type {string} */ (stableOf(v.version)), stable) > 0)
+    .map((v) => v.version)
+    .sort(compareVersions);
+  let next;
+  if (later.length) {
+    const newest = later[later.length - 1];
+    next = { ask: false, version: stableOf(newest), why: 'prerelease', prerelease: newest };
+  } else if (preparing) {
+    next = { ask: false, version: preparing.version ?? null, why: 'preparing', task: preparing };
+  } else {
+    next = { ask: true, choices: nextAfter(stable) };
+  }
+  return { stable, allowed: true, superseded: null, leavesOut, next };
+}
+
+/**
+ * Which pre-release each stable was released from, by the commit its tags point at (a stable is the same commit as
+ * its pre-release), then by the board's own Release events. `tags` are `{ name, sha }`, `events` the release_started
+ * events' data, and `prefix` how the package's tags start.
+ * @param {{ name: string, sha?: string | null }[]} tags
+ * @param {{ prerelease?: string, version?: string }[]} events
+ * @param {string} prefix
+ * @returns {Record<string, string>}
+ */
+export function releasedFrom(tags, events, prefix) {
+  /** @type {Record<string, string>} */
+  const from = {};
+  for (const e of events) if (e.version && e.prerelease && stableOf(e.prerelease) === e.version) from[e.version] = e.prerelease;
+  const named = (t) => (t.name?.startsWith(prefix) ? t.name.slice(prefix.length) : null);
+  const bySha = new Map();
+  for (const t of tags) {
+    const v = named(t);
+    if (v && stableOf(v) && t.sha) bySha.set(`${t.sha}\n${stableOf(v)}`, v);
+  }
+  for (const t of tags) {
+    const v = named(t);
+    if (v && /^\d+\.\d+\.\d+$/u.test(v) && t.sha && bySha.has(`${t.sha}\n${v}`)) from[v] = bySha.get(`${t.sha}\n${v}`);
+  }
+  return from;
+}
 
 const PENDING = new Set(['', 'queued', 'pending', 'in_progress', 'waiting']);
 const FAILED = new Set(['failure', 'error']);

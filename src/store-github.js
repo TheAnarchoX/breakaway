@@ -35,7 +35,7 @@ import { promptPlaceholders } from './wizard.js';
 import { BACKFILL_SHIPPED } from './backfill-shipped.js';
 import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
 import { pullAccess } from './github-access.js';
-import { buildFlow, compareFacts, packageOf, pipelineOf, stableOf } from './release.js';
+import { buildFlow, compareFacts, NEXT_STEPS, packageOf, pipelineOf, stableOf } from './release.js';
 import { candidate, productionSha } from './promote.js';
 
 const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 100 };
@@ -1539,13 +1539,13 @@ export const githubMethods = {
    * rollback.yml) on its default branch, with inputs the workflow checks again. Only for a repository with
    * a pipeline. The owner's, from the signed-in browser only (the Worker refuses anything else).
    */
-  async githubRelease(action, { sha, destructiveOk, version, reason, repo: slug = null } = {}) {
+  async githubRelease(action, { sha, destructiveOk, version, reason, next, repo: slug = null } = {}) {
     await this.ready();
     const { repo, error: missing } = this.githubRepoOr404(slug);
     if (missing) return missing;
     const credentials = await appCredentials(this.env);
     if (!credentials) return { status: 409, body: { error: 'GitHub isn’t connected yet' } };
-    if (action === 'release') return this.packageRelease(repo, credentials, version);
+    if (action === 'release') return this.packageRelease(repo, credentials, version, next);
     const pipeline = pipelineOf(repo);
     if (!pipeline)
       return {
@@ -1602,13 +1602,15 @@ export const githubMethods = {
   },
 
   /**
-   * Release (BRK-103, IDEA-27 section 2b): starts the stable job of the repository's release.yml with the pre-release
-   * the owner chose, so that commit's files are staged on npm as `X.Y.Z` on latest, waiting for the owner's 2FA
-   * there. The board never publishes or approves on npm. Refused unless the repository's pipeline names a package and
-   * the Packages feed knows the pre-release, and once the feed knows its stable, staged or published (npm takes a
-   * version once). The workflow checks the tags again.
+   * Release (BRK-103, WEB-39, IDEA-27 section 2b): starts the stable job of the repository's release.yml with the
+   * pre-release the owner chose, so that commit's files are staged on npm as `X.Y.Z` on latest, waiting for the owner's
+   * 2FA there, and with `next` (patch, minor, or major), what main works toward afterwards. The board never publishes
+   * or approves on npm. Refused unless the repository's pipeline names a package and the Packages feed knows the
+   * pre-release; once the feed knows its stable, staged or published (npm takes a version once); and for minor or major
+   * when the next version is already set, by a later pre-release or an open +version task. The workflow checks the
+   * tags again.
    */
-  async packageRelease(repo, credentials, version) {
+  async packageRelease(repo, credentials, version, next = null) {
     const pkg = packageOf(repo);
     if (!pkg)
       return {
@@ -1617,6 +1619,8 @@ export const githubMethods = {
           error: `${repo.name} releases no npm package: set the pipeline’s package first (repos modify --pipeline).`,
         },
       };
+    const step = next === null || next === undefined || next === '' ? 'patch' : String(next);
+    if (!NEXT_STEPS.includes(step)) return { status: 400, body: { error: 'next is patch, minor, or major' } };
     // Its tag (widgets@1.4.0-main.5, v1.4.0-main.5) names it too.
     const given = String(version ?? '').trim();
     const wanted = given.startsWith(`${pkg.name}@`) ? given.slice(pkg.name.length + 1) : given.replace(/^v/u, '');
@@ -1627,7 +1631,7 @@ export const githubMethods = {
         body: { error: 'send the pre-release to release as "version", like 1.4.0-main.5' },
       };
     const known = this.sql
-      .exec('SELECT version, state FROM gh_packages WHERE repo = ? AND name = ?', repo.slug, pkg.name)
+      .exec('SELECT version FROM gh_packages WHERE repo = ? AND name = ?', repo.slug, pkg.name)
       .toArray();
     if (!known.some((v) => v.version === wanted))
       return {
@@ -1636,16 +1640,41 @@ export const githubMethods = {
           error: `The board hasn’t seen ${pkg.name}@${wanted} staged. Pick a pre-release from the Packages feed, or sync first.`,
         },
       };
-    if (known.some((v) => v.version === stable && ['staged', 'published'].includes(v.state)))
+    const offer = this.releaseOffers(repo.slug)?.({ name: pkg.name, version: wanted });
+    if (offer?.superseded) {
+      const from = offer.superseded.from ? `, from ${offer.superseded.from}` : '';
       return {
         status: 409,
         body: {
-          error: `${pkg.name}@${stable} is already out, and npm takes a version once. Release a newer pre-release.`,
+          error: `${pkg.name}@${stable} is already out${from}, and npm takes a version once. Release a newer pre-release.`,
+          superseded: offer.superseded,
         },
       };
-    const inputs = { prerelease: `${pkg.prefix}${wanted}` };
-    const event = { kind: 'release_started', package: pkg.name, prerelease: wanted, version: stable };
-    return this.dispatchRelease(repo, credentials, { workflow: pkg.workflow, ref: pkg.branch, inputs, event });
+    }
+    if (step !== 'patch' && offer?.next && !offer.next.ask) {
+      const why =
+        offer.next.why === 'prerelease'
+          ? `${offer.next.prerelease} is already out`
+          : `${offer.next.task.wid ?? offer.next.task.short} is preparing it`;
+      const what = offer.next.version ? `already ${offer.next.version}` : 'already being set';
+      return {
+        status: 409,
+        body: { error: `${repo.name}’s next version is ${what} (${why}): release it with patch.` },
+      };
+    }
+    // Patch is the stable job's default, so it isn't sent: a release.yml rendered before it took next still runs.
+    const inputs = { prerelease: `${pkg.prefix}${wanted}`, ...(step === 'patch' ? {} : { next: step }) };
+    const event = { kind: 'release_started', package: pkg.name, prerelease: wanted, version: stable, next: step };
+    const answer = await this.dispatchRelease(repo, credentials, { workflow: pkg.workflow, ref: pkg.branch, inputs, event });
+    if (answer.status === 409 && answer.body.github === 422 && /unexpected inputs/iu.test(answer.body.error ?? ''))
+      return {
+        status: 409,
+        body: {
+          error: `${repo.name}’s ${pkg.workflow} doesn’t take next yet: render it again with npx breakaway pipeline init in its checkout and merge that, or release with patch and set package.json’s version yourself.`,
+          workflow: pkg.workflow,
+        },
+      };
+    return answer;
   },
 
   /** Starts `workflow` on `ref` with `inputs` through the GitHub App, and records `event` in Activity once it has. */

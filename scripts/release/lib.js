@@ -1,17 +1,14 @@
 // The release workflow's decisions, as plain functions so they are tested (.github/workflows/release.yml).
 
-import { compareVersions, nextPrerelease as prereleaseWith, stableOf as stableWith } from '../lib/package-release.js';
+import {
+  compareVersions,
+  nextPrerelease as prereleaseWith,
+  nextVersion,
+  stableOf as stableWith,
+} from '../lib/package-release.js';
 
-export { compareVersions };
-
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/u;
-
-/** @param {string} v @returns {[number, number, number]} */
-function parts(v) {
-  const m = SEMVER.exec(v);
-  if (!m) throw new Error(`"${v}" isn't a version like 1.4.0.`);
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
-}
+// The version a stable's pull request sets package.json to (BRK-118) is a repository's release flow's too (WEB-39).
+export { compareVersions, nextVersion };
 
 /**
  * The next pre-release on the main channel. `current` is package.json's version, the release being worked
@@ -26,23 +23,6 @@ export const nextPrerelease = (current, tags) => prereleaseWith(current, tags, '
 /** The stable version a pre-release tag (`v1.4.0-main.37`) is promoted to. */
 export const stableOf = (prereleaseTag) => stableWith(prereleaseTag, 'v');
 
-/**
- * The version a stable release's pull request sets package.json to (BRK-118): the next minor or major after the stable,
- * or null when there is nothing to set. A patch is null, since the pre-releases count patches by themselves, and so is
- * a package.json already at or past the choice (main moved on before an older pre-release was promoted).
- * @param {string} stable the version just promoted, like 1.3.0
- * @param {string} next patch, minor, or major
- * @param {string} current package.json's version on main
- * @returns {string | null}
- */
-export function nextVersion(stable, next, current) {
-  const [maj, min] = parts(stable);
-  parts(current);
-  if (next === 'patch') return null;
-  if (next !== 'minor' && next !== 'major') throw new Error(`next is patch, minor, or major, not "${next}".`);
-  const version = next === 'major' ? `${maj + 1}.0.0` : `${maj}.${min + 1}.0`;
-  return compareVersions(current, version) >= 0 ? null : version;
-}
 
 /**
  * manifest.json: what an install reads before it deploys.

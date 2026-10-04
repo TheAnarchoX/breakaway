@@ -79,5 +79,13 @@ describe('scripts/package-release.mjs (BRK-90)', () => {
     expect(again.stderr).toMatch(/widgets@1\.2\.0 is already released/u);
     expect(helper('stable', 'widgets@9.9.9-main.1', '--prefix', 'widgets@').stderr).toMatch(/There is no pre-release/u);
     expect(helper('prerelease', '--prefix', 'widgets@').stdout).toMatch(/^version=1\.2\.1-main\.1\n/u);
+    // WEB-39: the version the next-version job sets, from the package's own package.json.
+    expect(helper('next', '1.2.0', 'minor').stdout).toBe('version=1.3.0\n');
+    expect(helper('next', '1.2.0', 'major').stdout).toBe('version=2.0.0\n');
+    expect(helper('next', '1.2.0', 'patch').stdout).toBe('version=\n');
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'widgets', version: '1.3.0' }));
+    const already = helper('next', '1.2.0', 'minor');
+    expect(already.stdout).toBe('version=\n');
+    expect(already.stderr).toMatch(/already says 1\.3\.0/u);
   });
 });
