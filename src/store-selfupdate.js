@@ -76,9 +76,22 @@ export const selfUpdateMethods = {
           allowed: this.selfUpdateAllowed(),
           enabled: Boolean(this.selfUpdateConfig() && this.env[TOKEN_BINDING]),
           state: this.selfUpdateState(),
+          running: releaseOf(this.env),
+          check: this.updateVerified(),
         },
       },
     }));
+  },
+
+  /** The owner's Check for updates: reads the feed and verifies the newest release, keeping what it found. */
+  selfUpdateCheck() {
+    return this.run(async () => {
+      if (!this.selfUpdateAllowed())
+        throw new AgentError('This install has a repository, which updates it. Self-update is off for it.', 409);
+      if (!this.selfUpdateConfig()) throw new AgentError('Self-update is off. Turn on updates first.', 409);
+      await this.updatesVerify();
+      return { status: 200, body: { selfUpdate: { check: this.updateVerified() } } };
+    });
   },
 
   /**
@@ -109,6 +122,7 @@ export const selfUpdateMethods = {
         );
       }
       this.setMeta('selfupd_cfg', JSON.stringify({ accountId: cf.account, enabled: Date.now() }));
+      await this.updatesVerify().catch(() => {}); // the first look at the feed; Check for updates tries again
       return { status: 200, body: { selfUpdate: { enabled: true } } };
     });
   },

@@ -421,8 +421,23 @@ describe('turning self-update on', () => {
     );
   });
 
+  it('checks for updates only once it is on, and Connections reads what the check kept', async () => {
+    await asBoard(
+      async (s) => {
+        expect((await s.selfUpdateCheck()).status).toBe(409);
+        const api = (await s.selfUpdateApi()).body.selfUpdate;
+        expect(api).toMatchObject({ allowed: true, enabled: false });
+        expect(typeof api.running).toBe('string');
+      },
+      { token: null },
+    );
+    await asBoard(async (s) => expect((await s.selfUpdateCheck()).status).toBe(409), {
+      install: { installRepository: 'acme/board' },
+    });
+  });
+
   it('is the signed-in browser’s alone: the bearer token is refused', async () => {
-    for (const action of ['enable', 'disable', 'start', 'rollback']) {
+    for (const action of ['enable', 'disable', 'start', 'rollback', 'check']) {
       const res = await api(`self-update/${action}`, { method: 'POST', body: {} });
       expect(res.status).toBe(403);
     }

@@ -24,6 +24,7 @@ import {
   repoScope,
   repos,
 } from '../lib/store.js';
+import { SelfUpdate } from '../components/SelfUpdate.jsx';
 import { RepoChip } from '../components/ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -164,6 +165,7 @@ function Row({ c }) {
           )}
         </div>
       )}
+      {c.id === 'board.version' && <SelfUpdate />}
       <Items c={c} />
     </li>
   );
