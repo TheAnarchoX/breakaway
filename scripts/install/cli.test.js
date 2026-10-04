@@ -137,6 +137,59 @@ describe('the deploy workflow’s steps', () => {
     expect(await runStep('check', { ...opts, before: join(dir, 'missing.json') }, io())).toBe(0);
   });
 
+  it('says how it deploys: a version upload, or wrangler deploy for what a version can’t carry (BRK-62)', async () => {
+    put('manifest.json', { version: '0.2.0', manual: false, updatesFrom: '0.1.0' });
+    put('before.json', { name: 'board', worker: 'board' });
+    put('breakaway.config.json', { name: 'board', worker: 'board' });
+    const opts = { version: '0.2.0', manifest: join(dir, 'manifest.json'), before: join(dir, 'before.json') };
+    await runStep('check', opts, io());
+    expect(lines).toEqual(['ok=true', 'deploy=versions', 'changes=', 'address_changed=false']);
+    put('breakaway.config.json', { name: 'board', worker: 'board', url: 'https://board.example.com' });
+    await runStep('check', { ...opts, 'deploy-changes': 'true' }, io());
+    expect(lines).toEqual([
+      'ok=true',
+      'deploy=wrangler',
+      'changes=its address (routes), its workers.dev address',
+      'address_changed=true',
+    ]);
+    // Anything but true is no: the variable unset, or set to something else.
+    await expect(runStep('check', { ...opts, 'deploy-changes': '' }, io())).rejects.toMatchObject({ code: 2 });
+  });
+
+  it('compares with the config the running release made, so a release’s own cron change shows', async () => {
+    put('manifest.json', { version: '0.2.0', manual: false, updatesFrom: '0.1.0' });
+    put('breakaway.config.json', { name: 'board', worker: 'board' });
+    const running = bundleConfig(parseInstall({ name: 'board', worker: 'board' }), 'bundle');
+    put('running.json', { ...running, triggers: { crons: ['*/10 * * * *'] } });
+    const opts = {
+      version: '0.2.0',
+      manifest: join(dir, 'manifest.json'),
+      'running-config': join(dir, 'running.json'),
+    };
+    await expect(runStep('check', opts, io())).rejects.toMatchObject({
+      code: 2,
+      message: expect.stringContaining('its cron triggers'),
+    });
+    await runStep('check', { ...opts, 'deploy-changes': 'true' }, io());
+    expect(lines).toContain('deploy=wrangler');
+    // A running config that can't be read falls back to the config before the push.
+    put('running.json', 'not json');
+    put('before.json', { name: 'board', worker: 'board' });
+    await runStep('check', { ...opts, before: join(dir, 'before.json') }, io());
+    expect(lines).toContain('deploy=versions');
+  });
+
+  it('never deploys another Durable Object, whatever the install allows', async () => {
+    put('manifest.json', { version: '0.2.0', manual: false, updatesFrom: '0.1.0' });
+    put('before.json', { name: 'board', worker: 'board' });
+    put('breakaway.config.json', { name: 'board', worker: 'board', store: 'another' });
+    const opts = { version: '0.2.0', manifest: join(dir, 'manifest.json'), before: join(dir, 'before.json') };
+    await expect(runStep('check', { ...opts, 'deploy-changes': 'true' }, io())).rejects.toMatchObject({
+      code: 2,
+      message: expect.stringContaining('its Durable Object (store)'),
+    });
+  });
+
   it('makes a Worker config that points at the downloaded bundle', async () => {
     put('breakaway.config.json', { name: 'board', worker: 'board' });
     await runStep('config', { bundle: 'bundle', out: 'wrangler.generated.json' }, io());

@@ -42,7 +42,7 @@ Then open `breakaway.config.json` and add one line, so the board can look for up
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 
-1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`.
+1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a Cloudflare API token, and `CLOUDFLARE_ACCOUNT_ID`. Workers Editor on the board’s Worker deploys each release; a token that can also run `wrangler deploy` lets Deploy apply a new address, cron triggers, or a new Durable Object class too. The install repository’s README says which token does what.
 2. Turn on Settings, Actions, General, “Allow GitHub Actions to create and approve pull requests”. The update workflow needs it.
 
 **Check:** nothing on Connections yet, because there’s no board. The files are in the repository, and the environment has its secrets.
@@ -63,7 +63,7 @@ It writes `tasks.env` in `~/.config/breakaway` and says which value goes where. 
 
 On GitHub, open the install repository’s Actions tab, pick **Deploy**, and run it with **dry-run** on. It checks the release and builds it, and stops before it touches the Worker. When it passes, run it again with dry-run off. It deploys, checks that the Worker answers `/api/ping`, and goes back to the previous version if it doesn’t.
 
-It stops with a message when something needs your hands: a release that has manual steps, or a change in `breakaway.config.json` the workflow can’t deploy (the address, cron triggers, or Durable Object classes). Do what the message says, then run Deploy again.
+It stops with a message when something needs your hands: a release that has manual steps, or a change a version upload can’t carry (the address, cron triggers, or a new Durable Object class) when its token can’t run `wrangler deploy` or the repository variable `BREAKAWAY_DEPLOY_CHANGES` isn’t `true`. Do what the message says, then run Deploy again. It never changes the Worker’s name or its Durable Object, since either opens an empty board.
 
 **Check:** the run is green. Then, once you’re signed in (next step), the Cloudflare rows read **Working**: **Worker**, **Secrets Store bindings**, **Cron (every 5 minutes)** (it reads “no run recorded yet” until the first run, within 5 minutes), and **TaskChampion sync server**.
 

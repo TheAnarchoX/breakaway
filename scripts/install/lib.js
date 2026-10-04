@@ -78,13 +78,19 @@ export function deployTarget(state, releases) {
   return { version: latest.version, tag: tagOf(latest.version), channel: 'main' };
 }
 
+/** How Deploy is allowed to run wrangler deploy, for the messages that stop it. */
+const LET_DEPLOY =
+  "give CLOUDFLARE_API_TOKEN the scopes this repository's README lists for it and set the repository variable BREAKAWAY_DEPLOY_CHANGES to true";
+
 /**
  * Whether a downloaded release may be deployed by the workflow. A release that needs hands, or one the running version
- * can't update from, stops with the message the workflow prints.
- * @param {{ version?: string, manual?: boolean, manualSteps?: string[], updatesFrom?: string }} manifest
- * @returns {{ ok: true } | { ok: false, message: string }}
+ * can't update from, stops with the message the workflow prints. A manual release whose only step is wrangler deploy
+ * (`wranglerDeploy`, BRK-62) passes when the install lets Deploy run it (`apply`), and says it needs wrangler deploy.
+ * @param {{ version?: string, manual?: boolean, manualSteps?: string[], wranglerDeploy?: boolean, updatesFrom?: string }} manifest
+ * @param {{ version: string, running?: string | null, apply?: boolean }} options
+ * @returns {{ ok: true, wrangler?: true } | { ok: false, message: string }}
  */
-export function checkManifest(manifest, { version, running = null }) {
+export function checkManifest(manifest, { version, running = null, apply = false }) {
   if (!manifest || typeof manifest !== 'object')
     return { ok: false, message: 'the release’s manifest.json isn’t readable, so nothing was deployed.' };
   if (manifest.version !== version)
@@ -92,13 +98,6 @@ export function checkManifest(manifest, { version, running = null }) {
       ok: false,
       message: `the manifest is for ${manifest.version}, not ${version}, so nothing was deployed. Try again; if it persists, the release was published wrongly.`,
     };
-  if (manifest.manual === true) {
-    const steps = (manifest.manualSteps ?? []).map((s) => `\n  - ${s}`).join('');
-    return {
-      ok: false,
-      message: `breakaway ${version} needs steps by hand, so the workflow didn't deploy it. Do these, then deploy it yourself with wrangler:${steps}`,
-    };
-  }
   if (
     running &&
     manifest.updatesFrom &&
@@ -110,40 +109,131 @@ export function checkManifest(manifest, { version, running = null }) {
       ok: false,
       message: `breakaway ${version} updates from ${manifest.updatesFrom} or newer, and this install runs ${running}. Update to ${manifest.updatesFrom} first (set it in breakaway.json), then to ${version}.`,
     };
+  if (manifest.manual === true) {
+    const byWrangler = manifest.wranglerDeploy === true;
+    if (byWrangler && apply) return { ok: true, wrangler: true };
+    const steps = (manifest.manualSteps ?? []).map((s) => `\n  - ${s}`).join('');
+    const hint = byWrangler
+      ? `\nThese steps are what wrangler deploy does, so Deploy can do them itself: ${LET_DEPLOY}, then run Deploy again.`
+      : '';
+    return {
+      ok: false,
+      message: `breakaway ${version} needs steps by hand, so the workflow didn't deploy it. Do these, then deploy it yourself with wrangler:${steps}${hint}`,
+    };
+  }
   return { ok: true };
 }
 
-/** What a deploy by the workflow can't change: routes, crons, the Durable Object classes, and their migrations. */
+/**
+ * What a version upload can't change (BRK-62): the Worker and its Durable Object, its routes and crons, and the Durable
+ * Object classes and their migrations. Made from the Worker's wrangler config.
+ */
 export function shapeOf(wrangler) {
+  const inst = wrangler.vars?.TASKS_INSTALL;
   return {
+    worker: wrangler.name ?? null,
+    store: (inst && typeof inst === 'object' ? inst.store : null) ?? null,
+    jurisdiction: wrangler.vars?.TASKS_JURISDICTION ?? null,
     routes: wrangler.routes ?? [],
     workers_dev: Boolean(wrangler.workers_dev),
     crons: wrangler.triggers?.crons ?? [],
     durable_objects: wrangler.durable_objects?.bindings ?? [],
     migrations: wrangler.migrations ?? [],
-    jurisdiction: wrangler.vars?.TASKS_JURISDICTION ?? null,
   };
 }
 
-/** What differs between two installs' shapes, as phrases for the message; empty when a deploy may go ahead. */
+const json = (value) => JSON.stringify(value);
+/** A migration that only makes classes, which wrangler deploy applies; any other kind deletes, renames, or moves one. */
+const CREATES = new Set(['tag', 'new_sqlite_classes', 'new_classes']);
+
+/**
+ * The classes `after` adds, when adding is all its Durable Object change does: its migrations are `before`'s with only
+ * new classes after them, and it keeps every binding `before` has. Null for anything else.
+ */
+function addedClasses(before, after) {
+  const kept = before.migrations.every((m, i) => json(m) === json(after.migrations[i]));
+  const added = after.migrations.slice(before.migrations.length);
+  if (!kept || !added.every((m) => Object.keys(m).every((key) => CREATES.has(key)))) return null;
+  if (!before.durable_objects.every((b) => after.durable_objects.some((a) => json(a) === json(b)))) return null;
+  return added.flatMap((m) => [...(m.new_sqlite_classes ?? []), ...(m.new_classes ?? [])]);
+}
+
+/**
+ * What differs between the Worker's shape as it runs and as this deploy makes it, each with whether wrangler deploy may
+ * apply it (BRK-62): an address, cron triggers, and new Durable Object classes, yes. Another Worker, another Durable
+ * Object, or a class deleted, renamed, or moved, never: the first two open an empty board, and the last is a release's
+ * manual step. Empty when a version upload carries the whole deploy.
+ * @returns {{ change: string, apply: boolean, why?: string, address?: true }[]}
+ */
 export function shapeChanges(before, after) {
-  const names = {
-    routes: 'its address (routes)',
-    workers_dev: 'its workers.dev address',
-    crons: 'its cron triggers',
-    durable_objects: 'its Durable Object classes',
-    migrations: 'its Durable Object migrations',
-    jurisdiction: 'its jurisdiction',
-  };
-  return Object.keys(names)
-    .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
-    .map((key) => names[key]);
+  const differs = (key) => json(before[key]) !== json(after[key]);
+  const out = [];
+  const empty = 'another Durable Object is an empty board';
+  if (differs('worker'))
+    out.push({
+      change: 'its Worker’s name (worker)',
+      apply: false,
+      why: 'a new name makes a new Worker, with an empty board',
+    });
+  if (differs('store')) out.push({ change: 'its Durable Object (store)', apply: false, why: empty });
+  if (differs('jurisdiction')) out.push({ change: 'its jurisdiction', apply: false, why: empty });
+  if (differs('routes')) out.push({ change: 'its address (routes)', apply: true, address: true });
+  if (differs('workers_dev')) out.push({ change: 'its workers.dev address', apply: true, address: true });
+  if (differs('crons')) out.push({ change: 'its cron triggers', apply: true });
+  if (differs('durable_objects') || differs('migrations')) {
+    const added = addedClasses(before, after);
+    if (added === null)
+      out.push({
+        change: 'its Durable Object classes: it deletes, renames, or moves one',
+        apply: false,
+        why: 'that is a release’s manual step, and it can lose a board',
+      });
+    else
+      out.push({
+        change: added.length
+          ? `its Durable Object classes: it adds ${added.join(', ')}`
+          : 'its Durable Object bindings',
+        apply: true,
+      });
+  }
+  return out;
 }
 
-/** The message that stops a deploy when the install's config changed what the workflow can't deploy, or null. */
+/** The message that stops a deploy whose changes need wrangler deploy when the install hasn't allowed it, or null. */
 export function configStop(changes) {
   if (!changes.length) return null;
-  return `breakaway.config.json changed ${changes.join(', ')}, which the workflow doesn't deploy. Apply it yourself with wrangler (npx wrangler deploy, with the config npx breakaway install config makes), then run the workflow again.`;
+  return `This deploy changes ${changes.join(', ')}, which a version upload can't carry, so nothing was deployed. To let Deploy run wrangler deploy for it, ${LET_DEPLOY}, then run Deploy again. Or apply it yourself with wrangler (npx wrangler deploy, with the config npx breakaway install config makes), then run Deploy again.`;
+}
+
+/** The message that stops a deploy with a change Deploy never makes. */
+function neverStop(changes) {
+  const why = [...new Set(changes.map((c) => c.why))].join('; ');
+  return `This deploy changes ${changes.map((c) => c.change).join(', ')}, which Deploy never does, so nothing was deployed: ${why}. If breakaway.config.json changed it, put it back as it was. If the release did, its notes say what to do by hand.`;
+}
+
+/**
+ * What Deploy does with a release (BRK-62): stop with a message, upload a version (`versions`), or run wrangler deploy
+ * (`wrangler`) for what a version can't carry. `before` and `after` are the Worker's shapes as it runs and as this deploy
+ * makes it; `before` is null when there is nothing to compare with (a first deploy, or a dispatch with no running release
+ * to ask). `apply` is whether the install lets Deploy run wrangler deploy: BREAKAWAY_DEPLOY_CHANGES, set for a token that
+ * can. `addressChanged` tells the health check to wait for a new custom domain.
+ * @returns {{ ok: false, message: string } | { ok: true, deploy: 'versions' | 'wrangler', changes: string[], addressChanged: boolean }}
+ */
+export function deployPlan(manifest, { version, running = null, before = null, after = null, apply = false }) {
+  const verdict = checkManifest(manifest, { version, running, apply });
+  if (verdict.ok === false) return verdict;
+  const found = before && after ? shapeChanges(before, after) : [];
+  const never = found.filter((c) => !c.apply);
+  if (never.length) return { ok: false, message: neverStop(never) };
+  const changes = found.map((c) => c.change);
+  const byWrangler = changes.length > 0 || verdict.wrangler === true;
+  if (byWrangler && !apply) return { ok: false, message: configStop(changes) };
+  return {
+    ok: true,
+    deploy: byWrangler ? 'wrangler' : 'versions',
+    changes,
+    addressChanged: found.some((c) => c.address === true),
+  };
 }
 
 /**

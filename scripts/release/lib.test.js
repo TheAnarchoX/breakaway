@@ -61,6 +61,17 @@ describe('manifest and manual steps', () => {
     expect(manifestOf({ ...base, config }).manual).toBe(true);
     expect(manualSection(config)).toContain('### Manual steps');
   });
+  it('says when a manual release’s only step is wrangler deploy (BRK-62)', () => {
+    const config = {
+      manual: true,
+      manualSteps: ['Deploy with wrangler deploy: it adds a class.'],
+      wranglerDeploy: true,
+    };
+    expect(manifestOf({ ...base, config }).wranglerDeploy).toBe(true);
+    expect(manualSection(config)).toContain('wrangler deploy');
+    expect(manifestOf({ ...base, config: { manual: true, manualSteps: ['x'] } })).not.toHaveProperty('wranglerDeploy');
+    expect(() => manifestOf({ ...base, config: { wranglerDeploy: true } })).toThrow(/manual/);
+  });
   it('updates from the first release there was unless release.json says otherwise', () => {
     expect(manifestOf({ ...base, config: {} }).updatesFrom).toBe('0.1.0-main.1');
   });
