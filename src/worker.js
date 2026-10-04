@@ -390,6 +390,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'DELETE') return send(await s.reposRemoveApi(parts[1], body));
     if (parts.length === 3 && parts[2] === 'release' && method === 'POST')
       return send(await s.reposReleaseApi(parts[1], body));
+    // Add the board's files (BRK-132): the owner's press writes an empty repository's first commit through the App.
+    if (parts.length === 3 && parts[2] === 'init' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can add the board’s files' });
+      return send(await s.boardFilesApi(parts[1], { by: body.by, origin: install(env).url ?? url.origin }));
+    }
     // Turn on deploys (WEB-13) is the owner's press on the GitHub page: the signed-in browser only, never the bearer token.
     if (parts.length === 3 && parts[2] === 'pipeline' && method === 'POST') {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });

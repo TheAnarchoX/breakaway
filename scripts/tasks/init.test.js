@@ -9,9 +9,11 @@ import {
   hookCommand,
   PROMPT_SECTIONS,
   agentsMd,
+  boardSources,
   cliCopySources,
   copiedSources,
   importClosure,
+  initCommitMessage,
   initPlan,
   machineTaskrc,
   promptSections,
@@ -23,6 +25,7 @@ import {
   withRepoInTaskrc,
 } from './init.js';
 import { promptPlaceholders } from '../../src/wizard.js';
+import BOARD_FILES from '../../src/board-files.json';
 
 // This checkout's files, as repos init reads them, keyed by their path from the repository's root.
 const RAW = import.meta.glob(
@@ -79,6 +82,7 @@ describe('repos init (CLD-191)', () => {
         'scripts/tasks.mjs',
         'scripts/tasks/ask.js',
         'scripts/tasks/init.js',
+        'src/init.js',
         'scripts/tasks/proxy.js',
         'scripts/tasks/repo.js',
         'scripts/tasks/structure.js',
@@ -620,5 +624,33 @@ describe('this machine’s taskrc (CLD-193)', () => {
     expect(one).not.toContain('scratch');
     expect(one).toContain('context.breakaway.write=repo:breakaway');
     expect(machineTaskrc(one, [], shared)).toBe(credentials);
+  });
+});
+
+describe('the board’s copy of the files, for an empty repository’s first commit (BRK-132)', () => {
+  it('holds every file repos init reads, as it is in this checkout', () => {
+    const sources = boardSources(read);
+    expect(sources).toEqual(expect.arrayContaining(['prompts/repository.md', 'prompts/core.md', 'scripts/task']));
+    expect(
+      BOARD_FILES,
+      'src/board-files.json is behind the files repos init copies: run node scripts/board-files.mjs and commit it.',
+    ).toEqual(Object.fromEntries(sources.map((path) => [path, read(path)])));
+  });
+
+  it('renders the same plan from it as from the checkout', () => {
+    const fromCopy = (path) => {
+      if (!(path in BOARD_FILES)) throw new Error(`no ${path} in src/board-files.json`);
+      return BOARD_FILES[path];
+    };
+    const args = { repo, board, url: BOARD_URL, readTarget: empty, ...promptSections({}) };
+    expect(initPlan({ ...args, read: fromCopy })).toEqual(initPlan({ ...args, read }));
+  });
+
+  it('gives the CLI and the board one first commit message', () => {
+    expect(initCommitMessage('widgets')).toEqual({
+      title: "Set up the task board's agent files",
+      body: expect.stringMatching(/Added by npx breakaway repos init widgets\.$/u),
+    });
+    expect(initCommitMessage('widgets', { by: 'the board' }).body).toMatch(/Added by the board\.$/u);
   });
 });
