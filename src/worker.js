@@ -426,7 +426,10 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.routinePromptApi(url.searchParams.get('repo')));
     if (parts[1] === 'start' && method === 'POST')
       return send(
-        await s.agentsStartApi(body.ref, body.note ? String(body.note) : null, body.mode ? String(body.mode) : null),
+        await s.agentsStartApi(body.ref, body.note ? String(body.note) : null, body.mode ? String(body.mode) : null, {
+          force: body.force,
+          by: body.by,
+        }),
       );
     if (parts[1] === 'next' && method === 'POST')
       return send(
@@ -492,11 +495,17 @@ async function handleApi(request, env, url, ctx) {
     return send(await s.githubSyncApi(body.repo ?? url.searchParams.get('repo')));
   if (parts[0] === 'github' && parts[1] === 'alerts' && parts[3] === 'fix' && method === 'POST')
     return send(
-      await s.fixAlertApi(parts[2], body.note ? String(body.note) : null, body.repo ?? url.searchParams.get('repo')),
+      await s.fixAlertApi(parts[2], body.note ? String(body.note) : null, body.repo ?? url.searchParams.get('repo'), {
+        force: body.force,
+        by: body.by,
+      }),
     );
   if (parts[0] === 'github' && parts[1] === 'pulls' && parts[3] === 'review' && parts.length === 4 && method === 'POST')
     return send(
-      await s.reviewPullApi(parts[2], body.note ? String(body.note) : null, body.repo ?? url.searchParams.get('repo')),
+      await s.reviewPullApi(parts[2], body.note ? String(body.note) : null, body.repo ?? url.searchParams.get('repo'), {
+        force: body.force,
+        by: body.by,
+      }),
     );
   if (parts[0] === 'github' && parts[1] === 'setup' && method === 'POST')
     return json(200, await s.githubSetup(url.origin));

@@ -378,7 +378,7 @@ export const routinesMethods = {
   },
 
   /** Why a routine can't run now, or null. `trigger` is `manual` for the button; other triggers also keep the gap. */
-  routineBlocker(row, trigger) {
+  routineBlocker(row, trigger, { force = false } = {}) {
     if (this.routineSettings().paused) return 'all routines are paused';
     if (!row.enabled)
       return row.disabled_reason ? `“${row.name}” is off: ${row.disabled_reason}` : `“${row.name}” is off`;
@@ -391,8 +391,9 @@ export const routinesMethods = {
         Date.now() - DAY_MS,
       )
       .one().n;
-    if (today >= row.daily_cap) return `“${row.name}” has run ${today} times in the last day, its daily cap`;
-    if (this.routineRunsToday() >= this.routineSettings().dailyCap)
+    // Force start skips the board's daily caps (BRK-105), nothing that switches a routine off.
+    if (!force && today >= row.daily_cap) return `“${row.name}” has run ${today} times in the last day, its daily cap`;
+    if (!force && this.routineRunsToday() >= this.routineSettings().dailyCap)
       return `routines have run ${this.routineRunsToday()} times in the last day, the most the board allows`;
     if (trigger !== 'manual') {
       const last = this.sql
@@ -408,11 +409,14 @@ export const routinesMethods = {
    * Runs a routine: a task in area `routines` of the routine's repository, carrying the prompt, and an agent
    * on it (through that repository's routine). Never queued: over a cap, it says why.
    */
-  async runRoutine(slug, { note = null, trigger = 'manual', comment = null, start = true } = {}) {
+  async runRoutine(slug, { note = null, trigger = 'manual', comment = null, start = true, force = false } = {}) {
     await this.ready();
     const row = this.routineRow(slug);
-    const blocker = this.routineBlocker(row, trigger);
-    if (blocker) throw new AgentError(blocker, /already has a run open|is off/u.test(blocker) ? 409 : 429);
+    const blocker = this.routineBlocker(row, trigger, { force });
+    if (blocker) {
+      const forceable = /daily cap|the most the board allows/u.test(blocker);
+      throw new AgentError(blocker, /already has a run open|is off/u.test(blocker) ? 409 : 429, { forceable });
+    }
     const date = new Date().toISOString().slice(0, 10);
     const res = await this.create([
       {
@@ -441,7 +445,7 @@ export const routinesMethods = {
     if (!start) return { task: this.detail(uuid), routine: row.slug, waiting: true };
     try {
       return {
-        ...(await this.startAgent(uuid, { trigger, note, kind: 'routine', routine: row.slug })),
+        ...(await this.startAgent(uuid, { trigger, note, kind: 'routine', routine: row.slug, force })),
         routine: row.slug,
       };
     } catch (error) {
