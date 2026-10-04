@@ -99,6 +99,10 @@ const ICONS = {
   trigger_refused: CircleX,
   trigger_noted: MessageSquare,
   trigger_waiting: Repeat,
+  chase_started: Bot,
+  chase_stopped: Bot,
+  chase_stalled: CircleAlert,
+  chase_ended: CircleCheck,
 };
 
 const SOURCES = {
@@ -151,6 +155,14 @@ function describe(change) {
       return `A trigger for ${change.routine} was noted on its open run`;
     case 'trigger_waiting':
       return `A trigger for ${change.routine} made a run that waits for your Start`;
+    case 'chase_started':
+      return `You started a chase on ${change.feature}`;
+    case 'chase_stopped':
+      return `You stopped the chase on ${change.feature}`;
+    case 'chase_stalled':
+      return change.detail ?? `The chase on ${change.feature} waits for you`;
+    case 'chase_ended':
+      return `The chase on ${change.feature} ended: ${change.detail ?? 'every task is done or in review'}`;
     case 'pr_opened':
       return `${change.draft ? 'Draft pull request' : 'Pull request'} #${change.number} opened${change.by ? ` by ${change.by}` : ''}`;
     case 'pr_ready':

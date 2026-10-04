@@ -34,6 +34,7 @@ import { dockFrom } from './lib/layout.js';
 import { BoardView } from './views/BoardView.jsx';
 import { ListView } from './views/ListView.jsx';
 import { GraphView } from './views/GraphView.jsx';
+import { RoadmapView } from './views/RoadmapView.jsx';
 import { InboxView } from './views/InboxView.jsx';
 import { ActivityView } from './views/ActivityView.jsx';
 import { GitHubView } from './views/GitHubView.jsx';
@@ -52,6 +53,7 @@ import { TaskMenuHost } from './components/TaskMenu.jsx';
 const VIEW_COMPONENTS = {
   board: BoardView,
   list: ListView,
+  roadmap: RoadmapView,
   graph: GraphView,
   inbox: InboxView,
   activity: ActivityView,

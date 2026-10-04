@@ -395,6 +395,9 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'GET') return send(await s.featureApi(parts[1]));
     if (parts.length === 2 && method === 'PATCH') return send(await s.featuresModifyApi(parts[1], body));
     if (parts.length === 2 && method === 'DELETE') return send(await s.featuresDeleteApi(parts[1], body));
+    // A chase (section 3) is the owner's: an agent's `by` is refused.
+    if (parts.length === 3 && parts[2] === 'chase' && method === 'POST')
+      return send(await s.featureChaseApi(parts[1], body));
   }
   if (parts[0] === 'routines') {
     if (parts.length === 1 && method === 'GET') return send(await s.routinesApi());
