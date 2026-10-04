@@ -504,6 +504,8 @@ async function handleApi(request, env, url, ctx) {
       }),
     );
   }
+  if (parts[0] === 'github' && parts[1] === 'packages' && parts.length === 2 && method === 'GET')
+    return send(await s.packagesApi(url.searchParams.get('repo')));
   if (parts[0] === 'github' && parts[1] === 'sync' && method === 'POST')
     return send(await s.githubSyncApi(body.repo ?? url.searchParams.get('repo')));
   if (parts[0] === 'github' && parts[1] === 'alerts' && parts[3] === 'fix' && method === 'POST')

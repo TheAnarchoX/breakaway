@@ -28,7 +28,7 @@ This file is for breakaway's own repository. If `git remote get-url origin` does
 These are settled. If a task would break one, ask the owner with a decision before you build it.
 
 - **Free, and self-hosted.** Each person runs their own install on their own Cloudflare account. No hosted version, accounts, teams, tenants, pricing, paid features, or ads.
-- **An install keeps its data.** No analytics, telemetry, or tracking, and no call to a service the install's owner didn't connect (GitHub, Claude, push).
+- **An install keeps its data.** No analytics, telemetry, or tracking, and no call to a service the install's owner didn't connect (GitHub, Claude, push, and npm's public registry, read only for the packages a repository's own workflows publish there).
 - **The person who runs the board decides.** Agents claim, build, and open pull requests; people merge, deploy, and start agents. Nothing in breakaway merges or deploys on an agent's word.
 - **One claim per task, and pull requests close tasks.** The [claims that must stay true](brand/README.md#claims-that-must-stay-true) describe what the board does; a change that breaks one changes the copy in the same pull request.
 - **Taskwarrior stays a first-class way in.** The sync protocol must keep working with Taskwarrior 3.

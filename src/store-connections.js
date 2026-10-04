@@ -326,6 +326,7 @@ export const connectionsMethods = {
       this.updateConnection(entry),
       ...(await this.cloudflareConnections()),
       ...(await this.githubConnections(live)),
+      ...this.npmConnections(),
       ...(await this.claudeConnections()),
       this.taskwarriorConnection(),
       await this.pushConnection(),
@@ -1012,6 +1013,30 @@ export const connectionsMethods = {
         link: ROUTINES_URL,
       },
     );
+  },
+
+  // ---- npm -------------------------------------------------------------------------------
+
+  /**
+   * npm's public registry (BRK-101), only once a repository's runs have staged a package: when the board last read
+   * it, and its last failure. Read-only; the board holds no npm token.
+   */
+  npmConnections() {
+    const npm = this.npmState();
+    if (!npm.packages && !npm.error) return [];
+    const failing = Boolean(npm.error);
+    const count = `${npm.packages} package${npm.packages === 1 ? '' : 's'}`;
+    const waiting = npm.waiting
+      ? `; ${npm.waiting} version${npm.waiting === 1 ? '' : 's'} staged, waiting for approval on npm`
+      : '';
+    return [
+      entry('npm', 'npm', 'npm registry', failing ? 'attention' : 'working', {
+        detail: `${npm.last ? 'last read' : 'not read yet'} for ${count}${waiting}${failing ? `; last error: ${npm.error}` : ''}`,
+        at: iso(failing ? npm.errorAt : npm.last),
+        fix: 'The board couldn’t read npm’s public registry; it asks again on the next sync. If it keeps failing, check status.npmjs.org.',
+        link: 'https://status.npmjs.org',
+      }),
+    ];
   },
 
   // ---- Taskwarrior and push --------------------------------------------------------------
