@@ -92,8 +92,10 @@ export function writeInstall({ dir, templateDir, config, state }) {
     writeFileSync(target, text);
     written.push(path);
   };
-  // The Worker reads the channel from its config (BRK-10), so it starts the same as breakaway.json's.
-  put('breakaway.config.json', json({ ...config, channel: state.channel }));
+  // The Worker reads the channel from its config (BRK-10), so it starts the same as breakaway.json's. No aliases yet: an
+  // empty list is left out, so a release from before them (BRK-78) still reads the file.
+  const { aliases, ...named } = config;
+  put('breakaway.config.json', json({ ...named, ...(aliases?.length ? { aliases } : {}), channel: state.channel }));
   put('breakaway.json', json(state));
   for (const file of TEMPLATE_FILES) put(file, readFileSync(join(templateDir, file), 'utf8'));
   put('README.md', readmeFor(readFileSync(join(templateDir, 'README.md'), 'utf8'), config));

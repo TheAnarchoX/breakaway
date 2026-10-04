@@ -88,6 +88,28 @@ describe('an install’s config', () => {
     expect(wranglerConfig(ACME).workers_dev).toBe(false);
   });
 
+  it('answers on other addresses beside its URL while it moves (BRK-78)', () => {
+    const moving = { ...ACME, aliases: ['https://old.acme.test/'] };
+    expect(parseInstall(moving).aliases).toEqual(['https://old.acme.test']);
+    expect(wranglerConfig(moving).routes).toEqual([
+      { pattern: 'board.acme.test', custom_domain: true },
+      { pattern: 'old.acme.test', custom_domain: true },
+    ]);
+    // The board's own address is still its url: pushes, Connections, and self-update use that one.
+    expect(install(wranglerConfig(moving).vars).url).toBe('https://board.acme.test');
+    expect(parseInstall(ACME).aliases).toEqual([]);
+    expect(wranglerConfig(ACME).routes).toHaveLength(1);
+    expect(wranglerConfig(moving, { local: true }).routes).toBeUndefined();
+  });
+
+  it('refuses an alias that isn’t another https address beside a url', () => {
+    expect(() => parseInstall({ aliases: ['https://old.acme.test'] })).toThrow(/aliases need a url/u);
+    expect(() => parseInstall({ ...ACME, aliases: 'https://old.acme.test' })).toThrow(/aliases is a list/u);
+    expect(() => parseInstall({ ...ACME, aliases: ['http://old.acme.test'] })).toThrow(/https origin/u);
+    expect(() => parseInstall({ ...ACME, aliases: ['https://board.acme.test'] })).toThrow(/already the url/u);
+    expect(() => parseInstall({ ...ACME, aliases: ['https://a.acme.test', 'https://a.acme.test/'] })).toThrow(/twice/u);
+  });
+
   it('makes a local config for wrangler dev that lives anywhere', () => {
     const c = wranglerConfig({ ...ACME, jurisdiction: 'eu' }, { local: true, root: '/work/tools/tasks' });
     expect(c.main).toBe('/work/tools/tasks/src/worker.js');

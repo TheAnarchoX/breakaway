@@ -55,3 +55,5 @@ With `wrangler deploy`:
 ## Change the install
 
 Edit `breakaway.config.json` and merge it: Deploy runs on every push to `main`.
+
+To move the board to a new address without a gap, add the new one under `aliases` first, so both answer; then swap `url` and the alias; and remove the alias once nothing uses the old address. breakaway's [docs/tasks.md](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#moving-to-a-new-address) has the whole list of what names the address.

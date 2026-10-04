@@ -34,8 +34,11 @@ describe('install init', () => {
     await init([], { url: 'https://board.example.com' });
     for (const file of ['breakaway.config.json', 'breakaway.json', 'README.md', ...TEMPLATE_FILES])
       expect(existsSync(join(dir, file)), file).toBe(true);
-    const config = parseInstall(JSON.parse(readFileSync(join(dir, 'breakaway.config.json'), 'utf8')));
+    const written = JSON.parse(readFileSync(join(dir, 'breakaway.config.json'), 'utf8'));
+    const config = parseInstall(written);
     expect(config).toMatchObject({ name: 'Acme board', worker: 'acme-board', url: 'https://board.example.com' });
+    // No aliases key in a new install's file, so a release from before aliases (BRK-78) reads it.
+    expect(written).not.toHaveProperty('aliases');
     expect(JSON.parse(readFileSync(join(dir, 'breakaway.json'), 'utf8'))).toEqual({
       version: '0.2.0',
       channel: 'stable',
