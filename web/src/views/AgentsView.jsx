@@ -14,6 +14,7 @@ import {
   navOrder,
   repoBySlug,
   repoName,
+  repoSettingsHref,
   repoScope,
   repos,
   toast,
@@ -610,6 +611,9 @@ function Repositories({ d }) {
           <li key={r.slug}>
             <span class="repo-share-name">
               <strong>{r.name}</strong> <span class="meta">{r.github}</span>
+              <a class="repo-share-settings" href={repoSettingsHref(r.slug)}>
+                Settings<span class="visually-hidden"> for {r.name}</span>
+              </a>
             </span>
             {r.connected ? (
               <>

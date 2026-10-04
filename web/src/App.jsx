@@ -42,6 +42,7 @@ import { AgentsView } from './views/AgentsView.jsx';
 import { RoutinePanel, RoutinesView } from './views/RoutinesView.jsx';
 import { ConnectionsView, FirstRunNotice } from './views/ConnectionsView.jsx';
 import { AddRepoView } from './views/AddRepoView.jsx';
+import { RepoSettingsView } from './views/RepoSettingsView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { NewAgentDialog } from './components/NewAgent.jsx';
@@ -62,6 +63,7 @@ const VIEW_COMPONENTS = {
   routines: RoutinesView,
   connections: ConnectionsView,
   'add-repo': AddRepoView,
+  'repo-settings': RepoSettingsView,
 };
 
 function typing(target) {
