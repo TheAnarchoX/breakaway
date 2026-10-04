@@ -1210,8 +1210,9 @@ const apiActions = {
         force: Boolean(body?.force),
         decision: body?.decision ?? null,
         note: typeof body?.note === 'string' ? body.note : null,
+        dryRun: Boolean(body?.dryRun),
       });
-      return ok(result, result.run ? 201 : result.already ? 200 : 202);
+      return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });
   },
   agentsStartApi(ref, note, mode, { force = false, by } = {}) {
