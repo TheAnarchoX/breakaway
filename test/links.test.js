@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { blocks, repoBaseUrl, repoUrl, setRepoBase, tokenize, webUrl } from '../web/src/lib/links.js';
+import { blocks, repoBaseUrl, repoUrl, setRepoBase, splitWids, tokenize, webUrl } from '../web/src/lib/links.js';
 
 const R = 'https://github.com/acme/widgets';
 beforeAll(() => setRepoBase('acme/widgets'));
@@ -125,5 +125,71 @@ describe('blocks', () => {
     const out = blocks('Two sections:\n- **Right now**: live rooms.\n- **Over time**: accounts.\n\nAggregates only.');
     expect(out.map((b) => b.type)).toEqual(['p', 'ul', 'p']);
     expect(out[1].items).toHaveLength(2);
+  });
+});
+
+// A spec's links (WEB-25): relative to the spec's own directory, on its repository's default branch, with the path
+// kept so the Specs view can open another spec on the board.
+describe('links in a spec', () => {
+  const W = 'https://github.com/acme/gadgets';
+  const opts = { base: W, dir: 'notes/specs', branch: 'trunk' };
+
+  it('resolves a relative link against the spec’s directory, and keeps the path', () => {
+    expect(tokenize('[the agents](OPS-3-agents.md)', opts)[0]).toEqual({
+      type: 'link',
+      label: [{ type: 'text', text: 'the agents' }],
+      href: `${W}/blob/trunk/notes/specs/OPS-3-agents.md`,
+      path: 'notes/specs/OPS-3-agents.md',
+    });
+    expect(tokenize('[section 2](OPS-3-agents.md#2-the-list)', opts)[0]).toMatchObject({
+      href: `${W}/blob/trunk/notes/specs/OPS-3-agents.md#2-the-list`,
+      path: 'notes/specs/OPS-3-agents.md',
+    });
+    expect(tokenize('[the guide](../guide.md)', opts)[0]).toMatchObject({
+      href: `${W}/blob/trunk/notes/guide.md`,
+      path: 'notes/guide.md',
+    });
+    expect(tokenize('[root](../../lib/x.js)', opts)[0]).toMatchObject({ path: 'lib/x.js' });
+  });
+
+  it('leaves web links, bare anchors, and site paths alone', () => {
+    expect(tokenize('[site](https://example.com/a)', opts)[0]).toMatchObject({ href: 'https://example.com/a' });
+    expect(tokenize('[site](https://example.com/a)', opts)[0].path).toBeUndefined();
+    expect(tokenize('[up](#problem)', opts)[0]).toEqual({ type: 'link', label: [{ type: 'text', text: 'up' }] });
+    expect(tokenize('[about](/about)', opts)[0].href).toBeUndefined();
+    expect(tokenize('[out](../../../../x.md)', opts)[0].href).toBeUndefined();
+  });
+
+  it('links code spans from the repository root on the spec’s branch', () => {
+    expect(tokenize('`src/specs.js`', opts)[0]).toEqual({
+      type: 'code',
+      text: 'src/specs.js',
+      href: `${W}/blob/trunk/src/specs.js`,
+    });
+  });
+});
+
+describe('work IDs in text', () => {
+  const known = (wid) => ['OPS-12', 'WEB-3', 'IDEA-31', 'UTF-8'].includes(wid);
+
+  it('splits a line into text and the work IDs the board knows', () => {
+    expect(splitWids('Built by OPS-12, then WEB-3 and IDEA-31. Not OPS-99.', known)).toEqual([
+      'Built by ',
+      { wid: 'OPS-12' },
+      ', then ',
+      { wid: 'WEB-3' },
+      ' and ',
+      { wid: 'IDEA-31' },
+      '. Not OPS-99.',
+    ]);
+  });
+
+  it('skips what only looks like one', () => {
+    const any = () => true;
+    expect(splitWids('a FSL-1.1 licence, X-1, ABCDEFGHI-2, HTTP-200s, and a-OPS-12', any)).toEqual([
+      'a FSL-1.1 licence, X-1, ABCDEFGHI-2, HTTP-200s, and a-OPS-12',
+    ]);
+    expect(splitWids('UTF-8 text', known)).toEqual([{ wid: 'UTF-8' }, ' text']);
+    expect(splitWids('', any)).toEqual([]);
   });
 });
