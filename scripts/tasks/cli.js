@@ -10,6 +10,7 @@ export const SUBCOMMANDS = {
   github: ['fix', 'review'],
   repos: ['add', 'init', 'modify', 'remove', 'setup'],
   routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume'],
+  features: ['list', 'add', 'show', 'modify'],
   horizon: ['close'],
   hook: ['session', 'wait'],
 };
@@ -205,4 +206,198 @@ export function ideaTask(idea, { horizon = 'auto', auto = false, repo = null } =
     brief: idea,
     ...(repo ? { repo } : {}),
   };
+}
+
+/**
+ * The fields `features add` and `features modify` send (BRK-85, IDEA-28 section 1): only the ones given. `--release none`
+ * (or an empty one) leaves the feature unplanned, and `v1.2.0` is read as `1.2.0`.
+ * @param {{ title?: string, brief?: string, release?: string, state?: string }} options
+ */
+export function featureBody({ title, brief, release, state } = {}) {
+  const body = {};
+  if (title !== undefined) body.title = String(title);
+  if (brief !== undefined) body.brief = String(brief);
+  if (release !== undefined) {
+    const r = String(release).trim();
+    body.release = r === 'none' ? '' : r.replace(/^v(?=\d)/u, '');
+  }
+  if (state !== undefined) body.state = String(state);
+  return body;
+}
+
+/**
+ * The request behind `npx breakaway chase <slug> [stop] [--parallel <n>] [--dry-run]` (BRK-85, IDEA-28 section 3):
+ * without `stop` it starts the chase, or keeps a running one going with the new `--parallel`; `--dry-run` shows what
+ * would start now and changes nothing. It always says who asks, so the board refuses an agent's name: a chase is the
+ * owner's.
+ * @param {string | undefined} slug
+ * @param {string | undefined} action
+ * @param {{ parallel?: string | number, dryRun?: boolean, by?: string }} [options]
+ * @returns {{ error?: string, request?: [string, string, Record<string, unknown>] }}
+ */
+export function chaseRequest(slug, action, { parallel, dryRun = false, by } = {}) {
+  if (!slug) return { error: 'say which feature: npx breakaway chase <slug> [stop] [--parallel <n>] [--dry-run]' };
+  if (action !== undefined && action !== 'stop')
+    return { error: `chase has no "${String(action).slice(0, 40)}": npx breakaway chase <slug> [stop]` };
+  let limit;
+  if (parallel !== undefined) {
+    limit = Number(parallel);
+    if (!Number.isInteger(limit) || limit < 1)
+      return { error: '--parallel is how many agents at once in one area: a whole number, 1 or more' };
+  }
+  if (action === 'stop' && limit !== undefined)
+    return { error: '--parallel is for a chase that runs: npx breakaway chase <slug> --parallel <n>' };
+  const body = {
+    on: action !== 'stop',
+    ...(limit !== undefined ? { parallel: limit } : {}),
+    ...(dryRun ? { dryRun: true } : {}),
+    ...(by ? { by } : {}),
+  };
+  return { request: ['POST', `features/${encodeURIComponent(slug.toLowerCase())}/chase`, body] };
+}
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const idOf = (t) => t.wid ?? t.short ?? String(t.uuid ?? '').slice(0, 8);
+
+/**
+ * A feature's progress in one line: "4 of 10 done: 2 running, 1 ready, 1 waiting for you".
+ * @param {{ total: number, done: number, running?: number, ready?: number, waiting?: number, needsYou?: number, inReview?: number }} p
+ */
+export function progressLine(p) {
+  if (!p.total) return 'no tasks yet';
+  const rest = [
+    p.inReview && `${p.inReview} in review`,
+    p.running && `${p.running} running`,
+    p.ready && `${p.ready} ready`,
+    p.waiting && `${p.waiting} waiting on other tasks`,
+    p.needsYou && `${p.needsYou} waiting for you`,
+  ].filter(Boolean);
+  return `${p.done} of ${p.total} done${rest.length ? `: ${rest.join(', ')}` : ''}`;
+}
+
+/** The chase in a few words for a feature's line, or null when it's off. */
+function chaseWords(chase) {
+  if (!chase || chase.state === 'off') return null;
+  if (chase.state === 'on') return `chasing, ${chase.parallel} at once in an area`;
+  if (chase.state === 'done') return 'chase ended';
+  return 'chase stopped';
+}
+
+/**
+ * What `npx breakaway features` prints: features by release, then unplanned, then the tags that could be features
+ * and the tasks with a release tag and no feature.
+ * @param {{ features: any[], suggestions?: any[], releaseTasks?: any[] }} data
+ */
+export function featureListLines({ features, suggestions = [], releaseTasks = [] }) {
+  const out = [];
+  if (!features.length)
+    out.push('No features yet. Make one: npx breakaway features add <slug> --title "<title>" [--release 1.2.0]');
+  const width = Math.max(12, ...features.map((f) => f.slug.length));
+  let group;
+  for (const f of features) {
+    const release = f.release ?? 'Unplanned';
+    if (release !== group) {
+      if (group !== undefined) out.push('');
+      out.push(release);
+      group = release;
+    }
+    const notes = [
+      progressLine(f.progress),
+      f.shipped ? 'shipped' : null,
+      chaseWords(f.chase),
+      f.conflicts?.length ? `${plural(f.conflicts.length, 'task')} in two features` : null,
+    ].filter(Boolean);
+    out.push(`  ${f.slug.padEnd(width)} ${f.title} · ${notes.join(' · ')}`);
+  }
+  if (suggestions.length) {
+    out.push('', 'Tags that could be features (npx breakaway features add <slug>):');
+    for (const s of suggestions)
+      out.push(`  ${s.slug} (${plural(s.open, 'open task')}${s.release ? `, ${s.release}` : ''})`);
+  }
+  for (const r of releaseTasks)
+    out.push('', `Other tasks in ${r.release}: ${r.tasks.map((t) => t.wid ?? t.description).join(', ')}`);
+  return out;
+}
+
+/**
+ * A chase's state, live line, and what holds it, as `features show` and `chase` print them (IDEA-28 section 3.9).
+ * @param {any} chase
+ * @param {string} [slug] the feature's, for the command that starts it
+ */
+export function chaseLines(chase, slug = '<slug>') {
+  if (!chase) return [];
+  const out = [];
+  const head = {
+    on: `On since ${String(chase.startedAt ?? '')
+      .slice(0, 16)
+      .replace('T', ' ')} UTC, ${plural(chase.parallel, 'agent')} at once in an area`,
+    stopped: 'Stopped: running agents finish, nothing new starts',
+    done: 'Ended: every task is done or in review',
+    off: `Off (npx breakaway chase ${slug} starts it, ${plural(chase.parallel, 'agent')} at once in an area)`,
+  }[chase.state];
+  out.push(`  Chase       ${head ?? chase.state}`);
+  if (chase.summary) out.push(`              ${chase.summary}`);
+  for (const n of chase.needsYou ?? []) out.push(`  Needs you   ${idOf(n)} ${n.why}${blocking(n)}`);
+  for (const s of chase.stuck ?? [])
+    out.push(`  Stuck       ${idOf(s)} ${s.why}${s.last ? `; last: ${oneLine(s.last)}` : ''}`);
+  const queue = chase.queue ?? [];
+  if (queue.length) {
+    out.push('  Next');
+    for (const q of queue) out.push(`    ${idOf(q).padEnd(9)} ${q.ready ? 'ready to start' : q.reason}${blocking(q)}`);
+  }
+  return out;
+}
+
+const oneLine = (text) => {
+  const flat = String(text).replace(/\s+/gu, ' ').trim();
+  return flat.length > 120 ? `${flat.slice(0, 117)}…` : flat;
+};
+/** Why a pulled-in blocker is in the chase (section 3.1). */
+const blocking = (t) => (t.blocks?.length ? ` (in the chase because it blocks ${t.blocks.join(', ')})` : '');
+
+/**
+ * What `npx breakaway features show <slug>` prints: the record, its progress, its chase, and its tasks in dependency order.
+ * @param {any} f
+ */
+export function featureLines(f) {
+  const out = [`${f.title} (${f.slug})`, ''];
+  const row = (k, v) => v && out.push(`  ${k.padEnd(11)} ${v}`);
+  row('Release', f.release ?? 'unplanned');
+  row('State', f.shipped && f.state !== 'shipped' ? 'shipped (every task is done and live)' : f.state);
+  row('Progress', progressLine(f.progress));
+  out.push(...chaseLines(f.chase, f.slug));
+  // The chase's own Needs you says more (merges, connections), so the feature's is shown only without one.
+  if (!f.chase?.needsYou) for (const n of f.needsYou ?? []) row('Needs you', `${idOf(n)} ${n.why}`);
+  for (const c of f.conflicts ?? []) row('Two features', `${c.wid} is in ${c.features.join(' and ')}: it counts here`);
+  if (f.brief) out.push('', ...f.brief.split('\n').map((l) => `  ${l}`));
+  if (f.tasks?.length) {
+    out.push('', '  Tasks');
+    for (const t of f.tasks)
+      out.push(`    ${idOf(t).padEnd(9)} ${t.state.padEnd(9)} ${t.description}${t.why ? ` (${t.why})` : ''}`);
+  } else out.push('', `  No tasks yet: tag them with ${f.slug} (npx breakaway modify <ref> --tag ${f.slug}).`);
+  return out;
+}
+
+/**
+ * What `npx breakaway chase` prints after the board answers: what it started or would start, then the chase. `parallel`
+ * is the limit a dry run tried, which the board doesn't keep.
+ * @param {string} slug
+ * @param {{ dryRun?: boolean, chase: any, started?: string[], wouldStart?: string[] }} answer
+ * @param {{ stop?: boolean, parallel?: number }} [options]
+ */
+export function chaseSummary(slug, { dryRun, chase, started = [], wouldStart = [] }, { stop = false, parallel } = {}) {
+  let first;
+  if (dryRun) {
+    const limit = parallel ? ` with ${plural(parallel, 'agent')} at once in an area` : '';
+    first = `A chase of ${slug}${limit} would start ${wouldStart.length ? `${wouldStart.join(', ')} now` : 'nothing now'}. Nothing was started.`;
+  } else if (stop) first = `Stopped the chase of ${slug}. Running agents finish and open their pull requests.`;
+  else if (chase.state !== 'on') first = `The chase of ${slug} isn’t on (${chase.state}).`;
+  else if (started.length) first = `Chasing ${slug}: started ${started.join(', ')}.`;
+  else {
+    const next = (chase.queue ?? []).filter((q) => q.ready).map(idOf);
+    first = next.length
+      ? `Chasing ${slug}: the board starts ${next.join(', ')} on its next check.`
+      : `Chasing ${slug}: nothing can start right now; the board starts each task when it’s ready.`;
+  }
+  return [first, '', ...chaseLines(chase, slug)].join('\n');
 }
