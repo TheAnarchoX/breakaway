@@ -42,6 +42,7 @@ import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
 import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
+import { TurnOnDeploys } from '../components/TurnOnDeploys.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -773,6 +774,10 @@ export function GitHubView() {
               </button>
             </div>
           </div>
+        ))}
+      {d?.connected &&
+        d.pipelinesFound.map((r) => (
+          <TurnOnDeploys key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
         ))}
       {d?.connected && (
         <div class="gh-dash">
