@@ -486,6 +486,7 @@ What makes one board itself and not another is in one file, [`breakaway.config.j
 | `name` | The name people see: push notifications, the GitHub App, `/api/session` | `breakaway` |
 | `worker` | The Worker's name on Cloudflare | `breakaway` |
 | `url` | Where the board answers: its custom domain and push's VAPID subject | none: the board answers on workers.dev, and goes by the address it was opened at |
+| `aliases` | Other addresses the board answers on beside `url`, each a custom domain too, while it moves to a new one ([Moving to a new address](#moving-to-a-new-address)) | none |
 | `secretsPrefix` | Starts every secret's name in the Secrets Store ([Secrets](#secrets)) | `BREAKAWAY_` |
 | `secretsStore` | The Secrets Store's ID | none: the secrets are Worker secrets |
 | `store` | The Durable Object's name. Changing it starts an empty board, so it never changes on a running install | `breakaway` |
@@ -493,6 +494,14 @@ What makes one board itself and not another is in one file, [`breakaway.config.j
 | `jurisdiction`, `repository`, `vapidPublic`, `docs` | The Durable Object's jurisdiction, the repository an install from before repositories starts with, push's public key, and where Connections links to | none |
 
 `node install.mjs` turns it into the Worker's wrangler config (`--config <file>` for another install, `--local` for `wrangler dev`). [`wrangler.jsonc`](../wrangler.jsonc) is that output with comments, and a test fails when the two differ, so change both together. The Worker reads the names back from its `TASKS_INSTALL` var; a Worker without it is the first install's (from before installs had a config), so an older deploy keeps its Durable Object. The bindings in the code (`TASKS_*`, `STORE`) are the same on every install. `pnpm interop` runs the board as an install with breakaway's prefix and its own names.
+
+### Moving to a new address
+
+A board moves without a moment where it doesn't answer, in three deploys of its install repository (`BRK-78`). Each changes the address, so its Deploy runs `wrangler deploy`: that takes a token that can and `BREAKAWAY_DEPLOY_CHANGES` set to `true` ([the install template's README](../template/README.md#which-token-does-what)), with Workers Routes write on both zones when the new address is in another one. Without them, apply each step with `wrangler deploy` yourself.
+
+1. **Add the new address as an alias**: `"aliases": ["https://new.example.com"]`. Both addresses answer, with the same board behind them.
+2. **Swap them**: `url` becomes the new address and the old one the alias. Then move everything that names the board: the GitHub App's webhook and callback URLs, each routine's cloud environment (its allowed host and API credential), `BREAKAWAY_URL` in `tasks.env` and in cloud environments, each checkout's `.taskrc` (`sync.server.url`), and the repository variable `BREAKAWAY_URL` if you set it. Sign in at the new address, install the app from it, and turn notifications on there: sign-ins, the installed app, and push subscriptions belong to the address they were made at. Connections checks each as you go.
+3. **Remove the alias** once nothing has used the old address for a day: its custom domain goes, and it stops answering.
 
 ### A new install
 

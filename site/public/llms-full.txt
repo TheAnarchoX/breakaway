@@ -1189,6 +1189,7 @@ What makes one board itself and not another is one file, `breakaway.config.json`
 | `name` | The name people see: push notifications, the GitHub App | `breakaway` |
 | `worker` | The Worker’s name on Cloudflare | `breakaway` |
 | `url` | Where the board answers | none: workers.dev, and the address it was opened at |
+| `aliases` | Other addresses it answers on beside `url`, while it moves to a new one | none |
 | `secretsPrefix` | Starts every secret’s name in the Secrets Store | `BREAKAWAY_` |
 | `secretsStore` | The Secrets Store’s ID | none: the secrets are Worker secrets |
 | `store` | The Durable Object’s name. Changing it starts an empty board | `breakaway` |

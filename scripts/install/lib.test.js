@@ -183,6 +183,11 @@ describe('what a deploy changes that a version can’t carry', () => {
     ).toEqual([['its cron triggers', true]]);
     const added = shape(base, (w) => withClass(w, { tag: 'v2', new_sqlite_classes: ['Archive'] }));
     expect(changes(shape(base), added)).toEqual([['its Durable Object classes: it adds Archive', true]]);
+    // A new alias is an address change too (BRK-78): wrangler deploy adds its custom domain.
+    const moving = { ...base, url: 'https://new.example.com' };
+    expect(changes(shape(moving), shape({ ...moving, aliases: ['https://old.example.com'] }))).toEqual([
+      ['its address (routes)', true],
+    ]);
   });
 
   it('never applies another Worker, another Durable Object, or a class deleted, renamed, or moved', () => {

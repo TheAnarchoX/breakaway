@@ -13,6 +13,7 @@ export const DEFAULTS = Object.freeze({
   name: 'breakaway',
   worker: 'breakaway',
   url: null,
+  aliases: [],
   secretsPrefix: 'BREAKAWAY_',
   secretsStore: null,
   store: 'breakaway',
@@ -72,6 +73,26 @@ function origin(url) {
   }
 }
 
+/**
+ * The other addresses a board answers on beside its url, as https origins (BRK-78): while it moves to a new address,
+ * the old one stays an alias until nothing uses it. Each is a custom domain of the Worker, like the url.
+ */
+function aliasesOf(aliases, url) {
+  if (!Array.isArray(aliases))
+    throw new ConfigError('aliases is a list of https origins, like ["https://old.example.com"]');
+  if (aliases.length && url === null)
+    throw new ConfigError('aliases need a url: they are the other addresses the board answers on beside it');
+  const out = aliases.map((a) => {
+    const o = origin(a);
+    if (!o) throw new ConfigError(`aliases: ${a} isn't an https origin, like https://old.example.com`);
+    if (o === url) throw new ConfigError(`aliases: ${o} is already the url`);
+    return o;
+  });
+  const twice = out.find((o, i) => out.indexOf(o) !== i);
+  if (twice) throw new ConfigError(`aliases: ${twice} is there twice`);
+  return out;
+}
+
 /** A breakaway.config.json's contents, checked and with its defaults filled in. Throws ConfigError naming what's wrong. */
 export function parseInstall(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ConfigError('the config is a JSON object');
@@ -88,6 +109,7 @@ export function parseInstall(raw) {
       'url is where the board answers, an https origin like https://tasks.example.com, or null for workers.dev',
     );
   c.url = c.url === null ? null : origin(c.url);
+  c.aliases = aliasesOf(c.aliases, c.url);
   if (!PREFIX.test(c.secretsPrefix))
     throw new ConfigError('secretsPrefix is uppercase and ends with _, like BREAKAWAY_');
   if (c.secretsStore !== null && !STORE_ID.test(c.secretsStore))
@@ -179,7 +201,9 @@ export function wranglerConfig(config, { local = false, root = '.' } = {}) {
     name: c.worker,
     main: at('src/worker.js'),
     compatibility_date: COMPATIBILITY_DATE,
-    ...(local || !c.url ? {} : { routes: [{ pattern: new URL(c.url).host, custom_domain: true }] }),
+    ...(local || !c.url
+      ? {}
+      : { routes: [c.url, ...c.aliases].map((u) => ({ pattern: new URL(u).host, custom_domain: true })) }),
     workers_dev: !local && !c.url,
     preview_urls: false,
     ...(local
