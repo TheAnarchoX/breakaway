@@ -4,6 +4,9 @@ import {
   githubRequest,
   ideaTask,
   NO_ARGUMENTS,
+  forceFields,
+  generalAgentRequest,
+  generalAgentSummary,
   pullAgentRequest,
   pullAgentSummary,
   SUBCOMMANDS,
@@ -147,5 +150,54 @@ describe('the pull request page’s agent buttons (BRK-81)', () => {
     expect(pullAgentSummary('fix', 12, { task, run: null, already: 'claude-a has it' })).toBe(
       'BRK-5 already has it: claude-a has it.',
     );
+  });
+});
+
+describe('agents new and Force start (BRK-107)', () => {
+  it('posts the prompt to the general route, for the checkout’s repository unless --repo says another', () => {
+    expect(generalAgentRequest('  Tidy the docs\nThe intro is stale. ', { repo: 'widgets', by: 'owner' })).toEqual({
+      request: [
+        'POST',
+        'agents/general',
+        { prompt: 'Tidy the docs\nThe intro is stale.', repo: 'widgets', by: 'owner' },
+      ],
+    });
+    expect(generalAgentRequest('Fix it', { force: true })).toEqual({
+      request: ['POST', 'agents/general', { prompt: 'Fix it', force: true }],
+    });
+  });
+
+  it('refuses an empty prompt', () => {
+    expect(generalAgentRequest('  ')).toHaveProperty('error');
+    expect(generalAgentRequest(undefined)).toHaveProperty('error');
+  });
+
+  it('says who is asking only when forcing, so the board can refuse an agent’s name', () => {
+    expect(forceFields(false, 'claude-a')).toEqual({});
+    expect(forceFields(true, 'claude-a')).toEqual({ force: true, by: 'claude-a' });
+    expect(forceFields(true, undefined)).toEqual({ force: true });
+    expect(pullAgentRequest('review', '7', { repo: 'widgets', force: true })).toEqual({
+      request: ['POST', 'github/pulls/7/review', { repo: 'widgets', force: true }],
+    });
+    expect(pullAgentRequest('fix', '7', { force: false, by: 'owner' })).toEqual({
+      request: ['POST', 'github/pulls/7/fix', {}],
+    });
+  });
+
+  it('knows agents new', () => {
+    expect(unknownSubcommand('agents', 'new')).toBeNull();
+  });
+
+  it('says whether it started, or why it waits and how to force it', () => {
+    const task = { short: 'a1b2c3d4' };
+    expect(generalAgentSummary({ task, run: { agent: 'claude-a1b2c3d4', url: 'https://x/y' } })).toBe(
+      'Started claude-a1b2c3d4 on a1b2c3d4: https://x/y',
+    );
+    expect(
+      generalAgentSummary({ task, run: null, waiting: 'waiting for a free slot: 3 of 3 running', forceable: true }),
+    ).toMatch(
+      /^Saved a1b2c3d4, waiting to start: waiting for a free slot: 3 of 3 running\. .*agents start a1b2c3d4 --force$/u,
+    );
+    expect(generalAgentSummary({ task, run: null, waiting: 'the routine isn’t connected' })).not.toMatch(/--force/u);
   });
 });

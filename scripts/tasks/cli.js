@@ -6,7 +6,7 @@ import { CLI_PACKAGE } from './init.js';
 
 /** The subcommands each command knows. Without one, each lists or shows (horizon needs close). */
 export const SUBCOMMANDS = {
-  agents: ['next', 'start', 'refine'],
+  agents: ['next', 'start', 'refine', 'new'],
   github: ['fix', 'review'],
   repos: ['add', 'init', 'modify', 'remove', 'setup'],
   routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume'],
@@ -83,10 +83,10 @@ export const FIX_PROBLEMS = ['conflicts', 'failing', 'review'];
  * like `github` does. Returns an error message instead when the number or `problem` can't be right.
  * @param {'fix' | 'review'} action
  * @param {string | number | undefined} number
- * @param {{ repo?: string | null, problem?: string, note?: string }} [options]
- * @returns {{ error?: string, request?: [string, string, Record<string, string>] }}
+ * @param {{ repo?: string | null, problem?: string, note?: string, force?: boolean, by?: string }} [options]
+ * @returns {{ error?: string, request?: [string, string, Record<string, string | boolean>] }}
  */
-export function pullAgentRequest(action, number, { repo = null, problem, note } = {}) {
+export function pullAgentRequest(action, number, { repo = null, problem, note, force = false, by } = {}) {
   const n = String(number ?? '').replace(/^#/u, '');
   if (!/^[1-9]\d{0,8}$/u.test(n)) return { error: `say which pull request: npx breakaway github ${action} <number>` };
   if (problem !== undefined && action !== 'fix') return { error: '--problem is for github fix' };
@@ -96,8 +96,49 @@ export function pullAgentRequest(action, number, { repo = null, problem, note } 
     ...(repo ? { repo } : {}),
     ...(problem ? { problem } : {}),
     ...(typeof note === 'string' && note.trim() ? { note } : {}),
+    ...forceFields(force, by),
   };
   return { request: ['POST', `github/pulls/${n}/${action}`, body] };
+}
+
+/**
+ * Force start on a request that starts an agent (BRK-107): `force`, and who is asking, so the board can refuse an
+ * agent's name (only the owner forces a start). Nothing when it isn't forced.
+ * @param {unknown} force
+ * @param {string | undefined} by
+ */
+export function forceFields(force, by) {
+  return force ? { force: true, ...(by ? { by } : {}) } : {};
+}
+
+/**
+ * `agents new`: the request that makes a task from a prompt and starts an agent on it. It's the checkout's repository
+ * unless `--repo` names another. It always says who asks, so the board refuses an agent's name: only the owner starts one.
+ * @param {string} prompt
+ * @param {{ repo?: string | null, force?: boolean, by?: string }} [options]
+ */
+export function generalAgentRequest(prompt, { repo = null, force = false, by } = {}) {
+  const text = String(prompt ?? '').trim();
+  if (!text)
+    return { error: 'say what the agent should do: npx breakaway agents new "Tidy the docs" [--image <file>]' };
+  const body = {
+    prompt: text,
+    ...(repo ? { repo } : {}),
+    ...(force ? { force: true } : {}),
+    ...(by ? { by } : {}),
+  };
+  return { request: ['POST', 'agents/general', body] };
+}
+
+/**
+ * What the CLI says about a general agent's answer: the task and that it started, or why it waits (and whether Force
+ * start could skip that).
+ * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, waiting?: string | null, forceable?: boolean }} answer
+ */
+export function generalAgentSummary({ task, run, waiting, forceable }) {
+  const id = task.wid ?? task.short;
+  if (run) return `Started ${run.agent ? `${run.agent} ` : 'an agent '}on ${id}${run.url ? `: ${run.url}` : ''}`;
+  return `Saved ${id}, waiting to start: ${waiting ?? 'no room yet'}.${forceable ? ` Start it now past the board's limits: npx breakaway agents start ${id} --force` : ''}`;
 }
 
 /**
