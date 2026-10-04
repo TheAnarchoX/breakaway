@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AREAS: BRK:Board,WEB:Web,DOC:Docs,LCH:Launch,ID:Brand
+  AREAS: BRK:Board,WEB:Web,DOC:Docs,LCH:Launch,ID:Brand,CLI:CLI
 
 jobs:
   prerelease:

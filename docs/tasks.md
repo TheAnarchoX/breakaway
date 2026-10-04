@@ -17,7 +17,7 @@ Every task is a Taskwarrior task with a few fields of the board's own (UDAs):
 | Field | Meaning |
 | --- | --- |
 | `wid` | The stable work ID, like `BRK-12`: the area's prefix and a number. The server gives one to every open task that has a known area, however it was made. **New numbers are the highest in use for that prefix plus one**, never reused. |
-| `project` | The area. Each repository has its own areas, each with a work-ID prefix: breakaway's are `board` (BRK), `web` (WEB), `docs` (DOC), `launch` (LCH), and `brand` (ID). Two are shared by the whole board: `ideas` (IDEA, [ideas](#ideas)) and `routines` (RUN, [routines](#routines)). |
+| `project` | The area. Each repository has its own areas, each with a work-ID prefix: breakaway's are `board` (BRK), `web` (WEB), `docs` (DOC), `launch` (LCH), `brand` (ID), and `cli` (CLI). Two are shared by the whole board: `ideas` (IDEA, [ideas](#ideas)) and `routines` (RUN, [routines](#routines)). |
 | `repo` | The repository the task belongs to ([Repositories](#repositories)). Empty means the default repository, the first one registered. Set when the task is made (`add --repo <slug>`); a task stays in its repository. |
 | `horizon` | `now`, `next`, `later`, or `archive`. `archive` is where finished work goes when a horizon is closed; the board and `list` hide it unless you filter for it. |
 | `priority` | `H` for the horizon's top priorities; `M` and `L` if useful. |

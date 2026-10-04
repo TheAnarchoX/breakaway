@@ -103,7 +103,7 @@ describe("breakaway's agent files (CLD-137)", () => {
   });
 
   it('lists the areas the owner chose (CLD-134) in AGENTS.md and the prompt', () => {
-    const areas = 'board (`BRK`), web (`WEB`), docs (`DOC`), launch (`LCH`), and brand (`ID`)';
+    const areas = 'board (`BRK`), web (`WEB`), docs (`DOC`), launch (`LCH`), brand (`ID`), and cli (`CLI`)';
     expect(FILES['AGENTS.md']).toContain(areas);
     expect(PROMPT).toContain(areas);
   });
