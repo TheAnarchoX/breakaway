@@ -138,6 +138,15 @@ See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/).
 | `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
 | `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://leavethepack.dev/docs/routines/). |
 
+## Deploy and release flows
+
+These need no board: run them in the checkout of the repository that deploys or publishes. See [Move a repository to the deploy flow](https://leavethepack.dev/docs/github/#move-a-repository-to-the-deploy-flow).
+
+| Command | What it does |
+| --- | --- |
+| `pipeline init` | Renders `.github/breakaway-pipeline.json` into Deploy, Promote, and Roll back, `.github/deploy-paths.json`, and Release for its npm package. Never overwrites; `--update` replaces what it rendered before, and `--dry-run` lists what it would write. Without the config it prints an example. |
+| `pipeline check` | Says whether the config is sound and the workflows are what it renders now. Exits 1 if not. |
+
 ## Setup and secrets
 
 | Command | What it does |

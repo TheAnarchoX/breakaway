@@ -111,6 +111,6 @@ You can run your own copy of the feed from `site/` in the repository (`wrangler 
 
 ## Deploying a repository your agents work on
 
-A different matter: a repository the board tracks can have its own **deploy pipeline** (staging and production Workers, and Deploy, Promote, and Roll back workflows). The board shows what’s on staging and what’s live, and you press **Promote** and **Roll back** in the browser. See [GitHub](https://leavethepack.dev/docs/github/#deploys-releases-promote-and-roll-back).
+A different matter: a repository the board tracks can have its own **deploy pipeline** (staging and production Workers, and Deploy, Promote, and Roll back workflows) and release flow for an npm package. The board shows what’s on staging and what’s live, and you press **Promote**, **Roll back**, and **Release** in the browser. To move a repository there, see [Move a repository to the deploy flow](https://leavethepack.dev/docs/github/#move-a-repository-to-the-deploy-flow).
 
 Agents never deploy. Merging to a repository’s default branch deploys to staging only if its pipeline says so, and the merge dialog warns you first.
