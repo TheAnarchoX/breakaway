@@ -1,8 +1,10 @@
 // The release workflow's decisions, as plain functions so they are tested (.github/workflows/release.yml).
 
+import { compareVersions, nextPrerelease as prereleaseWith, stableOf as stableWith } from '../lib/package-release.js';
+
+export { compareVersions };
+
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/u;
-const PRERELEASE = /^v(\d+\.\d+\.\d+)-main\.(\d+)$/u;
-const STABLE = /^v(\d+\.\d+\.\d+)$/u;
 
 /** @param {string} v @returns {[number, number, number]} */
 function parts(v) {
@@ -11,43 +13,18 @@ function parts(v) {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
-/** Negative, zero, or positive, like a sort comparator, for two X.Y.Z versions. */
-export function compareVersions(a, b) {
-  const [x, y] = [parts(a), parts(b)];
-  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
-}
-
 /**
  * The next pre-release on the main channel. `current` is package.json's version, the release being worked
  * toward; once its stable tag exists the work is toward the next patch, so a pre-release never sorts below a stable.
+ * The same numbers a repository's own release flow uses (scripts/lib/package-release.js), with breakaway's `v` tags.
  * @param {string} current
  * @param {string[]} tags every tag in the repository
  * @returns {{ version: string, base: string, tag: string }}
  */
-export function nextPrerelease(current, tags) {
-  parts(current);
-  const stables = tags.map((t) => STABLE.exec(t)?.[1]).filter(Boolean);
-  let base = current;
-  for (const s of stables) {
-    if (compareVersions(s, base) >= 0) {
-      const [maj, min, pat] = parts(s);
-      base = `${maj}.${min}.${pat + 1}`;
-    }
-  }
-  const last = tags
-    .map((t) => PRERELEASE.exec(t))
-    .filter((m) => m?.[1] === base)
-    .reduce((n, m) => Math.max(n, Number(m[2])), 0);
-  const version = `${base}-main.${last + 1}`;
-  return { version, base, tag: `v${version}` };
-}
+export const nextPrerelease = (current, tags) => prereleaseWith(current, tags, 'v');
 
 /** The stable version a pre-release tag (`v1.4.0-main.37`) is promoted to. */
-export function stableOf(prereleaseTag) {
-  const m = PRERELEASE.exec(prereleaseTag);
-  if (!m) throw new Error(`"${prereleaseTag}" isn't a main pre-release tag like v1.4.0-main.37.`);
-  return m[1];
-}
+export const stableOf = (prereleaseTag) => stableWith(prereleaseTag, 'v');
 
 /**
  * The version a stable release's pull request sets package.json to (BRK-118): the next minor or major after the stable,

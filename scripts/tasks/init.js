@@ -32,13 +32,18 @@ export const HOOKS_FROM_COPY = false;
 /** The session hooks' entry files, and where their copy goes: its own folder, so it never touches the repository's src/. */
 export const HOOK_ENTRIES = ['scripts/tasks/session-hook.mjs', 'scripts/tasks/message-wait.mjs'];
 export const HOOKS_DIR = 'tools/tasks/cli/';
-/** The release helpers a repository's Deploy, Promote, and Roll back workflows run (BRK-45), copied with what they import. */
+/**
+ * The release helpers a repository's Deploy, Promote, Roll back, and Release workflows run (BRK-45), copied with what
+ * they import: the deploy helpers, and the package's version numbers (BRK-90, `npx breakaway pipeline init`).
+ */
 export const RELEASE_ENTRIES = [
   'scripts/record-deployment.mjs',
   'scripts/promote-check.mjs',
   'scripts/release-notes.mjs',
   'scripts/check-migrations.mjs',
   'scripts/release-artifact.mjs',
+  'scripts/deploy-plan.mjs',
+  'scripts/package-release.mjs',
 ];
 /** Copied unchanged: the board's shared core and stub, and the Taskwarrior settings the new .taskrc includes. */
 const COPIED = ['prompts/core.md', 'prompts/stub.md'];
