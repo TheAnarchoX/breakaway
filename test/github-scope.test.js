@@ -3,6 +3,8 @@ import {
   checksOnMain,
   checksSummary,
   githubTabs,
+  isPrerelease,
+  latestPackages,
   pickTab,
   repoFacts,
   runState,
@@ -162,5 +164,94 @@ describe('the GitHub dashboard', () => {
     expect(pickTab(scratch, 'runs')).toBe('runs');
     expect(pickTab([], 'runs')).toBeNull();
     expect(githubTabs(null)).toEqual([]);
+  });
+});
+
+// Packages on the GitHub view (WEB-18): the latest pre-release and release per package, and the Packages tab.
+const ver = (repo, name, version, staged, state = 'published', tag = version.includes('-') ? 'next' : 'latest') => ({
+  repo,
+  name,
+  version,
+  tag,
+  state,
+  staged,
+  run: { id: 1, url: null, workflow: 'Release', number: 1 },
+  url: `https://www.npmjs.com/package/${name}${state === 'published' ? `/v/${version}` : ''}`,
+});
+
+describe('packages on the GitHub view', () => {
+  it('tells a pre-release from a release', () => {
+    expect(isPrerelease('1.3.0-main.4')).toBe(true);
+    expect(isPrerelease('1.3.0')).toBe(false);
+    expect(isPrerelease('1.3.0+build.7')).toBe(false);
+    expect(isPrerelease('1.3.0-rc.1+build.7')).toBe(true);
+  });
+
+  it('keeps each package’s latest pre-release and release, staged or published', () => {
+    const view = {
+      packages: [
+        ver('widgets', 'widgets', '1.3.0-main.5', '2026-10-04T10:00:00Z', 'staged'),
+        ver('widgets', '@acme/kit', '0.2.0', '2026-10-04T09:00:00Z'),
+        ver('widgets', 'widgets', '1.3.0-main.4', '2026-10-03T10:00:00Z'),
+        ver('widgets', 'widgets', '1.2.0', '2026-10-02T10:00:00Z'),
+        ver('widgets', 'widgets', '1.1.0', '2026-10-01T10:00:00Z'),
+      ],
+    };
+    const latest = latestPackages(view);
+    expect(latest.map((p) => p.name)).toEqual(['@acme/kit', 'widgets']);
+    const widgets = latest.find((p) => p.name === 'widgets');
+    expect(widgets.prerelease.version).toBe('1.3.0-main.5');
+    expect(widgets.prerelease.state).toBe('staged');
+    expect(widgets.release.version).toBe('1.2.0');
+    expect(widgets.waiting).toBe(1);
+    expect(widgets.url).toBe('https://www.npmjs.com/package/widgets');
+    const kit = latest.find((p) => p.name === '@acme/kit');
+    expect(kit.prerelease).toBeNull();
+    expect(kit.release.version).toBe('0.2.0');
+    expect(kit.waiting).toBe(0);
+    expect(kit.url).toBe('https://www.npmjs.com/package/@acme/kit');
+    expect(latestPackages({ packages: [] })).toEqual([]);
+    expect(latestPackages({})).toEqual([]);
+    expect(latestPackages(null)).toEqual([]);
+  });
+
+  it('keeps the same name in two repositories apart', () => {
+    const latest = latestPackages({
+      packages: [
+        ver('widgets', 'kit', '1.0.0', '2026-10-02T10:00:00Z'),
+        ver('scratch', 'kit', '2.0.0', '2026-10-03T10:00:00Z'),
+      ],
+    });
+    expect(latest.map((p) => `${p.repo}:${p.release.version}`)).toEqual(['scratch:2.0.0', 'widgets:1.0.0']);
+  });
+
+  it('scopes packages to the repository in view, and shows the Packages tab only with some', () => {
+    const packages = [
+      ver('widgets', 'widgets', '1.0.0', '2026-10-02T10:00:00Z'),
+      ver('widgets', 'widgets', '1.1.0-main.1', '2026-10-03T10:00:00Z', 'staged'),
+    ];
+    const every = scopeGitHub({ ...all, packages }, null);
+    expect(every.packages).toHaveLength(2);
+    expect(githubTabs(every).map((t) => t.id)).toEqual([
+      'releases',
+      'deploys',
+      'packages',
+      'completed',
+      'runs',
+      'commits',
+    ]);
+    expect(githubTabs(every).find((t) => t.id === 'packages').count).toBe(2);
+    const scratch = scopeGitHub({ ...all, packages }, 'scratch');
+    expect(scratch.packages).toEqual([]);
+    expect(githubTabs(scratch).map((t) => t.id)).not.toContain('packages');
+    // An answer from before the feed, or for one repository without packages.
+    expect(scopeGitHub(all, null).packages).toEqual([]);
+    expect(githubTabs({ closed: [], runs: [], commits: [], packages: [] }).map((t) => t.id)).not.toContain('packages');
+    expect(githubTabs({ closed: [], runs: [], commits: [], packages }).map((t) => t.id)).toEqual([
+      'packages',
+      'completed',
+      'runs',
+      'commits',
+    ]);
   });
 });

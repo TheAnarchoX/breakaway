@@ -32,6 +32,8 @@ export function scopeGitHub(data, scope = null) {
     deploys: mine(data.deploys, KEEP.deploys),
     commits: mine(data.commits, KEEP.commits),
     alerts: mine(data.alerts),
+    // What the runs staged on npm (BRK-101, WEB-18); an answer from before the feed has none.
+    packages: mine(data.packages ?? []),
     flows: shown.filter((r) => r.flow),
     // Repositories with no commits yet (CLD-191): each says to run repos init.
     empties: shown.filter((r) => r.empty),
@@ -93,13 +95,14 @@ export function checksSummary(checks) {
 
 /**
  * The GitHub view's tabs under the dashboard (WEB-17), in order, each with the count its label shows.
- * Releases and Deploys only where a repository in view has a pipeline.
+ * Releases and Deploys only where a repository in view has a pipeline, Packages only where one has staged a package.
  */
 export function githubTabs(view) {
   if (!view) return [];
   const tabs = [];
   if (view.flows?.length) tabs.push({ id: 'releases', label: 'Releases', count: null });
   if (view.pipeline) tabs.push({ id: 'deploys', label: 'Deploys', count: view.deploys?.length ?? 0 });
+  if (view.packages?.length) tabs.push({ id: 'packages', label: 'Packages', count: view.packages.length });
   tabs.push(
     { id: 'completed', label: 'Recently completed', count: view.closed?.length ?? 0 },
     { id: 'runs', label: 'CI runs', count: view.runs?.length ?? 0 },
@@ -111,4 +114,33 @@ export function githubTabs(view) {
 /** The tab to show: the one asked for when it's there, else the first. */
 export function pickTab(tabs, wanted) {
   return tabs.find((t) => t.id === wanted)?.id ?? tabs[0]?.id ?? null;
+}
+
+/** Whether a version is a pre-release (`1.3.0-main.4`): a hyphen before any build metadata. */
+export function isPrerelease(version) {
+  return String(version).split('+')[0].includes('-');
+}
+
+/**
+ * The Packages tile (WEB-18): for each package in view, its latest pre-release and latest release (null when it has
+ * none), staged or published, its page on npm, and how many of its versions wait for approval there. By repository, then name.
+ * `view` is scopeGitHub's; its packages come newest first, but they're sorted here so the order never matters.
+ */
+export function latestPackages(view) {
+  const byPackage = new Map();
+  const versions = [...(view?.packages ?? [])].sort((a, b) => String(b.staged).localeCompare(String(a.staged)));
+  for (const v of versions) {
+    const key = `${v.repo ?? ''}\n${v.name}`;
+    // A staged version's link is its package's page on npm, where Staged Packages is; a published one's is its own.
+    const url = v.url ? String(v.url).replace(/\/v\/[^/]+$/u, '') : null;
+    if (!byPackage.has(key))
+      byPackage.set(key, { repo: v.repo, name: v.name, url, prerelease: null, release: null, waiting: 0 });
+    const p = byPackage.get(key);
+    const kind = isPrerelease(v.version) ? 'prerelease' : 'release';
+    if (!p[kind]) p[kind] = v;
+    if (v.state === 'staged') p.waiting += 1;
+  }
+  return [...byPackage.values()].sort(
+    (a, b) => String(a.repo ?? '').localeCompare(String(b.repo ?? '')) || a.name.localeCompare(b.name),
+  );
 }

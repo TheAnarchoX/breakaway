@@ -3282,6 +3282,29 @@ fieldset.field {
 .gh-live .gh-run-meta {
   margin-left: auto;
 }
+/* Packages on the GitHub view (WEB-18): a staged version waits for you on npm. */
+.gh-package-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.gh-live.flow-warn .flow-state,
+.pkg-waiting,
+.pkg-staged .run-icon {
+  color: var(--warn);
+}
+.gh-approve {
+  margin: 0;
+}
+.pkg-staged .gh-run-sub {
+  white-space: normal;
+}
+.gh-approve code {
+  overflow-wrap: anywhere;
+}
 .gh-tabs {
   display: grid;
   gap: 10px;
