@@ -69,3 +69,33 @@ describe('the manifest’s bundle checksum (BRK-52)', () => {
     expect(WORKFLOW).toMatch(/plan\.mjs manifest main "\$VERSION" "\$SHA" --bundle out\/breakaway-bundle\.tar\.gz/u);
   });
 });
+
+// BRK-118: the owner picks what main works toward next when they promote a stable. Minor or major opens the pull request
+// that sets package.json, from a job of its own that holds no secrets and can only write contents and pull requests.
+describe('the next version after a stable (BRK-118)', () => {
+  const job = WORKFLOW.split(/\n {2}(?=[\w-]+:\n {4}name:)/u).find((j) => j.startsWith('next-version:')) ?? '';
+
+  it('is a dispatch input: patch, minor, or major, patch by default', () => {
+    expect(WORKFLOW).toMatch(
+      / {6}next:\n {8}description: .+\n {8}required: false\n {8}default: patch\n {8}type: choice\n {8}options: \[patch, minor, major\]\n/u,
+    );
+  });
+
+  it('runs after the stable, only for minor or major', () => {
+    expect(job).toMatch(/^ {4}needs: stable$/mu);
+    expect(job).toMatch(/^ {4}if: inputs\.next == 'minor' \|\| inputs\.next == 'major'$/mu);
+    expect(job).toMatch(/plan\.mjs next "\$STABLE" "\$NEXT"/u);
+  });
+
+  it('can write contents and pull requests and nothing else, with no environment or secrets', () => {
+    expect(job).toMatch(/ {4}permissions:\n {6}contents: write\n {6}pull-requests: write\n {4}env:/u);
+    expect(job).not.toMatch(/secrets\.|environment:|id-token/u);
+    expect(job).toMatch(/persist-credentials: false/u);
+  });
+
+  it('opens one pull request that sets package.json, and says how to get CI on it', () => {
+    expect(job).toMatch(/gh pr create .*--base main --head "\$branch"/u);
+    expect(job).toMatch(/contents\/package\.json/u);
+    expect(job).toMatch(/close and reopen this pull request/u);
+  });
+});

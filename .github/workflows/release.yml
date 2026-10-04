@@ -16,6 +16,14 @@ on:
         description: The pre-release to promote, like v0.2.0-main.5
         required: true
         type: string
+      # BRK-118: pre-releases count patches from the stable by themselves. With minor or major, once the stable is out,
+      # the next-version job opens the pull request that sets package.json to the next minor or major after it.
+      next:
+        description: What main works toward next. Patch opens nothing; minor or major opens a pull request that sets package.json
+        required: false
+        default: patch
+        type: choice
+        options: [patch, minor, major]
 
 permissions: {}
 
@@ -203,6 +211,59 @@ jobs:
             echo "::error title=npm refused to stage it::Until npm reads GitHub's immutable OIDC subjects (npm/cli#9969), the npm environment needs NPM_TOKEN: a granular token with read and write access to this package that doesn't bypass 2FA. After that, npm's trusted publisher must name exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, environment npm."
             exit 1
           fi
+
+  # BRK-118: with next minor or major, a pull request sets package.json to the next minor or major after the stable, so
+  # the next merge publishes vX.Y.0-main.1 instead of the stable's next patch. It runs after the stable is published,
+  # in its own job with no environment and no secrets, and writes through GitHub's API, so no credentials are kept in a
+  # checkout. A pull request opened with GITHUB_TOKEN starts no workflows, so CI runs on it once the owner closes and
+  # reopens it, or pushes to it (the README's releases section).
+  next-version:
+    name: next version
+    needs: stable
+    if: inputs.next == 'minor' || inputs.next == 'major'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STABLE: ${{ needs.stable.outputs.version }}
+      NEXT: ${{ inputs.next }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Open the pull request that sets the version
+        run: |
+          set -euo pipefail
+          version=$(node scripts/release/plan.mjs next "$STABLE" "$NEXT" | sed 's/^version=//')
+          if [ -z "$version" ]; then
+            echo "::notice title=No version to set::main's package.json is already at or past the next $NEXT after v$STABLE."
+            exit 0
+          fi
+          branch="next-version/v$version"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+            echo "::notice title=Already open::$branch exists, so its pull request sets $version."
+            exit 0
+          fi
+          base=$(git rev-parse HEAD)
+          blob=$(git rev-parse HEAD:package.json)
+          export V=$version
+          node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base" >/dev/null
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/package.json" -f "branch=$branch" -f "sha=$blob" \
+            -f "message=Set the version to $version" -f "content=$(base64 -w0 package.json)" >/dev/null
+          printf '%s\n' \
+            "v$STABLE is out, and the Release workflow was run with next $NEXT: this sets package.json's version to $version." \
+            "" \
+            "Once it merges, the next pre-release is v$version-main.1 instead of v$STABLE's next patch." \
+            "" \
+            "Opened with the workflow's token, which starts no workflows: close and reopen this pull request, or push to it, for CI to run." \
+            > "$RUNNER_TEMP/body.md"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+            --title "Set the version to $version" --body-file "$RUNNER_TEMP/body.md"
 
   # The site follows the stable release (LCH-15): the Site workflow moves the site branch to it, and Cloudflare's
   # Workers Builds deploys that branch. A called workflow sees only the secrets it inherits, so this passes them on
