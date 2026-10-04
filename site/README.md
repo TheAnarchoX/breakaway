@@ -13,13 +13,13 @@ pnpm exec wrangler dev -c site/wrangler.jsonc   # preview at localhost:8787
 
 ## The update feed
 
-A small Worker that serves `/releases.json`: for each channel (`stable` and `main`), the latest release's version, tag, bundle, manifest, and checksum URLs, the notes' URL, whether it needs steps by hand (`manual`, and `manualSteps` when it does), and the lowest version it updates from (`updatesFrom`). An install reads this one feed instead of GitHub's API, which limits requests per address, and Workers share addresses.
+A small Worker that serves `/releases.json`: for each channel (`stable` and `main`), the latest release's version, tag, bundle, manifest, and checksum URLs, the signature's URL (`signature`, or `null` for a release from before signing), the notes' URL, whether it needs steps by hand (`manual`, and `manualSteps` when it does), and the lowest version it updates from (`updatesFrom`). An install reads this one feed instead of GitHub's API, which limits requests per address, and Workers share addresses.
 
 ```json
 {
   "repository": "TheAnarchoX/breakaway",
   "channels": {
-    "stable": { "version": "0.2.0", "tag": "v0.2.0", "bundle": "https://…/breakaway-bundle.tar.gz", "manifest": "https://…/manifest.json", "checksums": "https://…/SHA256SUMS", "notes": "https://github.com/…/releases/tag/v0.2.0", "manual": false, "updatesFrom": "0.1.0", "published": "2026-10-03T09:00:00Z" },
+    "stable": { "version": "0.2.0", "tag": "v0.2.0", "bundle": "https://…/breakaway-bundle.tar.gz", "manifest": "https://…/manifest.json", "checksums": "https://…/SHA256SUMS", "signature": "https://…/manifest.json.sig", "notes": "https://github.com/…/releases/tag/v0.2.0", "manual": false, "updatesFrom": "0.1.0", "published": "2026-10-03T09:00:00Z" },
     "main": { "version": "0.2.1-main.4", "tag": "v0.2.1-main.4", "…": "…" }
   }
 }

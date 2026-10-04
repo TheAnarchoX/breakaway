@@ -85,11 +85,17 @@ jobs:
           from=$(cat "$RUNNER_TEMP/previous"); from=${from:-$(git rev-list --max-parents=0 "$SHA" | tail -1)}
           node scripts/release-notes.mjs --title breakaway --version "v$VERSION" --from "$from" --to "$SHA" --areas "$AREAS" > out/notes.md
           node scripts/release/plan.mjs manual >> out/notes.md
+      # BRK-51: the manifest holds the bundle's checksum, so one signature covers the bundle. RELEASE_SIGNING_KEY is
+      # a secret of the npm environment (only main can use it), never a repository secret: the site job passes those on.
+      - name: Sign the manifest
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: node scripts/release/sign.mjs out/manifest.json out/manifest.json.sig
       - name: Publish the pre-release
         env:
           TAG: ${{ steps.next.outputs.tag }}
         run: |
-          gh release create "$TAG" out/breakaway-bundle.tar.gz out/manifest.json out/SHA256SUMS \
+          gh release create "$TAG" out/breakaway-bundle.tar.gz out/manifest.json out/manifest.json.sig out/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$SHA" --title "$TAG" --notes-file out/notes.md --prerelease
       # The CLI (BRK-7): the same version, on the next dist-tag, staged: it goes live only when the owner approves it with
       # 2FA (npm stage approve, or Staged Packages on npmjs.com). npm tries trusted publishing first (npm 11.15.0 or newer).
@@ -132,6 +138,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
       PRERELEASE: ${{ inputs.prerelease }}
+      RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -165,7 +172,9 @@ jobs:
           node -e "
             const m=require('./out/manifest.json');
             if(m.manual)process.stdout.write('\n### Manual steps\n\n'+m.manualSteps.map(s=>'- '+s).join('\n')+'\n');" >> out/notes.md
-          gh release create "v$version" out/breakaway-bundle.tar.gz out/manifest.json out/SHA256SUMS \
+          # The stable's manifest differs from the pre-release's, so it is signed again.
+          RELEASE_SIGNING_KEY="$RELEASE_SIGNING_KEY" node scripts/release/sign.mjs out/manifest.json out/manifest.json.sig
+          gh release create "v$version" out/breakaway-bundle.tar.gz out/manifest.json out/manifest.json.sig out/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$commit" --title "v$version" --notes-file out/notes.md --latest
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
