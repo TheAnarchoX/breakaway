@@ -32,6 +32,7 @@ import { githubMethods } from './store-github.js';
 import { DecisionError, summarize, validateAnswers } from './decision.js';
 import { AgentError, agentsMethods } from './store-agents.js';
 import { routinesMethods } from './store-routines.js';
+import { featuresMethods } from './store-features.js';
 import { attachmentsMethods } from './store-attachments.js';
 import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
@@ -84,6 +85,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initGitHub();
     this.initAgents();
     this.initRoutines();
+    this.initFeatures();
     this.initAttachments();
     this.initPings();
     this.initPush();
@@ -1161,6 +1163,7 @@ Object.assign(
   githubMethods,
   agentsMethods,
   routinesMethods,
+  featuresMethods,
   attachmentsMethods,
   pingsMethods,
   pushMethods,
@@ -1221,6 +1224,21 @@ const apiActions = {
         }),
       );
     });
+  },
+  featuresApi() {
+    return this.run(() => ok(this.listFeatures()));
+  },
+  featureApi(slug) {
+    return this.run(() => ok({ feature: this.featureDetail(slug) }));
+  },
+  featuresCreateApi(body) {
+    return this.run(() => ok({ feature: this.createFeature(body ?? {}) }, 201));
+  },
+  featuresModifyApi(slug, body) {
+    return this.run(() => ok({ feature: this.modifyFeature(slug, body ?? {}) }));
+  },
+  featuresDeleteApi(slug, body) {
+    return this.run(() => ok(this.deleteFeature(slug, body ?? {})));
   },
   routinesApi() {
     return this.run(() => ok(this.listRoutines()));
