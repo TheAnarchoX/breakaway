@@ -7097,3 +7097,203 @@ fieldset.field {
     width: 100%;
   }
 }
+
+/* ---------- the Specs view (WEB-25) ---------- */
+
+.specs-view {
+  container: specs / inline-size;
+}
+.specs-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+.specs-list {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+.specs-list .view-intro {
+  margin-bottom: 0;
+}
+/* Where there's room, the spec opens beside the list; where there isn't, in its place with a way back. */
+.specs-layout.has-spec .specs-list {
+  display: none;
+}
+.spec-close {
+  display: none;
+}
+@container specs (min-width: 880px) {
+  .specs-layout.has-spec {
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  }
+  .specs-layout.has-spec .specs-list {
+    display: grid;
+  }
+  .specs-layout.has-spec .spec-back {
+    display: none;
+  }
+  .specs-layout.has-spec .spec-close {
+    display: flex;
+  }
+  .spec-pane {
+    position: sticky;
+    top: calc(var(--topbar-h) + 16px);
+    max-height: calc(100dvh - var(--topbar-h) - 32px);
+    overflow-y: auto;
+  }
+}
+.spec-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spec-filter .input {
+  flex: 1;
+  max-width: 420px;
+}
+.spec-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.spec-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.spec-readme {
+  margin: 0;
+}
+.spec-none {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-l);
+}
+.spec-none p,
+.spec-error p {
+  margin: 0;
+}
+.spec-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.spec-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.spec-row {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color var(--dur-fast);
+}
+.spec-row:hover,
+.spec-row:focus-within {
+  border-color: var(--line-strong);
+}
+.spec-row.is-open {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface) 80%, var(--tint));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.spec-row-link {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.spec-row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.spec-row-link:focus-visible {
+  outline: none;
+}
+.spec-row-link:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.spec-row-link .wid {
+  flex: none;
+}
+.spec-row-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.spec-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.spec-status {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--radius-xs);
+  font: 600 12px / 1.4 var(--font-body);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.spec-status-approved {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.spec-status-built,
+.spec-status-done {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.spec-pane {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--bg-2);
+}
+.spec-pane .panel-top {
+  flex-wrap: wrap;
+}
+.spec-head {
+  display: grid;
+  gap: 6px;
+}
+.spec-head .meta {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.spec-title {
+  font: 700 21px / 1.25 var(--font-body);
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+.spec-title:focus {
+  outline: none;
+}
+.spec-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.md .md-wid {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
