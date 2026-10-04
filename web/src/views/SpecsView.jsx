@@ -23,6 +23,7 @@ import {
   tasks,
 } from '../lib/store.js';
 import { RepoChip } from '../components/ui.jsx';
+import { RefineSpec } from '../components/RefineSpec.jsx';
 
 /** Each repository's list, by slug: `{ loading, data, error, status }`. */
 const lists = signal(/** @type {Record<string, any>} */ ({}));
@@ -334,6 +335,7 @@ function SpecPane({ slug, path }) {
               <ExternalLink size={16} aria-hidden="true" />
               Open on GitHub
             </a>
+            <RefineSpec slug={slug} path={d.path} title={shortTitle(d.title, d.wid)} />
           </div>
         </div>
         {d.tooLarge || d.text === null ? (

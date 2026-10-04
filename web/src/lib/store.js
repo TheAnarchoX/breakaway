@@ -1139,10 +1139,11 @@ export const actions = {
    * refusal (no task is made then), so the dialog can show it beside the prompt.
    * With `decision` (Refine from the answers), the board writes the prompt from that answered decision, and `note`
    * goes under it; with `next` (minor or major, BRK-100), the prompt that sets `repo`'s next version, which must
-   * still be `version`.
-   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, note?: string }} body
+   * still be `version`; with `spec` (a path in `repo`'s specs directory, WEB-26), the prompt that refines that spec,
+   * and `note` is the owner's request.
+   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, spec?: string, note?: string }} body
    */
-  async startGeneral({ prompt, repo, force = false, decision, next, version, note }) {
+  async startGeneral({ prompt, repo, force = false, decision, next, version, spec, note }) {
     const result = await api('agents/general', {
       method: 'POST',
       body: {
@@ -1152,6 +1153,7 @@ export const actions = {
         decision,
         next,
         version,
+        spec,
         note: note || undefined,
       },
     });
@@ -1172,6 +1174,11 @@ export const actions = {
    * next `next` (minor or major), the task already preparing one, and why its routine can't start one. Makes nothing.
    */
   previewNextVersion: (repo, next) => api('agents/general', { method: 'POST', body: { repo, next, dryRun: true } }),
+  /**
+   * Refine a spec with an agent (WEB-26), before starting: the prompt the board would write for spec `path` in
+   * repository `repo`, the task already on it, and why its routine can't start one. Makes nothing.
+   */
+  previewSpec: (repo, path) => api('agents/general', { method: 'POST', body: { repo, spec: path, dryRun: true } }),
   /** `after` runs when the owner forces a start the board's limits refused. */
   async startAgent(t, note, after) {
     const result = await change(
