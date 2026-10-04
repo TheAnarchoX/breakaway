@@ -178,7 +178,7 @@ function Board() {
           helpOpen.value = false;
         }}
         labelledBy="help-title"
-        className="dialog-small"
+        className="dialog-shortcuts"
       >
         <HelpContent />
       </Dialog>

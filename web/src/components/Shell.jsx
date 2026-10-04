@@ -990,37 +990,55 @@ export function FilterBar() {
   );
 }
 
+/** Going to a view: one row per key, read from VIEWS so the sheet follows the keys the app handles. */
+const VIEW_SHORTCUTS = VIEWS.map((v) => [v.key, v.label]);
+
 export const SHORTCUTS = [
-  ['/', 'Search'],
-  ['n', 'New task'],
-  ['i', 'New idea'],
-  ['b l g o a h x u w', 'Board, list, dependencies, inbox, activity, GitHub, agents, routines, connections'],
-  ['[', 'Collapse or expand the menu'],
-  ['s', 'Switch repository, when there are several'],
-  ['j k', 'Next and previous task'],
-  ['c', 'Claim or release the open task'],
-  ['d', 'Mark the open task done'],
-  ['Esc', 'Close the task'],
-  ['r', 'Refresh'],
-  ['?', 'These shortcuts'],
+  {
+    title: 'Go to a view',
+    rows: VIEW_SHORTCUTS,
+  },
+  {
+    title: 'Actions',
+    rows: [
+      ['/', 'Search'],
+      ['n', 'New task'],
+      ['i', 'New idea'],
+      ['[', 'Collapse or expand the menu'],
+      ['s', 'Switch repository, when there are several'],
+      ['j k', 'Next and previous task'],
+      ['c', 'Claim or release the open task'],
+      ['d', 'Mark the open task done'],
+      ['Esc', 'Close the task'],
+      ['r', 'Refresh'],
+      ['?', 'These shortcuts'],
+    ],
+  },
 ];
 
 export function HelpContent() {
   return (
     <div class="sheet">
       <h2 id="help-title">Keyboard shortcuts</h2>
-      <dl class="shortcuts">
-        {SHORTCUTS.map(([keys, what]) => (
-          <div key={keys} class="shortcut">
-            <dt>
-              {keys.split(' ').map((k) => (
-                <Kbd key={k}>{k}</Kbd>
+      <div class="shortcut-groups">
+        {SHORTCUTS.map((group) => (
+          <section key={group.title}>
+            <h3 class="shortcut-title">{group.title}</h3>
+            <dl class="shortcuts">
+              {group.rows.map(([keys, what]) => (
+                <div key={keys} class="shortcut">
+                  <dt>
+                    {keys.split(' ').map((k) => (
+                      <Kbd key={k}>{k}</Kbd>
+                    ))}
+                  </dt>
+                  <dd>{what}</dd>
+                </div>
               ))}
-            </dt>
-            <dd>{what}</dd>
-          </div>
+            </dl>
+          </section>
         ))}
-      </dl>
+      </div>
       <p class="muted small">Shortcuts don’t fire while you type in a field.</p>
       <div class="sheet-actions">
         <button
