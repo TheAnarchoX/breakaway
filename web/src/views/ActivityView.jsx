@@ -83,6 +83,7 @@ const ICONS = {
   pr_auto_merge_off: GitPullRequestClosed,
   promote_started: Rocket,
   rollback_started: Undo2,
+  release_started: Rocket,
   ci_failed: CircleX,
   ci_fixed: CircleCheck,
   main_failed: CircleX,
@@ -185,6 +186,8 @@ function describe(change) {
       return `You promoted ${change.sha7} to production${change.tasks?.length ? ` (${change.tasks.join(', ')})` : ''}`;
     case 'rollback_started':
       return `You rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
+    case 'release_started':
+      return `You released ${change.package}@${change.prerelease} as ${change.version}: it waits on npm for your approval`;
     case 'pr_closed':
       return `#${change.number} closed without merging`;
     case 'ci_failed':

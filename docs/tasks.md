@@ -112,17 +112,18 @@ The same steps by hand, for reference: register, init, routine, connect (the own
 
 #### Deploy pipelines
 
-A repository with a deploy pipeline gets Releases, Promote, Roll back, and the warnings that merging deploys. Without one, the GitHub view shows none of them and merging deploys nothing. Set it with `npx breakaway repos modify <slug> --pipeline pipeline.json` (the owner; a request signed with an agent's name is refused):
+A repository with a deploy pipeline gets Releases, Promote, Roll back, and the warnings that merging deploys, and one that releases an npm package gets [Release](#release-a-package). Without one, the GitHub view shows none of them and merging deploys nothing. Set it with `npx breakaway repos modify <slug> --pipeline pipeline.json` (the owner; a request signed with an agent's name is refused):
 
 ```json
 {
   "workers": { "staging": "widgets-staging", "production": "widgets" },
-  "workflows": { "deploy": "deploy.yml", "promote": "promote.yml", "rollback": "rollback.yml" },
+  "package": "@acme/widgets",
+  "workflows": { "deploy": "deploy.yml", "promote": "promote.yml", "rollback": "rollback.yml", "release": "release.yml" },
   "deployPaths": ".github/deploy-paths.json"
 }
 ```
 
-`workers` is required: the names of the staging and production Workers. `workflows` (the workflow files in the repository) and `deployPaths` (the JSON file that says which paths deploy) are optional. A pipeline the board couldn't use is refused with the reason instead of saved. `--pipeline none` clears it.
+It needs `workers`, `package`, or both (`BRK-103`). `workers` are the names of the staging and production Workers it deploys; `package` is the npm package it releases, as its `package.json` names it. A repository that only publishes a package sets `package` alone and gets no Releases, Promote, or Roll back. `workflows` (the workflow files in the repository) and `deployPaths` (the JSON file that says which paths deploy) are optional. A pipeline the board couldn't use is refused with the reason instead of saved. `--pipeline none` clears it.
 
 #### Taking a repository off the board
 
@@ -341,7 +342,7 @@ When a task has images, the routine payload gets an `Attachments: <n>` line (the
 
 ## GitHub
 
-The board reads each registered repository through a private GitHub App named after the install ([spec](specs/CLD-24-github.md)). It reads, and writes in exactly five cases, all for the owner: Publish, Update branch, Merge, and Merge when green, either pressed on the pull request page ([below](#update-branch-merge-and-merge-when-green)) or sent by the two pull request settings the owner can turn on in their browser ([below](#pull-request-settings)). The fifth is [Promote and Roll back](#promote-and-roll-back), which start two workflows. Nothing else writes to GitHub.
+The board reads each registered repository through a private GitHub App named after the install ([spec](specs/CLD-24-github.md)). It reads, and writes in exactly five cases, all for the owner: Publish, Update branch, Merge, and Merge when green, either pressed on the pull request page ([below](#update-branch-merge-and-merge-when-green)) or sent by the two pull request settings the owner can turn on in their browser ([below](#pull-request-settings)). The fifth is [Promote and Roll back](#promote-and-roll-back), and [Release](#release-a-package) for a package, which start the repository's workflows. Nothing else writes to GitHub.
 
 **How pull requests link to tasks.** A pull request **closes** a task when a sentence or line of its title or description *starts* with a closing word directly followed by the work IDs: `Closes BRK-12.`, `- Fixes BRK-5, BRK-12 and WEB-1`, `Resolves: DOC-6` (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved; backticks around the ID are fine). It also closes a task whose `pr` field is the pull request's number, so only a closing pull request goes in that field (the board refuses one while a refining agent holds the task). Everything else is only a **mention**: IDs in prose ("its first sync finished BRK-8"), in code blocks or quotes, and in the branch name. A pending task with an open closing pull request is **In review**; when the pull request merges, the task is done with the note "Merged in #31: …"; when it's closed without merging, it gets a note and leaves review. So write `Part of <ID>.` in a spec or planning pull request. The first sync after connecting only records history.
 
@@ -367,6 +368,14 @@ The board reads each registered repository through a private GitHub App named af
 - **Promote to production…** (staging's card) asks first, listing the tasks and migrations, and dispatches the repository's `promote.yml` on `main` with the candidate's commit, the latest successful staging deploy. A destructive migration needs a tick in the dialog. **Roll back…** (production's card) asks for the version to go back to (the one before is preselected) and what broke, and dispatches `rollback.yml`. A button that can't work is disabled with the reason next to it.
 - **Only the signed-in browser** can press them: the endpoints refuse the bearer token that agents and the CLI hold, and cross-origin requests. The workflows check everything again (latest build, staging not deploying, `DEPLOYS_PAUSED`, the artifact), so a forged request can at worst fail. Each press is an Activity event.
 - **Permissions.** Starting a workflow needs read and write on **Actions**. An App made before `CLD-105` has read only, so the buttons answer "The board's GitHub App can't start workflows yet" until you change it (as above: Permissions & events, **Actions** to read and write, then accept the request on the installation; `CLD-104`). Until then, run the same workflows from GitHub: Actions, Promote or Roll back, Run workflow.
+
+### Release a package
+
+`BRK-103`, [spec](specs/IDEA-27-move-ci-cd-to-the-deploy-flow.md#2b-the-release-flow-for-npm-packages). For a repository whose pipeline names a `package`, the release flow (`release.yml`, rendered by `pipeline init`) stages a pre-release, `X.Y.Z-main.N`, on `next` for every merge. **Release** makes one of them the stable `X.Y.Z` on `latest`: the board starts `release.yml`'s stable job on the default branch with that pre-release, and the job stages the same commit's files under `X.Y.Z`. Nothing goes live until you approve it on npm with 2FA; the board never publishes or approves anything there.
+
+- **The owner's only.** The signed-in browser (same-origin), or your own CLI: `npx breakaway github release 1.4.0-main.5` in the repository's checkout. A request signed with an agent's name is refused. `POST /api/github/release` takes `version` (the pre-release, or its tag) and `repo`.
+- **What it refuses.** A repository whose pipeline names no package; a version that isn't a pre-release; a pre-release the Packages feed hasn't seen staged for that package (sync first); and a pre-release whose stable is already staged or published, because npm takes a version once. The workflow checks the tags again.
+- **Permissions** are Promote's: read and write on **Actions**. Until the App has them, run it from GitHub: Actions, Release, Run workflow, with the pre-release's tag. Each Release is an Activity event.
 
 ### Pull request settings
 

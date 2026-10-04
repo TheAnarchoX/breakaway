@@ -23,6 +23,7 @@
     "src/decision.js",
     "src/install.js",
     "src/model.js",
+    "src/packages.js",
     "src/ping.js",
     "src/promote.js",
     "src/prompt.js",

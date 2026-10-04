@@ -523,6 +523,15 @@ async function handleApi(request, env, url, ctx) {
       }),
     );
   }
+  // Release a package's pre-release as stable (BRK-103): the owner's, from the signed-in browser or the owner's own CLI
+  // (a token with no agent's name). The board only starts release.yml's stable job; npm waits for the owner's 2FA.
+  if (parts[0] === 'github' && parts[1] === 'release' && parts.length === 2 && method === 'POST') {
+    if (via !== 'cookie' && body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
+      return json(403, { error: 'only the owner can release a package; agents never start a release' });
+    return send(
+      await s.githubRelease('release', { version: body.version, repo: body.repo ?? url.searchParams.get('repo') }),
+    );
+  }
   if (parts[0] === 'github' && parts[1] === 'packages' && parts.length === 2 && method === 'GET')
     return send(await s.packagesApi(url.searchParams.get('repo')));
   if (parts[0] === 'github' && parts[1] === 'sync' && method === 'POST')

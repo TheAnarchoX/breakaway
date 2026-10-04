@@ -1,4 +1,4 @@
-import { SELF, env } from 'cloudflare:test';
+import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_TOKEN, TEST_GITHUB_APP_ID } from './constants.js';
 import { api, setPipeline } from './helpers.js';
@@ -321,5 +321,105 @@ describe('the release flow: Promote and Roll back', () => {
     expect(denied).toMatchObject({ status: 403, permission: true });
     expect(denied.error).toMatch(/read and write on Actions/u);
     expect(JSON.stringify(await body(await api('activity'))).split('promote_started').length).toBe(before);
+  });
+  describe('Release: a package’s pre-release as its stable (BRK-103)', () => {
+    const PACKAGE_ONLY = { package: '@acme/widgets' };
+    const BOTH = {
+      workers: { staging: 'widgets-staging', production: 'widgets' },
+      package: '@acme/widgets',
+      deployPaths: '.github/deploy-paths.json',
+    };
+    async function packagePipeline(pipeline) {
+      const res = await api('repos/widgets', { method: 'PATCH', body: { pipeline } });
+      expect(res.status).toBe(200);
+    }
+    /** What the Packages feed knows: [version, state] of @acme/widgets. */
+    async function feed(versions) {
+      const stub = env.STORE.get(env.STORE.idFromName('widgets'));
+      await runInDurableObject(stub, (store) => {
+        store.sql.exec("DELETE FROM gh_packages WHERE repo = 'widgets'");
+        for (const [version, state] of versions)
+          store.sql.exec(
+            `INSERT INTO gh_packages (repo, name, version, tag, state, run, data, staged)
+             VALUES ('widgets', '@acme/widgets', ?, ?, ?, 1, '{}', ?)`,
+            version,
+            version.includes('-') ? 'next' : 'latest',
+            state,
+            new Date().toISOString(),
+          );
+      });
+    }
+
+    it('starts release.yml’s stable job on main with the pre-release’s tag, and records it in Activity', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([
+        ['1.4.0-main.4', 'published'],
+        ['1.4.0-main.5', 'staged'],
+      ]);
+      const post = await browser();
+      const ok = await body(await post('github/release', { version: '1.4.0-main.4' }));
+      expect(ok).toMatchObject({ status: 200, ok: true, action: 'release_started', workflow: 'release.yml' });
+      expect(gh.writes).toEqual([
+        [
+          'POST',
+          `${REPO}/actions/workflows/release.yml/dispatches`,
+          { ref: 'main', inputs: { prerelease: 'v1.4.0-main.4' } },
+        ],
+      ]);
+      expect(JSON.stringify(await body(await api('activity')))).toContain(
+        '"release_started","package":"@acme/widgets","prerelease":"1.4.0-main.4","version":"1.4.0"',
+      );
+    });
+
+    it('tags it with the package’s name beside a Worker’s deploys, and takes the tag as the version', async () => {
+      await packagePipeline(BOTH);
+      await feed([['2.0.0-main.1', 'staged']]);
+      const post = await browser();
+      expect((await post('github/release', { version: '@acme/widgets@2.0.0-main.1' })).status).toBe(200);
+      expect(gh.writes[0][2]).toEqual({ ref: 'main', inputs: { prerelease: '@acme/widgets@2.0.0-main.1' } });
+    });
+
+    it('the owner’s CLI may release; an agent, a cross-origin request, and a bad or unknown pre-release may not', async () => {
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([
+        ['1.3.1-main.2', 'staged'],
+        ['1.3.1', 'staged'],
+        ['1.4.0-main.1', 'staged'],
+      ]);
+      const asAgent = await body(
+        await api('github/release', { method: 'POST', body: { version: '1.4.0-main.1', by: 'claude-brk-1' } }),
+      );
+      expect(asAgent).toMatchObject({ status: 403 });
+      const post = await browser();
+      expect((await post('github/release', { version: '1.4.0-main.1' }, 'https://evil.example')).status).toBe(403);
+      expect((await post('github/release', { version: '1.4.0' })).status).toBe(400);
+      expect((await post('github/release', {})).status).toBe(400);
+      const unknown = await body(await post('github/release', { version: '1.4.0-main.9' }));
+      expect(unknown).toMatchObject({ status: 409 });
+      expect(unknown.error).toMatch(/hasn’t seen @acme\/widgets@1.4.0-main.9/u);
+      // npm takes a version once: a stable staged or published blocks its pre-releases.
+      const out = await body(await post('github/release', { version: '1.3.1-main.2' }));
+      expect(out).toMatchObject({ status: 409 });
+      expect(out.error).toMatch(/1.3.1 is already out/u);
+      expect(gh.writes).toEqual([]);
+      const owner = await body(await api('github/release', { method: 'POST', body: { version: '1.4.0-main.1' } }));
+      expect(owner).toMatchObject({ status: 200, workflow: 'release.yml' });
+      expect(gh.writes).toHaveLength(1);
+    });
+
+    it('refuses a repository that releases no package, and says so plainly when the App can’t start workflows', async () => {
+      const post = await browser();
+      const none = await body(await post('github/release', { version: '1.4.0-main.1' }));
+      expect(none).toMatchObject({ status: 409 });
+      expect(none.error).toMatch(/releases no npm package/u);
+      await packagePipeline(PACKAGE_ONLY);
+      await feed([['1.4.0-main.1', 'staged']]);
+      const count = async () => JSON.stringify(await body(await api('activity'))).split('release_started').length;
+      const before = await count();
+      gh.writeError = [403, 'Resource not accessible by integration'];
+      const denied = await body(await post('github/release', { version: '1.4.0-main.1' }));
+      expect(denied).toMatchObject({ status: 403, permission: true, workflow: 'release.yml' });
+      expect(await count()).toBe(before);
+    });
   });
 });
