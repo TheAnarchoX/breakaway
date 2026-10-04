@@ -1230,6 +1230,11 @@ const apiActions = {
   sessionLogApi(ref, body) {
     return this.run(() => {
       const uuid = this.resolve(ref);
+      // A task that finished or was released takes no more live output: tell the hook to drop its marker (BRK-87).
+      const agent = String(body?.agent ?? '').trim();
+      const map = this.tasks.get(uuid);
+      if (agent && (map?.status !== 'pending' || map.claim !== agent))
+        return ok({ added: 0, messages: [], released: true });
       const added = this.appendSessionLog(uuid, body ?? {});
       // `messages: false` is a post that can't hand them on (a Stop hook): they stay waiting.
       return ok({ added, messages: body?.messages === false ? [] : this.takeMessages(uuid, body?.agent) }, 201);

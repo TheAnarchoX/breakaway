@@ -201,6 +201,16 @@ describe('cloud agents', () => {
     expect(card.agentRun).toMatchObject({ agent: 'claude-prd-1', live: true });
   });
 
+  it('takes no output from an agent that no longer holds the task, and says so', async () => {
+    const before = (await body(await api('tasks/PRD-1/session'))).entries.length;
+    const res = await api('tasks/PRD-1/session', {
+      method: 'POST',
+      body: { agent: 'claude-someone-else', entries: [{ kind: 'message', text: 'still here' }], messages: true },
+    });
+    expect(await body(res)).toMatchObject({ added: 0, messages: [], released: true });
+    expect((await body(await api('tasks/PRD-1/session'))).entries).toHaveLength(before);
+  });
+
   it('lists running agents with their latest line, and shows starts in Activity', async () => {
     const overview = await body(await api('agents'));
     expect(overview.connected).toBe(true);

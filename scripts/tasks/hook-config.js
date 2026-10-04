@@ -3,7 +3,7 @@
  * `tasks claim`) and where the board is, found the same way as the CLI (scripts/tasks/settings.js).
  * Each returns null/undefined rather than throwing when something's missing, because the hooks stay quiet.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { boardUrl, configDir, parseEnvFile, readSetting } from './settings.js';
@@ -54,4 +54,14 @@ export function boardConfig(root = projectRoot()) {
   // In a cloud session there's no token here: the environment's API credential adds it.
   const token = readSetting('TOKEN', { env: process.env, file });
   return { base: url, headers: token ? { Authorization: `Bearer ${token}` } : {} };
+}
+
+/** The board says this checkout's task isn't claimed by its agent any more: drop the marker so later calls post nothing (BRK-87). */
+export function dropClaim(claim, root = projectRoot()) {
+  try {
+    const marker = join(root, '.task-session');
+    if (JSON.parse(readFileSync(marker, 'utf8'))?.uuid === claim.uuid) rmSync(marker);
+  } catch {
+    /* already gone */
+  }
 }
