@@ -3,6 +3,8 @@ import { CircleCheck, CircleSlash, Copy, FolderGit2, PowerOff, RotateCcw, Trash2
 import { api, enc } from '../lib/api.js';
 import { AREAS, plural } from '../lib/model.js';
 import { RepoPullSettings } from '../components/PullSettings.jsx';
+import { TurnOnDeploys } from '../components/TurnOnDeploys.jsx';
+import { WORKFLOWS, deployField, missingOf, pipelineForm, pipelineOf } from '../lib/pipeline-form.js';
 import {
   agents,
   confirmDialog,
@@ -897,57 +899,37 @@ function Agents({ data, onSaved, readOnly }) {
   );
 }
 
-/** The deploy form's fields, from a saved pipeline (or none). */
-const pipelineForm = (pipeline) => ({
-  staging: pipeline?.workers?.staging ?? '',
-  production: pipeline?.workers?.production ?? '',
-  deploy: pipeline?.workflows?.deploy ?? '',
-  promote: pipeline?.workflows?.promote ?? '',
-  rollback: pipeline?.workflows?.rollback ?? '',
-  deployPaths: pipeline?.deployPaths ?? '',
-});
-
-const WORKFLOWS = [
-  ['deploy', 'Deploy', 'deploy.yml'],
-  ['promote', 'Promote', 'promote.yml'],
-  ['rollback', 'Roll back', 'rollback.yml'],
-];
-
-/**
- * The pipeline `repos modify --pipeline` takes, from the form: blank workflow files and deploy paths are left
- * out, so the defaults apply, and anything else the saved pipeline holds stays as it is.
- */
-function pipelineOf(form, saved) {
-  const { workers: _w, workflows: savedFlows, deployPaths: _d, ...rest } = saved ?? {};
-  const workflows = { ...savedFlows };
-  for (const [k] of WORKFLOWS) {
-    if (form[k].trim()) workflows[k] = form[k].trim();
-    else delete workflows[k];
-  }
-  return {
-    workers: { staging: form.staging.trim(), production: form.production.trim() },
-    ...(Object.keys(workflows).length ? { workflows } : {}),
-    ...(form.deployPaths.trim() ? { deployPaths: form.deployPaths.trim() } : {}),
-    ...rest,
-  };
-}
-
-/** Which Deploys field a refusal is about, from the field it names (`pipeline.workers.staging is …`). */
-function deployField(message) {
-  const named = /pipeline\.(?:workers|workflows)\.(\w+)/u.exec(message)?.[1];
-  if (named && named in pipelineForm(null)) return named;
-  if (/deployPaths/u.test(message)) return 'deployPaths';
-  if (/workflows/u.test(message)) return 'deploy';
-  return 'staging';
+/** What the pipeline does, in a sentence, or what having none means. */
+function deploysIntro(repo) {
+  const p = repo.pipeline;
+  if (!p)
+    return `${repo.name} has no pipeline, so the board shows no releases for it and merging deploys nothing. Name its two Workers to turn deploys on, its npm package to follow its releases, or both.`;
+  const deploys = p.workers
+    ? `Merging to ${repo.defaultBranch} deploys ${repo.name} to staging, and Promote and Roll back move production.`
+    : '';
+  const releases = p.package
+    ? `Merging to ${repo.defaultBranch} publishes a pre-release of ${p.package} on npm, and Release on the GitHub page publishes a stable one.`
+    : '';
+  return `${deploys} ${releases} The Releases card on GitHub shows where each version is.`.trim();
 }
 
 /**
- * Deploys: the pipeline as a form, checked as it's typed with a dry run; Copy as JSON for the CLI; and Turn off
- * deploys, which clears it after asking.
+ * Deploys: for a repository without a pipeline whose move to the deploy flow is on its default branch, the GitHub
+ * page's Turn on deploys card (IDEA-27, WEB-13), with Set it by hand opening the form below it. The form is the
+ * pipeline: both Workers, an npm package, or both (BRK-103), checked as it's typed with a dry run; Copy as JSON for
+ * the CLI; and Turn off deploys, which clears it after asking.
  * @param {Record<string, any>} props
  */
-function Deploys({ data, onSaved, readOnly }) {
+function Deploys({ data, onSaved, onReload, readOnly }) {
   const repo = data.repo;
+  const gh = github.value;
+  useEffect(() => {
+    if (!readOnly && !repo.pipeline && !github.peek().loaded && !github.peek().loading) loadGitHub();
+  }, []);
+  // The GitHub page's facts for this repository; hidden while GitHub isn't connected, and the form still saves.
+  const facts = gh.data?.connected ? githubRepoFacts(repo.slug) : null;
+  const card = !readOnly && !repo.pipeline && facts?.pipelineFound && (facts.slug ?? repo.slug) === repo.slug;
+  const [byHand, setByHand] = useState(false);
   const saved = pipelineForm(repo.pipeline);
   const [draft, setDraft] = useState(/** @type {Record<string, string>} */ ({}));
   const [errors, setErrors] = useState(/** @type {Record<string, string>} */ ({}));
@@ -956,7 +938,8 @@ function Deploys({ data, onSaved, readOnly }) {
   const timer = useRef(/** @type {any} */ (null));
   const form = { ...saved, ...draft };
   const dirty = Object.keys(saved).some((k) => k in draft && draft[k].trim() !== saved[k]);
-  const complete = Boolean(form.staging.trim() && form.production.trim());
+  const missing = missingOf(form);
+  const complete = !missing;
   const set = (k) => (e) => {
     const next = e.currentTarget.value;
     setDraft((d) => ({ ...d, [k]: next }));
@@ -967,7 +950,7 @@ function Deploys({ data, onSaved, readOnly }) {
     setErrors({});
     setConflict(false);
   };
-  // Checked as it's typed, once both Workers are named: the refusal shows under its field before Save.
+  // Checked as it's typed, once both Workers or a package are named: the refusal shows under its field before Save.
   useEffect(() => {
     clearTimeout(timer.current);
     if (readOnly || !dirty || !complete) return undefined;
@@ -1001,11 +984,8 @@ function Deploys({ data, onSaved, readOnly }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!dirty || busy) return;
-    if (!complete) {
-      setErrors({
-        [form.staging.trim() ? 'production' : 'staging']:
-          'Name both Workers: staging, where merging deploys, and production, where Promote sends it.',
-      });
+    if (missing) {
+      setErrors(missing);
       return;
     }
     await save(pipelineOf(form, repo.pipeline), repo.pipeline ? 'Deploys saved.' : `Deploys are on for ${repo.name}.`);
@@ -1044,19 +1024,23 @@ function Deploys({ data, onSaved, readOnly }) {
     </label>
   );
   const flowsOpen = WORKFLOWS.some(([k]) => form[k] || errors[k]);
-  return (
-    <section class="rs-section" aria-labelledby="rs-deploys">
-      <h2 id="rs-deploys">Deploys</h2>
-      <p class="muted small">
-        {repo.pipeline
-          ? `Merging to ${repo.defaultBranch} deploys ${repo.name} to staging, and Promote and Roll back move production. The Releases card on GitHub shows where each version is.`
-          : `${repo.name} has no pipeline, so the board shows no releases for it and merging deploys nothing. Name its two Workers to turn deploys on.`}
-      </p>
-      <Conflict show={conflict} />
+  const deployForm = (
+    <>
       <form class="rs-form" onSubmit={submit}>
         <div class="rs-fields">
-          {input('staging', 'Staging Worker', 'my-app-staging', 'Where merging deploys.')}
+          {input(
+            'staging',
+            'Staging Worker',
+            'my-app-staging',
+            'Where merging deploys. Leave both Workers empty for a package alone.',
+          )}
           {input('production', 'Production Worker', 'my-app', 'Where Promote sends a version.')}
+          {input(
+            'package',
+            'npm package',
+            '@acme/widgets',
+            'The name in its package.json. Each merge publishes a pre-release, and Release publishes a stable one.',
+          )}
           {input(
             'deployPaths',
             'Deploy paths',
@@ -1092,6 +1076,26 @@ function Deploys({ data, onSaved, readOnly }) {
           saved as a file.
         </p>
       )}
+    </>
+  );
+  return (
+    <section class="rs-section" aria-labelledby="rs-deploys">
+      <h2 id="rs-deploys">Deploys</h2>
+      <p class="muted small">{deploysIntro(repo)}</p>
+      {card && <TurnOnDeploys view={facts} heading="h3" onDone={onReload} />}
+      {card && !byHand && !dirty ? (
+        <p class="rs-by-hand">
+          <button type="button" class="btn btn-quiet btn-sm" onClick={() => setByHand(true)}>
+            Set it by hand
+          </button>
+          <span class="meta">Name the Workers or the package yourself instead of what’s on {facts.branch}.</span>
+        </p>
+      ) : (
+        <>
+          <Conflict show={conflict} />
+          {deployForm}
+        </>
+      )}{' '}
       {!readOnly && repo.pipeline && (
         <div class="rs-off">
           <button type="button" class="btn btn-outline btn-sm" onClick={turnOff} disabled={busy}>
@@ -1302,7 +1306,13 @@ export function RepoSettingsView() {
           <General key={`general:${data.repo.slug}`} data={data} onSaved={onSaved} readOnly={readOnly} />
           <Areas data={data} onSaved={onSaved} readOnly={readOnly} />
           <Agents key={`agents:${data.repo.slug}`} data={data} onSaved={onSaved} readOnly={readOnly} />
-          <Deploys key={`deploys:${data.repo.slug}`} data={data} onSaved={onSaved} readOnly={readOnly} />
+          <Deploys
+            key={`deploys:${data.repo.slug}`}
+            data={data}
+            onSaved={onSaved}
+            onReload={load}
+            readOnly={readOnly}
+          />
           {!readOnly && <PullRequests repo={data.repo} />}
           {!readOnly && <TakeOff data={data} />}
           {repos.value.list.length > 1 && (

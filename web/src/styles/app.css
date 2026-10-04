@@ -4143,6 +4143,12 @@ fieldset.field {
   align-items: center;
   gap: 8px 12px;
 }
+/* On a repository's settings page (WEB-33) the card sits inside Deploys, so its heading is an h3. */
+.turn-on h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 /* ---------- next version (BRK-100) ---------- */
 
@@ -6515,6 +6521,25 @@ fieldset.field {
   overflow: auto;
 }
 
+/* ---------- refine a spec with an agent (WEB-26) ---------- */
+
+.refine-spec-off {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.refine-spec-prompt summary {
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.refine-spec-prompt .refine-prompt {
+  margin-top: 6px;
+}
+.field-hint.is-full {
+  color: var(--warn);
+}
+
 /* ---------- chase (IDEA-28 section 3.9) ---------- */
 
 .fr-pill-chase {
@@ -7029,6 +7054,12 @@ fieldset.field {
 }
 .rs-details > .field-hint {
   margin-bottom: 10px;
+}
+.rs-by-hand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 .rs-off {
   display: flex;
