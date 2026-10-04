@@ -1,9 +1,27 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { FolderGit2, FolderPlus, RotateCcw, Trash2, TriangleAlert } from 'lucide-preact';
-import { api, enc } from '../lib/api.js';
-import { AREAS } from '../lib/model.js';
 import {
+  CircleCheck,
+  CircleSlash,
+  Copy,
+  FolderGit2,
+  FolderPlus,
+  PowerOff,
+  RotateCcw,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-preact';
+import { api, enc } from '../lib/api.js';
+import { AREAS, plural } from '../lib/model.js';
+import { RepoPullSettings } from '../components/PullSettings.jsx';
+import {
+  agents,
   confirmDialog,
+  github,
+  githubRepoFacts,
+  hashFor,
+  loadAgents,
+  loadGitHub,
+  multiRepo,
   loadRepos,
   navOrder,
   openAddRepo,
@@ -14,13 +32,16 @@ import {
 } from '../lib/store.js';
 
 /**
- * A repository's settings page (docs/specs/IDEA-29-settings.md, sections 2 and 5; WEB-30): General and Areas,
- * everything `repos modify` changes for them. It reads GET /api/repos/<slug> and saves each section on its own
+ * A repository's settings page (docs/specs/IDEA-29-settings.md, sections 2 and 5; WEB-30, WEB-31): General, Areas,
+ * Agents, and Deploys, everything `repos modify` changes; Pull requests, this browser's; and Take it off the board,
+ * the CLI command to copy. It reads GET /api/repos/<slug> and saves each section on its own
  * through PATCH /api/repos/<slug>, with the row's last-changed time it loaded (`edited`), so a change made
  * somewhere else since is shown instead of overwritten. The server's checks are the CLI's (`checkRepo`), so a
  * refusal shows under the field that caused it, and the edit stays.
  */
 
+/** Where a repository keeps its agent prompt when it doesn't say (src/repos.js, DEFAULT_PROMPT_PATH). */
+const DEFAULT_PROMPT_PATH = 'tools/tasks/routine-prompt.md';
 const SHARED = AREAS.filter((a) => ['ideas', 'routines'].includes(a.id));
 const CHANGED_ELSEWHERE = 'Changed somewhere else. Here’s what it is now.';
 
@@ -627,6 +648,532 @@ function Areas({ data, onSaved, readOnly }) {
   );
 }
 
+async function copy(text, what) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`${what} copied.`, 'success');
+  } catch {
+    toast('Couldn’t copy. Select it and copy it yourself.', 'error');
+  }
+}
+
+/**
+ * A command to run in the CLI, with a button that copies it.
+ * @param {Record<string, any>} props
+ */
+function Command({ text, label = 'Copy the command' }) {
+  return (
+    <div class="gh-command">
+      <code>{text}</code>
+      <button
+        type="button"
+        class="btn btn-quiet btn-icon btn-sm"
+        aria-label={label}
+        onClick={() => copy(text, 'Command')}
+      >
+        <Copy size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/** @param {Record<string, any>} props */
+function Conflict({ show }) {
+  if (!show) return null;
+  return (
+    <p class="rs-conflict" role="alert">
+      <TriangleAlert size={16} aria-hidden="true" />
+      {CHANGED_ELSEWHERE} Your edits are kept: check them, then save again.
+    </p>
+  );
+}
+
+/**
+ * A section's Undo changes and Save.
+ * @param {Record<string, any>} props
+ */
+function Actions({ dirty, busy, onUndo, children = null }) {
+  return (
+    <div class="rs-actions">
+      {children}
+      {dirty && (
+        <button type="button" class="btn btn-quiet btn-sm" onClick={onUndo}>
+          Undo changes
+        </button>
+      )}
+      <button type="submit" class="btn btn-primary btn-sm" disabled={!dirty || busy} aria-busy={busy}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  );
+}
+
+/** No cap, then 1 to `most`; a saved cap above `most` (the board's limits went down since) stays choosable. */
+const capOptions = (most, saved) => [
+  { id: '', label: 'No cap' },
+  ...Array.from({ length: Math.max(most, saved ?? 0) }, (_, i) => ({ id: String(i + 1), label: String(i + 1) })),
+];
+
+/** Which Agents field a refusal is about: routine.max, routine.hourly, or routine.prompt. */
+const agentsField = (message) =>
+  /routine\.max/u.test(message) ? 'max' : /routine\.hourly/u.test(message) ? 'hourly' : 'prompt';
+
+/** Routines narrowed to one repository; with one repository, Routines as it is. */
+const routinesHref = (slug) => `#/routines${multiRepo.value ? `?repo=${enc(slug)}` : ''}`;
+
+/**
+ * Agents: the repository's caps under the board's shared limits (the same choices as Agents, Repositories), where
+ * its agent prompt is, whether its routine is connected, and its saved routines.
+ * @param {Record<string, any>} props
+ */
+function Agents({ data, onSaved, readOnly }) {
+  const repo = data.repo;
+  const board = agents.value.data;
+  useEffect(() => {
+    if (!agents.peek().loaded) loadAgents();
+  }, []);
+  const saved = {
+    max: repo.routine?.max ? String(repo.routine.max) : '',
+    hourly: repo.routine?.hourly ? String(repo.routine.hourly) : '',
+    prompt: repo.routine?.prompt ?? '',
+  };
+  const [draft, setDraft] = useState(/** @type {Record<string, string>} */ ({}));
+  const [errors, setErrors] = useState(/** @type {Record<string, string>} */ ({}));
+  const [conflict, setConflict] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const value = (k) => draft[k] ?? saved[k];
+  const dirty = Object.keys(saved).some((k) => k in draft && draft[k].trim() !== saved[k]);
+  const set = (k) => (e) => {
+    const next = e.currentTarget.value;
+    setDraft((d) => ({ ...d, [k]: next }));
+    setErrors((x) => ({ ...x, [k]: null }));
+  };
+  const most = {
+    max: board?.settings?.max ?? 6,
+    hourly: Math.min(board?.settings?.hourly ?? 30, board?.limits?.routineHourly ?? 30),
+  };
+  const undo = () => {
+    setDraft({});
+    setErrors({});
+    setConflict(false);
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!dirty || busy) return;
+    const number = (k) => (value(k) ? Number(value(k)) : null);
+    // The routine settings save as one: the caps and the prompt, beside anything else the row keeps there.
+    const routine = {
+      ...repo.routine,
+      max: number('max'),
+      hourly: number('hourly'),
+      prompt: value('prompt').trim() || null,
+    };
+    setBusy(true);
+    const result = await patch(repo.slug, repo.edited, { routine });
+    setBusy(false);
+    if (result.repo) {
+      undo();
+      onSaved(result.repo);
+      loadAgents();
+      toast('Agents saved.', 'success');
+    } else if (result.conflict) {
+      setConflict(true);
+      onSaved(result.conflict);
+    } else setErrors({ [agentsField(result.error)]: result.error });
+  };
+  const field = (k) => ({
+    'aria-invalid': errors[k] ? true : undefined,
+    'aria-describedby': errors[k] ? `rs-${k}-error` : `rs-${k}-hint`,
+  });
+  const caps = (k, label, hint) => (
+    <label class="field">
+      <span class="field-label">{label}</span>
+      <select class="select" value={value(k)} disabled={readOnly} onChange={set(k)} {...field(k)}>
+        {capOptions(most[k], Number(saved[k]) || null).map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span class="field-hint" id={`rs-${k}-hint`}>
+        {hint}
+      </span>
+      <Now show={conflict && value(k) !== saved[k]} value={saved[k] || 'No cap'} />
+      <FieldError id={`rs-${k}-error`} text={errors[k]} />
+    </label>
+  );
+  const connect = repo.isDefault ? 'npx breakaway agents-connect' : `npx breakaway agents-connect --repo ${repo.slug}`;
+  return (
+    <section class="rs-section" aria-labelledby="rs-agents">
+      <h2 id="rs-agents">Agents</h2>
+      <p class="muted small">
+        Every repository shares the board’s {most.max} agents at once and {board?.settings?.hourly ?? most.hourly}{' '}
+        starts an hour. Cap this one so it can’t take them all.
+      </p>
+      <Conflict show={conflict} />
+      <form class="rs-form" onSubmit={submit}>
+        <div class="rs-fields">
+          {caps('max', 'At once', `Most agents running in ${repo.name} at a time, up to the board’s ${most.max}.`)}
+          {caps(
+            'hourly',
+            'Starts an hour',
+            `Most agents started in ${repo.name} in an hour, up to ${most.hourly}: the lower of the board’s and Claude’s limit for one routine.`,
+          )}
+          <label class="field rs-field-wide">
+            <span class="field-label">Agent prompt</span>
+            <input
+              class="input"
+              autoComplete="off"
+              spellcheck={false}
+              placeholder={DEFAULT_PROMPT_PATH}
+              value={value('prompt')}
+              readOnly={readOnly}
+              onInput={set('prompt')}
+              {...field('prompt')}
+            />
+            <span class="field-hint" id="rs-prompt-hint">
+              The Markdown file in {repo.github} its agents follow. Empty means {DEFAULT_PROMPT_PATH}.
+            </span>
+            <Now
+              show={conflict && value('prompt').trim() !== saved.prompt}
+              value={saved.prompt || DEFAULT_PROMPT_PATH}
+            />
+            <FieldError id="rs-prompt-error" text={errors.prompt} />
+          </label>
+        </div>
+        {!readOnly && <Actions dirty={dirty} busy={busy} onUndo={undo} />}
+      </form>
+      <div class="rs-facts">
+        <div class="field">
+          <span class="field-label">Routine</span>
+          {data.routineConnected ? (
+            <span class="rs-state is-ok">
+              <CircleCheck size={16} aria-hidden="true" />
+              <span>Connected: the board can start agents in {repo.name}.</span>
+            </span>
+          ) : (
+            <>
+              <span class="rs-state">
+                <CircleSlash size={16} aria-hidden="true" />
+                <span>Not connected, so the board can’t start agents here.</span>
+              </span>
+              {!readOnly && (
+                <>
+                  <span class="field-hint">
+                    Make a routine on claude.ai for {repo.github}, then store it with this command. It holds a secret,
+                    so only the CLI does it.
+                  </span>
+                  <Command text={connect} />
+                </>
+              )}
+            </>
+          )}
+        </div>
+        <div class="field">
+          <span class="field-label">Saved routines</span>
+          <span>
+            {data.routines ? plural(data.routines, 'saved routine') : 'No saved routines'} run in {repo.name}.{' '}
+            <a href={routinesHref(repo.slug)}>Open Routines</a>
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The deploy form's fields, from a saved pipeline (or none). */
+const pipelineForm = (pipeline) => ({
+  staging: pipeline?.workers?.staging ?? '',
+  production: pipeline?.workers?.production ?? '',
+  deploy: pipeline?.workflows?.deploy ?? '',
+  promote: pipeline?.workflows?.promote ?? '',
+  rollback: pipeline?.workflows?.rollback ?? '',
+  deployPaths: pipeline?.deployPaths ?? '',
+});
+
+const WORKFLOWS = [
+  ['deploy', 'Deploy', 'deploy.yml'],
+  ['promote', 'Promote', 'promote.yml'],
+  ['rollback', 'Roll back', 'rollback.yml'],
+];
+
+/**
+ * The pipeline `repos modify --pipeline` takes, from the form: blank workflow files and deploy paths are left
+ * out, so the defaults apply, and anything else the saved pipeline holds stays as it is.
+ */
+function pipelineOf(form, saved) {
+  const { workers: _w, workflows: savedFlows, deployPaths: _d, ...rest } = saved ?? {};
+  const workflows = { ...savedFlows };
+  for (const [k] of WORKFLOWS) {
+    if (form[k].trim()) workflows[k] = form[k].trim();
+    else delete workflows[k];
+  }
+  return {
+    workers: { staging: form.staging.trim(), production: form.production.trim() },
+    ...(Object.keys(workflows).length ? { workflows } : {}),
+    ...(form.deployPaths.trim() ? { deployPaths: form.deployPaths.trim() } : {}),
+    ...rest,
+  };
+}
+
+/** Which Deploys field a refusal is about, from the field it names (`pipeline.workers.staging is …`). */
+function deployField(message) {
+  const named = /pipeline\.(?:workers|workflows)\.(\w+)/u.exec(message)?.[1];
+  if (named && named in pipelineForm(null)) return named;
+  if (/deployPaths/u.test(message)) return 'deployPaths';
+  if (/workflows/u.test(message)) return 'deploy';
+  return 'staging';
+}
+
+/**
+ * Deploys: the pipeline as a form, checked as it's typed with a dry run; Copy as JSON for the CLI; and Turn off
+ * deploys, which clears it after asking.
+ * @param {Record<string, any>} props
+ */
+function Deploys({ data, onSaved, readOnly }) {
+  const repo = data.repo;
+  const saved = pipelineForm(repo.pipeline);
+  const [draft, setDraft] = useState(/** @type {Record<string, string>} */ ({}));
+  const [errors, setErrors] = useState(/** @type {Record<string, string>} */ ({}));
+  const [conflict, setConflict] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const timer = useRef(/** @type {any} */ (null));
+  const form = { ...saved, ...draft };
+  const dirty = Object.keys(saved).some((k) => k in draft && draft[k].trim() !== saved[k]);
+  const complete = Boolean(form.staging.trim() && form.production.trim());
+  const set = (k) => (e) => {
+    const next = e.currentTarget.value;
+    setDraft((d) => ({ ...d, [k]: next }));
+    setErrors({});
+  };
+  const undo = () => {
+    setDraft({});
+    setErrors({});
+    setConflict(false);
+  };
+  // Checked as it's typed, once both Workers are named: the refusal shows under its field before Save.
+  useEffect(() => {
+    clearTimeout(timer.current);
+    if (readOnly || !dirty || !complete) return undefined;
+    timer.current = setTimeout(async () => {
+      try {
+        await api(`repos/${enc(repo.slug)}`, {
+          method: 'PATCH',
+          body: { pipeline: pipelineOf(form, repo.pipeline), dryRun: true },
+        });
+        setErrors({});
+      } catch (error) {
+        // Offline while typing: Save says so when it's pressed.
+        if (error.status && error.status !== 409) setErrors({ [deployField(error.message)]: error.message });
+      }
+    }, 400);
+    return () => clearTimeout(timer.current);
+  }, [JSON.stringify(form), repo.slug, repo.edited]);
+  const save = async (pipeline, done) => {
+    setBusy(true);
+    const result = await patch(repo.slug, repo.edited, { pipeline });
+    setBusy(false);
+    if (result.repo) {
+      undo();
+      onSaved(result.repo);
+      toast(done, 'success');
+    } else if (result.conflict) {
+      setConflict(true);
+      onSaved(result.conflict);
+    } else setErrors({ [deployField(result.error)]: result.error });
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!dirty || busy) return;
+    if (!complete) {
+      setErrors({
+        [form.staging.trim() ? 'production' : 'staging']:
+          'Name both Workers: staging, where merging deploys, and production, where Promote sends it.',
+      });
+      return;
+    }
+    await save(pipelineOf(form, repo.pipeline), repo.pipeline ? 'Deploys saved.' : `Deploys are on for ${repo.name}.`);
+  };
+  const turnOff = async () => {
+    const sure = await confirmDialog({
+      title: `Turn off deploys for ${repo.name}?`,
+      body: `The Releases card, Promote, and Roll back go away for ${repo.name}. Its workflows on GitHub don’t change.`,
+      confirmLabel: 'Turn off deploys',
+      tone: 'danger',
+    });
+    if (sure) await save(null, `Deploys are off for ${repo.name}.`);
+  };
+  const field = (k) => ({
+    'aria-invalid': errors[k] ? true : undefined,
+    'aria-describedby': errors[k] ? `rs-${k}-error` : `rs-${k}-hint`,
+  });
+  const input = (k, label, placeholder, hint) => (
+    <label class="field">
+      <span class="field-label">{label}</span>
+      <input
+        class="input"
+        autoComplete="off"
+        spellcheck={false}
+        placeholder={placeholder}
+        value={form[k]}
+        readOnly={readOnly}
+        onInput={set(k)}
+        {...field(k)}
+      />
+      <span class="field-hint" id={`rs-${k}-hint`}>
+        {hint}
+      </span>
+      <Now show={conflict && form[k].trim() !== saved[k]} value={saved[k]} />
+      <FieldError id={`rs-${k}-error`} text={errors[k]} />
+    </label>
+  );
+  const flowsOpen = WORKFLOWS.some(([k]) => form[k] || errors[k]);
+  return (
+    <section class="rs-section" aria-labelledby="rs-deploys">
+      <h2 id="rs-deploys">Deploys</h2>
+      <p class="muted small">
+        {repo.pipeline
+          ? `Merging to ${repo.defaultBranch} deploys ${repo.name} to staging, and Promote and Roll back move production. The Releases card on GitHub shows where each version is.`
+          : `${repo.name} has no pipeline, so the board shows no releases for it and merging deploys nothing. Name its two Workers to turn deploys on.`}
+      </p>
+      <Conflict show={conflict} />
+      <form class="rs-form" onSubmit={submit}>
+        <div class="rs-fields">
+          {input('staging', 'Staging Worker', 'my-app-staging', 'Where merging deploys.')}
+          {input('production', 'Production Worker', 'my-app', 'Where Promote sends a version.')}
+          {input(
+            'deployPaths',
+            'Deploy paths',
+            '.github/deploy-paths.json',
+            'A JSON file in the repository listing the paths that need a deploy. Empty means every change does.',
+          )}
+        </div>
+        <details class="rs-details" open={flowsOpen}>
+          <summary>Workflow files</summary>
+          <p class="field-hint">The GitHub Actions workflows the board runs. Blank means the default name.</p>
+          <div class="rs-fields rs-fields-3">
+            {WORKFLOWS.map(([k, label, file]) => input(k, label, file, `In .github/workflows. Empty means ${file}.`))}
+          </div>
+        </details>
+        {!readOnly && (
+          <Actions dirty={dirty} busy={busy} onUndo={undo}>
+            {complete && (
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                onClick={() => copy(JSON.stringify(pipelineOf(form, repo.pipeline), null, 2), 'Pipeline')}
+              >
+                <Copy size={15} aria-hidden="true" />
+                Copy as JSON
+              </button>
+            )}
+          </Actions>
+        )}
+      </form>
+      {!readOnly && complete && (
+        <p class="meta">
+          Copy as JSON gives what <code>npx breakaway repos modify {repo.slug} --pipeline &lt;file&gt;</code> takes,
+          saved as a file.
+        </p>
+      )}
+      {!readOnly && repo.pipeline && (
+        <div class="rs-off">
+          <button type="button" class="btn btn-outline btn-sm" onClick={turnOff} disabled={busy}>
+            <PowerOff size={16} aria-hidden="true" />
+            Turn off deploys
+          </button>
+          <span class="meta">Clears the pipeline. Its workflows on GitHub stay as they are.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Pull requests: Keep branches up to date and Merge when green for this repository, which stay this browser's.
+ * @param {Record<string, any>} props
+ */
+function PullRequests({ repo }) {
+  const gh = github.value;
+  useEffect(() => {
+    if (!github.peek().loaded && !github.peek().loading) loadGitHub();
+  }, []);
+  const facts = githubRepoFacts(repo.slug);
+  const own = gh.data && (!gh.data.all || facts);
+  return (
+    <section class="rs-section" aria-labelledby="rs-pulls">
+      <h2 id="rs-pulls">Pull requests</h2>
+      <p class="muted small">Only in this browser, and only while the board is open in it.</p>
+      {!gh.loaded ? (
+        <p class="muted" aria-busy="true">
+          Loading…
+        </p>
+      ) : !gh.data?.connected ? (
+        <p class="meta">
+          These need the board’s GitHub App.{' '}
+          <a href={hashFor({ view: 'connections', task: null, pr: null, ping: null })}>Open Connections</a> to set it
+          up.
+        </p>
+      ) : own ? (
+        <div class="rs-fields">
+          <RepoPullSettings data={gh.data} slug={repo.slug} name={multiRepo.value ? repo.name : null} />
+        </div>
+      ) : (
+        <p class="meta">The board hasn’t read {repo.github} from GitHub yet. Its settings show here once it has.</p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Take it off the board: what removing does, what's still open, and the CLI command, since removing also drops its
+ * routine's secret from the Secrets Store (WEB-29). The page sends no DELETE.
+ * @param {Record<string, any>} props
+ */
+function TakeOff({ data }) {
+  const repo = data.repo;
+  if (repo.isDefault)
+    return (
+      <section class="rs-section rs-danger" aria-labelledby="rs-takeoff">
+        <h2 id="rs-takeoff">Take it off the board</h2>
+        <p class="muted small">
+          {repo.name} is the default repository: tasks without a repository are its, so it stays on the board.
+        </p>
+      </section>
+    );
+  const busy = [
+    data.open && plural(data.open, 'open task'),
+    data.running && plural(data.running, 'running agent'),
+  ].filter(Boolean);
+  return (
+    <section class="rs-section rs-danger" aria-labelledby="rs-takeoff">
+      <h2 id="rs-takeoff">Take it off the board</h2>
+      <ul class="rs-list small">
+        <li>Its sync, webhooks, agents, and saved routines stop.</li>
+        <li>
+          Its tasks stay, readable, and its short name and prefixes stay its own, so a work ID still means one task.
+        </li>
+        <li>
+          Its routine’s secret leaves the Secrets Store, which only the CLI can do, so it’s a command, not a button.
+        </li>
+      </ul>
+      {busy.length ? (
+        <p class="rs-state">
+          <TriangleAlert size={16} aria-hidden="true" />
+          <span>
+            {repo.name} has {busy.join(' and ')}. The command refuses until{' '}
+            {data.open + data.running === 1 ? 'it’s' : 'they’re'} finished, or removes it anyway with{' '}
+            <code>--force</code>.
+          </span>
+        </p>
+      ) : (
+        <p class="meta">No open tasks and no running agents.</p>
+      )}
+      <Command text={`npx breakaway repos remove ${repo.slug}`} />
+    </section>
+  );
+}
+
 /**
  * A repository taken off the board: its page is read only, and it says whether its slug and prefixes can be
  * released (the wizard's Release, CLD-205).
@@ -739,6 +1286,10 @@ export function RepoSettingsView() {
           )}
           <General key={`general:${data.repo.slug}`} data={data} onSaved={onSaved} readOnly={readOnly} />
           <Areas data={data} onSaved={onSaved} readOnly={readOnly} />
+          <Agents key={`agents:${data.repo.slug}`} data={data} onSaved={onSaved} readOnly={readOnly} />
+          <Deploys key={`deploys:${data.repo.slug}`} data={data} onSaved={onSaved} readOnly={readOnly} />
+          {!readOnly && <PullRequests repo={data.repo} />}
+          {!readOnly && <TakeOff data={data} />}
           {repos.value.list.length > 1 && (
             <nav class="rs-others" aria-label="Other repositories">
               <h2 class="kicker">Other repositories</h2>

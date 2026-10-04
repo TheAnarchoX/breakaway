@@ -854,32 +854,6 @@ a code {
   gap: 8px;
   margin: -8px -10px -4px 0;
 }
-.settings-group {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 12px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line);
-  min-width: 0;
-}
-.settings-group > legend {
-  float: left;
-  width: 100%;
-  padding: 0;
-  margin-bottom: 0;
-}
-/* A repository's own pull request settings, when there are several (CLD-125). */
-.settings-repo {
-  margin: 4px 0 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 16px;
-}
-.settings-group > legend + .settings-repo {
-  padding-top: 0;
-  border-top: 0;
-}
 .settings-health {
   display: grid;
   gap: 2px;
@@ -6936,6 +6910,62 @@ fieldset.field {
 }
 .rs-others h2 {
   margin: 0;
+}
+.rs-field-wide {
+  grid-column: 1 / -1;
+}
+.rs-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.rs-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.rs-state svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.rs-state.is-ok svg {
+  color: var(--success);
+}
+.rs-details {
+  display: grid;
+  gap: 10px;
+}
+.rs-details summary {
+  cursor: pointer;
+  font-weight: 650;
+  width: fit-content;
+}
+.rs-details[open] summary {
+  margin-bottom: 10px;
+}
+.rs-details > .field-hint {
+  margin-bottom: 10px;
+}
+.rs-off {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.rs-danger {
+  margin-top: 12px;
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+}
+.rs-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
 }
 /* On a phone the areas table is a list: each area a card, each cell labelled. */
 @media (max-width: 759px) {
