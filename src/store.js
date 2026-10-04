@@ -39,6 +39,7 @@ import { attachmentsMethods } from './store-attachments.js';
 import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
 import { messagesMethods } from './store-messages.js';
+import { pelotonMethods } from './store-peloton.js';
 import { statsMethods } from './store-stats.js';
 import { reposMethods } from './store-repos.js';
 import { repoSlugOf, SHARED_AREAS } from './repos.js';
@@ -94,6 +95,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initPings();
     this.initPush();
     this.initMessages();
+    this.initPeloton();
     this.initStats();
     this.initRepos();
     this.initConnections();
@@ -1246,6 +1248,7 @@ Object.assign(
   pingsMethods,
   pushMethods,
   messagesMethods,
+  pelotonMethods,
   statsMethods,
   reposMethods,
   connectionsMethods,
@@ -1417,10 +1420,11 @@ const apiActions = {
       const agent = String(body?.agent ?? '').trim();
       const map = this.tasks.get(uuid);
       if (agent && (map?.status !== 'pending' || map.claim !== agent))
-        return ok({ added: 0, messages: [], released: true });
+        return ok({ added: 0, messages: [], peloton: [], released: true });
       const added = this.appendSessionLog(uuid, body ?? {});
-      // `messages: false` is a post that can't hand them on (a Stop hook): they stay waiting.
-      return ok({ added, messages: body?.messages === false ? [] : this.takeMessages(uuid, body?.agent) }, 201);
+      // `messages: false` is a post that can't hand them on (a Stop hook): they stay waiting, and so do peloton posts.
+      if (body?.messages === false) return ok({ added, messages: [], peloton: [] }, 201);
+      return ok({ added, messages: this.takeMessages(uuid, body?.agent), peloton: this.takePeloton(agent) }, 201);
     });
   },
   messagesApi(ref) {
@@ -1433,12 +1437,29 @@ const apiActions = {
       return ok({ message, ...this.messagesFor(uuid) }, 201);
     });
   },
-  /** The idle hook asks here every few seconds; same rule and marking as the session post. */
+  /**
+   * The idle hook asks here every few seconds; same rule and marking as the session post. Peloton posts come only
+   * with a reply to the agent's own (IDEA-32), so a busy peloton doesn't wake an agent waiting on CI.
+   */
   messagesWaitingApi(ref, agent) {
     return this.run(() => {
       const uuid = this.resolve(ref);
-      return ok({ messages: this.takeMessages(uuid, agent, { poll: true }) });
+      const name = String(agent ?? '').trim();
+      return ok({
+        messages: this.takeMessages(uuid, agent, { poll: true }),
+        peloton: this.holdsTask(name, uuid) ? this.takePeloton(name, { replies: true }) : [],
+      });
     });
+  },
+  /** The peloton (IDEA-32): an agent's pelotons and what it hasn't seen, or every peloton for the board. */
+  pelotonApi(agent) {
+    return this.run(() => ok(agent === null ? this.pelotonList() : this.agentPelotons(agent)));
+  },
+  pelotonDetailApi(peloton) {
+    return this.run(() => ok(this.pelotonDetail(peloton)));
+  },
+  pelotonPostApi(peloton, body) {
+    return this.run(() => ok(this.postPeloton(peloton, body ?? {}), 201));
   },
   sessionApi(ref, after) {
     return this.run(() => ok(this.sessionLog(this.resolve(ref), after)));

@@ -1349,6 +1349,9 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `POST /api/pings/<id>/apply`, `/dismiss`, `/handled` | Owner only (the cookie). |
 | `GET /api/tasks/<ref>/session`, `POST …/session` | A session’s live output; the hooks send it. |
 | `POST /api/tasks/<ref>/messages` | Owner only: message a running agent. `GET …/messages` lists them. |
+| `GET /api/peloton?agent=<name>` | The pelotons an agent rides, their rosters, and its unseen posts, marked seen. Without `agent`, every peloton. |
+| `GET /api/peloton/<peloton>` | A peloton’s roster and posts: a repository’s slug, or `chase:<feature>`. |
+| `POST /api/peloton/<peloton>` | `{ agent, kind, text, reply_to?, task? }`. An agent holding a claimed task that rides it posts. Not the cookie. |
 | `GET /api/routines`, `POST /api/routines` | List or create routines. |
 | `PATCH /api/routines/<slug>` | Change one. |
 | `POST /api/routines/<slug>/run` | Run it now. |

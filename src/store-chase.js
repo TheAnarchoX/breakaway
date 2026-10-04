@@ -151,14 +151,20 @@ export const chaseMethods = {
    * caps, `parallel` agents per area (counting every agent running there), and never two agents on related
    * tasks in one area.
    */
-  chaseQueue(row, views, connected) {
-    const parallel = Number(row.chase_parallel ?? DEFAULT_PARALLEL);
+  /** The chase's tasks, as `{ t, blocks, member }`: the feature's own, then what blocks them (its peloton's too). */
+  chaseMembers(row, views) {
     const byUuid = new Map(views.map((t) => [t.uuid, t]));
     const members = views.filter((t) => t.status !== 'deleted' && t.tags.includes(row.slug));
     // A task in two features counts toward the first alphabetically (section 1).
     const slugs = new Set(this.featureRows().map((r) => r.slug));
     const mine = members.filter((t) => t.tags.filter((tag) => slugs.has(tag)).sort()[0] === row.slug);
-    const set = chaseSet(mine, byUuid);
+    return chaseSet(mine, byUuid);
+  },
+
+  chaseQueue(row, views, connected) {
+    const parallel = Number(row.chase_parallel ?? DEFAULT_PARALLEL);
+    const byUuid = new Map(views.map((t) => [t.uuid, t]));
+    const set = this.chaseMembers(row, views);
     const inChase = new Set(set.map((e) => e.t.uuid));
     const waiters = new Map();
     for (const { t } of set)
@@ -387,12 +393,19 @@ export const chaseMethods = {
       );
       this.sql.exec("UPDATE chase_events SET dismissed = 1 WHERE slug = ? AND kind = 'chase_ended'", row.slug);
       this.chaseEvent(row.slug, 'chase_started', `${row.title}, ${limit ?? row.chase_parallel} at once in an area`);
+      // Its peloton opens with it (IDEA-32): the agents it starts check in there.
+      this.pelotonLine(row.slug, 'open', `The chase on ${row.title} started. Agents on its tasks check in here.`);
       // Pressing Chase starts what's ready now; the alarm and the cron take it from there.
       started = await this.chaseTick({ only: row.slug });
     } else if (on === false && row.chase === 'on') {
       // Stopping starts nothing new; running agents finish and open their pull requests (section 3.7).
       this.sql.exec("UPDATE features SET chase = 'stopped', chase_ended = ? WHERE slug = ?", Date.now(), row.slug);
       this.chaseEvent(row.slug, 'chase_stopped', row.title);
+      this.pelotonLine(
+        row.slug,
+        'close',
+        `The chase on ${row.title} stopped. This peloton takes no new posts and goes in a day.`,
+      );
     } else if (limit !== undefined && row.chase === 'on') this.scheduleAgentsCheck();
     const fresh = this.featureRow(row.slug);
     const plan = this.chaseQueue(fresh, this.views(), connected);
@@ -450,6 +463,11 @@ export const chaseMethods = {
         row.slug,
       );
       this.chaseEvent(row.slug, 'chase_ended', detail);
+      this.pelotonLine(
+        row.slug,
+        'close',
+        `${detail} The chase ended: this peloton takes no new posts and goes in a day.`,
+      );
       return;
     }
     const moving = tasks.some((x) => x.state === 'running' || x.until) || queue.some((q) => q.ready || q.capacity);
