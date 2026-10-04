@@ -133,6 +133,7 @@ const TRIGGER_TEXT = {
   github: 'by a routine’s GitHub event, from the board',
   webhook: 'by a routine’s webhook or API trigger, from the board',
   cloudflare: 'by a Cloudflare alert, from the board',
+  general: 'by a prompt from the owner, from the board',
 };
 
 /**
@@ -162,6 +163,7 @@ export function firePayload(
     ...(kind === 'review' ? ['Mode: review', `Pull request: #${task.pr}`] : []),
     ...(kind === 'fix-pr' ? ['Mode: fix-pr', `Pull request: #${pr}`] : []),
     ...(kind === 'routine' ? ['Mode: routine', `Routine: ${routine}`] : []),
+    ...(kind === 'general' ? ['Mode: general'] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
     ...(attachments > 0 ? [`Attachments: ${attachments}`] : []),
     ...(note
@@ -240,6 +242,70 @@ export const agentsMethods = {
     const here = running.filter(({ task }) => task.repo === slug).length;
     const hourly = Math.min(caps.hourly ?? Infinity, CLAUDE_LIMITS.routineHourly);
     return Math.max(0, Math.min(caps.max ? caps.max - here : Infinity, hourly - this.startsThisHour(slug)));
+  },
+
+  /**
+   * The routine of repository `slug`, or an AgentError when it can't start an agent: not connected, or a prompt
+   * with a <…> left in it (CLD-196), which waits whatever started the agent; auto-start tries again next tick.
+   */
+  async checkRoutineReady(slug) {
+    const credentials = await this.routineFor(slug);
+    if (!credentials) {
+      throw new AgentError(
+        slug === this.defaultRepoSlug()
+          ? 'the agent routine isn’t connected yet (docs/tasks.md#cloud-agents-from-the-board)'
+          : `${slug}’s agent routine isn’t connected yet: run ${connectCommand(slug)} (docs/tasks.md#cloud-agents-from-the-board)`,
+      );
+    }
+    const unfilled = await this.promptBlocker(slug);
+    if (unfilled) throw new AgentError(unfilled, 409);
+    return credentials;
+  },
+
+  /**
+   * A general agent (docs/specs/IDEA-30-new-agent.md): the owner's prompt becomes a task in repository `repo`
+   * with no area, and so no work ID until its agent picks one, and an agent starts on it. With no room it
+   * waits at the front of the auto-start queue, whatever the auto-start switch says. Refuses before making the
+   * task when the repository's routine can't start anything.
+   */
+  async startGeneral({ prompt, repo = null, force = false } = {}) {
+    await this.ready();
+    const text = String(prompt ?? '').trim();
+    if (!text) throw new AgentError('write what the agent should do first', 400);
+    if (!repo && this.repos().length > 1)
+      throw new AgentError(
+        `say which repository this is for: ${this.repos()
+          .map((r) => r.slug)
+          .join(', ')}`,
+        400,
+      );
+    const slug = this.checkRepoSlug(repo);
+    await this.checkRoutineReady(slug);
+    const res = await this.create([
+      {
+        description: (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
+        horizon: 'now',
+        tags: ['agent', 'general'],
+        autostart: 'yes',
+        brief: text,
+        ...(slug === this.defaultRepoSlug() ? {} : { repo: slug }),
+        by: 'owner',
+      },
+    ]);
+    if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t make a task for the agent', res.status);
+    const uuid = res.body.tasks[0].uuid;
+    try {
+      return { ...(await this.startAgent(uuid, { trigger: 'general', kind: 'general', force })), waiting: null };
+    } catch (error) {
+      // Over the board's limits, or Claude's hourly one: the task stays and starts when there's room.
+      const queued = error instanceof AgentError && (error.forceable || error.status === 429);
+      if (!queued) {
+        this.change(uuid, { status: 'deleted' }, new Date(), 'agents');
+        throw error;
+      }
+      this.scheduleAgentsCheck();
+      return { task: this.detail(uuid), run: null, waiting: error.message, forceable: error.forceable };
+    }
   },
 
   /** The area a task the board makes for a repository goes in: Tech debt where it has it, else its first area. */
@@ -584,23 +650,15 @@ export const agentsMethods = {
   ) {
     await this.ready();
     if (kind === 'routine' && !routine) throw new AgentError('a routine run needs its routine', 400);
+    if (kind === 'general' && !this.tasks.get(uuid)?.tag_general)
+      throw new AgentError('that task isn’t a general agent’s', 400);
     if (kind === 'refine' && !String(note ?? '').trim())
       throw new AgentError('say what it should look at or change', 400);
     const map = this.tasks.get(uuid);
     const repo = map ? this.repoOfTask(map) : this.githubRepo();
     if (!repo) throw new AgentError(`${map.wid ?? 'This task'} is in ${map.repo}, which isn’t a registered repository`);
     const isDefault = repo.slug === this.defaultRepoSlug();
-    const credentials = await this.routineFor(repo.slug);
-    if (!credentials) {
-      throw new AgentError(
-        isDefault
-          ? 'the agent routine isn’t connected yet (docs/tasks.md#cloud-agents-from-the-board)'
-          : `${repo.slug}’s agent routine isn’t connected yet: run ${connectCommand(repo.slug)} (docs/tasks.md#cloud-agents-from-the-board)`,
-      );
-    }
-    // A prompt with a <…> left in it (CLD-196) waits, whatever started the agent; auto-start tries again next tick.
-    const unfilled = await this.promptBlocker(repo.slug);
-    if (unfilled) throw new AgentError(unfilled, 409);
+    const credentials = await this.checkRoutineReady(repo.slug);
 
     // Everything from here to the claim is synchronous: two starts can't both pass.
     const views = this.views();
@@ -635,7 +693,7 @@ export const agentsMethods = {
     }
 
     // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check `claude-<id>-check`.
-    const id = (task.wid ?? task.short).toLowerCase();
+    const id = (kind === 'general' ? task.short : (task.wid ?? task.short)).toLowerCase();
     const agent =
       kind === 'refine'
         ? `claude-refine-${id}`
@@ -728,7 +786,13 @@ export const agentsMethods = {
     const room = Math.max(0, Math.min(Number(count) || 0, max - running.length, hourly - this.startsThisHour()));
     const repoRoom = new Map();
     const candidates = views
-      .filter((t) => !this.agentBlocker(t) && (!horizon || t.horizon === horizon) && (!only || t.repo === only))
+      .filter(
+        (t) =>
+          !t.tags.includes('general') &&
+          !this.agentBlocker(t) &&
+          (!horizon || t.horizon === horizon) &&
+          (!only || t.repo === only),
+      )
       .sort(rank);
     const picked = [];
     const skipped = [];
@@ -782,14 +846,19 @@ export const agentsMethods = {
     const repoRoom = new Map();
     let free = max - running.length;
     const queue = [];
-    for (const t of views.filter((v) => v.autostart && v.status === 'pending' && !v.claim).sort(rank)) {
+    // Security fixes first, then general agents (the owner asked for them now), then the rest.
+    const order = (t) => (t.alert ? 0 : t.tags.includes('general') ? 1 : 2);
+    const waiting = views.filter((v) => v.autostart && v.status === 'pending' && !v.claim);
+    for (const t of waiting.sort((a, b) => order(a) - order(b) || rank(a, b))) {
       const blocker = this.agentBlocker(t);
       let reason = blocker;
+      // A general agent has no area until it picks one, and the owner pressed Start: only room holds it back.
+      const general = t.tags.includes('general');
       if (!repoRoom.has(t.repo)) repoRoom.set(t.repo, this.repoRoom(t.repo, running));
-      if (!reason && !autostart) reason = 'auto-start is off';
+      if (!reason && !autostart && !general) reason = 'auto-start is off';
       if (!reason && connected && !connected.has(t.repo)) reason = `${t.repo}’s agent routine isn’t connected`;
       // A security fix doesn't wait for its area to be free.
-      if (!reason && busy.has(area(t)) && !t.alert)
+      if (!reason && busy.has(area(t)) && !t.alert && !general)
         reason = `an agent is already working in ${this.areaName(t.repo, t.project)} (${busy.get(area(t))})`;
       if (!reason && free <= 0) reason = `no free slot (${running.length} of ${max} running)`;
       if (!reason && repoRoom.get(t.repo) <= 0)
@@ -797,7 +866,7 @@ export const agentsMethods = {
       if (!reason) {
         free -= 1;
         repoRoom.set(t.repo, repoRoom.get(t.repo) - 1);
-        busy.set(area(t), t.wid);
+        if (!general) busy.set(area(t), t.wid);
       }
       queue.push({
         uuid: t.uuid,
@@ -805,6 +874,7 @@ export const agentsMethods = {
         description: t.description,
         project: t.project,
         repo: t.repo,
+        general,
         reason: reason ?? 'starting now',
         ready: !reason,
       });
@@ -815,14 +885,14 @@ export const agentsMethods = {
   /** Starts every Start-when-ready task that may start now. Runs from the alarm and the cron. */
   async autostartTick() {
     await this.ready();
-    if (!this.agentSettings().autostart) return [];
+    // With the switch off the queue still holds general agents: the owner started them by hand.
     const connected = await this.connectedRepos();
     if (!connected.size) return [];
     const started = [];
     for (const item of this.autostartQueue(this.views(), connected).filter((q) => q.ready)) {
       try {
-        await this.startAgent(item.uuid, { trigger: 'auto' });
-        started.push(item.wid);
+        await this.startAgent(item.uuid, item.general ? { trigger: 'general', kind: 'general' } : { trigger: 'auto' });
+        started.push(item.wid ?? item.uuid);
       } catch {
         // It stays in the queue; the next tick tries again.
       }
