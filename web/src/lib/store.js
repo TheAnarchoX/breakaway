@@ -1363,6 +1363,39 @@ export const actions = {
       return null;
     }
   },
+  /**
+   * Pulls `release` into now (BRK-126): asks the server what would move, warns that the whole dependency
+   * chain comes too, then moves it. Resolves to the result, or null when cancelled or after the error.
+   */
+  async pullRelease(release) {
+    let plan;
+    try {
+      plan = await api(`releases/${enc(release)}/pull`, { method: 'POST', body: { dryRun: true } });
+    } catch (error) {
+      toast(error.message, 'error');
+      return null;
+    }
+    const chain = plan.tasks.filter((t) => t.chain);
+    const own = plan.tasks.length - chain.length;
+    const named = chain.slice(0, 5).map((t) => t.wid ?? t.uuid.slice(0, 8));
+    const more = chain.length > named.length ? `, and ${chain.length - named.length} more` : '';
+    const ok = await confirmDialog({
+      title: `Pull ${release} into now?`,
+      body: `${plural(own, 'open task')} aimed at ${release} ${own === 1 ? 'moves' : 'move'} into now, and the whole dependency chain comes too${
+        chain.length
+          ? `: ${plural(chain.length, 'task')} from outside ${release}, whatever ${chain.length === 1 ? 'its' : 'their'} release or feature (${named.join(', ')}${more})`
+          : ''
+      }.`,
+      confirmLabel: 'Pull into now',
+    });
+    if (!ok) return null;
+    const result = await change(
+      () => api(`releases/${enc(release)}/pull`, { method: 'POST', body: {} }),
+      (r) => `${release} is in now: ${plural(r.tasks.length, 'task')} moved.`,
+    );
+    loadFeatures();
+    return result;
+  },
   async deleteFeature(f) {
     const ok = await confirmDialog({
       title: `Delete ${f.title}?`,

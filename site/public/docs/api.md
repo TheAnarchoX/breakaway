@@ -82,6 +82,7 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `POST /api/routines/<slug>/run` | Run it now. |
 | `POST /api/routines/<slug>/triggers`, `DELETE …/triggers/<id>` | Make or revoke a webhook trigger. |
 | `POST /api/horizons/close` | Close now; `{ dryRun: true }` only counts. |
+| `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ dryRun: true }` only lists them. The owner's. |
 
 ### Firing a routine from outside
 

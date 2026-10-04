@@ -1329,6 +1329,9 @@ const apiActions = {
   featuresDeleteApi(slug, body) {
     return this.run(() => ok(this.deleteFeature(slug, body ?? {})));
   },
+  releasePullApi(release, body) {
+    return this.run(() => ok(this.pullRelease(release, body ?? {})));
+  },
   routinesApi() {
     return this.run(() => ok(this.listRoutines()));
   },
