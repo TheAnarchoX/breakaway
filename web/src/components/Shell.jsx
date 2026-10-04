@@ -701,13 +701,17 @@ const RECENT_PINGS = 5;
 /** The bell: how many pings need you, the latest few, and the way to the inbox. */
 function Notifications() {
   const n = openPingsHere.value;
-  const { notices, error } = pings.value;
+  const { notices, chases, error } = pings.value;
   const list = scopedPings.value;
   // Under "All" with several repositories, the count says where the pings are.
   const split = countByRepo(list.map((p) => p.repo));
   const name = n ? `Inbox, ${n} open${split ? `: ${split}` : ''}` : 'Inbox';
-  // Pings and the notes about connections, newest first.
-  const recent = [...list.map((p) => ({ type: 'ping', ...p })), ...notices.map((x) => ({ type: 'notice', ...x }))]
+  // Pings and the notes about connections and ended chases, newest first.
+  const recent = [
+    ...list.map((p) => ({ type: 'ping', ...p })),
+    ...notices.map((x) => ({ type: 'notice', ...x })),
+    ...chases.map((x) => ({ type: 'chase', ...x })),
+  ]
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, RECENT_PINGS);
   return (
@@ -750,7 +754,24 @@ function Notifications() {
           {n > 0 && (
             <ol class="notif-list" aria-label={n > RECENT_PINGS ? `The latest ${RECENT_PINGS}` : 'Open in the inbox'}>
               {recent.map((p) =>
-                p.type === 'notice' ? (
+                p.type === 'chase' ? (
+                  <li key={`chase-${p.id}`}>
+                    <a
+                      class="notif"
+                      href={hashFor({ view: 'inbox', task: null, pr: null, ping: null })}
+                      onClick={close}
+                    >
+                      <span class="notif-top">
+                        <span class="ping-kind ping-done">Chase ended</span>
+                        <time class="meta" dateTime={p.at}>
+                          {ago(p.at)}
+                        </time>
+                      </span>
+                      <span class="notif-title">{p.title}</span>
+                      <span class="notif-message">{p.detail}</span>
+                    </a>
+                  </li>
+                ) : p.type === 'notice' ? (
                   <li key={`notice-${p.id}`}>
                     <a
                       class="notif"
