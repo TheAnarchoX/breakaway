@@ -273,6 +273,7 @@ function Fact({ label, value, children }) {
 /** @param {Record<string, any>} props */
 function Dashboard({ data }) {
   const days = data.period.days;
+  const covered = data.period.covered ?? days;
   const t = data.totals;
   const series = (key) => data.daily.map((d) => d[key]);
   const nowH = data.open.horizons.now;
@@ -357,7 +358,7 @@ function Dashboard({ data }) {
               <Fact label="Busiest day" value={data.pace.busiest ? dayName(data.pace.busiest.day) : '–'}>
                 {data.pace.busiest && <span class="muted"> · {plural(data.pace.busiest.finished, 'task')}</span>}
               </Fact>
-              <Fact label="Days with a finished task" value={`${data.pace.activeDays} of ${days}`} />
+              <Fact label="Days with a finished task" value={`${data.pace.activeDays} of ${covered}`} />
             </dl>
           </div>
         </Card>
@@ -787,7 +788,13 @@ export function ActivityView() {
           <Segmented label="Period" options={PERIODS} value={statsDays.value} onChange={choose} />
           {s.data && (
             <span class="meta" aria-live="polite">
-              {s.loading ? 'Updating…' : `${day(`${s.data.period.from}T12:00:00`)} to today`}
+              {s.loading
+                ? 'Updating…'
+                : `${day(`${s.data.period.from}T12:00:00`)} to today${
+                    s.data.period.covered < s.data.period.days
+                      ? ` · ${plural(s.data.period.covered, 'day')} so far`
+                      : ''
+                  }`}
             </span>
           )}
         </div>
