@@ -43,7 +43,7 @@ import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { SignIn } from './components/SignIn.jsx';
 import { FilterBar, HelpContent, MenuDrawer, SettingsDialog, Sidebar, TopBar } from './components/Shell.jsx';
-import { ConfirmHost, Dialog, Toasts } from './components/ui.jsx';
+import { ConfirmHost, Dialog, ForceStartHost, Toasts } from './components/ui.jsx';
 
 const VIEW_COMPONENTS = {
   board: BoardView,
@@ -183,6 +183,7 @@ function Board() {
         <HelpContent />
       </Dialog>
       <ConfirmHost />
+      <ForceStartHost />
       <Toasts />
     </div>
   );
