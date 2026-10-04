@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Bike, CircleAlert, FastForward, Hand, Hourglass, Square } from 'lucide-preact';
+import { Bike, CircleAlert, FastForward, Hand, Hourglass, Megaphone, Square } from 'lucide-preact';
 import { ago, plural } from '../lib/model.js';
-import { actions, agents, byUuid, hashFor } from '../lib/store.js';
+import { actions, agents, byUuid, hashFor, toast } from '../lib/store.js';
 import { RepoChip, Segmented, widClass } from './ui.jsx';
 import { PelotonPanel } from './Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
@@ -99,8 +99,68 @@ function ParallelField({ feature, chase, id, onChange }) {
   );
 }
 
+/**
+ * Start a road captain (BRK-137): an agent with the owner's prompt that helps this chase along, in the chase's
+ * repository, with the chase as it stands under the prompt. It always starts now, past the board's limits.
+ * @param {{ feature: { slug: string, title: string }, onDone: () => void }} props
+ */
+function RoadCaptainForm({ feature, onDone }) {
+  const [prompt, setPrompt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const id = `rc-${feature.slug}`;
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await actions.startGeneral({ prompt, chase: feature.slug });
+      toast(`Road captain started on ${result.task?.wid ?? 'its task'}.`);
+      setPrompt('');
+      onDone();
+    } catch (err) {
+      setError(err.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <form class="ch-captain" onSubmit={submit}>
+      <label class="field">
+        <span class="field-label">What should the road captain do?</span>
+        <textarea
+          class="input"
+          id={id}
+          rows={3}
+          value={prompt}
+          placeholder="Fix the conflicts on the chase’s pull requests, then see why the stuck task was refused."
+          onInput={(e) => setPrompt(e.currentTarget.value)}
+        />
+        <span class="field-hint">
+          It works in the chase’s repository and rides its peloton, with the chase as it stands now under your prompt.
+          It starts now, even when the board is at its limits.
+        </span>
+      </label>
+      {error && (
+        <p class="field-error" role="alert">
+          <CircleAlert size={15} aria-hidden="true" /> {error}
+        </p>
+      )}
+      <div class="launch-row">
+        <button type="submit" class="btn btn-primary btn-sm" disabled={busy || !prompt.trim()} aria-busy={busy}>
+          <Megaphone size={15} aria-hidden="true" />
+          Start road captain
+        </button>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Controls({ feature, chase, open, onChange }) {
+  const [captain, setCaptain] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   useEffect(() => setPreview(null), [chase.on, chase.parallel]);
@@ -141,7 +201,22 @@ function Controls({ feature, chase, open, onChange }) {
             </button>
           </>
         )}
+        {chase.state !== 'off' && !captain && (
+          <button type="button" class="btn btn-outline btn-sm" onClick={() => setCaptain(true)}>
+            <Megaphone size={15} aria-hidden="true" />
+            Start a road captain
+          </button>
+        )}
       </div>
+      {captain && (
+        <RoadCaptainForm
+          feature={feature}
+          onDone={() => {
+            setCaptain(false);
+            onChange?.();
+          }}
+        />
+      )}
       {!open && <p class="meta">Nothing left to chase: every task is done.</p>}
       {chase.on && <p class="meta">Stopping starts nothing new. Agents already working finish their tasks.</p>}
       {preview && (
