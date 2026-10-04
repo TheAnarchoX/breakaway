@@ -9,7 +9,7 @@ The routine on claude.ai holds only the stub, [`prompts/stub.md`](stub.md), whic
 
 ## Repository
 
-breakaway: the repository whose `origin` ends with `/breakaway`. Its areas on the board, with their work-ID prefixes: board (`BRK`), web (`WEB`), docs (`DOC`), launch (`LCH`), and brand (`ID`). Its rules are in `AGENTS.md`; read it first, then the `tasks` skill (`.agents/skills/tasks/SKILL.md`).
+breakaway: the repository whose `origin` ends with `/breakaway`. Its areas on the board, with their work-ID prefixes: board (`BRK`), web (`WEB`), docs (`DOC`), launch (`LCH`), brand (`ID`), and cli (`CLI`). Its rules are in `AGENTS.md`; read it first, then the `tasks` skill (`.agents/skills/tasks/SKILL.md`).
 
 ## Building
 

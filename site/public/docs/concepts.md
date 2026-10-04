@@ -41,7 +41,7 @@ A task is **ready for an agent** when it is pending, tagged `+agent`, not tagged
 
 ## Areas and horizons
 
-An **area** groups a repository’s work, and its prefix names the work IDs. breakaway’s own are `board` (BRK), `web` (WEB), `docs` (DOC), `launch` (LCH), and `brand` (ID). Two areas belong to the whole board: **ideas** (IDEA) and **routines** (RUN).
+An **area** groups a repository’s work, and its prefix names the work IDs. breakaway’s own are `board` (BRK), `web` (WEB), `docs` (DOC), `launch` (LCH), `brand` (ID), and `cli` (CLI). Two areas belong to the whole board: **ideas** (IDEA) and **routines** (RUN).
 
 **Horizons** are how soon: `now`, `next`, `later`. **Close now** archives the finished tasks in now, makes next the new now, and makes later the new next. Unfinished tasks in now stay in now. Closing a horizon is yours; agents never do it.
 
