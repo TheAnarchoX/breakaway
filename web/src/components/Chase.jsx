@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
-import { CircleAlert, FastForward, Hand, Hourglass, Square } from 'lucide-preact';
+import { Bike, CircleAlert, FastForward, Hand, Hourglass, Square } from 'lucide-preact';
 import { ago, plural } from '../lib/model.js';
 import { actions, agents, byUuid, hashFor } from '../lib/store.js';
 import { RepoChip, Segmented, widClass } from './ui.jsx';
+import { PelotonPanel } from './Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 
 /**
@@ -10,6 +11,7 @@ import { Title } from '../lib/richtext.jsx';
  * agents may work in one area at once, the live line, the running agents with their live output, Needs you,
  * Stuck, and the next ones in the order they'd start with what holds each, while it's on. The feature page shows
  * it in full; the Agents view shows each chase that's on, `compact`, beside the running agents it already lists.
+ * While it's on, its peloton (docs/specs/IDEA-32-peloton.md, section 5) sits under the live line.
  */
 
 const QUEUE_SHOWN = 8;
@@ -17,6 +19,9 @@ const upTo = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
 const taskHref = (t) => hashFor({ task: t.wid ?? t.uuid });
 /** The server's reason as a sentence; one that starts with a name (an agent's, a repository's) keeps its case. */
 const sentence = (why) => `${/^(it|no|auto|\d)/u.test(why) ? `${why[0].toUpperCase()}${why.slice(1)}` : why}.`;
+
+/** A stopped or ended chase's peloton keeps its posts a day (docs/specs/IDEA-32-peloton.md, section 2). */
+const closedToday = (chase) => !chase.on && chase.endedAt && Date.now() - Date.parse(chase.endedAt) < 86_400_000;
 
 /** What the chase is doing, in one line under its heading. */
 function stateLine(chase) {
@@ -277,6 +282,15 @@ export function ChasePanel({ feature, chase, open = true, compact = false, onCha
         {chase.on && <span class="ch-on">Chasing</span>}
         <span class={chase.on ? '' : 'muted'}>{stateLine(chase)}</span>
       </p>
+      {(chase.on || closedToday(chase)) && (
+        <div class="ch-group">
+          <h3>
+            <Bike size={16} aria-hidden="true" />
+            Peloton
+          </h3>
+          <PelotonPanel name={`chase:${feature.slug}`} compact />
+        </div>
+      )}
       <Controls feature={feature} chase={chase} open={open} onChange={onChange} />
       <ParallelField feature={feature} chase={chase} id={id} onChange={onChange} />
       {chase.on && (
