@@ -56,3 +56,19 @@ describe('the site’s deploy', () => {
     expect(config.routes).toEqual([{ pattern: 'leavethepack.dev', custom_domain: true }]);
   });
 });
+
+// BRK-127: GitHub refused the next version's pull request (the repository didn't allow Actions to open one) after the
+// job had made its branch, so a re-run found the branch and stopped as if the pull request were open.
+describe('the next version’s pull request', () => {
+  const job = RELEASE.slice(RELEASE.indexOf('  next-version:'), RELEASE.indexOf('\n  site:'));
+
+  it('counts it as open only when a pull request is open from its branch', () => {
+    expect(job).toContain('gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open');
+    expect(job).not.toMatch(/git\/ref\/heads\/\$branch"[^\n]*\n[^\n]*Already open/u);
+  });
+
+  it('reuses the branch a refused run left, and says what to turn on when GitHub refuses', () => {
+    expect(job).toMatch(/if ! gh api "repos\/\$GITHUB_REPOSITORY\/git\/ref\/heads\/\$branch"/u);
+    expect(job).toMatch(/if ! gh pr create [\s\S]*Allow GitHub Actions to create and approve pull requests/u);
+  });
+});
