@@ -282,6 +282,8 @@ export const featuresMethods = {
       // Shipped when the owner says so, or when every task is done and live.
       shipped: row.state === 'shipped' || (done && progress.shipped === progress.total),
       needsYou: ordered.filter((x) => x.state === 'needs-you').map(brief),
+      // The chase's record (IDEA-28 section 3); the feature's own page adds who starts next and why the rest waits.
+      chase: this.chaseState(row),
       conflicts: conflicts.filter((c) => c.features.includes(row.slug)),
       ...(full ? { tasks: ordered.map(brief) } : {}),
     };
