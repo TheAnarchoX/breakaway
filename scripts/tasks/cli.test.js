@@ -9,6 +9,7 @@ import {
   generalAgentSummary,
   pullAgentRequest,
   pullAgentSummary,
+  reviewRequest,
   SUBCOMMANDS,
   staleCliWarning,
   unknownSubcommand,
@@ -150,6 +151,52 @@ describe('the pull request page’s agent buttons (BRK-81)', () => {
     expect(pullAgentSummary('fix', 12, { task, run: null, already: 'claude-a has it' })).toBe(
       'BRK-5 already has it: claude-a has it.',
     );
+  });
+});
+
+describe('Review with an agent (BRK-111)', () => {
+  it('always says who asks for a review, so the board can refuse an agent’s name', () => {
+    expect(pullAgentRequest('review', '8', { repo: 'widgets', by: 'claude-brk-1' })).toEqual({
+      request: ['POST', 'github/pulls/8/review', { repo: 'widgets', by: 'claude-brk-1' }],
+    });
+    expect(pullAgentRequest('fix', '8', { repo: 'widgets', by: 'claude-brk-1' })).toEqual({
+      request: ['POST', 'github/pulls/8/fix', { repo: 'widgets' }],
+    });
+  });
+
+  it('says it started a review rather than a test on a pull request that isn’t Dependabot’s', () => {
+    const task = { wid: 'BRK-5' };
+    expect(
+      pullAgentSummary('review', 8, {
+        task,
+        run: { agent: 'claude-brk-5-review', kind: 'pr-review', url: 'https://x/y' },
+      }),
+    ).toBe('Started claude-brk-5-review, reviewing #8 on BRK-5: https://x/y');
+  });
+
+  it('posts the verdict and note on the task, with the pull request when named', () => {
+    expect(reviewRequest('BRK-5', 'ready', '  Matches the done when. ', { by: 'claude-brk-5-review' })).toEqual({
+      request: [
+        'POST',
+        'tasks/BRK-5/review',
+        { verdict: 'ready', note: 'Matches the done when.', by: 'claude-brk-5-review' },
+      ],
+    });
+    expect(reviewRequest('BRK-5', 'changes', 'Missing tests.', { by: 'a', pr: '#12' })).toEqual({
+      request: ['POST', 'tasks/BRK-5/review', { verdict: 'changes', note: 'Missing tests.', by: 'a', pr: 12 }],
+    });
+  });
+
+  it('refuses a missing task, a verdict it doesn’t know, an empty note, and a bad --pr', () => {
+    expect(reviewRequest(undefined, 'ready', 'x')).toHaveProperty('error');
+    expect(reviewRequest('BRK-5', undefined, 'x')).toEqual({
+      error: 'say the verdict: --verdict ready|follow-up|changes',
+    });
+    expect(reviewRequest('BRK-5', 'lgtm', 'x')).toEqual({
+      error: 'say the verdict: --verdict ready|follow-up|changes',
+    });
+    expect(reviewRequest('BRK-5', 'ready', ' ')).toHaveProperty('error');
+    expect(reviewRequest('BRK-5', 'ready', 'x', { pr: 'abc' })).toEqual({ error: '--pr is a pull request number' });
   });
 });
 

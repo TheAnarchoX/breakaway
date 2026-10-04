@@ -92,9 +92,12 @@ describe('Safe to merge? on Dependabot pull requests', () => {
     expect(fires).toHaveLength(1);
   });
 
-  it('refuses a pull request that isn’t Dependabot’s or isn’t there', async () => {
+  it('leaves a pull request that isn’t Dependabot’s to Review with an agent, and refuses one that isn’t there', async () => {
     await api('github/sync', { method: 'POST' });
-    expect((await api('github/pulls/42/review', { method: 'POST', body: {} })).status).toBe(400);
+    // #42 closes no task, so Review with an agent (BRK-111, test/pr-review.test.js) has nothing to review it against.
+    const other = await api('github/pulls/42/review', { method: 'POST', body: {} });
+    expect(other.status).toBe(409);
+    expect((await other.json()).error).toMatch(/closes no open task/);
     expect((await api('github/pulls/99/review', { method: 'POST', body: {} })).status).toBe(404);
     expect(fires).toHaveLength(0);
   });

@@ -217,6 +217,7 @@ const KIND_LABEL = {
   refine: 'Refines',
   review: 'Reviews',
   'fix-pr': 'Pull request fixes',
+  'pr-review': 'Pull request reviews',
   routine: 'Routine runs',
 };
 const WHO = [
