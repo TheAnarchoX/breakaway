@@ -8,6 +8,7 @@ import {
   importedPackages,
   manualSection,
   nextPrerelease,
+  nextVersion,
   stableOf,
 } from './lib.js';
 
@@ -34,6 +35,36 @@ describe('stableOf', () => {
   it('refuses anything else', () => {
     expect(() => stableOf('v1.4.0')).toThrow();
     expect(() => stableOf('main')).toThrow();
+  });
+});
+
+// BRK-118: promoting a stable with next minor or major opens the pull request that sets package.json to it, so the
+// pre-releases after it count toward the version being built instead of the stable's next patch.
+describe('nextVersion (BRK-118)', () => {
+  it('picks the next minor or major after the stable', () => {
+    expect(nextVersion('1.3.0', 'minor', '1.3.0')).toBe('1.4.0');
+    expect(nextVersion('1.3.0', 'major', '1.3.0')).toBe('2.0.0');
+    expect(nextVersion('1.3.2', 'minor', '1.3.2')).toBe('1.4.0');
+    expect(nextVersion('1.9.4', 'minor', '1.9.4')).toBe('1.10.0');
+    expect(nextVersion('0.4.1', 'major', '0.4.1')).toBe('1.0.0');
+  });
+  it('sets nothing for a patch: the pre-releases count patches by themselves', () => {
+    expect(nextVersion('1.3.0', 'patch', '1.3.0')).toBeNull();
+  });
+  it('sets nothing when package.json is already there or past it', () => {
+    expect(nextVersion('1.3.0', 'minor', '1.4.0')).toBeNull();
+    expect(nextVersion('1.3.0', 'minor', '2.0.0')).toBeNull();
+    expect(nextVersion('1.3.0', 'major', '2.0.0')).toBeNull();
+    // An older pre-release promoted after main moved on: main already works toward the next minor.
+    expect(nextVersion('1.2.0', 'minor', '1.3.0')).toBeNull();
+  });
+  it('moves past a package.json below the choice', () => {
+    expect(nextVersion('1.3.0', 'major', '1.4.0')).toBe('2.0.0');
+  });
+  it('refuses another choice or a version that is not X.Y.Z', () => {
+    expect(() => nextVersion('1.3.0', 'feature', '1.3.0')).toThrow(/patch, minor, or major/);
+    expect(() => nextVersion('1.3', 'minor', '1.3.0')).toThrow(/isn't a version/);
+    expect(() => nextVersion('1.3.0', 'minor', '1.3.0-main.2')).toThrow(/isn't a version/);
   });
 });
 
