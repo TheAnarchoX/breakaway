@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { CLI_PACKAGE } from './init.js';
-import { githubRequest, ideaTask, NO_ARGUMENTS, SUBCOMMANDS, staleCliWarning, unknownSubcommand } from './cli.js';
+import {
+  githubRequest,
+  ideaTask,
+  NO_ARGUMENTS,
+  pullAgentRequest,
+  pullAgentSummary,
+  SUBCOMMANDS,
+  staleCliWarning,
+  unknownSubcommand,
+} from './cli.js';
 
 describe('unknown subcommands (CLD-193)', () => {
   it('fails on one a command doesn’t have, naming the ones it has', () => {
@@ -91,5 +100,52 @@ describe('the GitHub view (BRK-72)', () => {
   it('leaves the repository to the board outside a known checkout', () => {
     expect(githubRequest(null)).toEqual(['GET', 'github', undefined]);
     expect(githubRequest(null, { sync: true })).toEqual(['POST', 'github/sync', undefined]);
+  });
+});
+
+describe('the pull request page’s agent buttons (BRK-81)', () => {
+  it('posts to the same paths as Fix with an agent and Safe to merge?, for the checkout’s repository', () => {
+    expect(pullAgentRequest('fix', '12', { repo: 'widgets' })).toEqual({
+      request: ['POST', 'github/pulls/12/fix', { repo: 'widgets' }],
+    });
+    expect(pullAgentRequest('review', '#7', { repo: 'widgets', note: 'check the lockfile' })).toEqual({
+      request: ['POST', 'github/pulls/7/review', { repo: 'widgets', note: 'check the lockfile' }],
+    });
+  });
+
+  it('sends the problem and note only when given', () => {
+    expect(pullAgentRequest('fix', 3, { problem: 'conflicts', note: '  ' })).toEqual({
+      request: ['POST', 'github/pulls/3/fix', { problem: 'conflicts' }],
+    });
+  });
+
+  it('refuses a missing number, a bad problem, and a problem on review', () => {
+    expect(pullAgentRequest('fix', undefined)).toEqual({
+      error: 'say which pull request: npx breakaway github fix <number>',
+    });
+    expect(pullAgentRequest('fix', 'abc')).toHaveProperty('error');
+    expect(pullAgentRequest('fix', '1', { problem: 'slow' })).toEqual({
+      error: '--problem is conflicts, failing, review',
+    });
+    expect(pullAgentRequest('review', '1', { problem: 'failing' })).toEqual({ error: '--problem is for github fix' });
+  });
+
+  it('knows the subcommands, and plain github still takes none else', () => {
+    expect(unknownSubcommand('github', 'fix')).toBeNull();
+    expect(unknownSubcommand('github', 'review')).toBeNull();
+    expect(unknownSubcommand('github', 'merge')).toMatch(/github has no "merge"; it has fix, review/u);
+  });
+
+  it('says which task and agent took it, or who already has it', () => {
+    const task = { wid: 'BRK-5' };
+    expect(pullAgentSummary('fix', 12, { task, run: { agent: 'claude-brk-5-fix', url: 'https://x/y' } })).toBe(
+      'Started claude-brk-5-fix, fixing #12 on BRK-5: https://x/y',
+    );
+    expect(pullAgentSummary('review', 7, { task, run: { url: 'https://x/y' } })).toBe(
+      'Started an agent testing #7 on BRK-5: https://x/y',
+    );
+    expect(pullAgentSummary('fix', 12, { task, run: null, already: 'claude-a has it' })).toBe(
+      'BRK-5 already has it: claude-a has it.',
+    );
   });
 });
