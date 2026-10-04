@@ -213,6 +213,49 @@ export const reposMethods = {
   },
 
   /**
+   * GET /api/repos/<slug> (anyone signed in; BRK-129): one repository for its settings page. The row (a removed
+   * one's, with `removed` set, for its read-only page), each area's open and total tasks (total counts every task
+   * the area-removal check counts), whether its routine is connected (a yes or no, never its URL or token), how many
+   * saved routines run in it, its open tasks and running agents, and GitHub's default branch when the App can read
+   * it. A removed repository says why it can't be released (`releaseBlocker`), or null when it can.
+   */
+  repoApi(slug) {
+    return this.run(async () => {
+      const name = String(slug).toLowerCase();
+      const row = this.repoBySlug(name);
+      const gone = row ? null : this.removedRepos().find((r) => r.slug === name);
+      if (!row && !gone) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
+      const fallback = this.defaultRepoSlug();
+      const tasks = [...this.tasks.values()].filter((m) => repoSlugOf(m, fallback) === name);
+      const isOpen = (m) => ['pending', 'waiting'].includes(m.status);
+      const areas = (row ?? gone).areas.map((a) => {
+        const inArea = tasks.filter((m) => m.project === a.project);
+        return { ...a, open: inArea.filter(isOpen).length, total: inArea.length };
+      });
+      const isDefault = Boolean(row?.isDefault);
+      const routines = this.sql
+        .exec(
+          `SELECT COUNT(*) AS n FROM routines WHERE repo = ?${isDefault ? " OR repo IS NULL OR repo = ''" : ''}`,
+          name,
+        )
+        .one().n;
+      return ok({
+        repo: row ?? gone,
+        removed: gone?.removed ?? null,
+        areas,
+        routineConnected: Boolean(await routineCredentials(this.env, isDefault ? null : name)),
+        routines,
+        open: tasks.filter(isOpen).length,
+        running: row
+          ? this.runningAgents(this.views()).filter(({ task }) => repoSlugOf(task, fallback) === name).length
+          : 0,
+        githubDefaultBranch: row ? await this.githubDefaultBranch(row.github) : null,
+        ...(gone ? { releaseBlocker: this.releaseBlocker(gone) } : {}),
+      });
+    });
+  },
+
+  /**
    * The default branch GitHub reports for `github` (owner/name), read through the App, or null when it can't
    * be read (no App yet, not installed, GitHub unreachable): registering never waits on it.
    */
@@ -283,6 +326,21 @@ export const reposMethods = {
       this.ownerOnlyRepos(body?.by);
       const current = this.repoBySlug(String(slug).toLowerCase());
       if (!current) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
+      // The web app sends the row's last-changed time it loaded (BRK-129); a change made since wins, and the page
+      // gets the row as it is now. The CLI sends none and saves as before.
+      if (body && typeof body === 'object' && body.edited !== undefined && body.edited !== null) {
+        const loaded = typeof body.edited === 'string' ? Date.parse(body.edited) : Number.NaN;
+        if (Number.isNaN(loaded))
+          throw new InputError('edited is the repository’s last-changed time, as GET /api/repos/<slug> gave it');
+        if (loaded !== Date.parse(current.edited))
+          return ok(
+            {
+              error: `${current.slug} changed somewhere else since you loaded it. Here’s what it is now: check it, then save your change again.`,
+              repo: current,
+            },
+            409,
+          );
+      }
       const fallback = this.defaultRepoSlug();
       const inUse = (project) =>
         [...this.tasks.values()].some((m) => m.project === project && repoSlugOf(m, fallback) === current.slug);
@@ -294,6 +352,8 @@ export const reposMethods = {
         removed: this.removedRepos(),
         caps: this.repoCapCeilings(),
       });
+      // Checking a change as it's typed (BRK-129), as POST does: the row it would save, or the refusal, and nothing saved.
+      if (body?.dryRun) return ok({ repo: row, dryRun: true });
       this.sql.exec(
         'UPDATE repos SET github = ?, name = ?, default_branch = ?, areas = ?, pipeline = ?, routine = ?, settings = ?, edited = ? WHERE slug = ?',
         row.github,
@@ -301,7 +361,8 @@ export const reposMethods = {
         row.defaultBranch,
         JSON.stringify(row.areas),
         ...JSON_FIELDS.map((k) => (row[k] ? JSON.stringify(row[k]) : null)),
-        Date.now(),
+        // Always later than the last change, so two saves in one millisecond still tell a stale edit apart.
+        Math.max(Date.now(), Date.parse(current.edited) + 1),
         current.slug,
       );
       this.repoCache = null;
