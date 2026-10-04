@@ -1029,6 +1029,7 @@ export const SHORTCUTS = [
       ['j k', 'Next and previous task'],
       ['c', 'Claim or release the open task'],
       ['d', 'Mark the open task done'],
+      ['Shift+F10', 'The menu of the focused task (the Menu key opens it too)'],
       ['Esc', 'Close the task'],
       ['r', 'Refresh'],
       ['?', 'These shortcuts'],
