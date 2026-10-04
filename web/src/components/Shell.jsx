@@ -40,14 +40,13 @@ import {
   openRepoSettings,
   openPingsHere,
   repoName,
+  repoSettingsHref,
   repoScope,
   repos,
   scopedPings,
   setRepo,
-  confirmDialog,
   connectionsAttention,
   github,
-  githubRepoFacts,
   githubView,
   filters,
   hashFor,
@@ -60,15 +59,12 @@ import {
   loadTasks,
   me,
   menuOpen,
-  mergeMethod,
   canNewAgent,
   newAgent,
   newTask,
   openIn,
   pings,
-  pullSetting,
   setFilter,
-  setPullSetting,
   settingsOpen,
   sidebar,
   tasks,
@@ -445,90 +441,24 @@ const ON_OFF = [
 ];
 
 /**
- * Keep branches up to date, and Merge when green, for one repository: the owner's, in this browser only.
- * `slug` null is the default repository's; `name` is set when there are several, to tell them apart.
+ * Where the pull request settings went (WEB-31): each repository's settings page, for the repository the switcher
+ * shows, or the list of them under All. The Settings page replaces this dialog (WEB-32).
  * @param {Record<string, any>} props
  */
-function RepoPullSettings({ data, slug = null, name = null }) {
-  const facts = githubRepoFacts(slug);
-  if (!facts) return null;
-  const own = facts.slug ?? slug;
-  const isDefault = facts.isDefault !== false;
-  const method = mergeMethod.value === 'merge' ? 'a merge commit' : 'squash';
-  const branch = facts.branch ?? 'main';
-  const keep = pullSetting(own, 'keep');
-  const merge = pullSetting(own, 'merge');
-  // What merging deploys: a legacy install's Worker goes to staging; another repository's pipeline decides; none deploys nothing.
-  const deploys = !facts.pipeline ? '' : isDefault ? ' Merging deploys to staging.' : ' Merging can start a deploy.';
-  const where = name ? ` in ${name}` : '';
-  const blocked = facts.access?.write?.ok === false ? facts.access.write.reason : null;
-  const turnOnMerging = async () => {
-    const ready = (data.open ?? []).filter((p) => p.verdict === 'ready' && (!data.all || p.repo === own)).length;
-    const now =
-      ready === 1
-        ? ' 1 is ready now and merges straight away.'
-        : ready > 1
-          ? ` ${ready} are ready now and merge straight away.`
-          : '';
-    const ok = await confirmDialog({
-      title: name ? `Merge pull requests in ${name} when green?` : 'Merge pull requests when green?',
-      body: `Every open pull request${where} that isn’t a draft merges (${method}) once its required checks pass, including Dependabot’s.${now}${facts.pipeline ? (isDefault ? ' Merging deploys to staging; you promote it to production yourself.' : ' Merging can start a deploy.') : ''} It works while the board is open in this browser.`,
-      confirmLabel: 'Turn on',
-    });
-    if (ok) setPullSetting(own, 'merge', true);
-  };
+function PullSettingsLink({ close }) {
+  if (!github.value.data?.connected) return null;
+  const slug = repoScope.value ?? (multiRepo.value ? null : repos.value.default);
   return (
-    <>
-      {name && <h3 class="settings-repo">{name}</h3>}
-      <div class="field">
-        <span class="field-label">Keep branches up to date</span>
-        <Segmented
-          label={`Keep branches up to date${where}`}
-          options={ON_OFF}
-          value={keep ? 'on' : 'off'}
-          onChange={(v) => setPullSetting(own, 'keep', v === 'on')}
-        />
-        <span class="field-hint">
-          When {branch} moves on, updates each open pull request’s branch with it, and its checks run again. Skips
-          drafts and conflicts.
-        </span>
-      </div>
-      <div class="field">
-        <span class="field-label">Merge when green</span>
-        <Segmented
-          label={`Merge when green${where}`}
-          options={ON_OFF}
-          value={merge ? 'on' : 'off'}
-          onChange={(v) => {
-            if (v === 'off') setPullSetting(own, 'merge', false);
-            else if (!merge) turnOnMerging();
-          }}
-        />
-        <span class="field-hint">
-          Every open pull request that isn’t a draft merges ({method}) once its checks pass.{deploys} Turn it off for
-          one on its page.
-        </span>
-      </div>
-      {blocked && <span class="field-hint">{blocked}</span>}
-    </>
-  );
-}
-
-/** The pull request settings: the default repository's as always, and each other repository's when there are several. */
-function PullSettings() {
-  const d = github.value.data;
-  if (!d?.connected) return null;
-  const several = multiRepo.value && d.all;
-  return (
-    <fieldset class="settings-group">
-      <legend class="kicker">Pull requests</legend>
-      {several ? (
-        d.repos.map((r) => <RepoPullSettings key={r.slug} data={d} slug={r.slug} name={repoName(r.slug)} />)
-      ) : (
-        <RepoPullSettings data={d} />
-      )}
-      <span class="field-hint">Only in this browser, and only while the board is open in it.</span>
-    </fieldset>
+    <div class="field">
+      <span class="field-label">Pull requests</span>
+      <span class="field-hint">
+        Keep branches up to date and Merge when green are on{' '}
+        <a href={repoSettingsHref(slug)} onClick={close}>
+          {slug ? `${repoName(slug)}’s settings` : 'each repository’s settings'}
+        </a>
+        .
+      </span>
+    </div>
   );
 }
 
@@ -659,7 +589,7 @@ function SettingsContent({ close }) {
         <span class="field-hint">Phones always open a task full screen.</span>
       </div>
       <NotificationSettings />
-      <PullSettings />
+      <PullSettingsLink close={close} />
       <div class="settings-health">
         <strong>Server</strong>
         {healthFailed.value && (
