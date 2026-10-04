@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { areaList } from '../../src/prompt.js';
 import {
   CLI_ENTRIES,
   CLI_PACKAGE,
   HOOKS_DIR,
   HOOKS_FROM_COPY,
+  MANIFEST,
   hookCommand,
   PROMPT_SECTIONS,
   agentsMd,
@@ -159,6 +161,22 @@ describe('repos init (CLD-191)', () => {
     expect(skill).toContain('(../../../AGENTS.md)');
     // The skill the board ships links nowhere a copy can't reach.
     expect(skillFor(read('.agents/skills/tasks/SKILL.md'), board)).toContain('(../../../tools/tasks/prompts/core.md)');
+  });
+
+  it('writes the tasks skill for this repository: its areas and its prompt, not breakaway’s (BRK-79)', () => {
+    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty });
+    const skill = plan.files.find((f) => f.path === '.agents/skills/tasks/SKILL.md').content;
+    expect(skill).not.toMatch(
+      /breakaway’s areas|breakaway's areas|prompts\/breakaway\.md|breakaway's work is on the board/u,
+    );
+    expect(skill).toContain(`This repository's areas: ${areaList(repo)}.`);
+    expect(skill).toContain('[`tools/tasks/routine-prompt.md`](../../../tools/tasks/routine-prompt.md)');
+    const own = { ...repo, routine: { prompt: 'docs/agents.md' } };
+    expect(
+      initPlan({ url: BOARD_URL, repo: own, board, read, readTarget: empty }).files.find(
+        (f) => f.path === '.agents/skills/tasks/SKILL.md',
+      ).content,
+    ).toContain('[`docs/agents.md`](../../../docs/agents.md)');
   });
 
   it('gives each repository a Taskwarrior report and context, once', () => {
@@ -365,6 +383,59 @@ describe('repos init --update (CLD-193)', () => {
     expect(plan.todo).toEqual([]);
   });
 
+  it('leaves a repository’s own file at a path it copies to alone, unless its record says repos init wrote it (BRK-79)', () => {
+    // Set up before repos init kept a record, with its own scripts at the release helpers' paths.
+    const { [MANIFEST]: _, ...unrecorded } = original;
+    const target = {
+      ...unrecorded,
+      'AGENTS.md': '# Our own rules\n',
+      'scripts/check-migrations.mjs': '// ours: compares against a base branch\n',
+      'scripts/lib/promote.js': '// ours too\n',
+      '.claude/skills': '',
+    };
+    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => target[p] ?? null, update: true });
+    const paths = plan.files.map((f) => f.path);
+    expect(paths).not.toContain('scripts/check-migrations.mjs');
+    expect(paths).not.toContain('scripts/lib/promote.js');
+    expect(plan.skipped).toEqual(expect.arrayContaining(['scripts/check-migrations.mjs', 'scripts/lib/promote.js']));
+    expect(plan.notes.join('\n')).toMatch(
+      /scripts\/check-migrations\.mjs, scripts\/lib\/promote\.js .*left as they are/u,
+    );
+    // The record it writes lists what is breakaway's (the copies that match), and not the repository's own.
+    const record = JSON.parse(plan.files.find((f) => f.path === MANIFEST).content);
+    expect(record.files).toContain('scripts/release-notes.mjs');
+    expect(record.files).toContain('tools/tasks/prompts/core.md');
+    expect(record.files).not.toContain('scripts/check-migrations.mjs');
+    expect(record.files).not.toContain('scripts/lib/promote.js');
+    // A file the record lists is replaced when it's older, as before.
+    const recorded = { ...original, 'scripts/lib/promote.js': '// an old copy\n', '.claude/skills': '' };
+    const again = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => recorded[p] ?? null, update: true });
+    expect(again.files.map((f) => f.path)).toEqual(['scripts/lib/promote.js']);
+    // Breakaway's promote.js imports src/promote.js: a repository that keeps its own promote.js doesn't get it.
+    expect(paths).not.toContain('src/promote.js');
+    // An older AGENTS.md from repos init names the copied files differently: its folders still count.
+    const olderAgents = {
+      ...target,
+      'AGENTS.md':
+        '- **Copied files.** `scripts/tasks.mjs`, `tools/tasks/`, and `.agents/skills/tasks/` come from [acme/board](https://github.com/acme/board).\n',
+      '.agents/skills/tasks/SKILL.md': 'An old copy of the skill.\n',
+    };
+    const skill = initPlan({
+      url: BOARD_URL,
+      repo,
+      board,
+      read,
+      readTarget: (p) => olderAgents[p] ?? null,
+      update: true,
+    });
+    expect(skill.files.map((f) => f.path)).toContain('.agents/skills/tasks/SKILL.md');
+    expect(skill.files.map((f) => f.path)).not.toContain('scripts/check-migrations.mjs');
+    // So is one in a repository set up before the record, whose AGENTS.md (as repos init wrote it) says it's copied.
+    const declared = { ...unrecorded, 'scripts/lib/promote.js': '// an old copy\n', '.claude/skills': '' };
+    const older = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => declared[p] ?? null, update: true });
+    expect(older.files.map((f) => f.path).sort()).toEqual([MANIFEST, 'scripts/lib/promote.js'].sort());
+  });
+
   it('has nothing to do when every copy is current, and adds a copied file that’s missing', () => {
     const current = initPlan({
       url: BOARD_URL,
@@ -475,7 +546,24 @@ describe('repos init --update (CLD-193)', () => {
             : (original[p] ?? null),
         update: true,
       });
-      expect(hooked.notes.join('\n')).toMatch(/npx --yes breakaway@1 hook session/u);
+      // Their settings still run the old CLI copy's hook script: rewired to npx, so removing the copy breaks nothing.
+      const settings = hooked.files.find((f) => f.path === '.claude/settings.json');
+      expect(settings.content).toBe(`{"command":"${hookCommand('session')}"}`);
+      expect(hooked.removals).toContain('scripts/tasks/session-hook.mjs');
+      // A package.json that still runs the copy keeps it, and says how to move off it (BRK-79).
+      const scripted = initPlan({
+        url: BOARD_URL,
+        repo,
+        board,
+        read,
+        readTarget: (p) =>
+          p === 'package.json'
+            ? '{"type":"module","scripts":{"tasks":"node scripts/tasks.mjs"}}'
+            : (original[p] ?? null),
+        update: true,
+      });
+      expect(scripted.removals).toEqual([]);
+      expect(scripted.notes.join('\n')).toMatch(/package\.json still runs scripts\/tasks\.mjs/u);
     },
   );
 
