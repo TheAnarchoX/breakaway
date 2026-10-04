@@ -3,17 +3,19 @@ import { buildFeed, newestFirst } from '../site/src/feed.js';
 import worker from '../site/src/worker.js';
 
 const DL = 'https://github.com/acme/widgets/releases/download';
-const release = (tag, { prerelease = false, draft = false, assets = true } = {}) => ({
+const release = (tag, { prerelease = false, draft = false, assets = true, signed = true } = {}) => ({
   tag_name: tag,
   prerelease,
   draft,
   html_url: `https://github.com/acme/widgets/releases/tag/${tag}`,
   published_at: '2026-10-03T09:00:00Z',
   assets: assets
-    ? ['breakaway-bundle.tar.gz', 'manifest.json', 'SHA256SUMS'].map((name) => ({
-        name,
-        browser_download_url: `${DL}/${tag}/${name}`,
-      }))
+    ? ['breakaway-bundle.tar.gz', 'manifest.json', 'SHA256SUMS', ...(signed ? ['manifest.json.sig'] : [])].map(
+        (name) => ({
+          name,
+          browser_download_url: `${DL}/${tag}/${name}`,
+        }),
+      )
     : [],
 });
 const manifest = (version, extra = {}) => ({
@@ -29,7 +31,7 @@ const FIXTURE = [
   release('v0.2.1-main.10', { prerelease: true }),
   release('v0.2.0-main.9', { prerelease: true }),
   release('v0.2.0'),
-  release('v0.1.0'),
+  release('v0.1.0', { signed: false }),
   release('v0.3.0', { draft: true }),
   release('v0.2.2-main.1', { prerelease: true, draft: true }),
 ];
@@ -64,6 +66,7 @@ describe('the update feed', () => {
       bundle: `${DL}/v0.2.0/breakaway-bundle.tar.gz`,
       manifest: `${DL}/v0.2.0/manifest.json`,
       checksums: `${DL}/v0.2.0/SHA256SUMS`,
+      signature: `${DL}/v0.2.0/manifest.json.sig`,
       notes: 'https://github.com/acme/widgets/releases/tag/v0.2.0',
       manual: false,
       updatesFrom: '0.1.0',
@@ -75,6 +78,13 @@ describe('the update feed', () => {
       manualSteps: ['Add the new binding.'],
       updatesFrom: '0.2.0',
     });
+  });
+
+  it('gives null for a release from before signing', async () => {
+    const releases = [release('v0.1.0', { signed: false })];
+    const m = { [`${DL}/v0.1.0/manifest.json`]: manifest('0.1.0', { channel: 'stable' }) };
+    const { channels } = await buildFeed(releases, async (u) => m[u]);
+    expect(channels.stable.signature).toBeNull();
   });
 
   it('falls back to the next release when the newest has no readable manifest, and to null when none do', async () => {
