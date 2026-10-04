@@ -353,3 +353,106 @@ export function SelfUpdate() {
     </div>
   );
 }
+
+/**
+ * Self-updates on or off, for the Settings page (docs/specs/IDEA-29-settings.md, section 3): the same routes as
+ * Connections' Version row, which keeps Check for updates, Update, and Roll back. `connections` is its address.
+ * @param {Record<string, any>} props
+ */
+export function SelfUpdateSwitch({ connections }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [working, setWorking] = useState(false);
+  const [turnOn, setTurnOn] = useState(false);
+  const load = async () => {
+    try {
+      setData((await api('self-update')).selfUpdate);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  const turnOff = async () => {
+    const ok = await confirmDialog({
+      title: 'Turn off updates?',
+      body: 'The board stops using its Cloudflare token. You delete the token on Cloudflare yourself: the board can’t.',
+      confirmLabel: 'Turn off updates',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setWorking(true);
+    try {
+      const res = await api('self-update/disable', { method: 'POST', body: {} });
+      toast(res.message ?? 'Updates are off.', 'success');
+      await load();
+      loadConnections();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWorking(false);
+    }
+  };
+  const more = (
+    <a href={connections}>{data?.enabled ? 'Check for updates on Connections' : 'See this version on Connections'}</a>
+  );
+  return (
+    <div class="field">
+      <span class="field-label">Updates from the board</span>
+      {error && !data ? (
+        <p class="field-error" role="alert">
+          {error}
+        </p>
+      ) : !data ? (
+        <span class="field-hint" aria-busy="true">
+          Checking…
+        </span>
+      ) : !data.allowed ? (
+        <span class="field-hint">Off: this install has a repository, and its own deploys update it. {more}.</span>
+      ) : (
+        <>
+          <div class="selfupd-actions">
+            {data.enabled ? (
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                disabled={working}
+                aria-busy={working}
+                onClick={turnOff}
+              >
+                Turn off updates
+              </button>
+            ) : (
+              <button type="button" class="btn btn-outline btn-sm" onClick={() => setTurnOn(true)}>
+                Turn on updates…
+              </button>
+            )}
+          </div>
+          <span class="field-hint">
+            {data.enabled
+              ? 'On: the board can install a release after checking its signature. You press Update every time.'
+              : 'Off. Turn them on to install a release here, after the board checks its signature.'}{' '}
+            {more}.
+          </span>
+          {error && (
+            <p class="field-error" role="alert">
+              {error}
+            </p>
+          )}
+        </>
+      )}
+      {turnOn && (
+        <TurnOn
+          onClose={() => setTurnOn(false)}
+          onDone={() => {
+            setTurnOn(false);
+            load();
+            loadConnections();
+          }}
+        />
+      )}
+    </div>
+  );
+}
