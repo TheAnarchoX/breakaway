@@ -75,6 +75,23 @@ export function openPr(t) {
   return (t.github ?? []).find((p) => p.closes && p.state === 'open') ?? null;
 }
 
+export const isDependabot = (author) => /^dependabot(\[bot\])?$/iu.test(author ?? '');
+
+/**
+ * Whether an agent can review this pull request as it stands (IDEA-30 section 9): open, not a draft, not
+ * Dependabot's (those keep Safe to merge?), mergeable, and its checks passed or still running. The board checks
+ * again with GitHub when it starts one.
+ */
+export function canAgentReview(pr) {
+  return (
+    pr?.state === 'open' &&
+    !pr.draft &&
+    !isDependabot(pr.author) &&
+    ['ready', 'running'].includes(pr.verdict) &&
+    pr.mergeable === true
+  );
+}
+
 /** The pull request to show on a card: the open closing one, else the latest closing one. */
 export function mainPr(t) {
   const list = (t.github ?? []).filter((p) => p.closes);

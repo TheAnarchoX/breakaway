@@ -2,7 +2,7 @@
 // view and task has a link and the back button works. Side effects live here too.
 import { batch, computed, effect, signal } from '@preact/signals';
 import { api, enc, whenSignedOut } from './api.js';
-import { AREAS, DAY, AREA_LABEL, ref, shipState, stateOf } from './model.js';
+import { AREAS, DAY, AREA_LABEL, isDependabot, ref, shipState, stateOf } from './model.js';
 import { actionKey, planPullActions } from './autopilot.js';
 import { repoFacts, scopeGitHub } from './github-scope.js';
 import { sidebarDefault } from './layout.js';
@@ -1213,18 +1213,18 @@ export const actions = {
     loadGitHub();
     return result;
   },
-  /** Safe to merge? on a Dependabot pull request. */
+  /** Safe to merge? on a Dependabot pull request, or Review with an agent on any other one (WEB-23). */
   async reviewPull(pr, after) {
+    const started = isDependabot(pr.author)
+      ? `Started an agent to test #${pr.number}. Its answer comes as a note and a comment.`
+      : `Started an agent to review #${pr.number}. Its answer shows on the pull request’s page.`;
     const result = await change(
       (force) =>
         api(`github/pulls/${pr.number}/review`, {
           method: 'POST',
           body: { ...(isDefaultRepo(pr.repo) ? {} : { repo: pr.repo }), force: force || undefined },
         }),
-      (r) =>
-        r.run
-          ? `Started an agent to test #${pr.number}. Its answer comes as a note and a comment.`
-          : `${r.task.wid} already has it: ${r.already}.`,
+      (r) => (r.run ? started : `${ref(r.task)} already has it: ${r.already}.`),
       { forceable: true, after },
     );
     loadAgents();
