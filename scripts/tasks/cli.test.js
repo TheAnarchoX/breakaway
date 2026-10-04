@@ -14,6 +14,7 @@ import {
   forceFields,
   generalAgentRequest,
   generalAgentSummary,
+  packageReleaseRequest,
   pullAgentRequest,
   pullAgentSummary,
   reviewRequest,
@@ -444,5 +445,21 @@ describe('chase (BRK-85)', () => {
     expect(
       chaseSummary('self-update', { dryRun: false, chase: { ...chase, state: 'stopped' } }, { stop: true }),
     ).toMatch(/^Stopped the chase of self-update\. Running agents finish/u);
+  });
+});
+
+describe('github release, a package’s stable for the owner (BRK-103)', () => {
+  it('posts the pre-release and who asks, for the checkout’s repository', () => {
+    expect(packageReleaseRequest('1.4.0-main.5', { repo: 'widgets' })).toEqual({
+      request: ['POST', 'github/release', { version: '1.4.0-main.5', repo: 'widgets' }],
+    });
+    expect(packageReleaseRequest(' @acme/widgets@2.0.0-main.1 ', { by: 'claude-x-1' })).toEqual({
+      request: ['POST', 'github/release', { version: '@acme/widgets@2.0.0-main.1', by: 'claude-x-1' }],
+    });
+  });
+
+  it('refuses anything but a pre-release', () => {
+    for (const bad of [undefined, '1.4.0', 'latest', '1.4.0-beta.1'])
+      expect(packageReleaseRequest(bad).error).toMatch(/say which pre-release/u);
   });
 });

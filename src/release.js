@@ -7,6 +7,7 @@
  */
 import { candidate, checkCandidate, productionSha } from './promote.js';
 import { shippedPrs } from './github.js';
+import { isPackageName } from './packages.js';
 
 const NAME = /^[\w.-]{1,100}$/u;
 const name = (value) => (typeof value === 'string' && NAME.test(value) ? value : null);
@@ -32,6 +33,27 @@ export function pipelineOf(repo) {
     branch: repo.defaultBranch || 'main',
   };
 }
+
+/**
+ * The npm package a repository releases, from its pipeline (BRK-103, IDEA-27 section 2b), or null when it releases
+ * none: then the GitHub page offers no Release. `workflow` is the file whose stable job Release starts on the default
+ * branch, and `prefix` is how its tags start, as the rendered release.yml has it: `<package>@` beside a Worker's
+ * deploys (which tag `v…` themselves), `v` for a repository that only releases.
+ */
+export function packageOf(repo) {
+  const p = repo?.pipeline;
+  if (!p || typeof p !== 'object' || !isPackageName(p.package)) return null;
+  return {
+    name: p.package,
+    workflow: name(p.workflows?.release) ?? 'release.yml',
+    prefix: pipelineOf(repo) ? `${p.package}@` : 'v',
+    branch: repo.defaultBranch || 'main',
+  };
+}
+
+/** A pre-release the release flow stages, `X.Y.Z-main.N`, and the stable `X.Y.Z` it becomes. */
+const PRERELEASE = /^(\d+\.\d+\.\d+)-main\.\d+$/u;
+export const stableOf = (version) => PRERELEASE.exec(String(version ?? ''))?.[1] ?? null;
 
 const PENDING = new Set(['', 'queued', 'pending', 'in_progress', 'waiting']);
 const FAILED = new Set(['failure', 'error']);

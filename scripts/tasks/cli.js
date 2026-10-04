@@ -104,6 +104,21 @@ export function pullAgentRequest(action, number, { repo = null, problem, note, f
   return { request: ['POST', `github/pulls/${n}/${action}`, body] };
 }
 
+/**
+ * `npx breakaway github release <pre-release>` (BRK-103): the owner releases a package's pre-release as its stable, as
+ * Release on the GitHub page does. The board starts the repository's release.yml stable job, and npm waits for the
+ * owner's 2FA; it refuses an agent, so the request always says who asks.
+ * @param {string | undefined} version the pre-release, like 1.4.0-main.5 (or its tag)
+ * @param {{ repo?: string | null, by?: string }} [options]
+ * @returns {{ error?: string, request?: [string, string, Record<string, string>] }}
+ */
+export function packageReleaseRequest(version, { repo = null, by } = {}) {
+  const v = String(version ?? '').trim();
+  if (!/^(?:\S+@|v)?\d+\.\d+\.\d+-main\.\d+$/u.test(v))
+    return { error: 'say which pre-release: npx breakaway github release <version>, like 1.4.0-main.5' };
+  return { request: ['POST', 'github/release', { version: v, ...(repo ? { repo } : {}), ...(by ? { by } : {}) }] };
+}
+
 export const REVIEW_VERDICTS = ['ready', 'follow-up', 'changes'];
 
 /**
