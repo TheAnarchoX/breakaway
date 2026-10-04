@@ -148,7 +148,8 @@ describe('cloud agents', () => {
     await api('tasks/OPS-2', { method: 'PATCH', body: { autostart: 'yes' } });
     const before = await body(await api('agents'));
     expect(before.queue).toEqual([
-      expect.objectContaining({ wid: 'OPS-2', ready: false, reason: 'it waits for OPS-1' }),
+      // A blocked task is wrong, not slow: Force start could not start it.
+      expect.objectContaining({ wid: 'OPS-2', ready: false, reason: 'it waits for OPS-1', forceable: false }),
     ]);
 
     await api('tasks/OPS-1/done', { method: 'POST', body: {} });
@@ -168,6 +169,7 @@ describe('cloud agents', () => {
     expect(queue.find((q) => q.wid === 'OPS-4')).toMatchObject({
       ready: false,
       reason: expect.stringMatching(/already working in Operations \(OPS-2\)/),
+      forceable: true,
     });
     await api('agents/settings', { method: 'PATCH', body: { autostart: false } });
     queue = (await body(await api('agents'))).queue;

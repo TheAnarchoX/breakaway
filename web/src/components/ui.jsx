@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { CircleAlert, CircleCheck, Info } from 'lucide-preact';
-import { confirmState, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
+import { confirmState, forceOffer, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
 import { STATE_LABEL, age, isStale, stateOf } from '../lib/model.js';
 
 /**
@@ -194,6 +194,43 @@ export function ConfirmHost() {
               onClick={() => close(true)}
             >
               {state.confirmLabel}
+            </button>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+/**
+ * Force start (IDEA-30 section 4): when the board's own limits refused a start, say which one and offer to skip
+ * it. Claude's limits never come here: those show their message as an error.
+ */
+export function ForceStartHost() {
+  const offer = forceOffer.value;
+  const close = () => {
+    forceOffer.value = null;
+  };
+  const force = () => {
+    close();
+    offer?.run();
+  };
+  return (
+    <Dialog open={Boolean(offer)} onClose={close} labelledBy="force-title" className="dialog-small">
+      {offer && (
+        <div class="sheet">
+          <h2 id="force-title">Force start?</h2>
+          <p>Not started: {offer.reason}.</p>
+          <p class="muted">
+            Force start skips the board’s own limit and starts the agent now. It still counts as a start, and Claude’s
+            limits still apply.
+          </p>
+          <div class="sheet-actions">
+            <button type="button" class="btn btn-quiet" onClick={close}>
+              Cancel
+            </button>
+            <button type="button" class="btn btn-primary" onClick={force}>
+              Force start
             </button>
           </div>
         </div>

@@ -785,15 +785,27 @@ export const agentsMethods = {
     for (const t of views.filter((v) => v.autostart && v.status === 'pending' && !v.claim).sort(rank)) {
       const blocker = this.agentBlocker(t);
       let reason = blocker;
+      // Force start (BRK-105) skips the board's own limits only: not a blocked task, an unconnected routine, or Claude's limit.
+      let forceable = false;
       if (!repoRoom.has(t.repo)) repoRoom.set(t.repo, this.repoRoom(t.repo, running));
-      if (!reason && !autostart) reason = 'auto-start is off';
+      if (!reason && !autostart) {
+        reason = 'auto-start is off';
+        forceable = true;
+      }
       if (!reason && connected && !connected.has(t.repo)) reason = `${t.repo}’s agent routine isn’t connected`;
       // A security fix doesn't wait for its area to be free.
-      if (!reason && busy.has(area(t)) && !t.alert)
+      if (!reason && busy.has(area(t)) && !t.alert) {
         reason = `an agent is already working in ${this.areaName(t.repo, t.project)} (${busy.get(area(t))})`;
-      if (!reason && free <= 0) reason = `no free slot (${running.length} of ${max} running)`;
-      if (!reason && repoRoom.get(t.repo) <= 0)
+        forceable = true;
+      }
+      if (!reason && free <= 0) {
+        reason = `no free slot (${running.length} of ${max} running)`;
+        forceable = true;
+      }
+      if (!reason && repoRoom.get(t.repo) <= 0) {
         reason = this.repoCapBlocker(t.repo, running) ?? `${t.repo} is at its cap`;
+        forceable = !/Claude’s limit/u.test(reason);
+      }
       if (!reason) {
         free -= 1;
         repoRoom.set(t.repo, repoRoom.get(t.repo) - 1);
@@ -807,6 +819,7 @@ export const agentsMethods = {
         repo: t.repo,
         reason: reason ?? 'starting now',
         ready: !reason,
+        forceable: Boolean(reason) && forceable,
       });
     }
     return queue;
