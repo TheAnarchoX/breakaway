@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Bot, CircleX, Copy, ExternalLink, FastForward, FileText, Rocket, Zap } from 'lucide-preact';
+import { Bike, Bot, CircleX, Copy, ExternalLink, FastForward, FileText, Rocket, Zap } from 'lucide-preact';
 import { api } from '../lib/api.js';
 import { ago, plural, ref } from '../lib/model.js';
 import {
@@ -10,6 +10,7 @@ import {
   hashFor,
   inScope,
   loadAgents,
+  multiRepo,
   navOrder,
   repoBySlug,
   repoName,
@@ -20,6 +21,7 @@ import {
 import { RepoChip, Segmented } from '../components/ui.jsx';
 import { ForcedMark, MessageButton, SILENT_AFTER, TRIGGER_LABEL } from '../components/Agents.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
+import { PelotonPanel } from '../components/Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
 
@@ -407,6 +409,40 @@ function Chases({ list }) {
 }
 
 /**
+ * Each repository's peloton under the switcher (docs/specs/IDEA-32-peloton.md, section 5): who rides it and what
+ * they said, newest last. Read-only: to steer one agent, message it from Running.
+ */
+function Pelotons() {
+  const scope = repoScope.value;
+  const list = repos.value.list;
+  const slugs = scope ? [scope] : list.length ? list.map((r) => r.slug) : [repos.value.default].filter(Boolean);
+  if (!slugs.length) return null;
+  return (
+    <section class="gh-section" aria-labelledby="peloton">
+      <h2 id="peloton">
+        <Bike size={18} aria-hidden="true" />
+        Peloton
+      </h2>
+      <p class="muted small">Running agents check in here and say what they did. To steer one, message it.</p>
+      {multiRepo.value && !scope ? (
+        <ul class="ch-chases">
+          {slugs.map((slug) => (
+            <li key={slug} aria-labelledby={`peloton-${slug}`}>
+              <h3 id={`peloton-${slug}`} class="ch-chase-title">
+                {repoName(slug)}
+              </h3>
+              <PelotonPanel name={slug} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <PelotonPanel name={slugs[0]} />
+      )}
+    </section>
+  );
+}
+
+/**
  * The owner's Claude plan (CLD-198). Claude doesn't tell the board which plan an account is on, so the owner
  * picks it here, and it sets the ceilings and defaults of the board's limits. Claude's own limits on starting
  * a routine are the same on every plan.
@@ -740,6 +776,7 @@ export function AgentsView() {
                 <p class="muted small">No agents running. Start one from a task, or the next few below.</p>
               )}
             </section>
+            <Pelotons />
             <Launcher d={all} />
             <section class="gh-section" aria-labelledby="queue">
               <h2 id="queue">
