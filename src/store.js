@@ -38,7 +38,7 @@ import { pushMethods } from './store-push.js';
 import { messagesMethods } from './store-messages.js';
 import { statsMethods } from './store-stats.js';
 import { reposMethods } from './store-repos.js';
-import { repoSlugOf } from './repos.js';
+import { repoSlugOf, SHARED_AREAS } from './repos.js';
 import { connectionsMethods } from './store-connections.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
@@ -701,7 +701,16 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const repo = this.repoOfTask(this.tasks.get(uuid))?.slug ?? this.tasks.get(uuid).repo;
       if ('repo' in input && this.checkRepoSlug(input.repo) !== repo)
         throw new InputError('a task stays in its repository; make a new task there and link them with a dependency');
-      if (changes.project) this.checkAreaPrefix(repo, changes.project);
+      if (changes.project) {
+        const prefix = this.checkAreaPrefix(repo, changes.project);
+        const current = this.tasks.get(uuid);
+        // An open task with no work ID gets the next one in its area, once, when it gets that area (IDEA-30).
+        if (!current.wid && !changes.wid && current.status === 'pending') {
+          if (current.tag_general && changes.project in SHARED_AREAS)
+            throw new InputError(`pick one of ${repo}'s own areas, not ${changes.project}`);
+          changes.wid = nextWid(prefix, this.tasks);
+        }
+      }
       if (changes.wid) {
         changes.wid = String(changes.wid).toUpperCase();
         this.checkWidPrefix(repo, changes.wid);
@@ -831,6 +840,17 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const name = agent ? agentName(agent) : null;
       if (task.claim && name !== task.claim && !force)
         throw new Conflict(`${label(task)} is claimed by ${task.claim}, not ${name ?? 'you'}`, { task });
+      // A general agent that stops with no pull request has finished: its changes, if any, are on the board.
+      if (task.tags.includes('general') && task.status === 'pending' && !task.pr)
+        return ok({
+          task: this.change(uuid, {
+            claim: null,
+            start: false,
+            status: 'completed',
+            annotate: 'Closed by the board: the agent released it with no pull request.',
+            by: 'board',
+          }),
+        });
       return ok({ task: this.change(uuid, { claim: null, start: false }) });
     });
   }
@@ -1160,12 +1180,27 @@ const apiActions = {
   agentsApi() {
     return this.run(async () => this.agentsOverview());
   },
+  /** New agent: a task from a prompt, and an agent on it (the owner's). */
+  agentsGeneralApi(body) {
+    return this.run(async () => {
+      ownerOnly(body?.by, 'start a general agent');
+      const result = await this.startGeneral({
+        prompt: body?.prompt,
+        repo: body?.repo ?? null,
+        force: Boolean(body?.force),
+      });
+      return ok(result, result.run ? 201 : 202);
+    });
+  },
   agentsStartApi(ref, note, mode, { force = false, by } = {}) {
     return this.run(async () => {
       if (force) ownerOnly(by, 'force start an agent');
-      if (mode && !['build', 'refine', 'routine'].includes(mode))
-        throw new AgentError('mode is build, refine, or routine', 400);
+      if (mode && !['build', 'refine', 'routine', 'general'].includes(mode))
+        throw new AgentError('mode is build, refine, routine, or general', 400);
       const uuid = this.resolve(ref);
+      // A general agent's task waiting for room starts as a general agent, whatever button asked.
+      if (this.tasks.get(uuid)?.tag_general && (!mode || mode === 'build' || mode === 'general'))
+        return ok(await this.startAgent(uuid, { trigger: 'general', kind: 'general', force: Boolean(force) }));
       // A run a trigger made and left waiting for the owner's Start: it starts as a routine run of its own routine.
       // So does a plain Start on one, since a build's payload would send the agent off to do the wrong thing.
       const routine =
