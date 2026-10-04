@@ -7,10 +7,11 @@
  * additionalContext so Claude gets them on its next turn (docs/specs/IDEA-15-message-a-running-agent.md).
  *
  * Quiet by design: without a claimed task (.task-session, written by `tasks claim`), with
- * BREAKAWAY_SESSION_LOG=off (or SAMEWAVE_TASKS_SESSION_LOG=off), or on any error, it does nothing and exits 0.
+ * BREAKAWAY_SESSION_LOG=off (or SAMEWAVE_TASKS_SESSION_LOG=off), or on any error, it does nothing and exits 0. A post
+ * that fails leaves its reason in the temp folder, which the CLI's next command here shows (BRK-86).
  */
 import { boardConfig, claimedTask, projectRoot } from './hook-config.js';
-import { routeThroughSessionProxy } from './proxy.js';
+import { clearHookFailure, noteHookFailure, sessionRequest } from './proxy.js';
 import { entryFor } from './session-log.js';
 import { CONTEXT_EVENTS, messageOutput } from './session-messages.js';
 
@@ -26,22 +27,28 @@ async function main() {
   if (!entry) return;
 
   const { base, headers } = boardConfig(root);
-  if (!base) return;
-  routeThroughSessionProxy();
-  const res = await fetch(`${base}/api/tasks/${encodeURIComponent(claim.uuid)}/session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({
-      agent: claim.agent,
-      session: hook.session_id ?? null,
-      remote: process.env.CLAUDE_CODE_REMOTE === 'true',
-      entries: [entry],
-      // A Stop hook's output can't reach Claude, so it leaves the messages for the next event.
-      messages: CONTEXT_EVENTS.has(hook.hook_event_name),
-    }),
-    signal: AbortSignal.timeout(4000),
-  });
-  if (!res.ok) return;
+  if (!base) return noteHookFailure(claim.uuid, 'no board address: set BREAKAWAY_URL');
+  let res;
+  try {
+    // Through curl in a cloud session, so it works on whichever Node runs hooks there (BRK-86).
+    res = await sessionRequest(`${base}/api/tasks/${encodeURIComponent(claim.uuid)}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        agent: claim.agent,
+        session: hook.session_id ?? null,
+        remote: process.env.CLAUDE_CODE_REMOTE === 'true',
+        entries: [entry],
+        // A Stop hook's output can't reach Claude, so it leaves the messages for the next event.
+        messages: CONTEXT_EVENTS.has(hook.hook_event_name),
+      }),
+      timeoutMs: 4000,
+    });
+  } catch (error) {
+    return noteHookFailure(claim.uuid, /** @type {Error} */ (error)?.message ?? String(error));
+  }
+  if (!res.ok) return noteHookFailure(claim.uuid, `HTTP ${res.status}`);
+  clearHookFailure(claim.uuid);
   const output = messageOutput(await res.json(), hook.hook_event_name);
   if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
 }
