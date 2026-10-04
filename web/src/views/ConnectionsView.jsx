@@ -7,6 +7,7 @@ import {
   FolderPlus,
   Plug,
   RefreshCw,
+  Settings,
   TriangleAlert,
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
@@ -22,6 +23,7 @@ import {
   registerRepo,
   repoName,
   repoScope,
+  repoSettingsHref,
   repos,
 } from '../lib/store.js';
 import { SelfUpdate } from '../components/SelfUpdate.jsx';
@@ -169,6 +171,27 @@ function Row({ c }) {
       {c.id === 'board.version' && <SelfUpdate />}
       <Items c={c} />
     </li>
+  );
+}
+
+/** Each registered repository the switcher shows, with a link to its settings (WEB-30). */
+function RepoRows() {
+  const list = repos.value.list.filter((r) => inScope(r.slug));
+  if (!list.length) return null;
+  return (
+    <ul class="conn-repos">
+      {list.map((r) => (
+        <li key={r.slug}>
+          <span>
+            <strong>{r.name}</strong> <span class="meta">{r.github}</span>
+          </span>
+          <a class="btn btn-outline btn-sm" href={repoSettingsHref(r.slug)}>
+            <Settings size={15} aria-hidden="true" />
+            Settings<span class="visually-hidden"> for {r.name}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -380,15 +403,20 @@ export function ConnectionsView() {
       <Setup setup={data?.setup} />
       {GROUPS.map((g) => {
         const rows = list.filter((c) => g.of.includes(c.group));
-        if (!rows.length) return null;
+        // Repositories always lists the ones registered, each with a link to its settings (WEB-30).
+        const repoRows = g.id === 'repos' && repos.value.list.some((r) => inScope(r.slug));
+        if (!rows.length && !repoRows) return null;
         return (
           <section key={g.id} class="conn-group" aria-labelledby={`conn-${g.id}`}>
             <h2 id={`conn-${g.id}`}>{g.label}</h2>
-            <ul class="conn-list">
-              {rows.map((c) => (
-                <Row key={`${c.id}:${c.repo ?? ''}`} c={c} />
-              ))}
-            </ul>
+            {rows.length > 0 && (
+              <ul class="conn-list">
+                {rows.map((c) => (
+                  <Row key={`${c.id}:${c.repo ?? ''}`} c={c} />
+                ))}
+              </ul>
+            )}
+            {repoRows && <RepoRows />}
           </section>
         );
       })}

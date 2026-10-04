@@ -36,6 +36,7 @@ import {
   inScope,
   multiRepo,
   openAddRepo,
+  openRepoSettings,
   openPingsHere,
   repoName,
   repoScope,
@@ -201,6 +202,7 @@ function Brand({ onClick }) {
  * repository is registered, so the board looks as it always did.
  */
 const ADD_REPO = '+add';
+const REPO_SETTINGS = '+settings';
 
 /** @param {Record<string, any>} props */
 function RepoSwitcher({ rail = false }) {
@@ -250,6 +252,17 @@ function RepoSwitcher({ rail = false }) {
               <FolderPlus size={16} aria-hidden="true" />
               Add a repository
             </button>
+            <button
+              type="button"
+              class="btn btn-quiet btn-sm repo-switch-add"
+              onClick={() => {
+                close();
+                openRepoSettings(repoScope.value);
+              }}
+            >
+              <Settings size={16} aria-hidden="true" />
+              Repository settings
+            </button>
           </fieldset>
         )}
       </Popover>
@@ -267,6 +280,10 @@ function RepoSwitcher({ rail = false }) {
           if (e.currentTarget.value === ADD_REPO) {
             e.currentTarget.value = value;
             openAddRepo(null);
+          } else if (e.currentTarget.value === REPO_SETTINGS) {
+            // Repository settings opens the page of the repository it shows (WEB-30), and the list under All.
+            e.currentTarget.value = value;
+            openRepoSettings(repoScope.value);
           } else setRepo(e.currentTarget.value);
         }}
       >
@@ -276,6 +293,7 @@ function RepoSwitcher({ rail = false }) {
           </option>
         ))}
         <option value={ADD_REPO}>Add a repository…</option>
+        <option value={REPO_SETTINGS}>Repository settings…</option>
       </select>
     </label>
   );
@@ -977,7 +995,19 @@ export function FilterBar() {
   const wide = useMedia('(min-width: 900px)');
   const [open, setOpen] = useState(false);
   const count = activeFilters.value;
-  if (['activity', 'inbox', 'github', 'agents', 'routines', 'roadmap', 'connections', 'add-repo'].includes(view.value))
+  if (
+    [
+      'activity',
+      'inbox',
+      'github',
+      'agents',
+      'routines',
+      'roadmap',
+      'connections',
+      'add-repo',
+      'repo-settings',
+    ].includes(view.value)
+  )
     return null;
   const here = tasks.value.filter((t) => t.status !== 'deleted' && inScope(t.repo));
   const scope = repoScope.value;
