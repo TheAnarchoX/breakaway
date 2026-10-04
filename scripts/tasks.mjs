@@ -44,6 +44,12 @@ import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import { CLI_PACKAGE, PROMPT_SECTIONS, initPlan, machineTaskrc, promptSections } from './tasks/init.js';
 import {
+  chaseRequest,
+  chaseSummary,
+  featureBody,
+  featureLines,
+  featureListLines,
+  progressLine,
   forceFields,
   generalAgentRequest,
   generalAgentSummary,
@@ -145,6 +151,13 @@ Reading                (list, next, claim, and add work in this checkout's repos
   agents next            start the next few ready tasks, one per area  [--count <n>] [--dry-run] [--repo <slug>]
   routines               saved prompts the owner runs with a button, and their caps
   routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>] [--force]
+  features               features by release: each one's progress and chase, and tags that could be features
+  features show <slug>   one feature: its release, progress, what waits for you, its chase, and its tasks in order
+  chase <slug>           start a chase (owner): the board starts an agent on every ready task in the feature and on
+                         what blocks it, within its limits, until all are done or in review
+    --parallel <n>       the most agents at once in one area (default 3); on a running chase, it changes it
+    --dry-run            show what would start now, and start nothing
+  chase <slug> stop      stop it (owner): nothing new starts; running agents finish
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
   github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>] [--force]
   github review <n>      start an agent that reviews a pull request that can merge as it stands, on the task it closes, as
@@ -215,6 +228,9 @@ Working
                          --agents-max <n|none> and --agents-hourly <n|none> cap its agents under the board's shared limits,
                          --prompt <path|none> says where its agent prompt is in its checkout (default tools/tasks/routine-prompt.md)
                          --pipeline <file.json|none> sets its deploy pipeline ({"workers": {"staging", "production"}, "workflows": {...}, "deployPaths"}) or clears it
+  features add <slug>    new feature: its tasks join by carrying <slug> as a tag  [--title <text>]
+                         [--brief <text> | --brief-file <path>] [--release <x.y.z>] (agents add one without a release)
+  features modify <slug> change one (owner): --title, --brief, --brief-file, --release <x.y.z|none>, --state open|shipped
   routines add <slug>    new routine (owner)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
   routines modify <slug> change one (owner): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed (or "") starts it on those GitHub events
@@ -1049,6 +1065,60 @@ const commands = {
             `  ${x.slug.padEnd(16)} ${several ? `${x.repo}: ` : ''}${x.enabled ? 'on ' : 'off'} ${x.openRun ? `running ${x.openRun.wid}` : x.lastRun ? `last ${x.lastRun.wid ?? ''} ${ago(x.lastRun.at)}` : 'never run'}, ${x.runsToday} of ${x.dailyCap} today${x.schedule ? `, schedule ${x.schedule}${x.nextRun ? ` (next ${x.nextRun.slice(0, 16).replace('T', ' ')} UTC)` : ''}` : ''}${x.triggers?.length ? `, ${x.triggers.length} trigger${x.triggers.length === 1 ? '' : 's'} (${x.triggerStart === 'auto' ? 'start by themselves' : 'wait for Start'}; ids ${x.triggers.map((t) => t.id).join(', ')})` : ''}${x.disabledReason ? `, off: ${x.disabledReason}` : ''}`,
         ),
       ].join('\n'),
+    );
+  },
+  async features() {
+    const sub = args[0];
+    const body = () =>
+      featureBody({
+        title: opts.title,
+        brief: opts['brief-file'] ? readFileSync(opts['brief-file'], 'utf8') : opts.brief,
+        release: opts.release,
+        state: opts.state,
+      });
+    // Who asks, so the board can refuse an agent what's the owner's (a release, a change).
+    const by = opts.as ?? setting('AGENT');
+    if (sub === 'add') {
+      const slug = need(args[1], 'slug').toLowerCase();
+      const { feature } = await call('POST', 'features', { slug, ...body(), ...(by ? { by } : {}) });
+      print({ feature }, (d) =>
+        [
+          `Added the feature ${d.feature.slug}${d.feature.release ? `, aimed at ${d.feature.release}` : ''}: ${progressLine(d.feature.progress)}.`,
+          `Tasks join it by the tag: npx breakaway modify <ref> --tag ${d.feature.slug}`,
+        ].join('\n'),
+      );
+      return;
+    }
+    if (sub === 'modify') {
+      const changes = body();
+      if (!Object.keys(changes).length) fail('say what to change: --title, --brief, --release, or --state');
+      const { feature } = await call('PATCH', `features/${enc(need(args[1], 'feature').toLowerCase())}`, {
+        ...changes,
+        ...(by ? { by } : {}),
+      });
+      print({ feature }, (d) => `Saved ${d.feature.slug}.`);
+      return;
+    }
+    if (sub === 'show') {
+      const { feature } = await call('GET', `features/${enc(need(args[1], 'feature').toLowerCase())}`);
+      print({ feature }, (d) => featureLines(d.feature).join('\n'));
+      return;
+    }
+    print(await call('GET', 'features'), (d) => featureListLines(d).join('\n'));
+  },
+  async chase() {
+    const built = chaseRequest(args[0], args[1], {
+      parallel: opts.parallel,
+      dryRun: Boolean(opts['dry-run']),
+      by: opts.as ?? setting('AGENT'),
+    });
+    if (built.error) fail(built.error);
+    const answer = await call(...built.request);
+    print(answer, (d) =>
+      chaseSummary(args[0].toLowerCase(), d, {
+        stop: args[1] === 'stop',
+        parallel: opts.parallel === undefined ? undefined : Number(opts.parallel),
+      }),
     );
   },
   async next() {
