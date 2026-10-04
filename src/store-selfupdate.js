@@ -10,6 +10,7 @@
 import { releaseOf } from './build.js';
 import { Cloudflare, CloudflareError } from './cloudflare-deploy.js';
 import { WORKER_FIRST, install } from './install.js';
+import { shapeOfInstall, shapeProblems } from './release-shape.js';
 import { verifyRelease } from './release-verify.js';
 import { assetFiles, untar, workerModules } from './self-update-bundle.js';
 import { AgentError } from './store-agents.js';
@@ -176,12 +177,23 @@ export const selfUpdateMethods = {
       }
       const version = verdict.manifest.version;
       state.target = version;
+      const settings = await cf.settings();
+      const problems = shapeProblems(verdict.manifest.shape, shapeOfInstall(settings, await cf.schedules()));
+      if (problems.length) {
+        const steps = verdict.manifest.manualSteps?.length ? ` ${verdict.manifest.manualSteps.join(' ')}` : '';
+        this.saveSelfUpdate({
+          ...state,
+          status: 'failed',
+          step: 'release',
+          message: `${version} needs steps by hand: ${problems.join('; ')}.${steps} Nothing changed.`,
+        });
+        return;
+      }
 
       step('upload');
       const files = untar(verdict.bundle);
       const code = workerModules(files);
       const assets = assetFiles(files);
-      const settings = await cf.settings();
       const previousId = await cf.current();
       if (!previousId)
         throw new Error('Cloudflare doesn’t say which version is running, so there would be nothing to go back to.');

@@ -1,7 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checkManifest } from '../install/lib.js';
-import { compareVersions, manifestOf, importedPackages, manualSection, nextPrerelease, stableOf } from './lib.js';
+import {
+  compareVersions,
+  manifestOf,
+  shapeOf,
+  importedPackages,
+  manualSection,
+  nextPrerelease,
+  stableOf,
+} from './lib.js';
 
 describe('nextPrerelease', () => {
   it("starts at main.1 of package.json's version", () => {
@@ -87,5 +95,37 @@ describe('importedPackages', () => {
       "import '@scope/side-effect';",
     ].join('\n');
     expect(importedPackages([text])).toEqual(['@noble/ciphers', '@scope/side-effect', 'fflate']);
+  });
+});
+
+describe('the shape a release expects (BRK-54)', () => {
+  const wrangler = {
+    durable_objects: { bindings: [{ name: 'STORE', class_name: 'TaskStore' }] },
+    version_metadata: { binding: 'VERSION' },
+    assets: { binding: 'ASSETS' },
+    migrations: [{ tag: 'v1' }, { tag: 'v2' }],
+    triggers: { crons: ['*/5 * * * *'] },
+    routes: [{ pattern: 'board.example.com/*' }],
+  };
+  it('lists bindings, classes, migrations, crons, and routes from the wrangler config', () => {
+    expect(shapeOf(wrangler)).toEqual({
+      bindings: ['assets:ASSETS', 'durable_object_namespace:STORE', 'version_metadata:VERSION'],
+      durableObjects: ['TaskStore'],
+      migrations: ['v1', 'v2'],
+      crons: ['*/5 * * * *'],
+      routes: ['board.example.com/*'],
+    });
+    expect(shapeOf({})).toMatchObject({ bindings: [], crons: [], migrations: [] });
+  });
+  it('goes in the manifest when given', () => {
+    const base = {
+      version: '1.4.0-main.37',
+      channel: 'main',
+      commit: 'abc',
+      created: '2026-10-03T00:00:00Z',
+      config: {},
+    };
+    expect(manifestOf({ ...base, shape: shapeOf(wrangler) }).shape.durableObjects).toEqual(['TaskStore']);
+    expect(manifestOf(base)).not.toHaveProperty('shape');
   });
 });

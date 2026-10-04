@@ -51,9 +51,9 @@ export function stableOf(prereleaseTag) {
 
 /**
  * manifest.json: what an install reads before it deploys.
- * @param {{ version: string, channel: 'main' | 'stable', commit: string, config: { manual?: boolean, manualSteps?: string[], updatesFrom?: string }, builtAs?: string, bundleSha256?: string, created: string }} o
+ * @param {{ version: string, channel: 'main' | 'stable', commit: string, config: { manual?: boolean, manualSteps?: string[], updatesFrom?: string }, builtAs?: string, bundleSha256?: string, shape?: ReturnType<typeof shapeOf>, created: string }} o
  */
-export function manifestOf({ version, channel, commit, config, builtAs, bundleSha256, created }) {
+export function manifestOf({ version, channel, commit, config, builtAs, bundleSha256, shape, created }) {
   const manual = config.manual === true;
   if (manual && !config.manualSteps?.length)
     throw new Error('release.json says manual, so it needs manualSteps: what an install does by hand.');
@@ -69,7 +69,31 @@ export function manifestOf({ version, channel, commit, config, builtAs, bundleSh
     ...(builtAs ? { builtAs } : {}),
     // The bundle's checksum, so the manifest's signature covers the bundle (BRK-52): SHA256SUMS isn't signed.
     ...(bundleSha256 ? { bundleSha256 } : {}),
+    // What the release expects of the Worker, so an install stops a change the board can't make (BRK-54).
+    ...(shape ? { shape } : {}),
     created,
+  };
+}
+
+/**
+ * The shape a release expects of the Worker, from its wrangler config (BRK-54): what an install's self-update
+ * compares with what Cloudflare reports, to stop a release that changes what the board can't change itself.
+ * @param {any} wrangler the parsed wrangler.jsonc
+ */
+export function shapeOf(wrangler) {
+  const objects = wrangler.durable_objects?.bindings ?? [];
+  const types = [
+    ...objects.map((b) => `durable_object_namespace:${b.name}`),
+    ...(wrangler.version_metadata ? [`version_metadata:${wrangler.version_metadata.binding}`] : []),
+    ...(wrangler.assets?.binding ? [`assets:${wrangler.assets.binding}`] : []),
+  ];
+  const sorted = (list) => [...new Set(list)].sort();
+  return {
+    bindings: sorted(types),
+    durableObjects: sorted(objects.map((b) => b.class_name)),
+    migrations: (wrangler.migrations ?? []).map((m) => m.tag),
+    crons: sorted(wrangler.triggers?.crons ?? []),
+    routes: sorted((wrangler.routes ?? []).map((r) => (typeof r === 'string' ? r : (r.pattern ?? r.custom_domain)))),
   };
 }
 

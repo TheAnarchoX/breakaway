@@ -98,6 +98,34 @@ const NOW_RUNNING = '0.2.0-main.3';
 const TARGET = '0.2.0-main.5';
 const world = {};
 
+const SHAPE = {
+  bindings: ['durable_object_namespace:STORE', 'version_metadata:VERSION'],
+  durableObjects: ['TaskStore'],
+  migrations: ['v1'],
+  crons: ['*/5 * * * *'],
+  routes: [],
+};
+
+/** Serves a signed manifest for the release with `extra` on top, in place of the one setup made. */
+async function serve(extra) {
+  const bundle = world.served.get('https://dl.test/v/breakaway-bundle.tar.gz');
+  const manifest = JSON.stringify({
+    version: TARGET,
+    manual: false,
+    updatesFrom: '0.1.0',
+    bundleSha256: await hex(bundle),
+    shape: SHAPE,
+    ...extra,
+  });
+  const sig = b64(await crypto.subtle.sign({ name: 'Ed25519' }, world.privateKey, enc(manifest)));
+  world.served.set('https://dl.test/v/manifest.json', manifest);
+  world.served.set('https://dl.test/v/manifest.json.sig', sig);
+  world.served.set(
+    'https://dl.test/v/SHA256SUMS',
+    `${await hex(bundle)}  breakaway-bundle.tar.gz\n${await hex(enc(manifest))}  manifest.json\n`,
+  );
+}
+
 async function setup() {
   const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   const bundle = tarball(FILES);
@@ -106,11 +134,14 @@ async function setup() {
     manual: false,
     updatesFrom: '0.1.0',
     bundleSha256: await hex(bundle),
+    shape: SHAPE,
   });
   const sig = b64(await crypto.subtle.sign({ name: 'Ed25519' }, pair.privateKey, enc(manifest)));
   const sums = `${await hex(bundle)}  breakaway-bundle.tar.gz\n${await hex(enc(manifest))}  manifest.json\n`;
   const dl = 'https://dl.test/v';
   Object.assign(world, {
+    privateKey: pair.privateKey,
+    crons: ['*/5 * * * *'],
     publicKey: b64(await crypto.subtle.exportKey('raw', pair.publicKey)),
     served: new Map([
       [`${dl}/breakaway-bundle.tar.gz`, bundle],
@@ -168,6 +199,7 @@ function mock() {
           { type: 'version_metadata', name: 'VERSION' },
         ],
       });
+    if (path.endsWith('/schedules')) return reply({ schedules: world.crons.map((cron) => ({ cron })) });
     if (path.endsWith('/deployments') && method === 'GET')
       return reply({ deployments: [{ versions: [{ version_id: 'old-version', percentage: 100 }] }] });
     if (path.endsWith('/deployments') && method === 'POST') {
@@ -285,6 +317,45 @@ describe('updating the Worker from the board', () => {
       await s.selfUpdateStart({ wait: true });
       expect(s.selfUpdateState()).toMatchObject({ status: 'failed', step: 'verify' });
       expect(world.calls).toEqual([]);
+    });
+  });
+
+  it('stops a manual release, and a release whose shape the install doesn’t have, with the steps and nothing changed', async () => {
+    const run = async (extra, setupWorld) => {
+      await setup();
+      setupWorld?.();
+      await serve(extra);
+      return asBoard(async (s) => {
+        await s.selfUpdateStart({ wait: true });
+        const state = s.selfUpdateState();
+        expect(state).toMatchObject({ status: 'failed' });
+        expect(world.uploads).toEqual([]);
+        expect(world.deployed).toBeUndefined();
+        return state;
+      });
+    };
+    const manual = await run({ manual: true, manualSteps: ['Add the new cron trigger.'] });
+    expect(manual.message).toContain('Add the new cron trigger.');
+    const cron = await run({
+      shape: { ...SHAPE, crons: ['*/5 * * * *', '0 * * * *'] },
+      manualSteps: ['Add the cron.'],
+    });
+    expect(cron).toMatchObject({ step: 'release' });
+    expect(cron.message).toContain('cron triggers are */5 * * * *, 0 * * * *');
+    expect(cron.message).toContain('Add the cron.');
+    expect(cron.message).toContain('Nothing changed.');
+    const klass = await run({ shape: { ...SHAPE, durableObjects: ['TaskStore', 'Queue'] } });
+    expect(klass.message).toContain('Durable Object classes this Worker doesn’t have (Queue)');
+    const binding = await run({ shape: { ...SHAPE, bindings: [...SHAPE.bindings, 'durable_object_namespace:QUEUE'] } });
+    expect(binding.message).toContain('durable_object_namespace:QUEUE');
+    const unlisted = await run({ shape: undefined });
+    expect(unlisted.message).toContain('doesn’t list the shape');
+  });
+
+  it('installs a release whose shape the install matches, even with extra bindings the owner added', async () => {
+    await asBoard(async (s) => {
+      await s.selfUpdateStart({ wait: true });
+      expect(s.selfUpdateState().status).toBe('checking');
     });
   });
 

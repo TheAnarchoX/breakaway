@@ -100,6 +100,11 @@ export class Cloudflare {
     return this.call(`${this.script}/settings`);
   }
 
+  /** The Worker's cron triggers (`{ schedules: [{ cron }] }`). */
+  schedules() {
+    return this.call(`${this.script}/schedules`);
+  }
+
   /** The version that has 100% of traffic now, or null. */
   async current() {
     const result = await this.call(`${this.script}/deployments`);
