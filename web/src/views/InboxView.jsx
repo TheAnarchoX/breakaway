@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Check, CircleCheck, Inbox, Plug, TriangleAlert, X } from 'lucide-preact';
+import { Check, CircleCheck, FastForward, Inbox, Plug, TriangleAlert, X } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { HORIZONS, NOTICE_LABEL, PING_KIND_LABEL as KIND_LABEL, ago } from '../lib/model.js';
 import {
@@ -351,6 +351,53 @@ function NoticeCard({ notice: x }) {
   );
 }
 
+/**
+ * A note that a chase ended (docs/specs/IDEA-28-features-and-chase.md, section 3.7): no push, cleared here.
+ * @param {Record<string, any>} props
+ */
+function ChaseCard({ chase: x }) {
+  const [busy, setBusy] = useState(false);
+  const dismiss = async () => {
+    setBusy(true);
+    try {
+      await api(`features/${enc(x.feature)}/chase`, { method: 'POST', body: { dismiss: true } });
+      toast('Dismissed.', 'success');
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      setBusy(false);
+      loadPings();
+    }
+  };
+  const label = `Chase ended: ${x.title}`;
+  const feature = hashFor({ view: 'roadmap', feature: x.feature, task: null, pr: null, ping: null });
+  return (
+    <li class="ping notice">
+      <article aria-label={label}>
+        <header class="ping-head">
+          <span class="ping-kind ping-done">Chase ended</span>
+          <a class="event-task" href={feature}>
+            <FastForward size={15} aria-hidden="true" /> {x.title}
+          </a>
+          <span class="meta">
+            <time dateTime={x.at}>{ago(x.at)}</time>
+          </span>
+        </header>
+        {x.detail && <p class="ping-message">{x.detail}</p>}
+        <div class="ping-actions">
+          <a class="btn btn-primary btn-sm" href={feature}>
+            Open the feature<span class="visually-hidden"> {x.title}</span>
+          </a>
+          <button type="button" class="btn btn-quiet btn-sm" disabled={busy} onClick={dismiss}>
+            <X size={16} aria-hidden="true" />
+            Dismiss<span class="visually-hidden"> {label}</span>
+          </button>
+        </div>
+      </article>
+    </li>
+  );
+}
+
 export function InboxView() {
   const state = pings.value;
   const [applying, setApplying] = useState(null);
@@ -378,7 +425,7 @@ export function InboxView() {
         <p class="muted">
           Agents ping you when only you can help: something to decide, a task that looks done, or one that can’t be
           reproduced. Applying a proposal is yours alone; agents only suggest. The board also notes here when a
-          connection stops working, and when it works again.
+          connection stops working, when it works again, and when a chase ends.
         </p>
       </div>
       {state.error && (
@@ -391,7 +438,7 @@ export function InboxView() {
           Loading the inbox…
         </p>
       )}
-      {state.loaded && !list.length && !state.notices.length && !state.error && (
+      {state.loaded && !list.length && !state.notices.length && !state.chases.length && !state.error && (
         <div class="empty">
           <Inbox size={28} aria-hidden="true" />
           <h2>Nothing needs you</h2>
@@ -410,7 +457,21 @@ export function InboxView() {
           </ol>
         </section>
       )}
-      {state.notices.length > 0 && list.length > 0 && <h2 class="kicker inbox-pings-title">Pings</h2>}
+      {state.chases.length > 0 && (
+        <section class="inbox-notices" aria-labelledby="chases-title">
+          <h2 id="chases-title" class="kicker">
+            Chases
+          </h2>
+          <ol class="pings">
+            {state.chases.map((x) => (
+              <ChaseCard key={x.id} chase={x} />
+            ))}
+          </ol>
+        </section>
+      )}
+      {(state.notices.length > 0 || state.chases.length > 0) && list.length > 0 && (
+        <h2 class="kicker inbox-pings-title">Pings</h2>
+      )}
       <ol class="pings" aria-label="Open pings">
         {list.map((p) => (
           <PingCard key={p.id} ping={p} focused={String(p.id) === focus} onApply={() => setApplying(p.id)} />
