@@ -239,3 +239,75 @@ export function summarize(questions, answers) {
   });
   return `Decided by the owner: ${parts.join('; ')}`;
 }
+
+/** Tags that aren't a feature's (IDEA-28 section 1): the board's own, horizons, and release tags. */
+const NOT_FEATURES = new Set(['agent', 'owner', 'decide', 'idea', 'general']);
+export const featureTags = (tags) =>
+  (tags ?? []).filter((t) => !NOT_FEATURES.has(t) && !t.startsWith('horizon-') && !/^v\d/u.test(t));
+
+/** One answer as words, in full but for a long open answer. */
+function spell(q, answer) {
+  if (!answer) return 'no answer';
+  if (q.type === 'open') return clip(answer.value.trim(), 1500);
+  const label = (id) =>
+    id === 'other' ? `something else: ${answer.other}` : (q.options.find((o) => o.id === id)?.label ?? id);
+  if (q.type === 'choice') return label(answer.value);
+  if (q.type === 'multi') return answer.value.length ? answer.value.map(label).join(', ') : 'none';
+  if (q.type === 'rank') return answer.value.map((id, i) => `${i + 1}. ${label(id)}`).join(', ');
+  if (q.type === 'scale')
+    return `${answer.value} (${q.min}${q.minLabel ? ` ${q.minLabel}` : ''} to ${q.max}${q.maxLabel ? ` ${q.maxLabel}` : ''})`;
+  return String(answer.value);
+}
+
+/** The longest the prompt may be: a task's description. */
+const MAX_BRIEF = 10000;
+
+/**
+ * Refine from the answers (docs/specs/IDEA-30-new-agent.md, section 8): the prompt the board writes for a general
+ * agent that brings the work waiting for an answered decision in line with its answers. `decision` is the decision's
+ * task (its `ref` is its work ID or short ID), `waiting` the open tasks that depend on it, and `note` the owner's,
+ * which goes under the board's prompt. Returns the task's title and description.
+ * @param {{ ref: string, description: string, spec?: string | null, questions: any[], answers: Record<string, any> }} decision
+ * @param {{ ref: string, description: string, tags?: string[], spec?: string | null }[]} waiting
+ * @param {string | null} [note]
+ */
+export function refinePrompt(decision, waiting, note = null) {
+  const title = clip(`Refine from the answers to ${decision.ref}: ${decision.description}`, 200);
+  const questions = decision.questions.flatMap((q, i) => {
+    const answer = decision.answers[q.id];
+    return [
+      `${i + 1}. ${q.prompt.trim()}`,
+      `   Answer: ${spell(q, answer)}`,
+      ...(answer?.comment ? [`   The owner's note: ${answer.comment.trim()}`] : []),
+    ];
+  });
+  const specs = [...new Set([decision.spec, ...waiting.map((t) => t.spec)].filter(Boolean))];
+  const held = waiting.map((t) => {
+    const features = featureTags(t.tags);
+    return `- ${t.ref}: ${t.description}${features.length ? ` (feature: ${features.join(', ')})` : ''}`;
+  });
+  const after = [
+    '',
+    'What to do',
+    `- Change the tasks waiting for ${decision.ref}, and their dependencies, so they match the answers (the cross-task edits a general agent may make, each change noted).`,
+    `- Update ${specs.length ? 'the spec' : 'any spec the tasks link'} to match, in one pull request that closes your own task.`,
+    '- Add the tasks the answers need, filled in and depending on what they wait for.',
+    '- Ask a new decision for anything the answers leave open. Never change these answers: only the owner does.',
+    '- If nothing in the repository needs to change, comment what you changed on the board, task by task, and release your task.',
+    ...(note && String(note).trim() ? ['', 'Note from the owner:', String(note).trim().slice(0, 4000)] : []),
+  ];
+  const intro = `The owner answered the decision on ${decision.ref} (${decision.description}). Bring the work waiting for it in line with the answers.`;
+  const rest = [
+    '',
+    `Waiting for ${decision.ref}`,
+    ...(held.length ? held : ['- Nothing open waits for it: look for tasks and specs the answers change.']),
+    ...(specs.length ? ['', specs.length === 1 ? 'Spec' : 'Specs', ...specs.map((s) => `- ${s}`)] : []),
+    ...after,
+  ].join('\n');
+  // Too long for a description: the answers give way first, since they stay on the decision for the agent to read.
+  const more = `\n… (the rest is on ${decision.ref}: npx breakaway show ${decision.ref})`;
+  const answers = ['', 'Questions and answers', ...questions].join('\n');
+  const room = MAX_BRIEF - intro.length - rest.length - 1;
+  const middle = answers.length <= room ? answers : `${answers.slice(0, Math.max(0, room - more.length))}${more}`;
+  return { title, brief: `${intro}${middle}\n${rest}`.slice(0, MAX_BRIEF) };
+}
