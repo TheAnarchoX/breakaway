@@ -44,7 +44,14 @@ import { sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import { CLI_PACKAGE, PROMPT_SECTIONS, initPlan, machineTaskrc, promptSections } from './tasks/init.js';
-import { githubRequest, ideaTask, staleCliWarning, unknownSubcommand } from './tasks/cli.js';
+import {
+  githubRequest,
+  ideaTask,
+  pullAgentRequest,
+  pullAgentSummary,
+  staleCliWarning,
+  unknownSubcommand,
+} from './tasks/cli.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { LEGACY, parseInstall, secretName } from '../src/install.js';
 import {
@@ -143,6 +150,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
   routines               saved prompts the owner runs with a button, and their caps
   routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>]
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
+  github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>]
+  github review <n>      start an agent that tests a Dependabot pull request, as Safe to merge? does (owner)  [--note <text>] [--repo <slug>]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
@@ -1188,6 +1197,18 @@ const commands = {
     );
   },
   async github() {
+    const action = args[0];
+    if (action === 'fix' || action === 'review') {
+      const built = pullAgentRequest(action, args[1], {
+        repo: (await checkoutRepo()).slug,
+        problem: opts.problem,
+        note: opts.note,
+      });
+      if (built.error || !built.request) fail(built.error ?? 'bad request');
+      const answer = await call(...built.request);
+      print(answer, (a) => pullAgentSummary(action, args[1].replace(/^#/u, ''), a));
+      return;
+    }
     const g = await call(...githubRequest((await checkoutRepo()).slug, { sync: Boolean(opts.sync) }));
     print(g, (d) => {
       if (!d.connected) return "GitHub isn't connected yet: open the GitHub view on the board (docs/tasks.md#github).";
