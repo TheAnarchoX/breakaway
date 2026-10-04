@@ -3,14 +3,32 @@
  * `tasks claim`) and where the board is, found the same way as the CLI (scripts/tasks/settings.js).
  * Each returns null/undefined rather than throwing when something's missing, because the hooks stay quiet.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { boardUrl, configDir, parseEnvFile, readSetting } from './settings.js';
 
-/** The project's root, as Claude Code gives it to hooks. */
-export function projectRoot() {
-  return process.env.CLAUDE_PROJECT_DIR || process.cwd();
+/** The git root of the current folder, or null outside a repository. */
+function gitRoot() {
+  try {
+    return (
+      execFileSync('git', ['rev-parse', '--show-toplevel'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The project's root: as Claude Code gives it to hooks, and where it doesn't (a cloud session can leave
+ * CLAUDE_PROJECT_DIR empty, BRK-88), the git root of the folder the hook runs in, where `tasks claim` marks the task.
+ */
+export function projectRoot(env = process.env, root = gitRoot, cwd = process.cwd()) {
+  return env.CLAUDE_PROJECT_DIR || root() || cwd;
 }
 
 /** A file's text, or null when it can't be read. */
