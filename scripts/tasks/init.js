@@ -49,6 +49,11 @@ const ADAPTED = ['taskrc', 'scripts/task', SKILL];
  * sit at the root, so the paths `read` takes are the board's; what is written keeps this folder.
  */
 const TARGET_DIR = 'tools/tasks/';
+/**
+ * The record of what repos init wrote into a repository (BRK-79): `--update` replaces a copied file only when it's
+ * listed here, or sits in TARGET_DIR, breakaway's own folder. Anything else at a path it copies to is the repository's.
+ */
+export const MANIFEST = `${TARGET_DIR}copied.json`;
 const GITIGNORE = ['.task/', '.task-session', '.env'];
 /** Pinned to LF so the shell scripts run on a checkout with core.autocrlf=true (BRK-41). */
 const GITATTRIBUTES = ['scripts/task text eol=lf', '.envrc text eol=lf'];
@@ -146,9 +151,28 @@ export function rewireHooks(text) {
       const now = JSON.stringify(hookCommand(name)).slice(1, -1);
       out = out.split(was).join(now);
     }
-  return out.replace(/npx --yes breakaway(?:@[^\s"\\]+)? hook (session|wait)\b/gu, (_, name) =>
-    JSON.stringify(hookCommand(name)).slice(1, -1),
+  const current = (_, name) => JSON.stringify(hookCommand(name === 'message-wait' ? 'wait' : name)).slice(1, -1);
+  return (
+    out
+      .replace(/npx --yes breakaway(?:@[^\s"\\]+)? hook (session|wait)\b/gu, current)
+      // The old CLI copy's hook scripts, from before BRK-7, quoted or not (BRK-79): its copy is about to go.
+      .replace(
+        /node (\\")?(?:\$CLAUDE_PROJECT_DIR\/)?(?:tools\/tasks\/cli\/)?scripts\/tasks\/(session-hook|message-wait)\.mjs\1/gu,
+        (_, _q, name) => current(_, name === 'session-hook' ? 'session' : name),
+      )
   );
+}
+
+/**
+ * The paths a repository's AGENTS.md says came from the board, in its "Copied files." bullet as any version of repos
+ * init wrote it; a folder ends in `/`. None when AGENTS.md is the repository's own (BRK-79).
+ */
+export function declaredCopies(agents) {
+  const line = String(agents ?? '')
+    .split('\n')
+    .find((l) => /^- \*\*Copied files\.\*\*/u.test(l));
+  if (!line) return [];
+  return [...line.split(/ come from \[/u)[0].matchAll(/`([^`]+)`/gu)].map((m) => m[1]);
 }
 
 /** A short SHA-256 of `paths` and their text: changes whenever one of them does. */
@@ -266,10 +290,20 @@ export function promptSections(given = {}) {
 }
 
 /** The `tasks` skill for another repository: links into the board's docs point at them on GitHub. */
-export function skillFor(text, board) {
-  return String(text)
+export function skillFor(text, board, repo = null) {
+  const linked = String(text)
     .replace(/\]\((?:\.\.\/)+((?:docs|tools)\/[^)]+)\)/gu, `](https://github.com/${board}/blob/main/$1)`)
     .replace(/\]\(((?:\.\.\/)+)prompts\//gu, ']($1tools/tasks/prompts/');
+  if (!repo) return linked;
+  // The skill is breakaway's own: in another repository it names that repository's work, areas, and prompt (BRK-79).
+  const prompt = promptPathOf(repo);
+  return linked
+    .replace(/breakaway's work is on the board/gu, "This repository's work is on the board")
+    .replace(/breakaway's areas: [^.\n]+\./gu, `This repository's areas: ${areaList(repo)}.`)
+    .replace(
+      /\[`prompts\/breakaway\.md`\]\(((?:\.\.\/)+)tools\/tasks\/prompts\/breakaway\.md\)/gu,
+      (_, up) => `[\`${prompt}\`](${up}${prompt})`,
+    );
 }
 
 /** A starter AGENTS.md: how this repository works with the board. The owner adds how to build here. */
@@ -278,9 +312,9 @@ export function agentsMd(repo, board, dir = DEFAULT_DIR) {
 
 <!-- Started by \`npx breakaway repos init\` (breakaway's task board). Add how to build here: setup, tests, style, and anything agents must never do. -->
 
-- **Work lives on the task board.** This repository's tasks are in the areas ${areaList(repo)}. Use the \`tasks\` skill (\`${SKILL}\`) and the CLI, \`npx breakaway\` (the \`breakaway\` package on npm), to claim, comment, and hand over. It works in this checkout's repository, so \`list\` and \`next\` show only this repository's tasks. The skill is breakaway's copy: where it names breakaway's own files or rules, the board's part applies and the rest doesn't.
+- **Work lives on the task board.** This repository's tasks are in the areas ${areaList(repo)}. Use the \`tasks\` skill (\`${SKILL}\`) and the CLI, \`npx breakaway\` (the \`breakaway\` package on npm), to claim, comment, and hand over. It works in this checkout's repository, so \`list\` and \`next\` show only this repository's tasks. The skill is breakaway's, written for this repository's areas and prompt: where it names breakaway's own files or rules, the board's part applies and the rest doesn't.
 - **Agents started by the board** follow [\`${promptPathOf(repo)}\`](${promptPathOf(repo)}), which starts with the board's core, \`tools/tasks/prompts/core.md\`.
-- **Copied files.** \`tools/tasks/\`, the release helpers in \`scripts/\`, and \`${SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`.claude/settings.json\` holds the session hooks that show a cloud agent's output on its task, and they run through \`npx\`, so this repository carries no copy of the CLI.
+- **Copied files.** \`tools/tasks/\`, the release helpers in \`scripts/\`, and \`${SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`${MANIFEST}\` lists every file it copied, and \`repos init --update\` replaces only those: a file it doesn't list is this repository's own, even at a path breakaway copies to. \`.claude/settings.json\` holds the session hooks that show a cloud agent's output on its task, and they run through \`npx\`, so this repository carries no copy of the CLI.
 - **Taskwarrior** (optional): \`scripts/task\`, or plain \`task\` with direnv after \`direnv allow\`, uses the board with this checkout's own \`.task/\` database, in the \`${repo.slug}\` context. \`npx breakaway setup\` connects the machine once.
 - **Changes reach \`${repo.defaultBranch || 'main'}\` through pull requests**, which the owner merges. Never merge, force-push, or rewrite \`${repo.defaultBranch || 'main'}\`.
 - **Never put a secret or token** in a file, task, comment, or pull request. The board's token lives in \`${dir}/tasks.env\` (or \`$BREAKAWAY_HOME/tasks.env\`) or the cloud environment's credentials, never in this repository.
@@ -343,13 +377,46 @@ export function initPlan({
     if (readTarget(path) !== null) skipped.push(path);
     else files.push({ path, content, ...extra });
   };
-  /** A file copied from the board: added when it's missing, and with `update`, replaced when it differs. */
+  // What an earlier run recorded writing (BRK-79): null for a repository set up before the record existed.
+  const recorded = (() => {
+    try {
+      const files = JSON.parse(readTarget(MANIFEST) ?? 'null')?.files;
+      return Array.isArray(files) ? new Set(files) : null;
+    } catch {
+      return null;
+    }
+  })();
+  // Set up before the record: the AGENTS.md repos init wrote says the copied files came from the board, and a
+  // repository's own AGENTS.md doesn't, so only then are files at the copied paths breakaway's.
+  const declared = recorded === null ? declaredCopies(readTarget('AGENTS.md')) : [];
+  /** Whether repos init wrote `path` here: in breakaway's own folder, on the record, or in AGENTS.md's copied files. */
+  const owns = (path) =>
+    path.startsWith(TARGET_DIR) ||
+    Boolean(recorded?.has(path)) ||
+    declared.some((d) => (d.endsWith('/') ? path.startsWith(d) : path === d));
+  const ours = new Set();
+  const theirs = [];
+  /**
+   * A file copied from the board: added when it's missing, and with `update`, replaced when it differs, but only when
+   * repos init wrote it (the record lists it, or it's in breakaway's own folder). A repository's own file at a path
+   * breakaway copies to is left alone (BRK-79).
+   */
   const copy = (path, content, extra = {}) => {
     const there = readTarget(path);
-    if (there === null) files.push({ path, content, ...extra });
-    else if (!update) skipped.push(path);
-    else if (there === content) current.push(path);
-    else files.push({ path, content, ...extra, changed: true });
+    if (there === null) {
+      files.push({ path, content, ...extra });
+      ours.add(path);
+    } else if (there === content) {
+      (update ? current : skipped).push(path);
+      ours.add(path);
+    } else if (!update) skipped.push(path);
+    else if (owns(path)) {
+      files.push({ path, content, ...extra, changed: true });
+      ours.add(path);
+    } else {
+      skipped.push(path);
+      theirs.push(path);
+    }
   };
 
   const prompt = promptPathOf(repo);
@@ -362,7 +429,14 @@ export function initPlan({
   }
   for (const path of COPIED) copy(TARGET_DIR + path, read(path));
   copy(`${TARGET_DIR}taskrc`, withRepoInTaskrc(read('taskrc'), repo.slug, Boolean(repo.isDefault)));
-  for (const path of importClosure(RELEASE_ENTRIES, read)) copy(path, read(path));
+  // A release helper the repository keeps as its own doesn't bring the files breakaway's version imports (BRK-79).
+  const kept = (entry) => {
+    const there = readTarget(entry);
+    return there === null || there === read(entry) || (update && owns(entry));
+  };
+  const needed = new Set(importClosure(RELEASE_ENTRIES.filter(kept), read));
+  for (const path of importClosure(RELEASE_ENTRIES, read))
+    if (needed.has(path) || readTarget(path) !== null) copy(path, read(path));
   if (HOOKS_FROM_COPY) for (const path of importClosure(HOOK_ENTRIES, read)) copy(HOOKS_DIR + path, read(path));
   // An old copy of the CLI is replaced by npx: with update, its files go. The src/ files it imported may be the
   // repository's own by now, so those are only named.
@@ -394,7 +468,7 @@ export function initPlan({
       );
   }
   if (readTarget('.claude/skills') === null) files.push({ path: '.claude/skills', link: '../.agents/skills' });
-  copy(SKILL, skillFor(read(SKILL), board));
+  copy(SKILL, skillFor(read(SKILL), board, repo));
   add('AGENTS.md', agentsMd(repo, board, configDir));
   if (!skipped.includes('AGENTS.md')) todo.push('AGENTS.md: add how to build in this repository');
 
@@ -448,5 +522,43 @@ export function initPlan({
       append: attributes !== null,
     });
   }
+  // A file the repository still runs stays, with the old copy it belongs to (BRK-79): package.json, or settings the
+  // rewiring above couldn't move to npx.
+  const settingsNow =
+    files.find((f) => f.path === '.claude/settings.json')?.content ?? readTarget('.claude/settings.json');
+  const uses = [
+    ['package.json', readTarget('package.json')],
+    ['.claude/settings.json', settingsNow],
+  ];
+  for (const group of [(p) => p.startsWith('scripts/'), (p) => p.startsWith(HOOKS_DIR)]) {
+    const inGroup = removals.filter(group);
+    const used = uses.flatMap(([file, text]) =>
+      inGroup.filter((p) => String(text ?? '').includes(p)).map((p) => `${file} still runs ${p}`),
+    );
+    if (!used.length) continue;
+    for (const p of inGroup) removals.splice(removals.indexOf(p), 1);
+    notes.push(
+      `${used.join('; ')}, so its copy stays: switch it to npx breakaway (\`${hookCommand('session')}\` for the hooks), then run --update again to remove the copy.`,
+    );
+  }
+  if (theirs.length)
+    notes.push(
+      `${theirs.join(', ')} ${theirs.length > 1 ? 'are' : 'is'} at a path breakaway copies to, but repos init has no record of writing ${theirs.length > 1 ? 'them' : 'it'}, so ${theirs.length > 1 ? 'they are left as they are' : 'it is left as it is'}. If one is breakaway's older copy, delete it and run --update again.`,
+    );
+  // The record of what is breakaway's here; a run without --update leaves an existing one alone.
+  const record = `${JSON.stringify(
+    {
+      about: `Files repos init copied from ${board} and keeps in step with it (npx breakaway repos init <slug> --update). A file not listed is this repository's own, even at a path breakaway copies to.`,
+      from: board,
+      files: [...ours].sort(),
+    },
+    null,
+    2,
+  )}\n`;
+  const recordThere = readTarget(MANIFEST);
+  if (recordThere === null) files.push({ path: MANIFEST, content: record });
+  else if (recordThere === record) current.push(MANIFEST);
+  else if (update) files.push({ path: MANIFEST, content: record, changed: true });
+  else skipped.push(MANIFEST);
   return { files, removals, skipped, current, notes, todo };
 }
