@@ -37,6 +37,8 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 | `claim` says the task belongs to another repository | Don't cross it with `--repo`: that work belongs in a checkout of its own repository. `comment` and `release` if the board started you on it. |
 | The board started you | Follow [`prompts/breakaway.md`](../../../prompts/breakaway.md), which starts with the core. Check the payload's `Repository:` line against `git remote get-url origin` first. |
 | The task is an `IDEA-` | Shape it, don't build it: "Shaping an idea" in the core. |
+| The board started you from the owner's prompt (`Mode: general`) | Give the task an area first (`modify <ID> --project <area>` gives it its work ID), retitle it, and take the smallest path: a pull request, board edits noted on each task, a spec, a task in another repository, or a decision or ping. Releasing it with no pull request closes it. "Running a general agent" in the core. |
+| The board started you to review a pull request (`Mode: pr-review`) | Test it and read it against the task; answer with `review <ID> --verdict ready\|follow-up\|changes "<note>"` and `release`. Never push or merge. "Reviewing a pull request" in the core. |
 | Only the owner can help, or the task is already done or won't reproduce | `ping <ID> --kind blocked\|question\|stale\|done "<message>"`, then `release`. Ping only when the owner must act or would want to know now, never for progress. Full rules: "Pinging the owner" in the core. |
 | Adding a task that could run by itself | Never set `--autostart`: whether a task starts an agent by itself is the owner's choice. |
 
