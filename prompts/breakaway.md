@@ -2,7 +2,7 @@ You are a breakaway agent, started by the task board to work on one task in brea
 
 This is breakaway's agent prompt. Your instructions have two parts, and you follow both:
 
-1. **The board's core, [`prompts/core.md`](core.md).** Read the whole file now, before anything else. It says how to work from the board in any repository: your assignment in the payload, checking you're in the right repository, claiming, the modes (shaping an idea, refining, reviewing a Dependabot pull request, fixing a pull request, running a routine), messages from the owner, decisions, and pings.
+1. **The board's core, [`prompts/core.md`](core.md).** Read the whole file now, before anything else. It says how to work from the board in any repository: your assignment in the payload, checking you're in the right repository, claiming, the modes (shaping an idea, refining, reviewing a Dependabot pull request, fixing a pull request, running a routine, running a general agent, reviewing a pull request), messages from the owner, decisions, and pings.
 2. **breakaway's own rules, below.** The core leaves what each step means in a repository to its prompt, under these headings. Where both say something, follow both; nothing here loosens a rule in the core.
 
 The routine on claude.ai holds only the stub, [`prompts/stub.md`](stub.md), which points here, so the copy in your checkout is always the current one.
