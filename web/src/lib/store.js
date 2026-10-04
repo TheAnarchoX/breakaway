@@ -1300,9 +1300,34 @@ export const actions = {
       message,
     );
     loadFeatures();
-    if (result?.feature && selectedFeature.peek() === result.feature.slug)
+    if (result?.feature && selectedFeature.peek() === result.feature.slug) {
       featureOpen.value = { slug: result.feature.slug, data: result.feature, error: null };
+      loadFeature(result.feature.slug); // with its chase's queue, which a save doesn't return
+    }
     return result?.feature ?? null;
+  },
+  /**
+   * Starts or stops the chase on feature `f`, or sets how many agents it allows in an area (`body`: `on`,
+   * `parallel`). The feature page and the Agents view follow the answer straight away.
+   */
+  async chase(f, body, message) {
+    const result = await change(() => api(`features/${enc(f.slug)}/chase`, { method: 'POST', body }), message);
+    const open = featureOpen.peek();
+    if (result?.chase && open?.slug === f.slug && open.data)
+      featureOpen.value = { ...open, data: { ...open.data, chase: result.chase } };
+    if (open?.slug === f.slug) loadFeature(f.slug); // its progress moves with what the chase started
+    loadFeatures();
+    loadAgents();
+    return result;
+  },
+  /** What a chase on `f` would start now, without starting anything; null after the error. */
+  async chasePreview(f) {
+    try {
+      return await api(`features/${enc(f.slug)}/chase`, { method: 'POST', body: { on: true, dryRun: true } });
+    } catch (error) {
+      toast(error.message, 'error');
+      return null;
+    }
   },
   async deleteFeature(f) {
     const ok = await confirmDialog({

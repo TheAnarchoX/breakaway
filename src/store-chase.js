@@ -323,6 +323,18 @@ export const chaseMethods = {
     };
   },
 
+  /** The chases that are on, oldest first, each worked out against `views`: the Agents view's (section 3.9). */
+  chasesOn(views, connected) {
+    return this.sql
+      .exec("SELECT * FROM features WHERE chase = 'on' ORDER BY chase_started, slug")
+      .toArray()
+      .map((row) => ({
+        slug: row.slug,
+        title: row.title,
+        ...this.chaseView(row, this.chaseQueue(row, views, connected)),
+      }));
+  },
+
   /** GET /api/features/<slug>: the feature with its chase worked out, connections included. */
   async featureWithChase(slug) {
     const detail = this.featureDetail(slug);
