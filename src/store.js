@@ -502,7 +502,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       return await action();
     } catch (error) {
       if (error instanceof AgentError)
-        return fail(error.status, error.message, error.forceable ? { forceable: true } : {});
+        return fail(error.status, error.message, {
+          ...(error.forceable ? { forceable: true } : {}),
+          ...(error.path ? { path: error.path } : {}),
+        });
       if (error instanceof NotFound) return fail(404, error.message);
       if (error instanceof InputError || error instanceof RefError || error instanceof DecisionError)
         return fail(400, error.message);
@@ -1265,9 +1268,23 @@ const apiActions = {
   },
   reviewPullApi(number, note, repo = null, { force = false, by } = {}) {
     return this.run(async () => {
-      if (force) ownerOnly(by, 'force start an agent');
+      ownerOnly(by, force ? 'force start an agent' : 'start an agent that reviews a pull request');
       return ok(await this.reviewPull(number, { note, repo, force: Boolean(force) }));
     });
+  },
+  /** `review <ID> --verdict …`: an agent's answer on the pull request that closes its task (BRK-111). */
+  taskReviewApi(ref, body) {
+    return this.run(async () =>
+      ok(
+        this.recordAgentReview(ref, {
+          verdict: body?.verdict,
+          note: body?.note,
+          by: body?.by,
+          pr: body?.pr ?? null,
+        }),
+        201,
+      ),
+    );
   },
   fixPrApi(number, body) {
     return this.run(async () => {

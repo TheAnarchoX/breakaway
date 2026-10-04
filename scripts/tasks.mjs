@@ -51,6 +51,7 @@ import {
   ideaTask,
   pullAgentRequest,
   pullAgentSummary,
+  reviewRequest,
   staleCliWarning,
   unknownSubcommand,
 } from './tasks/cli.js';
@@ -145,7 +146,9 @@ Reading                (list, next, claim, and add work in this checkout's repos
   routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>] [--force]
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
   github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>] [--force]
-  github review <n>      start an agent that tests a Dependabot pull request, as Safe to merge? does (owner)  [--note <text>] [--repo <slug>] [--force]
+  github review <n>      start an agent that reviews a pull request that can merge as it stands, on the task it closes, as
+                         Review with an agent does; on a Dependabot one it tests the update, as Safe to merge? does
+                         (owner)  [--note <text>] [--repo <slug>] [--force]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
@@ -157,6 +160,8 @@ Working
                          refuses another repository's task unless --repo names it
   release <ref>          give it back  [--force]
   comment <ref> <text>   add a comment (signed with your agent name); note is the same command
+  review <ref> --verdict ready|follow-up|changes <note>   your review of the pull request that closes the task you
+                         hold: a comment on it, and the review on the pull request's page (the note is Markdown)  [--pr <n>]
   done <ref>             finish it  [--note <text>] [--pr <url>]
   add <description>      new task; gets the next work ID for its project
     --project <p> --tag <t>… --priority H|M|L --horizon now|next|later
@@ -1075,6 +1080,12 @@ const commands = {
     });
     unmarkSession(task);
     print(task, (t) => `Released ${ref(t)}.`);
+  },
+  async review() {
+    const built = reviewRequest(args[0], opts.verdict, args.slice(1).join(' '), { by: agent(), pr: opts.pr });
+    if (built.error || !built.request) fail(built.error ?? 'bad request');
+    const { review, task } = await call(...built.request);
+    print({ review, task }, (r) => `Left your review of #${r.review.pr} on ${ref(r.task)}: ${r.review.label}.`);
   },
   // The board's `annotate` route is the comments route's alias; using it keeps this working on a board that hasn't deployed /comments yet.
   async comment() {

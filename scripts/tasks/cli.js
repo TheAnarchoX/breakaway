@@ -79,7 +79,7 @@ export const FIX_PROBLEMS = ['conflicts', 'failing', 'review'];
 
 /**
  * The request behind `npx breakaway github fix <n>` and `github review <n>` (BRK-81): the pull request page's "Fix with an
- * agent" and "Safe to merge?" buttons (`POST github/pulls/<n>/fix` and `/review`). It names the checkout's repository
+ * agent" and "Safe to merge?" or "Review with an agent" buttons (`POST github/pulls/<n>/fix` and `/review`). It names the checkout's repository
  * like `github` does. Returns an error message instead when the number or `problem` can't be right.
  * @param {'fix' | 'review'} action
  * @param {string | number | undefined} number
@@ -96,9 +96,38 @@ export function pullAgentRequest(action, number, { repo = null, problem, note, f
     ...(repo ? { repo } : {}),
     ...(problem ? { problem } : {}),
     ...(typeof note === 'string' && note.trim() ? { note } : {}),
-    ...forceFields(force, by),
+    // Review with an agent is the owner's, so a review always says who asks (BRK-111); a fix only when forcing.
+    ...(action === 'review' ? { ...(force ? { force: true } : {}), ...(by ? { by } : {}) } : forceFields(force, by)),
   };
   return { request: ['POST', `github/pulls/${n}/${action}`, body] };
+}
+
+export const REVIEW_VERDICTS = ['ready', 'follow-up', 'changes'];
+
+/**
+ * `npx breakaway review <ID> --verdict ready|follow-up|changes "<note>"` (BRK-111): an agent's answer on the pull
+ * request that closes its task. The board adds it to the task as a comment and keeps it for the pull request page.
+ * `pr` picks the pull request when the task has several open.
+ * @param {string | undefined} ref
+ * @param {string | undefined} verdict
+ * @param {string | undefined} note
+ * @param {{ by?: string, pr?: string | number }} [options]
+ */
+export function reviewRequest(ref, verdict, note, { by, pr } = {}) {
+  if (!ref) return { error: 'say which task: npx breakaway review <task> --verdict ready "<note>"' };
+  if (!REVIEW_VERDICTS.includes(String(verdict)))
+    return { error: `say the verdict: --verdict ${REVIEW_VERDICTS.join('|')}` };
+  const text = String(note ?? '').trim();
+  if (!text) return { error: 'say what you found: the note is the review (Markdown)' };
+  const n = pr === undefined ? null : String(pr).replace(/^#/u, '');
+  if (n !== null && !/^[1-9]\d{0,8}$/u.test(n)) return { error: '--pr is a pull request number' };
+  return {
+    request: [
+      'POST',
+      `tasks/${encodeURIComponent(ref)}/review`,
+      { verdict, note: text, ...(by ? { by } : {}), ...(n ? { pr: Number(n) } : {}) },
+    ],
+  };
 }
 
 /**
@@ -145,12 +174,13 @@ export function generalAgentSummary({ task, run, waiting, forceable }) {
  * What the CLI says about an answer to those requests: which task and agent took the pull request, or who already has it.
  * @param {'fix' | 'review'} action
  * @param {string | number} number
- * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, already?: string | null }} answer
+ * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string, kind?: string } | null, already?: string | null }} answer
  */
 export function pullAgentSummary(action, number, { task, run, already }) {
   const id = task.wid ?? task.short;
   if (!run) return `${id} already has it: ${already}.`;
-  const what = action === 'fix' ? `fixing #${number}` : `testing #${number}`;
+  const what =
+    action === 'fix' ? `fixing #${number}` : run.kind === 'pr-review' ? `reviewing #${number}` : `testing #${number}`;
   return `Started ${run.agent ? `${run.agent}, ` : 'an agent '}${what} on ${id}${run.url ? `: ${run.url}` : ''}`;
 }
 

@@ -542,6 +542,7 @@ async function handleApi(request, env, url, ctx) {
       if (action === 'release') return send(await s.release(ref, body.agent, Boolean(body.force)));
       if (action === 'done') return send(await s.done(ref, body.note, body.by));
       if (action === 'comments' || action === 'annotate') return send(await s.comment(ref, body.text, body.by));
+      if (action === 'review') return send(await s.taskReviewApi(ref, body));
       if (action === 'session') return send(await s.sessionLogApi(ref, body));
       if (action === 'pings') {
         const result = await s.pingCreate(ref, body);

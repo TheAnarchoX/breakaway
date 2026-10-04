@@ -1209,6 +1209,41 @@ export const githubMethods = {
   },
 
   /**
+   * What decides whether an agent may review pull request `number` now (BRK-111), read live from GitHub: its state,
+   * draft, mergeable state, checks, reviews, head, and base. Null when GitHub isn't connected or doesn't answer,
+   * so the caller goes by the last sync.
+   */
+  async livePull(slug, number) {
+    const repo = this.githubRepo(slug);
+    const credentials = repo && (await appCredentials(this.env));
+    if (!credentials) return null;
+    const client = this.githubClient(credentials, repo);
+    try {
+      const [p, reviews] = await Promise.all([
+        client.get(`/pulls/${number}`),
+        client.get(`/pulls/${number}/reviews?per_page=100`),
+      ]);
+      const [checks, status] = await Promise.all([
+        client.get(`/commits/${p.head.sha}/check-runs?per_page=100`),
+        client.get(`/commits/${p.head.sha}/status`),
+      ]);
+      return {
+        state: prState(p),
+        draft: Boolean(p.draft),
+        mergeable: p.mergeable ?? null,
+        mergeableState: p.mergeable_state ?? null,
+        checks: rollupChecks(checks.check_runs, status.statuses),
+        review: reviewDecision(reviews),
+        headSha: p.head?.sha ?? null,
+        base: p.base?.ref ?? null,
+      };
+    } catch (error) {
+      if (error instanceof GitHubError) return null;
+      throw error;
+    }
+  },
+
+  /**
    * One pull request, read live for the page: GitHub's current mergeable state, checks, reviews,
    * conversation, and per-file diffs. Nothing here is stored (the diffs are the repository's code).
    */
@@ -1313,6 +1348,8 @@ export const githubMethods = {
           tasks,
           // Who's on its task right now: the page shows them instead of Fix with an agent (WEB-6).
           agent: state === 'open' ? this.prAgent({ ...linked, number: p.number, repo: repo.slug }) : null,
+          // The latest agent's review, shown below the description (BRK-111).
+          agentReview: this.agentReviewOf(repo.slug, p.number, p.head?.sha ?? null),
           workers,
           deploys: workers.length > 0,
           // null: the repository has no deploy pipeline, so the page says nothing about deploys.
