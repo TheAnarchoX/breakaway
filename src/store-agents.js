@@ -232,17 +232,32 @@ export const agentsMethods = {
 
   // ---- routines per repository ----------------------------------------------------------------
 
-  /** The routine that starts agents in repository `slug`, or null while it isn't connected. */
+  /**
+   * The routine that starts agents in repository `slug`, or null while it isn't connected: the Secrets Store's, else
+   * the one kept on the board (BRK-133). A kept one that can't be opened comes back as `{ broken: true }`.
+   */
   routineFor(slug) {
-    return routineCredentials(this.env, slug === this.defaultRepoSlug() ? null : slug);
+    return this.repoRoutine(slug);
   },
 
-  /** The registered repositories whose routine is connected. */
+  /** The registered repositories whose routine is connected (a kept one that can't be opened isn't). */
   async connectedRepos() {
     const fallback = this.defaultRepoSlug();
     const [own, others] = await Promise.all([routineCredentials(this.env), otherRoutines(this.env)]);
+    const kept = new Set(
+      this.sql
+        .exec('SELECT slug FROM kept_routines')
+        .toArray()
+        .map((r) => r.slug),
+    );
     const connected = new Set();
-    for (const repo of this.repos()) if (repo.slug === fallback ? own : others[repo.slug]) connected.add(repo.slug);
+    for (const repo of this.repos()) {
+      if (repo.slug === fallback ? own : others[repo.slug]) connected.add(repo.slug);
+      else if (kept.has(repo.slug)) {
+        const routine = await this.keptRoutine(repo.slug);
+        if (routine && !('broken' in routine)) connected.add(repo.slug);
+      }
+    }
     return connected;
   },
 
@@ -279,6 +294,10 @@ export const agentsMethods = {
    */
   async checkRoutineReady(slug) {
     const credentials = await this.routineFor(slug);
+    if (credentials && 'broken' in credentials)
+      throw new AgentError(
+        `${slug}’s agent routine, connected from the board, can’t be read any more (the sync key changed): connect it again from the board, or run ${connectCommand(slug === this.defaultRepoSlug() ? null : slug)}`,
+      );
     if (!credentials) {
       throw new AgentError(
         slug === this.defaultRepoSlug()
