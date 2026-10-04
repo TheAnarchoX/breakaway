@@ -246,6 +246,21 @@ describe('chase', () => {
     expect(events.flatMap((e) => e.changes).filter((c) => c.kind === 'chase_started')).toHaveLength(2);
   });
 
+  it('shows the chases that are on in the Agents view, each with its live line and queue', async () => {
+    const { chases } = await body(await api('agents'));
+    expect(chases).toEqual([
+      expect.objectContaining({
+        slug: 'speed',
+        title: 'Speed',
+        state: 'on',
+        parallel: 3,
+        summary: '4 running, 3 ready, 1 waiting on other tasks, 2 waiting for you',
+      }),
+    ]);
+    expect(chases[0].queue.map((q) => q.wid)).toEqual(expect.arrayContaining(['OPS-3', 'OPS-4', 'DEBT-2']));
+    expect(chases[0].needsYou.map((n) => n.wid)).toEqual(['MOD-3', 'SCR-1']);
+  });
+
   it('keeps one agent per area outside a chase, for agents next and auto-start', async () => {
     const plan = await body(await api('agents/next', { method: 'POST', body: { count: 6, dryRun: true } }));
     expect(plan.skipped.find((s) => s.wid === 'OPS-6').reason).toMatch(/already working in Operations/);
@@ -324,6 +339,7 @@ describe('chase', () => {
   it('stops: starts nothing new and leaves running agents alone, and can start again', async () => {
     const res = await chase('speed', { on: false });
     expect(res.chase).toMatchObject({ state: 'stopped', on: false });
+    expect((await body(await api('agents'))).chases).toEqual([]);
     const before = routine.fires.length;
     await done('OPS-2');
     await tick();

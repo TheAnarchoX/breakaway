@@ -1282,6 +1282,8 @@ const commands = {
   async modify() {
     const changes = changesFrom(opts);
     if (!Object.keys(changes).length) fail('nothing to change; see npx breakaway --help');
+    // Who changes it, whichever field: a general agent's edits of other tasks follow their own rule (IDEA-30 section 2).
+    changes.by = agent();
     const { task } = await call('PATCH', `tasks/${enc(need(args[0], 'task'))}`, changes);
     print(task, (t) => `Changed ${ref(t)}.\n\n${detail(t)}`);
   },

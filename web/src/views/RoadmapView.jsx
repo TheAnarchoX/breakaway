@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { ArrowLeft, Hand, Milestone, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-preact';
+import { ArrowLeft, FastForward, Hand, Milestone, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-preact';
 import { plural } from '../lib/model.js';
 import {
   actions,
@@ -15,6 +15,7 @@ import {
   selectedFeature,
 } from '../lib/store.js';
 import { ClaimChip, Dialog, RepoChip, widClass } from '../components/ui.jsx';
+import { ChasePanel } from '../components/Chase.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 
 /**
@@ -88,6 +89,7 @@ function FeatureCard({ f }) {
       <a class="fr-card" href={featureHref(f.slug)} data-feature={f.slug}>
         <span class="fr-card-top">
           <span class="fr-slug">+{f.slug}</span>
+          {f.chase?.on && <span class="fr-pill fr-pill-chase">Chasing</span>}
           {f.shipped && <span class="fr-pill">Released</span>}
           {!f.shipped && f.done && <span class="fr-pill">Done</span>}
         </span>
@@ -406,7 +408,17 @@ function FeatureDetail({ slug }) {
             <Progress progress={f.progress} />
             <p class={`fr-next ${f.needsYou.length && !f.done ? 'is-yours' : ''}`}>{nextUp(f)}</p>
           </section>
-          {f.needsYou.length > 0 && (
+          {f.chase && (
+            <section class="gh-section" aria-labelledby="fr-chase-title">
+              <h2 id="fr-chase-title">
+                <FastForward size={18} aria-hidden="true" />
+                Chase
+              </h2>
+              <ChasePanel feature={f} chase={f.chase} open={f.progress.total > 0 && !f.done} />
+            </section>
+          )}
+          {/* A chase that's on lists its own Needs you, with the blockers it pulled in. */}
+          {f.needsYou.length > 0 && !f.chase?.on && (
             <section class="gh-section" aria-labelledby="fr-yours-title">
               <h2 id="fr-yours-title">
                 <Hand size={18} aria-hidden="true" />
