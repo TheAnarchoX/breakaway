@@ -42,7 +42,7 @@ curl -H "Authorization: Bearer $BREAKAWAY_TOKEN" "$BREAKAWAY_URL/api/health"
 | `POST /api/tasks/<ref>/done` | `{ note?, by? }`. |
 | `POST /api/tasks/<ref>/comments` | `{ text, by? }`. Append-only. |
 | `POST /api/tasks/<ref>/pings` | An agent pings you: `{ kind, message, proposal? }`. |
-| `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. |
+| `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. On a kickoff’s idea, `carryOn: true` also starts its next run, or queues it for room (`202`, `waiting`); signed-in board only. |
 | `POST /api/next` | The best ready task; with `claim: true`, claims it in one step. |
 
 A task you create or change takes these fields: `description` (the title), `brief`, `done_when`, `project` (the area), `priority`, `horizon`, `spec`, `pr`, `due`, `wait`, `scheduled`, `status`, `autostart`, `decision`, and `repo` (on create). A create also takes `tags`, `depends`, `related`, and `note`; a change takes `addTags`, `removeTags`, `addDepends`, `removeDepends`, `addRelated`, `removeRelated`, and `annotate`.

@@ -624,6 +624,9 @@ async function handleApi(request, env, url, ctx) {
       if (parts[3] === 'waiting' && parts.length === 4 && method === 'GET')
         return send(await s.messagesWaitingApi(ref, url.searchParams.get('agent')));
     } else if (action === 'decision' && parts[3] === 'answers' && parts.length === 4) {
+      // Send answers and carry on starts an agent (BRK-134): the owner's press on the signed-in board, never the bearer token.
+      if (method === 'POST' && body.carryOn && via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can send answers and start the next run' });
       if (method === 'POST') return send(await s.submitDecision(ref, body));
       if (method === 'DELETE') return send(await s.reopenDecision(ref, body));
     } else if (method === 'POST') {

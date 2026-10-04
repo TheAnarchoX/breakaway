@@ -154,6 +154,17 @@ export function createUrl({ name, github = null, pitch = '' }) {
 }
 
 /**
+ * Whether a task is a kickoff's IDEA: an idea tagged as a kickoff's. Starting an agent on one sends `Mode: kickoff`
+ * (BRK-134), and answering its decision keeps it open, since its plan's pull request closes it.
+ */
+export function isKickoffIdea(task) {
+  if (!task) return false;
+  const tags = Array.isArray(task.tags) ? task.tags : [];
+  const tagged = tags.includes(KICKOFF_TAG) || Boolean(task[`tag_${KICKOFF_TAG}`]);
+  return tagged && task.project === 'ideas';
+}
+
+/**
  * The IDEA a kickoff becomes in its new repository: the pitch as its description, word for word, its first
  * line as the title, horizon next, and tagged so the kickoff mode and the Kickoff view can find it.
  */
