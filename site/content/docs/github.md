@@ -61,7 +61,7 @@ These are **cookie only**: they accept only the signed-in web board, from its ow
 
 ### Two standing settings
 
-The board’s **Settings** has two switches under **Pull requests**, both off until you turn them on. They’re a standing “press it for me”, with the same refusals.
+Each repository’s page in **Settings** has two switches under **Pull requests**, both off until you turn them on. They’re a standing “press it for me”, with the same refusals.
 
 - **Keep branches up to date.** When the default branch moves on, the board updates the branch of every open pull request that’s behind. It skips drafts and pull requests with conflicts.
 - **Merge when green.** Every open pull request that isn’t a draft merges once its required checks pass, Dependabot’s included. It uses the method you last chose in the merge dialog. In a repository with a pipeline, merging deploys to staging, so turning it on asks first and says how many pull requests are ready to merge straight away.
@@ -131,6 +131,8 @@ In the repository’s checkout:
 - `npx breakaway pipeline init` writes `.github/workflows/deploy.yml`, `promote.yml`, `rollback.yml`, and `.github/deploy-paths.json` for the Workers, and `release.yml` for the package. It never overwrites a file; `--dry-run` lists what it would write. Without a config it prints an example.
 - `npx breakaway pipeline check` says whether the config is sound and the workflows are what it renders now.
 - `npx breakaway pipeline init --update` replaces what it rendered before, after you change the config or update breakaway. It leaves a workflow of your own alone and says so.
+
+A new repository can get all of this from `repos init`: `npx breakaway repos init <slug> --pipeline` adds a starter config for the Workers `<slug>-staging` and `<slug>` (or `--staging` and `--production`, asked in a terminal), what it renders, and, when the repository has no workflow yet, a minimal `ci.yml` for them to wait for. `--package` adds the release flow for the package `package.json` names, with its `publishConfig.access`; a private `package.json` gets none. They are new files in the pull request `repos init` opens, and nothing that’s there is changed: a repository that already has the config or one of the workflows gets nothing from them. Narrow the starter `deployPaths` to the Worker’s code before you merge.
 
 The workflows run helper scripts that `npx breakaway repos init <slug> --update` copies in; `pipeline init` names any that are missing. Open a pull request with the config, the rendered files, and the old deploy or publish steps taken out. Do your part below before you merge it: once the workflows are on the default branch, the merge’s own checks start them, so the first deploy to staging and the first pre-release come from the merge itself. Without your part, they fail.
 

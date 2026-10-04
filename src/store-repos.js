@@ -243,7 +243,7 @@ export const reposMethods = {
         repo: row ?? gone,
         removed: gone?.removed ?? null,
         areas,
-        routineConnected: Boolean(await routineCredentials(this.env, isDefault ? null : name)),
+        ...(await this.routineConnectedState(name)),
         routines,
         open: tasks.filter(isOpen).length,
         running: row
@@ -419,6 +419,8 @@ export const reposMethods = {
         )
         .toArray()
         .map((r) => r.slug);
+      // A routine kept on the board goes with it (BRK-133); one in the Secrets Store is the owner's to drop.
+      this.dropKeptRoutine(current.slug);
       if (this.ghCache) delete this.ghCache[current.slug];
       if (this.promptCache) delete this.promptCache[current.slug];
       return ok({
@@ -429,6 +431,12 @@ export const reposMethods = {
         routine: Boolean(await routineCredentials(this.env, current.slug)),
       });
     });
+  },
+
+  /** Whether repository `slug`'s routine can start agents, and where it's kept (`secrets` or `board`): never its URL or token. */
+  async routineConnectedState(slug) {
+    const routine = await this.repoRoutine(slug);
+    return { routineConnected: Boolean(routine && !('broken' in routine)), routineSource: routine?.source ?? null };
   },
 
   /** Why a repository taken off the board can't be released (CLD-205), or null when it can. */

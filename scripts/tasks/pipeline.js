@@ -615,6 +615,167 @@ export function runScripts(text) {
   );
 }
 
+// ---- repos init --pipeline -----------------------------------------------------------------
+
+/** Where the minimal CI goes in a repository that has no workflow yet, and the line it starts with. */
+export const CI_PATH = '.github/workflows/ci.yml';
+export const CI_HEADER =
+  'Added by npx breakaway repos init --pipeline, because this repository had no workflow: the checks Deploy and Release wait for.';
+/**
+ * The starter deploy paths: every file but the docs and the board's own, so the first deploys don't miss a change.
+ * The owner narrows it to the Worker's code.
+ */
+export const STARTER_PATHS = '^(?!docs/|tools/tasks/|\\.agents/|\\.claude/|\\.github/|[^/]+\\.md$)';
+/** The workflow names the rendered files take, never a check of their own. */
+const RENDERED_NAMES = new Set(['Deploy', 'Promote', 'Roll back', 'Release']);
+/** npm's placeholder test script, which fails: a package.json with it has no tests yet. */
+const NO_TEST = /no test specified/u;
+
+/** How the repository installs and runs a script, from its lockfile. */
+function managerOf(readTarget) {
+  if (readTarget('pnpm-lock.yaml') !== null)
+    return { install: 'corepack pnpm install --frozen-lockfile', run: 'corepack pnpm run' };
+  if (readTarget('yarn.lock') !== null) return { install: 'yarn install --frozen-lockfile', run: 'yarn run' };
+  if (readTarget('package-lock.json') !== null) return { install: 'npm ci', run: 'npm run' };
+  return { install: 'npm install', run: 'npm run' };
+}
+
+/** A workflow's `name:` when it runs on a push, which is what a check has to do to gate a deploy; else null. */
+function pushCheckName(text) {
+  let doc;
+  try {
+    doc = parseYaml(text);
+  } catch {
+    return null;
+  }
+  const on = doc?.on;
+  const push =
+    typeof on === 'string' ? on === 'push' : Array.isArray(on) ? on.includes('push') : isObject(on) && 'push' in on;
+  return push && typeof doc.name === 'string' && doc.name.trim() ? doc.name.trim() : null;
+}
+
+/**
+ * What `repos init <slug> --pipeline` and `--package` add (BRK-91, docs/specs/IDEA-27-move-ci-cd-to-the-deploy-flow.md,
+ * section 4): a starter `.github/breakaway-pipeline.json`, the files it renders, and, when the repository has no
+ * workflow at all, a minimal CI for them to wait for. All of it is new files: a repository that already has the
+ * config or a file it would render gets nothing from here, and is told to use `pipeline init`.
+ *
+ * `workers` is the staging and production Worker for the deploy flow (null for none); `withPackage` asks for the
+ * release flow of the package that package.json names, which it gets only when package.json is there and isn't
+ * private. `readTarget(path)` reads the repository (null when the file isn't there), `workflows` are its workflow
+ * files, and `readTemplate(name)` gives template/pipeline/<name>.
+ * @param {{
+ *   branch?: string,
+ *   workers?: { staging: string, production: string } | null,
+ *   withPackage?: boolean,
+ *   readTarget: (path: string) => string | null,
+ *   workflows?: Array<{ path: string, text: string }>,
+ *   readTemplate: (name: string) => string,
+ * }} input
+ * @returns {{ files: Array<{ path: string, content: string }>, notes: string[], todo: string[] }}
+ */
+export function starterPlan({
+  branch = 'main',
+  workers = null,
+  withPackage = false,
+  readTarget,
+  workflows = [],
+  readTemplate,
+}) {
+  const notes = [];
+  const todo = [];
+  const none = (note) => ({ files: [], notes: [...notes, note], todo: [] });
+  if (readTarget(CONFIG_PATH) !== null)
+    return none(
+      `${CONFIG_PATH} is already there, so --pipeline added nothing: run npx breakaway pipeline init in its checkout to render it.`,
+    );
+
+  let json = null;
+  try {
+    json = JSON.parse(readTarget('package.json') ?? 'null');
+  } catch {
+    /* said below, when it matters */
+  }
+  const scripts = isObject(json?.scripts) ? json.scripts : {};
+  let pkg = null;
+  if (withPackage) {
+    if (!isObject(json)) notes.push('There is no package.json to release, so there is no release flow.');
+    else if (json.private === true)
+      notes.push('package.json says "private": true, so npm won\'t take it: there is no release flow.');
+    else {
+      const name = typeof json.name === 'string' ? json.name : '';
+      const access = json.publishConfig?.access ?? (name.startsWith('@') ? 'restricted' : 'public');
+      pkg = { name, directory: '.', access };
+      try {
+        checkConfig({ checks: ['CI'], package: pkg }, { packageJson: () => json });
+      } catch (error) {
+        if (!(error instanceof PipelineError)) throw error;
+        notes.push(`No release flow: ${error.message}`);
+        pkg = null;
+      }
+    }
+  }
+  if (!workers && !pkg) return { files: [], notes, todo };
+
+  const checks = workflows.length
+    ? [...new Set(workflows.map((w) => pushCheckName(w.text)).filter((n) => n && !RENDERED_NAMES.has(n)))]
+    : ['CI'];
+  if (!checks.length)
+    return none(
+      `None of ${workflows.map((w) => w.path).join(', ')} runs on a push, so nothing would gate a deploy: add a check workflow that does, then run npx breakaway pipeline init in its checkout.`,
+    );
+
+  const manager = managerOf(readTarget);
+  const raw = {
+    ...(workers ? { workers } : {}),
+    ...(branch === 'main' ? {} : { branch }),
+    checks,
+    install: manager.install,
+    ...(typeof scripts.build === 'string' ? { build: `${manager.run} build` } : {}),
+    ...(workers ? { deployPaths: { [workers.production]: STARTER_PATHS } } : {}),
+    ...(pkg ? { package: pkg } : {}),
+  };
+  const config = checkConfig(raw, { packageJson: () => json });
+  const rendered = renderPipeline(config, readTemplate);
+  const there = rendered.filter((f) => readTarget(f.path) !== null).map((f) => f.path);
+  if (there.length)
+    return none(
+      `${there.join(', ')} ${there.length > 1 ? 'are' : 'is'} already there, so --pipeline added nothing: move ${there.length > 1 ? 'them' : 'it'} into ${CONFIG_PATH} and run npx breakaway pipeline init in its checkout.`,
+    );
+
+  const files = [
+    { path: CONFIG_PATH, content: `${JSON.stringify(raw, null, 2)}\n` },
+    ...rendered.map((f) => ({ path: f.path, content: f.text })),
+  ];
+  if (!workflows.length) {
+    const test = typeof scripts.test === 'string' && !NO_TEST.test(scripts.test) ? [`${manager.run} test`] : [];
+    const values = { ...valuesOf(config), ciHeader: CI_HEADER, test };
+    files.push({ path: CI_PATH, content: fill(readTemplate('ci.yml'), values) });
+  } else
+    todo.push(
+      `${CONFIG_PATH}: check that checks (${checks.join(', ')}) names only the workflows that must pass before a deploy or a release, and that none of the existing workflows deploys or publishes too`,
+    );
+  for (const file of files.filter((f) => f.path.endsWith('.yml'))) {
+    const problems = lintWorkflow(file.content);
+    if (problems.length) throw new Error(`${file.path} renders with problems: ${problems.join('; ')}`);
+  }
+
+  if (workers) {
+    todo.push(
+      `${CONFIG_PATH}: narrow deployPaths to the files the Worker is built from, and add a healthCheck address and any beforeDeploy commands (migrations)`,
+      `Before merging (the merge itself runs Deploy once CI passes): create the Workers ${workers.staging} and ${workers.production} and a Cloudflare API token for each; make the GitHub environments staging and production, restricted to ${branch}, each with its token as CLOUDFLARE_API_TOKEN, and the repository variable CLOUDFLARE_ACCOUNT_ID; give the board's GitHub App Actions: read and write here`,
+    );
+  }
+  if (pkg)
+    todo.push(
+      `Before merging (the merge itself stages the first pre-release of ${pkg.name}): make the GitHub environment npm, restricted to ${branch}; on npmjs.com add a trusted publisher for release.yml and that environment (or put a granular NPM_TOKEN that can't bypass 2FA in it); after it, approve each staged version on npm with 2FA`,
+    );
+  todo.push(
+    `After merging: turn deploys on from the repository's GitHub page on the board (Turn on deploys), once the workflows are on ${branch}`,
+  );
+  return { files, notes, todo };
+}
+
 // ---- the command ---------------------------------------------------------------------------
 
 const TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'template', 'pipeline');

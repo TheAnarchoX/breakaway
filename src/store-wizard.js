@@ -6,7 +6,7 @@
  * Reads only, like Connections: it never writes to GitHub, starts an agent, or costs a Claude start.
  */
 import { appCredentials, appGet, GitHubError } from './github.js';
-import { AgentError, routineCredentials } from './store-agents.js';
+import { AgentError } from './store-agents.js';
 import { InputError } from './model.js';
 import { promptPathOf, repoSlugOf } from './repos.js';
 import { clip } from './connections.js';
@@ -91,8 +91,7 @@ export const wizardMethods = {
     let prompt = null;
     if (registered) {
       connections.push(...this.githubSyncConnections(live).filter((c) => c.repo === registered.slug));
-      const isDefault = registered.slug === this.defaultRepoSlug();
-      routine = Boolean(await routineCredentials(this.env, isDefault ? null : registered.slug));
+      routine = (await this.routineConnectedState(registered.slug)).routineConnected;
       connections.push(
         ...(await this.claudeConnections()).filter(
           (c) =>
