@@ -32,6 +32,7 @@ export const TRIGGER_LABEL = {
   alert: 'started for a security alert',
   review: 'started to test a Dependabot update',
   general: 'started from a prompt',
+  chase: 'started by a chase',
 };
 
 /** The same rules the server uses, to decide which controls to show. */
