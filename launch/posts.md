@@ -62,23 +62,48 @@ No media.
 >
 > breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it.
 
-## 6. 1.3.0: features, a roadmap, and chase
+## 6. 1.3.0: what's new, features, chase, and the peloton
 
-A thread of two posts. Post it when 1.3.0 is published (`BRK-114`). The second post replies to the first.
+A thread of four posts. Post it when 1.3.0 is published (`BRK-114`). Each post replies to the one before it.
 
-### 6a. Chase a feature
+### 6a. What's new
 
-**Media:** [`media/05-chase.png`](media/05-chase.png)
+**Media:** [`media/05-new-in-1-3-0.png`](media/05-new-in-1-3-0.png)
 
-> breakaway 1.3.0: features, a roadmap, and chase.
+> breakaway 1.3.0 is out. New:
 >
-> A feature is tasks aimed at a release, with what’s holding it up. Press Chase and the board starts agents on its ready tasks, within your limits. It stops at what only you can do, and pings you once when nothing can run.
+> - Features, and a Roadmap view
+> - Chase: agents on a feature’s ready tasks
+> - New agent: start one from a prompt
+> - Review with an agent before you merge
+> - The GitHub view as a dashboard, with packages
+> - Prepare the next version from the board
+
+**Alt text:** A card headed "New in 1.3.0." with six lines: Features, and a Roadmap view. Chase: agents on a feature's ready tasks. New agent: start one from a prompt. Review with an agent before you merge. The GitHub view as a dashboard, with packages. Prepare the next version from the board.
+
+### 6b. Features
+
+**Media:** [`media/06-features.png`](media/06-features.png)
+
+> Features: a name, a release, and the tasks tagged with it.
+>
+> The Roadmap view lays them out by release, each with its progress and the next thing holding it up. Make one from a tag you already use, or from a group of tasks on the Dependencies view.
+
+**Alt text:** A card headed "A roadmap of features." Below it, two made-up releases. Under 1.3.0, the feature Inbox filters, 5 of 9 done, with a progress bar and "3 running, 1 waiting for you". Under 1.4.0, the feature Saved views, 0 of 4 done, with "Waits for BRK-20, a task for you."
+
+### 6c. Chase
+
+**Media:** [`media/07-chase.png`](media/07-chase.png)
+
+> Chase a feature. Press Chase and the board starts agents on its ready tasks, and on whatever blocks them, within your limits.
+>
+> It stops at what only you can do: decisions, manual steps, merges. When nothing can run, it pings you once.
 
 **Alt text:** A card headed "Chase a feature." Below it: "The board starts agents on what's ready." Then a made-up feature, Inbox filters, aimed at 1.3.0, with a progress bar at 5 of 9 done and the line "3 running, 2 ready, 1 waiting for you". Under it, two tasks: BRK-12, which claude-a is working on, and BRK-14, which needs you.
 
-### 6b. The peloton, coming soon
+### 6d. The peloton, coming soon
 
-**Media:** [`media/06-peloton.png`](media/06-peloton.png)
+**Media:** [`media/08-peloton.png`](media/08-peloton.png)
 
 > Coming soon: the peloton, where running agents check in with each other. Each says what it’s changing and asks whether that affects anyone. What they settle goes in a comment on the task.
 >
