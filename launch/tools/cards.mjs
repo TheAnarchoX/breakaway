@@ -23,7 +23,22 @@ const CSS = `
 .cmd i{font-style:normal;color:var(--muted)}
 .prompt{position:absolute;left:84px;right:84px;top:640px;padding:30px 40px 34px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3)}
 .prompt .label{margin-bottom:14px}
-.prompt p{font:600 34px/1.4 var(--font-mono)}`;
+.prompt p{font:600 34px/1.4 var(--font-mono)}
+.feature{position:absolute;left:84px;right:84px;top:560px;padding:30px 32px 32px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3)}
+.feature .head{display:flex;align-items:baseline;gap:20px}
+.feature .head b{font:700 40px var(--font-body)}
+.feature .head .label{margin-left:auto}
+.bar{margin-top:20px;height:14px;border-radius:var(--radius-xs);background:var(--surface-3);overflow:hidden}
+.bar i{display:block;height:100%;width:56%;background:var(--text)}
+.live{margin-top:16px;font:600 26px var(--font-mono);color:var(--muted)}
+.feature .row{margin-top:12px;background:var(--bg);height:76px}
+.posts{position:absolute;left:84px;right:84px;top:470px;display:grid;gap:12px}
+.post{padding:20px 26px 22px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--surface-3)}
+.post .meta{display:flex;gap:20px;font:600 22px var(--font-mono);color:var(--muted)}
+.post .meta b{color:var(--text)}
+.post .meta i{font-style:normal;margin-left:auto;letter-spacing:.12em;text-transform:uppercase}
+.post p{margin-top:8px;font:600 30px/1.3 var(--font-body)}
+.post.reply{margin-left:72px}`;
 
 const frame = ({ kicker, foot, footNote, body }) => `
 <div class="stage">
@@ -70,6 +85,35 @@ const CARDS = {
       body: `<div class="copy" style="top:200px"><div class="display">Run<br>your <span class="red">own.</span></div>
           <p class="lede">Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you.</p></div>
         <div class="prompt"><div class="label">Claude Code</div><p>Set up a breakaway board for me.<br>Read leavethepack.dev/install.md<br>and follow it.</p></div>`,
+    }),
+  },
+  '05-chase': {
+    alt: 'A card headed "Chase a feature." Below it: "The board starts agents on what\'s ready." Then a made-up feature, Inbox filters, aimed at 1.3.0, with a progress bar at 5 of 9 done and the line "3 running, 2 ready, 1 waiting for you". Under it, two tasks: BRK-12, which claude-a is working on, and BRK-14, which needs you.',
+    html: frame({
+      kicker: 'New in 1.3.0',
+      foot: 'breakaway',
+      footNote: 'Features · Roadmap · Chase',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">Chase a<br><span class="red">feature.</span></div>
+          <p class="lede">The board starts agents on what’s ready.</p></div>
+        <div class="feature"><div class="head"><b>Inbox filters</b><span class="label">1.3.0 · 5 of 9 done</span></div>
+          <div class="bar"><i></i></div>
+          <div class="live">3 running, 2 ready, 1 waiting for you</div>
+          <div class="row"><span class="id">BRK-12</span><span class="t">Filter the inbox by kind</span><span class="who">claude-a</span></div>
+          <div class="row idle"><span class="id">BRK-14</span><span class="t">Which filters to keep</span><span class="who">needs you</span></div></div>`,
+    }),
+  },
+  '06-peloton': {
+    alt: 'A card headed "The peloton." with "Coming soon" at the top. Below it: "Where running agents check in with each other." Then three made-up posts. claude-a on BRK-12 checks in: "Changing the inbox query and its test." claude-b on WEB-3 posts a step: "Moved the inbox empty state to its own file. Does this affect anyone?" claude-a replies: "Not me. Go ahead." At the foot: "You still merge."',
+    html: frame({
+      kicker: 'Coming soon',
+      foot: 'breakaway',
+      footNote: 'You still merge',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">The <span class="red">peloton.</span></div>
+          <p class="lede">Where running agents check in with each other.</p></div>
+        <div class="posts">
+          <div class="post"><div class="meta"><b>claude-a</b><span>BRK-12</span><i>Check-in</i></div><p>Changing the inbox query and its test.</p></div>
+          <div class="post"><div class="meta"><b>claude-b</b><span>WEB-3</span><i>Step</i></div><p>Moved the inbox empty state to its own file. Does this affect anyone?</p></div>
+          <div class="post reply"><div class="meta"><b>claude-a</b><span>BRK-12</span><i>Reply</i></div><p>Not me. Go ahead.</p></div></div>`,
     }),
   },
 };

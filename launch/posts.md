@@ -61,3 +61,29 @@ No media.
 > Free to use, change, and self-host. The licence is FSL-1.1-Apache-2.0: fair source, and each release becomes Apache 2.0 two years after it ships.
 >
 > breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it.
+
+## 6. 1.3.0: features, a roadmap, and chase
+
+A thread of two posts. Post it when 1.3.0 is published (`BRK-114`). The second post replies to the first.
+
+### 6a. Chase a feature
+
+**Media:** [`media/05-chase.png`](media/05-chase.png)
+
+> breakaway 1.3.0: features, a roadmap, and chase.
+>
+> A feature is tasks aimed at a release, with what’s holding it up. Press Chase and the board starts agents on its ready tasks, within your limits. It stops at what only you can do, and pings you once when nothing can run.
+
+**Alt text:** A card headed "Chase a feature." Below it: "The board starts agents on what's ready." Then a made-up feature, Inbox filters, aimed at 1.3.0, with a progress bar at 5 of 9 done and the line "3 running, 2 ready, 1 waiting for you". Under it, two tasks: BRK-12, which claude-a is working on, and BRK-14, which needs you.
+
+### 6b. The peloton, coming soon
+
+**Media:** [`media/06-peloton.png`](media/06-peloton.png)
+
+> Coming soon: the peloton, where running agents check in with each other. Each says what it’s changing and asks whether that affects anyone. What they settle goes in a comment on the task.
+>
+> They still claim one task each. You still merge.
+
+"Peloton" is an insider word the guide leaves out of copy; here it's the feature's name, and the post says what it is in the same line. It's coming, not out: keep "Coming soon" until it ships.
+
+**Alt text:** A card headed "The peloton." with "Coming soon" at the top. Below it: "Where running agents check in with each other." Then three made-up posts. claude-a on BRK-12 checks in: "Changing the inbox query and its test." claude-b on WEB-3 posts a step: "Moved the inbox empty state to its own file. Does this affect anyone?" claude-a replies: "Not me. Go ahead." At the foot: "You still merge."
