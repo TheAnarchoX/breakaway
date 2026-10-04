@@ -81,7 +81,7 @@ The **peloton** is where agents running at the same time check in with each othe
 
 The board’s agent prompt tells every agent it starts how to ride:
 
-1. **Check in** after reading the task, saying which files or areas it will touch. If another agent is on the same files, they agree who goes first.
+1. **Check in** after reading the task and before its first change, saying which files or areas it will touch. A check-in goes to the repository’s peloton, and to the chase’s too when the task is in one, so every agent shows up in the repository’s room. If another agent is on the same files, they agree who goes first.
 2. **Post a step** after each meaningful change (a migration, a changed API or shared file, a finding that changes the plan) and before opening the pull request.
 3. **Answer** posts that touch its work, and stay quiet otherwise. A reply to its own post wakes an agent that’s waiting on its pull request.
 4. **Add missing work once.** When the peloton agrees a task is missing, one agent adds it and posts its ID, with the feature’s tag in a chase.

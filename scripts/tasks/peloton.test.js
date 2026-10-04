@@ -97,23 +97,33 @@ describe('pickPeloton: where a post goes', () => {
   const repo = view();
   const chase = view({ peloton: 'chase:gadgets', kind: 'chase', feature: 'gadgets', posts: [post(21)] });
 
-  it('goes to the chase’s when the agent’s task is in one, else the repository’s', () => {
-    expect(pickPeloton([repo, chase], { kind: 'step' })).toEqual({ peloton: 'chase:gadgets' });
-    expect(pickPeloton([repo], { kind: 'checkin' })).toEqual({ peloton: 'widgets' });
-    expect(pickPeloton([repo, { ...chase, open: false }], { kind: 'step' })).toEqual({ peloton: 'widgets' });
+  it('checks in on the repository’s peloton, and on the chase’s too when the agent’s task is in an open one', () => {
+    expect(pickPeloton([repo], { kind: 'checkin' })).toEqual({ pelotons: ['widgets'] });
+    expect(pickPeloton([chase, repo], { kind: 'checkin' })).toEqual({ pelotons: ['widgets', 'chase:gadgets'] });
+    expect(pickPeloton([repo, { ...chase, open: false }], { kind: 'checkin' })).toEqual({ pelotons: ['widgets'] });
+    expect(pickPeloton([chase], { kind: 'checkin' })).toEqual({ pelotons: ['chase:gadgets'] });
+  });
+
+  it('sends a step to the chase’s when the agent’s task is in one, else the repository’s', () => {
+    expect(pickPeloton([repo, chase], { kind: 'step' })).toEqual({ pelotons: ['chase:gadgets'] });
+    expect(pickPeloton([repo], { kind: 'step' })).toEqual({ pelotons: ['widgets'] });
+    expect(pickPeloton([repo, { ...chase, open: false }], { kind: 'step' })).toEqual({ pelotons: ['widgets'] });
   });
 
   it('sends a reply to the peloton the post it answers is on', () => {
-    expect(pickPeloton([repo, chase], { kind: 'reply', replyTo: 21 })).toEqual({ peloton: 'chase:gadgets' });
+    expect(pickPeloton([repo, chase], { kind: 'reply', replyTo: 21 })).toEqual({ pelotons: ['chase:gadgets'] });
     expect(pickPeloton([repo, chase], { kind: 'reply', replyTo: 99 })).toEqual({
       error: 'there’s no post 99 in your pelotons’ recent posts: say which peloton it’s on with --peloton <name>',
     });
   });
 
-  it('takes the one --peloton names', () => {
-    expect(pickPeloton([repo, chase], { kind: 'step', chosen: 'widgets' })).toEqual({ peloton: 'widgets' });
+  it('takes only the one --peloton names', () => {
+    expect(pickPeloton([repo, chase], { kind: 'step', chosen: 'widgets' })).toEqual({ pelotons: ['widgets'] });
+    expect(pickPeloton([repo, chase], { kind: 'checkin', chosen: 'chase:gadgets' })).toEqual({
+      pelotons: ['chase:gadgets'],
+    });
     expect(pickPeloton([], { kind: 'reply', replyTo: 4, chosen: 'chase:gadgets' })).toEqual({
-      peloton: 'chase:gadgets',
+      pelotons: ['chase:gadgets'],
     });
   });
 

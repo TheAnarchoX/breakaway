@@ -193,7 +193,8 @@ Working
   ping --template        print an example proposal file to edit
   peloton                who else is working (in your repository, and your chase's) and what they posted since you
                          last read: new posts are starred  [--all] every post the board keeps
-  peloton checkin <text> say you're here and what you'll change, the files or areas you'll touch (you must hold a task)
+  peloton checkin <text> say you're here and what you'll change, the files or areas you'll touch, before your first
+                         change (you must hold a task); posts on your repository's peloton and your chase's too
   peloton step <text>    say what you did and ask if it affects anyone; posts on your chase's peloton if your task is
                          in one, else your repository's  [--peloton <name>] picks one
   peloton reply <post> <text>   answer a post, on the peloton it's on
@@ -1257,17 +1258,21 @@ const commands = {
     const views = await read();
     const to = pickPeloton(views, { ...post, chosen: opts.peloton, agent: me });
     if ('error' in to) return fail(to.error);
-    const out = await call('POST', `peloton/${enc(to.peloton)}`, {
-      agent: me,
-      kind: post.kind,
-      text: post.text,
-      ...(post.kind === 'reply' ? { reply_to: post.replyTo } : {}),
-    });
-    const after = mergeViews(views, out.peloton);
-    print({ post: out.post, pelotons: after }, () =>
-      [`Posted #${out.post.id} on ${out.post.peloton}.`, pelotonLines(after, { agent: me, all: opts.all })].join(
-        '\n\n',
-      ),
+    const posted = [];
+    let after = views;
+    for (const peloton of to.pelotons) {
+      const out = await call('POST', `peloton/${enc(peloton)}`, {
+        agent: me,
+        kind: post.kind,
+        text: post.text,
+        ...(post.kind === 'reply' ? { reply_to: post.replyTo } : {}),
+      });
+      posted.push(out.post);
+      after = mergeViews(after, out.peloton);
+    }
+    const where = posted.map((p) => `#${p.id} on ${p.peloton}`).join(' and ');
+    print({ post: posted[0], posts: posted, pelotons: after }, () =>
+      [`Posted ${where}.`, pelotonLines(after, { agent: me, all: opts.all })].join('\n\n'),
     );
   },
   async idea() {
