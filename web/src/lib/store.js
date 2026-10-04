@@ -45,7 +45,6 @@ export function toggleSidebar() {
 }
 /** On a phone the sidebar is a drawer; whether it's open. */
 export const menuOpen = signal(false);
-export const settingsOpen = signal(false);
 
 // The owner's pull request settings: off unless turned on, only in this browser, and per repository
 // (CLD-125). These two are the default repository's, under the keys they always had; another
@@ -178,7 +177,7 @@ export const byUuid = computed(() => new Map(tasks.value.map((t) => [t.uuid, t])
 // ---- repositories (docs/specs/IDEA-14-multi-repo.md, section 6) -----------------------------
 
 /** The registered repositories, the default first. */
-export const repos = signal({ loaded: false, list: [], default: null });
+export const repos = signal({ loaded: false, list: [], default: null, removed: [] });
 /** Whether there's more than one: until then the switcher and the chips stay hidden. */
 export const multiRepo = computed(() => repos.value.list.length > 1);
 /** What the switcher says: a repository's slug, or 'all'. Remembered in this browser and kept in the URL. */
@@ -202,8 +201,8 @@ export const repoOfUuid = (uuid) => byUuid.value.get(uuid)?.repo ?? null;
 
 export async function loadRepos() {
   try {
-    const { repos: list, default: fallback } = await api('repos');
-    repos.value = { loaded: true, list, default: fallback };
+    const { repos: list, default: fallback, removed = [] } = await api('repos');
+    repos.value = { loaded: true, list, default: fallback, removed };
     setRepoBase((list.find((r) => r.isDefault) ?? list[0])?.github);
   } catch {
     repos.value = { ...repos.value, loaded: true };
@@ -750,9 +749,10 @@ export const VIEWS = [
 ];
 /**
  * Pages that aren't in the nav: the Add a repository wizard (CLD-194), reached from Connections and the switcher,
- * and a repository's settings (WEB-30), at #/settings/<slug>.
+ * Settings (WEB-32), at #/settings from the sidebar's foot, and a repository's settings (WEB-30), at
+ * #/settings/<slug>.
  */
-const PAGE_IDS = ['add-repo', 'repo-settings'];
+const PAGE_IDS = ['add-repo', 'settings', 'repo-settings'];
 const VIEW_IDS = [...VIEWS.map((v) => v.id), ...PAGE_IDS];
 
 export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], roles: [], claim: 'any', done: 'recent' };
@@ -778,8 +778,10 @@ export const focusComment = signal(null);
 export const helpOpen = signal(false);
 /** The repository the Add a repository wizard is on: `{ slug }` once registered, `{ github }` before, or null to pick one. */
 export const addRepoTarget = signal(null);
-/** The repository whose settings page is open (#/settings/<slug>, WEB-30), as the address spells it, or null for the list. */
+/** The repository whose settings page is open (#/settings/<slug>, WEB-30), as the address spells it, or null. */
 export const settingsSlug = signal(null);
+/** Where the Settings page scrolls to once it opens (`'repos'` for its list of repositories), or null for the top. */
+export const settingsAt = signal(null);
 
 const safeDecode = (text) => {
   try {
@@ -801,9 +803,10 @@ function parseHash() {
     const repo = p.get('repo');
     if (repo || !firstParse) repoChoice.value = repo && /^[a-z][a-z0-9-]{0,31}$/u.test(repo) ? repo : 'all';
     firstParse = false;
-    // A repository's settings live at #/settings/<slug>; the slug is kept as typed, so a misspelt one can say so.
+    // Settings is #/settings, and a repository's are at #/settings/<slug>; the slug is kept as typed, so a misspelt
+    // one can say so.
     const settings = /^settings(?:\/([^/]{0,64}))?$/u.exec(path);
-    view.value = settings ? 'repo-settings' : VIEW_IDS.includes(path) ? path : 'board';
+    view.value = settings ? (settings[1] ? 'repo-settings' : 'settings') : VIEW_IDS.includes(path) ? path : 'board';
     settingsSlug.value = settings?.[1] ? safeDecode(settings[1]).toLowerCase() : null;
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
@@ -911,12 +914,13 @@ export function openAddRepo(target = null) {
   location.hash = hashFor({ view: 'add-repo', task: null, pr: null, ping: null });
 }
 
-/** A link to a repository's settings page (WEB-30), or to the list of repositories with none. */
+/** A link to a repository's settings page (WEB-30), or to Settings (WEB-32) with none. */
 export const repoSettingsHref = (slug = null) =>
-  hashFor({ view: 'repo-settings', settings: slug, task: null, pr: null, ping: null });
+  hashFor({ view: slug ? 'repo-settings' : 'settings', settings: slug, task: null, pr: null, ping: null });
 
-/** Opens a repository's settings page (WEB-30), or the list of repositories with none. */
+/** Opens a repository's settings page (WEB-30), or Settings at its list of repositories with none (WEB-32). */
 export function openRepoSettings(slug = null) {
+  if (!slug) settingsAt.value = 'repos';
   location.hash = repoSettingsHref(slug);
 }
 
