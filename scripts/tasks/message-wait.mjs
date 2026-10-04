@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { boardConfig, claimedTask, projectRoot } from './hook-config.js';
-import { routeThroughSessionProxy } from './proxy.js';
+import { sessionRequest } from './proxy.js';
 import { waitForMessages } from './session-messages.js';
 
 async function main() {
@@ -43,9 +43,9 @@ async function main() {
   const { base, headers } = boardConfig(root);
   if (!base) return;
   const url = `${base}/api/tasks/${encodeURIComponent(claim.uuid)}/messages/waiting?agent=${encodeURIComponent(claim.agent)}`;
-  routeThroughSessionProxy();
+  // Through curl in a cloud session, so it works on whichever Node runs hooks there (BRK-86).
   const ask = async () => {
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+    const res = await sessionRequest(url, { headers, timeoutMs: 10_000 });
     return res.ok ? res.json() : null;
   };
 
