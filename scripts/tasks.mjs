@@ -54,6 +54,10 @@ import {
   generalAgentRequest,
   generalAgentSummary,
   githubRequest,
+  specLines,
+  specListLines,
+  specRequest,
+  specsRequest,
   ideaTask,
   packageReleaseRequest,
   pullAgentRequest,
@@ -148,6 +152,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
   agents new "<prompt>"  start an agent from a prompt: it makes its own task  [--image <file>]… [--repo <slug>] [--force] (owner)
   agents new --decision <ref> ["<note>"]   start an agent that brings the work waiting for an answered decision in line with its answers; the board writes its prompt  [--force] (owner)
   agents new --next minor|major ["<note>"]   start an agent that sets package.json to the next minor or major release; the board writes its prompt  [--repo <slug>] [--force] (owner)
+  agents new --spec <path> "<what should change>"   start an agent that changes a spec as you ask and brings the tasks that
+                         link it in line; the board writes its prompt  [--repo <slug>] [--force] (owner)
   agents start <ref>     start a Claude cloud agent on a task  [--note <text>] [--force]
   agents refine <ref>    start an agent that improves a task, not builds it  --note <what to look at or change> [--force]
   agents plan [<plan>]   your Claude plan and what it allows; pro, max5, or max20 picks one (owner) and sets the limits to its defaults
@@ -168,6 +174,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
                          (owner)  [--note <text>] [--repo <slug>] [--force]
   github release <pre-release>   release a package's pre-release (1.4.0-main.5) as its stable on latest, as Release on the
                          GitHub page does: the board starts release.yml's stable job, and npm waits for your 2FA (owner)  [--repo <slug>]
+  specs                  the repository's specs, newest first: each one's status and its tasks  [--repo <slug>]
+  specs show <path>      one spec: its status, last change, Markdown, and the tasks that link it  [--repo <slug>]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
@@ -803,11 +811,13 @@ const commands = {
     if (sub === 'new') {
       const decision = typeof opts.decision === 'string' ? opts.decision : null;
       const next = typeof opts.next === 'string' ? opts.next : null;
+      const spec = typeof opts.spec === 'string' ? opts.spec : null;
       const built = generalAgentRequest(args.slice(1).join(' '), {
         // From a decision, the board runs it in the decision's repository unless --repo says otherwise.
         repo: opts.repo ?? (decision ? null : (await checkoutRepo()).slug),
         decision,
         next,
+        spec,
         force: Boolean(opts.force),
         by: opts.as ?? setting('AGENT'),
       });
@@ -820,7 +830,7 @@ const commands = {
         const image = await upload(ref(answer.task), file);
         if (!opts.json) console.log(`Attached ${image.name} (${Math.ceil(image.size / 1024)} KB).`);
       }
-      print(answer, (d) => generalAgentSummary(d, { next }));
+      print(answer, (d) => generalAgentSummary(d, { next, spec }));
       return;
     }
     if (sub === 'start') {
@@ -1098,6 +1108,17 @@ const commands = {
         ),
       ].join('\n'),
     );
+  },
+  async specs() {
+    // A repository's specs (IDEA-31), read from its default branch on GitHub: the checkout's unless --repo names another.
+    const { slug } = await checkoutRepo();
+    if (args[0] === 'show') {
+      const built = specRequest(args.slice(1).join(' ') || undefined, slug);
+      if (built.error || !built.request) fail(built.error ?? 'bad request');
+      print(await call(...built.request), (d) => specLines(d).join('\n'));
+      return;
+    }
+    print(await call(...specsRequest(slug)), (d) => specListLines(d).join('\n'));
   },
   async features() {
     const sub = args[0];

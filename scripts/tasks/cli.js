@@ -14,6 +14,7 @@ export const SUBCOMMANDS = {
   horizon: ['close'],
   hook: ['session', 'wait'],
   peloton: ['checkin', 'step', 'reply'],
+  specs: ['list', 'show'],
 };
 
 /** Commands that take nothing after their name, so a word there is a mistake (an old copy's missing subcommand, say). */
@@ -163,17 +164,27 @@ export function forceFields(force, by) {
  * With `decision` (`agents new --decision <ID> ["<note>"]`, BRK-110) the board writes the prompt from that answered
  * decision, in the decision's repository, and the text is the owner's note under it. With `next`
  * (`agents new --next minor|major ["<note>"]`, BRK-100) it writes the prompt that sets the repository's next version.
+ * With `spec` (`agents new --spec <path> "<what should change>"`, BRK-121) it writes the prompt that refines that spec
+ * and the tasks that link it, and the text, required, is what should change.
  * @param {string} prompt
- * @param {{ repo?: string | null, force?: boolean, by?: string, decision?: string | null, next?: string | null }} [options]
+ * @param {{ repo?: string | null, force?: boolean, by?: string, decision?: string | null, next?: string | null, spec?: string | null }} [options]
  */
-export function generalAgentRequest(prompt, { repo = null, force = false, by, decision = null, next = null } = {}) {
+export function generalAgentRequest(
+  prompt,
+  { repo = null, force = false, by, decision = null, next = null, spec = null } = {},
+) {
   const text = String(prompt ?? '').trim();
-  if (decision && next) return { error: 'start one from --decision or --next, not both' };
+  if ([decision, next, spec].filter(Boolean).length > 1)
+    return { error: 'start one from --decision, --spec, or --next: only one of them' };
   if (next && !['minor', 'major'].includes(next))
     return { error: 'patches count by themselves: --next minor or --next major' };
+  if (spec && !text)
+    return {
+      error: 'say what should change in the spec: npx breakaway agents new --spec <path> "<what should change>"',
+    };
   if (!text && !decision && !next)
     return { error: 'say what the agent should do: npx breakaway agents new "Tidy the docs" [--image <file>]' };
-  const board = decision ? { decision } : next ? { next } : null;
+  const board = decision ? { decision } : next ? { next } : spec ? { spec: specPath(spec) } : null;
   const body = {
     ...(board ? { ...board, ...(text ? { note: text } : {}) } : { prompt: text }),
     ...(repo ? { repo } : {}),
@@ -185,16 +196,52 @@ export function generalAgentRequest(prompt, { repo = null, force = false, by, de
 
 /**
  * What the CLI says about a general agent's answer: the task and that it started, or why it waits (and whether Force
- * start could skip that), or, from a decision or for the next version (`next`), the open one that already has it.
+ * start could skip that), or, from a decision, for the next version (`next`), or on a spec (`spec`), the open one
+ * that already has it.
  * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, waiting?: string | null, forceable?: boolean, already?: string | null }} answer
- * @param {{ next?: string | null }} [options]
+ * @param {{ next?: string | null, spec?: unknown }} [options]
  */
-export function generalAgentSummary({ task, run, waiting, forceable, already }, { next = null } = {}) {
+export function generalAgentSummary({ task, run, waiting, forceable, already }, { next = null, spec = null } = {}) {
   const id = task.wid ?? task.short;
-  if (!run && already)
-    return `${id} already ${next ? 'prepares the next version' : 'refines from these answers'}: ${already}.`;
+  if (!run && already) {
+    const what = next ? 'prepares the next version' : spec ? 'refines this spec' : 'refines from these answers';
+    return `${id} already ${what}: ${already}.`;
+  }
   if (run) return `Started ${run.agent ? `${run.agent} ` : 'an agent '}on ${id}${run.url ? `: ${run.url}` : ''}`;
   return `Saved ${id}, waiting to start: ${waiting ?? 'no room yet'}.${forceable ? ` Start it now past the board's limits: npx breakaway agents start ${id} --force` : ''}`;
+}
+
+/** A spec's path as the board reads it: no leading `./`, no doubled or trailing slashes. */
+const specPath = (path) =>
+  String(path ?? '')
+    .trim()
+    .replace(/^(\.\/)+/u, '')
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .join('/');
+
+/**
+ * The request behind `npx breakaway specs [list]` (BRK-121): the specs of the checkout's repository, or the one `--repo`
+ * names; without either, the board answers with its default repository's.
+ * @param {string | null} repo
+ * @returns {[string, string, undefined]}
+ */
+export function specsRequest(repo) {
+  return ['GET', repo ? `specs?repo=${encodeURIComponent(repo)}` : 'specs', undefined];
+}
+
+/**
+ * The request behind `npx breakaway specs show <path>` (BRK-121): one spec, by its path in the repository. The board
+ * refuses a path outside the specs directory; one that climbs out with `..` is refused here first.
+ * @param {string | undefined} path
+ * @param {string | null} repo
+ */
+export function specRequest(path, repo) {
+  const clean = specPath(path);
+  if (!clean) return { error: 'say which spec: npx breakaway specs show <path>, like docs/specs/BRK-1-thing.md' };
+  if (clean.split('/').includes('..')) return { error: `${clean.slice(0, 200)} climbs out of the repository` };
+  const query = repo ? `?repo=${encodeURIComponent(repo)}` : '';
+  return { request: ['GET', `specs/${clean.split('/').map(encodeURIComponent).join('/')}${query}`, undefined] };
 }
 
 /**
@@ -423,4 +470,65 @@ export function chaseSummary(slug, { dryRun, chase, started = [], wouldStart = [
       : `Chasing ${slug}: nothing can start right now; the board starts each task when it’s ready.`;
   }
   return [first, '', ...chaseLines(chase, slug)].join('\n');
+}
+
+/** A spec's tasks in a few words: "3 tasks, 2 open", or "no tasks". */
+const specTaskCount = (tasks = []) => {
+  if (!tasks.length) return 'no tasks';
+  const open = tasks.filter((t) => t.status === 'pending').length;
+  return `${plural(tasks.length, 'task')}, ${open} open`;
+};
+
+/**
+ * What `npx breakaway specs` prints: the repository's specs newest first, each with its work ID, status, title, and its
+ * tasks' count; with none, where specs go and how to point the board at another directory.
+ * @param {{ slug: string, dir: string, missing?: boolean, readme?: { path: string } | null, specs: any[] }} answer
+ */
+export function specListLines({ slug, dir, missing, readme, specs }) {
+  if (!specs.length)
+    return [
+      `No specs in ${dir} yet${missing ? `: ${slug} has no ${dir} on its default branch` : ''}.`,
+      'A spec is a Markdown file in that directory, merged like any change.',
+      `If ${slug} keeps its specs somewhere else, the owner sets it with npx breakaway repos modify ${slug} --specs <dir>.`,
+    ];
+  const intro = readme ? ` (its introduction is ${readme.path})` : '';
+  const out = [`${slug}: ${plural(specs.length, 'spec')} in ${dir}${intro}`, ''];
+  for (const s of specs) {
+    const extra = s.tooLarge ? ', over 1 MB: read it on GitHub' : '';
+    out.push(
+      `  ${(s.wid ?? '').padEnd(9)} ${(s.status ?? '-').padEnd(10)} ${s.title}  (${specTaskCount(s.tasks)}${extra})`,
+    );
+  }
+  out.push('', `Read one: npx breakaway specs show <path>, like ${specs[0].path}`);
+  return out;
+}
+
+/**
+ * What `npx breakaway specs show <path>` prints: the spec's title and path, status, the commit that last changed it,
+ * its GitHub link, its Markdown (or, over 1 MB, a pointer to GitHub), and the tasks that link it.
+ * @param {any} spec
+ */
+export function specLines(spec) {
+  const out = [`${spec.title} (${spec.path})`, ''];
+  const row = (k, v) => v && out.push(`  ${k.padEnd(11)} ${v}`);
+  row('Status', spec.status);
+  const c = spec.commit;
+  if (c)
+    row(
+      'Changed',
+      `${c.date ? `${String(c.date).slice(0, 16).replace('T', ' ')} ` : ''}in ${String(c.sha).slice(0, 7)}${c.message ? `: ${c.message}` : ''}`,
+    );
+  row('GitHub', spec.url);
+  out.push('');
+  if (spec.tooLarge || spec.text === null || spec.text === undefined)
+    out.push('Over 1 MB, too large to show here: read it on GitHub.');
+  else out.push(String(spec.text).replace(/\s+$/u, ''));
+  const tasks = spec.tasks ?? [];
+  out.push('');
+  if (tasks.length) {
+    out.push(`  Tasks (${tasks.length}, ${tasks.filter((t) => t.status === 'pending').length} open)`);
+    for (const t of tasks) out.push(`    ${idOf(t).padEnd(9)} ${t.status.padEnd(9)} ${t.description}`);
+  } else out.push(`  No task links it yet: npx breakaway modify <ref> --spec ${spec.path}`);
+  out.push('', `Refine it: npx breakaway agents new --spec ${spec.path} "<what should change>"`);
+  return out;
 }
