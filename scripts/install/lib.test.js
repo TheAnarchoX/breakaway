@@ -284,8 +284,13 @@ describe('rollback', () => {
   });
 
   it('accepts only the release it expects from /api/ping', () => {
-    expect(isHealthy({ ok: true, release: '0.2.0' }, '0.2.0')).toBe(true);
-    expect(isHealthy({ ok: true, release: '0.1.0' }, '0.2.0')).toBe(false);
+    const secrets = { ok: true, unreadable: [] };
+    expect(isHealthy({ ok: true, release: '0.2.0', secrets }, '0.2.0')).toBe(true);
+    expect(isHealthy({ ok: true, release: '0.1.0', secrets }, '0.2.0')).toBe(false);
+    expect(isHealthy({ ok: true, release: '0.2.0' }, '0.2.0')).toBe(false);
+    expect(
+      isHealthy({ ok: true, release: '0.2.0', secrets: { ok: false, unreadable: ['TASKS_SYNC_KEY'] } }, '0.2.0'),
+    ).toBe(false);
     expect(isHealthy(null, '0.2.0')).toBe(false);
   });
 });

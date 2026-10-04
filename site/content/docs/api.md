@@ -23,7 +23,7 @@ curl -H "Authorization: Bearer $BREAKAWAY_TOKEN" "$BREAKAWAY_URL/api/health"
 
 | Route | Answers |
 | --- | --- |
-| `GET /api/ping` | Public. `{ ok, version, release }`: the Cloudflare version ID and the semver release. Nothing about tasks. |
+| `GET /api/ping` | Public. `{ ok, version, release, secrets }`: the Cloudflare version ID, the semver release, and whether the Worker’s secrets can be read (`secrets.ok`, with the names of any that can’t in `unreadable`, never a value). Nothing about tasks. |
 | `GET /api/session` | Which board this is: its name and address. |
 | `GET /api/health` | The server’s state, with task counts, the CLI version, and the release. |
 | `GET /api/connections` | The Connections report. |

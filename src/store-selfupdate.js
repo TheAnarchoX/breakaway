@@ -8,6 +8,7 @@
  * The state is kept in meta, and the check runs from the alarm, because a deploy restarts this Durable Object.
  */
 import { releaseOf } from './build.js';
+import { unreadableSecrets } from './secrets.js';
 import { Cloudflare, CloudflareError } from './cloudflare-deploy.js';
 import { WORKER_FIRST, install } from './install.js';
 import { shapeOfInstall, shapeProblems } from './release-shape.js';
@@ -288,14 +289,19 @@ export const selfUpdateMethods = {
     }
   },
 
-  /** The new code answers: this very code reports the deployed release, and the public ping doesn't say otherwise. */
+  /**
+   * The new code answers: this very code reports the deployed release, its secrets load, and the public ping doesn't
+   * say otherwise (BRK-96).
+   */
   async selfUpdateHealthy(state) {
     if (releaseOf(this.env) !== state.target) return false;
+    if ((await unreadableSecrets(this.env)).length) return false;
     const origin = this.env.TASKS_INSTALL?.url ?? state.origin;
     if (!origin) return true;
     try {
       const res = await fetch(`${origin.replace(/\/$/u, '')}/api/ping`);
       const body = res.ok ? await res.json() : null;
+      if (body?.secrets?.ok === false) return false;
       return !(body && typeof body.release === 'string' && body.release !== state.target);
     } catch {
       return true; // the Worker can't always reach its own address; what it reports itself is the check

@@ -300,6 +300,20 @@ describe('updating the Worker from the board', () => {
     });
   });
 
+  it('rolls back when the new code answers but its secrets can’t be read', async () => {
+    await asBoard(async (s) => {
+      await s.selfUpdateStart({ wait: true });
+      s.env.BREAKAWAY_VERSION = TARGET;
+      s.env.TASKS_SYNC_KEY = { get: async () => Promise.reject(new Error('Failed to fetch secret')) };
+      await s.selfUpdateTick();
+      expect(s.selfUpdateState().status).toBe('checking');
+      s.saveSelfUpdate({ ...s.selfUpdateState(), deadline: Date.now() - 1 });
+      await s.selfUpdateTick();
+      expect(world.deployed.versions).toEqual([{ percentage: 100, version_id: 'old-version' }]);
+      expect(s.selfUpdateState().status).toBe('rolledback');
+    });
+  });
+
   it('refuses a second update while one is running', async () => {
     await asBoard(async (s) => {
       await s.selfUpdateStart({ wait: true });

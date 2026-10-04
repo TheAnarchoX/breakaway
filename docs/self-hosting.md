@@ -149,7 +149,7 @@ The Version row on Connections says what the board runs, and the latest release 
 
 **A release that asks for your hands.** A release that changes the Durable Object classes, a route, a cron, or a binding is a major release, and its notes have a **Manual steps** section. Deploy stops on it and deploys nothing, and the Version row needs attention. Do the steps, then deploy with `wrangler`: `npx breakaway install config` makes the Worker's config.
 
-**Roll back.** Deploy checks that the new release answers `/api/ping` within a minute, and goes back to the previous version when it doesn't. To go back by hand:
+**Roll back.** Deploy checks that the new release answers `/api/ping`, with its secrets readable, within a minute, and goes back to the previous version when it doesn't. To go back by hand:
 
 1. For a `stable` install, revert the pull request that moved `breakaway.json`, and merge the revert. Deploy runs the old release.
 2. For a bad deploy you want undone now, on either channel, run `wrangler rollback <version-id>`. The Worker's versions are on Cloudflare.
@@ -174,7 +174,7 @@ The board checks that the token reaches its own Worker, then keeps it as a secre
 1. Checks the release's signature, then its checksums, then that your version is new enough to update to it directly.
 2. Uploads the release as a new Worker version, with the bindings the running Worker has, so a binding you added by hand stays.
 3. Deploys it.
-4. Checks that the new version answers `/api/ping` and reports the new release, within a minute.
+4. Checks that the new version answers `/api/ping` and reports the new release with its secrets readable, within a minute.
 
 Only you can press it: the board's own token, and so an agent, is refused. Live conversations end when it deploys, like any deploy. If a step before the deploy fails, nothing has changed, and the row says which step and what to do. If the check fails, the board deploys the previous version again and says so.
 
