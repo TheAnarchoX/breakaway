@@ -11,10 +11,10 @@ const modify = (slug, body) => api(`repos/${slug}`, { method: 'PATCH', body });
 const create = async (body) => json(await api('tasks', { method: 'POST', body }));
 
 describe('the registry, without the store', () => {
-  const samewave = { ...defaultRepo({ TASKS_GITHUB_REPO: 'acme/samewave' }), isDefault: true };
+  const widgets = { ...defaultRepo({ TASKS_GITHUB_REPO: 'acme/widgets' }), isDefault: true };
 
-  it('registers samewave with today’s areas, and ideas and routines stay install-wide', () => {
-    expect(samewave.areas.map((a) => `${a.project}:${a.prefix}`)).toEqual([
+  it('registers widgets with today’s areas, and ideas and routines stay install-wide', () => {
+    expect(widgets.areas.map((a) => `${a.project}:${a.prefix}`)).toEqual([
       'product:PRD',
       'brand:BRD',
       'moderation:MOD',
@@ -23,29 +23,29 @@ describe('the registry, without the store', () => {
       'debt:DEBT',
       'compliance:CMP',
     ]);
-    expect(prefixFor(samewave, 'ops')).toBe('OPS');
-    expect(prefixFor(samewave, 'ideas')).toBe('IDEA');
-    expect(prefixFor(samewave, 'routines')).toBe('RUN');
-    expect(prefixFor(samewave, 'nope')).toBeNull();
-    expect(samewave.pipeline.workers).toEqual({ staging: 'samewave-staging', production: 'samewave' });
+    expect(prefixFor(widgets, 'ops')).toBe('OPS');
+    expect(prefixFor(widgets, 'ideas')).toBe('IDEA');
+    expect(prefixFor(widgets, 'routines')).toBe('RUN');
+    expect(prefixFor(widgets, 'nope')).toBeNull();
+    expect(widgets.pipeline).toBeNull(); // its owner sets one, as for any repository (BRK-44)
   });
 
   it('refuses a prefix or an area that is taken, shared, or malformed', () => {
-    const others = [samewave];
+    const others = [widgets];
     const base = { slug: 'other', github: 'someone/other' };
-    expect(() => checkRepo({ ...base, areas: ['product:PRD'] }, { others })).toThrow(/PRD already belongs to samewave/);
+    expect(() => checkRepo({ ...base, areas: ['product:PRD'] }, { others })).toThrow(/PRD already belongs to widgets/);
     expect(() => checkRepo({ ...base, areas: ['ideas:OIDEA'] }, { others })).toThrow(/shared by the whole install/);
     expect(() => checkRepo({ ...base, areas: ['inbox:IDEA'] }, { others })).toThrow(/shared by the whole install/);
     expect(() => checkRepo({ ...base, areas: ['product:prd1'] }, { others })).toThrow(/capital letters/);
     expect(() => checkRepo({ ...base, areas: ['a:AA', 'b:AA'] }, { others })).toThrow(/given twice/);
     expect(() => checkRepo({ ...base, areas: [] }, { others })).toThrow(/at least one area/);
     expect(() =>
-      checkRepo({ ...base, areas: ['x:XX'] }, { others, usedPrefixes: new Map([['XX', 'samewave']]) }),
-    ).toThrow(/in use by tasks in samewave/);
-    expect(() => checkRepo({ ...base, github: 'acme/SAMEWAVE', areas: ['x:XX'] }, { others })).toThrow(
-      /already registered as samewave/,
+      checkRepo({ ...base, areas: ['x:XX'] }, { others, usedPrefixes: new Map([['XX', 'widgets']]) }),
+    ).toThrow(/in use by tasks in widgets/);
+    expect(() => checkRepo({ ...base, github: 'acme/WIDGETS', areas: ['x:XX'] }, { others })).toThrow(
+      /already registered as widgets/,
     );
-    expect(() => checkRepo({ ...base, slug: 'samewave', areas: ['x:XX'] }, { others })).toThrow(/already registered/);
+    expect(() => checkRepo({ ...base, slug: 'widgets', areas: ['x:XX'] }, { others })).toThrow(/already registered/);
     expect(
       checkRepo(
         { ...base, github: 'https://github.com/someone/other.git', areas: ['product:OPRD:Product'] },
@@ -73,7 +73,7 @@ describe('the registry, without the store', () => {
   });
 
   it('keeps where a repository’s agent prompt lives, and fills it into the routine’s stub (CLD-127)', () => {
-    expect(promptPathOf(samewave)).toBe(DEFAULT_PROMPT_PATH);
+    expect(promptPathOf(widgets)).toBe(DEFAULT_PROMPT_PATH);
     const current = checkRepo({ slug: 'other', github: 'someone/other', areas: ['product:OPRD'] });
     const set = checkRepo({ routine: { prompt: './agents/prompt.md', max: 1 } }, { current });
     expect(set.routine).toEqual({ prompt: 'agents/prompt.md', max: 1 });
@@ -83,18 +83,18 @@ describe('the registry, without the store', () => {
       expect(() => checkRepo({ routine: { prompt: bad } }, { current })).toThrow(/routine.prompt/);
     }
     expect(stubFor('Read `<prompt path>` and follow it.', set)).toBe('Read `agents/prompt.md` and follow it.');
-    expect(stubFor('Read `<prompt path>`.', samewave)).toBe('Read `tools/tasks/routine-prompt.md`.');
+    expect(stubFor('Read `<prompt path>`.', widgets)).toBe('Read `tools/tasks/routine-prompt.md`.');
   });
 });
 
 describe('repositories on the board', () => {
-  it('lists samewave as the default repository', async () => {
+  it('lists widgets as the default repository', async () => {
     const res = await json(await api('repos'));
     expect(res.status).toBe(200);
-    expect(res.default).toBe('samewave');
+    expect(res.default).toBe('widgets');
     expect(res.repos[0]).toMatchObject({
-      slug: 'samewave',
-      github: 'acme/samewave',
+      slug: 'widgets',
+      github: 'acme/widgets',
       isDefault: true,
       defaultBranch: 'main',
     });
@@ -107,7 +107,7 @@ describe('repositories on the board', () => {
     ).toBe(403);
     const dup = await json(await add({ slug: 'breakaway', github: 'acme/breakaway', areas: ['product:PRD'] }));
     expect(dup.status).toBe(400);
-    expect(dup.error).toMatch(/PRD already belongs to samewave/);
+    expect(dup.error).toMatch(/PRD already belongs to widgets/);
     const made = await json(
       await add({
         slug: 'breakaway',
@@ -137,11 +137,11 @@ describe('repositories on the board', () => {
     );
     expect(changed.repo.areas.map((a) => a.prefix)).toEqual(['BRK', 'BCLD', 'BOPS']);
     expect(changed.repo.settings).toEqual({ mergeWhenGreen: false });
-    expect((await json(await api('repos'))).repos.map((r) => r.slug)).toEqual(['samewave', 'breakaway']);
+    expect((await json(await api('repos'))).repos.map((r) => r.slug)).toEqual(['widgets', 'breakaway']);
   });
 
   it('sets a repository’s deploy pipeline for the owner, refuses one pipelineOf would ignore, and clears it (BRK-44)', async () => {
-    await add({ slug: 'acme', github: 'acme/widgets', areas: ['product:ACM'] });
+    await add({ slug: 'acme', github: 'acme/gadgets', areas: ['product:ACM'] });
     const pipeline = {
       workers: { staging: 'widgets-staging', production: 'widgets' },
       workflows: { promote: 'promote.yml' },
@@ -196,7 +196,7 @@ describe('repositories on the board', () => {
       depends: ['BRK-1'],
     });
     expect(second.tasks[0].wid).toBe('BRK-2');
-    // samewave's areas aren't breakaway's, and the other way round.
+    // widgets's areas aren't breakaway's, and the other way round.
     const wrong = await create({ description: 'Nope', project: 'brand', repo: 'breakaway' });
     expect(wrong.status).toBe(400);
     expect(wrong.error).toMatch(/project is one of product, cloud, ops, ideas, routines in breakaway/);
@@ -205,7 +205,7 @@ describe('repositories on the board', () => {
     );
     expect(
       (await create({ description: 'Nope', project: 'product', repo: 'breakaway', wid: 'PRD-999' })).error,
-    ).toMatch(/PRD belongs to samewave/);
+    ).toMatch(/PRD belongs to widgets/);
     // One IDEA sequence for the whole install, whichever repository an idea is in.
     const before = (await json(await api('tasks?status=all'))).tasks.filter((t) => /^IDEA-/.test(t.wid ?? '')).length;
     const idea = await create({ description: 'An idea for breakaway', project: 'ideas', repo: 'breakaway' });
@@ -214,15 +214,15 @@ describe('repositories on the board', () => {
     expect(Number(idea.tasks[0].wid.slice(5))).toBeGreaterThan(before);
   });
 
-  it('leaves samewave’s tasks as they are: no repo property, the same IDs', async () => {
-    const res = await create({ description: 'A samewave task', project: 'debt' });
-    expect(res.tasks[0]).toMatchObject({ repo: 'samewave' });
+  it('leaves widgets’s tasks as they are: no repo property, the same IDs', async () => {
+    const res = await create({ description: 'A widgets task', project: 'debt' });
+    expect(res.tasks[0]).toMatchObject({ repo: 'widgets' });
     expect(res.tasks[0].wid).toMatch(/^DEBT-\d+$/);
     // Taskwarrior never sees a `repo` on it.
     const { ops } = await readChild(await parentOfLatest());
     expect(ops.some((op) => op.property === 'repo')).toBe(false);
-    const explicit = await create({ description: 'Also samewave', project: 'debt', repo: 'samewave' });
-    expect(explicit.tasks[0].repo).toBe('samewave');
+    const explicit = await create({ description: 'Also widgets', project: 'debt', repo: 'widgets' });
+    expect(explicit.tasks[0].repo).toBe('widgets');
   });
 
   it('gives a task made in Taskwarrior with a repo its repository’s work ID', async () => {
@@ -230,12 +230,12 @@ describe('repositories on the board', () => {
     const plain = crypto.randomUUID();
     await pushOps(await latestVersion(), [
       ...twCreate(tw, { description: 'From Taskwarrior in breakaway', project: 'ops', repo: 'breakaway' }),
-      ...twCreate(plain, { description: 'From Taskwarrior in samewave', project: 'ops' }),
+      ...twCreate(plain, { description: 'From Taskwarrior in widgets', project: 'ops' }),
     ]);
     const a = (await json(await api(`tasks/${tw}`))).task;
     expect(a).toMatchObject({ wid: 'BOPS-1', repo: 'breakaway' });
     const b = (await json(await api(`tasks/${plain}`))).task;
-    expect(b.repo).toBe('samewave');
+    expect(b.repo).toBe('widgets');
     expect(b.wid).toMatch(/^OPS-\d+$/);
   });
 
@@ -247,7 +247,7 @@ describe('repositories on the board', () => {
     expect(moved.status).toBe(400);
     expect(moved.error).toMatch(/stays in its repository/);
     expect(
-      (await json(await api(`tasks/${wid}`, { method: 'PATCH', body: { repo: 'samewave', priority: 'L' } }))).task
+      (await json(await api(`tasks/${wid}`, { method: 'PATCH', body: { repo: 'widgets', priority: 'L' } }))).task
         .priority,
     ).toBe('L');
     expect((await json(await api('tasks/BRK-2', { method: 'PATCH', body: { project: 'brand' } }))).error).toMatch(
@@ -318,7 +318,7 @@ describe('repositories on the board', () => {
     const brk = events.find((e) => e.task?.wid === 'BRK-2');
     expect(brk.task.repo).toBe('breakaway');
     const sw = events.find((e) => e.task?.wid && /^DEBT-/.test(e.task.wid));
-    expect(sw.task.repo).toBe('samewave');
+    expect(sw.task.repo).toBe('widgets');
   });
 
   it('keeps claim and next to the checkout’s repository when the CLI names it (CLD-123)', async () => {
@@ -332,11 +332,11 @@ describe('repositories on the board', () => {
       })
     ).tasks[0];
     const claim = async (body) => json(await api(`tasks/${brk.wid}/claim`, { method: 'POST', body }));
-    const refused = await claim({ agent: 'claude-sw', repo: 'samewave', force: true });
+    const refused = await claim({ agent: 'claude-sw', repo: 'widgets', force: true });
     expect(refused.status).toBe(409);
     expect(refused.error).toMatch(
       new RegExp(
-        `${brk.wid} belongs to breakaway \\(acme/breakaway\\), and this checkout is samewave.*--repo breakaway`,
+        `${brk.wid} belongs to breakaway \\(acme/breakaway\\), and this checkout is widgets.*--repo breakaway`,
       ),
     );
     expect((await claim({ agent: 'claude-brk', repo: 'Breakaway' })).task.claim).toBe('claude-brk');
@@ -348,8 +348,8 @@ describe('repositories on the board', () => {
     const next = async (repo) =>
       (await json(await api('next', { method: 'POST', body: { agent: 'claude-n', repo } }))).task;
     expect((await next('breakaway')).repo).toBe('breakaway');
-    const sw = await next('samewave');
-    expect(sw === null || sw.repo === 'samewave').toBe(true);
+    const sw = await next('widgets');
+    expect(sw === null || sw.repo === 'widgets').toBe(true);
     expect(await next('nowhere')).toBeNull();
     const claimed = (
       await json(await api('next', { method: 'POST', body: { agent: 'claude-n', repo: 'breakaway', claim: true } }))
@@ -373,8 +373,8 @@ describe('taking a repository off the board (CLD-191)', () => {
   const remove = (slug, body = {}) => api(`repos/${slug}`, { method: 'DELETE', body });
 
   it('refuses the default repository, an agent, and an unknown one', async () => {
-    expect((await json(await remove('samewave'))).status).toBe(409);
-    expect((await json(await remove('samewave'))).error).toMatch(/default repository/);
+    expect((await json(await remove('widgets'))).status).toBe(409);
+    expect((await json(await remove('widgets'))).error).toMatch(/default repository/);
     expect((await json(await remove('nowhere'))).status).toBe(404);
     expect(
       await json(await add({ slug: 'leftover', github: 'someone/leftover', areas: ['product:LFTP'] })),

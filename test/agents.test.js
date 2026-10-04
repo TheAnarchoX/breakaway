@@ -90,7 +90,7 @@ describe('cloud agents', () => {
     expect(routine.fires[0].version).toBe('2023-06-01');
     expect(routine.fires[0].text).toContain('Task: OPS-1');
     expect(routine.fires[0].text).toContain('Agent name: claude-ops-1');
-    expect(routine.fires[0].text).toContain('Repository: samewave (acme/samewave)');
+    expect(routine.fires[0].text).toContain('Repository: widgets (acme/widgets)');
     expect(routine.fires[0].text).toContain('Keep it short.');
     // The agent claims it again under the same name: that works.
     expect((await api('tasks/OPS-1/claim', { method: 'POST', body: { agent: 'claude-ops-1' } })).status).toBe(200);
@@ -152,7 +152,7 @@ describe('cloud agents', () => {
     ]);
 
     await api('tasks/OPS-1/done', { method: 'POST', body: {} });
-    const stub = env.STORE.get(env.STORE.idFromName('samewave'));
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
     await runDurableObjectAlarm(stub);
     const t = await task('OPS-2');
     expect(t).toMatchObject({ claim: 'claude-ops-2', autostart: true });
@@ -301,11 +301,11 @@ describe('cloud agents across repositories', () => {
       }),
     );
     expect(res.tasks.map((t) => t.wid)).toEqual(['BRK-1', 'BOPS-1', 'BRK-2', 'SCR-1']);
-    // Room for every test below: the shared limits are set where nothing in samewave is in the way.
+    // Room for every test below: the shared limits are set where nothing in widgets is in the way.
     await settings({ max: 6, hourly: 30 });
     const { repos } = await overview();
     expect(repos.map((r) => [r.slug, r.connected])).toEqual([
-      ['samewave', true],
+      ['widgets', true],
       ['breakaway', true],
       ['scratch', false],
     ]);
@@ -313,7 +313,7 @@ describe('cloud agents across repositories', () => {
 
   it('keeps agents apart per repository and area, not across repositories', async () => {
     const { running } = await overview();
-    // samewave has agents in Product (PRD-1) and Operations (OPS-2); breakaway's areas are its own.
+    // widgets has agents in Product (PRD-1) and Operations (OPS-2); breakaway's areas are its own.
     expect(running.map((r) => r.wid)).toEqual(expect.arrayContaining(['PRD-1', 'OPS-2']));
     const plan = await body(await api('agents/next', { method: 'POST', body: { count: 6, dryRun: true } }));
     expect(plan.started.map((t) => t.wid)).toEqual(expect.arrayContaining(['BRK-1', 'BOPS-1']));
@@ -361,8 +361,8 @@ describe('cloud agents across repositories', () => {
     expect(res.error).toMatch(/1 agent is already running in breakaway \(its cap is 1\)/);
     const plan = await body(await api('agents/next', { method: 'POST', body: { count: 6, dryRun: true } }));
     expect(plan.skipped.find((s) => s.wid === 'BOPS-1').reason).toMatch(/its cap is 1/);
-    // samewave isn't held back by breakaway's cap.
-    expect(plan.started.every((t) => t.repo === 'samewave')).toBe(true);
+    // widgets isn't held back by breakaway's cap.
+    expect(plan.started.every((t) => t.repo === 'widgets')).toBe(true);
   });
 
   it('honours a repository’s cap on starts an hour', async () => {
@@ -384,7 +384,7 @@ describe('cloud agents across repositories', () => {
   it('counts every repository’s agents against the shared slots and budget', async () => {
     const { running, budget } = await overview();
     expect(running.find((r) => r.wid === 'BRK-1')).toMatchObject({ repo: 'breakaway' });
-    // The slots: samewave's agents and breakaway's fill the same ones.
+    // The slots: widgets's agents and breakaway's fill the same ones.
     await settings({ max: running.length });
     let res = await body(await start('BOPS-1'));
     expect(res.error).toMatch(
@@ -431,7 +431,7 @@ describe('cloud agents across repositories', () => {
       mentions: [],
       ...extra,
     });
-    await runInDurableObject(env.STORE.get(env.STORE.idFromName('samewave')), (instance) => {
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
       instance.sql.exec(
         "INSERT OR REPLACE INTO gh_pulls (repo, number, updated, state, data) VALUES ('breakaway', 4, '2026-10-02T09:00:00Z', 'open', ?)",
         JSON.stringify(pull(4)),
@@ -441,7 +441,7 @@ describe('cloud agents across repositories', () => {
         JSON.stringify(pull(5, { author: 'dependabot[bot]', mergeableState: 'clean', mergeable: true })),
       );
     });
-    // samewave has no #4: the number means breakaway's only with its repository.
+    // widgets has no #4: the number means breakaway's only with its repository.
     expect((await api('github/pulls/4/fix', { method: 'POST', body: {} })).status).toBe(404);
     expect((await api('github/pulls/4/fix', { method: 'POST', body: { repo: 'nowhere' } })).status).toBe(400);
     const fixed = await body(await api('github/pulls/4/fix?repo=breakaway', { method: 'POST', body: {} }));

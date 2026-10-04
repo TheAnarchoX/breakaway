@@ -4,7 +4,7 @@ import { TaskStore } from '../src/store.js';
 import { api } from './helpers.js';
 
 /**
- * A fresh install (CLD-131): no samewave built in. Each test runs a store on an empty database of its own,
+ * A fresh install (CLD-131): no widgets built in. Each test runs a store on an empty database of its own,
  * with the env a new install has: no TASKS_GITHUB_REPO and no routine yet.
  */
 const FRESH = {
@@ -125,7 +125,7 @@ describe('a fresh install', () => {
         ['BRK-1', 'breakaway'],
         ['IDEA-1', 'breakaway'],
       ]);
-      // Stored without `repo`, like samewave's on samewave's board: the default needs none.
+      // Stored without `repo`, like widgets's on widgets's board: the default needs none.
       expect(s.tasks.get(made.body.tasks[0].uuid).repo).toBeUndefined();
       expect((await s.create([{ description: 'Not here', project: 'product', repo: 'notes' }])).body.error).toMatch(
         /project is one of docs/,
@@ -165,41 +165,50 @@ describe('a fresh install', () => {
 });
 
 describe('an install that already holds tasks', () => {
-  it('registers samewave by itself, as before, even without TASKS_GITHUB_REPO', async () => {
-    const before = (sql) => {
-      sql.exec('CREATE TABLE tasks (uuid TEXT PRIMARY KEY, data TEXT NOT NULL)');
-      sql.exec(
-        'INSERT INTO tasks (uuid, data) VALUES (?, ?)',
-        crypto.randomUUID(),
-        JSON.stringify({ description: 'Older work', status: 'pending', project: 'debt', wid: 'DEBT-1' }),
-      );
-    };
+  const holdsTasks = (sql) => {
+    sql.exec('CREATE TABLE tasks (uuid TEXT PRIMARY KEY, data TEXT NOT NULL)');
+    sql.exec(
+      'INSERT INTO tasks (uuid, data) VALUES (?, ?)',
+      crypto.randomUUID(),
+      JSON.stringify({ description: 'Older work', status: 'pending', project: 'debt', wid: 'DEBT-1' }),
+    );
+  };
+
+  it('registers the repository TASKS_GITHUB_REPO names by itself, as before', async () => {
     await fresh(
       'populated',
       async (s) => {
         const listed = (await s.reposApi()).body;
-        expect(listed.default).toBe('samewave');
+        expect(listed.default).toBe('widgets');
         expect(listed.firstRun).toBe(false);
-        expect(listed.repos.map((r) => [r.slug, r.github, r.isDefault])).toEqual([
-          ['samewave', 'TheAnarchoX/samewave', true],
-        ]);
+        expect(listed.repos.map((r) => [r.slug, r.github, r.isDefault])).toEqual([['widgets', 'acme/widgets', true]]);
         const report = await s.connectionsReport();
         expect(report.setup).toBeNull();
         expect(byId(report, 'repos.registered')).toBeUndefined();
       },
-      { before },
+      { before: holdsTasks, vars: { ...FRESH, TASKS_GITHUB_REPO: 'acme/widgets' } },
     );
   });
 
-  it('leaves samewave’s board as it is: samewave the default, no setup steps', async () => {
+  it('invents no repository when TASKS_GITHUB_REPO names none: its owner registers one', async () => {
+    await fresh(
+      'populated-unnamed',
+      async (s) => {
+        expect((await s.reposApi()).body).toMatchObject({ repos: [], default: null, firstRun: true });
+      },
+      { before: holdsTasks },
+    );
+  });
+
+  it('leaves widgets’s board as it is: widgets the default, no setup steps', async () => {
     const repos = await (await api('repos')).json();
-    expect(repos).toMatchObject({ default: 'samewave', firstRun: false });
+    expect(repos).toMatchObject({ default: 'widgets', firstRun: false });
     const report = await (await api('connections')).json();
     expect(report.setup).toBeNull();
     expect(report.connections.some((c) => c.group === 'repos')).toBe(false);
     expect(report.connections.find((c) => c.id === 'claude.routine')).toMatchObject({
       name: 'Agent routine',
-      repo: 'samewave',
+      repo: 'widgets',
     });
   });
 });

@@ -159,7 +159,7 @@ describe('routines in a repository (CLD-127)', () => {
   afterEach(() => spy.mockRestore());
 
   it('belongs to the default repository unless it names one, and refuses one that isn’t registered', async () => {
-    expect((await body(await api('routines'))).routines.every((r) => r.repo === 'samewave')).toBe(true);
+    expect((await body(await api('routines'))).routines.every((r) => r.repo === 'widgets')).toBe(true);
     expect((await body(await make('nowhere', { repo: 'nope' }))).error).toMatch(/no repository "nope"/);
     const res = await body(await make('brk-notes', { repo: 'breakaway' }));
     expect(res.status).toBe(201);
@@ -167,7 +167,7 @@ describe('routines in a repository (CLD-127)', () => {
     const moved = await body(await api('routines/weekly', { method: 'PATCH', body: { repo: 'breakaway' } }));
     expect(moved.routine.repo).toBe('breakaway');
     expect((await body(await api('routines/weekly', { method: 'PATCH', body: { repo: null } }))).routine.repo).toBe(
-      'samewave',
+      'widgets',
     );
   });
 

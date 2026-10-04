@@ -1,11 +1,14 @@
 {
   // Test-only config for the task server: local Durable Object, plain-string secrets from vitest.config.js.
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "samewave-tasks-test",
+  "name": "breakaway-test",
   "main": "./src/worker.js",
   "compatibility_date": "2026-08-01",
   "assets": { "directory": "./web/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/login", "/logout"] },
-  "vars": { "TASKS_GITHUB_REPO": "acme/samewave" },
+  "vars": {
+    "TASKS_GITHUB_REPO": "acme/widgets",
+    "TASKS_INSTALL": { "name": "widgets tasks", "worker": "widgets-tasks", "url": "https://tasks.acme.example", "secretsPrefix": "WIDGETS_TASKS_", "store": "widgets", "docs": "https://github.com/acme/widgets/blob/main/docs/tasks.md" }
+  },
   "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "TaskStore" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TaskStore"] }]
 }

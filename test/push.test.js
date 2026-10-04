@@ -59,7 +59,11 @@ describe('Web Push primitives', () => {
 
   it('signs a VAPID header the push service can verify with the public key', async () => {
     const keys = await generateVapidKeys();
-    const header = await vapidAuthorization('https://push.example.com/send/abc', keys, 1_790_000_000_000);
+    const header = await vapidAuthorization(
+      'https://push.example.com/send/abc',
+      { ...keys, subject: 'https://tasks.acme.example' },
+      1_790_000_000_000,
+    );
     const [, jwt, k] = /^vapid t=([\w.-]+), k=([\w-]+)$/u.exec(header);
     expect(k).toBe(keys.publicKey);
     const [h, p, sig] = jwt.split('.');
@@ -67,7 +71,7 @@ describe('Web Push primitives', () => {
     expect(JSON.parse(dec.decode(fromB64u(p)))).toEqual({
       aud: 'https://push.example.com',
       exp: 1_790_000_000 + 12 * 3600,
-      sub: 'https://tasks.samewave.dev',
+      sub: 'https://tasks.acme.example',
     });
     const pub = await crypto.subtle.importKey(
       'raw',
@@ -94,8 +98,12 @@ describe('Web Push primitives', () => {
     expect(await vapidKeys({ TASKS_VAPID_PUBLIC: keys.publicKey })).toBeNull();
     expect(await vapidKeys({ TASKS_VAPID_PUBLIC: keys.publicKey, TASKS_VAPID_KEY: 'not a key' })).toBeNull();
     expect(
-      await vapidKeys({ TASKS_VAPID_PUBLIC: keys.publicKey, TASKS_VAPID_KEY: { get: async () => keys.privateKey } }),
-    ).toEqual({ ...keys, subject: 'https://tasks.samewave.dev' });
+      await vapidKeys({
+        TASKS_INSTALL: { url: 'https://tasks.acme.example' },
+        TASKS_VAPID_PUBLIC: keys.publicKey,
+        TASKS_VAPID_KEY: { get: async () => keys.privateKey },
+      }),
+    ).toEqual({ ...keys, subject: 'https://tasks.acme.example' });
     // An install on workers.dev has no URL until it's been opened, and push services want a subject (CLD-139).
     const ready = { TASKS_VAPID_PUBLIC: keys.publicKey, TASKS_VAPID_KEY: keys.privateKey };
     expect(await vapidKeys(ready, null)).toBeNull();
@@ -108,7 +116,7 @@ describe('Web Push primitives', () => {
     expect(
       pingMessage({ id: 7, task: 'CLD-1', kind: 'blocked', message: 'Needs a change.\nMore detail here.' }),
     ).toEqual({
-      title: 'samewave tasks',
+      title: 'breakaway',
       body: 'CLD-1 needs you: blocked\nNeeds a change.',
       tag: 'CLD-1',
       url: '/?inbox=7',
@@ -240,7 +248,7 @@ describe('sending a push for a ping', () => {
     expect(call.headers.get('Content-Encoding')).toBe('aes128gcm');
     expect(call.headers.get('Authorization')).toMatch(/^vapid t=[\w.-]+, k=/u);
     expect(JSON.parse(await decrypt(sub, call.body))).toEqual({
-      title: 'samewave tasks',
+      title: 'widgets tasks',
       body: `${wid} needs you: blocked\nNeeds a dashboard change only you can make.`,
       tag: wid,
       url: `/?inbox=${made.id}`,

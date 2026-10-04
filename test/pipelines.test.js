@@ -2,15 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { allWorkers, compileDeployPaths, workersFor } from '../src/deploy-paths.js';
 import { pullAccess } from '../src/github-access.js';
 import { buildFlow, pipelineOf } from '../src/release.js';
-import { defaultRepo } from '../src/repos.js';
+import { DEPLOY_PATHS } from './helpers.js';
 
 // What each repository's pipeline, deploy paths, and access mean for the GitHub view (CLD-125).
 
 describe('a repository’s pipeline', () => {
-  it('is samewave’s as registered today, and null without Workers', () => {
-    expect(pipelineOf(defaultRepo({}))).toEqual({
-      staging: 'samewave-staging',
-      production: 'samewave',
+  it('is what the owner registers, and null without Workers', () => {
+    const registered = {
+      defaultBranch: 'main',
+      pipeline: {
+        workers: { staging: 'widgets-staging', production: 'widgets' },
+        workflows: { deploy: 'deploy.yml', promote: 'promote.yml', rollback: 'rollback.yml' },
+        deployPaths: '.github/deploy-paths.json',
+      },
+    };
+    expect(pipelineOf(registered)).toEqual({
+      staging: 'widgets-staging',
+      production: 'widgets',
       promote: 'promote.yml',
       rollback: 'rollback.yml',
       deployPaths: '.github/deploy-paths.json',
@@ -41,7 +49,7 @@ describe('a repository’s pipeline', () => {
       },
       {
         id: 1,
-        env: 'samewave-staging',
+        env: 'widgets-staging',
         sha: 'a'.repeat(40),
         task: 'deploy',
         state: 'success',
@@ -53,7 +61,6 @@ describe('a repository’s pipeline', () => {
     const flow = buildFlow({ deploys, workers: { staging: 'b-staging', production: 'b' } });
     expect(flow.staging).toMatchObject({ env: 'b-staging', state: 'live', build: { sha: 'b'.repeat(40) } });
     expect(flow.production.state).toBe('none');
-    expect(buildFlow({ deploys }).staging.build.sha).toBe('a'.repeat(40)); // samewave's by default
   });
 });
 
@@ -69,9 +76,10 @@ describe('deploy paths from a repository’s own file', () => {
     expect(compileDeployPaths({ api: '(' })).toBeNull();
   });
 
-  it('keeps samewave’s built-in rules', () => {
-    expect(workersFor(['src/server/pages.js'])).toEqual(['samewave']);
-    expect(workersFor(['docs/tasks.md'])).toEqual([]);
+  it('reads a repository’s rules from its own file, as the Deploy workflow does', () => {
+    const rules = compileDeployPaths({ widgets: DEPLOY_PATHS.widgets });
+    expect(workersFor(['src/server/pages.js'], rules)).toEqual(['widgets']);
+    expect(workersFor(['docs/tasks.md'], rules)).toEqual([]);
   });
 });
 

@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { comparePermissions, routineFix, summarizeDeliveries } from '../src/connections.js';
 import { connectionsMethods } from '../src/store-connections.js';
 import { ORIGIN, TEST_API_TOKEN, TEST_CLIENT_ID, TEST_GITHUB_WEBHOOK_SECRET, TEST_SYNC_KEY } from './constants.js';
-import { api, latestVersion, pushOps, sync, twCreate } from './helpers.js';
+import { api, latestVersion, pushOps, setPipeline, sync, twCreate } from './helpers.js';
 
-const REPO = '/repos/acme/samewave';
+const REPO = '/repos/acme/widgets';
 const encoder = new TextEncoder();
 const ALL = {
   metadata: 'read',
@@ -51,9 +51,9 @@ function mockGitHub() {
       return gh.app === 200
         ? reply({
             id: 424242,
-            slug: 'samewave-tasks',
-            name: 'samewave tasks',
-            html_url: 'https://github.com/apps/samewave-tasks',
+            slug: 'widgets-tasks',
+            name: 'widgets tasks',
+            html_url: 'https://github.com/apps/widgets-tasks',
           })
         : reply({ message: 'A JSON web token could not be decoded' }, gh.app);
     if (path === '/app/hook/deliveries') return reply(gh.deliveries);
@@ -67,7 +67,7 @@ function mockGitHub() {
           })
         : reply({ message: 'Not Found' }, 404);
     }
-    // breakaway has the App like samewave; scratch has nothing set up.
+    // breakaway has the App like widgets; scratch has nothing set up.
     if (path === '/repos/acme/breakaway/installation')
       return reply({
         id: 78,
@@ -80,13 +80,13 @@ function mockGitHub() {
     if (path === '/repos/acme/breakaway') return reply({ full_name: 'acme/breakaway', allow_auto_merge: true });
     if (path === '/app/installations/77/access_tokens')
       return reply({ token: 'ghs_connectionscheck', expires_at: new Date(Date.now() + 3_600_000).toISOString() });
-    if (path === REPO) return reply({ full_name: 'acme/samewave', allow_auto_merge: gh.autoMerge });
+    if (path === REPO) return reply({ full_name: 'acme/widgets', allow_auto_merge: gh.autoMerge });
     if (path === '/rate_limit') return reply({ resources: { core: gh.rate } });
     return reply({ message: 'Not Found' }, 404);
   });
 }
 
-const stub = () => env.STORE.get(env.STORE.idFromName('samewave'));
+const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
 const inStore = (fn) => runInDurableObject(stub(), (instance) => fn(instance));
 
 /** A task claimed by `agent` with a run the board started `minutes` ago: an agent that is still running. Its uuid. */
@@ -277,6 +277,7 @@ describe('GET /api/connections and Check now', () => {
   });
 
   it('says which permissions are missing and how to grant them (CLD-56, CLD-104)', async () => {
+    await setPipeline(); // Actions and Deployments matter where there's a pipeline
     gh.permissions = { ...ALL, contents: 'read', pull_requests: 'read', actions: 'read' };
     const c = find(await checkNow(), 'github.permissions');
     expect(c.state).toBe('attention');
@@ -289,8 +290,8 @@ describe('GET /api/connections and Check now', () => {
   it('tells a missing installation, a suspended one, and auto-merge off apart', async () => {
     gh.installed = false;
     let report = await checkNow();
-    expect(find(report, 'github.install')).toMatchObject({ state: 'off', repo: 'samewave' });
-    expect(find(report, 'github.install').fix).toContain('https://github.com/apps/samewave-tasks/installations/new');
+    expect(find(report, 'github.install')).toMatchObject({ state: 'off', repo: 'widgets' });
+    expect(find(report, 'github.install').fix).toContain('https://github.com/apps/widgets-tasks/installations/new');
     expect(find(report, 'github.permissions')).toBeUndefined();
 
     gh.installed = true;
@@ -336,7 +337,7 @@ describe('GET /api/connections and Check now', () => {
   it('says when the sync with GitHub is failing, late, or low on requests', async () => {
     await inStore((s) => {
       s.setMeta('gh_last_sync', Date.now());
-      s.setMeta('gh_error', 'GitHub 401 on /repos/acme/samewave/pulls: Bad credentials');
+      s.setMeta('gh_error', 'GitHub 401 on /repos/acme/widgets/pulls: Bad credentials');
     });
     let report = await checkNow();
     expect(find(report, 'github.sync')).toMatchObject({ state: 'attention' });
@@ -560,7 +561,7 @@ describe('Cloudflare, Claude, Taskwarrior, and push states', () => {
       }
     });
     expect(find(off, 'push')).toMatchObject({ state: 'off' });
-    expect(find(off, 'push').fix).toMatch(/SAMEWAVE_TASKS_VAPID_KEY/u);
+    expect(find(off, 'push').fix).toMatch(/WIDGETS_TASKS_VAPID_KEY/u);
   });
 
   it('remembers since when each connection has been in its state', async () => {
@@ -721,12 +722,10 @@ describe('connections per repository (CLD-129)', () => {
       if (!have.has(body.slug)) expect((await api('repos', { method: 'POST', body })).status).toBe(201);
     }
   }
-  const samewaveRows = (report) =>
-    report.connections
-      .filter((c) => (c.repo === 'samewave' || c.repo === null) && c.id !== 'github.webhook')
-      .map(plain);
+  const widgetsRows = (report) =>
+    report.connections.filter((c) => (c.repo === 'widgets' || c.repo === null) && c.id !== 'github.webhook').map(plain);
 
-  it('shows a registered repository without the App or a routine as needing attention, with the fix, and leaves samewave’s rows alone', async () => {
+  it('shows a registered repository without the App or a routine as needing attention, with the fix, and leaves widgets’s rows alone', async () => {
     await inStore((s) => {
       s.setMeta('gh_last_sync', Date.now());
       s.setMeta('gh_error', null);
@@ -736,9 +735,9 @@ describe('connections per repository (CLD-129)', () => {
     await register();
     const after = await checkNow();
 
-    // samewave alone and samewave next to two others: the same rows, word for word.
-    expect(samewaveRows(after)).toEqual(samewaveRows(before));
-    expect(of(after, 'claude.routine', 'samewave')).toMatchObject({ name: 'Agent routine', state: 'working' });
+    // widgets alone and widgets next to two others: the same rows, word for word.
+    expect(widgetsRows(after)).toEqual(widgetsRows(before));
+    expect(of(after, 'claude.routine', 'widgets')).toMatchObject({ name: 'Agent routine', state: 'working' });
     expect(of(after, 'claude.output', null)).toMatchObject({ name: 'Live output from sessions' });
 
     // scratch: the App isn't on it and it has no routine. Exactly that, with the fix.
@@ -747,7 +746,7 @@ describe('connections per repository (CLD-129)', () => {
       name: 'Installed on acme/scratch',
     });
     expect(of(after, 'github.install', 'scratch').fix).toContain(
-      'https://github.com/apps/samewave-tasks/installations/new',
+      'https://github.com/apps/widgets-tasks/installations/new',
     );
     expect(of(after, 'github.permissions', 'scratch')).toBeUndefined();
     expect(of(after, 'github.automerge', 'scratch')).toBeUndefined();
@@ -803,7 +802,7 @@ describe('connections per repository (CLD-129)', () => {
     const brk = of(report, 'claude.routine', 'breakaway');
     expect(brk.state).toBe('attention');
     expect(brk.fix).toContain('agents-connect --repo breakaway');
-    expect(of(report, 'claude.routine', 'samewave').state).toBe('working');
+    expect(of(report, 'claude.routine', 'widgets').state).toBe('working');
     expect(of(report, 'claude.output', 'breakaway').state).toBe('attention');
     expect(of(report, 'claude.output', null).state).toBe('working');
     await inStore((s) => s.sql.exec("DELETE FROM agent_runs WHERE task = 'brk-failed'"));
@@ -818,7 +817,7 @@ describe('connections per repository (CLD-129)', () => {
     });
     const hook = find(await checkNow(), 'github.webhook');
     expect(hook.detail).toMatch(
-      /last from each repository: samewave (never|\d{4}-), breakaway \d{4}-[^,]+, scratch never/u,
+      /last from each repository: widgets (never|\d{4}-), breakaway \d{4}-[^,]+, scratch never/u,
     );
     expect(hook.detail).not.toContain('nowhere');
   });

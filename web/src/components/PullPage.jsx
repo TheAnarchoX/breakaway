@@ -312,18 +312,18 @@ function Conversation({ page }) {
 }
 
 /**
- * What merging does now: the legacy install's Worker goes to staging and waits for Promote; the board deploys itself. Another
- * repository with a pipeline names the Workers its deploy paths match. Without a pipeline, or when its deploy
- * paths can't be read, nothing is said (null).
+ * What merging does now, from the Workers the pull request's files match in its repository's pipeline: a staging
+ * Worker waits for Promote, any other deploys itself. Without a pipeline, or when its deploy paths can't be read,
+ * nothing is said (null).
  */
 function mergeEffect(page) {
   if (page.pipeline === null || (page.pipeline && page.pipeline.known === false)) return null;
   if (!page.deploys) return 'Docs or tooling only: it deploys nothing.';
-  if (page.isDefault === false) return `Merging deploys ${page.workers.join(' and ')}.`;
+  const staged = page.pipeline && page.workers.includes(page.pipeline.staging);
+  const direct = page.workers.filter((w) => !page.pipeline || w !== page.pipeline.staging);
   const parts = [];
-  if (page.workers.includes('samewave'))
-    parts.push('Merging deploys to staging. Promote it from the GitHub view to put it live.');
-  if (page.workers.includes('samewave-tasks')) parts.push('The board deploys itself.');
+  if (staged) parts.push('Merging deploys to staging. Promote it from the GitHub view to put it live.');
+  if (direct.length) parts.push(`Merging deploys ${direct.join(' and ')}.`);
   return parts.join(' ');
 }
 

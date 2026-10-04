@@ -1,3 +1,0 @@
-{
-  "samewave": "^(src/|public/|migrations/|index\\.html$|vite\\.config\\.js$|wrangler\\.jsonc$|package\\.json$|pnpm-lock\\.yaml$|pnpm-workspace\\.yaml$|\\.github/workflows/deploy\\.yml$|\\.github/deploy-paths\\.json$)"
-}

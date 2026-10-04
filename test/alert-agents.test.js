@@ -3,13 +3,13 @@ import { api } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
-const REPO = '/repos/acme/samewave';
+const REPO = '/repos/acme/widgets';
 const state = { alerts: [], fires: [], next: 1 };
 
 function alert(number, severity, pkg, fixedIn = '1.2.3') {
   return {
     number,
-    html_url: `https://github.com/acme/samewave/security/dependabot/${number}`,
+    html_url: `https://github.com/acme/widgets/security/dependabot/${number}`,
     created_at: '2026-09-29T00:00:00Z',
     dependency: { package: { name: pkg, ecosystem: 'npm' }, manifest_path: 'pnpm-lock.yaml' },
     security_advisory: { severity, summary: `A ${severity} problem in ${pkg}`, ghsa_id: `GHSA-${number}` },
@@ -60,7 +60,7 @@ describe('security alerts to agents', () => {
       priority: 'H',
       horizon: 'now',
       tags: ['agent', 'security'],
-      alert: 'https://github.com/acme/samewave/security/dependabot/1',
+      alert: 'https://github.com/acme/widgets/security/dependabot/1',
       claim: `claude-${res.task.wid.toLowerCase()}`,
     });
     expect(res.task.brief).toMatch(/Fixed in sharp 0\.35\.4\.[\s\S]*GHSA-1/);

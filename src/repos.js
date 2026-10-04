@@ -4,15 +4,15 @@
  * the Durable Object; the table and the API are in store-repos.js.
  *
  * Every task belongs to one repository through its `repo` property, and a task without one belongs to
- * the default repository (the legacy install's, from before repositories), so no existing task, history, or replica changes.
- * A fresh install has no legacy repository: its first registered repository is its default (CLD-131). Ideas (IDEA) and
+ * the default repository (the install's first, from before repositories), so no existing task, history, or replica changes.
+ * A fresh install has no such repository: its first registered repository is its default (CLD-131). Ideas (IDEA) and
  * Routines (RUN) are install-wide (the owner's answer in CLD-119); every other area belongs to exactly one
  * repository, and a prefix to exactly one area, so a work ID means one task across the install.
  */
 import { AREA_NAMES, InputError, PROJECTS } from './model.js';
 
-/** The repository a task without `repo` belongs to on an install from before repositories, registered from its settings. */
-export const DEFAULT_REPO = 'samewave';
+/** The slug a task without `repo` falls back to while the registry has no default: nothing is registered, so no task is. */
+export const NO_REPO = 'default';
 /** Areas shared by the whole install: the owner's inbox and saved prompts, not a repository's work. */
 export const SHARED_AREAS = { ideas: 'IDEA', routines: 'RUN' };
 
@@ -25,35 +25,42 @@ export const JSON_FIELDS = ['pipeline', 'routine', 'settings'];
 const MAX_JSON = 4096;
 
 /**
- * Whether an empty registry gets the legacy repository's row by itself: only on an install from before repositories,
- * one that already holds tasks or names its repository in TASKS_GITHUB_REPO. A fresh install starts
- * with no repository, and its owner registers the first (CLD-131).
+ * Whether an empty registry gets a first row by itself: only on an install that names its repository in
+ * TASKS_GITHUB_REPO. A fresh install starts with no repository, and its owner registers the first (CLD-131).
  */
-export const seedsDefault = (env, holdsTasks) => Boolean(holdsTasks || env?.TASKS_GITHUB_REPO);
+export const seedsDefault = (env) => Boolean(env?.TASKS_GITHUB_REPO);
 
-/** The registry's first row on such an install: the legacy install as the board runs it today (`TASKS_GITHUB_REPO`, `PROJECTS`, release.js). */
+/** A repository's slug from its GitHub name: `acme/widgets` → `widgets`. */
+export const slugOfGithub = (github) => {
+  const slug = String(github)
+    .split('/')
+    .pop()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/gu, '-')
+    .replace(/^[^a-z]+|-+$/gu, '');
+  return SLUG.test(slug) ? slug : NO_REPO;
+};
+
+/** The registry's first row on such an install: `TASKS_GITHUB_REPO` with the model's areas, and no pipeline until its owner sets one. */
 export function defaultRepo(env) {
-  const github = String(env.TASKS_GITHUB_REPO || 'TheAnarchoX/samewave');
+  const github = String(env.TASKS_GITHUB_REPO);
+  const slug = slugOfGithub(github);
   return {
-    slug: DEFAULT_REPO,
+    slug,
     github,
-    name: 'samewave',
+    name: slug,
     defaultBranch: 'main',
     areas: Object.entries(PROJECTS)
       .filter(([project]) => !(project in SHARED_AREAS))
       .map(([project, prefix]) => ({ project, prefix, name: AREA_NAMES[project] ?? project })),
-    pipeline: {
-      workers: { staging: 'samewave-staging', production: 'samewave' },
-      workflows: { deploy: 'deploy.yml', promote: 'promote.yml', rollback: 'rollback.yml' },
-      deployPaths: '.github/deploy-paths.json',
-    },
+    pipeline: null,
     routine: null,
     settings: null,
   };
 }
 
 /** The repository a task belongs to: its `repo`, or the default. */
-export const repoSlugOf = (map, fallback = DEFAULT_REPO) => map?.repo || fallback;
+export const repoSlugOf = (map, fallback = NO_REPO) => map?.repo || fallback;
 
 /** The work-ID prefix for `project` in `repo` (a registry row), or null when the area isn't the repository's. */
 export function prefixFor(repo, project) {

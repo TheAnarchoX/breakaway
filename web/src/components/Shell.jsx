@@ -169,7 +169,7 @@ function ServerStatus() {
 }
 
 /**
- * breakaway's logo, and the install's own name beside it when it has one (a legacy install's is "samewave tasks").
+ * breakaway's logo, and the install's own name beside it when it has one (a named install shows its own).
  * @param {Record<string, any>} props
  */
 function Brand({ onClick }) {

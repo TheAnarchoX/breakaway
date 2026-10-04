@@ -7,7 +7,6 @@ import { summarizeDeliveries } from '../src/connections.js';
 import { appManifest, repoRef } from '../src/github.js';
 import {
   DEFAULTS,
-  LEGACY,
   SECRET_KEYS,
   ConfigError,
   docsLink,
@@ -128,10 +127,16 @@ describe('an install’s config', () => {
 });
 
 describe('the Worker’s install', () => {
-  it('is samewave’s when the Worker has no TASKS_INSTALL, so an older deploy keeps its Durable Object', () => {
-    expect(install({})).toBe(LEGACY);
-    expect(install({ TASKS_INSTALL: 'not json' })).toBe(LEGACY);
-    expect(LEGACY.store).toBe('samewave');
+  it('is a new install’s defaults when the Worker has no TASKS_INSTALL', () => {
+    for (const env of [{}, { TASKS_INSTALL: 'not json' }])
+      expect(install(env)).toMatchObject({
+        name: 'breakaway',
+        worker: 'breakaway',
+        url: null,
+        secretsPrefix: 'BREAKAWAY_',
+        store: 'breakaway',
+        docs: null,
+      });
   });
 
   it('reads TASKS_INSTALL as an object or as JSON text', () => {
@@ -139,7 +144,7 @@ describe('the Worker’s install', () => {
     expect(install(vars)).toMatchObject({ name: 'acme board', store: 'acme', secretsPrefix: 'BREAKAWAY_', docs: null });
     expect(install({ TASKS_INSTALL: JSON.stringify(vars.TASKS_INSTALL) }).worker).toBe('acme-board');
     expect(docsLink(install(vars), 'secrets')).toBeNull();
-    expect(docsLink(LEGACY, 'secrets')).toBe(`${LEGACY.docs}#secrets`);
+    expect(docsLink({ docs: 'https://docs.acme.test/tasks' }, 'secrets')).toBe('https://docs.acme.test/tasks#secrets');
   });
 
   it('names the install in pushes, the GitHub App, and webhook fixes', () => {
@@ -159,7 +164,7 @@ describe('the Worker’s install', () => {
   });
 
   it('names the install’s Worker and secrets in Connections', async () => {
-    const stub = env.STORE.get(env.STORE.idFromName('samewave'));
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
     await runInDurableObject(stub, async (instance) => {
       const own = instance.env;
       try {
@@ -171,8 +176,8 @@ describe('the Worker’s install', () => {
         instance.env = own;
       }
       const [, secrets, cron] = await instance.cloudflareConnections();
-      expect(cron.fix).toContain('Workers → samewave-tasks → Settings');
-      expect(secrets.link).toBe(`${LEGACY.docs}#secrets`);
+      expect(cron.fix).toContain('Workers → widgets-tasks → Settings');
+      expect(secrets.link).toBe('https://github.com/acme/widgets/blob/main/docs/tasks.md#secrets');
     });
   });
 });

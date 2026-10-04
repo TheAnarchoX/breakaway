@@ -5,7 +5,7 @@
  * green, Promote, and Roll back (workflow dispatches) (`send`, `graphql`), pressed or sent by the owner's pull request settings, which
  * the Worker allows from the signed-in browser only.
  */
-import { LEGACY } from './install.js';
+import { DEFAULTS } from './install.js';
 import { secret } from './secrets.js';
 
 const API = 'https://api.github.com';
@@ -402,7 +402,7 @@ export function shippedPrs(prs, commits) {
 }
 
 /** The manifest for GitHub's "register an app from a manifest" flow, named after the install (src/install.js). */
-export function appManifest(origin, repo, name = /** @type {string} */ (LEGACY.name)) {
+export function appManifest(origin, repo, name = /** @type {string} */ (DEFAULTS.name)) {
   return {
     name,
     url: origin,

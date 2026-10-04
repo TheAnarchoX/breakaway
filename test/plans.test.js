@@ -152,10 +152,10 @@ describe('the Claude plan on the board', () => {
       ).status,
     ).toBe(201);
     // 30 starts in the default repository this hour, from runs that are already over.
-    await runInDurableObject(env.STORE.get(env.STORE.idFromName('samewave')), (instance) => {
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
       for (let i = 0; i < 30; i++)
         instance.sql.exec(
-          "INSERT INTO agent_runs (task, agent, trigger, status, started, repo) VALUES ('gone', 'claude-x', 'manual', 'started', ?, 'samewave')",
+          "INSERT INTO agent_runs (task, agent, trigger, status, started, repo) VALUES ('gone', 'claude-x', 'manual', 'started', ?, 'widgets')",
           Date.now() - 60_000,
         );
     });

@@ -48,7 +48,7 @@ describe('ideas', () => {
   });
 
   it('leaves an idea waiting unless the owner turned auto-start on when writing it', async () => {
-    await runDurableObjectAlarm(env.STORE.get(env.STORE.idFromName('samewave')));
+    await runDurableObjectAlarm(env.STORE.get(env.STORE.idFromName('widgets')));
     expect(fires).toHaveLength(0);
     const t = (await body(await api('tasks/IDEA-1'))).task;
     expect(t.claim).toBeNull();
@@ -57,7 +57,7 @@ describe('ideas', () => {
   it('starts an idea’s agent by itself when the owner chose that, and hands it the idea’s work ID', async () => {
     const made = await body(await idea('Show who is in a room as avatars', { autostart: 'yes' }));
     expect(made.tasks[0]).toMatchObject({ wid: 'IDEA-3', autostart: true });
-    await runDurableObjectAlarm(env.STORE.get(env.STORE.idFromName('samewave')));
+    await runDurableObjectAlarm(env.STORE.get(env.STORE.idFromName('widgets')));
     expect(fires).toHaveLength(1);
     expect(fires[0]).toMatch(/Task: IDEA-3\nTitle: Show who is in a room as avatars\nAgent name: claude-idea-3/);
     expect((await body(await api('tasks/IDEA-3'))).task).toMatchObject({ claim: 'claude-idea-3', active: true });

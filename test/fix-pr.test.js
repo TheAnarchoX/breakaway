@@ -3,7 +3,7 @@ import { api } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
-const REPO = '/repos/acme/samewave';
+const REPO = '/repos/acme/widgets';
 const gh = { pulls: [], mergeable: {}, checks: {}, reviews: {}, fires: [] };
 
 function pr(number, { title, body: text = '', draft = false } = {}) {
@@ -13,7 +13,7 @@ function pr(number, { title, body: text = '', draft = false } = {}) {
     body: text,
     draft,
     state: 'open',
-    html_url: `https://github.com/acme/samewave/pull/${number}`,
+    html_url: `https://github.com/acme/widgets/pull/${number}`,
     head: { ref: `branch-${number}`, sha: `sha${number}` },
     user: { login: 'claude[bot]' },
     created_at: '2026-09-29T09:00:00Z',

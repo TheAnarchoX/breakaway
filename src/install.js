@@ -25,19 +25,6 @@ export const DEFAULTS = Object.freeze({
   channel: 'stable',
 });
 
-/**
- * What a Worker deployed without `TASKS_INSTALL` is: samewave's board as it ran before installs were
- * configurable, so its Durable Object, secrets, and links stay where they were. The compatibility fallback.
- */
-export const LEGACY = Object.freeze({
-  name: 'samewave tasks',
-  worker: 'samewave-tasks',
-  url: 'https://tasks.samewave.dev',
-  secretsPrefix: 'SAMEWAVE_TASKS_',
-  store: 'samewave',
-  docs: 'https://github.com/TheAnarchoX/samewave/blob/main/docs/tasks.md',
-});
-
 /** The Secrets Store secrets the Worker binds, by the part of the name after the prefix; the binding is `TASKS_<key>`. */
 export const SECRET_KEYS = [
   'CLIENT_ID',
@@ -131,7 +118,7 @@ export function parseInstall(raw) {
 }
 
 /**
- * The install a Worker runs as: its `TASKS_INSTALL` var, or samewave's names when it has none. An install
+ * The install a Worker runs as: its `TASKS_INSTALL` var, or a new install's defaults when it has none. An install
  * without a `url` (a new install's, on workers.dev) has a null `url`: the board
  * then goes by the address it was last opened at (the Durable Object's homeUrl()).
  *
@@ -141,13 +128,13 @@ export function parseInstall(raw) {
 export function install(env) {
   const set = env?.TASKS_INSTALL;
   const raw = typeof set === 'string' ? safeParse(set) : set;
-  if (!raw || typeof raw !== 'object') return LEGACY;
+  if (!raw || typeof raw !== 'object') return { ...DEFAULTS, installRepository: null };
   return {
-    name: String(raw.name || LEGACY.name),
-    worker: String(raw.worker || LEGACY.worker),
+    name: String(raw.name || DEFAULTS.name),
+    worker: String(raw.worker || DEFAULTS.worker),
     url: raw.url ? String(raw.url) : null,
     secretsPrefix: String(raw.secretsPrefix || DEFAULTS.secretsPrefix),
-    store: String(raw.store || LEGACY.store),
+    store: String(raw.store || DEFAULTS.store),
     docs: raw.docs ? String(raw.docs) : null,
     installRepository: raw.installRepository ? String(raw.installRepository) : null,
     channel: raw.channel === 'main' ? 'main' : 'stable',
@@ -162,7 +149,7 @@ function safeParse(text) {
   }
 }
 
-/** A Secrets Store secret's name on this install: `CLIENT_ID` → `SAMEWAVE_TASKS_CLIENT_ID` on samewave's. */
+/** A Secrets Store secret's name on this install: `CLIENT_ID` → `BREAKAWAY_CLIENT_ID` on an install with the default prefix. */
 export const secretName = (inst, key) => `${inst.secretsPrefix}${key}`;
 
 /** A link into the install's docs, or null when it has none. */

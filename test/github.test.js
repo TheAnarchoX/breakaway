@@ -1,6 +1,6 @@
 import { SELF, env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { workersFor } from '../src/deploy-paths.js';
+import { compileDeployPaths, workersFor } from '../src/deploy-paths.js';
 import {
   byInbox,
   linkedWids,
@@ -26,7 +26,9 @@ Merging this PR finishes \`CLD-24\` on the board by itself.
 
 Closes CLD-24.
 `;
-import { api } from './helpers.js';
+import { DEPLOY_PATHS, api, setPipeline } from './helpers.js';
+
+const RULES = compileDeployPaths({ widgets: DEPLOY_PATHS.widgets });
 import { shipState } from '../web/src/lib/model.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
@@ -83,18 +85,18 @@ describe('linking pull requests to tasks', () => {
       prefixes,
     );
     expect(linked).toEqual({ closes: ['BRK-3', 'CLD-9'], mentions: ['OPS-1'] });
-    expect(linkedWids({ title: 'x', branch: 'x', body: 'Closes BRK-3.' }).closes).toEqual([]); // samewave's prefixes only
+    expect(linkedWids({ title: 'x', branch: 'x', body: 'Closes BRK-3.' }).closes).toEqual([]); // widgets's prefixes only
     const owners = new Map([
-      ['CLD', 'samewave'],
-      ['OPS', 'samewave'],
+      ['CLD', 'widgets'],
+      ['OPS', 'widgets'],
       ['BRK', 'breakaway'],
     ]);
     expect(ownLinks(linked, 'breakaway', owners)).toEqual({
       closes: ['BRK-3'],
       mentions: ['OPS-1', 'CLD-9'],
-      elsewhere: { 'CLD-9': 'samewave', 'OPS-1': 'samewave' },
+      elsewhere: { 'CLD-9': 'widgets', 'OPS-1': 'widgets' },
     });
-    expect(ownLinks(linked, 'samewave', owners)).toEqual({
+    expect(ownLinks(linked, 'widgets', owners)).toEqual({
       closes: ['CLD-9'],
       mentions: ['OPS-1', 'BRK-3'],
       elsewhere: { 'BRK-3': 'breakaway' },
@@ -111,32 +113,35 @@ describe('linking pull requests to tasks', () => {
 describe('what needs a deploy', () => {
   it('reads the same file the Deploy workflow does', () => {
     expect(
-      workersFor([
-        'docs/decisions.md',
-        'WORK.md',
-        '.agents/skills/tasks/SKILL.md',
-        '.github/workflows/ci.yml',
-        'scripts/tasks.mjs',
-      ]),
+      workersFor(
+        [
+          'docs/decisions.md',
+          'WORK.md',
+          '.agents/skills/tasks/SKILL.md',
+          '.github/workflows/ci.yml',
+          'scripts/tasks.mjs',
+        ],
+        RULES,
+      ),
     ).toEqual([]);
-    expect(workersFor(['docs/runbook.md', 'src/rooms.js'])).toEqual(['samewave']);
-    // The board no longer deploys from samewave (CLD-141, BRK-68): its files need no deploy there.
-    expect(workersFor(['tools/tasks/src/store.js'])).toEqual([]);
-    // The board has its own copies of samewave's styles and web push (CLD-135).
-    expect(workersFor(['src/app/styles/tokens.css'])).toEqual(['samewave']);
-    expect(workersFor(['src/shared/web-push.js'])).toEqual(['samewave']);
-    expect(workersFor(['tools/tasks/package.json'])).toEqual([]);
-    expect(workersFor(['.github/deploy-paths.json'])).toEqual(['samewave']);
+    expect(workersFor(['docs/runbook.md', 'src/rooms.js'], RULES)).toEqual(['widgets']);
+    // The board no longer deploys from widgets (CLD-141, BRK-68): its files need no deploy there.
+    expect(workersFor(['tools/tasks/src/store.js'], RULES)).toEqual([]);
+    // The board has its own copies of widgets's styles and web push (CLD-135).
+    expect(workersFor(['src/app/styles/tokens.css'], RULES)).toEqual(['widgets']);
+    expect(workersFor(['src/shared/web-push.js'], RULES)).toEqual(['widgets']);
+    expect(workersFor(['tools/tasks/package.json'], RULES)).toEqual([]);
+    expect(workersFor(['.github/deploy-paths.json'], RULES)).toEqual(['widgets']);
   });
 
   it('tells shipped, waiting for a deploy, and no deploy needed apart', () => {
     const done = (github, extra = {}) => ({ status: 'completed', github, ...extra });
     const pr = (workers, extra = {}) => ({ closes: true, state: 'merged', workers, ...extra });
-    expect(shipState(done([pr(['samewave'])], { shipped: { version: 'x' } }))).toBe('shipped');
-    expect(shipState(done([pr(['samewave'])]))).toBe('unshipped');
+    expect(shipState(done([pr(['widgets'])], { shipped: { version: 'x' } }))).toBe('shipped');
+    expect(shipState(done([pr(['widgets'])]))).toBe('unshipped');
     expect(shipState(done([pr(null)]))).toBe('unshipped'); // files not read yet
     expect(shipState(done([pr([])]))).toBe('nodeploy');
-    expect(shipState(done([pr([]), pr(['samewave'])]))).toBe('unshipped');
+    expect(shipState(done([pr([]), pr(['widgets'])]))).toBe('unshipped');
     expect(shipState(done([pr([], { closes: false })]))).toBeNull();
     expect(shipState(done([pr([], { state: 'open' })]))).toBeNull();
     expect(shipState({ status: 'pending', github: [pr([])] })).toBeNull();
@@ -216,7 +221,7 @@ describe('webhook signatures', () => {
 
 // ---- the whole flow, against a pretend GitHub ------------------------------------------
 
-const REPO = '/repos/acme/samewave';
+const REPO = '/repos/acme/widgets';
 const gh = {
   pulls: [],
   checks: {},
@@ -261,7 +266,7 @@ function pr(
     body,
     draft,
     state,
-    html_url: `https://github.com/acme/samewave/pull/${number}`,
+    html_url: `https://github.com/acme/widgets/pull/${number}`,
     node_id: `PR_${number}`,
     head: { ref: branch, sha },
     user: { login: 'claude[bot]' },
@@ -380,13 +385,15 @@ function mockGitHub() {
       return gh.deployments ? reply(gh.deployments) : reply({ message: 'Resource not accessible by integration' }, 403);
     if (path === `${REPO}/releases`) return reply(gh.releases);
     if (path === `${REPO}/tags`) return reply(gh.tags);
+    if (path === `${REPO}/contents/.github/deploy-paths.json`)
+      return reply({ content: btoa(JSON.stringify({ widgets: DEPLOY_PATHS.widgets })), encoding: 'base64' });
     if (path === `${REPO}/contents/tools/tasks/routine-prompt.md`) {
       if (gh.prompt === null || url.searchParams.get('ref') !== 'main') return reply({ message: 'Not Found' }, 404);
       const bytes = encoder.encode(gh.prompt);
       return reply({
         content: btoa(String.fromCharCode(...bytes)).replace(/(.{60})/gu, '$1\n'),
         encoding: 'base64',
-        html_url: 'https://github.com/acme/samewave/blob/main/tools/tasks/routine-prompt.md',
+        html_url: 'https://github.com/acme/widgets/blob/main/tools/tasks/routine-prompt.md',
       });
     }
     let m = /\/deployments\/(\d+)\/statuses$/u.exec(path);
@@ -445,8 +452,9 @@ async function webhook(event, payload, secretValue = TEST_GITHUB_WEBHOOK_SECRET)
 
 describe('GitHub on the board', () => {
   let spy;
-  beforeEach(() => {
+  beforeEach(async () => {
     spy = mockGitHub();
+    await setPipeline();
   });
   afterEach(() => spy.mockRestore());
 
@@ -597,7 +605,7 @@ describe('GitHub on the board', () => {
       number: 21,
       verdict: 'ready',
       deploys: true,
-      workers: ['samewave'],
+      workers: ['widgets'],
       base: 'main',
     });
     expect(page.files.map((f) => [f.name, f.worker, f.patch === null])).toEqual([
@@ -615,7 +623,7 @@ describe('GitHub on the board', () => {
 
   it('refuses webhooks with a bad signature, and schedules one reconcile for good ones', async () => {
     expect(
-      (await webhook('pull_request', { action: 'closed', repository: { full_name: 'acme/samewave' } }, 'wrong')).status,
+      (await webhook('pull_request', { action: 'closed', repository: { full_name: 'acme/widgets' } }, 'wrong')).status,
     ).toBe(401);
     expect((await webhook('ping', { zen: 'hi' })).status).toBe(200);
     expect(
@@ -635,9 +643,9 @@ describe('GitHub on the board', () => {
     gh.alerts = [];
     for (let i = 0; i < 3; i += 1)
       expect(
-        (await webhook('check_run', { action: 'completed', repository: { full_name: 'acme/samewave' } })).status,
+        (await webhook('check_run', { action: 'completed', repository: { full_name: 'acme/widgets' } })).status,
       ).toBe(202);
-    const stub = env.STORE.get(env.STORE.idFromName('samewave'));
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     expect(await runDurableObjectAlarm(stub)).toBe(false); // three webhooks, one reconcile
 
@@ -702,7 +710,7 @@ describe('GitHub on the board', () => {
     const deployment = (id, sha, extra = {}) => ({
       id,
       sha,
-      environment: 'samewave',
+      environment: 'widgets',
       task: 'deploy',
       created_at: '2026-09-29T14:00:00Z',
       creator: { login: 'github-actions[bot]' },
@@ -755,7 +763,7 @@ describe('GitHub on the board', () => {
       [1, 'success', 'aaaaaaaa'],
     ]);
     expect(overview.deploys[1]).toMatchObject({
-      env: 'samewave',
+      env: 'widgets',
       migrations: '0009_x.sql',
       sha: 'd2',
       logUrl: 'https://github.com/x/actions/runs/9',
@@ -766,7 +774,7 @@ describe('GitHub on the board', () => {
     expect(overview.tags).toEqual([{ name: 'v0.1.0', sha: 'd2' }]);
 
     const task = (await body(await api('tasks/PRD-70'))).task;
-    expect(task.shipped).toMatchObject({ env: 'samewave', sha: 'd2', version });
+    expect(task.shipped).toMatchObject({ env: 'widgets', sha: 'd2', version });
     expect(task.annotations.map((n) => n.text)).toContain(`Live in ${version} (d2).`);
     expect((await body(await api('tasks/OPS-1'))).task.shipped).toBeNull();
 
@@ -816,13 +824,13 @@ describe('GitHub on the board', () => {
       ...extra,
     });
     gh.deployments = [
-      dep(14, 's31', 'samewave-staging'),
-      dep(13, 'p30', 'samewave', { task: 'rollback' }),
-      dep(12, 's31try', 'samewave-staging', { task: 'try' }),
-      dep(11, 'p30', 'samewave'),
-      dep(10, 's30', 'samewave-staging'),
-      dep(9, 'p0', 'samewave'),
-      dep(8, 's0', 'samewave-staging'),
+      dep(14, 's31', 'widgets-staging'),
+      dep(13, 'p30', 'widgets', { task: 'rollback' }),
+      dep(12, 's31try', 'widgets-staging', { task: 'try' }),
+      dep(11, 'p30', 'widgets'),
+      dep(10, 's30', 'widgets-staging'),
+      dep(9, 'p0', 'widgets'),
+      dep(8, 's0', 'widgets-staging'),
     ];
     const ok = (description, at, url) => [{ state: 'success', description, log_url: url, created_at: at }];
     gh.statuses = {
@@ -842,12 +850,12 @@ describe('GitHub on the board', () => {
     await api('github/sync', { method: 'POST' });
     const first = (await body(await api('tasks/PRD-90'))).task;
     expect(first.staged).toMatchObject({
-      env: 'samewave-staging',
+      env: 'widgets-staging',
       sha: 's30',
       mergeSha: 'm30',
       run: 'https://github.com/x/actions/runs/30',
     });
-    expect(first.shipped).toMatchObject({ env: 'samewave', sha: 'p30', tag: 'v2026-09-30-p30' });
+    expect(first.shipped).toMatchObject({ env: 'widgets', sha: 'p30', tag: 'v2026-09-30-p30' });
     expect(first.ships.map((x) => x.stage).sort()).toEqual(['live', 'staging']);
     expect(first.annotations.map((n) => n.text)).toEqual(
       expect.arrayContaining(['On staging in a1111111 (s30).', 'Live in b1111111 (p30).']),
@@ -886,7 +894,7 @@ describe('GitHub on the board', () => {
     expect(await shipStateOf('PRD-81')).toBe('unshipped');
     expect(await shipStateOf('PRD-83')).toBe('unshipped'); // GitHub wouldn't list its files, so it isn't called done
     expect((await body(await api('tasks/PRD-80'))).task.github[0].workers).toEqual([]);
-    expect((await body(await api('tasks/PRD-81'))).task.github[0].workers).toEqual(['samewave']);
+    expect((await body(await api('tasks/PRD-81'))).task.github[0].workers).toEqual(['widgets']);
     expect((await body(await api('tasks/PRD-83'))).task.github[0].workers).toBeNull();
 
     // The old pull request's task is shipped in the deploy the log names, without a note.
@@ -902,7 +910,7 @@ describe('GitHub on the board', () => {
     expect(read).toContain(`${REPO}/pulls/83/files`);
     expect(read).not.toContain(`${REPO}/pulls/80/files`);
     expect(read).not.toContain(`${REPO}/pulls/81/files`);
-    expect((await body(await api('tasks/PRD-83'))).task.github[0].workers).toEqual(['samewave']);
+    expect((await body(await api('tasks/PRD-83'))).task.github[0].workers).toEqual(['widgets']);
   });
 
   it('reads the files of a merged pull request that has aged out of the latest 50', async () => {
@@ -923,7 +931,7 @@ describe('GitHub on the board', () => {
 
   it('shows the routine prompt as it is on main, with the commit that last changed it', async () => {
     gh.prompt =
-      'You are a samewave agent.\n\n## Messages from the owner\n\nIt’s the owner’s guidance for the task you hold.\n';
+      'You are a widgets agent.\n\n## Messages from the owner\n\nIt’s the owner’s guidance for the task you hold.\n';
     gh.commits = [
       {
         sha: 'feed123',
@@ -937,7 +945,7 @@ describe('GitHub on the board', () => {
     const prompt = await body(await api('agents/prompt'));
     expect(prompt).toMatchObject({
       status: 200,
-      slug: 'samewave',
+      slug: 'widgets',
       path: 'tools/tasks/routine-prompt.md',
       missing: false,
       text: gh.prompt,
@@ -953,7 +961,7 @@ describe('GitHub on the board', () => {
   it('checks the setup state GitHub sends back', async () => {
     const setup = await body(await api('github/setup', { method: 'POST' }));
     expect(setup.manifest).toMatchObject({
-      name: 'samewave tasks',
+      name: 'widgets tasks',
       public: false,
       hook_attributes: { url: `${ORIGIN}/github/webhook` },
       redirect_url: `${ORIGIN}/github/connected`,
@@ -986,8 +994,9 @@ describe('GitHub on the board', () => {
 
 describe('Update branch, Merge, and Merge when green', () => {
   let spy;
-  beforeEach(() => {
+  beforeEach(async () => {
     spy = mockGitHub();
+    await setPipeline();
     gh.writes = [];
     gh.writeError = null;
   });
@@ -1139,17 +1148,18 @@ describe('Update branch, Merge, and Merge when green', () => {
 
 describe('GitHub per repository (CLD-124)', () => {
   let spy;
-  beforeEach(() => {
+  beforeEach(async () => {
     spy = mockGitHub();
+    await setPipeline();
   });
   afterEach(() => spy.mockRestore());
 
-  const stub = () => env.STORE.get(env.STORE.idFromName('samewave'));
+  const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
   const task = async (wid) => (await body(await api(`tasks/${wid}`))).task;
   const create = async (input) => (await body(await api('tasks', { method: 'POST', body: input }))).tasks;
   const scratchPr = (number, options) => {
     const p = pr(number, options);
-    return { ...p, html_url: p.html_url.replace('/samewave/', '/scratch/') };
+    return { ...p, html_url: p.html_url.replace('/widgets/', '/scratch/') };
   };
 
   it('syncs two repositories side by side, and a pull request closes only its own repository’s tasks', async () => {
@@ -1162,12 +1172,12 @@ describe('GitHub per repository (CLD-124)', () => {
       { description: 'Scratch one', project: 'core', repo: 'scratch' },
       { description: 'Scratch two', project: 'core', repo: 'scratch' },
     ]);
-    const [cld] = await create([{ description: 'Samewave side', project: 'cloud' }]);
+    const [cld] = await create([{ description: 'Widgets side', project: 'cloud' }]);
     expect([scr1.wid, scr2.wid]).toEqual(['SCR-1', 'SCR-2']);
 
-    // The same number in both repositories: scratch's #10 closes SCR-1 and names samewave's task, which it can't close.
+    // The same number in both repositories: scratch's #10 closes SCR-1 and names widgets's task, which it can't close.
     other.pulls = [scratchPr(10, { title: 'Scratch work', body: `Closes SCR-1. Closes ${cld.wid}.`, sha: 'scr10' })];
-    gh.pulls = [pr(60, { title: 'Samewave work', body: 'Closes SCR-2.', sha: 'sw60' })];
+    gh.pulls = [pr(60, { title: 'Widgets work', body: 'Closes SCR-2.', sha: 'sw60' })];
     gh.calls = [];
     expect(
       (await webhook('pull_request', { action: 'opened', repository: { full_name: 'acme/scratch' } })).status,
@@ -1192,12 +1202,12 @@ describe('GitHub per repository (CLD-124)', () => {
     expect(page).toMatchObject({ status: 200, repo: 'scratch', number: 10, workers: [], deploys: false });
     expect(page.tasks.map((t) => [t.wid, t.closes, t.elsewhere ?? null])).toEqual([
       ['SCR-1', true, null],
-      [cld.wid, false, 'samewave'],
+      [cld.wid, false, 'widgets'],
     ]);
 
-    // samewave's #60 says "Closes SCR-2.", which is scratch's: only a mention.
-    const samewave = await body(await api('github/sync', { method: 'POST' }));
-    expect(samewave.open.find((p) => p.number === 60)).toMatchObject({
+    // widgets's #60 says "Closes SCR-2.", which is scratch's: only a mention.
+    const widgets = await body(await api('github/sync', { method: 'POST' }));
+    expect(widgets.open.find((p) => p.number === 60)).toMatchObject({
       closes: [],
       mentions: ['SCR-2'],
       elsewhere: { 'SCR-2': 'scratch' },
@@ -1217,7 +1227,7 @@ describe('GitHub per repository (CLD-124)', () => {
     ];
     gh.pulls = [
       pr(60, {
-        title: 'Samewave work',
+        title: 'Widgets work',
         body: 'Closes SCR-2.',
         sha: 'sw60',
         state: 'closed',
@@ -1229,7 +1239,7 @@ describe('GitHub per repository (CLD-124)', () => {
       (await webhook('pull_request', { action: 'closed', repository: { full_name: 'acme/scratch' } })).status,
     ).toBe(202);
     expect(
-      (await webhook('pull_request', { action: 'closed', repository: { full_name: 'acme/samewave' } })).status,
+      (await webhook('pull_request', { action: 'closed', repository: { full_name: 'acme/widgets' } })).status,
     ).toBe(202);
     expect(await runDurableObjectAlarm(stub())).toBe(true);
     expect(await task('SCR-1')).toMatchObject({ status: 'completed', pr: '10' });
@@ -1267,7 +1277,7 @@ describe('GitHub per repository (CLD-124)', () => {
     expect((await body(await api('github/sync', { method: 'POST' }))).status).toBe(200);
     const sync = (await body(await api('connections'))).connections.filter((c) => c.id === 'github.sync');
     expect(sync.map((c) => [c.repo, c.state])).toEqual([
-      ['samewave', 'working'],
+      ['widgets', 'working'],
       ['scratch', 'attention'],
     ]);
     other.fail = null;
@@ -1328,16 +1338,17 @@ describe('GitHub per repository (CLD-124)', () => {
 
 describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', () => {
   let spy;
-  beforeEach(() => {
+  beforeEach(async () => {
     spy = mockGitHub();
+    await setPipeline();
     gh.writes = [];
   });
   afterEach(() => spy.mockRestore());
 
-  const stub = () => env.STORE.get(env.STORE.idFromName('samewave'));
+  const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
   const scratchPr = (number, options) => {
     const p = pr(number, options);
-    return { ...p, html_url: p.html_url.replace('/samewave/', '/scratch/') };
+    return { ...p, html_url: p.html_url.replace('/widgets/', '/scratch/') };
   };
   async function browser() {
     const res = await SELF.fetch(`${ORIGIN}/login`, {
@@ -1355,21 +1366,21 @@ describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', ()
       });
   }
 
-  it('shows Releases and deploys only for a repository with a pipeline; samewave keeps its own', async () => {
+  it('shows Releases and deploys only for a repository with a pipeline; widgets keeps its own', async () => {
     other.pulls = [scratchPr(12, { title: 'Scratch open', sha: 'scr12' })];
-    gh.pulls = [pr(70, { title: 'Samewave open', sha: 'sw70' })];
+    gh.pulls = [pr(70, { title: 'Widgets open', sha: 'sw70' })];
     expect((await body(await api('github/sync?repo=all', { method: 'POST' }))).status).toBe(200);
 
-    const samewave = await body(await api('github'));
-    expect(samewave.pipeline).toEqual({ staging: 'samewave-staging', production: 'samewave' });
-    expect(samewave.flow).toMatchObject({ staging: { env: 'samewave-staging' }, production: { env: 'samewave' } });
-    expect(samewave.open.every((p) => p.repo === 'samewave')).toBe(true);
+    const widgets = await body(await api('github'));
+    expect(widgets.pipeline).toEqual({ staging: 'widgets-staging', production: 'widgets' });
+    expect(widgets.flow).toMatchObject({ staging: { env: 'widgets-staging' }, production: { env: 'widgets' } });
+    expect(widgets.open.every((p) => p.repo === 'widgets')).toBe(true);
 
     const scratch = await body(await api('github?repo=scratch'));
     expect(scratch).toMatchObject({ pipeline: null, flow: null, deploys: [] });
     expect(scratch.open.map((p) => [p.repo, p.number])).toEqual([['scratch', 12]]);
 
-    // The pull request page: no deploy facts without a pipeline; samewave's are as before.
+    // The pull request page: no deploy facts without a pipeline; widgets's are as before.
     expect(await body(await api('github/pulls/12?repo=scratch'))).toMatchObject({
       pipeline: null,
       workers: [],
@@ -1380,8 +1391,8 @@ describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', ()
       { filename: 'src/server/pages.js', status: 'modified', additions: 1, deletions: 0, patch: '' },
     ];
     expect(await body(await api('github/pulls/70'))).toMatchObject({
-      pipeline: { staging: 'samewave-staging', production: 'samewave', known: true },
-      workers: ['samewave'],
+      pipeline: { staging: 'widgets-staging', production: 'widgets', known: true },
+      workers: ['widgets'],
       deploys: true,
       isDefault: true,
     });
@@ -1398,15 +1409,15 @@ describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', ()
 
   it('answers for every repository at once, each item carrying its repository', async () => {
     other.pulls = [scratchPr(12, { title: 'Scratch open', sha: 'scr12' })];
-    gh.pulls = [pr(70, { title: 'Samewave open', sha: 'sw70' })];
+    gh.pulls = [pr(70, { title: 'Widgets open', sha: 'sw70' })];
     await body(await api('github/sync?repo=all', { method: 'POST' }));
     const all = await body(await api('github?repo=all'));
     expect(all).toMatchObject({ status: 200, all: true, slug: null, flow: null });
-    expect(all.open.map((p) => `${p.repo}#${p.number}`)).toEqual(expect.arrayContaining(['samewave#70', 'scratch#12']));
-    expect(all.open.every((p) => ['samewave', 'scratch'].includes(p.repo))).toBe(true);
+    expect(all.open.map((p) => `${p.repo}#${p.number}`)).toEqual(expect.arrayContaining(['widgets#70', 'scratch#12']));
+    expect(all.open.every((p) => ['widgets', 'scratch'].includes(p.repo))).toBe(true);
     expect(all.readyToMerge).toBe(all.repos.reduce((n, r) => n + r.readyToMerge, 0));
     expect(all.repos.map((r) => [r.slug, Boolean(r.flow), Boolean(r.pipeline)])).toEqual([
-      ['samewave', true, true],
+      ['widgets', true, true],
       ['scratch', false, false],
     ]);
     expect(all.repos[0].open).toBeUndefined(); // the lists are merged, not repeated
@@ -1419,7 +1430,7 @@ describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', ()
         JSON.stringify({
           at: Date.now(),
           repos: {
-            samewave: {
+            widgets: {
               installed: true,
               permissions: {
                 metadata: 'read',
@@ -1439,8 +1450,8 @@ describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', ()
         }),
       ),
     );
-    const samewave = await body(await api('github'));
-    expect(samewave.access).toMatchObject({ write: { ok: true }, autoMerge: { ok: true }, actions: { ok: true } });
+    const widgets = await body(await api('github'));
+    expect(widgets.access).toMatchObject({ write: { ok: true }, autoMerge: { ok: true }, actions: { ok: true } });
     const scratch = await body(await api('github?repo=scratch'));
     expect(scratch.access.write).toMatchObject({ ok: false });
     expect(scratch.access.write.reason).toMatch(/Pull requests and Contents/u);

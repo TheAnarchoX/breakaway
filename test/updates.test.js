@@ -68,7 +68,7 @@ function mock() {
   });
 }
 
-const stub = () => env.STORE.get(env.STORE.idFromName('samewave'));
+const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
 /** Runs `fn` as a board that runs `running` and follows `channel` of `installRepository`. */
 const asInstall = (settings, fn) =>
   runInDurableObject(stub(), async (instance) => {

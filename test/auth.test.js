@@ -28,9 +28,9 @@ describe('web sign-in', () => {
       ok: true,
       via: 'cookie',
       install: {
-        name: 'samewave tasks',
-        url: 'https://tasks.samewave.dev',
-        docs: 'https://github.com/TheAnarchoX/samewave/blob/main/docs/tasks.md',
+        name: 'widgets tasks',
+        url: 'https://tasks.acme.example',
+        docs: 'https://github.com/acme/widgets/blob/main/docs/tasks.md',
       },
     });
 
