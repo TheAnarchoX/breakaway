@@ -51,12 +51,9 @@ export const attachmentsMethods = {
   attachmentsList(ref) {
     return this.run(() => {
       const task = this.resolve(ref);
-      const rows = this.sql
-        .exec('SELECT id, name, type, size, alt, added_at FROM attachments WHERE task = ? ORDER BY id', task)
-        .toArray();
       return {
         status: 200,
-        body: { attachments: rows.map(view), limit: { bytes: MAX_IMAGE_BYTES, count: MAX_IMAGES_PER_TASK } },
+        body: { attachments: this.attachmentsOf(task), limit: { bytes: MAX_IMAGE_BYTES, count: MAX_IMAGES_PER_TASK } },
       };
     });
   },
@@ -64,32 +61,49 @@ export const attachmentsMethods = {
   attachmentAdd(ref, bytes, { name, alt } = {}) {
     return this.run(() => {
       const task = this.resolve(ref);
-      const data = new Uint8Array(bytes);
-      const label = clean(name, MAX_NAME) || 'image';
-      if (!data.length) throw new InputError('the image is empty');
-      if (data.length > MAX_IMAGE_BYTES)
-        throw new InputError(
-          `${label} is ${(data.length / 1024 / 1024).toFixed(1)} MB; each image can be up to 1 MB, so shrink it or crop it first`,
-        );
-      const type = sniffImage(data);
-      if (!type) throw new InputError(`${label} isn't a PNG, JPEG, WebP, or GIF image`);
-      const count = this.sql.exec('SELECT COUNT(*) AS n FROM attachments WHERE task = ?', task).one().n;
-      if (count >= MAX_IMAGES_PER_TASK)
-        throw new InputError(`a task can hold ${MAX_IMAGES_PER_TASK} images; delete one first`);
-      const row = this.sql
-        .exec(
-          'INSERT INTO attachments (task, name, type, size, alt, added_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, name, type, size, alt, added_at',
-          task,
-          label,
-          type,
-          data.length,
-          clean(alt, MAX_ALT),
-          Date.now(),
-          data,
-        )
-        .one();
-      return { status: 201, body: { attachment: view(row) } };
+      return { status: 201, body: { attachment: this.attachmentInsert(task, bytes, { name, alt }, 'a task') } };
     });
+  },
+
+  /**
+   * Keeps one image under `owner` (a task's UUID, or a kickoff's `kickoff:<id>` until its IDEA has one), after the
+   * checks every image gets: real image bytes, at most 1 MB, and at most 4 for one owner. `what` names the owner
+   * in the refusal, like "a task".
+   */
+  attachmentInsert(owner, bytes, { name, alt } = {}, what = 'a task') {
+    const data = new Uint8Array(bytes);
+    const label = clean(name, MAX_NAME) || 'image';
+    if (!data.length) throw new InputError('the image is empty');
+    if (data.length > MAX_IMAGE_BYTES)
+      throw new InputError(
+        `${label} is ${(data.length / 1024 / 1024).toFixed(1)} MB; each image can be up to 1 MB, so shrink it or crop it first`,
+      );
+    const type = sniffImage(data);
+    if (!type) throw new InputError(`${label} isn't a PNG, JPEG, WebP, or GIF image`);
+    const count = this.sql.exec('SELECT COUNT(*) AS n FROM attachments WHERE task = ?', owner).one().n;
+    if (count >= MAX_IMAGES_PER_TASK)
+      throw new InputError(`${what} can hold ${MAX_IMAGES_PER_TASK} images; delete one first`);
+    const row = this.sql
+      .exec(
+        'INSERT INTO attachments (task, name, type, size, alt, added_at, data) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, name, type, size, alt, added_at',
+        owner,
+        label,
+        type,
+        data.length,
+        clean(alt, MAX_ALT),
+        Date.now(),
+        data,
+      )
+      .one();
+    return view(row);
+  },
+
+  /** The images kept under `owner`, oldest first, without their bytes. */
+  attachmentsOf(owner) {
+    return this.sql
+      .exec('SELECT id, name, type, size, alt, added_at FROM attachments WHERE task = ? ORDER BY id', owner)
+      .toArray()
+      .map(view);
   },
 
   attachmentGet(id) {
@@ -102,7 +116,10 @@ export const attachmentsMethods = {
 
   attachmentDelete(id) {
     return this.run(() => {
-      const gone = this.sql.exec('DELETE FROM attachments WHERE id = ? RETURNING id', Number(id)).toArray();
+      // A kickoff's images are the owner's, deleted from the kickoff (BRK-131), never with the bearer token's route.
+      const gone = this.sql
+        .exec("DELETE FROM attachments WHERE id = ? AND task NOT LIKE 'kickoff:%' RETURNING id", Number(id))
+        .toArray();
       if (!gone.length) return { status: 404, body: { error: `no image ${id}` } };
       return { status: 200, body: { deleted: gone[0].id } };
     });
