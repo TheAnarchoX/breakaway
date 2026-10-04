@@ -231,6 +231,21 @@ describe('agents new and Force start (BRK-107)', () => {
     });
   });
 
+  it('agents new --decision sends the decision and the text as the owner’s note, with no repository of its own', () => {
+    expect(generalAgentRequest('  Leave the web alone ', { decision: 'BRK-104', repo: null, by: 'owner' })).toEqual({
+      request: ['POST', 'agents/general', { decision: 'BRK-104', note: 'Leave the web alone', by: 'owner' }],
+    });
+    expect(generalAgentRequest('', { decision: 'BRK-104', repo: 'widgets', force: true })).toEqual({
+      request: ['POST', 'agents/general', { decision: 'BRK-104', repo: 'widgets', force: true }],
+    });
+  });
+
+  it('says when an agent from the decision is already open, instead of starting another', () => {
+    expect(generalAgentSummary({ task: { short: 'a1b2c3d4' }, run: null, already: 'claude-a1b2c3d4 is on it' })).toBe(
+      'a1b2c3d4 already refines from these answers: claude-a1b2c3d4 is on it.',
+    );
+  });
+
   it('knows agents new', () => {
     expect(unknownSubcommand('agents', 'new')).toBeNull();
   });

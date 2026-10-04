@@ -1,5 +1,7 @@
 import { env, runDurableObjectAlarm } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { generalAgentRequest } from '../scripts/tasks/cli.js';
+import { refinePrompt } from '../src/decision.js';
 import { api } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
@@ -172,5 +174,171 @@ describe('general agents', () => {
     );
     expect(kept.task.status).toBe('pending');
     expect(kept.task.claim).toBeNull();
+  });
+});
+
+const QUESTIONS = [
+  {
+    id: 'edits',
+    type: 'choice',
+    prompt: 'How do cross-task edits land?',
+    options: [
+      { id: 'direct', label: 'Directly, each change noted' },
+      { id: 'proposal', label: 'As a proposal' },
+    ],
+  },
+  { id: 'why', type: 'open', prompt: 'Anything else?', required: false },
+];
+
+describe('refine from the answers (BRK-110)', () => {
+  let spy;
+  beforeEach(() => {
+    spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url !== FIRE && url !== FIRE_BREAKAWAY) return new Response('{"message":"Not Found"}', { status: 404 });
+      fires.push(JSON.parse(init.body).text);
+      return Response.json({
+        claude_code_session_id: `session_${fires.length}`,
+        claude_code_session_url: `https://claude.ai/code/session_${fires.length}`,
+      });
+    });
+  });
+  afterEach(() => spy.mockRestore());
+
+  /** A decision in ops with a task waiting for it; answered unless `answer` is false. */
+  const decided = async ({ answer = true } = {}) => {
+    const [d] = (
+      await body(
+        await api('tasks', {
+          method: 'POST',
+          body: [
+            {
+              description: 'Choose how edits land',
+              project: 'ops',
+              decision: QUESTIONS,
+              spec: 'docs/specs/IDEA-9-edits.md',
+            },
+          ],
+        }),
+      )
+    ).tasks;
+    const [w] = (
+      await body(
+        await api('tasks', {
+          method: 'POST',
+          body: [
+            {
+              description: 'Build the edits',
+              project: 'ops',
+              tags: ['agent', 'cross-edits', 'v1_3-0'],
+              depends: [d.wid],
+            },
+          ],
+        }),
+      )
+    ).tasks;
+    if (answer) {
+      const res = await api(`tasks/${d.wid}/decision/answers`, {
+        method: 'POST',
+        body: { answers: { edits: { value: 'direct', comment: 'keep each change in Activity' } } },
+      });
+      expect(res.status).toBe(200);
+    }
+    return { d, w };
+  };
+  const fromDecision = (extra) => api('agents/general', { method: 'POST', body: { force: true, ...extra } });
+
+  it('writes the prompt from the answered decision, relates the task to it, and starts a general agent', async () => {
+    const { d, w } = await decided();
+    const res = await body(await fromDecision({ decision: d.wid }));
+    expect(res.status).toBe(201);
+    const t = res.task;
+    expect(t).toMatchObject({ wid: null, project: null, horizon: 'now', autostart: true, repo: d.repo });
+    expect(t.tags).toEqual(['agent', 'general']);
+    expect(t.description).toBe(`Refine from the answers to ${d.wid}: Choose how edits land`);
+    expect(t.related).toEqual([d.uuid]);
+    expect(t.brief).toContain('1. How do cross-task edits land?\n   Answer: Directly, each change noted');
+    expect(t.brief).toContain("The owner's note: keep each change in Activity");
+    expect(t.brief).toContain('Answer: no answer');
+    expect(t.brief).toContain(`- ${w.wid}: Build the edits (feature: cross-edits)`);
+    expect(t.brief).toContain('- docs/specs/IDEA-9-edits.md');
+    expect(t.brief).toMatch(/What to do\n- Change the tasks waiting for/);
+    expect(t.brief).not.toContain('Note from the owner');
+    expect(res.run).toMatchObject({ trigger: 'general', kind: 'general', agent: `claude-${t.short}` });
+    expect(fires.at(-1)).toContain('Mode: general');
+    // The decision shows it too.
+    const shown = (await body(await api(`tasks/${d.wid}`))).task;
+    expect(shown.relatedTasks.map((r) => r.uuid)).toContain(t.uuid);
+  });
+
+  it('puts the owner’s note under the board’s prompt', async () => {
+    const { d } = await decided();
+    const res = await body(await fromDecision({ decision: d.wid, note: 'Leave the web tasks alone.' }));
+    expect(res.status).toBe(201);
+    expect(res.task.brief).toMatch(/What to do[\s\S]*\n\nNote from the owner:\nLeave the web tasks alone\.$/);
+  });
+
+  it('refuses an unanswered decision, a task with none, a prompt of its own, and another repository', async () => {
+    const before = (await body(await api('tasks?status=all'))).tasks.length;
+    const { d } = await decided({ answer: false });
+    const open = await body(await fromDecision({ decision: d.wid }));
+    expect(open.status).toBe(409);
+    expect(open.error).toMatch(/isn’t answered yet/);
+    const plain = (
+      await body(await api('tasks', { method: 'POST', body: [{ description: 'No questions', project: 'ops' }] }))
+    ).tasks[0];
+    expect((await body(await fromDecision({ decision: plain.wid }))).error).toMatch(/has no decision/);
+    expect((await fromDecision({ decision: 'OPS-99999' })).status).toBe(404);
+    // Only the decision's pending task and the plain one were made: no general task.
+    expect((await body(await api('tasks?status=all'))).tasks.length).toBe(before + 3);
+    const answered = await decided();
+    expect((await body(await fromDecision({ decision: answered.d.wid, prompt: 'Mine' }))).status).toBe(400);
+    const elsewhere = await body(await fromDecision({ decision: answered.d.wid, repo: 'breakaway' }));
+    expect(elsewhere.status).toBe(400);
+    expect(elsewhere.error).toMatch(/runs in widgets/);
+    expect((await fromDecision({ decision: answered.d.wid, by: 'claude-x' })).status).toBe(403);
+  });
+
+  it('links to the open one instead of starting a second, and starts again once it’s closed', async () => {
+    const { d } = await decided();
+    const first = await body(await fromDecision({ decision: d.wid }));
+    const fired = fires.length;
+    const again = await body(await fromDecision({ decision: d.wid, note: 'And again' }));
+    expect(again.status).toBe(200);
+    expect(again.run).toBeNull();
+    expect(again.task.uuid).toBe(first.task.uuid);
+    expect(again.already).toBe(`${first.task.claim} is on it`);
+    expect(fires.length).toBe(fired);
+    // Its agent finishes on the board: the next start makes a new one.
+    await api(`tasks/${first.task.uuid}/release`, { method: 'POST', body: { agent: first.task.claim } });
+    const next = await body(await fromDecision({ decision: d.wid }));
+    expect(next.status).toBe(201);
+    expect(next.task.uuid).not.toBe(first.task.uuid);
+  });
+
+  it('takes the CLI’s request: agents new --decision <ID> "<note>"', async () => {
+    const { d } = await decided();
+    const built = generalAgentRequest('Keep it small', { decision: d.wid, force: true, by: 'owner' });
+    const [method, path, payload] = built.request;
+    const res = await body(await api(path, { method, body: payload }));
+    expect(res.status).toBe(201);
+    expect(res.task.related).toEqual([d.uuid]);
+    expect(res.task.brief).toMatch(/Note from the owner:\nKeep it small$/);
+    expect(method).toBe('POST');
+  });
+
+  it('keeps a long prompt within a description, and points at the decision for the rest', () => {
+    const questions = Array.from({ length: 20 }, (_, i) => ({ id: `q${i}`, type: 'open', prompt: 'x'.repeat(1900) }));
+    const answers = Object.fromEntries(questions.map((q) => [q.id, { value: 'y'.repeat(5000) }]));
+    const { title, brief } = refinePrompt(
+      { ref: 'OPS-1', description: 'A long one', questions, answers },
+      [],
+      'n'.repeat(5000),
+    );
+    expect(title).toBe('Refine from the answers to OPS-1: A long one');
+    expect(brief.length).toBeLessThanOrEqual(10000);
+    expect(brief).toContain('the rest is on OPS-1');
+    expect(brief).toContain('What to do');
+    expect(brief).toContain('Nothing open waits for it');
   });
 });

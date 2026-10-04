@@ -387,6 +387,15 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && parts[2] === 'release' && method === 'POST')
       return send(await s.reposReleaseApi(parts[1], body));
   }
+  // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
+  // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
+  if (parts[0] === 'features') {
+    if (parts.length === 1 && method === 'GET') return send(await s.featuresApi());
+    if (parts.length === 1 && method === 'POST') return send(await s.featuresCreateApi(body));
+    if (parts.length === 2 && method === 'GET') return send(await s.featureApi(parts[1]));
+    if (parts.length === 2 && method === 'PATCH') return send(await s.featuresModifyApi(parts[1], body));
+    if (parts.length === 2 && method === 'DELETE') return send(await s.featuresDeleteApi(parts[1], body));
+  }
   if (parts[0] === 'routines') {
     if (parts.length === 1 && method === 'GET') return send(await s.routinesApi());
     if (parts.length === 1 && method === 'POST') return send(await s.routinesCreateApi(body));
