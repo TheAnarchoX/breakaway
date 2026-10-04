@@ -187,7 +187,7 @@ function describe(change) {
     case 'rollback_started':
       return `You rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
     case 'release_started':
-      return `You released ${change.package}@${change.prerelease} as ${change.version}: it waits on npm for your approval`;
+      return `You released ${change.package}@${change.prerelease} as ${change.version}${change.next && change.next !== 'patch' ? `, next ${change.next}` : ''}: it waits on npm for your approval`;
     case 'pr_closed':
       return `#${change.number} closed without merging`;
     case 'ci_failed':

@@ -466,6 +466,13 @@ describe('github release, a package’s stable for the owner (BRK-103)', () => {
     for (const bad of [undefined, '1.4.0', 'latest', '1.4.0-beta.1'])
       expect(packageReleaseRequest(bad).error).toMatch(/say which pre-release/u);
   });
+
+  it('sends --next, and refuses anything but patch, minor, or major (WEB-39)', () => {
+    expect(packageReleaseRequest('1.4.0-main.5', { repo: 'widgets', next: 'minor' })).toEqual({
+      request: ['POST', 'github/release', { version: '1.4.0-main.5', next: 'minor', repo: 'widgets' }],
+    });
+    expect(packageReleaseRequest('1.4.0-main.5', { next: 'huge' }).error).toMatch(/--next is patch, minor, or major/u);
+  });
 });
 
 describe('specs (BRK-121)', () => {

@@ -31,6 +31,7 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 | You need the owner to choose | Ask with a decision, not prose: `add "<title>" --tag owner --decision <file.json>` and make the work that waits `--depends` on it. Only the owner answers, on the board; read the answers with `show`. |
 | Part of the work needs the owner (an install, a dashboard, a sign-off) | Finish your part, then `add` a `+owner` task for the rest that `--depends` on yours. |
 | Task needs design choices | Write the spec in `docs/specs/<ID>-<slug>.md` and `modify <ID> --spec <path>`. |
+| Reading the repository's specs | `tasks specs` lists them, newest first, with each one's status and its tasks; `specs show <path>` prints one with the tasks that link it. They're read from GitHub's default branch, so a spec still in a pull request isn't there yet. |
 | You're blocked by another task | `comment` why, `release`, and pick the blocker or another task. |
 | A claim looks abandoned | Ask the owner; don't take it. |
 | Opening a pull request for a spec, plan, or partial step | Write `Part of <ID>.`, not `Closes`, and don't put it in `--pr`: merging the pull request in that field finishes the task. A branch name alone never closes anything. |
