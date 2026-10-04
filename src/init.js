@@ -7,7 +7,7 @@
  * scripts/tasks.mjs, and the board's first commit to an empty repository, through its GitHub App, is in
  * src/store-init.js, which reads the board's files from src/board-files.json (BOARD_SOURCES).
  */
-import { SKILL, areaList, routinePrompt } from './prompt.js';
+import { PIPELINE_SKILL, SKILL, areaList, routinePrompt } from './prompt.js';
 import { promptPathOf } from './repos.js';
 
 /** This machine's folder for the board, as .taskrc names it, where a caller doesn't say (scripts/tasks/settings.js). */
@@ -50,7 +50,7 @@ export const RELEASE_ENTRIES = [
 /** Copied unchanged: the board's shared core and stub, and the Taskwarrior settings the new .taskrc includes. */
 const COPIED = ['prompts/core.md', 'prompts/stub.md'];
 /** Copied with a change for the repository, or made from the board's: their source is versioned too. */
-const ADAPTED = ['taskrc', 'scripts/task', SKILL];
+const ADAPTED = ['taskrc', 'scripts/task', SKILL, PIPELINE_SKILL];
 /**
  * Where the board's files (the prompts, the shared taskrc) go in another repository. In the board's own checkout they
  * sit at the root, so the paths `read` takes are the board's; what is written keeps this folder.
@@ -340,7 +340,7 @@ export function agentsMd(repo, board, dir = DEFAULT_DIR) {
 
 - **Work lives on the task board.** This repository's tasks are in the areas ${areaList(repo)}. Use the \`tasks\` skill (\`${SKILL}\`) and the CLI, \`npx breakaway\` (the \`breakaway\` package on npm), to claim, comment, and hand over. It works in this checkout's repository, so \`list\` and \`next\` show only this repository's tasks. The skill is breakaway's, written for this repository's areas and prompt: where it names breakaway's own files or rules, the board's part applies and the rest doesn't.
 - **Agents started by the board** follow [\`${promptPathOf(repo)}\`](${promptPathOf(repo)}), which starts with the board's core, \`tools/tasks/prompts/core.md\`.
-- **Copied files.** \`tools/tasks/\`, the release helpers in \`scripts/\`, and \`${SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`${MANIFEST}\` lists every file it copied, and \`repos init --update\` replaces only those: a file it doesn't list is this repository's own, even at a path breakaway copies to. \`.claude/settings.json\` holds the session hooks that show a cloud agent's output on its task, and they run through \`npx\`, so this repository carries no copy of the CLI.
+- **Copied files.** \`tools/tasks/\`, the release helpers in \`scripts/\`, \`${SKILL}\`, and \`${PIPELINE_SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`${MANIFEST}\` lists every file it copied, and \`repos init --update\` replaces only those: a file it doesn't list is this repository's own, even at a path breakaway copies to. \`.claude/settings.json\` holds the session hooks that show a cloud agent's output on its task, and they run through \`npx\`, so this repository carries no copy of the CLI.
 - **Taskwarrior** (optional): \`scripts/task\`, or plain \`task\` with direnv after \`direnv allow\`, uses the board with this checkout's own \`.task/\` database, in the \`${repo.slug}\` context. \`npx breakaway setup\` connects the machine once.
 - **Changes reach \`${repo.defaultBranch || 'main'}\` through pull requests**, which the owner merges. Never merge, force-push, or rewrite \`${repo.defaultBranch || 'main'}\`.
 - **Never put a secret or token** in a file, task, comment, or pull request. The board's token lives in \`${dir}/tasks.env\` (or \`$BREAKAWAY_HOME/tasks.env\`) or the cloud environment's credentials, never in this repository.
@@ -495,6 +495,7 @@ export function initPlan({
   }
   if (readTarget('.claude/skills') === null) files.push({ path: '.claude/skills', link: '../.agents/skills' });
   copy(SKILL, skillFor(read(SKILL), board, repo));
+  copy(PIPELINE_SKILL, skillFor(read(PIPELINE_SKILL), board, repo));
   add('AGENTS.md', agentsMd(repo, board, configDir));
   if (!skipped.includes('AGENTS.md')) todo.push('AGENTS.md: add how to build in this repository');
 

@@ -16,6 +16,7 @@ const RAW = import.meta.glob(
     '../../prompts/*.md',
     '../../taskrc',
     '../../.agents/skills/tasks/SKILL.md',
+    '../../.agents/skills/pipeline/SKILL.md',
   ],
   { query: '?raw', import: 'default', eager: true },
 );
