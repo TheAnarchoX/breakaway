@@ -5,8 +5,9 @@
  * output for the board to show (for watching only: capped, pruned, never in a version).
  */
 import { secret } from './secrets.js';
-import { AREA_NAMES, rank } from './model.js';
+import { refinePrompt } from './decision.js';
 import { prVerdict } from './github.js';
+import { AREA_NAMES, dependsOf, rank, relatedOf } from './model.js';
 import { routineCaps } from './repos.js';
 import { CLAUDE_LIMITS, DEFAULT_PLAN, hourlyCeiling, isPlan, planChoices, planLimits, planOf, PLANS } from './plans.js';
 
@@ -288,10 +289,56 @@ export const agentsMethods = {
    * with no area, and so no work ID until its agent picks one, and an agent starts on it. With no room it
    * waits at the front of the auto-start queue, whatever the auto-start switch says. Refuses before making the
    * task when the repository's routine can't start anything.
+   *
+   * With `decision` (section 8, Refine from the answers), the board writes the prompt from that answered decision,
+   * with the owner's `note` under it, in the decision's repository, and relates the task to the decision. While one
+   * from that decision is open, it returns that one with `already` instead of starting another.
    */
-  async startGeneral({ prompt, repo = null, force = false } = {}) {
+  async startGeneral({ prompt, repo = null, force = false, decision = null, note = null } = {}) {
     await this.ready();
-    const text = String(prompt ?? '').trim();
+    let text = String(prompt ?? '').trim();
+    let title = null;
+    let from = null;
+    if (decision !== null && decision !== undefined && decision !== '') {
+      if (text) throw new AgentError('the board writes the prompt from the decision: send a note instead', 400);
+      from = this.resolve(decision);
+      const d = this.detail(from);
+      const ref = d.wid ?? d.short;
+      if (!d.decision) throw new AgentError(`${ref} has no decision`, 400);
+      if (d.status !== 'completed' || !d.decisionAnswers)
+        throw new AgentError(`${ref}’s decision isn’t answered yet: the owner answers it on the board first`, 409);
+      if (repo && String(repo).trim().toLowerCase() !== d.repo)
+        throw new AgentError(`${ref} is ${d.repo}’s: its agent runs in ${d.repo}`, 400);
+      repo = d.repo;
+      const open = [...this.tasks].find(
+        ([, map]) => map.status === 'pending' && map.tag_general && relatedOf(map).includes(from),
+      );
+      if (open) {
+        const task = this.detail(open[0]);
+        return {
+          task,
+          run: null,
+          waiting: null,
+          already: task.claim ? `${task.claim} is on it` : 'it’s waiting to start',
+        };
+      }
+      const waiting = this.views((t) => t.status === 'pending' && dependsOf(this.tasks.get(t.uuid)).includes(from)).map(
+        (t) => ({ ref: t.wid ?? t.short, description: t.description, tags: t.tags, spec: t.spec }),
+      );
+      const written = refinePrompt(
+        {
+          ref,
+          description: d.description,
+          spec: d.spec,
+          questions: d.decision,
+          answers: d.decisionAnswers.answers,
+        },
+        waiting,
+        note,
+      );
+      text = written.brief;
+      title = written.title;
+    }
     if (!text) throw new AgentError('write what the agent should do first', 400);
     if (!repo && this.repos().length > 1)
       throw new AgentError(
@@ -304,11 +351,12 @@ export const agentsMethods = {
     await this.checkRoutineReady(slug);
     const res = await this.create([
       {
-        description: (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
+        description: title ?? (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
         horizon: 'now',
         tags: ['agent', 'general'],
         autostart: 'yes',
         brief: text,
+        ...(from ? { related: [from] } : {}),
         ...(slug === this.defaultRepoSlug() ? {} : { repo: slug }),
         by: 'owner',
       },

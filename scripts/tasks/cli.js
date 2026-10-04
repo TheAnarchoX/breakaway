@@ -143,15 +143,17 @@ export function forceFields(force, by) {
 /**
  * `agents new`: the request that makes a task from a prompt and starts an agent on it. It's the checkout's repository
  * unless `--repo` names another. It always says who asks, so the board refuses an agent's name: only the owner starts one.
+ * With `decision` (`agents new --decision <ID> ["<note>"]`, BRK-110) the board writes the prompt from that answered
+ * decision, in the decision's repository, and the text is the owner's note under it.
  * @param {string} prompt
- * @param {{ repo?: string | null, force?: boolean, by?: string }} [options]
+ * @param {{ repo?: string | null, force?: boolean, by?: string, decision?: string | null }} [options]
  */
-export function generalAgentRequest(prompt, { repo = null, force = false, by } = {}) {
+export function generalAgentRequest(prompt, { repo = null, force = false, by, decision = null } = {}) {
   const text = String(prompt ?? '').trim();
-  if (!text)
+  if (!text && !decision)
     return { error: 'say what the agent should do: npx breakaway agents new "Tidy the docs" [--image <file>]' };
   const body = {
-    prompt: text,
+    ...(decision ? { decision, ...(text ? { note: text } : {}) } : { prompt: text }),
     ...(repo ? { repo } : {}),
     ...(force ? { force: true } : {}),
     ...(by ? { by } : {}),
@@ -161,11 +163,12 @@ export function generalAgentRequest(prompt, { repo = null, force = false, by } =
 
 /**
  * What the CLI says about a general agent's answer: the task and that it started, or why it waits (and whether Force
- * start could skip that).
- * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, waiting?: string | null, forceable?: boolean }} answer
+ * start could skip that), or, from a decision, the open one that already has it.
+ * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, waiting?: string | null, forceable?: boolean, already?: string | null }} answer
  */
-export function generalAgentSummary({ task, run, waiting, forceable }) {
+export function generalAgentSummary({ task, run, waiting, forceable, already }) {
   const id = task.wid ?? task.short;
+  if (!run && already) return `${id} already refines from these answers: ${already}.`;
   if (run) return `Started ${run.agent ? `${run.agent} ` : 'an agent '}on ${id}${run.url ? `: ${run.url}` : ''}`;
   return `Saved ${id}, waiting to start: ${waiting ?? 'no room yet'}.${forceable ? ` Start it now past the board's limits: npx breakaway agents start ${id} --force` : ''}`;
 }
