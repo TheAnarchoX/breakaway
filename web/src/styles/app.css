@@ -6521,6 +6521,25 @@ fieldset.field {
   overflow: auto;
 }
 
+/* ---------- refine a spec with an agent (WEB-26) ---------- */
+
+.refine-spec-off {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.refine-spec-prompt summary {
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.refine-spec-prompt .refine-prompt {
+  margin-top: 6px;
+}
+.field-hint.is-full {
+  color: var(--warn);
+}
+
 /* ---------- chase (IDEA-28 section 3.9) ---------- */
 
 .fr-pill-chase {
