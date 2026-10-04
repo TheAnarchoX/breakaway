@@ -132,7 +132,7 @@ function sidebar(pages, current) {
     return `<div class="side-group"><h2 class="label">${group}</h2><ul>${items}</ul></div>`;
   }).join('\n');
   return `<nav class="docs-nav" aria-label="Docs">
-  <details class="docs-menu">
+  <details class="docs-menu" open>
     <summary>Docs menu</summary>
     ${groups}
   </details>
