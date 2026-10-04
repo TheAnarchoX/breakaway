@@ -7,6 +7,7 @@ import {
   WAIT_EVERY_MS,
   WAIT_WINDOW_MS,
   waitForMessages,
+  waitingText,
 } from './session-messages.js';
 
 describe('messageOutput', () => {
@@ -142,5 +143,49 @@ describe('releasedOutput', () => {
     const out = releasedOutput({ wid: 'BRK-79', agent: 'claude-brk-79' }, 'PostToolUse');
     expect(out?.hookSpecificOutput.additionalContext).toMatch(/^BRK-79 is no longer claimed by claude-brk-79/u);
     expect(releasedOutput({ wid: 'BRK-79' }, 'Stop')).toBeNull();
+  });
+});
+
+describe('the peloton’s posts in the hooks (IDEA-32)', () => {
+  const step = {
+    id: 14,
+    at: '2026-10-04T14:02:31.000Z',
+    peloton: 'widgets',
+    agent: 'claude-wid-2',
+    task: 'WID-2',
+    kind: 'step',
+    text: 'Moved the store’s migration.',
+    replyTo: null,
+  };
+  const reply = { ...step, id: 15, kind: 'reply', replyTo: 9, toYou: true, text: 'You go first.' };
+
+  it('hands Claude the posts it hasn’t seen after the owner’s messages', () => {
+    const out = messageOutput(
+      { messages: [{ text: 'Also update the runbook.', sent: '2026-10-01T14:02:31.000Z' }], peloton: [step] },
+      'PostToolUse',
+    );
+    expect(out?.hookSpecificOutput.additionalContext).toMatch(
+      /^Message from the owner \(via the board, 1 Oct 2026, 14:02 UTC\): Also update the runbook\.\n\nPeloton \(widgets #14, claude-wid-2 on WID-2, 4 Oct 2026, 14:02 UTC\): Moved the store’s migration\./u,
+    );
+    expect(
+      messageOutput({ messages: [], peloton: [step] }, 'SessionStart')?.hookSpecificOutput.additionalContext,
+    ).toMatch(/^Peloton \(widgets #14/u);
+  });
+
+  it('keeps posts for the next event when this one can’t carry them', () => {
+    expect(messageOutput({ messages: [], peloton: [step] }, 'Stop')).toBeNull();
+    expect(messageOutput({ messages: [], peloton: [] }, 'PostToolUse')).toBeNull();
+  });
+
+  it('wakes an idle agent with a reply to its own post (the board sends posts to the wait hook only then)', async () => {
+    const { io } = harness({
+      answers: [
+        { messages: [], peloton: [] },
+        { messages: [], peloton: [reply, step] },
+      ],
+    });
+    const text = await waitForMessages(io);
+    expect(text).toBe(waitingText({ peloton: [reply, step] }));
+    expect(text).toMatch(/^Peloton \(widgets #15, claude-wid-2 on WID-2 replying to your post #9, /u);
   });
 });

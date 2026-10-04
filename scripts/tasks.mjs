@@ -61,6 +61,7 @@ import {
   staleCliWarning,
   unknownSubcommand,
 } from './tasks/cli.js';
+import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
 import { NAMES, boardUrl, configDir, parseEnvFile, readSetting, taskrcFixes, tildePath } from './tasks/settings.js';
@@ -190,6 +191,12 @@ Working
     --kind blocked|question|stale|done|fyi   blocked: needs the owner; question: a small question; stale: can't reproduce or already fine; done: looks finished; fyi: inbox only
     --proposal <file.json>   changes for the owner to apply in one press: tasks to add, dependencies, edits, finish, release (ping --template)
   ping --template        print an example proposal file to edit
+  peloton                who else is working (in your repository, and your chase's) and what they posted since you
+                         last read: new posts are starred  [--all] every post the board keeps
+  peloton checkin <text> say you're here and what you'll change, the files or areas you'll touch (you must hold a task)
+  peloton step <text>    say what you did and ask if it affects anyone; posts on your chase's peloton if your task is
+                         in one, else your repository's  [--peloton <name>] picks one
+  peloton reply <post> <text>   answer a post, on the peloton it's on
   idea <text>            write down an idea for an agent to shape into tasks and a spec (area Ideas, IDEA-n)
     --horizon now|next|later|auto   the horizon for the tasks it makes (default auto: the agent chooses)
     --auto               start its agent by itself when there's room (your choice; off by default here)
@@ -1235,6 +1242,32 @@ const commands = {
       r.dropped
         ? `Not sent: the same ping is already there (${r.ping.task}, ${r.ping.kind}).`
         : `Pinged the owner about ${r.ping.task} (${r.ping.kind}).${r.ping.warnings.length ? `\nNote for the owner: ${r.ping.warnings.join('; ')}.` : ''}${r.ping.push ? '' : ' It shows in the inbox without a notification.'}`,
+    );
+  },
+  async peloton() {
+    const me = agent();
+    const read = async () => (await call('GET', `peloton?agent=${enc(me)}`)).pelotons ?? [];
+    if (!args[0]) {
+      const views = await read();
+      return print({ agent: me, pelotons: views }, () => pelotonLines(views, { agent: me, all: opts.all }));
+    }
+    const post = pelotonPost(args[0], args.slice(1));
+    if ('error' in post) return fail(post.error);
+    // Read first: it says which peloton the post goes to, and which posts were new before it.
+    const views = await read();
+    const to = pickPeloton(views, { ...post, chosen: opts.peloton, agent: me });
+    if ('error' in to) return fail(to.error);
+    const out = await call('POST', `peloton/${enc(to.peloton)}`, {
+      agent: me,
+      kind: post.kind,
+      text: post.text,
+      ...(post.kind === 'reply' ? { reply_to: post.replyTo } : {}),
+    });
+    const after = mergeViews(views, out.peloton);
+    print({ post: out.post, pelotons: after }, () =>
+      [`Posted #${out.post.id} on ${out.post.peloton}.`, pelotonLines(after, { agent: me, all: opts.all })].join(
+        '\n\n',
+      ),
     );
   },
   async idea() {
