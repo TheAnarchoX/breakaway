@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'preact/hooks';
-import { ArrowLeft, FastForward, Hand, Milestone, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-preact';
+import {
+  ArrowLeft,
+  ArrowUpToLine,
+  FastForward,
+  Hand,
+  Milestone,
+  Pencil,
+  Plus,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-preact';
 import { plural } from '../lib/model.js';
 import {
   actions,
@@ -391,6 +401,29 @@ function releaseGroups(data) {
   });
 }
 
+/** The button on the next release with work outside now (BRK-126); the store asks before it moves anything. */
+function PullIntoNow({ release, tasks }) {
+  const [busy, setBusy] = useState(false);
+  const pull = async () => {
+    setBusy(true);
+    await actions.pullRelease(release);
+    setBusy(false);
+  };
+  return (
+    <button
+      type="button"
+      class="btn btn-sm fr-pull"
+      disabled={busy}
+      aria-busy={busy}
+      title={`${plural(tasks, 'task')} for ${release}, with what they wait for, aren’t in now yet`}
+      onClick={pull}
+    >
+      <ArrowUpToLine size={15} aria-hidden="true" />
+      Pull into now
+    </button>
+  );
+}
+
 function Overview() {
   const state = features.value;
   const [adding, setAdding] = useState(false);
@@ -435,10 +468,15 @@ function Overview() {
         <div class="fr-releases">
           {groups.map((g) => (
             <section key={g.release ?? 'none'} class="fr-release" aria-labelledby={`fr-r-${g.release ?? 'none'}`}>
-              <h2 id={`fr-r-${g.release ?? 'none'}`}>
-                {g.release ? <span class="mono">{g.release}</span> : 'Unplanned'}
-                {g.features.length > 0 && <span class="count">{plural(g.features.length, 'feature')}</span>}
-              </h2>
+              <div class="fr-release-head">
+                <h2 id={`fr-r-${g.release ?? 'none'}`}>
+                  {g.release ? <span class="mono">{g.release}</span> : 'Unplanned'}
+                  {g.features.length > 0 && <span class="count">{plural(g.features.length, 'feature')}</span>}
+                </h2>
+                {g.release && d.nextPull?.release === g.release && (
+                  <PullIntoNow release={g.release} tasks={d.nextPull.tasks} />
+                )}
+              </div>
               {g.features.length > 0 && (
                 <ul class="fr-cards">
                   {g.features.map((f) => (

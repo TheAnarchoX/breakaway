@@ -6125,6 +6125,13 @@ fieldset.field {
   gap: 8px;
   font-size: 18px;
 }
+.fr-release-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .fr-release h2 .mono {
   font: 700 18px / 1 var(--font-mono);
 }

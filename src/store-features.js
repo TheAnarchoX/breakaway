@@ -422,6 +422,73 @@ export const featuresMethods = {
     const releaseTasks = [...releases]
       .sort((a, b) => byRelease(a[0], b[0]))
       .map(([release, tasks]) => ({ release, tasks }));
-    return { features, suggestions, releaseTasks };
+    const next = this.releasePulls(membership)[0];
+    const nextPull = next ? { release: next.release, tasks: next.moves.length } : null;
+    return { features, suggestions, releaseTasks, nextPull };
+  },
+
+  /**
+   * What pulling each release into now would move (BRK-126), for the releases that have any, in version
+   * order: the release's open tasks (its features' and its loose ones') and every open task they wait for,
+   * whatever its release or feature, that isn't in now yet. A task's release is its feature's, else its tag's.
+   */
+  releasePulls(given) {
+    const membership = given ?? this.featureMembership();
+    const open = (t) => t.status === 'pending';
+    const byUuid = new Map(membership.views.map((t) => [t.uuid, t]));
+    const aimed = new Map();
+    const aim = (release, t) => {
+      if (release && open(t)) aimed.set(release, [...(aimed.get(release) ?? []), t]);
+    };
+    for (const row of membership.rows) for (const { task } of membership.members.get(row.slug)) aim(row.release, task);
+    for (const t of membership.loose) aim(sharedRelease([t]), t);
+    const pulls = [];
+    for (const [release, tasks] of [...aimed].sort((a, b) => byRelease(a[0], b[0]))) {
+      const own = new Set(tasks.map((t) => t.uuid));
+      const seen = new Set(own);
+      const stack = [...own];
+      while (stack.length)
+        for (const d of byUuid.get(stack.pop())?.depends ?? [])
+          if (!seen.has(d) && byUuid.has(d) && open(byUuid.get(d))) {
+            seen.add(d);
+            stack.push(d);
+          }
+      const moves = dependencyOrder([...seen].map((u) => byUuid.get(u)).filter((t) => t.horizon !== 'now'));
+      if (moves.length) pulls.push({ release, moves: moves.map((t) => ({ task: t, chain: !own.has(t.uuid) })) });
+    }
+    return pulls;
+  },
+
+  /**
+   * Pulls `release` into now (BRK-126): the owner's. Only the first release with work outside now can be
+   * pulled, so the roadmap fills now in version order. `dryRun` only says what would move.
+   */
+  pullRelease(release, input) {
+    this.ownerOnlyFeatures(input.by, 'pull a release into now');
+    const version = String(release ?? '').trim();
+    if (!RELEASE.test(version)) throw new InputError(`the release is a version like 1.2.0 (not "${version}")`);
+    this.writable();
+    const pulls = this.releasePulls();
+    const pull = pulls.find((p) => p.release === version);
+    if (!pull) throw new InputError(`${version}’s open tasks, and what they wait for, are already in now`);
+    if (pulls[0] !== pull)
+      throw new AgentError(`pull ${pulls[0].release} into now first: the next release goes in before a later one`, 409);
+    const tasks = pull.moves.map(({ task, chain }) => ({
+      uuid: task.uuid,
+      wid: task.wid ?? null,
+      description: task.description,
+      horizon: task.horizon ?? null,
+      chain,
+    }));
+    if (!input.dryRun) {
+      const now = new Date();
+      const ops = [];
+      for (const { task } of pull.moves) {
+        const before = this.tasks.get(task.uuid);
+        ops.push(...diffOps(task.uuid, before, withChanges(before, { horizon: 'now' }, now), now.toISOString()));
+      }
+      this.commit(ops);
+    }
+    return { release: version, tasks, dryRun: Boolean(input.dryRun) };
   },
 };

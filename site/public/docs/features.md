@@ -28,6 +28,8 @@ The **Roadmap** view (`m`) shows releases in version order, then Unplanned, each
 
 Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. A board with none says “No features yet.” and offers the suggested tags.
 
+**Pull into now** shows on the next release that still has open work outside now. It moves the release’s open tasks into now, and every open task they wait for, whatever its release or feature, so nothing in now waits on work outside it. It says what will move before it moves anything. Only the next such release has it, so now fills in version order. Pulling a release is yours.
+
 ### From the Dependencies view
 
 The **Dependencies** view groups tasks into chains that wait for each other. Above each group it shows the group’s size and the features its tasks are in, and **Make a feature** makes one from it: a tag, a title, a release, and a brief, with the group’s open tasks to pick (all of them to start with). A task already in another feature stays there, and the dialog says so. Then it offers the new feature’s chase. A group whose open tasks are all in one feature offers **Chase** straight away.
