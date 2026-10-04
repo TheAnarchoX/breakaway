@@ -50,6 +50,7 @@ import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
 import { initMethods } from './store-init.js';
+import { routineKeepMethods } from './store-routine-keep.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -102,6 +103,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initStats();
     this.initRepos();
     this.initConnections();
+    this.initRoutineKeep();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -197,6 +199,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       );
     const current = await this.credentials();
     if (clientId.toLowerCase() === current.clientId) return fail(400, 'use a new client ID');
+    // Routines kept on the board are sealed with a key from the sync key (BRK-133): sealed again here, written below.
+    const routines = await this.resealedRoutines(keyBase64.trim());
     let count = 0;
     try {
       this.atomically(() => {
@@ -214,6 +218,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           const plain = unseal(this.key, snap.version_id, new Uint8Array(snap.data));
           this.sql.exec('UPDATE snapshot SET data = ? WHERE id = 1', seal(newKey, snap.version_id, plain));
         }
+        for (const r of routines) this.sql.exec('UPDATE kept_routines SET sealed = ? WHERE slug = ?', r.sealed, r.slug);
         this.setMeta('client_id', clientId.toLowerCase());
         this.setMeta('sync_key', keyBase64.trim());
         this.setMeta('rekeyed_at', new Date().toISOString());
@@ -1261,6 +1266,7 @@ Object.assign(
   selfUpdateMethods,
   wizardMethods,
   initMethods,
+  routineKeepMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------

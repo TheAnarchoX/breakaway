@@ -395,6 +395,13 @@ async function handleApi(request, env, url, ctx) {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can add the board’s files' });
       return send(await s.boardFilesApi(parts[1], { by: body.by, origin: install(env).url ?? url.origin }));
     }
+    // Connect a routine from the board (BRK-133): the owner's form, the signed-in browser only, never the bearer token.
+    if (parts.length === 3 && parts[2] === 'routine' && (method === 'PUT' || method === 'DELETE')) {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can connect a routine' });
+      return send(
+        method === 'PUT' ? await s.repoRoutineConnectApi(parts[1], body) : await s.repoRoutineForgetApi(parts[1], body),
+      );
+    }
     // Turn on deploys (WEB-13) is the owner's press on the GitHub page: the signed-in browser only, never the bearer token.
     if (parts.length === 3 && parts[2] === 'pipeline' && method === 'POST') {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });
