@@ -1144,10 +1144,11 @@ export const actions = {
    * With `decision` (Refine from the answers), the board writes the prompt from that answered decision, and `note`
    * goes under it; with `next` (minor or major, BRK-100), the prompt that sets `repo`'s next version, which must
    * still be `version`; with `spec` (a path in `repo`'s specs directory, WEB-26), the prompt that refines that spec,
-   * and `note` is the owner's request.
-   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, spec?: string, note?: string }} body
+   * and `note` is the owner's request; with `chase` (a feature's slug, BRK-137), a road captain for that chase, in
+   * its repository and always force started.
+   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, spec?: string, note?: string, chase?: string }} body
    */
-  async startGeneral({ prompt, repo, force = false, decision, next, version, spec, note }) {
+  async startGeneral({ prompt, repo, force = false, decision, next, version, spec, note, chase }) {
     const result = await api('agents/general', {
       method: 'POST',
       body: {
@@ -1159,6 +1160,7 @@ export const actions = {
         version,
         spec,
         note: note || undefined,
+        chase,
       },
     });
     if (next) loadGitHub({ quiet: true });
