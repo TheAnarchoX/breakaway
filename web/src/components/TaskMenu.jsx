@@ -11,13 +11,14 @@ import {
   PanelRight,
   Play,
   RotateCcw,
+  ScanSearch,
   Sparkles,
   Square,
   SquareCheck,
   Undo2,
 } from 'lucide-preact';
-import { HORIZONS, ref, stateOf } from '../lib/model.js';
-import { actions, byUuid, focusComment, hashFor, me, openTask, releaseOther, taskMenu } from '../lib/store.js';
+import { HORIZONS, canAgentReview, openPr, ref, stateOf } from '../lib/model.js';
+import { actions, agents, byUuid, focusComment, hashFor, me, openTask, releaseOther, taskMenu } from '../lib/store.js';
 import { copy } from '../lib/clipboard.js';
 import { RefineDialog, refineReason, setAutostart, startState } from './Agents.jsx';
 
@@ -186,6 +187,15 @@ function itemsFor(t, { selection, refine }) {
     agent.push({ id: 'force', label: 'Force start', icon: icon(Play), run: () => actions.startAgent(t, '') });
   else if (canStart)
     agent.push({ id: 'start', label: 'Start an agent', icon: icon(Bot), run: () => actions.startAgent(t, '') });
+  // Review with an agent (WEB-23), on a task whose pull request can merge as it stands.
+  const pr = open && agents.value.data?.connected ? openPr(t) : null;
+  if (pr && canAgentReview(pr))
+    agent.push({
+      id: 'review',
+      label: `Review #${pr.number} with an agent`,
+      icon: icon(ScanSearch),
+      run: () => actions.reviewPull(pr),
+    });
   if (open && !refineReason(t))
     agent.push({ id: 'refine', label: 'Refine with an agent…', icon: icon(Sparkles), run: refine });
   if (canAuto && !t.claim)
