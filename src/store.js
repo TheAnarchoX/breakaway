@@ -33,6 +33,7 @@ import { DecisionError, summarize, validateAnswers } from './decision.js';
 import { AgentError, agentsMethods } from './store-agents.js';
 import { routinesMethods } from './store-routines.js';
 import { featuresMethods } from './store-features.js';
+import { chaseMethods } from './store-chase.js';
 import { attachmentsMethods } from './store-attachments.js';
 import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
@@ -86,6 +87,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initAgents();
     this.initRoutines();
     this.initFeatures();
+    this.initChase();
     this.initAttachments();
     this.initPings();
     this.initPush();
@@ -1038,6 +1040,17 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           changes: [{ kind: e.kind, routine: e.slug, detail: e.detail }],
         });
       }
+      // A chase started, stopped, stalled, or ended (IDEA-28 section 3.9); its starts are agent runs above.
+      for (const c of this.chaseEvents(after, upTo)) {
+        events.push({
+          seq: null,
+          id: `ch${c.id}`,
+          at: new Date(c.at).toISOString(),
+          source: 'agents',
+          task: null,
+          changes: [{ kind: c.kind, feature: c.slug, detail: c.detail }],
+        });
+      }
       for (const p of this.pingEvents(after, upTo)) {
         const map = this.tasks.get(p.task);
         events.push({
@@ -1164,6 +1177,7 @@ Object.assign(
   agentsMethods,
   routinesMethods,
   featuresMethods,
+  chaseMethods,
   attachmentsMethods,
   pingsMethods,
   pushMethods,
@@ -1231,7 +1245,10 @@ const apiActions = {
     return this.run(() => ok(this.listFeatures()));
   },
   featureApi(slug) {
-    return this.run(() => ok({ feature: this.featureDetail(slug) }));
+    return this.run(async () => ok({ feature: await this.featureWithChase(slug) }));
+  },
+  featureChaseApi(slug, body) {
+    return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
   },
   featuresCreateApi(body) {
     return this.run(() => ok({ feature: this.createFeature(body ?? {}) }, 201));

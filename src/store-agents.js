@@ -147,6 +147,7 @@ const TRIGGER_TEXT = {
   webhook: 'by a routine’s webhook or API trigger, from the board',
   cloudflare: 'by a Cloudflare alert, from the board',
   general: 'by a prompt from the owner, from the board',
+  chase: 'by the owner’s chase of a feature, because the task became ready',
 };
 
 /**
@@ -1137,7 +1138,7 @@ export const agentsMethods = {
 
   /** After a change that may unblock a task, check the auto-starter a moment later. */
   scheduleAgentsCheck() {
-    if (!this.hasAutostart()) return;
+    if (!this.hasAutostart() && !this.chasing()) return;
     this.ctx.storage.getAlarm().then((at) => {
       if (!at || at > Date.now() + 3000) this.ctx.storage.setAlarm(Date.now() + 2000);
     });
@@ -1407,6 +1408,12 @@ export const agentsMethods = {
     }
     try {
       await this.autostartTick();
+    } catch (error) {
+      errors.push(error.message); /* tries again next time */
+    }
+    // A chase starts after auto-start, so security fixes, general agents, and Start-when-ready tasks go first.
+    try {
+      await this.chaseTick();
     } catch (error) {
       errors.push(error.message); /* tries again next time */
     }
