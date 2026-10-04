@@ -10,6 +10,7 @@ import { GitHubClient, GitHubError, appCredentials, repoRef } from './github.js'
 import { releaseOf } from './build.js';
 import { install } from './install.js';
 import { clip } from './connections.js';
+import { verifyRelease } from './release-verify.js';
 import { BREAKAWAY_REPO, DEPLOY_WORKFLOW, FEED_URL, UPDATE_BRANCH, isNewer, latestIn, tooOld } from './updates.js';
 
 const STABLE_EVERY_MS = 3_600_000; // the cron looks for a stable release hourly; the main channel every run
@@ -111,6 +112,34 @@ export const updatesMethods = {
       }
     }
     return { latest: null, source: null, error };
+  },
+
+  /**
+   * For an install with no install repository (BRK-52): reads the feed for `channel` (by default the running version's),
+   * verifies the newest release's signature, checksums, and `updatesFrom`, and keeps the verdict for Connections.
+   * Installs nothing and sends nothing about the install. Not on a schedule: the owner turning self-update on (a later
+   * task) is what starts it, so an install that hasn't asked makes no call.
+   */
+  async updatesVerify(channel) {
+    if (this.updateSettings()) return null;
+    const running = releaseOf(this.env);
+    channel ??= /-main\./u.test(running) ? 'main' : 'stable';
+    const found = await this.updatesRead(channel, null);
+    const state = { at: Date.now(), channel, running, latest: found.latest, error: found.error, verdict: null };
+    if (found.latest && isNewer(found.latest.version, running)) {
+      const verdict = await verifyRelease(found.latest, { running });
+      state.verdict =
+        'step' in verdict
+          ? { ok: false, step: verdict.step, message: verdict.message }
+          : { ok: true, version: found.latest.version };
+    }
+    this.setMeta('upd_verified', JSON.stringify(state));
+    return state;
+  },
+
+  /** What the last verification kept, or null. */
+  updateVerified() {
+    return JSON.parse(this.meta('upd_verified') ?? 'null');
   },
 
   /** The client for the install repository: its own token cache, since it needn't be registered on the board. */

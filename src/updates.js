@@ -12,10 +12,12 @@ export const BREAKAWAY_REPO = 'TheAnarchoX/breakaway';
 export const DEPLOY_WORKFLOW = 'deploy.yml';
 export const UPDATE_BRANCH = 'breakaway/update';
 
+const https = (url) => (typeof url === 'string' && /^https:\/\//u.test(url) ? url : null);
+
 /**
  * The latest release in `channel` from the feed (`{ channels }`) or from GitHub's list of breakaway's releases,
  * ordered by version and never by date; null when there is none.
- * @returns {{ version: string, notes: string | null, body: string | null, manual: boolean, manualSteps: string[], updatesFrom: string | null } | null}
+ * @returns {{ version: string, notes: string | null, body: string | null, manual: boolean, manualSteps: string[], updatesFrom: string | null, bundle?: string | null, manifest?: string | null, checksums?: string | null, signature?: string | null } | null}
  */
 export function latestIn(raw, channel) {
   if (raw && !Array.isArray(raw) && typeof raw === 'object' && raw.channels) {
@@ -28,6 +30,11 @@ export function latestIn(raw, channel) {
       manual: e.manual === true,
       manualSteps: Array.isArray(e.manualSteps) ? e.manualSteps.map(String) : [],
       updatesFrom: isVersion(e.updatesFrom) ? e.updatesFrom : null,
+      // Where the release's files are (BRK-52); only https, and checked by release-verify.js before use.
+      bundle: https(e.bundle),
+      manifest: https(e.manifest),
+      checksums: https(e.checksums),
+      signature: https(e.signature),
     };
   }
   if (!Array.isArray(raw)) return null;
