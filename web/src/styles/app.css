@@ -1572,16 +1572,43 @@ a code {
   .stream .activity-day-head {
     background: var(--bg-2);
   }
-  .stream .event {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
-    padding: 9px 10px;
-  }
   .stream .event-source {
     display: none;
   }
   .stream .event-changes {
     font-size: 13.5px;
+  }
+}
+/* In the sidebar, and on a narrow screen, the title gets the whole width (WEB-16): the time, work ID, and repository
+   share the first line, and the title and changes run full width below it. */
+@container activity (max-width: 759px) or (min-width: 1240px) {
+  .stream .event {
+    display: flow-root;
+    padding: 9px 10px;
+  }
+  .stream .event-time {
+    float: left;
+    min-width: 0;
+    margin-right: 8px;
+    line-height: 20px;
+  }
+  .stream .event-body {
+    display: block;
+  }
+  .stream .event-task {
+    display: block;
+    line-height: 20px;
+  }
+  .stream .event-task .repo-chip {
+    margin-left: 6px;
+  }
+  .stream .event-title {
+    display: block;
+    margin-top: 2px;
+    line-height: 1.35;
+  }
+  .stream .event-changes {
+    margin-top: 6px;
   }
 }
 @container activity (min-width: 1800px) {
@@ -2420,6 +2447,11 @@ a code {
 }
 .event-task:hover span:last-child {
   text-decoration: underline;
+}
+/* The work ID and repository keep their size; the title wraps instead (WEB-16). */
+.event-task > .wid,
+.event-task > .repo-chip {
+  flex: none;
 }
 .event-changes {
   list-style: none;
