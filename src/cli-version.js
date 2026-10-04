@@ -4,5 +4,5 @@
  * and how to update it. scripts/tasks/version.test.js fails when the copied files change and this doesn't:
  * so it lives in the board's package (CLD-135) and the CLI imports it from here.
  */
-export const CLI_VERSION = 61;
-export const CLI_FINGERPRINT = '37970aa940ba9859';
+export const CLI_VERSION = 62;
+export const CLI_FINGERPRINT = '49246444c665baf0';
