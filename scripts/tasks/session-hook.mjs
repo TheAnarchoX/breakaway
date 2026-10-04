@@ -4,7 +4,8 @@
  * session just did to the task it has claimed, so the board can show the session live
  * (docs/specs/CLD-35-cloud-agents.md). For watching only; the board keeps it 14 days at most.
  * The board answers with the owner's messages waiting for this agent, which the hook prints as
- * additionalContext so Claude gets them on its next turn (docs/specs/IDEA-15-message-a-running-agent.md).
+ * additionalContext so Claude gets them on its next turn (docs/specs/IDEA-15-message-a-running-agent.md), and with
+ * the peloton's posts this agent hasn't seen, at most 5 at a time (docs/specs/IDEA-32-peloton.md).
  *
  * Quiet by design: without a claimed task (.task-session, written by `tasks claim`), with
  * BREAKAWAY_SESSION_LOG=off, or on any error, it does nothing and exits 0. A post
