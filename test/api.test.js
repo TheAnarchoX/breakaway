@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import pkg from '../package.json' with { type: 'json' };
 import { CLI_VERSION } from '../src/cli-version.js';
 import { releaseOf } from '../src/build.js';
+import { unreadableSecrets } from '../src/secrets.js';
 import { api, latestVersion, pushOps, readChild, twCreate } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
@@ -11,7 +12,19 @@ describe('task API', () => {
   it('answers a public ping with nothing about tasks', async () => {
     const res = await api('ping', { token: null });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, version: null, release: pkg.version });
+    expect(await res.json()).toEqual({
+      ok: true,
+      version: null,
+      release: pkg.version,
+      secrets: { ok: true, unreadable: [] },
+    });
+  });
+
+  it('names the bindings whose secrets can’t be read, and never a value', async () => {
+    const throwing = { get: async () => Promise.reject(new Error('Secrets Worker: Failed to fetch secret')) };
+    const env = { TASKS_SYNC_KEY: throwing, TASKS_API_TOKEN: { get: async () => 'never-shown' }, TASKS_VAPID_KEY: 'x' };
+    expect(await unreadableSecrets(env)).toEqual(['TASKS_SYNC_KEY']);
+    expect(await unreadableSecrets({})).toEqual([]);
   });
 
   it('reports the release it is, and lets a deploy name a promoted stable', async () => {

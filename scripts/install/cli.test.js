@@ -220,7 +220,11 @@ describe('the deploy workflow’s steps', () => {
     await runStep('previous', {}, { ...io(), input: () => deployments });
     expect(lines).toEqual(['previous=abc']);
     expect(
-      await runStep('healthy', { version: '0.2.0' }, { ...io(), input: () => '{"ok":true,"release":"0.2.0"}' }),
+      await runStep(
+        'healthy',
+        { version: '0.2.0' },
+        { ...io(), input: () => '{"ok":true,"release":"0.2.0","secrets":{"ok":true}}' },
+      ),
     ).toBe(0);
     expect(await runStep('healthy', { version: '0.2.0' }, { ...io(), input: () => 'not json' })).toBe(1);
   });

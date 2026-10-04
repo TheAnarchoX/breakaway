@@ -253,9 +253,9 @@ export function workerMissing(output) {
   return /\[code: 10007\]|worker does not exist on your account/iu.test(String(output ?? ''));
 }
 
-/** Whether `/api/ping`'s answer says the new release is running. */
+/** Whether `/api/ping`'s answer says the new release is running and its secrets load (BRK-96). */
 export function isHealthy(ping, version) {
-  return Boolean(ping) && ping.ok === true && ping.release === version;
+  return Boolean(ping) && ping.ok === true && ping.release === version && ping.secrets?.ok === true;
 }
 
 /**
