@@ -292,9 +292,11 @@ export const agentsMethods = {
    *
    * With `decision` (section 8, Refine from the answers), the board writes the prompt from that answered decision,
    * with the owner's `note` under it, in the decision's repository, and relates the task to the decision. While one
-   * from that decision is open, it returns that one with `already` instead of starting another.
+   * from that decision is open, it returns that one with `already` instead of starting another. With `dryRun` it
+   * makes nothing and returns the prompt it would write (without the note), the open one if any, and why the
+   * repository's routine can't start one, for the web's dialog to show first.
    */
-  async startGeneral({ prompt, repo = null, force = false, decision = null, note = null } = {}) {
+  async startGeneral({ prompt, repo = null, force = false, decision = null, note = null, dryRun = false } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
     let title = null;
@@ -313,32 +315,40 @@ export const agentsMethods = {
       const open = [...this.tasks].find(
         ([, map]) => map.status === 'pending' && map.tag_general && relatedOf(map).includes(from),
       );
+      const already = (task) => (task.claim ? `${task.claim} is on it` : 'it’s waiting to start');
+      if (dryRun) {
+        const task = open ? this.detail(open[0]) : null;
+        const written = this.refineFrom(from, d, null);
+        let refusal = null;
+        try {
+          await this.checkRoutineReady(d.repo);
+        } catch (error) {
+          if (!(error instanceof AgentError)) throw error;
+          refusal = error.message;
+        }
+        return {
+          dryRun: true,
+          title: written.title,
+          prompt: written.brief,
+          task,
+          already: task ? already(task) : null,
+          refusal,
+        };
+      }
       if (open) {
         const task = this.detail(open[0]);
         return {
           task,
           run: null,
           waiting: null,
-          already: task.claim ? `${task.claim} is on it` : 'it’s waiting to start',
+          already: already(task),
         };
       }
-      const waiting = this.views((t) => t.status === 'pending' && dependsOf(this.tasks.get(t.uuid)).includes(from)).map(
-        (t) => ({ ref: t.wid ?? t.short, description: t.description, tags: t.tags, spec: t.spec }),
-      );
-      const written = refinePrompt(
-        {
-          ref,
-          description: d.description,
-          spec: d.spec,
-          questions: d.decision,
-          answers: d.decisionAnswers.answers,
-        },
-        waiting,
-        note,
-      );
+      const written = this.refineFrom(from, d, note);
       text = written.brief;
       title = written.title;
     }
+    if (dryRun) throw new AgentError('a dry run shows the prompt the board writes from a decision: name one', 400);
     if (!text) throw new AgentError('write what the agent should do first', 400);
     if (!repo && this.repos().length > 1)
       throw new AgentError(
@@ -375,6 +385,24 @@ export const agentsMethods = {
       this.scheduleAgentsCheck();
       return { task: this.detail(uuid), run: null, waiting: error.message, forceable: error.forceable };
     }
+  },
+
+  /** Refine from the answers' prompt for answered decision `uuid` (its detail `d`), with the owner's `note` under it. */
+  refineFrom(uuid, d, note) {
+    const waiting = this.views((t) => t.status === 'pending' && dependsOf(this.tasks.get(t.uuid)).includes(uuid)).map(
+      (t) => ({ ref: t.wid ?? t.short, description: t.description, tags: t.tags, spec: t.spec }),
+    );
+    return refinePrompt(
+      {
+        ref: d.wid ?? d.short,
+        description: d.description,
+        spec: d.spec,
+        questions: d.decision,
+        answers: d.decisionAnswers.answers,
+      },
+      waiting,
+      note,
+    );
   },
 
   /** The area a task the board makes for a repository goes in: Tech debt where it has it, else its first area. */

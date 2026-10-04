@@ -21,6 +21,7 @@ import { HORIZONS, canAgentReview, openPr, ref, stateOf } from '../lib/model.js'
 import { actions, agents, byUuid, focusComment, hashFor, me, openTask, releaseOther, taskMenu } from '../lib/store.js';
 import { copy } from '../lib/clipboard.js';
 import { RefineDialog, refineReason, setAutostart, startState } from './Agents.jsx';
+import { RefineFromAnswersDialog, refineFromAnswers } from './RefineFromAnswers.jsx';
 
 /*
  * The task menu (WEB-24): act on a task where it is, without opening it. Any element with `data-task-menu="<uuid>"`
@@ -169,10 +170,10 @@ function useTriggers() {
 /**
  * The menu's items, in groups, each only when it applies, by the task panel's rules and in its words.
  * @param {any} t
- * @param {{ selection: string, refine: () => void }} context
+ * @param {{ selection: string, refine: () => void, refineAnswers: () => void }} context
  * @returns {Item[][]}
  */
-function itemsFor(t, { selection, refine }) {
+function itemsFor(t, { selection, refine, refineAnswers }) {
   const open = t.status === 'pending';
   const done = stateOf(t) === 'done';
   const { blocker, canAuto, canStart, queued } = startState(t);
@@ -198,6 +199,17 @@ function itemsFor(t, { selection, refine }) {
     });
   if (open && !refineReason(t))
     agent.push({ id: 'refine', label: 'Refine with an agent…', icon: icon(Sparkles), run: refine });
+  // Refine from the answers (WEB-22), on a decided decision: start one, or open the one already refining.
+  const answers = refineFromAnswers(t);
+  if (answers?.open)
+    agent.push({
+      id: 'refine-answers',
+      label: `Open ${ref(answers.open)}, refining from the answers`,
+      icon: icon(Sparkles),
+      run: () => openTask(answers.open),
+    });
+  else if (answers)
+    agent.push({ id: 'refine-answers', label: 'Refine from the answers…', icon: icon(Sparkles), run: refineAnswers });
   if (canAuto && !t.claim)
     agent.push({
       id: 'autostart',
@@ -250,14 +262,18 @@ function itemsFor(t, { selection, refine }) {
 }
 
 /** @param {Record<string, any>} props */
-function Menu({ menu, task: t, onRefine }) {
+function Menu({ menu, task: t, onRefine, onRefineAnswers }) {
   const box = useRef(/** @type {HTMLDivElement | null} */ (null));
   const [place, setPlace] = useState({ left: menu.x, top: menu.y, ready: false });
   const close = (refocus = true) => {
     taskMenu.value = null;
     if (refocus && menu.from?.isConnected) menu.from.focus({ preventScroll: true });
   };
-  const groups = itemsFor(t, { selection: menu.selection, refine: () => onRefine(t.uuid) });
+  const groups = itemsFor(t, {
+    selection: menu.selection,
+    refine: () => onRefine(t.uuid),
+    refineAnswers: () => onRefineAnswers(t.uuid),
+  });
 
   // Keep it inside the window: flip it left of or above the point when it doesn't fit, then clamp.
   useLayoutEffect(() => {
@@ -369,20 +385,23 @@ function Menu({ menu, task: t, onRefine }) {
   );
 }
 
-/** Mounted once: listens for the menu on any task, shows it, and holds Refine with an agent's dialog. */
+/** Mounted once: listens for the menu on any task, shows it, and holds the Refine dialogs it opens. */
 export function TaskMenuHost() {
   useTriggers();
   const [refining, setRefining] = useState(/** @type {string | null} */ (null));
   const menu = taskMenu.value;
   const t = menu ? byUuid.value.get(menu.uuid) : null;
   const refineTask = refining ? byUuid.value.get(refining) : null;
+  const [answering, setAnswering] = useState(/** @type {string | null} */ (null));
+  const answersTask = answering ? byUuid.value.get(answering) : null;
   useEffect(() => {
     if (menu && !t) taskMenu.value = null;
   }, [menu, t]);
   return (
     <>
-      {menu && t && <Menu menu={menu} task={t} onRefine={setRefining} />}
+      {menu && t && <Menu menu={menu} task={t} onRefine={setRefining} onRefineAnswers={setAnswering} />}
       {refineTask && <RefineDialog task={refineTask} open onClose={() => setRefining(null)} />}
+      {answersTask && <RefineFromAnswersDialog task={answersTask} open onClose={() => setAnswering(null)} />}
     </>
   );
 }
