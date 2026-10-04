@@ -5967,6 +5967,23 @@ fieldset.field {
   font-size: 14.5px;
   overflow-wrap: anywhere;
 }
+.routine-connect {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.routine-connect > * {
+  max-width: 100%;
+}
+.routine-connect .setup-register,
+.routine-connect .wiz-cmd {
+  width: 100%;
+}
+.routine-connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .wiz-cmd {
   display: grid;
   gap: 4px;

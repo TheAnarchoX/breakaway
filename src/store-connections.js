@@ -68,7 +68,16 @@ function entry(
   group,
   name,
   state,
-  { repo = null, detail = '', at = null, fix = null, link = null, items = undefined, update = undefined } = {},
+  {
+    repo = null,
+    detail = '',
+    at = null,
+    fix = null,
+    link = null,
+    items = undefined,
+    update = undefined,
+    source = undefined,
+  } = {},
 ) {
   return {
     id,
@@ -82,6 +91,7 @@ function entry(
     link,
     ...(items ? { items } : {}),
     ...(update ? { update } : {}),
+    ...(source !== undefined ? { source } : {}),
   };
 }
 
@@ -920,6 +930,7 @@ export const connectionsMethods = {
       if (this.ghMeta('gh_empty', repo.slug))
         return entry('claude.routine', 'claude', name, 'off', {
           repo: repo.slug,
+          source: null,
           detail:
             'not connected yet: the repository has no commits, so there’s no agent prompt for a routine to follow',
           fix: `Run npx breakaway repos init ${repo.slug} first; then make its routine on claude.ai/code/routines and run ${connect}.`,
@@ -929,14 +940,16 @@ export const connectionsMethods = {
       return isDefault && !this.firstRunInstall()
         ? entry('claude.routine', 'claude', name, 'off', {
             repo: repo.slug,
+            source: null,
             detail: 'not connected: its URL and token are unset',
-            fix: 'Make the routine on claude.ai/code/routines with an API trigger, then run npx breakaway agents-connect.',
+            fix: 'Make the routine on claude.ai/code/routines with an API trigger, then connect it on Connections with its URL and token, or run npx breakaway agents-connect.',
             link: doc(this.env, 'cloud-agents-from-the-board'),
           })
         : entry('claude.routine', 'claude', name, 'attention', {
             repo: repo.slug,
+            source: null,
             detail: 'not connected: this repository has no routine yet, so agents can’t start on its tasks',
-            fix: `Once npx breakaway repos init ${repo.slug} has added the board’s files to ${repo.github}, make a routine in it on claude.ai/code/routines with an API trigger and a cloud environment that allows ${hostOf(this.meta('conn_origin') ?? this.homeUrl())}, then run ${connect}.`,
+            fix: `Once npx breakaway repos init ${repo.slug} has added the board’s files to ${repo.github}, make a routine in it on claude.ai/code/routines with an API trigger and a cloud environment that allows ${hostOf(this.meta('conn_origin') ?? this.homeUrl())}, then connect it on Connections with its URL and token, or run ${connect}.`,
             link: doc(this.env, 'cloud-agents-from-the-board'),
           });
     }
@@ -944,6 +957,7 @@ export const connectionsMethods = {
     if ('broken' in credentials)
       return entry('claude.routine', 'claude', name, 'attention', {
         repo: repo.slug,
+        source: 'board',
         detail: 'connected from the board, but its stored URL and token can’t be read any more',
         fix: `The board’s sync key changed since the routine was connected, so its stored token can’t be decrypted. Connect the routine again from the board with its URL and a new token from claude.ai/code/routines, or run ${connect}.`,
         link: ROUTINES_URL,
@@ -970,6 +984,7 @@ export const connectionsMethods = {
     }
     return entry('claude.routine', 'claude', name, state, {
       repo: repo.slug,
+      source: credentials.source,
       detail,
       at: iso(lastRun?.started),
       fix,

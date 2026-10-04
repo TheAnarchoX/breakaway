@@ -136,12 +136,12 @@ export function summarizeDeliveries(deliveries, origin, webhookSecret = secretNa
 export function routineFix(error, connect = 'npx breakaway agents-connect') {
   const text = String(error ?? '');
   if (/token was refused/iu.test(text))
-    return `Claude refused the routine's token: on claude.ai/code/routines, open the routine, make a new API token, then run ${connect}.`;
+    return `Claude refused the routine's token: on claude.ai/code/routines, open the routine, make a new API token, then replace it on Connections, or run ${connect}.`;
   if (/hourly limit/iu.test(text))
     return "Claude's hourly limit for starting sessions was reached; starts work again within the hour. Lower Starts an hour on the Agents view to stay under it.";
   if (/paused/iu.test(text)) return 'The routine is paused on claude.ai: resume it at claude.ai/code/routines.';
   if (/isn’t connected|isn't connected/iu.test(text))
-    return `Connect the routine: ${connect} (docs/tasks.md#cloud-agents-from-the-board).`;
+    return `Connect the routine on Connections, or run ${connect} (docs/tasks.md#cloud-agents-from-the-board).`;
   if (/couldn’t reach|couldn't reach/iu.test(text))
     return "The board couldn't reach Claude. If it happens again, check status.claude.com.";
   return `Open the failed start on the Agents view for what Claude said; if it repeats, connect the routine again (${connect}).`;

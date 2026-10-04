@@ -16,7 +16,7 @@ export const STEP_NAMES = {
   init: 'Add the board’s files (repos init)',
   prompt: 'Fill in the agent prompt and AGENTS.md',
   routine: 'Make its routine on claude.ai',
-  connect: 'Connect the routine (agents-connect)',
+  connect: 'Connect the routine',
   task: 'Add a first task, and claim it from the new checkout',
   agent: 'Start the first agent and merge its pull request',
 };
@@ -200,7 +200,7 @@ export function wizardSteps(facts) {
       url: prompt?.url ?? null,
       problem: null,
     },
-    // claude.ai's settings can't be read from here: the routine shows once agents-connect hands the board its URL.
+    // claude.ai's settings can't be read from here: the routine shows once the form or agents-connect hands the board its URL.
     { id: 'routine', done: connected, problem: null },
     { id: 'connect', done: connected, problem: null },
     {
