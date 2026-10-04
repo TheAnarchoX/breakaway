@@ -139,7 +139,10 @@ function describe(change) {
     case 'numbered':
       return `Got its work ID, ${change.wid}`;
     case 'agent_started':
-      return `Agent ${change.by ?? ''} ${TRIGGER_LABEL[change.trigger] ?? 'started'}`.replace('  ', ' ');
+      return `Agent ${change.by ?? ''} ${TRIGGER_LABEL[change.trigger] ?? 'started'}${change.forced ? ', forced past the board’s limits' : ''}`.replace(
+        '  ',
+        ' ',
+      );
     case 'agent_failed':
       return `Couldn’t start an agent: ${change.error ?? 'unknown error'}`;
     case 'trigger_refused':

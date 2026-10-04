@@ -52,6 +52,15 @@ export function refineBlocker(t) {
   return null;
 }
 
+/** Marks a run started with Force start, past the board's own limits. */
+export function ForcedMark() {
+  return (
+    <span class="pill pill-warn" title="Started with Force start, past the board’s own limits">
+      Forced
+    </span>
+  );
+}
+
 /**
  * In the Agent section, beside Start an agent, and its modal: a required request, kept on failure.
  * @param {Record<string, any>} props
@@ -78,7 +87,11 @@ export function RefineButton({ task: t }) {
       return;
     }
     setBusy(true);
-    const result = await actions.refineAgent(t, text.trim());
+    const finish = () => {
+      setOpen(false);
+      setText('');
+    };
+    const result = await actions.refineAgent(t, text.trim(), finish);
     setBusy(false);
     if (result) {
       setOpen(false);
@@ -529,10 +542,13 @@ export function AgentSection({ task: t }) {
   if (!hasSession && !open) return null;
   const start = async () => {
     setBusy(true);
-    await actions.startAgent(t, note.trim());
+    const finish = () => {
+      setWriting(false);
+      setNote('');
+    };
+    const result = await actions.startAgent(t, note.trim(), finish);
     setBusy(false);
-    setWriting(false);
-    setNote('');
+    if (result) finish();
   };
   return (
     <section class="panel-section agent-section" aria-labelledby={`agent-${t.uuid}`}>
@@ -544,7 +560,7 @@ export function AgentSection({ task: t }) {
         <p class="small agent-line">
           <strong>{run.agent}</strong>
           {run.trigger && `, ${TRIGGER_LABEL[run.trigger] ?? run.trigger}`}
-          {run.startedAt && ` ${ago(run.startedAt)}`}
+          {run.startedAt && ` ${ago(run.startedAt)}`} {run.forced && <ForcedMark />}
         </p>
       )}
       {open && (

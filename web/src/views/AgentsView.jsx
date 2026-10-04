@@ -18,7 +18,7 @@ import {
   toast,
 } from '../lib/store.js';
 import { RepoChip, Segmented } from '../components/ui.jsx';
-import { MessageButton, SILENT_AFTER, TRIGGER_LABEL } from '../components/Agents.jsx';
+import { ForcedMark, MessageButton, SILENT_AFTER, TRIGGER_LABEL } from '../components/Agents.jsx';
 import { Title } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
 
@@ -694,6 +694,7 @@ export function AgentsView() {
                         <span class="meta">
                           {r.agent} · {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}
                         </span>
+                        {r.forced && <ForcedMark />}
                       </span>
                       {r.lastLine && <code class="agent-last">{r.lastLine}</code>}
                       <div class="agent-card-actions">
@@ -722,6 +723,16 @@ export function AgentsView() {
                       <span class={`meta ${q.ready ? 'queue-ready' : ''}`}>
                         {q.ready ? 'Starts on the next check' : q.reason}
                       </span>
+                      {q.forceable && (
+                        <button
+                          type="button"
+                          class="btn btn-outline btn-sm"
+                          aria-label={`Force start ${q.wid}, past: ${q.reason}`}
+                          onClick={() => actions.startAgent(q, '')}
+                        >
+                          Force start
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -746,7 +757,8 @@ export function AgentsView() {
                         <a href={hashFor({ task: r.wid })}>
                           <span class="wid">{r.wid}</span>
                         </a>{' '}
-                        <RepoChip slug={r.repo} /> {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}
+                        <RepoChip slug={r.repo} /> {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}{' '}
+                        {r.forced && <ForcedMark />}
                       </span>
                       <span class="meta">
                         {r.status === 'failed' ? (
