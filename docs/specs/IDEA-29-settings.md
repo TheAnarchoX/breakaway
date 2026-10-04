@@ -25,7 +25,7 @@ Two kinds of page, both full views in the hash router (like `#/add-repo`), not d
 | **A repository's settings** | `#/settings/<slug>` | Everything `repos modify` can change for that repository, plus pointers to what lives elsewhere |
 
 The ways in:
-- The sidebar's **Settings** opens `#/settings`. The Settings dialog it opens today becomes the page; open question 2 asks whether a short dialog stays for the per-browser things.
+- The sidebar's **Settings** opens `#/settings`. The Settings dialog it opens today goes away: its settings move to the page (`WEB-29`).
 - The repository switcher gets **Repository settings** under its list (next to Add a repository), for the repository it shows. Under All repositories, it opens Settings, at the list.
 - Connections, Repositories: each repository's row links **Settings**.
 - The Agents view's Repositories section and the GitHub page's repository header link to the repository's page.
@@ -67,13 +67,13 @@ Sections, in order. Each section saves on its own with a **Save** button (not on
 
 **Pull requests.** Keep branches up to date and Merge when green move here from the Settings dialog for this repository. They stay settings of this browser, and the section says so.
 
-**Take it off the board.** At the bottom, apart. For a repository that isn't the default: what removing does (its sync, webhooks, agents, and routines stop; its tasks stay; its slug and prefixes stay its own), its open tasks and running agents, and `npx breakaway repos remove <slug>` to copy, because removing drops its routine's secrets from the Secrets Store (open question 3). The default repository says why it stays. A repository already taken off the board shows its page read only, with **Release** when it can be released (the wizard's button and route).
+**Take it off the board.** At the bottom, apart. For a repository that isn't the default: what removing does (its sync, webhooks, agents, and routines stop; its tasks stay; its slug and prefixes stay its own), its open tasks and running agents, and `npx breakaway repos remove <slug>` to copy, because removing drops its routine's secrets from the Secrets Store, which only the CLI does (`WEB-29`). The page has no Remove button and sends no `DELETE`. The default repository says why it stays. A repository already taken off the board shows its page read only, with **Release** when it can be released (the wizard's button and route).
 
 ### 3. The Settings page
 Three sections:
 
 - **This browser**: claim as, theme, open tasks in, notifications, merge method. They stay in `localStorage`, as today, and the section says they're only for this browser.
-- **The board**: agents (Claude plan, agents at once, starts an hour, start by itself, security alerts), routines (all on or off, runs a day), and updates (self-updates on or off, with a link to Connections for the rest). They save to the same routes they use today (`agents/settings`, `routines/settings`, the self-update routes). Open question 1 asks whether the Agents and Routines views keep their controls too.
+- **The board**: agents (Claude plan, agents at once, starts an hour, start by itself, security alerts), routines (all on or off, runs a day), and updates (self-updates on or off, with a link to Connections for the rest). They save to the same routes they use today (`agents/settings`, `routines/settings`, the self-update routes). The Agents and Routines views keep their controls too (`WEB-29`): each group is one component that both places render, saving through the one route, so a change in either shows in both.
 - **Repositories**: each registered one with its name, GitHub repository, areas, and a link to its page; **Add a repository** opens the wizard; repositories taken off the board are listed, collapsed. On a fresh install with no repository, the section is the wizard's first step, as `EmptyBoard` is today.
 
 The server status, Connections link, Refresh, Shortcuts, and Sign out stay at the foot of the page.
@@ -113,11 +113,14 @@ Nothing new is stored. The pages read and write the repository's row and the boa
 - Making the pull request automation (Keep up to date, Merge when green) a server setting: it stays per browser.
 - A routine's own settings: they stay on Routines.
 
+## Decisions
+The owner answered `WEB-29`:
+1. **The Agents and Routines views' settings** stay in the views too, the same controls as on Settings, from one shared component and one route.
+2. **The Settings dialog** goes away: the sidebar's Settings opens the page.
+3. **Take it off the board** shows the `repos remove` command to copy. Nothing in the web app removes a repository or touches its secrets.
+
 ## Open questions
-Asked as a decision on the board, `WEB-29`:
-1. **The Agents and Routines views' settings.** Keep them in place too, the same controls as on Settings (recommended: they're used in context, and both copies use one component and one route), or move them to Settings and leave a link?
-2. **The Settings dialog.** Replace it with the page (recommended: one place), or keep a short dialog for this browser's settings with a link to the page?
-3. **Take it off the board.** Copy the `repos remove` command (recommended: it drops the routine's secrets, which only the CLI does), or a Remove button that takes it off the board and leaves the secret for `repos remove` to clean up later?
+None.
 
 ## Done when
 - The owner can change, from the web app, everything `repos modify` changes, with the same refusals.
@@ -128,11 +131,11 @@ The tasks, all tagged `repo-settings`, each waiting for this spec (IDEA-29):
 
 | Task | What | Waits for |
 | --- | --- | --- |
-| `WEB-29` | Decision: open questions 1 to 3 (the owner) | IDEA-29 |
+| `WEB-29` | Decision: the three questions under Decisions (answered) | IDEA-29 |
 | `BRK-129` | One repository's settings, `dryRun` and `edited` on `PATCH` (section 4) | IDEA-29 |
 | `WEB-30` | A repository's page: the route, General, Areas, and the ways in (sections 1, 2) | `BRK-129` |
 | `WEB-31` | A repository's page: Agents, Deploys (the form), Pull requests, and Take it off the board | `WEB-30`, `WEB-29` |
-| `WEB-32` | The Settings page (section 3) | `WEB-31` (it moves the pull request settings out of the dialog) |
+| `WEB-32` | The Settings page (section 3); the dialog goes, the views keep their settings | `WEB-31` (it moves the pull request settings out of the dialog) |
 | `WEB-33` | Deploys shows IDEA-27's card and the package field | `WEB-31`, `WEB-13`, `BRK-103` |
 | `WEB-34` | The specs directory in General | `WEB-30`, `BRK-119` |
 | `DOC-19` | Docs: where each setting is | `WEB-32` |
