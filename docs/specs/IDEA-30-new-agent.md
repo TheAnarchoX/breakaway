@@ -61,7 +61,7 @@ A general agent is the owner asking for work now, so it never waits behind the b
 - The routine's own checks still apply: a repository whose routine isn't connected, or whose prompt still has a `<…>` left in it, can't start one, and the dialog says so before the task is made.
 
 ### 4. Force start
-**Force start** starts an agent now, past the board's own limits. It's on **every start** (BRK-104, decision 2, so there's one way past the limits instead of one per button that drifts apart): the New agent dialog (a checkbox), a task's **Start an agent**, **Refine with an agent**, **Fix with an agent** and **Safe to merge?** on a pull request, a routine's **Run now**, the Agents view's queue, and **Refine from the answers** (section 8). It shows only when the board's own limits are what's in the way: with room, a start is just a start, and when something else refuses it, that reason shows instead.
+**Force start** starts an agent now, past the board's own limits. It's on **every start** (BRK-104, decision 2, so there's one way past the limits instead of one per button that drifts apart): the New agent dialog (a checkbox), a task's **Start an agent**, **Refine with an agent**, **Fix with an agent**, **Safe to merge?**, and **Review with an agent** (section 9) on a pull request, a routine's **Run now**, the Agents view's queue, and **Refine from the answers** (section 8). It shows only when the board's own limits are what's in the way: with room, a start is just a start, and when something else refuses it, that reason shows instead.
 
 - **It skips** the board's agents at once (`max`), its starts an hour, a repository's own caps (`--agents-max`, `--agents-hourly`), a routine's daily caps, the per-area rule, and the auto-start switch.
 - **It never skips** Claude's limits, which the board doesn't manage: 30 starts an hour for each routine and 100 for the account ([plans.js](../../src/plans.js), `CLAUDE_LIMITS`). Over those, Claude answers `429` and the board shows its message and `Retry-After`, exactly as today. It also never skips what makes a start wrong rather than slow: a task that's blocked, claimed, or done, a routine that isn't connected, or a prompt with a `<…>` left in it.
@@ -81,7 +81,7 @@ A general agent is the owner asking for work now, so it never waits behind the b
 - **CLI:** `npx breakaway agents new "<prompt>" [--image <file>]… [--repo <slug>] [--force]`, in the checkout's repository unless `--repo` names another; `agents new --decision <ID> ["<note>"]` (section 8); and `--force` on every command that starts an agent: `agents start`, `agents refine`, `github fix`, `github review`, and `routines run`. `CLI_VERSION` and `CLI_FINGERPRINT` move with it.
 
 ### 7. Teaching agents
-The core gets "Running a general agent": set the area first, the paths in section 2, the cross-task rule, and what to do when the run comes from a decision's answers (section 8). Step 3 of "How to work" gets `Mode: general`, and the `tasks` skill and `docs/tasks.md` get a line each. The core is a copied file, so every repository picks it up with `npx breakaway repos init <slug> --update`.
+The core gets "Running a general agent": set the area first, the paths in section 2, the cross-task rule, and what to do when the run comes from a decision's answers (section 8). It also gets "Reviewing a pull request" for `Mode: pr-review` (section 9). Step 3 of "How to work" gets `Mode: general` and `Mode: pr-review`, and the `tasks` skill and `docs/tasks.md` get a line each. The core is a copied file, so every repository picks it up with `npx breakaway repos init <slug> --update`.
 
 ### 8. Refine from the answers
 The owner's follow-up to BRK-104: a button that does what BRK-108 did by hand.
@@ -92,6 +92,16 @@ The owner's follow-up to BRK-104: a button that does what BRK-108 did by hand.
 - **The task** is an ordinary general task (section 1) in the decision's repository, related to the decision. While one from a decision is open, the button links to it instead of starting another.
 - **The edits** follow section 2's cross-task rule, and the spec change comes as a pull request the owner merges.
 - BRK-100's **Prepare the next release** starts a general agent with a board-written prompt the same way, once this is built.
+
+### 9. Review with an agent
+Another follow-up from the owner. Before a pull request is merged, an agent reviews it and leaves its answer where the owner decides: on the pull request page. It isn't a general agent. It works on the task the pull request closes, as Fix with an agent does.
+
+- **When it shows.** On the pull request page, **Review with an agent**, only for a pull request that can merge as it stands. That means it's open and not a draft, GitHub says it's mergeable (no conflicts) and not behind its base, and its checks passed or are still running (the `ready` and `running` verdicts, with `mergeable` true). It also has to close an open task in its repository. A pull request that's behind, conflicts, or fails its checks already has its own path (**Update branch**, **Fix with an agent**), so it shows that instead. A Dependabot pull request keeps **Safe to merge?**. With an agent already on the task, the page says who, as it does for Fix with an agent.
+- **The route.** `POST /api/github/pulls/<n>/review`, the route Safe to merge? uses, and `github review <n>` on the command line. For a Dependabot pull request it does what it does today. For any other pull request it checks the conditions above again on the server, then starts an agent on the closing task with `Mode: pr-review` and `Pull request: #<n>`, named `claude-<id>-review`. Owner only; Force start applies, as on every start (section 4).
+- **What the agent does.** It checks out the branch, reviews the diff against the task's description, done when, and spec, and runs the repository's checks. It looks for what the checks can't see: wrong behaviour, missing tests, work outside the task, and the brand guide for anything people see. It never pushes and never merges.
+- **Its answer** is one verdict: **Looks ready**, **Ready with a follow-up** (it adds the task and names it), or **Needs changes** (what and where). It leaves it with `review <ID> --verdict ready|follow-up|changes "<note>"`. That adds a comment to the task, as every agent's answer does, and the board also keeps it for the pull request with the head commit it reviewed. Safe to merge? answers the same way, so its answer shows there too.
+- **On the pull request page,** below the description, an **Agent review** section shows the latest review: the verdict, the agent, when, and the commit it reviewed, marked when the branch has moved since, with the note as Markdown. Earlier reviews stay as comments on the task.
+- **Needs changes leads to the fix.** A review that needs changes counts as review comments for **Fix with an agent**, and the fix agent's payload carries the note, so the owner goes from review to fix in one press.
 
 ## Privacy
 The prompt, the images, and the note are the owner's and stay on the board, as an idea's do. The agent sees them in its payload and attachments, and nothing new leaves the install. The agent follows its repository's prompt on what it never shares, including anything it sees in an image.
@@ -104,7 +114,7 @@ Answered by the owner on BRK-104 (4 Oct 2026):
 3. **The area:** an area of the repository, picked by the agent, not a shared `AGT` area; ideas and general agents always get a repository, from the scope or a picker (section 1). The task waits with no area until its agent picks one, so its work ID is given once (BRK-108).
 
 ## Out of scope
-A chat with a running agent (the board's messages, [IDEA-15](IDEA-15-message-a-running-agent.md), already reach it), several agents from one prompt, scheduling a prompt for later (that's a routine), a general agent that deploys, merges, or answers decisions, skipping Claude's limits, a general agent started by an agent, a chase that forces, renumbering a task that already has a work ID, and making `IDEA` and `RUN` areas of each repository.
+A chat with a running agent (the board's messages, [IDEA-15](IDEA-15-message-a-running-agent.md), already reach it), several agents from one prompt, scheduling a prompt for later (that's a routine), a general agent that deploys, merges, or answers decisions, skipping Claude's limits, a general agent started by an agent, a chase that forces, renumbering a task that already has a work ID, making `IDEA` and `RUN` areas of each repository, and an agent's review posted to GitHub as a pull request review (it stays on the board).
 
 ## Done when
 Built in breakaway for 1.3.0, before features and chase ([IDEA-28](IDEA-28-features-and-chase.md)), one pull request each, tests first:
@@ -114,6 +124,6 @@ Built in breakaway for 1.3.0, before features and chase ([IDEA-28](IDEA-28-featu
 3. **General agents** on the server (`BRK-106`): the task with no area and its work ID when it gets one, `/api/agents/general`, `Mode: general`, the queue, and closing on release.
 4. **Cross-task edits** (`BRK-109`).
 5. **CLI** (`BRK-107`): `agents new`, and `--force` on every command that starts an agent.
-6. **Refine from the answers** on the server and CLI (`BRK-110`).
-7. **Web**: an idea's repository (`WEB-20`), Force start on every start (`WEB-21`), the New agent button and dialog (`WEB-19`), and Refine from the answers (`WEB-22`).
+6. **Refine from the answers** on the server and CLI (`BRK-110`), and **Review with an agent** on the server and CLI (`BRK-111`).
+7. **Web**: an idea's repository (`WEB-20`), Force start on every start (`WEB-21`), the New agent button and dialog (`WEB-19`), Refine from the answers (`WEB-22`), and Review with an agent with its review below the description (`WEB-23`).
 8. **Docs and prompts** (`DOC-14`), last; other repositories then refresh their copied core.
