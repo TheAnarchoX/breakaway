@@ -74,3 +74,25 @@ export function shortTitle(title, wid) {
   const m = /^\s*[·:—–-]?\s+(\S.*)$/su.exec(rest);
   return m ? m[1] : t;
 }
+
+/**
+ * The open general task refining spec `path` in repository `slug` (WEB-26), if there is one: the board starts one
+ * per spec at a time (src/store-agents.js). A task's `repo` is empty for the default repository's, `fallback`.
+ * @param {any[]} list the board's tasks
+ */
+export function refiningSpec(list, slug, path, fallback) {
+  const want = normal(path);
+  return (
+    (list ?? []).find(
+      (t) =>
+        t.status === 'pending' &&
+        t.tags?.includes('general') &&
+        t.spec &&
+        normal(t.spec) === want &&
+        (t.repo || fallback) === slug,
+    ) ?? null
+  );
+}
+
+/** The longest request the board keeps for a spec's agent (src/spec-prompt.js clips it there). */
+export const SPEC_REQUEST_MAX = 4000;
