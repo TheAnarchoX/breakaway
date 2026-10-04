@@ -160,7 +160,7 @@ export function ListView() {
                   </thead>
                   <tbody>
                     {g.tasks.map((t) => (
-                      <tr key={t.uuid} class={current.value?.uuid === t.uuid ? 'is-open' : ''}>
+                      <tr key={t.uuid} class={current.value?.uuid === t.uuid ? 'is-open' : ''} data-task-menu={t.uuid}>
                         <td class="col-wid">
                           <span class={widClass(t)}>{ref(t)}</span> <RepoChip slug={t.repo} />
                         </td>
@@ -168,6 +168,7 @@ export function ListView() {
                           <a
                             class="row-link"
                             href={hashFor({ task: ref(t) })}
+                            data-task={t.uuid}
                             aria-current={current.value?.uuid === t.uuid ? 'true' : undefined}
                           >
                             <Title text={t.description} />
@@ -203,6 +204,8 @@ export function ListView() {
                     <a
                       class={`row ${current.value?.uuid === t.uuid ? 'is-open' : ''}`}
                       href={hashFor({ task: ref(t) })}
+                      data-task={t.uuid}
+                      data-task-menu={t.uuid}
                     >
                       <span class="row-top">
                         <span class={widClass(t)}>{ref(t)}</span>
