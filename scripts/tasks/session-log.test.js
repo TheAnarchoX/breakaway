@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { entryFor, redact } from './session-log.js';
 
 describe('redact', () => {
-  it("removes tokens, keys, and an install's secrets (breakaway's prefix and samewave's) before anything leaves the session", () => {
+  it("removes tokens, keys, and an install's secrets (breakaway's prefix or its own) before anything leaves the session", () => {
     const text = [
-      'SAMEWAVE_TASKS_TOKEN=abcDEF123456789xyz', // gitleaks:allow (made up, for the redaction)
+      'ACME_TASKS_TOKEN=abcDEF123456789xyz', // gitleaks:allow (made up, for the redaction)
       'Authorization: Bearer sk-ant-oat01-AbCdEf_1234567890abcdef',
       'token ghs_1234567890abcdefghijABCDEFGHIJ12',
-      'export SAMEWAVE_TASKS_SECRET="s3cr3t-value"',
+      'export ACME_TASKS_SECRET="s3cr3t-value"',
       'BREAKAWAY_API_TOKEN=plainword',
       '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----',
       'key=MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7', // gitleaks:allow (made up, for the redaction)
@@ -23,7 +23,7 @@ describe('redact', () => {
     ]) {
       expect(out).not.toContain(secret);
     }
-    expect(out).toContain('SAMEWAVE_TASKS_TOKEN=[redacted]');
+    expect(out).toContain('ACME_TASKS_TOKEN=[redacted]');
   });
 
   it('keeps what makes the log readable: commit SHAs, UUIDs, paths, and ordinary text', () => {

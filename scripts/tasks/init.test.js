@@ -292,7 +292,6 @@ describe('repos init (CLD-191)', () => {
     const file = (path) => plan.files.find((f) => f.path === path);
     expect(file('.taskrc').content).toMatch(/^sync\.server\.url=https:\/\/board\.example\.org$/mu);
     expect(file('.taskrc').content).toMatch(/^include ~\/\.config\/breakaway\/taskrc$/mu);
-    expect(file('.taskrc').content).not.toContain('samewave');
     expect(file('AGENTS.md').content).toContain('`~/.config/breakaway/tasks.env`');
   });
 

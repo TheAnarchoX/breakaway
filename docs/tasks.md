@@ -173,7 +173,7 @@ npx breakaway health
 npx breakaway export --out tasks-backup.json   # every task, checked against health's count (see Backups)
 ```
 
-Add `--json` to any of them for machine-readable output. `--as` defaults to `$BREAKAWAY_AGENT` (or `$SAMEWAVE_AGENT`), then `user@host`.
+Add `--json` to any of them for machine-readable output. `--as` defaults to `$BREAKAWAY_AGENT`, then `user@host`.
 
 With Taskwarrior (`scripts/task`, or plain `task` with direnv), all of Taskwarrior works. The board adds these reports:
 
@@ -209,20 +209,20 @@ Copy `tasks.env` to `~/.config/breakaway/tasks.env` on that machine (chmod 600),
 
 ### Another install
 
-The CLI and Taskwarrior work against any install of the board without changing the code (`CLD-136`). Every setting has a breakaway name, and the name an install from before breakaway used first still works as a fallback, so that install's machines, cloud environments, and agents need nothing new ([`scripts/tasks/settings.js`](../scripts/tasks/settings.js)):
+The CLI and Taskwarrior work against any install of the board without changing the code (`CLD-136`). These are the settings ([`scripts/tasks/settings.js`](../scripts/tasks/settings.js)):
 
-| Setting | Name (fallback) | What it is |
+| Setting | Name | What it is |
 | --- | --- | --- |
-| Token | `BREAKAWAY_TOKEN` (`SAMEWAVE_TASKS_TOKEN`) | the board's API token, unless the cloud environment's API credential adds it |
-| Board | `BREAKAWAY_URL` (`SAMEWAVE_TASKS_URL`) | the install's address |
-| Agent | `BREAKAWAY_AGENT` (`SAMEWAVE_AGENT`) | your name on claims |
-| Repository | `BREAKAWAY_REPO` (`SAMEWAVE_TASKS_REPO`) | the repository to work in, instead of the checkout's |
-| Sync | `BREAKAWAY_CLIENT_ID`, `BREAKAWAY_SECRET`, `BREAKAWAY_SYNC_KEY` (`SAMEWAVE_TASKS_…`) | Taskwarrior's credentials, for `setup` |
-| Live output | `BREAKAWAY_SESSION_LOG=off` (`SAMEWAVE_TASKS_SESSION_LOG`) | turns the session hook off |
+| Token | `BREAKAWAY_TOKEN` | the board's API token, unless the cloud environment's API credential adds it |
+| Board | `BREAKAWAY_URL` | the install's address |
+| Agent | `BREAKAWAY_AGENT` | your name on claims |
+| Repository | `BREAKAWAY_REPO` | the repository to work in, instead of the checkout's |
+| Sync | `BREAKAWAY_CLIENT_ID`, `BREAKAWAY_SECRET`, `BREAKAWAY_SYNC_KEY` | Taskwarrior's credentials, for `setup` |
+| Live output | `BREAKAWAY_SESSION_LOG=off` | turns the session hook off |
 
-Each comes from the environment first, then from `tasks.env` in this machine's folder for the board: `$BREAKAWAY_HOME` when it's set, else `~/.config/breakaway` (or `~/.config/samewave` on a machine that only has that one). The Taskwarrior credentials `setup` writes (`taskrc`) and the owner's routines copy live in the same folder, and the commands that write `tasks.env` keep the names it already uses (breakaway's in a new one).
+Each comes from the environment first, then from `tasks.env` in this machine's folder for the board: `$BREAKAWAY_HOME` when it's set, else `~/.config/breakaway`. The Taskwarrior credentials `setup` writes (`taskrc`) and the owner's routines copy live in the same folder.
 
-**Which board.** `BREAKAWAY_URL` when it's set; otherwise the checkout's `.taskrc` (its `sync.server.url`, so the CLI and Taskwarrior always agree); otherwise the install's `breakaway.config.json` (`url`); otherwise the first install's address, until `BRK-4`. The session hooks find it the same way, so a started agent's live output goes to the board it claimed on.
+**Which board.** `BREAKAWAY_URL` when it's set; otherwise the checkout's `.taskrc` (its `sync.server.url`, so the CLI and Taskwarrior always agree); otherwise the install's `breakaway.config.json` (`url`); otherwise none, and the CLI says which setting to add. The session hooks find it the same way, so a started agent's live output goes to the board it claimed on.
 
 To connect a machine and a checkout to an install:
 

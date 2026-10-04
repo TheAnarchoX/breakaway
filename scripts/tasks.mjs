@@ -4,14 +4,13 @@
  * Talks to the board's JSON API; claims there are atomic. See docs/tasks.md.
  *
  * Settings come from the environment, then tasks.env in this machine's folder for the board ($BREAKAWAY_HOME,
- * else ~/.config/breakaway, or ~/.config/samewave where only that one exists). Each has a breakaway name and,
- * as a fallback, the name an install from before breakaway used first (scripts/tasks/settings.js):
- *   BREAKAWAY_TOKEN       SAMEWAVE_TASKS_TOKEN       API token (or the cloud environment's API credential)
- *   BREAKAWAY_URL         SAMEWAVE_TASKS_URL         the board; default: this checkout's .taskrc (sync.server.url),
- *                                                     then breakaway.config.json (tools/tasks/ in a copy), then the legacy install's
- *   BREAKAWAY_AGENT       SAMEWAVE_AGENT             your name on claims (default user@host)
- *   BREAKAWAY_REPO        SAMEWAVE_TASKS_REPO        the repository to work in (default: the checkout's origin)
- *   BREAKAWAY_CLIENT_ID   SAMEWAVE_TASKS_CLIENT_ID   for `setup` (Taskwarrior sync), with BREAKAWAY_SECRET
+ * else ~/.config/breakaway; scripts/tasks/settings.js):
+ *   BREAKAWAY_TOKEN       API token (or the cloud environment's API credential)
+ *   BREAKAWAY_URL         the board; default: this checkout's .taskrc (sync.server.url),
+ *                         then breakaway.config.json (tools/tasks/ in a copy)
+ *   BREAKAWAY_AGENT       your name on claims (default user@host)
+ *   BREAKAWAY_REPO        the repository to work in (default: the checkout's origin)
+ *   BREAKAWAY_CLIENT_ID   for `setup` (Taskwarrior sync), with BREAKAWAY_SECRET
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createPrivateKey, pbkdf2Sync, randomBytes, randomUUID } from 'node:crypto';
@@ -53,19 +52,10 @@ import {
   unknownSubcommand,
 } from './tasks/cli.js';
 import { CLI_VERSION } from '../src/cli-version.js';
-import { LEGACY, parseInstall, secretName } from '../src/install.js';
-import {
-  boardUrl,
-  configDir,
-  nameFor,
-  parseEnvFile,
-  readSetting,
-  taskrcFixes,
-  tildePath,
-  usesLegacyNames,
-} from './tasks/settings.js';
+import { parseInstall, secretName } from '../src/install.js';
+import { NAMES, boardUrl, configDir, parseEnvFile, readSetting, taskrcFixes, tildePath } from './tasks/settings.js';
 
-const CONFIG_DIR = configDir({ env: process.env, home: homedir(), exists: existsSync });
+const CONFIG_DIR = configDir({ env: process.env, home: homedir() });
 const ENV_FILE = join(CONFIG_DIR, 'tasks.env');
 // Every other repository's routine, as agents-connect --repo wrote it to the Secrets Store: the owner's copy,
 // so connecting one more merges instead of dropping the others (the Secrets Store never gives a value back).
@@ -100,12 +90,12 @@ function sharedFile(name) {
 const CONFIG_FILE = sharedFile('breakaway.config.json');
 
 /**
- * The board's install, from breakaway.config.json: its Secrets Store and the prefix of its secrets'
- * names (a legacy install's: SAMEWAVE_TASKS_). Read only by the owner's commands that write secrets; a checkout without
- * the file is a legacy install.
+ * The board's install, from breakaway.config.json: its Secrets Store and the prefix of its secrets' names. Read only by
+ * the owner's commands that write secrets; a checkout without the file gets a new install's defaults, as the package
+ * does (BRK-77 retired the first install's names).
  */
 function installConfig() {
-  if (!existsSync(CONFIG_FILE)) return { ...LEGACY, secretsStore: null };
+  if (!existsSync(CONFIG_FILE)) return parseInstall({});
   try {
     return parseInstall(JSON.parse(readFileSync(CONFIG_FILE, 'utf8')));
   } catch (error) {
@@ -251,7 +241,7 @@ Everywhere: --json for machine-readable output, --as <name> to claim as someone 
 Projects: ideas and routines are the board's; repos lists each repository's areas.
 
 Settings: BREAKAWAY_TOKEN, BREAKAWAY_URL, BREAKAWAY_AGENT, BREAKAWAY_REPO, from the environment or tasks.env in
-  $BREAKAWAY_HOME (default ~/.config/breakaway); the first names (SAMEWAVE_TASKS_TOKEN, …) still work.
+  $BREAKAWAY_HOME (default ~/.config/breakaway).
   Without BREAKAWAY_URL the board is this checkout's .taskrc sync.server.url. See docs/tasks.md#another-install.`;
 
 // ---- settings ----------------------------------------------------------------------------
@@ -261,7 +251,7 @@ function readEnvFile() {
 }
 
 const fileEnv = readEnvFile();
-/** A setting by its key in NAMES (scripts/tasks/settings.js): `TOKEN` reads BREAKAWAY_TOKEN, then SAMEWAVE_TASKS_TOKEN. */
+/** A setting by its key in NAMES (scripts/tasks/settings.js): `TOKEN` reads BREAKAWAY_TOKEN. */
 const setting = (key, fallback) => readSetting(key, { env: process.env, file: fileEnv }, fallback);
 const BOARD = boardUrl({
   env: process.env,
@@ -271,9 +261,8 @@ const BOARD = boardUrl({
 });
 /** The board's address, or null when nothing says which board (the commands then ask for one). */
 const BASE = BOARD.url;
-/** The names this machine's tasks.env uses: the first ones in a file that has them, else breakaway's. */
-const LEGACY_ENV = usesLegacyNames(fileEnv);
-const envName = (key) => nameFor(key, LEGACY_ENV);
+/** A setting's name in tasks.env: `TOKEN` is BREAKAWAY_TOKEN. */
+const envName = (key) => NAMES[key];
 // In a cloud session, go through its proxy: that's where the board's API credential is added.
 routeThroughSessionProxy();
 
@@ -442,7 +431,7 @@ const enc = encodeURIComponent;
 
 let repoContext;
 /**
- * {slug, registry}: the repository this checkout works in, from --repo, SAMEWAVE_TASKS_REPO, or the
+ * {slug, registry}: the repository this checkout works in, from --repo, BREAKAWAY_REPO, or the
  * origin remote. slug is null on a board without repositories or in a checkout it doesn't know, and
  * then everything works as before.
  */
@@ -1415,7 +1404,7 @@ const commands = {
   /**
    * Owner, once per repository: its routine's /fire URL and token (asked for here, never on a command line).
    * The default repository's go in its two secrets, as always; `--repo <slug>` puts another's in
-   * the install's ROUTINES secret (SAMEWAVE_TASKS_ROUTINES on an install from before breakaway), JSON keyed by slug, merged with this machine's copy of the others.
+   * the install's ROUTINES secret (BREAKAWAY_ROUTINES with breakaway's prefix), JSON keyed by slug, merged with this machine's copy of the others.
    */
   async 'agents-connect'() {
     const { repos, default: fallback } = await call('GET', 'repos');
@@ -1896,7 +1885,7 @@ function promoteEnvFile() {
 
 /**
  * Pipes each value into `wrangler secrets-store secret update` (never on a command line). `values` are keyed by
- * the part of the secret's name after the install's prefix (`API_TOKEN` is SAMEWAVE_TASKS_API_TOKEN on an install from before breakaway).
+ * the part of the secret's name after the install's prefix (`API_TOKEN` is BREAKAWAY_API_TOKEN with breakaway's prefix).
  * An install without a Secrets Store (the Deploy to Cloudflare button's, CLD-139) keeps them as Worker secrets.
  */
 function updateSecretsStore(values) {

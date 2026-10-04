@@ -7,7 +7,7 @@
  * quietly, and a message waits for the agent's next turn; its `timeout` (300 s) outlasts the window,
  * because Claude Code kills an async hook at its timeout (CLD-146).
  *
- * Quiet by design: without a claimed task (.task-session), with BREAKAWAY_SESSION_LOG=off (or SAMEWAVE_TASKS_SESSION_LOG=off), or
+ * Quiet by design: without a claimed task (.task-session), with BREAKAWAY_SESSION_LOG=off, or
  * on any error, it exits 0. It writes nothing inside the repository: a cloud session's Stop check
  * would take a dirty file as work to commit.
  */

@@ -7,7 +7,7 @@
  * additionalContext so Claude gets them on its next turn (docs/specs/IDEA-15-message-a-running-agent.md).
  *
  * Quiet by design: without a claimed task (.task-session, written by `tasks claim`), with
- * BREAKAWAY_SESSION_LOG=off (or SAMEWAVE_TASKS_SESSION_LOG=off), or on any error, it does nothing and exits 0. A post
+ * BREAKAWAY_SESSION_LOG=off, or on any error, it does nothing and exits 0. A post
  * that fails leaves its reason in the temp folder, which the CLI's next command here shows (BRK-86).
  */
 import { boardConfig, claimedTask, dropClaim, projectRoot } from './hook-config.js';
