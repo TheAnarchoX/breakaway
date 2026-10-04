@@ -20,9 +20,10 @@ These docs cover all of it. Start where you are.
 | An HTTP route, or how auth works | [The API](https://leavethepack.dev/docs/api/) |
 | What a view in the browser does, or a keyboard shortcut | [The web board](https://leavethepack.dev/docs/web-board/) |
 | How agents start, what they follow, and the limits | [Agents](https://leavethepack.dev/docs/agents/) |
+| Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
-| Pull requests, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
+| The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
 | Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |

@@ -1,6 +1,6 @@
 ---
 title: GitHub
-description: How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.
+description: How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
 ---
 
 The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote and Roll back, which start two workflows. Nothing else writes to GitHub.
@@ -23,6 +23,26 @@ A pull request **closes** a task when a sentence or line of its title or descrip
 ### How it stays current
 
 Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, Dependabot alerts, deployments, and releases schedule a sync 5 seconds later (a burst becomes one). A cron syncs every registered repository every 5 minutes in case one went missing, each on its own, so one repository’s failure or rate limit never stops another. **Sync now** in the GitHub view, or `npx breakaway github --sync`, does it at once.
+
+## The GitHub view
+
+The **GitHub** view (`h`) is a dashboard. It opens on what’s live:
+
+- **Open pull requests**, with their verdict, checks, reviews, and tasks.
+- **Live now**: staging and production, with each one’s version and commit and **Promote or roll back**. Only for a repository with a [deploy pipeline](#deploys-releases-promote-and-roll-back).
+- **Checks on main**: each workflow’s latest run on the default branch, failures first.
+- **Packages**: for a repository whose workflows publish npm packages, each package’s latest pre-release and release. A version the workflows staged shows as waiting for your approval on npm, with the command to approve it and a link to its npm page.
+- **Security alerts** from Dependabot.
+
+The longer lists are tabs under it: **Releases** and **Deploys** (with a pipeline), **Packages** (every version staged or published, newest first, with its dist-tag and run), **Recently completed**, **CI runs**, and **Commits on main**. The arrow keys, Home, and End move between tabs, and the browser remembers the last one. A repository without a pipeline or packages shows none of those parts.
+
+The board never approves a package: that takes your two-factor authentication on npm. It only reads what the repository’s own workflows staged and published, from npm’s public registry.
+
+### Prepare the next version
+
+A repository whose releases include pre-releases (`v1.3.6-main.4`) counts patches by itself from `package.json`’s version. Moving to the next minor or major takes a pull request that sets it. The GitHub view’s **Next version** section shows the version the pre-releases count toward, and **Prepare** for the next minor and the next major (from 1.3.6, 1.4.0 or 2.0.0).
+
+**Prepare** opens a dialog with the prompt the board writes (set `package.json` to that version, and open one pull request that closes the task), a note, and Force start, and starts an agent from it, like [New agent](/docs/agents/#from-a-prompt-new-agent). While that task is open, the section links to it instead. You merge its pull request, as always. `npx breakaway agents new --next minor|major` does the same from a terminal.
 
 ## The pull request page
 
@@ -48,9 +68,19 @@ The board’s **Settings** has two switches under **Pull requests**, both off un
 
 They’re kept in the browser’s local storage, not on the server, so they’re on only where you turned them on, and only while the board is open there. Agents can’t turn them on.
 
+## Review with an agent
+
+Before you merge, an agent can review a pull request and leave its answer on the pull request’s page.
+
+- **When it shows.** **Review with an agent** shows on the page of a pull request that can merge as it stands: open, not a draft, no conflicts, not behind, its checks passed or still running, and closing an open task. It’s in the task menu too. One that’s behind, conflicts, or fails its checks shows Update branch or Fix with an agent instead. A Dependabot pull request keeps **Safe to merge?**.
+- **The agent** works on the task the pull request closes. It checks out the branch, runs the repository’s checks, and reads the diff against the task’s description, done when, and spec, for what checks can’t see: behaviour that’s wrong or missing, tests that don’t cover the change, work outside the task, and the repository’s own rules. It never pushes and never merges.
+- **Its answer** is one verdict: **Looks ready**, **Ready with a follow-up** (it adds that task and names it), or **Needs changes** (what and where). It’s a comment on the task, and an **Agent review** section below the pull request’s description shows the latest one, with the commit it reviewed, marked when the branch has moved since. Nothing is posted to GitHub.
+
+`npx breakaway github review <n> [--note …]` does the same from a terminal.
+
 ## Fix with an agent
 
-On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, **Fix with an agent** (or **Address review comments**) starts an agent on the pull request’s own task. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges.
+On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, **Fix with an agent** (or **Address review comments**) starts an agent on the pull request’s own task. An agent’s review that needs changes counts as review comments, and the fix agent reads it. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges. `npx breakaway github fix <n> [--problem conflicts|failing|review]` does the same from a terminal.
 
 ## Deploys, releases, Promote and Roll back
 

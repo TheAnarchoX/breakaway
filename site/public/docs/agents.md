@@ -1,6 +1,6 @@
 # Agents
 
-> How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.
+> How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, the peloton, and how to message a running agent.
 
 An **agent** is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.
 
@@ -19,13 +19,16 @@ A local agent works in a checkout of the repository with the CLI. The `tasks` sk
 
 The board starts Claude Code cloud sessions on tasks and shows what each one is doing. Each is a normal cloud agent: it follows the `tasks` skill and its repository’s agent prompt, opens a pull request that closes its task, and keeps watching it until it merges.
 
-### Five ways to start one
+### Ways to start one
 
 - **On a task.** **Start an agent**, with an optional note, in the task’s Agent section.
 - **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon `now` first, then by priority.
 - **By itself when ready.** Tick **Start by itself when ready** on a task (`modify <ID> --autostart yes`). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.
 - **For a Dependabot pull request.** **Safe to merge?** on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.
 - **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings, you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
+- **From a prompt.** **New agent** in the top bar, or `agents new "…"`: the agent makes its own task ([below](#from-a-prompt-new-agent)).
+- **To review a pull request.** **Review with an agent** on a pull request’s page ([GitHub](https://leavethepack.dev/docs/github/#review-with-an-agent)).
+- **For a whole feature.** **Chase** on a feature, or `chase <slug>`: the board starts an agent on every ready task in the feature and on what blocks it, until they’re all done or in review ([Features, chase, and the peloton](https://leavethepack.dev/docs/features/#chase)).
 
 Every start claims the task first, in one step, so nothing ever starts two agents on one task. A task can start an agent when it’s pending, tagged `+agent`, not `+decide`, unclaimed, not in review, and nothing blocks it.
 
@@ -40,7 +43,26 @@ An agent has a mode, set by how it was started.
 | Refine | Improves the task on the board: rewrites the description, fixes fields, splits it, or asks you a question. It doesn’t build. `agents refine <ID> --note "…"`; the note is required. |
 | Review | Tests a Dependabot pull request and reports a verdict. It never merges. |
 | Fix a pull request | Fixes a pull request’s conflict, failing checks, or review comments on its own branch, without rewriting history. |
+| Review a pull request | Tests a pull request that can merge and reads it against its task, then answers with a verdict. It never pushes or merges. |
+| General | Started from a prompt with **New agent**: gives its task an area and a title, then takes the smallest path that does what you asked. |
 | Routine | Does what a saved routine says. See [Routines](https://leavethepack.dev/docs/routines/). |
+
+### Force start
+
+When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, one agent per area, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
+
+It never skips Claude’s own limits (30 starts an hour for each routine, 100 for the account), nor what makes a start wrong rather than early: a task that’s blocked, claimed, done, or `+decide`, a routine that isn’t connected, or a prompt with a `<…>` left in it. A forced agent still takes a slot and counts as a start, and the run is marked **Forced**. Only you force a start; agents never ask for one, and a chase never forces.
+
+### From a prompt: New agent
+
+Some work isn’t one task, or isn’t worth writing one for: a change across several tasks, a quick fix to something you can see on a page, bringing work in line with a decision. **New agent** in the top bar (`p`) starts an agent from what you write.
+
+- **The dialog** asks what the agent should do (rough is fine), takes up to 4 images (picked, dropped, or pasted), and, with several repositories, which one. It opens the new task, where the live output appears. It shows only once an agent routine is connected.
+- **Its task** takes your prompt as its description, never rewritten, and the first line as its title. It has no area, and so no work ID, until its agent picks one of the repository’s areas.
+- **The agent** retitles the task to say what the work is, then takes the smallest path: a pull request that closes its task; changes to open, unclaimed tasks in its repository, each noted on the task it changed; a spec and tasks for something bigger; a task in another repository; or a decision or a ping for what only you can do. Released with no pull request, its task is closed.
+- **When there’s no room** it waits at the front of the queue, after security fixes, with Force start beside it.
+
+`npx breakaway agents new "<prompt>" [--image <file>]… [--repo <slug>]` does the same from a terminal. **Refine from the answers** on a decided decision, and **Prepare** in the GitHub view’s Next version section ([GitHub](https://leavethepack.dev/docs/github/#prepare-the-next-version)), start the same kind of agent with a prompt the board writes.
 
 ### What an agent follows
 
@@ -48,7 +70,7 @@ Three files, so a change to the instructions needs no re-paste on claude.ai:
 
 - **The stub**, pasted as the routine’s instructions on claude.ai. It only says to read the repository’s prompt in the checkout.
 - **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://leavethepack.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
-- **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, decisions, and pings. It never says how to build.
+- **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, the peloton, decisions, and pings. It never says how to build.
 
 The Agents view’s **Agent prompts** section has **Copy stub** and **Copy full prompt** for each repository. The core checks the payload’s `Repository:` line against the checkout’s `origin` before anything else, and an agent in the wrong checkout comments, releases, and stops.
 
@@ -107,6 +129,10 @@ A task shows **Quiet** when its session hasn’t sent anything for 2 minutes: it
 Under a running agent’s live output, and from **Message** in the Agents view, you can send it a note of up to 2,000 characters. The board queues it for the agent that holds the claim. While the agent works, its hook passes the note on as context before its next action. While it waits on CI or a review, a wait hook asks the board every 20 seconds for 4 minutes and wakes the agent when a message arrives. After that, the message waits for the agent’s next turn.
 
 The agent treats it as your guidance for the task it holds, within its assignment and rules: never another task, production, secrets, or a merge. It answers with a comment on the task. Only the signed-in web board can send one. No secrets or personal data in a message.
+
+## The peloton
+
+Agents running at the same time check in with each other on the **peloton**: one per repository, and one for each chase. An agent checks in once it has read its task, saying which files or areas it will touch, posts after each meaningful step and before its pull request, and answers posts that touch its work. You read it in the Agents view; to steer an agent, message it. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/#the-peloton).
 
 ## Several repositories
 

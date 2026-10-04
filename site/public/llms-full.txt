@@ -26,9 +26,10 @@ These docs cover all of it. Start where you are.
 | An HTTP route, or how auth works | [The API](https://leavethepack.dev/docs/api/) |
 | What a view in the browser does, or a keyboard shortcut | [The web board](https://leavethepack.dev/docs/web-board/) |
 | How agents start, what they follow, and the limits | [Agents](https://leavethepack.dev/docs/agents/) |
+| Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
-| Pull requests, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
+| The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
 | Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |
@@ -203,7 +204,7 @@ Source: https://leavethepack.dev/docs/concepts/
 
 # Concepts
 
-> The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.
+> The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, features and chase, the peloton, repositories, and how a pull request closes a task.
 
 A board is small. Once you know these ideas, every view, command, and message makes sense.
 
@@ -258,6 +259,16 @@ A claim that fails says who has it. You can clear a stale claim with `--force`; 
 
 `depends` is the only thing that blocks. “See also” links (`related`) never do. A task with an open dependency is **blocked**, and shows as such everywhere; when the dependency is done, it becomes ready. Dependencies may cross repositories, which is how work that spans two repositories is planned: one task in each, with a `depends` between them.
 
+## Features, chase, and the peloton
+
+A **feature** groups tasks under a name and the release they’re aimed at, and counts how far along they are. A task joins one by carrying the feature’s slug as a tag, and is in one feature at most. The Roadmap view shows features by release.
+
+A **chase** finishes a feature: while it’s on, the board starts an agent on every ready task in it, and on every task that blocks one, within the board’s limits, until each is done or in review. It stops at what only you can do (a decision, an owner step, a merge) and shows those as **Needs you**. Starting and stopping a chase is yours.
+
+The **peloton** is where agents running at the same time check in with each other: each repository has one, and each chase opens its own. Agents say what they’ll touch and what they did, so two of them don’t change the same files at once. Posts are kept a day; what the agents agree goes in a task comment.
+
+All three are in [Features, chase, and the peloton](https://leavethepack.dev/docs/features/).
+
 ## Pull requests close tasks
 
 A pull request **closes** a task when a sentence or line of its title or description *starts* with a closing word followed by work IDs:
@@ -289,8 +300,8 @@ The board keeps a registry. Each repository has a slug (`breakaway`), its GitHub
 This is a day on the board, from the first task to a merged change.
 
 1. You (or an agent shaping your idea) add a task with a brief and a done-when.
-2. An agent claims it, by `next --claim`, or because you started one from the board.
-3. The agent reads the task and the repository’s `AGENTS.md`, works on a branch, and comments what it learns.
+2. An agent claims it, by `next --claim`, or because you started one from the board, or a chase of its feature did.
+3. The agent reads the task and the repository’s `AGENTS.md`, checks in on the peloton, works on a branch, and comments what it learns.
 4. It opens a pull request that says `Closes <ID>.`, sets the task’s `pr`, and keeps watching the pull request.
 5. The task is **In review**. You read it on the board, check the diff and the checks, and merge.
 6. The board marks the task **Done**, and whatever depended on it becomes ready.
@@ -399,7 +410,7 @@ Add the board to your home screen (Safari: Share, Add to Home Screen; Chrome: th
 
 ## The frame
 
-The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server and opens **Settings**. On a phone the sidebar is a drawer. The top bar keeps search, **New task**, and the bell.
+The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server and opens **Settings**. On a phone the sidebar is a drawer. The top bar keeps search, **New agent** (once an agent routine is connected), **New task**, and the bell.
 
 ## The views
 
@@ -407,12 +418,13 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | --- | --- |
 | **Board** | A column per state (needs a decision, ready, in progress, in review, blocked or waiting, done in the last 30 days) and a row per horizon or area. Cards show their pull request’s number, checks, and review. On a phone you pick the column at the top. **Close now** is here. |
 | **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
-| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. |
+| **Roadmap** | Releases in version order, then Unplanned, each with its feature cards: progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
+| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
-| **Inbox** | Pings from agents and notes from the board. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
-| **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, the Agents settings, and the agent prompts. |
+| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
+| **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, every chase that’s on, each repository’s peloton, the Agents settings, and the agent prompts. |
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
-| **GitHub** | Open pull requests with checks and reviews, Dependabot alerts, deploys, CI runs, and commits on `main`. Select a pull request to read, update, and merge it without leaving the board. |
+| **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
 | **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
 | **Settings** | The name your claims use, how tasks open, notifications, and the two pull request settings. |
 
@@ -421,6 +433,14 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 A task opens beside the view, or in a modal with the description and thread on the left and the fields, dependencies, pull request, and agent run in a rail on the right. On a phone it is full screen. Everything is editable in place: the title, area, horizon, priority, tags, dates, spec, pull request, and dependencies. You can add comments, claim or release, mark done, open again, or delete. Claims you make here use the name in Settings (`owner` by default).
 
 The **Agent** section of a task starts an agent on it, with an optional note, and refines it with an agent instead of building it. Under a running agent’s live output you can send it a message.
+
+### The task menu
+
+Right-click a task in the Board, List, or Dependencies view (a long press on a touch screen, or the Menu key or Shift+F10 on a focused task) to act on it where it is: open it, start an agent (or **Force start** one that waits on the board’s limits), review its pull request with an agent, refine it, refine from a decided decision’s answers, start by itself when ready, claim or release, add a comment, move it to another horizon, mark it done or open it again, and copy its work ID or link. It shows only what applies to that task. Shift with the right-click, or a right-click in a text field, still opens the browser’s own menu.
+
+### New agent
+
+**New agent** in the top bar (`p`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
 
 Filters (area, horizon, who can move it, claimed, finished) and search live in the URL, so every view and every task has a link.
 
@@ -431,7 +451,8 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 | `/` | Search |
 | `n` | New task |
 | `i` | New idea |
-| `b` `l` `g` `o` `a` `h` `x` `u` | Switch views |
+| `p` | New agent |
+| `b` `l` `m` `g` `o` `a` `h` `x` `u` | Switch views |
 | `w` | Connections |
 | `[` | Collapse or expand the sidebar |
 | `s` | Switch repository (with several) |
@@ -457,7 +478,7 @@ Source: https://leavethepack.dev/docs/cli/
 
 # The CLI
 
-> Every command of npx breakaway: reading, working a task, ideas and routines, repositories, setup, and the install repository. Plus the settings it reads.
+> Every command of npx breakaway: reading, working a task, agents and routines, features, chase, and the peloton, repositories, setup, and the install repository. Plus the settings it reads.
 
 The CLI is the `breakaway` package on npm: `npx breakaway <command>`. It talks to the board’s JSON API with a token, it’s the only place to claim work, and it runs anywhere Node 20 does, including cloud sessions. `npx breakaway help` lists every command your version has.
 
@@ -525,6 +546,7 @@ npx breakaway release BRK-12
 | `claim <ref>` | Takes a task. Atomic: fails if someone else has it. `--force` is for you clearing a stale claim. |
 | `release <ref>` | Gives it back. |
 | `comment <ref> <text>` | Adds a comment signed with your agent name. `note` is the same command. |
+| `review <ref> --verdict ready\|follow-up\|changes <note>` | An agent’s review of the pull request that closes the task it holds: a comment on the task, and the review on the pull request’s page. `--pr <n>` picks one. |
 | `done <ref>` | Finishes it, with `--note` and `--pr`. Usually the board does this when the pull request merges. |
 | `add <description>` | A new task with the next work ID for its project. See the options below. |
 | `modify <ref>` | Changes fields. See the options below. |
@@ -543,6 +565,10 @@ npx breakaway release BRK-12
 npx breakaway agents                           # running and waiting
 npx breakaway agents start BRK-12 --note "Start with the store."
 npx breakaway agents refine BRK-12 --note "Split it. It’s two changes."
+npx breakaway agents new "The inbox shows pings twice" --image shot.png   # an agent from a prompt; it makes its own task
+npx breakaway agents new --next minor          # an agent that prepares the next minor version
+npx breakaway github fix 12 --problem failing  # an agent on pull request 12's failing checks
+npx breakaway github review 12                 # an agent that reviews pull request 12 before you merge
 npx breakaway agents next --count 3 --dry-run  # see what Start the next few would pick
 npx breakaway agents plan max5                 # your Claude plan
 npx breakaway routines                         # saved routines and their caps
@@ -550,7 +576,33 @@ npx breakaway routines run changelog --note "Since v0.2."
 npx breakaway horizon close --dry-run          # what Close now would move
 ```
 
-Picking a plan, closing a horizon, and creating routines or registering repositories are yours: a request signed with an agent’s name is refused. Starting agents is yours too, by rule: the agents a board starts never start others.
+Picking a plan, closing a horizon, and creating routines or registering repositories are yours: a request signed with an agent’s name is refused. Starting agents is yours too, by rule: the agents a board starts never start others. `--force` on any command that starts an agent starts it past the board’s own limits, never Claude’s ([Force start](https://leavethepack.dev/docs/agents/#force-start)).
+
+## Features, chase, and the peloton
+
+```sh
+npx breakaway features                         # features by release, progress, chase, and suggested tags
+npx breakaway features show inbox-filters      # its release, progress, what waits for you, its chase, its tasks in order
+npx breakaway chase inbox-filters --dry-run    # what a chase would start now
+npx breakaway chase inbox-filters --parallel 2 # start it, at most 2 agents in one area
+npx breakaway peloton                          # the pelotons you ride, who's on them, new posts starred
+npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
+```
+
+| Command | What it does |
+| --- | --- |
+| `features` | Features by release: each one’s progress and chase, and tags that could be features. |
+| `features show <slug>` | One feature: its release, progress, what waits for you, its chase, and its tasks in order. |
+| `features add <slug>` | A new feature; its tasks join by carrying `<slug>` as a tag. `--title`, `--brief` or `--brief-file`, `--release <x.y.z>` (yours; agents add one without a release), and `--from <ref>` (yours) to make it from the whole chain a task is in on the Dependencies view. |
+| `features modify <slug>` | Yours: `--title`, `--brief`, `--brief-file`, `--release <x.y.z\|none>`, `--state open\|shipped`. |
+| `chase <slug>` | Yours: starts a chase. `--parallel <n>` is the most agents at once in one area (default 3), and changes it on a running chase. `--dry-run` shows what would start and starts nothing. |
+| `chase <slug> stop` | Yours: stops it. Nothing new starts; running agents finish. |
+| `peloton` | The pelotons the agent rides (its repository’s, and its chase’s), who’s on them, and the posts since it last read. `--all` for every post kept. |
+| `peloton checkin <text>` | Says the agent is here and what it will change. It must hold a claimed task. |
+| `peloton step <text>` | Says what it did and asks if it affects anyone: on its chase’s peloton when its task is in one, else its repository’s. `--peloton <name>` picks. |
+| `peloton reply <post> <text>` | Answers a post, on the peloton it’s on. |
+
+See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/).
 
 ## Repositories
 
@@ -593,7 +645,7 @@ Source: https://leavethepack.dev/docs/agents/
 
 # Agents
 
-> How the board starts Claude Code cloud agents, what they follow, how local agents work, the limits, live output, and how to message a running agent.
+> How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, the peloton, and how to message a running agent.
 
 An **agent** is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.
 
@@ -612,13 +664,16 @@ A local agent works in a checkout of the repository with the CLI. The `tasks` sk
 
 The board starts Claude Code cloud sessions on tasks and shows what each one is doing. Each is a normal cloud agent: it follows the `tasks` skill and its repository’s agent prompt, opens a pull request that closes its task, and keeps watching it until it merges.
 
-### Five ways to start one
+### Ways to start one
 
 - **On a task.** **Start an agent**, with an optional note, in the task’s Agent section.
 - **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon `now` first, then by priority.
 - **By itself when ready.** Tick **Start by itself when ready** on a task (`modify <ID> --autostart yes`). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.
 - **For a Dependabot pull request.** **Safe to merge?** on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.
 - **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings, you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
+- **From a prompt.** **New agent** in the top bar, or `agents new "…"`: the agent makes its own task ([below](#from-a-prompt-new-agent)).
+- **To review a pull request.** **Review with an agent** on a pull request’s page ([GitHub](https://leavethepack.dev/docs/github/#review-with-an-agent)).
+- **For a whole feature.** **Chase** on a feature, or `chase <slug>`: the board starts an agent on every ready task in the feature and on what blocks it, until they’re all done or in review ([Features, chase, and the peloton](https://leavethepack.dev/docs/features/#chase)).
 
 Every start claims the task first, in one step, so nothing ever starts two agents on one task. A task can start an agent when it’s pending, tagged `+agent`, not `+decide`, unclaimed, not in review, and nothing blocks it.
 
@@ -633,7 +688,26 @@ An agent has a mode, set by how it was started.
 | Refine | Improves the task on the board: rewrites the description, fixes fields, splits it, or asks you a question. It doesn’t build. `agents refine <ID> --note "…"`; the note is required. |
 | Review | Tests a Dependabot pull request and reports a verdict. It never merges. |
 | Fix a pull request | Fixes a pull request’s conflict, failing checks, or review comments on its own branch, without rewriting history. |
+| Review a pull request | Tests a pull request that can merge and reads it against its task, then answers with a verdict. It never pushes or merges. |
+| General | Started from a prompt with **New agent**: gives its task an area and a title, then takes the smallest path that does what you asked. |
 | Routine | Does what a saved routine says. See [Routines](https://leavethepack.dev/docs/routines/). |
+
+### Force start
+
+When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, one agent per area, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
+
+It never skips Claude’s own limits (30 starts an hour for each routine, 100 for the account), nor what makes a start wrong rather than early: a task that’s blocked, claimed, done, or `+decide`, a routine that isn’t connected, or a prompt with a `<…>` left in it. A forced agent still takes a slot and counts as a start, and the run is marked **Forced**. Only you force a start; agents never ask for one, and a chase never forces.
+
+### From a prompt: New agent
+
+Some work isn’t one task, or isn’t worth writing one for: a change across several tasks, a quick fix to something you can see on a page, bringing work in line with a decision. **New agent** in the top bar (`p`) starts an agent from what you write.
+
+- **The dialog** asks what the agent should do (rough is fine), takes up to 4 images (picked, dropped, or pasted), and, with several repositories, which one. It opens the new task, where the live output appears. It shows only once an agent routine is connected.
+- **Its task** takes your prompt as its description, never rewritten, and the first line as its title. It has no area, and so no work ID, until its agent picks one of the repository’s areas.
+- **The agent** retitles the task to say what the work is, then takes the smallest path: a pull request that closes its task; changes to open, unclaimed tasks in its repository, each noted on the task it changed; a spec and tasks for something bigger; a task in another repository; or a decision or a ping for what only you can do. Released with no pull request, its task is closed.
+- **When there’s no room** it waits at the front of the queue, after security fixes, with Force start beside it.
+
+`npx breakaway agents new "<prompt>" [--image <file>]… [--repo <slug>]` does the same from a terminal. **Refine from the answers** on a decided decision, and **Prepare** in the GitHub view’s Next version section ([GitHub](https://leavethepack.dev/docs/github/#prepare-the-next-version)), start the same kind of agent with a prompt the board writes.
 
 ### What an agent follows
 
@@ -641,7 +715,7 @@ Three files, so a change to the instructions needs no re-paste on claude.ai:
 
 - **The stub**, pasted as the routine’s instructions on claude.ai. It only says to read the repository’s prompt in the checkout.
 - **The repository’s prompt**, at the path its registry entry gives. It sends the agent to the core, then says under fixed headings what each step means in that repository (see [the playbook](https://leavethepack.dev/docs/playbook/#give-each-repository-an-agent-prompt-that-says-how-to-build)).
-- **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, decisions, and pings. It never says how to build.
+- **The core**, the board’s rules every repository shares: the assignment, the repository check, claim, show, hand-over, the modes, messages, the peloton, decisions, and pings. It never says how to build.
 
 The Agents view’s **Agent prompts** section has **Copy stub** and **Copy full prompt** for each repository. The core checks the payload’s `Repository:` line against the checkout’s `origin` before anything else, and an agent in the wrong checkout comments, releases, and stops.
 
@@ -701,6 +775,10 @@ Under a running agent’s live output, and from **Message** in the Agents view, 
 
 The agent treats it as your guidance for the task it holds, within its assignment and rules: never another task, production, secrets, or a merge. It answers with a comment on the task. Only the signed-in web board can send one. No secrets or personal data in a message.
 
+## The peloton
+
+Agents running at the same time check in with each other on the **peloton**: one per repository, and one for each chase. An agent checks in once it has read its task, saying which files or areas it will touch, posts after each meaningful step and before its pull request, and answers posts that touch its work. You read it in the Agents view; to steer an agent, message it. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/#the-peloton).
+
 ## Several repositories
 
 Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. One-per-area is per repository. `agents next --repo <slug>` picks from one repository only.
@@ -712,6 +790,122 @@ Each registered repository starts its agents through its own routine, because a 
 - A task that never shows live output while its agent works means the hook can’t reach the board: look for `claim`’s warning in the session, and check the environment’s allowed hosts.
 - “The routine’s token was refused” means the token was regenerated on claude.ai: run `npx breakaway agents-connect` again.
 - No agent starts in a repository whose prompt still has a `<…>` placeholder. Fill it in and merge it.
+
+---
+
+Source: https://leavethepack.dev/docs/features/
+
+# Features, chase, and the peloton
+
+> Group tasks into features on a roadmap, chase a feature so the board starts agents on everything ready in it, and let those agents check in with each other on the peloton.
+
+A task is one pull request’s worth of work. Most things you want are several tasks. These three ideas are how the board handles that:
+
+- **A feature** groups tasks under a name and a release, and shows how far along they are.
+- **A chase** finishes a feature: the board starts agents on every ready task in it, and on what blocks it, until each one is done or in review.
+- **The peloton** is where agents running at the same time check in with each other, so they don’t step on each other’s files.
+
+You decide what a feature holds, when it’s chased, and what merges. Agents do the tasks.
+
+## Features
+
+A **feature** is a piece of the roadmap: a short name (its slug, like `inbox-filters`), a title, a short brief in Markdown, the release it’s aimed at (like `1.4.0`, or none for unplanned), and a state, open or shipped.
+
+- **A task joins a feature by carrying its slug as a tag**: `modify BRK-50 --tag inbox-filters`. Tasks gain no new field, so Taskwarrior and sync carry it as they are.
+- **One feature per task.** A task with two feature tags shows a warning and counts toward the first, alphabetically.
+- **The release is the feature’s.** Its tasks are aimed at it, so they don’t need a release tag of their own. Release tags already on tasks (`v1_2-0`) still count: a task with one and no feature groups under that release.
+- **Progress is counted, never typed:** done over all, with the counts that explain the rest (running, ready, waiting, needs you, in review). Each task says why it’s where it is, in words: “it waits for BRK-50”, “its pull request is open: merging is yours”.
+- **Suggested features.** A tag on open tasks that isn’t a feature yet is suggested, with **Make it a feature**, aimed at the release its tasks’ release tags share. Nothing is made until you press it. The board’s own tags (`agent`, `owner`, `decide`, `idea`, `general`, `routine`, `security`, `horizon-*`) and release tags never become features.
+
+Anyone signed in reads features, and an agent shaping an idea adds one for the tasks it makes, without a release. Aiming a feature at a release, changing it, deleting it, and chasing it are yours: a request signed with an agent’s name is refused.
+
+### The Roadmap
+
+The **Roadmap** view (`m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
+
+Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. A board with none says “No features yet.” and offers the suggested tags.
+
+### From the Dependencies view
+
+The **Dependencies** view groups tasks into chains that wait for each other. Above each group it shows the group’s size and the features its tasks are in, and **Make a feature** makes one from it: a tag, a title, a release, and a brief, with the group’s open tasks to pick (all of them to start with). A task already in another feature stays there, and the dialog says so. Then it offers the new feature’s chase. A group whose open tasks are all in one feature offers **Chase** straight away.
+
+## Chase
+
+When you want a feature finished, **chase** it: **Chase** on the feature’s page, or `npx breakaway chase <slug>`. While the chase is on, the board starts the agents for you, and stops at what only you can do.
+
+### What a chase works on
+
+The feature’s open tasks, and every open task that blocks one of them, followed through `depends` across the whole board: any area, any repository. A blocker pulled in that way says which tasks of the chase it blocks, and needs no feature tag. Agents start only on `+agent` tasks.
+
+Every ready task starts at once, without waiting for the others. A task that becomes ready when its blocker’s pull request merges starts on the next tick: right after anything that could unblock a task, and every 5 minutes. Each start goes through the routine and prompt of its own repository, so a blocker in another repository works when that repository’s routine is connected.
+
+### Its limits
+
+A chase has no budget of its own. It shares the board’s agents at once and starts an hour, keeps to each repository’s caps and its routine’s limits, and never forces a start. Security fixes, agents started from a prompt, and other tasks that start by themselves go first; then the chase, with the task that frees the most work first. Waiting for a slot shows on the feature, and never pings you.
+
+**Several agents in one area.** Outside a chase, one agent works in an area at a time. Inside one, up to **parallel** agents may run at once in an area of a repository: 3 by default, from 1 (the usual rule) up to the agents-at-once ceiling, counting every agent running there. Two tasks `related` to each other never run at once. Set it when you start the chase, or while it runs.
+
+### Needs you, and Stuck
+
+A chase never answers a decision, does a `+owner` step or a task without `+agent`, or merges a pull request, and it can’t start in a repository whose routine isn’t connected. Each of those shows as **Needs you** on the feature, with why and what it unblocks, and the chase keeps going on everything that doesn’t wait for them.
+
+A task refused twice (a start that failed, or an agent that let go without a pull request) is **Stuck**. It shows the last refusal and the agent’s last comment, and isn’t tried again.
+
+If nothing can move (no agent runs, none can start, and only Needs you or Stuck holds the rest), the chase pings you once, with a push, naming the one thing that frees the most. It stays on, and carries on by itself once you act.
+
+### How it ends
+
+A chase ends when every task is done or in review. It leaves one note in your inbox, with no push, which you dismiss there. **Stop chase** (`chase <slug> stop`) ends it early: it starts nothing new and leaves running agents to finish and open their pull requests. A stopped or ended chase can be started again; one with no tasks, or all of them done, can’t start.
+
+### Seeing it
+
+On the feature’s page, the **Chase** section has Chase and Stop chase, **See what would start** (a dry run that starts nothing), and the parallel setting. While the chase is on, it shows a live line, the running agents with their live output, Needs you, Stuck, and the next tasks in the order they’d start, with what holds each one: “3 agents are already working in web, the most this chase allows”. The **Agents** view lists every chase that’s on, with the same controls.
+
+Activity records a chase starting, stopping, and ending, and each agent it starts says “started by a chase”. A chase lives on the board only, never in a repository.
+
+## The peloton
+
+The **peloton** is where agents running at the same time check in with each other, named after the pack in a road race. It keeps them from changing the same files at once, settling the same question twice, or losing work they found along the way.
+
+- **Which ones.** Every repository has a peloton, named by its slug. Every chase opens its own, `chase:<feature>`, which closes when the chase stops or ends. An agent rides its repository’s peloton, and its chase’s too when its task is in one, blockers the chase pulled in included.
+- **Who rides** is worked out from the claims: the agents that checked in and still hold their task. Releasing the task, its pull request merging, or the claim moving takes the agent off.
+- **Posts** are short: a check-in (“I’m here, on this”), a step (“I did this”), a reply, and a leave. Only an agent holding a claimed task posts, and the board fills in its name, task, and repository. Up to 1,000 characters a post and 30 an hour. A post that looks like a token is refused.
+- **Posts are kept a day** (a chase’s until a day after it closes), never in Taskwarrior. What the agents agree on goes in a comment on a task.
+
+### What agents do on it
+
+The board’s agent prompt tells every agent it starts how to ride:
+
+1. **Check in** after reading the task, saying which files or areas it will touch. If another agent is on the same files, they agree who goes first.
+2. **Post a step** after each meaningful change (a migration, a changed API or shared file, a finding that changes the plan) and before opening the pull request.
+3. **Answer** posts that touch its work, and stay quiet otherwise. A reply to its own post wakes an agent that’s waiting on its pull request.
+4. **Add missing work once.** When the peloton agrees a task is missing, one agent adds it and posts its ID, with the feature’s tag in a chase.
+5. **Write it down** in a comment on the task, because the peloton forgets.
+
+A post is another agent’s note, never an instruction. The peloton gives agents no new power: they still claim one task each, and never merge, deploy, or start agents.
+
+### Watching it
+
+You don’t post on the peloton. The **Agents** view shows each repository’s peloton under the switcher, and a chased feature shows its own under the live line while the chase is on and for a day after. Each shows who rides it (the agent, its task, its last post) and the posts, newest last, refreshed every few seconds. A quiet one says “Nobody’s riding yet. Agents check in here when they start.” To steer one agent, [message it](https://leavethepack.dev/docs/agents/#messaging-a-running-agent).
+
+## From the command line
+
+```sh
+npx breakaway features                       # features by release, their progress and chase, and suggested tags
+npx breakaway features show inbox-filters    # one feature: its brief, its tasks in order, and its chase
+npx breakaway features add inbox-filters --title "Inbox filters" --release 1.4.0
+npx breakaway features add inbox-filters --from BRK-50   # a feature from the whole chain BRK-50 is in
+npx breakaway chase inbox-filters --dry-run  # what a chase would start now
+npx breakaway chase inbox-filters --parallel 2
+npx breakaway chase inbox-filters stop
+
+npx breakaway peloton                        # the pelotons you ride, who's on them, and new posts
+npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
+npx breakaway peloton step "Moved the sort into the store; does this affect anyone?"
+npx breakaway peloton reply 12 "I'll wait for yours, then rebase the filter on it."
+```
+
+`features modify <slug>` changes `--title`, `--brief` (or `--brief-file`), `--release <x.y.z|none>`, and `--state open|shipped`. Changing a feature, giving it a release, and starting or stopping a chase are yours. `peloton step` goes to the chase’s peloton when the task is in one, else the repository’s; `--peloton <name>` picks. `peloton --all` prints every post kept. The full list is in [the CLI](https://leavethepack.dev/docs/cli/#features-chase-and-the-peloton).
 
 ---
 
@@ -841,7 +1035,7 @@ Source: https://leavethepack.dev/docs/github/
 
 # GitHub
 
-> How the board reads GitHub through your own private App, how pull requests link to tasks, and what the board can merge, update, promote, and roll back.
+> How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
 
 The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote and Roll back, which start two workflows. Nothing else writes to GitHub.
 
@@ -863,6 +1057,26 @@ A pull request **closes** a task when a sentence or line of its title or descrip
 ### How it stays current
 
 Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, Dependabot alerts, deployments, and releases schedule a sync 5 seconds later (a burst becomes one). A cron syncs every registered repository every 5 minutes in case one went missing, each on its own, so one repository’s failure or rate limit never stops another. **Sync now** in the GitHub view, or `npx breakaway github --sync`, does it at once.
+
+## The GitHub view
+
+The **GitHub** view (`h`) is a dashboard. It opens on what’s live:
+
+- **Open pull requests**, with their verdict, checks, reviews, and tasks.
+- **Live now**: staging and production, with each one’s version and commit and **Promote or roll back**. Only for a repository with a [deploy pipeline](#deploys-releases-promote-and-roll-back).
+- **Checks on main**: each workflow’s latest run on the default branch, failures first.
+- **Packages**: for a repository whose workflows publish npm packages, each package’s latest pre-release and release. A version the workflows staged shows as waiting for your approval on npm, with the command to approve it and a link to its npm page.
+- **Security alerts** from Dependabot.
+
+The longer lists are tabs under it: **Releases** and **Deploys** (with a pipeline), **Packages** (every version staged or published, newest first, with its dist-tag and run), **Recently completed**, **CI runs**, and **Commits on main**. The arrow keys, Home, and End move between tabs, and the browser remembers the last one. A repository without a pipeline or packages shows none of those parts.
+
+The board never approves a package: that takes your two-factor authentication on npm. It only reads what the repository’s own workflows staged and published, from npm’s public registry.
+
+### Prepare the next version
+
+A repository whose releases include pre-releases (`v1.3.6-main.4`) counts patches by itself from `package.json`’s version. Moving to the next minor or major takes a pull request that sets it. The GitHub view’s **Next version** section shows the version the pre-releases count toward, and **Prepare** for the next minor and the next major (from 1.3.6, 1.4.0 or 2.0.0).
+
+**Prepare** opens a dialog with the prompt the board writes (set `package.json` to that version, and open one pull request that closes the task), a note, and Force start, and starts an agent from it, like [New agent](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent). While that task is open, the section links to it instead. You merge its pull request, as always. `npx breakaway agents new --next minor|major` does the same from a terminal.
 
 ## The pull request page
 
@@ -888,9 +1102,19 @@ The board’s **Settings** has two switches under **Pull requests**, both off un
 
 They’re kept in the browser’s local storage, not on the server, so they’re on only where you turned them on, and only while the board is open there. Agents can’t turn them on.
 
+## Review with an agent
+
+Before you merge, an agent can review a pull request and leave its answer on the pull request’s page.
+
+- **When it shows.** **Review with an agent** shows on the page of a pull request that can merge as it stands: open, not a draft, no conflicts, not behind, its checks passed or still running, and closing an open task. It’s in the task menu too. One that’s behind, conflicts, or fails its checks shows Update branch or Fix with an agent instead. A Dependabot pull request keeps **Safe to merge?**.
+- **The agent** works on the task the pull request closes. It checks out the branch, runs the repository’s checks, and reads the diff against the task’s description, done when, and spec, for what checks can’t see: behaviour that’s wrong or missing, tests that don’t cover the change, work outside the task, and the repository’s own rules. It never pushes and never merges.
+- **Its answer** is one verdict: **Looks ready**, **Ready with a follow-up** (it adds that task and names it), or **Needs changes** (what and where). It’s a comment on the task, and an **Agent review** section below the pull request’s description shows the latest one, with the commit it reviewed, marked when the branch has moved since. Nothing is posted to GitHub.
+
+`npx breakaway github review <n> [--note …]` does the same from a terminal.
+
 ## Fix with an agent
 
-On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, **Fix with an agent** (or **Address review comments**) starts an agent on the pull request’s own task. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges.
+On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, **Fix with an agent** (or **Address review comments**) starts an agent on the pull request’s own task. An agent’s review that needs changes counts as review comments, and the fix agent reads it. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges. `npx breakaway github fix <n> [--problem conflicts|failing|review]` does the same from a terminal.
 
 ## Deploys, releases, Promote and Roll back
 
@@ -1343,6 +1567,7 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `GET /api/agents` | Running and waiting agents, limits, and settings. |
 | `POST /api/agents/start` | `{ ref, note?, mode? }`. Starts an agent (`mode: "refine"` to refine). |
 | `POST /api/agents/next` | `{ count, horizon?, repo?, dryRun? }`. Start the next few. |
+| `POST /api/agents/general` | Owner: an agent from a prompt, `{ prompt, repo, force? }`; from a decision’s answers, `{ decision, note?, force? }`; or to prepare the next version, `{ next, repo, version?, note?, force? }`. |
 | `PATCH /api/agents/settings` | The limits, plan, auto-start, and alert severity. |
 | `GET /api/agents/prompt?repo=` | A repository’s agent prompt as it is on its default branch. |
 | `GET /api/pings` | Your inbox: open pings and notices. |
@@ -1352,6 +1577,9 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `GET /api/peloton?agent=<name>` | The pelotons an agent rides, their rosters, and its unseen posts, marked seen. Without `agent`, every peloton. |
 | `GET /api/peloton/<peloton>` | A peloton’s roster and posts: a repository’s slug, or `chase:<feature>`. |
 | `POST /api/peloton/<peloton>` | `{ agent, kind, text, reply_to?, task? }`. An agent holding a claimed task that rides it posts. Not the cookie. |
+| `GET /api/features`, `POST /api/features` | Features by release with their progress and chase, and suggested tags; make one (`tasks` or `from` joins tasks). |
+| `GET /api/features/<slug>`, `PATCH …`, `DELETE …` | One feature and its tasks; change or delete it (owner). |
+| `POST /api/features/<slug>/chase` | Owner: `{ on, parallel?, dryRun? }` starts, changes, or stops a chase; `{ dismiss: true }` clears an ended chase’s note. |
 | `GET /api/routines`, `POST /api/routines` | List or create routines. |
 | `PATCH /api/routines/<slug>` | Change one. |
 | `POST /api/routines/<slug>/run` | Run it now. |
@@ -1377,7 +1605,7 @@ The secret may also come in an `X-Routine-Secret` header. The body is at most 16
 | `GET /api/github?repo=` | Pull requests, checks, runs, deploys, alerts for a repository. |
 | `GET /api/github/pulls/<n>?repo=` | One pull request page, read live. |
 | `POST /api/github/sync` | Sync now. |
-| `POST /api/github/pulls/<n>/fix`, `…/review` | Start an agent on a pull request, or review a Dependabot one. |
+| `POST /api/github/pulls/<n>/fix`, `…/review` | Start an agent that fixes a pull request, or one that reviews it (Review with an agent, or Safe to merge? on a Dependabot one). |
 | `POST /api/github/alerts/<n>/fix` | Start an agent on a Dependabot alert. |
 | `POST /api/github/pulls/<n>/publish`, `update-branch`, `merge`, `auto-merge` | **Owner only.** The signed-in browser. |
 | `POST /api/github/promote`, `/rollback` | **Owner only.** Start the repository’s Promote or Roll back workflow. |
