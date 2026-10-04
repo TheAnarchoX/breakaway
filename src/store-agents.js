@@ -1330,6 +1330,8 @@ export const agentsMethods = {
         repos,
         running,
         queue: this.autostartQueue(views, connected),
+        // The chases that are on, with their live line, Needs you, Stuck, and queue (IDEA-28 section 3.9).
+        chases: this.chasesOn(views, connected),
         recent,
       },
     };
