@@ -7,6 +7,7 @@ import { actionKey, planPullActions } from './autopilot.js';
 import { repoFacts, scopeGitHub } from './github-scope.js';
 import { sidebarDefault } from './layout.js';
 import { setRepoBase } from './links.js';
+import { readSpecParam, specParam } from './specs.js';
 
 // ---- preferences (this browser only) -------------------------------------------------------
 
@@ -742,6 +743,7 @@ export const VIEWS = [
   { id: 'inbox', label: 'Inbox', key: 'o' },
   { id: 'activity', label: 'Activity', key: 'a' },
   { id: 'github', label: 'GitHub', key: 'h' },
+  { id: 'specs', label: 'Specs', key: 'e' },
   { id: 'agents', label: 'Agents', key: 'x' },
   { id: 'routines', label: 'Routines', key: 'u' },
   { id: 'connections', label: 'Connections', key: 'w' },
@@ -763,6 +765,8 @@ export const listSort = signal({ key: 'rank', dir: 'asc' });
 export const listGroup = signal('none');
 export const selectedRoutine = signal(null); // a routine's slug, open in the routines view's panel
 export const selectedFeature = signal(null); // a feature's slug, open on the roadmap
+/** The spec open in the Specs view (WEB-25): `{ slug, path }`, slug null for the default repository's, or null. */
+export const selectedSpec = signal(null);
 export const focusPing = signal(null); // the ping the inbox scrolls to and focuses, from #/inbox?ping=<id>
 export const newTask = signal(null); // null, or the defaults for the new-task dialog
 /** Whether the New agent dialog is open (docs/specs/IDEA-30-new-agent.md, section 5). */
@@ -803,6 +807,7 @@ function parseHash() {
     settingsSlug.value = settings?.[1] ? safeDecode(settings[1]).toLowerCase() : null;
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
+    selectedSpec.value = path === 'specs' ? readSpecParam(p.get('spec')) : null;
     const feature = path === 'roadmap' ? p.get('feature') : null;
     selectedFeature.value = feature && /^[a-z][a-z0-9_-]{0,39}$/u.test(feature) ? feature : null;
     focusPing.value = path === 'inbox' && /^\d+$/u.test(p.get('ping') ?? '') ? p.get('ping') : null;
@@ -842,11 +847,13 @@ export function hashFor({
   feature = selectedFeature.value,
   ping = focusPing.value,
   settings = settingsSlug.value,
+  spec = selectedSpec.value,
 } = {}) {
   const p = new URLSearchParams();
   if (repoScope.value) p.set('repo', repoScope.value);
   if (v === 'routines' && routine) p.set('routine', routine);
   if (v === 'roadmap' && feature) p.set('feature', feature);
+  if (v === 'specs' && spec) p.set('spec', specParam(spec.path, spec.slug, repos.peek().default));
   if (v === 'inbox' && ping) p.set('ping', ping);
   if (task) p.set('task', task);
   if (task && mode) p.set('view', mode);
@@ -865,7 +872,7 @@ export function hashFor({
     if (listSort.value.dir !== 'asc') p.set('dir', listSort.value.dir);
     if (listGroup.value !== 'none') p.set('group', listGroup.value);
   }
-  const qs = p.toString().replaceAll('%2C', ',');
+  const qs = p.toString().replaceAll('%2C', ',').replaceAll('%2F', '/');
   const path = v === 'repo-settings' ? `settings${settings ? `/${enc(settings)}` : ''}` : v;
   return `#/${path}${qs ? `?${qs}` : ''}`;
 }
@@ -924,6 +931,19 @@ export function setTaskMode(mode) {
 
 export function openRoutine(slug) {
   location.hash = hashFor({ view: 'routines', routine: slug });
+}
+
+/** The Specs view's address with spec `path` of repository `slug` (null: the default's) open, or none. */
+export const specHref = (path, slug = null) =>
+  hashFor({ view: 'specs', spec: path ? { slug, path } : null, pr: null, ping: null });
+
+/** Opens a spec in the Specs view (WEB-25); a task stays open beside it only where it already was. */
+export function openSpec(path, slug = null) {
+  location.hash = specHref(path, slug);
+}
+
+export function closeSpec() {
+  location.hash = specHref(null);
 }
 
 export function openFeature(slug) {

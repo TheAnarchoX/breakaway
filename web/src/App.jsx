@@ -4,6 +4,7 @@ import {
   byUuid,
   checkSession,
   closeRoutine,
+  closeSpec,
   closeTask,
   current,
   cycleRepo,
@@ -18,8 +19,10 @@ import {
   newAgent,
   newTask,
   openTask,
+  repos,
   selected,
   selectedRoutine,
+  selectedSpec,
   session,
   sidebar,
   taskMode,
@@ -38,6 +41,7 @@ import { RoadmapView } from './views/RoadmapView.jsx';
 import { InboxView } from './views/InboxView.jsx';
 import { ActivityView } from './views/ActivityView.jsx';
 import { GitHubView } from './views/GitHubView.jsx';
+import { SpecsView } from './views/SpecsView.jsx';
 import { AgentsView } from './views/AgentsView.jsx';
 import { RoutinePanel, RoutinesView } from './views/RoutinesView.jsx';
 import { ConnectionsView, FirstRunNotice } from './views/ConnectionsView.jsx';
@@ -59,6 +63,7 @@ const VIEW_COMPONENTS = {
   inbox: InboxView,
   activity: ActivityView,
   github: GitHubView,
+  specs: SpecsView,
   agents: AgentsView,
   routines: RoutinesView,
   connections: ConnectionsView,
@@ -112,6 +117,11 @@ function useShortcuts() {
         const link = document.querySelector(`[data-routine="${selectedRoutine.value}"]`);
         closeRoutine();
         requestAnimationFrame(() => /** @type {HTMLElement | null} */ (link)?.focus());
+      } else if (e.key === 'Escape' && view.value === 'specs' && selectedSpec.value) {
+        const { slug, path } = selectedSpec.value;
+        const row = document.querySelector(`[data-spec="${CSS.escape(`${slug ?? repos.value.default}:${path}`)}"]`);
+        closeSpec();
+        requestAnimationFrame(() => /** @type {HTMLElement | null} */ (row)?.focus());
       } else if (e.key === 'c' && t && t.status === 'pending') {
         if (!t.claim && !t.blocked) actions.claim(t);
         else if (t.claim === me.value) actions.release(t);

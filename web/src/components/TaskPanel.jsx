@@ -11,6 +11,7 @@ import {
   PanelRight,
   RotateCcw,
   Rocket,
+  ScrollText,
   Terminal,
   Trash2,
   Undo2,
@@ -42,6 +43,7 @@ import {
   closeTask,
   multiRepo,
   repoBySlug,
+  repos,
   confirmDialog,
   current,
   focusComment,
@@ -59,6 +61,7 @@ import {
 import { Popover, RepoChip, StateBadge, useAutosize, widClass } from './ui.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 import { copy } from '../lib/clipboard.js';
+import { inSpecsDir, specsDirOf } from '../lib/specs.js';
 import { PrRow } from './GitHub.jsx';
 import { AgentSection } from './Agents.jsx';
 import { DecisionSection } from './Decision.jsx';
@@ -265,6 +268,17 @@ function Tags({ task: t }) {
       </form>
     </div>
   );
+}
+
+/**
+ * Where a task's spec opens on the board (WEB-25): the Specs view, when the path is in its repository's specs
+ * directory, else null and the spec opens on GitHub only.
+ */
+function specHere(t) {
+  const slug = t.repo || repos.value.default;
+  const path = String(t.spec ?? '').replace(/^(?:\.\/|\/)+/u, '');
+  if (!t.spec || !inSpecsDir(specsDirOf(repoBySlug.value.get(slug)), path)) return null;
+  return hashFor({ view: 'specs', spec: { slug, path }, task: null, pr: null, ping: null });
 }
 
 /** @param {Record<string, any>} props */
@@ -674,6 +688,11 @@ function Details({ task: t }) {
             placeholder="docs/specs/…"
             onSave={(v) => save({ spec: v || null }, 'Spec saved.')}
           />
+          {specHere(t) && (
+            <a class="btn btn-quiet btn-icon btn-sm" href={specHere(t)} aria-label="Read the spec on the board">
+              <ScrollText size={16} aria-hidden="true" />
+            </a>
+          )}
           {specUrl(t.spec) && (
             <a
               class="btn btn-quiet btn-icon btn-sm"
