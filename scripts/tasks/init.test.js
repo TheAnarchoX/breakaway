@@ -402,6 +402,23 @@ describe('repos init --update (CLD-193)', () => {
     expect(plan.removals).toEqual([]);
   });
 
+  it('moves hooks that run an earlier npm channel or version to the current package on update (BRK-47)', () => {
+    const settings = (pkg) =>
+      JSON.stringify({
+        hooks: {
+          PostToolUse: [{ hooks: [{ command: `npx --yes ${pkg} hook session` }] }],
+          Stop: [{ hooks: [{ command: `npx --yes ${pkg} hook session` }, { command: `npx --yes ${pkg} hook wait` }] }],
+        },
+      });
+    for (const earlier of ['breakaway@next', 'breakaway', 'breakaway@1.0.1-main.3', 'breakaway@0'])
+      expect(rewireHooks(settings(earlier)), earlier).toBe(settings(CLI_PACKAGE));
+    // Another package's hooks, and other commands, are left alone.
+    const other = JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'npx --yes breakaway-extra hook session' }] }] },
+    });
+    expect(rewireHooks(other)).toBe(other);
+  });
+
   it('points an existing settings.json at the current hook commands on update, leaving the rest (BRK-64)', () => {
     const settings = (fromCopy) =>
       JSON.stringify({ model: 'x', hooks: { Stop: [{ hooks: [{ command: hookCommand('session', { fromCopy }) }] }] } });
@@ -458,7 +475,7 @@ describe('repos init --update (CLD-193)', () => {
             : (original[p] ?? null),
         update: true,
       });
-      expect(hooked.notes.join('\n')).toMatch(/npx --yes breakaway@next hook session/u);
+      expect(hooked.notes.join('\n')).toMatch(/npx --yes breakaway@1 hook session/u);
     },
   );
 

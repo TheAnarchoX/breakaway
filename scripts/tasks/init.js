@@ -14,10 +14,10 @@ const DEFAULT_DIR = '~/.config/breakaway';
 export { routinePrompt };
 
 /**
- * The CLI on npm (BRK-7), as a repository runs it: `npx breakaway`. Pinned to the `next` channel until the first stable
- * release exists; then this becomes the major (`breakaway@1`), so a breaking change never reaches a repository by itself.
+ * The CLI on npm (BRK-7), as a repository runs it: `npx breakaway`, pinned to the major (BRK-47), so a breaking change
+ * never reaches a repository by itself. It was the `next` channel until the first stable release.
  */
-export const CLI_PACKAGE = 'breakaway@next';
+export const CLI_PACKAGE = 'breakaway@1';
 /**
  * Where the CLI starts: the command, and the two session hooks. repos init no longer copies them (BRK-7): an old copy
  * is replaced by npx, and these still version the CLI and say which files an old copy holds.
@@ -134,7 +134,10 @@ export function sessionHooks(pkg = CLI_PACKAGE) {
   };
 }
 
-/** settings.json with the session hooks' commands (either form) set to the current one; the rest is untouched. */
+/**
+ * settings.json with the session hooks' commands set to the current one, whichever form they had: the copy's, or npx
+ * with an earlier channel or version of the package (`breakaway@next` before BRK-47). The rest is untouched.
+ */
 export function rewireHooks(text) {
   let out = text;
   for (const name of ['session', 'wait'])
@@ -143,7 +146,9 @@ export function rewireHooks(text) {
       const now = JSON.stringify(hookCommand(name)).slice(1, -1);
       out = out.split(was).join(now);
     }
-  return out;
+  return out.replace(/npx --yes breakaway(?:@[^\s"\\]+)? hook (session|wait)\b/gu, (_, name) =>
+    JSON.stringify(hookCommand(name)).slice(1, -1),
+  );
 }
 
 /** A short SHA-256 of `paths` and their text: changes whenever one of them does. */
