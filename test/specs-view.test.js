@@ -3,6 +3,7 @@ import {
   filterSpecs,
   inSpecsDir,
   readSpecParam,
+  refiningSpec,
   shortTitle,
   specParam,
   specTaskCounts,
@@ -90,5 +91,35 @@ describe('a spec’s title beside its work ID', () => {
     expect(shortTitle('OPS-30 · Other', 'OPS-3')).toBe('OPS-30 · Other');
     expect(shortTitle('OPS-3', 'OPS-3')).toBe('OPS-3');
     expect(shortTitle('Sort the inbox', null)).toBe('Sort the inbox');
+  });
+});
+
+describe('the agent on a spec', () => {
+  const t = (over) => ({
+    status: 'pending',
+    tags: ['agent', 'general'],
+    spec: 'docs/specs/OPS-3-x.md',
+    repo: null,
+    ...over,
+  });
+
+  it('finds the open general task that links it, in its repository', () => {
+    const on = t({ uuid: 'a' });
+    expect(
+      refiningSpec([t({ uuid: 'b', status: 'completed' }), on], 'widgets', 'docs/specs/OPS-3-x.md', 'widgets'),
+    ).toBe(on);
+    expect(
+      refiningSpec([t({ spec: './docs/specs/OPS-3-x.md' })], 'widgets', 'docs/specs/OPS-3-x.md', 'widgets'),
+    ).not.toBeNull();
+  });
+
+  it('ignores another repository’s, another spec’s, and tasks that aren’t general agents', () => {
+    const path = 'docs/specs/OPS-3-x.md';
+    expect(refiningSpec([t({ repo: 'gadgets' })], 'widgets', path, 'widgets')).toBeNull();
+    expect(refiningSpec([t({})], 'gadgets', path, 'widgets')).toBeNull();
+    expect(refiningSpec([t({ repo: 'gadgets' })], 'gadgets', path, 'widgets')).not.toBeNull();
+    expect(refiningSpec([t({ spec: 'docs/specs/OPS-4-y.md' })], 'widgets', path, 'widgets')).toBeNull();
+    expect(refiningSpec([t({ tags: ['agent'] })], 'widgets', path, 'widgets')).toBeNull();
+    expect(refiningSpec(null, 'widgets', path, 'widgets')).toBeNull();
   });
 });

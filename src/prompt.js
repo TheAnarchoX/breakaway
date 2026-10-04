@@ -1,6 +1,6 @@
 /**
  * A repository's agent prompt, made from the board's template (prompts/repository.md). `repos init` writes it
- * into the repository (scripts/tasks/init.js), and the board's tests check the wizard against it, so it lives
+ * into the repository (src/init.js), and the board's tests check the wizard against it, so it lives
  * in the board's package (CLD-135). Pure.
  */
 

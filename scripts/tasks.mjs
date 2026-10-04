@@ -42,7 +42,14 @@ import { promptPathOf } from '../src/repos.js';
 import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
-import { CLI_PACKAGE, PROMPT_SECTIONS, initPlan, machineTaskrc, promptSections } from './tasks/init.js';
+import {
+  CLI_PACKAGE,
+  PROMPT_SECTIONS,
+  initCommitMessage,
+  initPlan,
+  machineTaskrc,
+  promptSections,
+} from './tasks/init.js';
 import {
   chaseRequest,
   chaseSummary,
@@ -1800,7 +1807,7 @@ async function refreshMachineTaskrc() {
 
 /**
  * repos init (CLD-191): clone the registered repository `slug` (or use the checkout at --dir), add the files
- * the board's agents need (scripts/tasks/init.js says which; nothing that's there is overwritten), and push
+ * the board's agents need (src/init.js says which; nothing that's there is overwritten), and push
  * them: the first commit on the default branch of an empty repository, or a pull request otherwise.
  */
 async function initRepo(slug) {
@@ -1952,7 +1959,8 @@ async function initRepo(slug) {
       `git add failed in ${dir}: ${String(e.stderr || e.message).trim()}. Nothing was committed. Fix that, then run repos init again (it leaves what's there alone), or use git checkout ${repo.defaultBranch || 'main'} && git branch -D ${work} to start over.`,
     );
   }
-  const title = update ? "Update the task board's agent files" : "Set up the task board's agent files";
+  const first = initCommitMessage(repo.slug);
+  const title = update ? "Update the task board's agent files" : first.title;
   git(
     'commit',
     '-m',
@@ -1960,7 +1968,7 @@ async function initRepo(slug) {
     '-m',
     update
       ? `The board's core, skill, release helpers, and Taskwarrior files as they are in ${board ?? 'breakaway'} now, and the session hooks run through npx, so an old copy of the CLI is removed: run it as npx ${CLI_PACKAGE} (CLI version ${CLI_VERSION}). This repository's own files are unchanged. Updated by npx ${CLI_PACKAGE} repos init ${repo.slug} --update.`
-      : `What a board-started agent needs to claim and work a task here: the agent prompt, the board's core, the session hooks (they run the CLI through npx), the tasks skill, AGENTS.md, and Taskwarrior with direnv. Added by npx breakaway repos init ${repo.slug}.`,
+      : first.body,
   );
   const pushed = spawnSync('git', ['-C', dir, 'push', '-u', 'origin', empty ? `HEAD:refs/heads/${branch}` : work], {
     stdio: 'inherit',
