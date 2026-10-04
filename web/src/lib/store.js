@@ -137,13 +137,20 @@ export const features = signal({ loaded: false, data: null, error: null });
 /** The feature open on the roadmap, with its tasks: `{ slug, data, error }`, or null. */
 export const featureOpen = signal(null);
 /** The owner's inbox: open pings, newest first (docs/specs/IDEA-12-agent-pings.md). */
-export const pings = signal({ loaded: false, list: [], notices: [], error: null });
-/** What's open in the inbox: pings, and the notes about connections that broke or work again (CLD-121). */
-export const openPings = computed(() => pings.value.list.length + pings.value.notices.length);
+export const pings = signal({ loaded: false, list: [], notices: [], chases: [], error: null });
+/**
+ * What's open in the inbox: pings, the notes about connections that broke or work again (CLD-121), and the notes
+ * about chases that ended (docs/specs/IDEA-28-features-and-chase.md, section 3.7).
+ */
+export const openPings = computed(
+  () => pings.value.list.length + pings.value.notices.length + pings.value.chases.length,
+);
 /** The pings of the repository the switcher shows (each ping's task's), and every note about connections. */
 export const scopedPings = computed(() => pings.value.list.filter((p) => inScope(p.repo)));
-/** What the bell counts: the switcher's pings and the notes about connections. */
-export const openPingsHere = computed(() => scopedPings.value.length + pings.value.notices.length);
+/** What the bell counts: the switcher's pings, and the notes about connections and ended chases. */
+export const openPingsHere = computed(
+  () => scopedPings.value.length + pings.value.notices.length + pings.value.chases.length,
+);
 /** The Connections view (CLD-121): the last report, and whether Check now is running. */
 export const connections = signal({ loaded: false, data: null, error: null, checking: false });
 /**
@@ -434,11 +441,11 @@ let pingsSeeded = false;
 /** Loads the open pings. Ones that turn up after the first load raise a toast while the board is open. */
 export async function loadPings() {
   try {
-    const { pings: list, notices } = await api('pings');
+    const { pings: list, notices, chases } = await api('pings');
     const fresh = pingsSeeded ? list.filter((p) => !seenPings.has(p.id) && p.kind !== 'fyi') : [];
     for (const p of list) seenPings.add(p.id);
     pingsSeeded = true;
-    pings.value = { loaded: true, list, notices: notices ?? [], error: null };
+    pings.value = { loaded: true, list, notices: notices ?? [], chases: chases ?? [], error: null };
     if (fresh.length === 1) toast(`${fresh[0].task ?? 'A task'} needs you: ${fresh[0].kind}. See the inbox.`, 'info');
     else if (fresh.length > 1) toast(`${fresh.length} pings need you. See the inbox.`, 'info');
   } catch (error) {

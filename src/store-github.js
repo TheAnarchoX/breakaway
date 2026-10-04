@@ -273,6 +273,14 @@ export const githubMethods = {
     }
     this.setGhMeta('gh_empty', repo.slug, null);
     const automation = this.applyGitHub(fetched, repo);
+    // The Packages feed (BRK-101): what the runs say they staged on npm, then whether npm has published it yet.
+    try {
+      await this.readPackages(client, repo.slug, fetched.runs);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      automation.errors.push(error.message);
+    }
+    await this.checkRegistry(repo.slug);
     try {
       await this.refreshFlowCompare(client, repo.slug);
     } catch (error) {
@@ -1059,7 +1067,7 @@ export const githubMethods = {
       .map((v) => v.lastSync)
       .filter(Boolean)
       .sort();
-    const lists = ['open', 'closed', 'runs', 'deploys', 'commits', 'alerts'];
+    const lists = ['open', 'closed', 'runs', 'deploys', 'commits', 'alerts', 'packages'];
     return {
       connected,
       all: true,
@@ -1094,6 +1102,10 @@ export const githubMethods = {
         newest((c) => c.date),
       ),
       alerts: merged('alerts', () => 0),
+      packages: merged(
+        'packages',
+        newest((v) => v.staged),
+      ),
       repos: views.map((v) => Object.fromEntries(Object.entries(v).filter(([key]) => !lists.includes(key)))),
     };
   },
@@ -1182,6 +1194,8 @@ export const githubMethods = {
         at: live?.at ?? null,
         pipeline: Boolean(pipeline),
       }),
+      // What the runs staged on npm, and whether each is published yet (BRK-101); empty without a package.
+      packages: this.packagesOf(repo.slug).versions,
       releases: JSON.parse(this.ghMeta('gh_releases', repo.slug) ?? '[]'),
       tags: JSON.parse(this.ghMeta('gh_tags', repo.slug) ?? '[]'),
       // Prepare the next minor or major (BRK-100), where the pre-releases count from package.json's version.

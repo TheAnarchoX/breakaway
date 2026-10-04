@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { repoFacts, scopeGitHub } from '../web/src/lib/github-scope.js';
+import {
+  checksOnMain,
+  checksSummary,
+  githubTabs,
+  pickTab,
+  repoFacts,
+  runState,
+  scopeGitHub,
+} from '../web/src/lib/github-scope.js';
 
 // The GitHub view for the repository the switcher shows (CLD-125), from one answer for all of them.
 const pr = (repo, number, verdict = 'running') => ({ repo, number, verdict, state: 'open' });
@@ -91,5 +99,76 @@ describe('the GitHub view per repository', () => {
     expect(repoFacts(all, 'nowhere')).toBeNull();
     const one = { repo: 'x' };
     expect(repoFacts(one, 'anything')).toBe(one);
+  });
+});
+
+// The dashboard at the top of the GitHub view, and the tabs under it (WEB-17).
+const run = (repo, name, branch, created, status = 'completed', conclusion = 'success') => ({
+  repo,
+  name,
+  branch,
+  created,
+  status,
+  conclusion,
+});
+
+describe('the GitHub dashboard', () => {
+  it('reads a run’s state', () => {
+    expect(runState({ status: 'in_progress', conclusion: null })).toBe('pending');
+    expect(runState({ status: 'completed', conclusion: 'failure' })).toBe('failure');
+    expect(runState({ status: 'completed', conclusion: null })).toBe('neutral');
+  });
+
+  it('keeps each workflow’s latest run on the default branch, failures first', () => {
+    const view = {
+      branch: 'main',
+      runs: [
+        run(undefined, 'CI', 'main', '2026-10-01T10:00:00Z', 'completed', 'failure'),
+        run(undefined, 'CI', 'main', '2026-10-02T10:00:00Z'),
+        run(undefined, 'CI', 'feature', '2026-10-03T10:00:00Z', 'completed', 'failure'),
+        run(undefined, 'Deploy', 'main', '2026-10-02T09:00:00Z', 'in_progress', null),
+        run(undefined, 'CodeQL', 'main', '2026-10-01T09:00:00Z', 'completed', 'timed_out'),
+      ],
+    };
+    const checks = checksOnMain(view);
+    expect(checks.map((r) => r.name)).toEqual(['CodeQL', 'Deploy', 'CI']);
+    expect(checks.find((r) => r.name === 'CI').created).toBe('2026-10-02T10:00:00Z');
+    expect(checksSummary(checks)).toEqual({ failing: 1, running: 1, passing: 1 });
+    expect(checksOnMain(null)).toEqual([]);
+    expect(checksOnMain({ runs: [run(undefined, 'CI', 'main', 'x')] })).toHaveLength(1);
+  });
+
+  it('uses each repository’s own default branch under All', () => {
+    const every = scopeGitHub(
+      {
+        ...all,
+        runs: [
+          run('widgets', 'CI', 'main', '2026-10-01T10:00:00Z'),
+          run('scratch', 'CI', 'trunk', '2026-10-01T10:00:00Z', 'completed', 'failure'),
+          run('scratch', 'CI', 'main', '2026-10-02T10:00:00Z'),
+        ],
+      },
+      null,
+    );
+    expect(checksOnMain(every).map((r) => `${r.repo}:${r.branch}`)).toEqual(['scratch:trunk', 'widgets:main']);
+  });
+
+  it('shows Releases and Deploys only with a pipeline, and falls back to the first tab', () => {
+    const every = scopeGitHub(all, null);
+    expect(githubTabs(every).map((t) => t.id)).toEqual(['releases', 'deploys', 'completed', 'runs', 'commits']);
+    expect(githubTabs(every).find((t) => t.id === 'completed').count).toBe(20);
+    expect(githubTabs(every).at(-1).label).toBe('Commits');
+    const scratch = githubTabs(scopeGitHub(all, 'scratch'));
+    expect(scratch.map((t) => t.id)).toEqual(['completed', 'runs', 'commits']);
+    expect(scratch.at(-1).label).toBe('Commits on trunk');
+    expect(pickTab(scratch, 'releases')).toBe('completed');
+    expect(pickTab(scratch, 'runs')).toBe('runs');
+    expect(pickTab([], 'runs')).toBeNull();
+    expect(githubTabs(null)).toEqual([]);
+  });
+
+  it('shows Releases for a repository whose next version can be prepared, even with no release flow', () => {
+    const tabs = githubTabs({ flows: [], nextVersions: [{ slug: 'scratch' }], closed: [], runs: [], commits: [] });
+    expect(tabs[0].id).toBe('releases');
   });
 });

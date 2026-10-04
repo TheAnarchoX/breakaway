@@ -18,7 +18,7 @@ import { Dialog } from './ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
-const STATES = {
+export const STATES = {
   live: { label: 'Live', Icon: CircleCheck, tone: 'ok' },
   deploying: { label: 'Deploying', Icon: LoaderCircle, tone: 'pending' },
   failed: { label: 'Failed', Icon: CircleX, tone: 'bad' },
@@ -27,7 +27,7 @@ const STATES = {
 };
 
 /** The words a screen reader hears for a card; also what the polite live region announces when they change. */
-function summary(name, card) {
+export function summary(name, card) {
   const s = STATES[card.state];
   const build = card.build ? `, ${card.build.sha7}` : '';
   const step = card.state === 'deploying' && card.step ? `, ${card.step}` : '';

@@ -35,6 +35,7 @@ const GROUPS = [
   { id: 'board', label: 'Board', of: ['board'] },
   { id: 'cloudflare', label: 'Cloudflare', of: ['cloudflare'] },
   { id: 'github', label: 'GitHub', of: ['github'] },
+  { id: 'npm', label: 'npm', of: ['npm'] },
   { id: 'claude', label: 'Claude', of: ['claude'] },
   { id: 'sync', label: 'Sync and push', of: ['taskwarrior', 'push'] },
 ];

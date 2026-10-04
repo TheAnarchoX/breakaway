@@ -54,3 +54,69 @@ export function repoFacts(data, slug = null) {
   if (!data.all) return data;
   return data.repos.find((r) => (slug ? r.slug === slug : r.isDefault)) ?? null;
 }
+
+/** A workflow run's state: 'pending' while it runs, else its conclusion ('success', 'failure', …). */
+export function runState(run) {
+  if (run.status !== 'completed') return 'pending';
+  return run.conclusion ?? 'neutral';
+}
+
+const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
+
+/**
+ * Checks on main for the dashboard (WEB-17): each workflow's latest run on its repository's default
+ * branch, failures first, then the ones still running, then the rest, by name. `view` is scopeGitHub's.
+ */
+export function checksOnMain(view) {
+  if (!view) return [];
+  const branchOf = (run) => (run.repo && view.repos?.find((r) => r.slug === run.repo)?.branch) || view.branch || 'main';
+  const latest = new Map();
+  for (const run of view.runs ?? []) {
+    if (run.branch !== branchOf(run)) continue;
+    const key = `${run.repo ?? ''}\n${run.name}`;
+    const seen = latest.get(key);
+    if (!seen || String(run.created).localeCompare(String(seen.created)) > 0) latest.set(key, run);
+  }
+  const rank = (run) => {
+    const state = runState(run);
+    return FAILED.has(state) ? 0 : state === 'pending' ? 1 : 2;
+  };
+  return [...latest.values()].sort(
+    (a, b) =>
+      rank(a) - rank(b) || String(a.repo ?? '').localeCompare(String(b.repo ?? '')) || a.name.localeCompare(b.name),
+  );
+}
+
+/** How checks on main add up: failing, running, and passing (skipped and cancelled count as neither). */
+export function checksSummary(checks) {
+  const out = { failing: 0, running: 0, passing: 0 };
+  for (const run of checks) {
+    const state = runState(run);
+    if (FAILED.has(state)) out.failing += 1;
+    else if (state === 'pending') out.running += 1;
+    else if (state === 'success') out.passing += 1;
+  }
+  return out;
+}
+
+/**
+ * The GitHub view's tabs under the dashboard (WEB-17), in order, each with the count its label shows.
+ * Releases and Deploys only where a repository in view has a pipeline.
+ */
+export function githubTabs(view) {
+  if (!view) return [];
+  const tabs = [];
+  if (view.flows?.length || view.nextVersions?.length) tabs.push({ id: 'releases', label: 'Releases', count: null });
+  if (view.pipeline) tabs.push({ id: 'deploys', label: 'Deploys', count: view.deploys?.length ?? 0 });
+  tabs.push(
+    { id: 'completed', label: 'Recently completed', count: view.closed?.length ?? 0 },
+    { id: 'runs', label: 'CI runs', count: view.runs?.length ?? 0 },
+    { id: 'commits', label: view.branch ? `Commits on ${view.branch}` : 'Commits', count: view.commits?.length ?? 0 },
+  );
+  return tabs;
+}
+
+/** The tab to show: the one asked for when it's there, else the first. */
+export function pickTab(tabs, wanted) {
+  return tabs.find((t) => t.id === wanted)?.id ?? tabs[0]?.id ?? null;
+}
