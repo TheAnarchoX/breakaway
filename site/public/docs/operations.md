@@ -55,7 +55,7 @@ It updates the stored secret, waits until the server accepts the new token, and 
 
 ## Health
 
-`GET /api/ping` is public and says only that the Worker answers: `{ "ok": true, "version": "<Cloudflare version ID>", "release": "<semver>" }`. Nothing about tasks. A check after a deploy uses it. `npx breakaway health` (`GET /api/health`) is the signed-in version with the task count, the CLI version the board was built with, and a Connections count.
+`GET /api/ping` is public and says only that the Worker answers: `{ "ok": true, "version": "<Cloudflare version ID>", "release": "<semver>", "secrets": { "ok": true, "unreadable": [] } }`: `secrets` says whether each bound secret can be read, by name and never a value. Nothing about tasks. A check after a deploy uses it. `npx breakaway health` (`GET /api/health`) is the signed-in version with the task count, the CLI version the board was built with, and a Connections count.
 
 ## Backups and export
 

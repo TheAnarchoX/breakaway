@@ -15,6 +15,7 @@ import { appCredentials, verifyWebhook } from './github.js';
 import { install } from './install.js';
 import { CLI_VERSION } from './cli-version.js';
 import { releaseOf } from './build.js';
+import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
 
 export { TaskStore } from './store.js';
@@ -34,8 +35,18 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     // Public, for the deploy pipeline's check: says nothing about tasks (docs/specs/CLD-27).
-    if (url.pathname === '/api/ping' && request.method === 'GET')
-      return withHeaders(json(200, { ok: true, version: env.VERSION?.id ?? null, release: releaseOf(env) }));
+    if (url.pathname === '/api/ping' && request.method === 'GET') {
+      // Whether the bound secrets load, by binding name and never a value, so a deploy can tell (BRK-96).
+      const unreadable = await unreadableSecrets(env);
+      return withHeaders(
+        json(200, {
+          ok: true,
+          version: env.VERSION?.id ?? null,
+          release: releaseOf(env),
+          secrets: { ok: unreadable.length === 0, unreadable },
+        }),
+      );
+    }
     if (url.pathname.startsWith('/v1/client/')) return withHeaders(await handleSync(request, env, url));
     const fire = /^\/api\/routines\/([a-z][a-z0-9-]{0,39})\/fire$/u.exec(url.pathname);
     if (fire && request.method === 'POST') return withHeaders(await fireRoutine(request, env, fire[1]));

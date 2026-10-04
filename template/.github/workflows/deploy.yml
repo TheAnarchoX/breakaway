@@ -196,7 +196,7 @@ jobs:
             uploaded=$(node -e "const l=require('fs').readFileSync(process.env.WRANGLER_OUTPUT_FILE_PATH,'utf8').split('\\n').filter(Boolean).map(JSON.parse).filter(e=>e.type==='version-upload').pop();if(!l)process.exit(1);console.log(l.version_id)")
             wrangler versions deploy "$uploaded@100%" --yes
           fi
-          # Health check: the new release answers /api/ping. Without it, go back to the previous version.
+          # Health check: the new release answers /api/ping and its secrets load. Without it, go back to the previous version.
           url=$(node -p "require('./breakaway.config.json').url || ''")
           address=${ADDRESS:-$url}
           tries=12
@@ -218,12 +218,12 @@ jobs:
           done
           waited=$([ "$tries" -gt 12 ] && echo "five minutes" || echo "a minute")
           if [ -z "$previous" ]; then
-            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping within $waited, and this was the first deploy, so there is no version to go back to. Read the Worker's logs on Cloudflare."
+            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping, with its secrets readable, within $waited, and this was the first deploy, so there is no version to go back to. Read the Worker's logs on Cloudflare."
           elif wrangler rollback "$previous" --message "breakaway $VERSION failed its check" --yes; then
             kept=""
             if [ "$DEPLOY" = wrangler ]; then kept=" Rolling back brings back the code only: what wrangler deploy changed${CHANGES:+ ($CHANGES)} stays as it left it."; fi
-            echo "::error title=Rolled back::breakaway $VERSION didn't answer $address/api/ping within $waited, so the Worker went back to its previous version.$kept Nothing is lost; read the Worker's logs on Cloudflare."
+            echo "::error title=Rolled back::breakaway $VERSION didn't answer $address/api/ping, with its secrets readable, within $waited, so the Worker went back to its previous version.$kept Nothing is lost; read the Worker's logs on Cloudflare."
           else
-            echo "::error title=Couldn't roll back::breakaway $VERSION didn't answer $address/api/ping within $waited, and the Worker couldn't go back to its previous version: Cloudflare doesn't roll back across a new Durable Object class. The board's data is still in its Durable Object. Read the Worker's logs on Cloudflare, then deploy a fix."
+            echo "::error title=Couldn't roll back::breakaway $VERSION didn't answer $address/api/ping, with its secrets readable, within $waited, and the Worker couldn't go back to its previous version: Cloudflare doesn't roll back across a new Durable Object class. The board's data is still in its Durable Object. Read the Worker's logs on Cloudflare, then deploy a fix."
           fi
           exit 1
