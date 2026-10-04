@@ -48,9 +48,11 @@ const ROOT_FILES = [
 /**
  * A path in the repository (from its root, as the board's notes write them) → its GitHub URL
  * on main, or null (also when the board has no repository yet). A bare #anchor points into WORK.md, where the notes were written.
- * `base` is another repository's GitHub address, for text that belongs to it (a pull request's description).
+ * `base` is another repository's GitHub address, for text that belongs to it (a pull request's description), and
+ * `branch` the branch its links point at. `anyRoot` takes a path from any top-level directory, for a path the caller
+ * already knows is in the repository (one resolved against a spec's own directory).
  */
-export function repoUrl(target, base = repoBase) {
+export function repoUrl(target, base = repoBase, { branch = 'main', anyRoot = false } = {}) {
   let path = String(target ?? '').trim();
   if (!path || /^[a-z][a-z0-9+.-]*:/iu.test(path) || path.startsWith('//')) return null;
   let anchor = '';
@@ -60,7 +62,7 @@ export function repoUrl(target, base = repoBase) {
     path = path.slice(0, hash);
   }
   if (!base) return null;
-  if (!path) return /^#[\w-]+$/u.test(anchor) ? `${base}/blob/main/WORK.md${anchor}` : null;
+  if (!path) return /^#[\w-]+$/u.test(anchor) && !anyRoot ? `${base}/blob/${branch}/WORK.md${anchor}` : null;
   if (path.startsWith('/')) return null; // a path on the website, like /about
   if (anchor && !/^#[\w-]+$/u.test(anchor)) return null;
   const parts = [];
@@ -71,10 +73,71 @@ export function repoUrl(target, base = repoBase) {
   }
   if (!parts.length || parts.some((p) => !/^[\w.@-]+$/u.test(p))) return null;
   const clean = parts.join('/');
-  if (!ROOT_DIRS.includes(parts[0]) && !ROOT_FILES.includes(clean)) return null;
+  if (!anyRoot && !ROOT_DIRS.includes(parts[0]) && !ROOT_FILES.includes(clean)) return null;
   const isDir =
     path.endsWith('/') || (parts.length > 0 && !/\.[A-Za-z0-9]+$/u.test(parts.at(-1)) && !ROOT_FILES.includes(clean));
-  return `${base}/${isDir ? 'tree' : 'blob'}/main/${clean}${anchor}`;
+  return `${base}/${isDir ? 'tree' : 'blob'}/${branch}/${clean}${anchor}`;
+}
+
+/**
+ * A relative link in a file in directory `dir` (a spec's own, like `IDEA-30-x.md` or `../tasks.md`) → its path from
+ * the repository's root, with any `#anchor` apart; null for a web link, a bare anchor, a site path, or one that
+ * climbs out of the repository.
+ * @param {string} dir
+ * @param {string} target
+ * @returns {{ path: string, anchor: string } | null}
+ */
+export function resolveIn(dir, target) {
+  const raw = String(target ?? '').trim();
+  if (!raw || /^[a-z][a-z0-9+.-]*:/iu.test(raw) || raw.startsWith('/') || raw.startsWith('#')) return null;
+  const hash = raw.indexOf('#');
+  const anchor = hash >= 0 ? raw.slice(hash) : '';
+  const parts = String(dir).split('/').filter(Boolean);
+  for (const part of (hash >= 0 ? raw.slice(0, hash) : raw).split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (!parts.length) return null;
+      parts.pop();
+    } else parts.push(part);
+  }
+  return parts.length ? { path: parts.join('/'), anchor } : null;
+}
+
+/** A link's target in text from `dir` → its href and repository path, or just an href, or nothing. */
+function linkTarget(target, base, dir, branch) {
+  if (dir) {
+    const at = resolveIn(dir, target);
+    if (at) {
+      const href = repoUrl(at.path + at.anchor, base, { branch, anyRoot: true });
+      return href ? { href, path: at.path } : {};
+    }
+    if (!webUrl(target)) return {};
+  }
+  const href = linkFor(target, base);
+  return href ? { href } : {};
+}
+
+const WID_IN_TEXT = /(?<![\w-])([A-Z]{2,8}-\d+)(?![\w-]|\.\d)/gu;
+
+/**
+ * Plain text → strings and `{ wid }` for each work ID in it that `known` says the board has, so a spec's text can
+ * open the task it names. A version like FSL-1.1, or something longer, stays text.
+ * @param {string} text
+ * @param {(wid: string) => boolean} known
+ * @returns {Array<string | { wid: string }>}
+ */
+export function splitWids(text, known) {
+  const source = String(text ?? '');
+  const out = [];
+  let last = 0;
+  for (const m of source.matchAll(WID_IN_TEXT)) {
+    if (!known(m[1])) continue;
+    if (m.index > last) out.push(source.slice(last, m.index));
+    out.push({ wid: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < source.length) out.push(source.slice(last));
+  return out;
 }
 
 /** An absolute http(s) URL, normalised, or null. */
@@ -113,9 +176,10 @@ const TOKEN = new RegExp(
  *   | {type: 'image', alt, href?} | {type: 'url', text, href?} | {type: 'bold', children: tokens}
  *   | {type: 'em', children: tokens}
  * `href` is set only for http(s) URLs and repository paths, and only when `links` is on; `base` is the repository
- * paths point into (repoUrl), when it isn't the board's own.
+ * paths point into (repoUrl), when it isn't the board's own, and `branch` its branch. With `dir`, the text is a
+ * file in that directory (a spec): a relative link resolves against it, and the link keeps its `path` too.
  */
-export function tokenize(text, { links = true, base = repoBase } = {}) {
+export function tokenize(text, { links = true, base = repoBase, dir = null, branch = 'main' } = {}) {
   const source = String(text ?? '');
   const out = [];
   let last = 0;
@@ -127,16 +191,19 @@ export function tokenize(text, { links = true, base = repoBase } = {}) {
     push({ type: 'text', text: source.slice(last, m.index) });
     last = m.index + m[0].length;
     if (m[2] !== undefined) {
-      const href = links && (m[2].includes('/') || ROOT_FILES.includes(m[2])) ? repoUrl(m[2], base) : null;
+      const href =
+        links && (m[2].includes('/') || ROOT_FILES.includes(m[2]))
+          ? repoUrl(m[2], base, { branch, anyRoot: Boolean(dir) && !m[2].startsWith('/') && !/\s/u.test(m[2]) })
+          : null;
       push(href ? { type: 'code', text: m[2], href } : { type: 'code', text: m[2] });
     } else if (m[3] !== undefined) {
       // An image is a link to it: the board shows no outside images (its CSP), and they could track who looks.
-      const href = links ? linkFor(m[4], base) : null;
+      const { href } = links ? linkTarget(m[4], base, dir, branch) : {};
       push(href ? { type: 'image', alt: m[3], href } : { type: 'image', alt: m[3] });
     } else if (m[5] !== undefined) {
-      const href = links ? linkFor(m[6], base) : null;
+      const { href, path } = links ? linkTarget(m[6], base, dir, branch) : {};
       const label = tokenize(m[5], { links: false });
-      push(href ? { type: 'link', label, href } : { type: 'link', label });
+      push(href ? { type: 'link', label, href, ...(path ? { path } : {}) } : { type: 'link', label });
     } else if (m[7] !== undefined) {
       const href = links ? webUrl(m[7]) : null;
       push(href ? { type: 'url', text: m[7], href } : { type: 'text', text: m[7] });
@@ -152,9 +219,9 @@ export function tokenize(text, { links = true, base = repoBase } = {}) {
       push(href ? { type: 'url', text: url, href } : { type: 'text', text: url });
       push({ type: 'text', text: trail });
     } else if (m[9] !== undefined) {
-      push({ type: 'bold', children: tokenize(m[9], { links, base }) });
+      push({ type: 'bold', children: tokenize(m[9], { links, base, dir, branch }) });
     } else {
-      push({ type: 'em', children: tokenize(m[10] ?? m[11], { links, base }) });
+      push({ type: 'em', children: tokenize(m[10] ?? m[11], { links, base, dir, branch }) });
     }
   }
   push({ type: 'text', text: source.slice(last) });

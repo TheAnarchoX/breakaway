@@ -116,6 +116,8 @@ function jsonField(value, what) {
 }
 
 const WORKER_NAME = /^[\w.-]{1,100}$/u;
+/** The fields a repository's pipeline has, as `repos modify --pipeline` and Turn on deploys (WEB-13) set it. */
+export const PIPELINE_KEYS = ['workers', 'workflows', 'deployPaths', 'package'];
 const DEPLOY_PATHS_PATH = /^(?!\/)(?!.*\.\.)[\w./-]{1,200}\.json$/u;
 
 /**
@@ -124,11 +126,11 @@ const DEPLOY_PATHS_PATH = /^(?!\/)(?!.*\.\.)[\w./-]{1,200}\.json$/u;
  * deploys), `package` (the npm package it releases, BRK-103), or both. `workflows` (deploy, promote, rollback, and
  * release, workflow file names) and `deployPaths` (a JSON file in the repository) are optional.
  */
-function checkPipeline(pipeline) {
+export function checkPipeline(pipeline) {
   if (!pipeline) return null;
   const known = { workers: ['staging', 'production'], workflows: ['deploy', 'promote', 'rollback', 'release'] };
   for (const key of Object.keys(pipeline)) {
-    if (!['workers', 'workflows', 'deployPaths', 'package'].includes(key))
+    if (!PIPELINE_KEYS.includes(key))
       throw new InputError(
         `pipeline has no "${key.slice(0, 40)}"; it has workers, package, workflows, and deployPaths`,
       );

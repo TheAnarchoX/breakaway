@@ -1,11 +1,41 @@
 // Renders the tokens from links.js and the blocks from markdown.js. Everything becomes elements; nothing is inserted as HTML.
 import { Square, SquareCheck } from 'lucide-preact';
-import { blocks, tokenize } from './links.js';
+import { blocks, splitWids, tokenize } from './links.js';
 import { markdown } from './markdown.js';
 
 const out = { target: '_blank', rel: 'noopener noreferrer' };
 
-function render(tokens) {
+/**
+ * What a document's links may open on the board instead of GitHub: `local(path)` is the board's address for a
+ * repository file (another spec), and `task(wid)` a task's, each null when the board doesn't have it.
+ * @typedef {{ local?: (path: string) => string | null, task?: (wid: string) => string | null }} Here
+ */
+
+/** Plain text, with each work ID the board has as a link to its task. */
+function withWids(value, key, here) {
+  if (!here.task) return value;
+  const parts = splitWids(value, (wid) => Boolean(here.task(wid)));
+  if (parts.length === 1 && typeof parts[0] === 'string') return value;
+  return (
+    <span key={key}>
+      {parts.map((part, j) =>
+        typeof part === 'string' ? (
+          part
+        ) : (
+          <a key={j} href={here.task(part.wid)} class="md-wid">
+            {part.wid}
+          </a>
+        ),
+      )}
+    </span>
+  );
+}
+
+/**
+ * @param {any[]} tokens
+ * @param {Here} [here]
+ */
+function render(tokens, here = {}) {
   return tokens.map((t, i) => {
     switch (t.type) {
       case 'code':
@@ -16,14 +46,22 @@ function render(tokens) {
         ) : (
           <code key={i}>{t.text}</code>
         );
-      case 'link':
+      case 'link': {
+        const local = t.path && here.local ? here.local(t.path) : null;
+        if (local)
+          return (
+            <a key={i} href={local}>
+              {render(t.label)}
+            </a>
+          );
         return t.href ? (
           <a key={i} href={t.href} {...out}>
             {render(t.label)}
           </a>
         ) : (
-          <span key={i}>{render(t.label)}</span>
+          <span key={i}>{render(t.label, here)}</span>
         );
+      }
       case 'url':
         return (
           <a key={i} href={t.href} {...out} class="url">
@@ -39,11 +77,11 @@ function render(tokens) {
           <span key={i}>{t.alt}</span>
         );
       case 'bold':
-        return <strong key={i}>{render(t.children)}</strong>;
+        return <strong key={i}>{render(t.children, here)}</strong>;
       case 'em':
-        return <em key={i}>{render(t.children)}</em>;
+        return <em key={i}>{render(t.children, here)}</em>;
       default:
-        return t.text;
+        return withWids(t.text, i, here);
     }
   });
 }
@@ -86,18 +124,22 @@ export function RichText({ text }) {
   );
 }
 
-const lines = (list) => list.map((line, j) => [j > 0 && <br key={`br${j}`} />, ...render(line)]);
+const lines = (list, here) => list.map((line, j) => [j > 0 && <br key={`br${j}`} />, ...render(line, here)]);
 const ALIGN = { left: 'md-left', center: 'md-center', right: 'md-right' };
 
-/** Blocks from markdown.js → elements. Headings sit two levels under the page's own, since they're inside a section. */
-function renderBlocks(list) {
+/**
+ * Blocks from markdown.js → elements. Headings sit two levels under the page's own, since they're inside a section.
+ * @param {any[]} list
+ * @param {Here} here
+ */
+function renderBlocks(list, here) {
   return list.map((b, i) => {
     switch (b.type) {
       case 'h': {
         const Tag = /** @type {'h3' | 'h4' | 'h5' | 'h6'} */ (`h${Math.min(b.level + 2, 6)}`);
         return (
           <Tag key={i} class={`md-h md-h${b.level}`}>
-            {render(b.tokens)}
+            {render(b.tokens, here)}
           </Tag>
         );
       }
@@ -110,7 +152,7 @@ function renderBlocks(list) {
           </pre>
         );
       case 'quote':
-        return <blockquote key={i}>{renderBlocks(b.blocks)}</blockquote>;
+        return <blockquote key={i}>{renderBlocks(b.blocks, here)}</blockquote>;
       case 'table':
         return (
           <div key={i} class="md-table">
@@ -119,7 +161,7 @@ function renderBlocks(list) {
                 <tr>
                   {b.head.map((cell, k) => (
                     <th key={k} class={ALIGN[b.align[k]]}>
-                      {render(cell)}
+                      {render(cell, here)}
                     </th>
                   ))}
                 </tr>
@@ -129,7 +171,7 @@ function renderBlocks(list) {
                   <tr key={r}>
                     {row.map((cell, k) => (
                       <td key={k} class={ALIGN[b.align[k]]}>
-                        {render(cell)}
+                        {render(cell, here)}
                       </td>
                     ))}
                   </tr>
@@ -157,8 +199,8 @@ function renderBlocks(list) {
                       <span class="visually-hidden">{item.task ? 'Done: ' : 'Not done: '}</span>
                     </>
                   )}
-                  {lead && lines(lead.lines)}
-                  {renderBlocks(rest)}
+                  {lead && lines(lead.lines, here)}
+                  {renderBlocks(rest, here)}
                 </li>
               );
             })}
@@ -166,16 +208,20 @@ function renderBlocks(list) {
         );
       }
       default:
-        return <p key={i}>{lines(b.lines)}</p>;
+        return <p key={i}>{lines(b.lines, here)}</p>;
     }
   });
 }
 
 /**
  * A document in Markdown, as GitHub renders a pull request's description: headings, lists and task lists, code,
- * quotes, tables, and inline Markdown. `base` is the repository its relative links point into.
+ * quotes, tables, and inline Markdown. `base` is the repository its relative links point into, and `branch` its
+ * branch. A spec (WEB-25) also passes `dir`, its own directory, which its relative links resolve against;
+ * `local(path)`, the board's address for a file it opens itself; and `task(wid)`, a task's address, so its work IDs
+ * open their tasks.
  * @param {Record<string, any>} props
  */
-export function Markdown({ text, base = undefined }) {
-  return <div class="md">{renderBlocks(markdown(text, base ? { base } : {}))}</div>;
+export function Markdown({ text: source, base = undefined, branch = undefined, dir = undefined, local, task }) {
+  const opts = { ...(base ? { base } : {}), ...(branch ? { branch } : {}), ...(dir ? { dir } : {}) };
+  return <div class="md">{renderBlocks(markdown(source, opts), { local, task })}</div>;
 }
