@@ -158,6 +158,36 @@ The board's data only changes forward, and only by adding, so an install can alw
 
 **Check:** **Version** reads **Working**, and says its release is the latest. If it says a release "isn't running yet", open Actions on the install repository: the Deploy run says why it stopped.
 
+## Updating a board that has no repository
+
+A board made with the Deploy to Cloudflare button has no install repository, so there's no Update workflow to open a pull request. It updates itself instead, when you press a button. Nothing updates on its own, on either channel.
+
+**Turn it on, once.** On Connections, the Version row says **Updates from the board are off**. Press **Turn on updates…** and paste two things:
+
+- A Cloudflare API token with **Workers Scripts: edit** on your account, and nothing else. Make it under My profile, API tokens.
+- Your account's ID, the 32 characters on the right of its Workers page.
+
+The board checks that the token reaches its own Worker, then keeps it as a secret on that Worker (`TASKS_UPDATE_TOKEN`). It never shows it again and sends it only to Cloudflare. A token that can edit this Worker can also change its code, so give it no more scope than that. A board with an install repository can't turn this on: its repository updates it.
+
+**Check for updates, then update.** Press **Check for updates**. The board reads the release feed at `leavethepack.dev/releases.json`, the one call it makes that you didn't connect, and it sends nothing about itself. If the latest release in your channel is newer and checks out, the row says so and shows **Update to `<version>`**. Pressing it:
+
+1. Checks the release's signature, then its checksums, then that your version is new enough to update to it directly.
+2. Uploads the release as a new Worker version, with the bindings the running Worker has, so a binding you added by hand stays.
+3. Deploys it.
+4. Checks that the new version answers `/api/ping` and reports the new release, within a minute.
+
+Only you can press it: the board's own token, and so an agent, is refused. Live conversations end when it deploys, like any deploy. If a step before the deploy fails, nothing has changed, and the row says which step and what to do. If the check fails, the board deploys the previous version again and says so.
+
+**Signatures.** Each release's `manifest.json` is signed with an Ed25519 key that only breakaway's release workflow holds. The manifest holds the bundle's checksum, so one signature covers the bundle. Your board checks it against the public key that its running version ships with, so whoever controls the feed can hide an update but can't push one. A release that fails the check isn't installed: the row says "This release didn't pass its signature check, so it wasn't installed. Nothing changed." A release from before signing can't be installed by the board; update by hand once.
+
+**A release that asks for your hands.** A release that changes the Durable Object classes, routes, crons, or bindings is a major release, and a version upload can't carry it. The row shows its **Manual steps** and no Update button. Do the steps with your own `wrangler`: `npx breakaway install config` writes the Worker's config, then run `wrangler deploy` yourself. Or make the board a repository: `npx breakaway install init`, then push it and follow the steps above. It then updates through the install repository's workflows, and turning off updates on the board is the last step.
+
+**Roll back.** After an update, the row shows **Roll back to `<version>`** for as long as Cloudflare keeps that version. It puts the version before the update in front of everyone. The board's data only changes forward, and only by adding, so the older version still reads it. If going back from the board fails, open the Worker's Deployments on Cloudflare and roll back to the previous version there.
+
+**Turn it off.** **Turn off updates** stops the board using the token. Delete the token on Cloudflare yourself: the board can't.
+
+**Check:** **Version** reads **Working**, and says its release is the latest. If it says "Can't read the update feed", the board keeps running as it is; press **Check for updates** again later.
+
 ## When something's wrong
 
 Run `npx breakaway connections`. It lists every row with its state and the fix, the same as the Connections view. [When something's wrong](tasks.md#when-somethings-wrong) covers the rest. [The task board's manual](tasks.md) has every command.
