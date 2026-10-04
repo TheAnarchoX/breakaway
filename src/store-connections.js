@@ -8,7 +8,7 @@
  * the board is redacted first (connections.js), and a secret is only ever "set" or "unset".
  */
 import { GitHubClient, GitHubError, appCredentials, appGet } from './github.js';
-import { AgentError, connectCommand, routineCredentials } from './store-agents.js';
+import { AgentError, connectCommand } from './store-agents.js';
 import { promptPathOf, repoSlugOf } from './repos.js';
 import { CLAUDE_LIMITS } from './plans.js';
 import { vapidKeys } from './push.js';
@@ -869,7 +869,8 @@ export const connectionsMethods = {
       .toArray();
     for (const repo of repos) {
       const isDefault = repo.slug === defaultSlug;
-      const credentials = await routineCredentials(this.env, isDefault ? null : repo.slug);
+      // The Secrets Store's routine, else the one kept on the board (BRK-133): both show the same way.
+      const credentials = await this.repoRoutine(repo.slug);
       // The last start through this repository's routine; runs from before repositories are the default's.
       const lastRun = this.sql
         .exec(
@@ -898,7 +899,8 @@ export const connectionsMethods = {
     // Live output: the default repository's row as it always was, then one for each other repository whose routine is connected.
     for (const repo of repos) {
       const isDefault = repo.slug === defaultSlug;
-      if (!isDefault && !(await routineCredentials(this.env, repo.slug))) continue;
+      const routine = isDefault ? null : await this.repoRoutine(repo.slug);
+      if (!isDefault && (!routine || 'broken' in routine)) continue;
       out.push(this.liveOutputConnection(repo, { isDefault, multi, defaultSlug, running }));
     }
     return out;
@@ -938,6 +940,14 @@ export const connectionsMethods = {
             link: doc(this.env, 'cloud-agents-from-the-board'),
           });
     }
+    // Kept on the board, but its key isn't the one it was sealed with any more: it starts nothing until it's connected again.
+    if ('broken' in credentials)
+      return entry('claude.routine', 'claude', name, 'attention', {
+        repo: repo.slug,
+        detail: 'connected from the board, but its stored URL and token can’t be read any more',
+        fix: `The board’s sync key changed since the routine was connected, so its stored token can’t be decrypted. Connect the routine again from the board with its URL and a new token from claude.ai/code/routines, or run ${connect}.`,
+        link: ROUTINES_URL,
+      });
     const goodUrl = /^https:\/\/api\.anthropic\.com\/.+\/fire$/u.test(credentials.url);
     let state = 'working';
     let fix = null;

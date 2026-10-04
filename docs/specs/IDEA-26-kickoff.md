@@ -84,7 +84,7 @@ A kickoff is finished when its plan merges; it leaves the Kickoff list, and the 
 
 ## Privacy
 
-The board stores the pitch, its images, the name, and the step in the `kickoffs` row, and the rest as ordinary tasks, attachments, and decisions. A routine connected from the form has its URL and token stored encrypted at rest with a key from the Secrets Store (preferably derived from a secret the install already has, so updating needs no owner step); one connected with `agents-connect` stays in the Secrets Store as before. Removing the repository drops its stored routine. The idea leaves the install only to the new repository (on GitHub, private by default) and to the agent sessions in that repository's routine. It never goes into breakaway's repository or any other.
+The board stores the pitch, its images, the name, and the step in the `kickoffs` row, and the rest as ordinary tasks, attachments, and decisions. A routine connected from the form has its URL and token stored encrypted at rest (AES-256-GCM, each record bound to its repository) with a key derived by HKDF from the sync key the install already has, so updating needs no owner step; `rotate-sync` re-encrypts them with the new one, and one that can't be decrypted (the sync key changed by hand) shows as Needs attention until it's connected again (`BRK-133`, [`src/routine-keep.js`](../../src/routine-keep.js)). One connected with `agents-connect` stays in the Secrets Store as before. Removing the repository drops its stored routine. The idea leaves the install only to the new repository (on GitHub, private by default) and to the agent sessions in that repository's routine. It never goes into breakaway's repository or any other.
 
 ## Out of scope
 
