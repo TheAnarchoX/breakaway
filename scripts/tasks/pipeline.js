@@ -576,7 +576,10 @@ export function lintWorkflow(text) {
       if (!(need in doc.jobs)) problems.push(`${where} needs ${need}, which isn't a job`);
     const { steps = [], ...rest } = job;
     checkExpressions(stringsIn({ if: rest.if }), where, [], true);
-    checkExpressions(stringsIn({ ...rest, if: undefined }), where, [], false);
+    checkExpressions(stringsIn({ ...rest, if: undefined, outputs: undefined }), where, [], false);
+    // A job's outputs read its steps once they've all run.
+    const stepIds = Array.isArray(steps) ? steps.map((s) => s?.id).filter(Boolean) : [];
+    checkExpressions(stringsIn({ outputs: rest.outputs }), `${where}'s outputs`, stepIds, false);
     if (stringsIn(job).some(({ text: value }) => /\bsecrets\./u.test(value)) && !job.environment)
       problems.push(`${where} reads a secret outside an environment`);
     if (!Array.isArray(steps) || !steps.length) {

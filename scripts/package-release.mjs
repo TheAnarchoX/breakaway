@@ -7,13 +7,15 @@
  *       exists=true when that commit already has a pre-release (a second run for one merge stages nothing)
  *   node scripts/package-release.mjs stable <pre-release tag> --prefix <tag prefix>
  *       the stable version and tag it becomes, and the commit it was staged from; stops if that stable exists
+ *   node scripts/package-release.mjs next <stable> <patch|minor|major> --dir <path>
+ *       the version to set <path>/package.json to after the stable, empty for none (WEB-39)
  * Reads the tags with git, so run it in a checkout with its tags (fetch-depth: 0). Copied by `repos init`.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { nextPrerelease, prereleaseAmong, stableOf } from './lib/package-release.js';
+import { nextPrerelease, nextVersion, prereleaseAmong, stableOf } from './lib/package-release.js';
 
 const { positionals, values: o } = parseArgs({
   allowPositionals: true,
@@ -41,9 +43,15 @@ try {
       throw new Error(`${o.prefix}${version} is already released. Pick a newer pre-release.`);
     const [commit] = git('rev-list', '-n', '1', `refs/tags/${tag}`);
     console.log(`version=${version}\ntag=${o.prefix}${version}\ncommit=${commit}`);
+  } else if (command === 'next' && tag) {
+    const current = JSON.parse(readFileSync(join(o.dir, 'package.json'), 'utf8')).version;
+    const version = nextVersion(tag, positionals[2] ?? 'patch', current);
+    if (!version && positionals[2] && positionals[2] !== 'patch')
+      console.error(`package.json already says ${current}, at or past the next ${positionals[2]} after ${tag}.`);
+    console.log(`version=${version ?? ''}`);
   } else {
     throw new Error(
-      'Usage: package-release.mjs prerelease --dir <path> --prefix <p> [--sha <commit>] | stable <tag> --prefix <p>',
+      'Usage: package-release.mjs prerelease --dir <path> --prefix <p> [--sha <commit>] | stable <tag> --prefix <p> | next <stable> <patch|minor|major> --dir <path>',
     );
   }
 } catch (error) {

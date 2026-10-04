@@ -106,18 +106,27 @@ export function pullAgentRequest(action, number, { repo = null, problem, note, f
 }
 
 /**
- * `npx breakaway github release <pre-release>` (BRK-103): the owner releases a package's pre-release as its stable, as
- * Release on the GitHub page does. The board starts the repository's release.yml stable job, and npm waits for the
- * owner's 2FA; it refuses an agent, so the request always says who asks.
+ * `npx breakaway github release <pre-release> [--next patch|minor|major]` (BRK-103, WEB-39): the owner releases a
+ * package's pre-release as its stable, as Release on the GitHub page does, with what the default branch works toward
+ * next. The board starts the repository's release.yml stable job, and npm waits for the owner's 2FA; it refuses an
+ * agent, so the request always says who asks, and refuses a pre-release whose stable is already out (409).
  * @param {string | undefined} version the pre-release, like 1.4.0-main.5 (or its tag)
- * @param {{ repo?: string | null, by?: string }} [options]
+ * @param {{ repo?: string | null, by?: string, next?: string | null }} [options]
  * @returns {{ error?: string, request?: [string, string, Record<string, string>] }}
  */
-export function packageReleaseRequest(version, { repo = null, by } = {}) {
+export function packageReleaseRequest(version, { repo = null, by, next = null } = {}) {
   const v = String(version ?? '').trim();
   if (!/^(?:\S+@|v)?\d+\.\d+\.\d+-main\.\d+$/u.test(v))
     return { error: 'say which pre-release: npx breakaway github release <version>, like 1.4.0-main.5' };
-  return { request: ['POST', 'github/release', { version: v, ...(repo ? { repo } : {}), ...(by ? { by } : {}) }] };
+  if (next !== null && next !== undefined && !['patch', 'minor', 'major'].includes(String(next)))
+    return { error: '--next is patch, minor, or major' };
+  return {
+    request: [
+      'POST',
+      'github/release',
+      { version: v, ...(next ? { next: String(next) } : {}), ...(repo ? { repo } : {}), ...(by ? { by } : {}) },
+    ],
+  };
 }
 
 export const REVIEW_VERDICTS = ['ready', 'follow-up', 'changes'];
