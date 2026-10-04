@@ -265,7 +265,7 @@ try {
       assert.equal(tasks.find((t) => t.description === 'Breakaway from the API').wid, 'BOPS-2');
       const plain = tasks.find((t) => t.description === 'Default repository task from Taskwarrior');
       assert.equal(plain.wid, 'OPS-3');
-      assert.equal(plain.repo, 'samewave');
+      assert.equal(plain.repo, 'widgets');
       assert.equal(a.byDescription('Default repository task from Taskwarrior').repo, undefined);
       assert.equal(a.byDescription('Breakaway from the API').repo, 'breakaway');
       assert.equal(a.byDescription('Breakaway from the API').wid, 'BOPS-2');

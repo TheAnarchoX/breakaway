@@ -4,7 +4,7 @@ import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
-const store = () => env.STORE.get(env.STORE.idFromName('samewave'));
+const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
 
 describe('messages to a running agent (IDEA-15)', () => {
   let cookie;

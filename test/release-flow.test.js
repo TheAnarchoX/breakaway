@@ -1,14 +1,14 @@
 import { SELF, env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_TOKEN, TEST_GITHUB_APP_ID } from './constants.js';
-import { api } from './helpers.js';
+import { api, setPipeline } from './helpers.js';
 import { ORIGIN } from './constants.js';
 
 // Promote and Roll back on the board (CLD-105), against a pretend GitHub. Its own file: the
 // Deployments it records must not mix with the other tests'.
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const encoder = new TextEncoder();
-const REPO = '/repos/acme/samewave';
+const REPO = '/repos/acme/widgets';
 const gh = { pulls: [], deployments: [], statuses: {}, compares: {}, compareFiles: {}, writes: [], writeError: null };
 
 function pr(number, { title, body: text = '', mergeSha = null } = {}) {
@@ -18,7 +18,7 @@ function pr(number, { title, body: text = '', mergeSha = null } = {}) {
     body: text,
     draft: false,
     state: 'closed',
-    html_url: `https://github.com/acme/samewave/pull/${number}`,
+    html_url: `https://github.com/acme/widgets/pull/${number}`,
     node_id: `PR_${number}`,
     head: { ref: `branch-${number}`, sha: `sha${number}` },
     user: { login: 'claude[bot]' },
@@ -131,7 +131,8 @@ describe('the release flow: Promote and Roll back', () => {
     gh.deployments = [...added.reverse(), ...gh.deployments];
   }
   const sync = async () => (await body(await api('github/sync', { method: 'POST' }))).flow;
-  beforeEach(() => {
+  beforeEach(async () => {
+    await setPipeline();
     round += 1;
     A = hex40('a');
     B = hex40('b');
@@ -171,9 +172,9 @@ describe('the release flow: Promote and Roll back', () => {
   /** Production ran C, then A; staging runs B, with a migration. */
   function stagingAhead({ destructive = false } = {}) {
     record([
-      ['samewave', C, 'success', `version ${V_C} · migrations none`],
-      ['samewave', A, 'success', `version ${V_A} · migrations none`],
-      ['samewave-staging', B, 'success', `pre-release · version ${V_B} · artifact ${DIGEST} · migrations 0013_x.sql`],
+      ['widgets', C, 'success', `version ${V_C} · migrations none`],
+      ['widgets', A, 'success', `version ${V_A} · migrations none`],
+      ['widgets-staging', B, 'success', `pre-release · version ${V_B} · artifact ${DIGEST} · migrations 0013_x.sql`],
     ]);
     gh.compares[`${A}...${B}`] = [{ sha: B, commit: { message: 'CLD-9: Something (#31)' } }];
     gh.compareFiles[`${A}...${B}`] = [
@@ -215,23 +216,23 @@ describe('the release flow: Promote and Roll back', () => {
 
   it('disables Promote with a reason while staging deploys, when production is up to date, and while a promote runs', async () => {
     record([
-      ['samewave-staging', A, 'success', `pre-release · version ${V_A} · artifact ${DIGEST}`],
-      ['samewave-staging', B, 'in_progress', 'Deploying'],
+      ['widgets-staging', A, 'success', `pre-release · version ${V_A} · artifact ${DIGEST}`],
+      ['widgets-staging', B, 'in_progress', 'Deploying'],
     ]);
     const deploying = await sync();
     expect(deploying.promote.reason).toMatch(/Staging is still deploying/u);
     expect(deploying.staging).toMatchObject({ state: 'deploying' });
 
     record([
-      ['samewave-staging', A, 'success', `pre-release · version ${V_A} · artifact ${DIGEST}`],
-      ['samewave', A, 'success', `version ${V_A} · migrations none`],
+      ['widgets-staging', A, 'success', `pre-release · version ${V_A} · artifact ${DIGEST}`],
+      ['widgets', A, 'success', `version ${V_A} · migrations none`],
     ]);
     const same = await sync();
     expect(same.promote.reason).toMatch(/already runs/u);
     expect(same.line).toBe('Production is up to date with staging.');
 
     stagingAhead();
-    record([['samewave', B, 'in_progress', 'promoting: migrating']]);
+    record([['widgets', B, 'in_progress', 'promoting: migrating']]);
     const running = await sync();
     expect(running.promote.reason).toMatch(/already running/u);
     expect(running.rollback.reason).toMatch(/running/u);
@@ -240,11 +241,11 @@ describe('the release flow: Promote and Roll back', () => {
 
   it('says failed and rolled back in words, and warns when the candidate was tried before', async () => {
     stagingAhead();
-    record([['samewave', B, 'failure', `health check failed; rolled back to ${V_A} (tried ${V_B})`]]);
+    record([['widgets', B, 'failure', `health check failed; rolled back to ${V_A} (tried ${V_B})`]]);
     const flow = await sync();
     expect(flow.production.state).toBe('rolledback');
     expect(flow.promote).toMatchObject({ allowed: true, tried: { rolledBack: true } });
-    record([['samewave', B, 'failure', 'failed before or during promote · migrations none']]);
+    record([['widgets', B, 'failure', 'failed before or during promote · migrations none']]);
     expect((await sync()).production.state).toBe('failed');
   });
 
@@ -303,7 +304,7 @@ describe('the release flow: Promote and Roll back', () => {
     expect(gh.writes[0]).toEqual([
       'POST',
       `${REPO}/actions/workflows/rollback.yml/dispatches`,
-      { ref: 'main', inputs: { worker: 'samewave', reason: 'sign-in is broken' } },
+      { ref: 'main', inputs: { worker: 'widgets', reason: 'sign-in is broken' } },
     ]);
     expect((await post('github/rollback', { reason: 'again', version: V_C })).status).toBe(200);
     expect(gh.writes[1][2].inputs.version).toBe(V_C);

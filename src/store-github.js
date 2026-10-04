@@ -30,12 +30,12 @@ import {
   widsIn,
 } from './github.js';
 import { install } from './install.js';
-import { DEFAULT_REPO, promptPathOf, repoSlugOf } from './repos.js';
+import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
 import { BACKFILL_SHIPPED } from './backfill-shipped.js';
-import { allWorkers, compileDeployPaths, defaultDeployPaths, workersFor } from './deploy-paths.js';
+import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
 import { pullAccess } from './github-access.js';
-import { PRODUCTION, STAGING, buildFlow, compareFacts, pipelineOf } from './release.js';
+import { buildFlow, compareFacts, pipelineOf } from './release.js';
 import { candidate, productionSha } from './promote.js';
 
 const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 100 };
@@ -50,7 +50,7 @@ const PROMPT_CACHE_MS = 60_000;
 /** How long another repository's deploy paths (read from its default branch) are kept before reading them again. */
 const DEPLOY_PATHS_MS = 3_600_000;
 /** What a task's note says when a Deployment carries it: per environment (CLD-106), with its repository's Workers. */
-export function shipNote(deploy, workers = { staging: STAGING, production: PRODUCTION }) {
+export function shipNote(deploy, workers = { staging: null, production: null }) {
   const version = deploy.version ?? deploy.sha.slice(0, 7);
   const where =
     deploy.env === workers.staging
@@ -81,16 +81,17 @@ export const githubMethods = {
       CREATE TABLE IF NOT EXISTS gh_dependabot (repo TEXT NOT NULL, number INTEGER NOT NULL, state TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (repo, number));
     `);
     // Pull requests and alerts are numbered per repository, so they moved to tables keyed by both. The
-    // old ones are copied once, as the default repository's, and left as they were (additive).
+    // old ones are copied once, as the default repository's (the one TASKS_GITHUB_REPO names), and left as they were (additive).
+    const first = this.env.TASKS_GITHUB_REPO ? slugOfGithub(this.env.TASKS_GITHUB_REPO) : NO_REPO;
     if (!this.meta('gh_repo_tables')) {
       this.ctx.storage.transactionSync(() => {
         this.sql.exec(
           'INSERT OR IGNORE INTO gh_pulls (repo, number, updated, state, applied, data) SELECT ?, number, updated, state, applied, data FROM gh_prs',
-          DEFAULT_REPO,
+          first,
         );
         this.sql.exec(
           'INSERT OR IGNORE INTO gh_dependabot (repo, number, state, data) SELECT ?, number, state, data FROM gh_alerts',
-          DEFAULT_REPO,
+          first,
         );
         this.setMeta('gh_repo_tables', 1);
       });
@@ -103,7 +104,7 @@ export const githubMethods = {
           .toArray()
           .some((c) => c.name === 'repo')
       ) {
-        this.sql.exec(`ALTER TABLE ${table} ADD COLUMN repo TEXT NOT NULL DEFAULT '${DEFAULT_REPO}'`);
+        this.sql.exec(`ALTER TABLE ${table} ADD COLUMN repo TEXT NOT NULL DEFAULT '${first}'`);
       }
     }
     this.ghCache = {}; // slug → { installationId, token, expires }
@@ -368,7 +369,7 @@ export const githubMethods = {
    * Which Workers each merged pull request changed (`[]`: docs, skills, or CI only, so no deploy
    * will ever carry it). Read once, from the pull request's files; left unknown if GitHub won't say.
    */
-  async fetchWorkers(client, pulls, patterns = defaultDeployPaths()) {
+  async fetchWorkers(client, pulls, patterns) {
     const workers = new Map();
     await Promise.all(
       pulls.map(async (p) => {
@@ -438,13 +439,12 @@ export const githubMethods = {
   },
 
   /**
-   * The deploy-path patterns of a repository: the legacy install's built in for the default, `[]` for one without a
-   * pipeline (nothing it merges deploys), and for another with a pipeline its `pipeline.deployPaths` file
+   * The deploy-path patterns of a repository: `[]` for one without a pipeline (nothing it merges deploys), and for
+   * one with a pipeline its `pipeline.deployPaths` file
    * read from its default branch, kept for an hour. null when they can't be known (no file, or one that
    * isn't `{ worker: "regex" }`): then merged pull requests say nothing about deploys.
    */
   async deployPatterns(client, repo) {
-    if (repo.slug === this.defaultRepoSlug()) return defaultDeployPaths();
     const pipeline = pipelineOf(repo);
     if (!pipeline) return [];
     if (!pipeline.deployPaths) return null;
@@ -467,9 +467,8 @@ export const githubMethods = {
     return compileDeployPaths(json);
   },
 
-  /** The patterns `deployPatterns` last read, without asking GitHub (the default's are built in). */
+  /** The patterns `deployPatterns` last read, without asking GitHub. */
   knownDeployPatterns(repo) {
-    if (repo.slug === this.defaultRepoSlug()) return defaultDeployPaths();
     const pipeline = pipelineOf(repo);
     if (!pipeline) return [];
     const kept = JSON.parse(this.ghMeta('gh_deploy_paths', repo.slug) ?? 'null');
@@ -990,13 +989,12 @@ export const githubMethods = {
   shippedLinks() {
     const tags = this.repos().flatMap((r) => JSON.parse(this.ghMeta('gh_tags', r.slug) ?? '[]'));
     const tagOf = (sha) => tags.find((t) => t.sha === sha)?.name ?? null;
-    // Each repository's staging Worker (the legacy install's when the registry names none).
-    const stagings = new Set([
-      STAGING,
-      ...this.repos()
+    // Each repository's staging Worker.
+    const stagings = new Set(
+      this.repos()
         .map((r) => pipelineOf(r)?.staging)
         .filter(Boolean),
-    ]);
+    );
     const links = new Map();
     for (const r of this.sql
       .exec('SELECT wid, env, version, sha, at, merge_sha, run FROM gh_ships ORDER BY at')

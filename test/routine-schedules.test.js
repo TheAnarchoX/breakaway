@@ -7,7 +7,7 @@ const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
 const fires = [];
 const at = (iso) => Date.parse(iso);
 const tickAt = (iso) =>
-  runInDurableObject(env.STORE.get(env.STORE.idFromName('samewave')), (store) => store.scheduleTick(at(iso)));
+  runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (store) => store.scheduleTick(at(iso)));
 const listed = async (slug) => (await body(await api('routines'))).routines.find((r) => r.slug === slug);
 
 describe('routine schedules', () => {

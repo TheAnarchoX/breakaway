@@ -8,9 +8,6 @@
 import { candidate, checkCandidate, productionSha } from './promote.js';
 import { shippedPrs } from './github.js';
 
-export const STAGING = 'samewave-staging';
-export const PRODUCTION = 'samewave';
-
 const NAME = /^[\w.-]{1,100}$/u;
 const name = (value) => (typeof value === 'string' && NAME.test(value) ? value : null);
 
@@ -144,14 +141,7 @@ export function lineFor(candidateSha, productionLive, ahead) {
  * with their `tasks`. `workers`: the repository's staging and production Workers (pipelineOf). `paused`
  * isn't known here: the workflow says so in its first step.
  */
-export function buildFlow({
-  deploys,
-  compare = null,
-  prs = [],
-  runs = [],
-  repoUrl = null,
-  workers = { staging: STAGING, production: PRODUCTION },
-}) {
+export function buildFlow({ deploys, compare = null, prs = [], runs = [], repoUrl = null, workers }) {
   const newestFirst = [...deploys].sort((a, b) => b.id - a.id);
   const staging = cardFor(newestFirst, workers.staging, { runs, compareUrl: repoUrl });
   const production = cardFor(newestFirst, workers.production, { runs, compareUrl: repoUrl });

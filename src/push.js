@@ -14,7 +14,7 @@ import {
   toB64u,
   validVapidKeys,
 } from './web-push.js';
-import { LEGACY, install } from './install.js';
+import { DEFAULTS, install } from './install.js';
 import { secret } from './secrets.js';
 
 const enc = new TextEncoder();
@@ -44,7 +44,7 @@ export async function vapidKeys(env, home = install(env).url) {
 
 /** The `Authorization` header that proves the push comes from the board (RFC 8292). */
 export function vapidAuthorization(endpoint, keys, now = Date.now()) {
-  return sharedVapidAuthorization(endpoint, keys, { subject: keys.subject ?? LEGACY.url, now });
+  return sharedVapidAuthorization(endpoint, keys, { subject: keys.subject, now });
 }
 
 /** Sends one message to one subscription. Returns the push service's status (0 when it couldn't be reached). */
@@ -70,7 +70,7 @@ export async function sendPush(subscription, message, keys) {
 }
 
 /** What a ping's notification says: the install's name, the task and kind, then the message's first line, cut short. */
-export function pingMessage(ping, title = /** @type {string} */ (LEGACY.name)) {
+export function pingMessage(ping, title = /** @type {string} */ (DEFAULTS.name)) {
   const first = String(ping.message).split('\n')[0].trim();
   const line = first.length > 80 ? `${first.slice(0, 79).trimEnd()}…` : first;
   return {

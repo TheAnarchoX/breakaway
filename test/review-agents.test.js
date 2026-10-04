@@ -3,7 +3,7 @@ import { api } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
-const REPO = '/repos/acme/samewave';
+const REPO = '/repos/acme/widgets';
 const fires = [];
 
 function pull(number, login) {
@@ -13,7 +13,7 @@ function pull(number, login) {
     body: '',
     draft: false,
     state: 'open',
-    html_url: `https://github.com/acme/samewave/pull/${number}`,
+    html_url: `https://github.com/acme/widgets/pull/${number}`,
     node_id: `PR_${number}`,
     head: { ref: `dependabot/npm_and_yarn/vite-7.1.0`, sha: `sha${number}` },
     user: { login },

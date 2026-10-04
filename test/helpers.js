@@ -64,3 +64,23 @@ export function api(path, { method = 'GET', body, token = TEST_API_TOKEN, header
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
+
+/** Gives the install's default repository (widgets) a deploy pipeline, as its owner would with `repos modify`: the seeded row has none. */
+export async function setPipeline(slug = 'widgets') {
+  const res = await api(`repos/${slug}`, {
+    method: 'PATCH',
+    body: {
+      pipeline: {
+        workers: { staging: 'widgets-staging', production: 'widgets' },
+        workflows: { deploy: 'deploy.yml', promote: 'promote.yml', rollback: 'rollback.yml' },
+        deployPaths: '.github/deploy-paths.json',
+      },
+    },
+  });
+  if (res.status !== 200) throw new Error(`couldn't set the pipeline: ${res.status} ${await res.text()}`);
+}
+
+/** The deploy paths file a pipeline's repository keeps on its default branch, as the Deploy workflow reads it. */
+export const DEPLOY_PATHS = {
+  widgets: String.raw`^(src/|public/|migrations/|index\.html$|vite\.config\.js$|wrangler\.jsonc$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/deploy\.yml$|\.github/deploy-paths\.json$)`,
+};

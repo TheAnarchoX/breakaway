@@ -305,12 +305,12 @@ describe('dashboard numbers', () => {
     const [{ wid }] = (await body(await api('tasks'))).tasks.filter((t) => t.description === 'Count the finished work');
     await api(`tasks/${wid}/done`, { method: 'POST', body: {} });
 
-    const stub = env.STORE.get(env.STORE.idFromName('samewave'));
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
     const merged = new Date(Date.now() - 2 * H).toISOString();
     await runInDurableObject(stub, (instance) => {
       instance.sql.exec(
         'INSERT OR REPLACE INTO gh_pulls (repo, number, updated, state, applied, data) VALUES (?, ?, ?, ?, ?, ?)',
-        'samewave',
+        'widgets',
         9001,
         merged,
         'merged',
@@ -358,7 +358,7 @@ describe('dashboard numbers', () => {
 
     // GitHub's table drops the rows; the dashboard still has them.
     await runInDurableObject(stub, (instance) => {
-      instance.sql.exec("DELETE FROM gh_pulls WHERE repo = 'samewave' AND number = 9001");
+      instance.sql.exec("DELETE FROM gh_pulls WHERE repo = 'widgets' AND number = 9001");
       instance.sql.exec('DELETE FROM gh_runs WHERE id = 9001');
     });
     const later = await body(await api('stats?days=7'));
@@ -384,7 +384,7 @@ describe('dashboard numbers', () => {
     await create('Home one', { project: 'cloud' });
     await api('tasks/SCR-1/done', { method: 'POST', body: {} });
 
-    const stub = env.STORE.get(env.STORE.idFromName('samewave'));
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
     const merged = new Date(Date.now() - 2 * H).toISOString();
     await runInDurableObject(stub, (instance) => {
       const pull = (repo, number, state) =>
@@ -406,8 +406,8 @@ describe('dashboard numbers', () => {
         );
       pull('scratch', 5, 'merged');
       pull('scratch', 6, 'open');
-      pull('samewave', 5, 'merged');
-      pull('samewave', 7, 'merged');
+      pull('widgets', 5, 'merged');
+      pull('widgets', 7, 'merged');
       instance.sql.exec(
         'INSERT OR REPLACE INTO gh_runs (id, created, data, repo) VALUES (?, ?, ?, ?)',
         9101,
@@ -431,7 +431,7 @@ describe('dashboard numbers', () => {
 
     const all = await body(await api('stats?days=7'));
     const scratch = await body(await api('stats?days=7&repo=scratch'));
-    const home = await body(await api('stats?days=7&repo=samewave'));
+    const home = await body(await api('stats?days=7&repo=widgets'));
     expect(scratch.status).toBe(200);
     expect(scratch.totals.merged.now).toBe(1);
     expect(home.totals.merged.now).toBeGreaterThanOrEqual(2);

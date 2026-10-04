@@ -9,24 +9,24 @@ const all = {
   all: true,
   repo: null,
   slug: null,
-  open: [pr('samewave', 1, 'ready'), pr('scratch', 1, 'ready'), pr('scratch', 2)],
+  open: [pr('widgets', 1, 'ready'), pr('scratch', 1, 'ready'), pr('scratch', 2)],
   closed: Array.from({ length: 30 }, (_, i) => ({
-    repo: i % 2 ? 'scratch' : 'samewave',
+    repo: i % 2 ? 'scratch' : 'widgets',
     number: 100 + i,
     state: 'merged',
   })),
   runs: [{ repo: 'scratch', id: 1 }],
-  deploys: [{ repo: 'samewave', id: 9 }],
+  deploys: [{ repo: 'widgets', id: 9 }],
   commits: [],
   alerts: [{ repo: 'scratch', number: 3 }],
   repos: [
     {
-      slug: 'samewave',
-      name: 'samewave',
-      repo: 'acme/samewave',
+      slug: 'widgets',
+      name: 'widgets',
+      repo: 'acme/widgets',
       isDefault: true,
       branch: 'main',
-      pipeline: { staging: 'samewave-staging', production: 'samewave' },
+      pipeline: { staging: 'widgets-staging', production: 'widgets' },
       flow,
       access: { write: { ok: true } },
     },
@@ -45,7 +45,7 @@ const all = {
 
 describe('the GitHub view per repository', () => {
   it('passes one repository’s answer through, with its flow', () => {
-    const one = { connected: true, repo: 'acme/samewave', flow, open: [] };
+    const one = { connected: true, repo: 'acme/widgets', flow, open: [] };
     expect(scopeGitHub(one, null)).toEqual({ ...one, flows: [one], empties: [] });
     expect(scopeGitHub({ ...one, flow: null }, null).flows).toEqual([]);
     // No commits yet (CLD-191): the view says to run repos init.
@@ -57,7 +57,7 @@ describe('the GitHub view per repository', () => {
     const every = scopeGitHub(all, null);
     expect(every).toMatchObject({ all: true, readyToMerge: 2, branch: null, pipeline: {} });
     expect(every.closed).toHaveLength(20);
-    expect(every.flows.map((r) => r.slug)).toEqual(['samewave']);
+    expect(every.flows.map((r) => r.slug)).toEqual(['widgets']);
     expect(every.empties).toEqual([]);
     expect(
       scopeGitHub(
@@ -83,7 +83,7 @@ describe('the GitHub view per repository', () => {
   });
 
   it('finds a repository’s own facts', () => {
-    expect(repoFacts(all, null).slug).toBe('samewave');
+    expect(repoFacts(all, null).slug).toBe('widgets');
     expect(repoFacts(all, 'scratch').access.write.ok).toBe(false);
     expect(repoFacts(all, 'nowhere')).toBeNull();
     const one = { repo: 'x' };

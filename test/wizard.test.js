@@ -79,7 +79,7 @@ describe('the sidekick prompt', () => {
     expect(SIDEKICK).toMatch(/token/);
     expect(SIDEKICK).toMatch(/already with commits/);
     expect(SIDEKICK).toMatch(/`app` field/);
-    expect(SIDEKICK).not.toMatch(/samewave tasks/);
+    expect(SIDEKICK).not.toMatch(/widgets tasks/);
   });
 });
 
@@ -110,9 +110,9 @@ function mockGitHub() {
     if (path === '/app')
       return reply({
         id: 424242,
-        slug: 'samewave-tasks',
-        name: 'samewave tasks',
-        html_url: 'https://github.com/apps/samewave-tasks',
+        slug: 'widgets-tasks',
+        name: 'widgets tasks',
+        html_url: 'https://github.com/apps/widgets-tasks',
       });
     if (path === `${SCRATCH}/installation`)
       return gh.installed
@@ -202,7 +202,7 @@ describe('the wizard, on the board', () => {
       expect(s.repoBySlug('breakaway')).toBeNull();
       expect(
         (await s.reposAddApi({ slug: 'x', github: 'acme/x', areas: ['product:PRD'], dryRun: true })).body.error,
-      ).toMatch(/PRD already belongs to samewave/);
+      ).toMatch(/PRD already belongs to widgets/);
 
       expect(
         (await s.reposAddApi({ slug: 'breakaway', github: 'acme/breakaway', areas: ['product:BRK'], by: 'owner' }))

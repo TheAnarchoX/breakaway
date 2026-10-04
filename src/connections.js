@@ -5,7 +5,7 @@
  * store-connections.js. Nothing here ever holds a secret value: a secret is "set" or "unset" by name.
  */
 import { redact } from './redact.js';
-import { LEGACY, secretName } from './install.js';
+import { DEFAULTS, secretName } from './install.js';
 
 /** Working, Needs attention, Not connected. */
 export const STATES = ['working', 'attention', 'off'];
@@ -71,7 +71,7 @@ export const appSettingsUrl = (slug) =>
   slug ? `https://github.com/settings/apps/${slug}/permissions` : 'https://github.com/settings/apps';
 
 /** The fix for missing permissions: the `CLD-56` and `CLD-104` steps, naming exactly what to change. */
-export function permissionsFix(missing, appName = LEGACY.name) {
+export function permissionsFix(missing, appName = DEFAULTS.name) {
   const list = missing.map((p) => `${p.label} to ${p.need === 'write' ? 'read and write' : 'read-only'}`).join(', ');
   return `On GitHub, Settings → Developer settings → GitHub Apps → ${appName} → Permissions & events: set ${list}, save, then accept the new permissions on the installation (its page shows the request).`;
 }
@@ -80,7 +80,7 @@ export function permissionsFix(missing, appName = LEGACY.name) {
  * GitHub's webhook delivery log (`GET /app/hook/deliveries`) → what the last delivery says, and the fix.
  * `webhookSecret` is the install's name for the secret in the Secrets Store.
  */
-export function summarizeDeliveries(deliveries, origin, webhookSecret = secretName(LEGACY, 'GITHUB_WEBHOOK_SECRET')) {
+export function summarizeDeliveries(deliveries, origin, webhookSecret = secretName(DEFAULTS, 'GITHUB_WEBHOOK_SECRET')) {
   const list = (Array.isArray(deliveries) ? deliveries : []).filter((d) => d.event !== 'ping');
   const failed = list.filter((d) => !(d.status_code >= 200 && d.status_code < 300));
   const last = list[0] ?? null;

@@ -9,7 +9,7 @@ import { appCredentials, appGet, GitHubClient } from './github.js';
 import { AgentError, routineCredentials } from './store-agents.js';
 import { InputError } from './model.js';
 import {
-  DEFAULT_REPO,
+  NO_REPO,
   JSON_FIELDS,
   areasOf,
   checkRepo,
@@ -47,10 +47,7 @@ export const reposMethods = {
       'CREATE UNIQUE INDEX IF NOT EXISTS repos_github_active ON repos (lower(github)) WHERE removed IS NULL',
     );
     if (!this.sql.exec('SELECT COUNT(*) AS n FROM repos').one().n) {
-      const holdsTasks = this.sql
-        .exec('SELECT EXISTS (SELECT 1 FROM tasks) OR EXISTS (SELECT 1 FROM versions) AS n')
-        .one().n;
-      if (seedsDefault(this.env, holdsTasks)) this.insertRepo(defaultRepo(this.env), true);
+      if (seedsDefault(this.env)) this.insertRepo(defaultRepo(this.env), true);
       // A fresh install: Connections walks its owner through setting it up, from registering a repository on.
       else this.setMeta('first_run', new Date().toISOString());
     }
@@ -110,7 +107,7 @@ export const reposMethods = {
   },
 
   defaultRepoSlug() {
-    return this.repos().find((r) => r.isDefault)?.slug ?? DEFAULT_REPO;
+    return this.repos().find((r) => r.isDefault)?.slug ?? NO_REPO;
   },
 
   /** Whether this install started empty (CLD-131), so Connections shows its setup steps. */
