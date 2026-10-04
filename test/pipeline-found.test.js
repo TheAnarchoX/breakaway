@@ -85,6 +85,21 @@ describe('what the default branch says', () => {
     expect(found.package).toBe('widgets-cli');
     expect(found.missing).toEqual(['.github/workflows/release.yml']);
     expect(found.pipeline).toBeNull();
+    const both = pipelineFound({ config, github: ['deploy-paths.json'], workflows: [...RENDERED, 'release.yml'] });
+    expect(both.pipeline).toEqual({
+      ...PIPELINE,
+      workflows: { ...PIPELINE.workflows, release: 'release.yml' },
+      package: 'widgets-cli',
+    });
+  });
+
+  it('turns on a package’s release flow alone', () => {
+    const found = pipelineFound({
+      config: JSON.stringify({ checks: ['CI'], package: { name: '@acme/widgets' } }),
+      workflows: ['ci.yml', 'release.yml'],
+    });
+    expect(found).toMatchObject({ workers: null, package: '@acme/widgets', missing: [], problem: null });
+    expect(found.pipeline).toEqual({ workflows: { release: 'release.yml' }, package: '@acme/widgets' });
   });
 
   it('compares pipelines whatever their keys’ order', () => {

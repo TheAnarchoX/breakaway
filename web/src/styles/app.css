@@ -4055,6 +4055,10 @@ fieldset.field {
   align-items: baseline;
   gap: 4px 8px;
 }
+.repo-share-settings {
+  margin-left: auto;
+  font-size: 13px;
+}
 .repo-share-caps {
   display: flex;
   flex-wrap: wrap;
@@ -6835,4 +6839,231 @@ fieldset.field {
 .ff-pick-in {
   font: 500 12px / 1.3 var(--font-mono);
   color: var(--muted);
+}
+
+/* A repository's settings (WEB-30): Connections' frame, one card per section, each saved on its own. */
+.repo-settings {
+  display: grid;
+  gap: 20px;
+  max-width: 880px;
+}
+.repo-settings .view-intro {
+  margin: 0;
+}
+.repo-settings .view-intro h1 {
+  overflow-wrap: anywhere;
+}
+.rs-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  min-width: 0;
+}
+.rs-section h2 {
+  font-size: 18px;
+}
+.rs-section h3 {
+  font-size: 15px;
+}
+.rs-section p {
+  margin: 0;
+}
+.rs-form,
+.rs-add {
+  display: grid;
+  gap: 14px;
+}
+.rs-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.rs-fields-3 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.rs-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: var(--radius-s);
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+}
+.rs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.rs-now strong {
+  color: var(--text);
+}
+.rs-conflict,
+.rs-removed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-s);
+  background: var(--warn-bg);
+}
+.rs-conflict svg {
+  color: var(--warn);
+  flex: none;
+}
+.rs-removed {
+  display: grid;
+  justify-items: start;
+}
+.rs-removed p,
+.rs-load-error p {
+  margin: 0;
+}
+.rs-load-error {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+.rs-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius);
+}
+.rs-areas td {
+  vertical-align: middle;
+}
+.rs-areas td:first-child {
+  min-width: 220px;
+}
+.rs-areas .field-error {
+  display: block;
+  margin-top: 6px;
+}
+.rs-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.table th.rs-num {
+  text-align: right;
+}
+.rs-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rs-rename .input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.rs-area-remove {
+  white-space: nowrap;
+}
+.rs-area-remove .meta {
+  display: block;
+  max-width: 24ch;
+  white-space: normal;
+}
+.rs-repos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.rs-repos li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.rs-others {
+  display: grid;
+  gap: 8px;
+}
+.rs-others h2 {
+  margin: 0;
+}
+/* On a phone the areas table is a list: each area a card, each cell labelled. */
+@media (max-width: 759px) {
+  .rs-areas,
+  .rs-areas tbody,
+  .rs-areas tr,
+  .rs-areas td {
+    display: block;
+  }
+  .rs-areas {
+    border: 0;
+    background: none;
+  }
+  .rs-areas thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .rs-areas tbody {
+    display: grid;
+    gap: 8px;
+  }
+  .rs-areas tr {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .rs-areas td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 12px;
+    padding: 4px 0;
+    border: 0;
+    min-width: 0;
+  }
+  .rs-areas td:first-child {
+    display: grid;
+    min-width: 0;
+  }
+  .rs-areas td[data-label]::before {
+    content: attr(data-label);
+    font-size: 12.5px;
+    font-weight: 650;
+    color: var(--muted);
+  }
+  .rs-area-remove {
+    white-space: normal;
+  }
+  .rs-area-remove .meta {
+    max-width: none;
+  }
+}
+.conn-repos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.conn-repos li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+@media (max-width: 759px) {
+  .rs-rename {
+    width: 100%;
+  }
 }

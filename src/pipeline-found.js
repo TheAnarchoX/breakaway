@@ -6,7 +6,7 @@
  * what's missing when it can't. Pure, so it's tested without GitHub: store-github.js reads the files.
  */
 import { InputError } from './model.js';
-import { PIPELINE_KEYS, checkPipeline } from './repos.js';
+import { checkPipeline } from './repos.js';
 
 /** Where the config and the rendered files live, as `pipeline init` writes them (scripts/tasks/pipeline.js). */
 export const CONFIG_PATH = '.github/breakaway-pipeline.json';
@@ -81,21 +81,12 @@ export function pipelineFound({ config, github = [], workflows = [] }) {
     return found;
   }
 
-  // The board takes a package once the pipeline field knows one (BRK-103); until then, only the Workers.
-  const takesPackage = PIPELINE_KEYS.includes('package');
-  if (found.package && !takesPackage && !found.workers) {
-    found.problem = 'This board can’t turn on a package’s release flow yet. Update breakaway, then try again.';
-    return found;
-  }
-  const withPackage = Boolean(found.package && takesPackage);
   /** @type {Record<string, any>} */
   const pipeline = {};
   if (found.workers) pipeline.workers = found.workers;
-  pipeline.workflows = Object.fromEntries(
-    [...(found.workers ? WORKER_FLOWS : []), ...(withPackage ? PACKAGE_FLOWS : [])].map((f) => [f, `${f}.yml`]),
-  );
+  pipeline.workflows = Object.fromEntries(flows.map((f) => [f, `${f}.yml`]));
   if (deployPaths) pipeline.deployPaths = DEPLOY_PATHS;
-  if (withPackage) pipeline.package = found.package;
+  if (found.package) pipeline.package = found.package;
   try {
     found.pipeline = checkPipeline(pipeline);
   } catch (error) {

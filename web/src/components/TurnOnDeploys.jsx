@@ -30,7 +30,7 @@ export function TurnOnDeploys({ view, label = null }) {
     setError(null);
     try {
       await api(`repos/${encodeURIComponent(view.slug)}/pipeline`, { method: 'POST', body: { pipeline } });
-      toast(`Deploys on for ${view.name}.`, 'success');
+      toast(`Turned on for ${view.name}.`, 'success');
       await Promise.all([loadGitHub({ sync: true }), loadRepos()]);
     } catch (failure) {
       setError(failure.message);

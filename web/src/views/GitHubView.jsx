@@ -32,6 +32,8 @@ import {
   pullSettingsList,
   repoName,
   repoScope,
+  repoSettingsHref,
+  repos,
   toast,
 } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
@@ -707,6 +709,8 @@ export function GitHubView() {
   const setupRepo = d?.repo ?? d?.repos?.find((r) => r.isDefault)?.repo;
   const tabs = d?.connected ? githubTabs(d) : [];
   const tab = pickTab(tabs, tabChoice.value);
+  // The repository this page shows, for its settings link (WEB-30): the switcher's, or the only one.
+  const shownSlug = repoScope.value ?? (repos.value.list.length === 1 ? repos.value.list[0].slug : null);
 
   return (
     <div class="github-view">
@@ -719,6 +723,11 @@ export function GitHubView() {
             {d?.connected && ' · updates by webhook, and every 5 minutes'}
           </p>
           {settings && <p class="meta">On in this browser: {settings} (in Settings)</p>}
+          {shownSlug && (
+            <p class="meta">
+              <a href={repoSettingsHref(shownSlug)}>Settings for {repoName(shownSlug)}</a>
+            </p>
+          )}
         </div>
         {d?.connected && (
           <button type="button" class="btn btn-outline btn-sm" onClick={sync} disabled={state.loading}>

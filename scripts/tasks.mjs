@@ -55,6 +55,7 @@ import {
   generalAgentSummary,
   githubRequest,
   ideaTask,
+  packageReleaseRequest,
   pullAgentRequest,
   pullAgentSummary,
   reviewRequest,
@@ -165,6 +166,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
   github review <n>      start an agent that reviews a pull request that can merge as it stands, on the task it closes, as
                          Review with an agent does; on a Dependabot one it tests the update, as Safe to merge? does
                          (owner)  [--note <text>] [--repo <slug>] [--force]
+  github release <pre-release>   release a package's pre-release (1.4.0-main.5) as its stable on latest, as Release on the
+                         GitHub page does: the board starts release.yml's stable job, and npm waits for your 2FA (owner)  [--repo <slug>]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
@@ -237,7 +240,8 @@ Working
                          --agents-max <n|none> and --agents-hourly <n|none> cap its agents under the board's shared limits,
                          --prompt <path|none> says where its agent prompt is in its checkout (default tools/tasks/routine-prompt.md)
                          --specs <dir|none> says where its specs are (default docs/specs)
-                         --pipeline <file.json|none> sets its deploy pipeline ({"workers": {"staging", "production"}, "workflows": {...}, "deployPaths"}) or clears it
+                         --pipeline <file.json|none> sets its deploy pipeline ({"workers": {"staging", "production"}, "package": "<npm name>", "workflows": {...}, "deployPaths"},
+                         with workers, package, or both) or clears it
   features add <slug>    new feature: its tasks join by carrying <slug> as a tag  [--title <text>]
                          [--brief <text> | --brief-file <path>] [--release <x.y.z>] (agents add one without a release)
                          --from <ref> (owner): made from the group <ref> is in on the Dependencies view: its open tasks
@@ -1394,6 +1398,20 @@ const commands = {
       if (built.error || !built.request) fail(built.error ?? 'bad request');
       const answer = await call(...built.request);
       print(answer, (a) => pullAgentSummary(action, args[1].replace(/^#/u, ''), a));
+      return;
+    }
+    if (action === 'release') {
+      const built = packageReleaseRequest(args[1], {
+        repo: (await checkoutRepo()).slug,
+        by: opts.as ?? setting('AGENT'),
+      });
+      if (built.error || !built.request) fail(built.error ?? 'bad request');
+      const answer = await call(...built.request);
+      print(
+        answer,
+        () =>
+          `Started ${answer.workflow}'s stable job for ${args[1]}. It stages the stable on npm's latest, where it waits for your approval with 2FA.`,
+      );
       return;
     }
     const g = await call(...githubRequest((await checkoutRepo()).slug, { sync: Boolean(opts.sync) }));
