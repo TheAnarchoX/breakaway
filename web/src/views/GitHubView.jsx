@@ -6,14 +6,16 @@ import {
   Copy,
   ExternalLink,
   GitCommitHorizontal,
+  Hourglass,
   LoaderCircle,
+  Package,
   RefreshCw,
   ShieldAlert,
   CircleDashed,
   Tag,
 } from 'lucide-preact';
 import { ago, plural, shortVersion } from '../lib/model.js';
-import { checksOnMain, checksSummary, githubTabs, pickTab, runState } from '../lib/github-scope.js';
+import { checksOnMain, checksSummary, githubTabs, latestPackages, pickTab, runState } from '../lib/github-scope.js';
 import { api } from '../lib/api.js';
 import {
   actions,
@@ -394,6 +396,154 @@ function ClosedPrs({ prs }) {
   );
 }
 
+/** npm's command for approving a staged version, as the release flow's notice prints it; the id is on npm. */
+const APPROVE = 'npm stage approve <id>';
+
+/** How a staged version goes live: you approve it on npm with 2FA. The board never approves anything there. */
+function ApproveHint({ url }) {
+  return (
+    <p class="meta gh-approve">
+      Approve it on npm with 2FA: <code>{APPROVE}</code>, or in Staged Packages on{' '}
+      <a href={url} {...ext}>
+        its npm page
+      </a>
+      .
+    </p>
+  );
+}
+
+/** One package version's state: published, or staged and waiting for you on npm. */
+function PackageState({ v }) {
+  return v.state === 'published' ? (
+    <span class="flow-state">
+      <CircleCheck size={15} aria-hidden="true" />
+      Published
+    </span>
+  ) : (
+    <span class="flow-state">
+      <Hourglass size={15} aria-hidden="true" />
+      Waiting for your approval
+    </span>
+  );
+}
+
+/** A package's latest pre-release or release in a line, like a Live now line. */
+function PackageLine({ name, v }) {
+  if (!v) {
+    return (
+      <li class="gh-live flow-muted">
+        <span class="gh-live-name">{name}</span>
+        <span class="flow-state">None yet</span>
+      </li>
+    );
+  }
+  const when = v.published ?? v.staged;
+  return (
+    <li class={`gh-live ${v.state === 'published' ? 'flow-ok' : 'flow-warn'}`}>
+      <span class="gh-live-name">{name}</span>
+      <PackageState v={v} />
+      <span class="gh-run-meta">
+        <a href={v.url} {...ext}>
+          <code>{v.version}</code>
+        </a>
+        <span class="meta">on {v.tag}</span>
+        <span class="meta" title={when}>
+          {ago(when)}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * Packages (WEB-18): each package's latest pre-release and release, a staged one marked as waiting for your approval
+ * on npm. Not shown without packages.
+ * @param {Record<string, any>} props
+ */
+function PackagesTile({ view, several }) {
+  const latest = latestPackages(view);
+  if (!latest.length) return null;
+  const waiting = latest.reduce((n, p) => n + p.waiting, 0);
+  return (
+    <section class="gh-section gh-tile" aria-labelledby="gh-packages">
+      <h2 id="gh-packages">
+        <Package size={18} aria-hidden="true" />
+        Packages
+        {waiting > 0 && (
+          <span class="gh-checks pkg-waiting">
+            <Hourglass size={15} aria-hidden="true" />
+            {waiting} waiting for you
+          </span>
+        )}
+      </h2>
+      {latest.map((p) => (
+        <div key={`${p.repo}\n${p.name}`} class="gh-live-repo">
+          <span class="gh-package-name">
+            <a href={p.url} {...ext}>
+              {p.name}
+            </a>
+            {several && p.repo && <RepoChip slug={p.repo} />}
+          </span>
+          <ul class="gh-lives">
+            <PackageLine name="Pre-release" v={p.prerelease} />
+            <PackageLine name="Release" v={p.release} />
+          </ul>
+          {p.waiting > 0 && <ApproveHint url={p.url} />}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/**
+ * The Packages tab (WEB-18): every version the workflows staged or published, newest first, with its dist-tag and run.
+ * @param {Record<string, any>} props
+ */
+function Packages({ versions, several }) {
+  return (
+    <ul class="gh-runs">
+      {versions.map((v) => {
+        const published = v.state === 'published';
+        const Icon = published ? CircleCheck : Hourglass;
+        return (
+          <li key={`${v.repo}-${v.name}@${v.version}`} class={`gh-run ${published ? 'run-success' : 'pkg-staged'}`}>
+            <Icon size={17} aria-hidden="true" class="run-icon" />
+            <span class="gh-run-title">
+              <a class="gh-run-name" href={v.url} {...ext}>
+                {v.name}@{v.version}
+              </a>
+              <span class="gh-run-sub">
+                {published ? (
+                  <span title={v.published ?? undefined}>Published{v.published ? ` ${ago(v.published)}` : ''}</span>
+                ) : (
+                  'Staged, waiting for your approval'
+                )}
+              </span>
+              {!published && <ApproveHint url={v.url} />}
+            </span>
+            <span class="gh-run-meta">
+              {several && v.repo && <RepoChip slug={v.repo} />}
+              <code class="gh-branch">
+                <span class="visually-hidden">dist-tag </span>
+                {v.tag}
+              </code>
+              {v.run?.url ? (
+                <a class="meta" href={v.run.url} {...ext}>
+                  {v.run.workflow ?? 'Run'}
+                  {v.run.number ? ` #${v.run.number}` : ''}
+                </a>
+              ) : null}
+              <span class="meta" title={v.staged}>
+                staged {ago(v.staged)}
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** A staging or production card in a line: its state, version, commit, and when it went live. */
 function LiveLine({ name, card, commitUrl }) {
   const s = STATES[card.state];
@@ -629,6 +779,7 @@ export function GitHubView() {
               />
             )}
             <ChecksOnMain view={d} />
+            <PackagesTile view={d} several={d.all && multiRepo.value} />
             <Alerts alerts={d.alerts} />
           </div>
           <section class="gh-section gh-dash-prs" aria-labelledby="gh-open">
@@ -665,6 +816,7 @@ export function GitHubView() {
                 <ReleaseFlow key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
               ))}
             {tab === 'deploys' && <Deploys deploys={d.deploys} releases={d.releases} tags={d.tags} />}
+            {tab === 'packages' && <Packages versions={d.packages} several={d.all && multiRepo.value} />}
             {tab === 'completed' && <ClosedPrs prs={d.closed} />}
             {tab === 'runs' && <Runs runs={d.runs} />}
             {tab === 'commits' && <Commits commits={d.commits} />}
