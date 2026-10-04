@@ -52,7 +52,9 @@ The name comes from road racing, and a few of its words fit. Use them in headlin
 | **The gap** | The lead you hold | The logo, and the space around the thing that leads |
 | **The red number** | The race number the most combative rider of a Tour de France stage wears the next day: usually the one who went on the attack in the breakaway | The claimed task's work ID ([signature moves](#signature-moves)) |
 
-Leave out the insider words ("peloton", "domestique", "lanterne rouge"), "attack" (it means something else in security), and "stage" (it collides with staging).
+Leave out the insider words ("domestique", "lanterne rouge"), "attack" (it means something else in security), and "stage" (it collides with staging).
+
+**The peloton** is the exception, because it's a feature's name: where running agents on one repository, or one chase, check in with each other. Use it wherever you mean that feature, buttons, instructions, the CLI, the docs, and the board's panel included, and only for that. Lowercase it mid-sentence ("open the peloton"), and never use it for agents or tasks in general.
 
 ### Instead of this, that
 
