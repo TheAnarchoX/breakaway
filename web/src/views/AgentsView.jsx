@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Bot, CircleX, Copy, ExternalLink, FileText, Rocket, Zap } from 'lucide-preact';
+import { Bot, CircleX, Copy, ExternalLink, FastForward, FileText, Rocket, Zap } from 'lucide-preact';
 import { api } from '../lib/api.js';
-import { ago, ref } from '../lib/model.js';
+import { ago, plural, ref } from '../lib/model.js';
 import {
   actions,
   agents,
@@ -19,6 +19,7 @@ import {
 } from '../lib/store.js';
 import { RepoChip, Segmented } from '../components/ui.jsx';
 import { ForcedMark, MessageButton, SILENT_AFTER, TRIGGER_LABEL } from '../components/Agents.jsx';
+import { ChasePanel } from '../components/Chase.jsx';
 import { Title } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
 
@@ -375,6 +376,37 @@ function Launcher({ d }) {
 const upTo = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
 
 /**
+ * The chases that are on (docs/specs/IDEA-28-features-and-chase.md, section 3.9), each with its live line, its
+ * limit, Needs you, Stuck, and the queue. Features are the board's, so the repository switcher doesn't narrow
+ * them; the agents a chase started are in Running above, marked as the chase's.
+ * @param {Record<string, any>} props
+ */
+function Chases({ list }) {
+  if (!list?.length) return null;
+  return (
+    <section class="gh-section" aria-labelledby="chases">
+      <h2 id="chases">
+        <FastForward size={18} aria-hidden="true" />
+        Chases <span class="count">{list.length}</span>
+      </h2>
+      <ul class="ch-chases">
+        {list.map((c) => (
+          <li key={c.slug} aria-labelledby={`chase-${c.slug}`}>
+            <h3 id={`chase-${c.slug}`} class="ch-chase-title">
+              <a href={hashFor({ view: 'roadmap', feature: c.slug, task: null })}>
+                <Title text={c.title} />
+              </a>{' '}
+              <span class="fr-slug">+{c.slug}</span>
+            </h3>
+            <ChasePanel feature={c} chase={c} compact />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * The owner's Claude plan (CLD-198). Claude doesn't tell the board which plan an account is on, so the owner
  * picks it here, and it sets the ceilings and defaults of the board's limits. Claude's own limits on starting
  * a routine are the same on every plan.
@@ -639,7 +671,7 @@ export function AgentsView() {
           {!d
             ? 'Loading…'
             : d.connected
-              ? `${scope ? `${d.running.length} in ${repoName(scope)}, ${all.running.length}` : d.running.length} of ${d.settings.max} running · ${d.queue.length} waiting to start · starts itself ${d.settings.autostart ? 'when ready' : 'never (off)'}`
+              ? `${scope ? `${d.running.length} in ${repoName(scope)}, ${all.running.length}` : d.running.length} of ${d.settings.max} running · ${d.queue.length} waiting to start · starts itself ${d.settings.autostart ? 'when ready' : 'never (off)'}${all.chases?.length ? ` · ${plural(all.chases.length, 'chase')} on` : ''}`
               : 'Claude Code cloud sessions, started from the board.'}
         </p>
       </div>
@@ -652,6 +684,7 @@ export function AgentsView() {
       {d?.connected && (
         <div class="gh-grid">
           <div class="gh-col">
+            <Chases list={all.chases} />
             <section class="gh-section" aria-labelledby="running">
               <h2 id="running">
                 <Bot size={18} aria-hidden="true" />

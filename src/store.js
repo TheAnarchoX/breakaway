@@ -730,7 +730,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         changes.addRelated = this.depRefs(arrayOf(input.related));
         changes.removeRelated = relatedOf(this.tasks.get(uuid)).filter((r) => !changes.addRelated.includes(r));
       }
-      this.checkBriefEdit(uuid, changes);
+      // A general agent editing another task (IDEA-30 section 2) follows the cross-task rule instead.
+      const general = this.generalTaskOf(changes.by, uuid);
+      if (general) this.checkCrossTaskEdit(uuid, input, general);
+      else this.checkBriefEdit(uuid, changes);
       this.checkPrField(uuid, changes);
       if (input.addTags) changes.addTags = arrayOf(input.addTags);
       if (input.removeTags) changes.removeTags = arrayOf(input.removeTags);
@@ -746,6 +749,13 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       if (changes.addDepends?.includes(uuid)) throw new InputError("a task can't depend on itself");
       const before = this.detail(uuid);
       const task = this.change(uuid, changes);
+      if (general) {
+        const fields = CROSS_TASK_FIELDS.filter(([keys]) => keys.some((k) => k in input)).map(([, name]) => name);
+        const its = general.wid ?? general.uuid.slice(0, 8);
+        return ok({
+          task: this.change(uuid, { annotate: `Changed by ${its}: ${fields.join(', ')}.`, by: 'board' }),
+        });
+      }
       // Editing the questions keeps the answers that still fit; say which ones went.
       if (changes.decision && before.decisionAnswers) {
         const dropped = Object.keys(before.decisionAnswers.answers).filter((id) => !task.decisionAnswers?.answers[id]);
@@ -901,6 +911,57 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       throw new Forbidden(
         'an agent changes the description and done when only on a task it made or is refining; add a comment instead',
       );
+  }
+
+  /**
+   * The general task an agent holds (IDEA-30 section 1), when it edits another task: its open task tagged
+   * general, claimed by that name. Null for the owner, the board, another agent, or an edit of its own task.
+   * @param {unknown} by
+   * @param {string} uuid the task being edited
+   * @returns {{ uuid: string, wid: string | null } | null}
+   */
+  generalTaskOf(by, uuid) {
+    if (!by || !/^(claude|codex)-/u.test(String(by))) return null;
+    for (const [own, m] of this.tasks)
+      if (m.claim === String(by) && m.status === 'pending' && m.tag_general)
+        return own === uuid ? null : { uuid: own, wid: m.wid ?? null };
+    return null;
+  }
+
+  /**
+   * The cross-task rule (IDEA-30 section 2, BRK-104 decision 1): a general agent may change the description,
+   * done when, area, horizon, tags, and dependencies of an unclaimed, open task in its own repository that
+   * isn't an idea. Never a horizon-* tag, autostart, or a decision, and nothing else: that goes to the owner
+   * as a ping proposal. The board notes each change on the edited task (update).
+   * @param {string} uuid
+   * @param {Record<string, any>} input the request's body
+   * @param {{ uuid: string }} own the agent's general task
+   */
+  checkCrossTaskEdit(uuid, input, own) {
+    const refuse = (why) => {
+      throw new Forbidden(`a general agent ${why}; propose it to the owner in a ping instead`);
+    };
+    const map = this.tasks.get(uuid);
+    const name = label(this.detail(uuid));
+    const fallback = this.defaultRepoSlug();
+    const ownMap = this.tasks.get(own.uuid);
+    if ('decision' in input) refuse(`doesn't change a decision's questions or answers (${name})`);
+    if ('autostart' in input) refuse(`doesn't change whether ${name} starts by itself`);
+    if (map.status !== 'pending') refuse(`changes only open tasks, and ${name} is ${map.status}`);
+    if (map.claim) refuse(`changes only unclaimed tasks, and ${map.claim} has ${name}`);
+    if (map.project in SHARED_AREAS) refuse(`doesn't change ${name}, which is an idea or a routine run`);
+    if (repoSlugOf(map, fallback) !== repoSlugOf(ownMap, fallback))
+      refuse(`changes only tasks in its own repository, and ${name} is ${repoSlugOf(map, fallback)}'s`);
+    const tags = [...arrayOf(input.addTags ?? []), ...arrayOf(input.removeTags ?? [])].map(String);
+    if (tags.some((t) => t.startsWith('horizon-'))) refuse("doesn't change a horizon-* tag: that's the owner's choice");
+    if ('project' in input && input.project in SHARED_AREAS) refuse(`doesn't move ${name} into ${input.project}`);
+    const allowed = new Set(['by', ...CROSS_TASK_FIELDS.flatMap(([keys]) => keys)]);
+    const other = Object.keys(input).filter((k) => !allowed.has(k));
+    if (other.length)
+      refuse(
+        `changes only the description, done when, area, horizon, tags, and dependencies of another task, not ${other.join(', ')}`,
+      );
+    if (!CROSS_TASK_FIELDS.some(([keys]) => keys.some((k) => k in input))) refuse(`has nothing to change on ${name}`);
   }
 
   /**
@@ -1386,6 +1447,19 @@ Object.assign(TaskStore.prototype, apiActions);
 
 class NotFound extends Error {}
 class Forbidden extends Error {}
+
+/**
+ * What a general agent may change on another task (IDEA-30 section 2): the request's keys, and their name in the board's note.
+ * @type {[string[], string][]}
+ */
+const CROSS_TASK_FIELDS = [
+  [['brief'], 'description'],
+  [['done_when'], 'done when'],
+  [['project'], 'area'],
+  [['horizon'], 'horizon'],
+  [['addTags', 'removeTags'], 'tags'],
+  [['addDepends', 'removeDepends'], 'dependencies'],
+];
 class Conflict extends Error {
   constructor(message, extra = {}) {
     super(message);

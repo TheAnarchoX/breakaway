@@ -6333,3 +6333,126 @@ fieldset.field {
   max-height: min(220px, 30vh);
   overflow: auto;
 }
+
+/* ---------- chase (IDEA-28 section 3.9) ---------- */
+
+.fr-pill-chase {
+  background: var(--tint);
+  color: var(--text);
+}
+.fr-pill-chase + .fr-pill {
+  margin-left: 0;
+}
+.ch-panel {
+  display: grid;
+  gap: 12px;
+}
+.ch-line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.ch-on {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: 1px;
+  font: 600 11px / 1 var(--font-mono);
+  padding: 4px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--tint);
+  color: var(--text);
+}
+.ch-parallel .segmented {
+  justify-self: start;
+}
+.ch-group {
+  display: grid;
+  gap: 6px;
+}
+.ch-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+.ch-group h3 svg {
+  flex: none;
+  color: var(--muted);
+}
+.ch-group p {
+  margin: 0;
+}
+.ch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ch-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.ch-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+.ch-row-head:hover .ch-row-title {
+  text-decoration: underline;
+}
+.ch-row-title {
+  flex: 1 1 12em;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.ch-yours {
+  color: var(--text);
+}
+.ch-last {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ch-chases {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 18px;
+}
+.ch-chases > li + li {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.ch-chase-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.ch-chase-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+.ch-chase-title a:hover {
+  text-decoration: underline;
+}
