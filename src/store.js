@@ -1271,7 +1271,7 @@ const apiActions = {
   agentsApi() {
     return this.run(async () => this.agentsOverview());
   },
-  /** New agent: a task from a prompt, a decision's answers, or the next version, and an agent on it (the owner's). */
+  /** New agent: a task from a prompt, a decision's answers, a spec, or the next version, and an agent on it (the owner's). */
   agentsGeneralApi(body) {
     return this.run(async () => {
       ownerOnly(body?.by, 'start a general agent');
@@ -1282,6 +1282,7 @@ const apiActions = {
         decision: body?.decision ?? null,
         next: body?.next ?? null,
         version: body?.version ?? null,
+        spec: body?.spec ?? null,
         note: typeof body?.note === 'string' ? body.note : null,
         dryRun: Boolean(body?.dryRun),
       });

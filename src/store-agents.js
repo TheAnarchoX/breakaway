@@ -7,9 +7,11 @@
 import { secret } from './secrets.js';
 import { refinePrompt } from './decision.js';
 import { prVerdict } from './github.js';
-import { AREA_NAMES, dependsOf, rank, relatedOf } from './model.js';
+import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
 import { repoSlugOf, routineCaps } from './repos.js';
+import { specPrompt } from './spec-prompt.js';
+import { normalPath } from './specs.js';
 import { CLAUDE_LIMITS, DEFAULT_PLAN, hourlyCeiling, isPlan, planChoices, planLimits, planOf, PLANS } from './plans.js';
 
 const FAILED = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'error']);
@@ -29,6 +31,9 @@ export const REVIEW_VERDICTS = {
   changes: 'Needs changes',
 };
 const REVIEW_NOTE_MAX = 10_000;
+
+/** A work ID's number for sorting, tasks without one last. */
+const widNumber = (wid) => (wid ? Number(String(wid).split('-')[1]) : Number.MAX_SAFE_INTEGER);
 
 export class AgentError extends Error {
   /**
@@ -298,6 +303,9 @@ export const agentsMethods = {
    * or major, BRK-100), the board writes the prompt that sets repository `repo`'s package.json to the next minor or
    * major after the version its pre-releases work toward (refused when `version`, what the owner saw, isn't that
    * any more), and tags the task +version; while one is open in that repository it returns that one instead. With
+   * `spec` (a path in repository `repo`'s specs directory, IDEA-31 section 4), the board reads the spec from GitHub
+   * and writes the prompt from it, the tasks that link it, and the owner's `note` (what should change, required),
+   * and sets the task's `spec` to the path; while one on that spec is open it returns that one instead. With
    * `dryRun` it makes nothing and returns the prompt it would write (without the note), the open one if any, and
    * why the repository's routine can't start one, for the web's dialog to show first.
    */
@@ -308,6 +316,7 @@ export const agentsMethods = {
     decision = null,
     next = null,
     version = null,
+    spec = null,
     note = null,
     dryRun = false,
   } = {}) {
@@ -316,9 +325,10 @@ export const agentsMethods = {
     let title = null;
     let from = null;
     let tags = ['agent', 'general'];
+    let specPath = null;
     const given = (value) => value !== null && value !== undefined && value !== '';
-    if (given(decision) && given(next))
-      throw new AgentError('start one from a decision or for the next version, not both', 400);
+    if ([decision, next, spec].filter(given).length > 1)
+      throw new AgentError('start one from a decision, from a spec, or for the next version: only one of them', 400);
     /** @type {{ repo: string, open: [string, any] | undefined, write: (note: string | null) => { title: string, brief: string }, extra?: Record<string, any> } | null} */
     let source = null;
     if (given(decision)) {
@@ -364,6 +374,43 @@ export const agentsMethods = {
           ),
         extra: { base: offer.base, latest: offer.latest, choices: offer.choices, version: choice.version },
       };
+    } else if (given(spec)) {
+      // Refine a spec (IDEA-31 section 4): the board reads it from GitHub and writes the prompt from it.
+      if (text)
+        throw new AgentError('the board writes the prompt from the spec: send what should change as a note', 400);
+      const slug = this.generalRepo(repo);
+      const read = await this.specApi(slug, spec);
+      // A file that isn't there is the request's mistake, like a path outside the directory.
+      if (read.status !== 200) throw new AgentError(read.body.error, read.status === 404 ? 400 : read.status);
+      const { path, title: specTitle } = read.body;
+      if (!dryRun && !String(note ?? '').trim())
+        throw new AgentError('say what should change in the spec: the note is the agent’s request', 400);
+      const fallback = this.defaultRepoSlug();
+      const linked = [...this.tasks]
+        .filter(
+          ([, map]) =>
+            map.spec && map.status !== 'deleted' && normalPath(map.spec) === path && repoSlugOf(map, fallback) === slug,
+        )
+        .sort(([a, x], [b, y]) => widNumber(x.wid) - widNumber(y.wid) || a.localeCompare(b));
+      specPath = path;
+      source = {
+        repo: slug,
+        open: linked.find(([, map]) => map.status === 'pending' && map.tag_general),
+        write: (n) =>
+          specPrompt(
+            { path, title: specTitle },
+            linked
+              .filter(([, map]) => !map.tag_general)
+              .map(([uuid, map]) => ({
+                ref: map.wid ?? uuid.slice(0, 8),
+                description: map.description ?? '',
+                status: map.status,
+                claimed: Boolean(map.claim),
+                tags: tagsOf(map),
+              })),
+            n,
+          ),
+      };
     }
     if (source) {
       repo = source.repo;
@@ -402,7 +449,10 @@ export const agentsMethods = {
       title = written.title;
     }
     if (dryRun)
-      throw new AgentError('a dry run shows the prompt the board writes from a decision or for the next version', 400);
+      throw new AgentError(
+        'a dry run shows the prompt the board writes from a decision, from a spec, or for the next version',
+        400,
+      );
     if (!text) throw new AgentError('write what the agent should do first', 400);
     const slug = this.generalRepo(repo);
     await this.checkRoutineReady(slug);
@@ -414,6 +464,7 @@ export const agentsMethods = {
         autostart: 'yes',
         brief: text,
         ...(from ? { related: [from] } : {}),
+        ...(specPath ? { spec: specPath } : {}),
         ...(slug === this.defaultRepoSlug() ? {} : { repo: slug }),
         by: 'owner',
       },
