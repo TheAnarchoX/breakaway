@@ -40,6 +40,7 @@ import { statsMethods } from './store-stats.js';
 import { reposMethods } from './store-repos.js';
 import { repoSlugOf } from './repos.js';
 import { connectionsMethods } from './store-connections.js';
+import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
 
@@ -1135,6 +1136,7 @@ Object.assign(
   reposMethods,
   connectionsMethods,
   updatesMethods,
+  selfUpdateMethods,
   wizardMethods,
 );
 

@@ -342,6 +342,19 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.connectionNoticeDismiss(parts[2]));
     }
   }
+  // Self-update (BRK-53): an install with no repository of its own updates its Worker from the board. Every change is
+  // the owner's, from the signed-in browser only: never the bearer token agents and the CLI hold.
+  if (parts[0] === 'self-update') {
+    if (parts.length === 1 && method === 'GET') return send(await s.selfUpdateApi());
+    if (parts.length === 2 && method === 'POST' && ['enable', 'disable', 'start', 'rollback'].includes(parts[1])) {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can update or roll back the Worker' });
+      if (parts[1] === 'enable') return send(await s.selfUpdateEnable(body));
+      if (parts[1] === 'disable') return send(await s.selfUpdateDisable());
+      if (parts[1] === 'rollback') return send(await s.selfUpdateRollback());
+      return send(await s.selfUpdateStart({ origin: url.origin }));
+    }
+  }
   // Repositories on the board (IDEA-14): anyone signed in reads them; adding and changing is the owner's (an agent's `by` is refused).
   if (parts[0] === 'repos') {
     if (parts.length === 1 && method === 'GET') return send(await s.reposApi());

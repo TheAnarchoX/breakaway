@@ -1089,6 +1089,8 @@ export const agentsMethods = {
     }
     // An install that follows a channel (BRK-10): the cron looks for a release; the alarm, after breakaway's release webhook.
     await this.updatesAutoCheck(source);
+    // A self-update waiting on its health check (BRK-53): the new code answers, or the previous version comes back.
+    await this.selfUpdateTick();
     // Before the prune: agent runs and GitHub's rows live on in the dashboard's log (store-stats.js).
     this.archiveStats();
     this.pruneAgentLogs();
