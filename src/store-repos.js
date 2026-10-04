@@ -317,7 +317,9 @@ export const reposMethods = {
       this.insertRepo(row, !this.repos().length);
       // Tasks made in Taskwarrior before it was registered may now get their work IDs.
       this.assignMissingWids();
-      return ok({ repo: this.repoBySlug(row.slug) }, 201);
+      // A kickoff that named this repository (BRK-131) gets its IDEA here, however it was registered.
+      const kickoff = await this.kickoffRegistered(this.repoBySlug(row.slug));
+      return ok({ repo: this.repoBySlug(row.slug), ...(kickoff ? { kickoff: kickoff.id } : {}) }, 201);
     });
   },
 

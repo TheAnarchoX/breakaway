@@ -240,25 +240,38 @@ function contentType(request) {
 const MAX_IMAGE_BODY = 1024 * 1024 + 1;
 
 /** Image routes carry raw bytes, not JSON, so they're handled before the body is parsed. Null when the path isn't one. */
-async function handleImages(request, env, url, method) {
+async function handleImages(request, env, url, method, via) {
   const parts = url.pathname.split('/').slice(2).map(decodeURIComponent);
   const s = store(env);
   const send = (result) => json(result.status, result.body);
+  const header = (name) => {
+    try {
+      return decodeURIComponent(request.headers.get(name) ?? '');
+    } catch {
+      return '';
+    }
+  };
   if (parts[0] === 'tasks' && parts[2] === 'attachments' && parts.length === 3) {
     if (method === 'GET') return send(await s.attachmentsList(parts[1]));
     if (method !== 'POST') return null;
     if (Number(request.headers.get('Content-Length') ?? 0) > MAX_IMAGE_BODY)
       return json(413, { error: 'each image can be up to 1 MB, so shrink it or crop it first' });
     const bytes = await request.arrayBuffer();
-    const header = (name) => {
-      try {
-        return decodeURIComponent(request.headers.get(name) ?? '');
-      } catch {
-        return '';
-      }
-    };
     return send(
       await s.attachmentAdd(parts[1], bytes, { name: header('X-Attachment-Name'), alt: header('X-Attachment-Alt') }),
+    );
+  }
+  // A kickoff's images (IDEA-26) are the owner's, from the signed-in browser only; they're read like any image.
+  if (parts[0] === 'kickoffs' && parts[2] === 'images' && (parts.length === 3 || parts.length === 4)) {
+    if (method === 'GET') return null;
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change a kickoff’s images' });
+    if (parts.length === 4 && method === 'DELETE') return send(await s.kickoffImageDelete(parts[1], parts[3]));
+    if (parts.length !== 3 || method !== 'POST') return null;
+    if (Number(request.headers.get('Content-Length') ?? 0) > MAX_IMAGE_BODY)
+      return json(413, { error: 'each image can be up to 1 MB, so shrink it or crop it first' });
+    const bytes = await request.arrayBuffer();
+    return send(
+      await s.kickoffImageAdd(parts[1], bytes, { name: header('X-Attachment-Name'), alt: header('X-Attachment-Alt') }),
     );
   }
   if (parts[0] === 'attachments' && parts.length === 2 && /^\d{1,9}$/u.test(parts[1])) {
@@ -288,7 +301,7 @@ async function handleApi(request, env, url, ctx) {
   if (via === 'cookie' && method !== 'GET' && !sameOrigin(request))
     return json(403, { error: 'cross-origin request refused' });
 
-  const images = await handleImages(request, env, url, method);
+  const images = await handleImages(request, env, url, method, via);
   if (images) return images;
 
   let body = {};
@@ -395,6 +408,19 @@ async function handleApi(request, env, url, ctx) {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });
       return send(await s.turnOnDeploysApi(parts[1], body));
     }
+  }
+  // Kickoffs (IDEA-26): anyone signed in reads them; starting, changing, registering, and stopping one is the
+  // owner's, from the signed-in browser only, never the bearer token agents and the CLI hold.
+  if (parts[0] === 'kickoffs' && parts.length <= 3) {
+    if (parts.length === 1 && method === 'GET') return send(await s.kickoffsApi());
+    if (parts.length === 2 && method === 'GET')
+      return send(await s.kickoffApi(parts[1], { check: url.searchParams.get('check') === '1' }));
+    if (method !== 'GET' && via !== 'cookie')
+      return json(403, { error: 'only the signed-in web board can kick off, change, or stop a project' });
+    if (parts.length === 1 && method === 'POST') return send(await s.kickoffsCreateApi(body));
+    if (parts.length === 2 && method === 'PATCH') return send(await s.kickoffsModifyApi(parts[1], body));
+    if (parts.length === 2 && method === 'DELETE') return send(await s.kickoffsDeleteApi(parts[1], body));
+    if (parts[2] === 'register' && method === 'POST') return send(await s.kickoffsRegisterApi(parts[1], body));
   }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).

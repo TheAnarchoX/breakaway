@@ -49,6 +49,7 @@ import { connectionsMethods } from './store-connections.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
+import { kickoffsMethods } from './store-kickoffs.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -101,6 +102,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initStats();
     this.initRepos();
     this.initConnections();
+    this.initKickoffs();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1259,6 +1261,7 @@ Object.assign(
   updatesMethods,
   selfUpdateMethods,
   wizardMethods,
+  kickoffsMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
