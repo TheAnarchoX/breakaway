@@ -398,6 +398,14 @@ export function routineConnected(slug) {
   return Boolean(agents.value.data?.repos?.find((r) => r.slug === want)?.connected);
 }
 
+/** Whether Refine from the answers applies to `t`: a structured decision the owner has answered. */
+export const isDecided = (t) =>
+  Array.isArray(t.decision) && t.decision.length > 0 && t.status === 'completed' && Boolean(t.decisionAnswers);
+
+/** The open general task refining from decision `t`'s answers, if there is one (the board allows one at a time). */
+export const refiningFrom = (t) =>
+  tasks.value.find((x) => x.status === 'pending' && x.tags.includes('general') && x.related?.includes(t.uuid)) ?? null;
+
 /**
  * Whether New agent shows: the agent routine of the repository in scope is connected, and with every repository
  * in scope, any is. Hidden rather than shown and refused.
@@ -1029,12 +1037,14 @@ export const actions = {
   /**
    * New agent: a task from the owner's prompt, and an agent on it, or waiting for room. Throws the board's
    * refusal (no task is made then), so the dialog can show it beside the prompt.
-   * @param {{ prompt: string, repo?: string, force?: boolean }} body
+   * With `decision` (Refine from the answers), the board writes the prompt from that answered decision, and `note`
+   * goes under it.
+   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, note?: string }} body
    */
-  async startGeneral({ prompt, repo, force = false }) {
+  async startGeneral({ prompt, repo, force = false, decision, note }) {
     const result = await api('agents/general', {
       method: 'POST',
-      body: { prompt, repo: repo || undefined, force: force || undefined },
+      body: { prompt, repo: repo || undefined, force: force || undefined, decision, note: note || undefined },
     });
     await loadTasks();
     if (activity.value.loaded) loadActivity();
@@ -1042,6 +1052,11 @@ export const actions = {
     loadHealth();
     return result;
   },
+  /**
+   * Refine from the answers, before starting: the prompt the board would write from decision `t`, the task already
+   * refining from it, and why its repository's routine can't start one. Makes nothing; throws the board's refusal.
+   */
+  previewRefine: (t) => api('agents/general', { method: 'POST', body: { decision: t.uuid, dryRun: true } }),
   /** `after` runs when the owner forces a start the board's limits refused. */
   async startAgent(t, note, after) {
     const result = await change(
