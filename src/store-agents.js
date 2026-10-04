@@ -8,7 +8,8 @@ import { secret } from './secrets.js';
 import { refinePrompt } from './decision.js';
 import { prVerdict } from './github.js';
 import { AREA_NAMES, dependsOf, rank, relatedOf } from './model.js';
-import { routineCaps } from './repos.js';
+import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
+import { repoSlugOf, routineCaps } from './repos.js';
 import { CLAUDE_LIMITS, DEFAULT_PLAN, hourlyCeiling, isPlan, planChoices, planLimits, planOf, PLANS } from './plans.js';
 
 const FAILED = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'error']);
@@ -293,16 +294,34 @@ export const agentsMethods = {
    *
    * With `decision` (section 8, Refine from the answers), the board writes the prompt from that answered decision,
    * with the owner's `note` under it, in the decision's repository, and relates the task to the decision. While one
-   * from that decision is open, it returns that one with `already` instead of starting another. With `dryRun` it
-   * makes nothing and returns the prompt it would write (without the note), the open one if any, and why the
-   * repository's routine can't start one, for the web's dialog to show first.
+   * from that decision is open, it returns that one with `already` instead of starting another. With `next` (minor
+   * or major, BRK-100), the board writes the prompt that sets repository `repo`'s package.json to the next minor or
+   * major after the version its pre-releases work toward (refused when `version`, what the owner saw, isn't that
+   * any more), and tags the task +version; while one is open in that repository it returns that one instead. With
+   * `dryRun` it makes nothing and returns the prompt it would write (without the note), the open one if any, and
+   * why the repository's routine can't start one, for the web's dialog to show first.
    */
-  async startGeneral({ prompt, repo = null, force = false, decision = null, note = null, dryRun = false } = {}) {
+  async startGeneral({
+    prompt,
+    repo = null,
+    force = false,
+    decision = null,
+    next = null,
+    version = null,
+    note = null,
+    dryRun = false,
+  } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
     let title = null;
     let from = null;
-    if (decision !== null && decision !== undefined && decision !== '') {
+    let tags = ['agent', 'general'];
+    const given = (value) => value !== null && value !== undefined && value !== '';
+    if (given(decision) && given(next))
+      throw new AgentError('start one from a decision or for the next version, not both', 400);
+    /** @type {{ repo: string, open: [string, any] | undefined, write: (note: string | null) => { title: string, brief: string }, extra?: Record<string, any> } | null} */
+    let source = null;
+    if (given(decision)) {
       if (text) throw new AgentError('the board writes the prompt from the decision: send a note instead', 400);
       from = this.resolve(decision);
       const d = this.detail(from);
@@ -312,17 +331,49 @@ export const agentsMethods = {
         throw new AgentError(`${ref}’s decision isn’t answered yet: the owner answers it on the board first`, 409);
       if (repo && String(repo).trim().toLowerCase() !== d.repo)
         throw new AgentError(`${ref} is ${d.repo}’s: its agent runs in ${d.repo}`, 400);
-      repo = d.repo;
-      const open = [...this.tasks].find(
-        ([, map]) => map.status === 'pending' && map.tag_general && relatedOf(map).includes(from),
-      );
+      const uuid = from;
+      source = {
+        repo: d.repo,
+        open: [...this.tasks].find(
+          ([, map]) => map.status === 'pending' && map.tag_general && relatedOf(map).includes(uuid),
+        ),
+        write: (n) => this.refineFrom(uuid, d, n),
+      };
+    } else if (given(next)) {
+      // Prepare the next version (BRK-100): the board writes the prompt from the repository's release tags.
+      if (text) throw new AgentError('the board writes the prompt for the next version: send a note instead', 400);
+      if (!NEXT_STEPS.includes(String(next))) throw new AgentError('next is minor or major', 400);
+      const slug = this.generalRepo(repo);
+      const offer = this.nextVersionOffer(slug);
+      if (!offer)
+        throw new AgentError(
+          `${slug} has no pre-release like v1.2.3-main.4 on the board, so it can’t tell the next version: sync GitHub, or set package.json by hand`,
+          409,
+        );
+      const choice = offer.choices.find((c) => c.next === next);
+      if (given(version) && String(version) !== choice.version)
+        throw new AgentError(`${slug}’s next ${next} is ${choice.version} now, not ${version}: look again`, 409);
+      tags = ['agent', 'general', 'version'];
+      source = {
+        repo: slug,
+        open: offer.preparing ? [offer.preparing.uuid, this.tasks.get(offer.preparing.uuid)] : undefined,
+        write: (n) =>
+          nextVersionPrompt(
+            { name: this.repoBySlug(slug)?.name ?? slug, base: offer.base, latest: offer.latest, ...choice },
+            n,
+          ),
+        extra: { base: offer.base, latest: offer.latest, choices: offer.choices, version: choice.version },
+      };
+    }
+    if (source) {
+      repo = source.repo;
       const already = (task) => (task.claim ? `${task.claim} is on it` : 'it’s waiting to start');
       if (dryRun) {
-        const task = open ? this.detail(open[0]) : null;
-        const written = this.refineFrom(from, d, null);
+        const task = source.open ? this.detail(source.open[0]) : null;
+        const written = source.write(null);
         let refusal = null;
         try {
-          await this.checkRoutineReady(d.repo);
+          await this.checkRoutineReady(source.repo);
         } catch (error) {
           if (!(error instanceof AgentError)) throw error;
           refusal = error.message;
@@ -334,10 +385,11 @@ export const agentsMethods = {
           task,
           already: task ? already(task) : null,
           refusal,
+          ...(source.extra ?? {}),
         };
       }
-      if (open) {
-        const task = this.detail(open[0]);
+      if (source.open) {
+        const task = this.detail(source.open[0]);
         return {
           task,
           run: null,
@@ -345,26 +397,20 @@ export const agentsMethods = {
           already: already(task),
         };
       }
-      const written = this.refineFrom(from, d, note);
+      const written = source.write(note);
       text = written.brief;
       title = written.title;
     }
-    if (dryRun) throw new AgentError('a dry run shows the prompt the board writes from a decision: name one', 400);
+    if (dryRun)
+      throw new AgentError('a dry run shows the prompt the board writes from a decision or for the next version', 400);
     if (!text) throw new AgentError('write what the agent should do first', 400);
-    if (!repo && this.repos().length > 1)
-      throw new AgentError(
-        `say which repository this is for: ${this.repos()
-          .map((r) => r.slug)
-          .join(', ')}`,
-        400,
-      );
-    const slug = this.checkRepoSlug(repo);
+    const slug = this.generalRepo(repo);
     await this.checkRoutineReady(slug);
     const res = await this.create([
       {
         description: title ?? (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
         horizon: 'now',
-        tags: ['agent', 'general'],
+        tags,
         autostart: 'yes',
         brief: text,
         ...(from ? { related: [from] } : {}),
@@ -386,6 +432,46 @@ export const agentsMethods = {
       this.scheduleAgentsCheck();
       return { task: this.detail(uuid), run: null, waiting: error.message, forceable: error.forceable };
     }
+  },
+
+  /** The repository a general agent runs in: `repo`, which it needs when the board runs more than one. */
+  generalRepo(repo) {
+    if (!repo && this.repos().length > 1)
+      throw new AgentError(
+        `say which repository this is for: ${this.repos()
+          .map((r) => r.slug)
+          .join(', ')}`,
+        400,
+      );
+    return this.checkRepoSlug(repo);
+  },
+
+  /**
+   * Prepare the next version (BRK-100) for repository `slug`: the version its pre-releases work toward, from the
+   * release tags the last GitHub sync kept, the next minor and major after it, and the general task already
+   * preparing one, if any. Null when it has no `vX.Y.Z-main.N` pre-release, so the board can't tell.
+   */
+  nextVersionOffer(slug) {
+    const releases = JSON.parse(this.ghMeta('gh_releases', slug) ?? '[]');
+    const tags = JSON.parse(this.ghMeta('gh_tags', slug) ?? '[]');
+    const found = versionBase([...releases.filter((r) => !r.draft).map((r) => r.tag), ...tags.map((t) => t.name)]);
+    if (!found) return null;
+    const fallback = this.defaultRepoSlug();
+    const open = [...this.tasks].find(
+      ([, map]) => map.status === 'pending' && map.tag_general && map.tag_version && repoSlugOf(map, fallback) === slug,
+    );
+    const task = open ? this.detail(open[0]) : null;
+    return {
+      ...found,
+      choices: nextChoices(found.base),
+      preparing: task && {
+        uuid: task.uuid,
+        wid: task.wid,
+        short: task.short,
+        description: task.description,
+        claim: task.claim,
+      },
+    };
   },
 
   /** Refine from the answers' prompt for answered decision `uuid` (its detail `d`), with the owner's `note` under it. */

@@ -12,7 +12,13 @@ const KEEP = { closed: 20, runs: 40, deploys: 20, commits: 30 };
  */
 export function scopeGitHub(data, scope = null) {
   if (!data) return data;
-  if (!data.all) return { ...data, flows: data.flow ? [data] : [], empties: data.empty ? [data] : [] };
+  if (!data.all)
+    return {
+      ...data,
+      flows: data.flow ? [data] : [],
+      empties: data.empty ? [data] : [],
+      nextVersions: data.nextVersion ? [data] : [],
+    };
   const one = scope ? (data.repos.find((r) => r.slug === scope) ?? null) : null;
   const mine = (list, keep) => {
     const kept = one ? list.filter((x) => x.repo === one.slug) : list;
@@ -37,6 +43,8 @@ export function scopeGitHub(data, scope = null) {
     flows: shown.filter((r) => r.flow),
     // Repositories with no commits yet (CLD-191): each says to run repos init.
     empties: shown.filter((r) => r.empty),
+    // Repositories whose pre-releases count from package.json (BRK-100): each offers its next minor and major.
+    nextVersions: shown.filter((r) => r.nextVersion),
     pipeline: one ? one.pipeline : shown.some((r) => r.pipeline) ? {} : null,
     branch: branches.length === 1 ? branches[0] : null,
   };
@@ -100,7 +108,7 @@ export function checksSummary(checks) {
 export function githubTabs(view) {
   if (!view) return [];
   const tabs = [];
-  if (view.flows?.length) tabs.push({ id: 'releases', label: 'Releases', count: null });
+  if (view.flows?.length || view.nextVersions?.length) tabs.push({ id: 'releases', label: 'Releases', count: null });
   if (view.pipeline) tabs.push({ id: 'deploys', label: 'Deploys', count: view.deploys?.length ?? 0 });
   if (view.packages?.length) tabs.push({ id: 'packages', label: 'Packages', count: view.packages.length });
   tabs.push(

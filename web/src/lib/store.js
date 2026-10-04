@@ -1091,14 +1091,24 @@ export const actions = {
    * New agent: a task from the owner's prompt, and an agent on it, or waiting for room. Throws the board's
    * refusal (no task is made then), so the dialog can show it beside the prompt.
    * With `decision` (Refine from the answers), the board writes the prompt from that answered decision, and `note`
-   * goes under it.
-   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, note?: string }} body
+   * goes under it; with `next` (minor or major, BRK-100), the prompt that sets `repo`'s next version, which must
+   * still be `version`.
+   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, note?: string }} body
    */
-  async startGeneral({ prompt, repo, force = false, decision, note }) {
+  async startGeneral({ prompt, repo, force = false, decision, next, version, note }) {
     const result = await api('agents/general', {
       method: 'POST',
-      body: { prompt, repo: repo || undefined, force: force || undefined, decision, note: note || undefined },
+      body: {
+        prompt,
+        repo: repo || undefined,
+        force: force || undefined,
+        decision,
+        next,
+        version,
+        note: note || undefined,
+      },
     });
+    if (next) loadGitHub({ quiet: true });
     await loadTasks();
     if (activity.value.loaded) loadActivity();
     loadAgents();
@@ -1110,6 +1120,11 @@ export const actions = {
    * refining from it, and why its repository's routine can't start one. Makes nothing; throws the board's refusal.
    */
   previewRefine: (t) => api('agents/general', { method: 'POST', body: { decision: t.uuid, dryRun: true } }),
+  /**
+   * Prepare the next version (BRK-100), before starting: the prompt the board would write to set repository `repo`'s
+   * next `next` (minor or major), the task already preparing one, and why its routine can't start one. Makes nothing.
+   */
+  previewNextVersion: (repo, next) => api('agents/general', { method: 'POST', body: { repo, next, dryRun: true } }),
   /** `after` runs when the owner forces a start the board's limits refused. */
   async startAgent(t, note, after) {
     const result = await change(

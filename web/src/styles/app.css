@@ -4125,6 +4125,25 @@ fieldset.field {
   margin: 8px 0 0;
 }
 
+/* ---------- next version (BRK-100) ---------- */
+
+.next-version p {
+  margin: 0 0 10px;
+}
+.next-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.next-version-actions .meta {
+  margin-left: 6px;
+}
+.next-version-link .linkish {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* ---------- release flow ---------- */
 .flow-row {
   display: grid;
