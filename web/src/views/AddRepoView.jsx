@@ -12,6 +12,7 @@ import {
   TriangleAlert,
 } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
+import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { ago } from '../lib/model.js';
 import {
   addRepoTarget,
@@ -334,9 +335,12 @@ function stepContent(id, d) {
       };
     case 'connect':
       return {
-        what: 'Hand the board the routine’s URL and token.',
-        why: 'It asks for the token in your terminal, so the token never passes through a chat, a page, or a command line. Run it yourself: through Claude Code’s ! prefix it stops with “this needs a terminal to ask in”.',
-        commands: [{ text: connect, terminal: true }],
+        what: d.registered
+          ? 'Paste the routine’s URL and token from its API trigger. The board checks them, keeps them encrypted, and never shows them again.'
+          : 'Once it’s registered, paste the routine’s URL and token here.',
+        why: 'The board starts agents in this repository through its routine. agents-connect does the same from a terminal, asking for the token there; run it yourself, since through Claude Code’s ! prefix it stops with “this needs a terminal to ask in”.',
+        routine: Boolean(d.registered),
+        commands: d.registered ? [] : [{ text: connect, terminal: true }],
         expect: `Connections shows its agent routine as Working, and npx breakaway agents lists ${slug} as connected.`,
       };
     case 'task':
@@ -409,7 +413,7 @@ function Checks({ step }) {
 }
 
 /** @param {Record<string, any>} props */
-function Step({ step, index, d }) {
+function Step({ step, index, d, reload }) {
   const now = d.now === step.id;
   const c = stepContent(step.id, { ...d, promptUrl: step.url });
   const body = (
@@ -431,6 +435,9 @@ function Step({ step, index, d }) {
         </div>
       )}
       {c.form && <RegisterForm github={d.github} suggested={d.suggestedSlug} />}
+      {c.routine && (
+        <RoutineConnect slug={d.slug} source={d.routine?.source ?? null} open={!step.done} onDone={reload} />
+      )}
       {c.commands?.map((cmd) => (
         <Command key={cmd.text} {...cmd} />
       ))}
@@ -575,7 +582,7 @@ function WayOut({ d }) {
       <Command
         text={`npx breakaway repos remove ${d.slug}`}
         terminal
-        note="It also drops its routine from the board’s Secrets Store."
+        note="It also drops its routine from the board."
       />
       <p class="muted small">
         Registered it by mistake, and no task was ever in it? Release it too, and its slug and prefixes can be
@@ -693,7 +700,7 @@ export function AddRepoView() {
           </div>
           <ol class="wiz-steps">
             {d.steps.map((s, i) => (
-              <Step key={s.id} step={s} index={i} d={d} />
+              <Step key={s.id} step={s} index={i} d={d} reload={() => load(true)} />
             ))}
           </ol>
           <WayOut d={d} />

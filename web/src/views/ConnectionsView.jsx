@@ -26,6 +26,7 @@ import {
   repoSettingsHref,
   repos,
 } from '../lib/store.js';
+import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { SelfUpdate } from '../components/SelfUpdate.jsx';
 import { RepoChip } from '../components/ui.jsx';
 
@@ -169,6 +170,9 @@ function Row({ c }) {
         </div>
       )}
       {c.id === 'board.version' && <SelfUpdate />}
+      {c.id === 'claude.routine' && c.repo && 'source' in c && (
+        <RoutineConnect slug={c.repo} source={c.source} onDone={loadConnections} />
+      )}
       <Items c={c} />
     </li>
   );
