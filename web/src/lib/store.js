@@ -2,7 +2,7 @@
 // view and task has a link and the back button works. Side effects live here too.
 import { batch, computed, effect, signal } from '@preact/signals';
 import { api, enc, whenSignedOut } from './api.js';
-import { AREAS, DAY, AREA_LABEL, isDependabot, ref, shipState, stateOf } from './model.js';
+import { AREAS, DAY, AREA_LABEL, isDependabot, plural, ref, shipState, stateOf } from './model.js';
 import { actionKey, planPullActions } from './autopilot.js';
 import { repoFacts, scopeGitHub } from './github-scope.js';
 import { sidebarDefault } from './layout.js';
@@ -1327,6 +1327,18 @@ export const actions = {
       loadFeature(result.feature.slug); // with its chase's queue, which a save doesn't return
     }
     return result?.feature ?? null;
+  },
+  /**
+   * Makes a feature from tasks picked on the Dependencies view (WEB-15): `body.tasks` join by the tag, except
+   * those already in another feature. Resolves to `{ feature, joined, kept }`, or null after the error.
+   */
+  async featureFromTasks(body) {
+    const result = await change(
+      () => api('features', { method: 'POST', body }),
+      (r) => `+${r.feature.slug} is a feature now, with ${plural(r.joined.length, 'task')}.`,
+    );
+    loadFeatures();
+    return result?.feature ? result : null;
   },
   /**
    * Starts or stops the chase on feature `f`, or sets how many agents it allows in an area (`body`: `on`,

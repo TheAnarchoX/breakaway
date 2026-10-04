@@ -1318,7 +1318,7 @@ const apiActions = {
     return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
   },
   featuresCreateApi(body) {
-    return this.run(() => ok({ feature: this.createFeature(body ?? {}) }, 201));
+    return this.run(() => ok(this.createFeature(body ?? {}), 201));
   },
   featuresModifyApi(slug, body) {
     return this.run(() => ok({ feature: this.modifyFeature(slug, body ?? {}) }));
