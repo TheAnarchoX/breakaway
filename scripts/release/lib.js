@@ -51,18 +51,23 @@ export function stableOf(prereleaseTag) {
 
 /**
  * manifest.json: what an install reads before it deploys.
- * @param {{ version: string, channel: 'main' | 'stable', commit: string, config: { manual?: boolean, manualSteps?: string[], updatesFrom?: string }, builtAs?: string, bundleSha256?: string, shape?: ReturnType<typeof shapeOf>, created: string }} o
+ * `wranglerDeploy` says a manual release's only step is wrangler deploy (a new Durable Object class, a cron, a route), so
+ * an install whose Deploy may run it does it itself (BRK-62).
+ * @param {{ version: string, channel: 'main' | 'stable', commit: string, config: { manual?: boolean, manualSteps?: string[], wranglerDeploy?: boolean, updatesFrom?: string }, builtAs?: string, bundleSha256?: string, shape?: ReturnType<typeof shapeOf>, created: string }} o
  */
 export function manifestOf({ version, channel, commit, config, builtAs, bundleSha256, shape, created }) {
   const manual = config.manual === true;
   if (manual && !config.manualSteps?.length)
     throw new Error('release.json says manual, so it needs manualSteps: what an install does by hand.');
+  if (config.wranglerDeploy === true && !manual)
+    throw new Error('release.json says wranglerDeploy, which is for a manual release: set manual and manualSteps too.');
   return {
     version,
     channel,
     commit,
     manual,
     ...(manual ? { manualSteps: config.manualSteps } : {}),
+    ...(manual && config.wranglerDeploy === true ? { wranglerDeploy: true } : {}),
     // The first release there was: a stable floor like 0.1.0 would sit above its own pre-releases, which a main-channel
     // install runs, so it could never update (BRK-67).
     updatesFrom: config.updatesFrom ?? '0.1.0-main.1',
@@ -100,7 +105,11 @@ export function shapeOf(wrangler) {
 /** The notes' Manual steps section, or nothing when no install has to do anything by hand. */
 export function manualSection(config) {
   if (config.manual !== true) return '';
-  return `\n### Manual steps\n\n${config.manualSteps.map((s) => `- ${s}`).join('\n')}\n`;
+  const byWrangler =
+    config.wranglerDeploy === true
+      ? "\nThese steps are what wrangler deploy does: an install whose Deploy may run wrangler deploy does them itself (its repository's README says how).\n"
+      : '';
+  return `\n### Manual steps\n\n${config.manualSteps.map((s) => `- ${s}`).join('\n')}\n${byWrangler}`;
 }
 
 /**

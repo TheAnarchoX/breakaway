@@ -54,6 +54,12 @@ The Cloudflare API token is theirs to make. On Cloudflare: My Profile, API Token
 gh secret set CLOUDFLARE_API_TOKEN --env production --repo <owner>/<name>
 ```
 
+That token can run `wrangler deploy`, so Deploy can apply a new address, cron triggers, or a new Durable Object class by itself instead of stopping for them. That's theirs to turn on; after a yes:
+
+```sh
+gh variable set BREAKAWAY_DEPLOY_CHANGES --body true --repo <owner>/<name>
+```
+
 **Check:** `gh api repos/<owner>/<name>/environments/production/secrets --jq '.secrets[].name'` lists both secrets, and the workflows are on `main`.
 
 ## 2. The board's secrets
