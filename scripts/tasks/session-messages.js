@@ -27,6 +27,13 @@ export function messageOutput(answer, event) {
   return { hookSpecificOutput: { hookEventName: event, additionalContext: text } };
 }
 
+/** The one line the hook says when the board no longer has this checkout's task claimed by its agent (BRK-87), or null on an event that can't carry it. */
+export function releasedOutput(claim, event) {
+  if (!CONTEXT_EVENTS.has(event)) return null;
+  const text = `${claim.wid ?? 'The task'} is no longer claimed by ${claim.agent ?? 'this agent'} (finished or released), so this checkout stops sending its live output. \`tasks claim\` starts it again on another task.`;
+  return { hookSpecificOutput: { hookEventName: event, additionalContext: text } };
+}
+
 /** The board's answer → the messages as Claude reads them, one paragraph each, or '' when there are none. */
 export function messageText(answer) {
   const messages = Array.isArray(answer?.messages) ? answer.messages : [];

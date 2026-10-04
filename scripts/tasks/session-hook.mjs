@@ -10,10 +10,10 @@
  * BREAKAWAY_SESSION_LOG=off (or SAMEWAVE_TASKS_SESSION_LOG=off), or on any error, it does nothing and exits 0. A post
  * that fails leaves its reason in the temp folder, which the CLI's next command here shows (BRK-86).
  */
-import { boardConfig, claimedTask, projectRoot } from './hook-config.js';
+import { boardConfig, claimedTask, dropClaim, projectRoot } from './hook-config.js';
 import { clearHookFailure, noteHookFailure, sessionRequest } from './proxy.js';
 import { entryFor } from './session-log.js';
-import { CONTEXT_EVENTS, messageOutput } from './session-messages.js';
+import { CONTEXT_EVENTS, messageOutput, releasedOutput } from './session-messages.js';
 
 async function main() {
   const root = projectRoot();
@@ -49,7 +49,14 @@ async function main() {
   }
   if (!res.ok) return noteHookFailure(claim.uuid, `HTTP ${res.status}`);
   clearHookFailure(claim.uuid);
-  const output = messageOutput(await res.json(), hook.hook_event_name);
+  const answer = await res.json();
+  if (answer?.released) {
+    dropClaim(claim, root);
+    const output = releasedOutput(claim, hook.hook_event_name);
+    if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+    return;
+  }
+  const output = messageOutput(answer, hook.hook_event_name);
   if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
 }
 

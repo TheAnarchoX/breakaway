@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   messageOutput,
   messageText,
+  releasedOutput,
   sentAt,
   WAIT_EVERY_MS,
   WAIT_WINDOW_MS,
@@ -133,5 +134,13 @@ describe('messageText', () => {
   it('is empty with no messages', () => {
     expect(messageText({ messages: [] })).toBe('');
     expect(messageText(null)).toBe('');
+  });
+});
+
+describe('releasedOutput', () => {
+  it('says once that the checkout stopped sending, on events that carry context', () => {
+    const out = releasedOutput({ wid: 'BRK-79', agent: 'claude-brk-79' }, 'PostToolUse');
+    expect(out?.hookSpecificOutput.additionalContext).toMatch(/^BRK-79 is no longer claimed by claude-brk-79/u);
+    expect(releasedOutput({ wid: 'BRK-79' }, 'Stop')).toBeNull();
   });
 });
