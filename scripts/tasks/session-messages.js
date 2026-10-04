@@ -1,8 +1,9 @@
 /**
  * The owner's messages from the board, as the session hook hands them to Claude
- * (docs/specs/IDEA-15-message-a-running-agent.md). Pure, so it runs in the hook (Node) and in
- * the Worker test runtime.
+ * (docs/specs/IDEA-15-message-a-running-agent.md), and the peloton's posts with them
+ * (docs/specs/IDEA-32-peloton.md). Pure, so it runs in the hook (Node) and in the Worker test runtime.
  */
+import { pelotonContext } from './peloton.js';
 
 /** Hook events whose output can carry `additionalContext`; on the others the hook doesn't ask for messages. */
 export const CONTEXT_EVENTS = new Set(['SessionStart', 'UserPromptSubmit', 'PostToolUse']);
@@ -18,11 +19,11 @@ export function sentAt(sent) {
 
 /**
  * The board's answer to the session post, and the hook's event → the JSON the hook prints, or
- * null when there's nothing to say (no messages, an event that can't carry them, a bad answer).
+ * null when there's nothing to say (no messages or posts, an event that can't carry them, a bad answer).
  */
 export function messageOutput(answer, event) {
   if (!CONTEXT_EVENTS.has(event)) return null;
-  const text = messageText(answer);
+  const text = waitingText(answer);
   if (!text) return null;
   return { hookSpecificOutput: { hookEventName: event, additionalContext: text } };
 }
@@ -46,6 +47,14 @@ export function messageText(answer) {
     .join('\n\n');
 }
 
+/**
+ * The board's answer → everything waiting for the agent, as Claude reads it: the owner's messages first, then the
+ * peloton's posts it hasn't seen. '' when there's nothing.
+ */
+export function waitingText(answer) {
+  return [messageText(answer), pelotonContext(answer?.peloton)].filter(Boolean).join('\n\n');
+}
+
 /** How long the idle wait hook listens after Claude stops (CLD-146: a cloud session keeps it alive up to 5 idle minutes). */
 export const WAIT_WINDOW_MS = 240_000;
 /** How often it asks the board. */
@@ -53,7 +62,7 @@ export const WAIT_EVERY_MS = 20_000;
 
 /**
  * The idle wait hook's loop (scripts/tasks/message-wait.mjs): asks the board for waiting messages
- * every `every` ms until one comes, the window ends, or `listening()` says to stop (the claim
+ * (and replies to the agent's peloton posts: the board sends posts only when one is) every `every` ms until one comes, the window ends, or `listening()` says to stop (the claim
  * went, or a newer wait hook took over). Returns the text to wake Claude with, or '' to end
  * quietly. A failed ask counts as nothing waiting; the next one tries again.
  *
@@ -69,7 +78,7 @@ export async function waitForMessages({ ask, sleep, now, listening, window = WAI
   const end = now() + window;
   for (;;) {
     if (!listening()) return '';
-    const text = messageText(await ask().catch(() => null));
+    const text = waitingText(await ask().catch(() => null));
     if (text) return text;
     const left = end - now();
     if (left <= 0) return '';

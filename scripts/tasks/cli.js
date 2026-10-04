@@ -13,6 +13,7 @@ export const SUBCOMMANDS = {
   features: ['list', 'add', 'show', 'modify'],
   horizon: ['close'],
   hook: ['session', 'wait'],
+  peloton: ['checkin', 'step', 'reply'],
 };
 
 /** Commands that take nothing after their name, so a word there is a mistake (an old copy's missing subcommand, say). */

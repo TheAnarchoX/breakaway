@@ -2,7 +2,8 @@
 /**
  * Claude Code Stop hook (async, asyncRewake; see .claude/settings.json): while the agent is idle,
  * waiting on CI or a review, asks the board every 20 seconds whether the owner sent it a message.
- * On one, it writes the message to stderr and exits 2, which wakes Claude with it as a system
+ * It wakes for a reply to one of the agent's peloton posts too, never for the peloton's other posts
+ * (docs/specs/IDEA-32-peloton.md). On one, it writes the message to stderr and exits 2, which wakes Claude with it as a system
  * reminder (docs/specs/IDEA-15-message-a-running-agent.md). After its 4-minute window it ends
  * quietly, and a message waits for the agent's next turn; its `timeout` (300 s) outlasts the window,
  * because Claude Code kills an async hook at its timeout (CLD-146).
