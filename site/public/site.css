@@ -596,9 +596,6 @@ figcaption {
     max-height: calc(100vh - var(--topbar-h) - 48px);
     overflow-y: auto;
   }
-  .docs-menu > summary {
-    display: none;
-  }
 }
 .docs-menu > summary {
   min-height: 44px;
@@ -613,6 +610,12 @@ figcaption {
 }
 .docs-menu[open] > summary {
   margin-bottom: 16px;
+}
+/* Wide, the menu is the sidebar: always open, with nothing to fold it away. After the rule above, so it wins. */
+@media (min-width: 900px) {
+  .docs-menu > summary {
+    display: none;
+  }
 }
 .side-group {
   margin-bottom: 22px;
