@@ -154,6 +154,7 @@ const TRIGGER_TEXT = {
   cloudflare: 'by a Cloudflare alert, from the board',
   general: 'by a prompt from the owner, from the board',
   chase: 'by the owner’s chase of a feature, because the task became ready',
+  'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
 };
 
 /**
@@ -861,9 +862,10 @@ export const agentsMethods = {
   /**
    * "Fix with an agent" on an open pull request: its task (made from the PR if it has none), and an
    * agent on the PR. `problem` is conflicts, failing, or review; it must be true of the PR now.
-   * The agent never merges: it pushes a fix or leaves a note.
+   * The agent never merges: it pushes a fix or leaves a note. A chase passes `chase` (its feature's slug and
+   * title) and its own `trigger`, so the agent knows it fixes the pull request as one of the chase's agents.
    */
-  async fixPr(number, { problem = null, note = null, repo = null, force = false } = {}) {
+  async fixPr(number, { problem = null, note = null, repo = null, force = false, chase = null, trigger = 'pr' } = {}) {
     await this.ready();
     const slug = this.checkRepoSlug(repo);
     const row = this.sql
@@ -926,9 +928,17 @@ export const agentsMethods = {
     const map = this.tasks.get(uuid);
     const busy = this.claimBlocker({ ...map, uuid });
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
-    const text = [what, note ? `Owner's note: ${String(note).slice(0, 2000)}` : null].filter(Boolean).join('\n');
+    const text = [
+      what,
+      chase
+        ? `This pull request is part of the chase on ${chase.title} (+${chase.slug}), and the agent that opened it has stopped. Fix it as one of the chase's agents: check in on the chase's peloton too while it's open.`
+        : null,
+      note ? `Owner's note: ${String(note).slice(0, 2000)}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
     return {
-      ...(await this.startAgent(uuid, { trigger: 'pr', note: text, kind: 'fix-pr', pr: pr.number, force })),
+      ...(await this.startAgent(uuid, { trigger, note: text, kind: 'fix-pr', pr: pr.number, force })),
       already: null,
     };
   },
