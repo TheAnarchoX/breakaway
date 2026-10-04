@@ -11,7 +11,7 @@ Add the board to your home screen (Safari: Share, Add to Home Screen; Chrome: th
 
 ## The frame
 
-The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server and opens **Settings**. On a phone the sidebar is a drawer. The top bar keeps search, **New task**, and the bell.
+The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server and opens **Settings**. On a phone the sidebar is a drawer. The top bar keeps search, **New agent** (once an agent routine is connected), **New task**, and the bell.
 
 ## The views
 
@@ -19,12 +19,13 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | --- | --- |
 | **Board** | A column per state (needs a decision, ready, in progress, in review, blocked or waiting, done in the last 30 days) and a row per horizon or area. Cards show their pull request’s number, checks, and review. On a phone you pick the column at the top. **Close now** is here. |
 | **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
-| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. |
+| **Roadmap** | Releases in version order, then Unplanned, each with its feature cards: progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](/docs/features/). |
+| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
-| **Inbox** | Pings from agents and notes from the board. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
-| **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, the Agents settings, and the agent prompts. |
+| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
+| **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, every chase that’s on, each repository’s peloton, the Agents settings, and the agent prompts. |
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
-| **GitHub** | Open pull requests with checks and reviews, Dependabot alerts, deploys, CI runs, and commits on `main`. Select a pull request to read, update, and merge it without leaving the board. |
+| **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](/docs/github/#the-github-view). |
 | **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
 | **Settings** | The name your claims use, how tasks open, notifications, and the two pull request settings. |
 
@@ -33,6 +34,14 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 A task opens beside the view, or in a modal with the description and thread on the left and the fields, dependencies, pull request, and agent run in a rail on the right. On a phone it is full screen. Everything is editable in place: the title, area, horizon, priority, tags, dates, spec, pull request, and dependencies. You can add comments, claim or release, mark done, open again, or delete. Claims you make here use the name in Settings (`owner` by default).
 
 The **Agent** section of a task starts an agent on it, with an optional note, and refines it with an agent instead of building it. Under a running agent’s live output you can send it a message.
+
+### The task menu
+
+Right-click a task in the Board, List, or Dependencies view (a long press on a touch screen, or the Menu key or Shift+F10 on a focused task) to act on it where it is: open it, start an agent (or **Force start** one that waits on the board’s limits), review its pull request with an agent, refine it, refine from a decided decision’s answers, start by itself when ready, claim or release, add a comment, move it to another horizon, mark it done or open it again, and copy its work ID or link. It shows only what applies to that task. Shift with the right-click, or a right-click in a text field, still opens the browser’s own menu.
+
+### New agent
+
+**New agent** in the top bar (`p`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](/docs/agents/#from-a-prompt-new-agent).
 
 Filters (area, horizon, who can move it, claimed, finished) and search live in the URL, so every view and every task has a link.
 
@@ -43,7 +52,8 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 | `/` | Search |
 | `n` | New task |
 | `i` | New idea |
-| `b` `l` `g` `o` `a` `h` `x` `u` | Switch views |
+| `p` | New agent |
+| `b` `l` `m` `g` `o` `a` `h` `x` `u` | Switch views |
 | `w` | Connections |
 | `[` | Collapse or expand the sidebar |
 | `s` | Switch repository (with several) |

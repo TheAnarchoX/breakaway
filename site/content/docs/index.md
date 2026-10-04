@@ -22,9 +22,10 @@ These docs cover all of it. Start where you are.
 | An HTTP route, or how auth works | [The API](/docs/api/) |
 | What a view in the browser does, or a keyboard shortcut | [The web board](/docs/web-board/) |
 | How agents start, what they follow, and the limits | [Agents](/docs/agents/) |
+| Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](/docs/routines/) |
-| Pull requests, merging, Promote and Roll back | [GitHub](/docs/github/) |
+| The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](/docs/github/) |
 | Taskwarrior 3 sync | [Taskwarrior](/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](/docs/operations/) |
