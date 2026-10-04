@@ -44,11 +44,13 @@ import {
   repoBySlug,
   confirmDialog,
   current,
+  focusComment,
   hashFor,
   loaded,
   me,
   navOrder,
   openTask,
+  releaseOther,
   selected,
   setTaskMode,
   tasks,
@@ -56,21 +58,13 @@ import {
 } from '../lib/store.js';
 import { Popover, RepoChip, StateBadge, useAutosize, widClass } from './ui.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
+import { copy } from '../lib/clipboard.js';
 import { PrRow } from './GitHub.jsx';
 import { AgentSection } from './Agents.jsx';
 import { DecisionSection } from './Decision.jsx';
 import { AttachmentsSection } from './Attachments.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
-
-async function copy(text, what) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast(`${what} copied.`, 'success');
-  } catch {
-    toast(`Couldn’t copy. Select it and copy it yourself: ${text}`, 'error');
-  }
-}
 
 /**
  * A text field that saves when you leave it or press Enter, and goes back on Escape.
@@ -122,14 +116,6 @@ function Field({ label, children, id }) {
 function Actions({ task: t }) {
   const state = stateOf(t);
   const mine = t.claim === me.value;
-  const releaseOther = async () => {
-    const ok = await confirmDialog({
-      title: `Release ${t.claim}’s claim?`,
-      body: `${t.claim} may still be working on ${ref(t)}. Check its notes first, and tell them if you can.`,
-      confirmLabel: 'Release it',
-    });
-    if (ok) actions.release(t, true);
-  };
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Delete ${ref(t)}?`,
@@ -161,7 +147,7 @@ function Actions({ task: t }) {
             </button>
           )}
           {t.claim && !mine && (
-            <button type="button" class="btn btn-outline btn-sm" onClick={releaseOther}>
+            <button type="button" class="btn btn-outline btn-sm" onClick={() => releaseOther(t)}>
               <Undo2 size={16} aria-hidden="true" />
               Release {t.claim}’s claim
             </button>
@@ -1019,9 +1005,20 @@ export function TaskPanel({ docked, modal = false }) {
   const t = current.value;
   const heading = useRef(null);
   const uuid = t?.uuid;
+  const toComment = Boolean(uuid) && focusComment.value === uuid;
+  const shown = useRef('');
   useEffect(() => {
-    if (uuid && (docked || modal)) heading.current?.focus({ preventScroll: true });
-  }, [uuid, docked, modal]);
+    if (!uuid) return;
+    // Opened from the task menu's Add a comment: start in the comment field instead of at the top.
+    const field = toComment && document.getElementById(`comment-${uuid}`);
+    if (field) {
+      focusComment.value = null;
+      field.scrollIntoView({ block: 'center' });
+      field.focus({ preventScroll: true });
+    } else if ((docked || modal) && shown.current !== `${uuid} ${docked} ${modal}`)
+      heading.current?.focus({ preventScroll: true });
+    shown.current = `${uuid} ${docked} ${modal}`;
+  }, [uuid, docked, modal, toComment]);
   const onClose = () => {
     const card = uuid && document.querySelector(`[data-task="${uuid}"]`);
     closeTask();

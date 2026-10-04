@@ -47,6 +47,7 @@ import { NewAgentDialog } from './components/NewAgent.jsx';
 import { SignIn } from './components/SignIn.jsx';
 import { FilterBar, HelpContent, MenuDrawer, SettingsDialog, Sidebar, TopBar } from './components/Shell.jsx';
 import { ConfirmHost, Dialog, ForceStartHost, Toasts } from './components/ui.jsx';
+import { TaskMenuHost } from './components/TaskMenu.jsx';
 
 const VIEW_COMPONENTS = {
   board: BoardView,
@@ -189,6 +190,7 @@ function Board() {
       </Dialog>
       <ConfirmHost />
       <ForceStartHost />
+      <TaskMenuHost />
       <Toasts />
     </div>
   );
