@@ -13,8 +13,6 @@ const NAMED = /samewave|theanarchox(?!\/breakaway\b)/iu;
 
 const LEGACY_INSTALL =
   'a Worker without TASKS_INSTALL is the first install, so its Durable Object, secrets, default repository, and Workers keep their names';
-const LEGACY_SETTINGS =
-  'the SAMEWAVE_* setting names and ~/.config/samewave still work as fallbacks (scripts/tasks/settings.js)';
 const LEGACY_TESTS =
   'the Workers test runtime is a Worker without TASKS_INSTALL, so these tests run as the first install';
 const HISTORY = 'the board began in the first install: its decisions and specs keep their history';
@@ -27,31 +25,18 @@ const ALLOWED = {
   'src/release.js': [2, LEGACY_INSTALL],
   'src/default-deploy-paths.json': [1, LEGACY_INSTALL],
   'src/backfill-shipped.js': [6, 'its first deployments are recorded under the first install’s Worker names'],
-  'src/store-connections.js': [1, LEGACY_SETTINGS],
-  'src/redact.js': [1, LEGACY_SETTINGS],
   'web/src/components/PullPage.jsx': [2, LEGACY_INSTALL],
   'web/src/components/Shell.jsx': [1, 'a comment on the name a first install shows'],
-  // The CLI's fallbacks.
-  'scripts/tasks.mjs': [13, LEGACY_SETTINGS],
-  'scripts/tasks/settings.js': [13, LEGACY_SETTINGS],
-  'scripts/tasks/repo.js': [1, LEGACY_SETTINGS],
-  'scripts/tasks/session-hook.mjs': [1, LEGACY_SETTINGS],
-  'scripts/tasks/message-wait.mjs': [1, LEGACY_SETTINGS],
   'interop.mjs': [1, LEGACY_INSTALL],
-  'docs/tasks.md': [8, LEGACY_SETTINGS],
   // The licensor: the owner's account, which the repository lives under.
   LICENSE: [1, 'the licence’s notice names the licensor'],
   // History.
   'docs/decisions.md': [3, HISTORY],
   'docs/specs/': [0, HISTORY],
-  // Tests that keep it out, and tests of the fallbacks.
+  // Tests that keep it out.
   'scripts/lib/release.test.js': [3, 'checks the release helpers never name it'],
   'test/agent-files.test.js': [2, 'checks the agent files never name it'],
   'test/brand.test.js': [3, 'checks the brand’s files never name it'],
-  'scripts/tasks/settings.test.js': [14, LEGACY_SETTINGS],
-  'scripts/tasks/session-log.test.js': [4, LEGACY_SETTINGS],
-  'scripts/tasks/init.test.js': [1, LEGACY_SETTINGS],
-  'scripts/tasks/repo.test.js': [1, LEGACY_SETTINGS],
   'test/install.test.js': [16, LEGACY_INSTALL],
   'wrangler.test.jsonc': [2, LEGACY_TESTS],
   'test/constants.js': [1, LEGACY_TESTS],

@@ -6,9 +6,10 @@
 const PATTERNS = [
   // Private keys, whole blocks.
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gu, '[redacted key]'],
-  // An install's own settings (breakaway's prefix and the legacy one): KEY=value where the name says it's secret.
+  // Settings whose name says they're secret, KEY=value, under any prefix: breakaway's, an install's own (it picks its
+  // secrets' prefix), Cloudflare's, GitHub's, and the rest (BRK-77).
   [
-    /\b((?:BREAKAWAY|SAMEWAVE|CLOUDFLARE|GITHUB|ANTHROPIC)_[A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD)[A-Z0-9_]*\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gu,
+    /\b([A-Z][A-Z0-9]*_[A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD)[A-Z0-9_]*\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gu,
     '$1[redacted]',
   ],
   // Anthropic, GitHub, Slack-style tokens.

@@ -1,7 +1,7 @@
 /**
  * Which repository the CLI works in (docs/specs/IDEA-14-multi-repo.md, section 5; CLD-123): the
  * checkout's, from `git remote get-url origin`, matched against the board's registry. `--repo` or
- * BREAKAWAY_REPO (or SAMEWAVE_TASKS_REPO) overrides it. Pure, so it's tested without git or the board.
+ * BREAKAWAY_REPO overrides it. Pure, so it's tested without git or the board.
  */
 
 /**

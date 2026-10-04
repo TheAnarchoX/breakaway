@@ -1008,7 +1008,7 @@ export const connectionsMethods = {
         repo: isDefault ? null : repo.slug,
         detail: `${lastLog ? 'last entry arrived' : 'no entries yet'}${quiet.length ? `; ${quiet.length} started session${quiet.length === 1 ? ' has' : 's have'} sent nothing for over 10 minutes` : ''}`,
         at: iso(lastLog),
-        fix: `A started session sends nothing back: check the routine’s cloud environment allows ${hostOf(this.homeUrl())} and has the board’s token (BREAKAWAY_TOKEN, or SAMEWAVE_TASKS_TOKEN), and that ${isDefault ? '.claude/settings.json' : `${repo.github}’s .claude/settings.json`} still has the session hook (the CLD-37 failure).`,
+        fix: `A started session sends nothing back: check the routine’s cloud environment allows ${hostOf(this.homeUrl())} and has the board’s token (BREAKAWAY_TOKEN, or an API credential for that host), and that ${isDefault ? '.claude/settings.json' : `${repo.github}’s .claude/settings.json`} still has the session hook (the CLD-37 failure).`,
         link: ROUTINES_URL,
       },
     );

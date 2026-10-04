@@ -34,7 +34,7 @@ describe('the checkout’s repository', () => {
     expect(pickRepo({ remote: 'http://local_proxy@127.0.0.1:1/git/acme/breakaway', registry })).toBe('breakaway');
   });
 
-  it('lets --repo or SAMEWAVE_TASKS_REPO override the remote, and refuses one the board lacks', () => {
+  it('lets --repo or BREAKAWAY_REPO override the remote, and refuses one the board lacks', () => {
     expect(pickRepo({ named: 'Breakaway', remote: 'https://github.com/acme/widgets', registry })).toBe('breakaway');
     expect(() => pickRepo({ named: 'nowhere', registry })).toThrow(
       /no repository "nowhere" on the board; it has widgets, breakaway\. The owner registers one with npx breakaway repos add/,

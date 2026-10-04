@@ -42,7 +42,7 @@ function readOptional(path) {
 
 /** This machine's tasks.env, as `{ NAME: value }`. */
 function envFile() {
-  const dir = configDir({ env: process.env, home: homedir(), exists: existsSync });
+  const dir = configDir({ env: process.env, home: homedir() });
   return parseEnvFile(readOptional(join(dir, 'tasks.env')));
 }
 
