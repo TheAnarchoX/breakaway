@@ -128,7 +128,7 @@ describe('the feed entry', () => {
 
 describe('an install with no install repository keeps the verdict for Connections', () => {
   let spy;
-  const stub = () => env.STORE.get(env.STORE.idFromName('samewave'));
+  const stub = () => env.STORE.get(env.STORE.idFromName('acme-board'));
   beforeEach(() => {
     spy = vi.spyOn(globalThis, 'fetch');
   });
