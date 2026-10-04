@@ -54,7 +54,10 @@ const all = {
 describe('the GitHub view per repository', () => {
   it('passes one repository’s answer through, with its flow', () => {
     const one = { connected: true, repo: 'acme/widgets', flow, open: [] };
-    expect(scopeGitHub(one, null)).toEqual({ ...one, flows: [one], empties: [] });
+    expect(scopeGitHub(one, null)).toEqual({ ...one, flows: [one], empties: [], nextVersions: [] });
+    // Pre-releases counted from package.json (BRK-100): it offers the next version.
+    const counted = { ...one, nextVersion: { base: '1.1.2' } };
+    expect(scopeGitHub(counted, null).nextVersions).toEqual([counted]);
     expect(scopeGitHub({ ...one, flow: null }, null).flows).toEqual([]);
     // No commits yet (CLD-191): the view says to run repos init.
     expect(scopeGitHub({ ...one, empty: true }, null).empties).toEqual([{ ...one, empty: true }]);
@@ -162,5 +165,10 @@ describe('the GitHub dashboard', () => {
     expect(pickTab(scratch, 'runs')).toBe('runs');
     expect(pickTab([], 'runs')).toBeNull();
     expect(githubTabs(null)).toEqual([]);
+  });
+
+  it('shows Releases for a repository whose next version can be prepared, even with no release flow', () => {
+    const tabs = githubTabs({ flows: [], nextVersions: [{ slug: 'scratch' }], closed: [], runs: [], commits: [] });
+    expect(tabs[0].id).toBe('releases');
   });
 });

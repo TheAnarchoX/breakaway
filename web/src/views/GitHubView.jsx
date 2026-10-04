@@ -37,6 +37,7 @@ import { PrRow } from '../components/GitHub.jsx';
 import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
 import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
+import { NextVersion } from '../components/NextVersion.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -655,6 +656,10 @@ export function GitHubView() {
             aria-labelledby={`gh-tab-${tab}`}
             class={tab === 'releases' ? 'gh-panel gh-panel-flows' : 'gh-section gh-panel'}
           >
+            {tab === 'releases' &&
+              d.nextVersions.map((r) => (
+                <NextVersion key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
+              ))}
             {tab === 'releases' &&
               d.flows.map((r) => (
                 <ReleaseFlow key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
