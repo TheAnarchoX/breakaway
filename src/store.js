@@ -1188,8 +1188,10 @@ const apiActions = {
         prompt: body?.prompt,
         repo: body?.repo ?? null,
         force: Boolean(body?.force),
+        decision: body?.decision ?? null,
+        note: typeof body?.note === 'string' ? body.note : null,
       });
-      return ok(result, result.run ? 201 : 202);
+      return ok(result, result.run ? 201 : result.already ? 200 : 202);
     });
   },
   agentsStartApi(ref, note, mode, { force = false, by } = {}) {
