@@ -59,6 +59,60 @@ describe('dashboard numbers', () => {
     expect(utc.period).toMatchObject({ days: 7, from: '2026-09-26', to: '2026-10-02', tz: 'UTC' });
   });
 
+  it('starts a period at the first activity on a board younger than it', () => {
+    const tasks = [
+      task({ wid: 'CLD-1', status: 'completed', entry: NOW - 2 * D, end: NOW - D }),
+      task({ wid: 'CLD-2', status: 'completed', entry: NOW - 2 * D, end: NOW - 2 * H }),
+    ];
+    const s = computeStats({ ...empty, now: NOW, days: 7, tz: 'UTC', tasks });
+    expect(s.period).toMatchObject({ days: 7, covered: 3, comparable: false, from: '2026-09-30', to: '2026-10-02' });
+    expect(s.daily.map((d) => d.day)).toEqual(['2026-09-30', '2026-10-01', '2026-10-02']);
+    expect(s.pace.perDay).toBeCloseTo(2 / 3);
+    expect(s.pace.perDayBefore).toBeNull();
+    expect(s.totals.finished).toEqual({ now: 2, before: null });
+    expect(s.totals.added.before).toBeNull();
+  });
+
+  it('keeps quiet days inside an active period, and an older board as it was', () => {
+    const young = computeStats({
+      ...empty,
+      now: NOW,
+      days: 7,
+      tz: 'UTC',
+      tasks: [task({ status: 'completed', entry: NOW - 4 * D, end: NOW - H })],
+    });
+    expect(young.period.covered).toBe(5);
+    expect(young.daily.map((d) => d.finished)).toEqual([0, 0, 0, 0, 1]);
+    const old = computeStats({
+      ...empty,
+      now: NOW,
+      days: 7,
+      tz: 'UTC',
+      tasks: [
+        task({ status: 'completed', entry: NOW - 30 * D, end: NOW - 9 * D }),
+        task({ status: 'completed', entry: NOW - 30 * D, end: NOW - H }),
+      ],
+    });
+    expect(old.period).toMatchObject({ days: 7, covered: 7, comparable: true, from: '2026-09-26' });
+    expect(old.daily).toHaveLength(7);
+    expect(old.pace.perDay).toBeCloseTo(1 / 7);
+    expect(old.pace.perDayBefore).toBeCloseTo(1 / 7);
+    expect(old.totals.finished).toEqual({ now: 1, before: 1 });
+  });
+
+  it('counts activity other than tasks as the first day, and an empty board as today', () => {
+    const s = computeStats({
+      ...empty,
+      now: NOW,
+      days: 30,
+      tz: 'UTC',
+      routineRuns: [{ slug: 'x', failed: false, at: NOW - 5 * D }],
+    });
+    expect(s.period.covered).toBe(6);
+    const none = computeStats({ ...empty, now: NOW, days: 30, tz: 'UTC' });
+    expect(none.period).toMatchObject({ covered: 1, comparable: false, from: '2026-10-02' });
+  });
+
   it('compares the period with the one before it, and keeps the pace', () => {
     const tasks = [
       // This week: finished today, yesterday, and three days ago; added in the window.
@@ -295,7 +349,9 @@ describe('dashboard numbers', () => {
     const first = await body(await api('stats?days=7&tz=Europe/Amsterdam'));
     expect(first.status).toBe(200);
     expect(first.period).toMatchObject({ days: 7, tz: 'Europe/Amsterdam' });
-    expect(first.daily).toHaveLength(7);
+    // A board made today covers only the days since its first activity.
+    expect(first.daily).toHaveLength(first.period.covered);
+    expect(first.period.covered).toBeLessThanOrEqual(7);
     expect(first.totals.finished.now).toBeGreaterThanOrEqual(1);
     expect(first.totals.merged.now).toBeGreaterThanOrEqual(1);
     expect(first.checks.workflows.find((w) => w.name === 'Test and build')).toMatchObject({ duration: 60_000 });

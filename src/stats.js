@@ -98,9 +98,24 @@ export function familyOf(claim) {
 export function computeStats({ now, days, tz, tasks, prs, runs, deploys, ships, agentRuns, routineRuns, open }) {
   const at = clock(tz);
   const today = at(now).day;
-  const from = shiftDay(today, -(days - 1));
-  const beforeFrom = shiftDay(from, -days);
-  const keys = Array.from({ length: days }, (_, i) => shiftDay(from, i));
+  const periodFrom = shiftDay(today, -(days - 1));
+  // The board's (or the repository's) first activity: days before it aren't quiet days, they're days before it existed.
+  const stamps = [
+    ...tasks.flatMap((t) => [t.entry, t.end]),
+    ...prs.flatMap((p) => [p.merged, p.created]),
+    ...runs.map((r) => r.created),
+    ...deploys.map((d) => d.at),
+    ...ships.map((s) => s.at),
+    ...agentRuns.map((r) => r.at),
+    ...routineRuns.map((r) => r.at),
+  ].filter((ms) => Number.isFinite(ms) && ms > 0 && ms <= now + HOUR_MS);
+  const firstDay = stamps.length ? at(Math.min(...stamps)).day : today;
+  const from = firstDay > periodFrom ? firstDay : periodFrom;
+  const covered = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS) + 1;
+  // A full period always has the stretch before it to compare with; a young board has nothing before its first day.
+  const comparable = firstDay < periodFrom;
+  const beforeFrom = shiftDay(from, -covered);
+  const keys = Array.from({ length: covered }, (_, i) => shiftDay(from, i));
   const index = new Map(keys.map((k, i) => [k, i]));
   // Everything that happened from beforeFrom on gets its day once; the window and the one before split on `from`.
   const earliest = Date.parse(`${beforeFrom}T00:00:00Z`) - 2 * DAY_MS; // a day early either side of UTC is enough
@@ -272,9 +287,9 @@ export function computeStats({ now, days, tz, tasks, prs, runs, deploys, ships, 
   }
   const busiest = daily.reduce((top, d) => (d.finished > (top?.finished ?? 0) ? d : top), null);
 
-  const pair = (series) => ({ now: totals[series][0], before: totals[series][1] });
+  const pair = (series) => ({ now: totals[series][0], before: comparable ? totals[series][1] : null });
   return {
-    period: { days, from, to: today, tz },
+    period: { days, covered, comparable, from, to: today, tz },
     generated: new Date(now).toISOString(),
     totals: {
       finished: pair('finished'),
@@ -285,8 +300,8 @@ export function computeStats({ now, days, tz, tasks, prs, runs, deploys, ships, 
     },
     daily,
     pace: {
-      perDay: totals.finished[0] / days,
-      perDayBefore: totals.finished[1] / days,
+      perDay: totals.finished[0] / covered,
+      perDayBefore: comparable ? totals.finished[1] / covered : null,
       streak,
       bestStreak: best,
       busiest: busiest ? { day: busiest.day, finished: busiest.finished } : null,
