@@ -8,7 +8,17 @@ import {
   Rocket,
   TriangleAlert,
 } from 'lucide-preact';
-import { HORIZON_LABEL, PRIORITY_LABEL, day, mainPr, ref, shipState, shortVersion } from '../lib/model.js';
+import {
+  HORIZON_LABEL,
+  PICKS_AREA,
+  PRIORITY_LABEL,
+  day,
+  mainPr,
+  picksArea,
+  ref,
+  shipState,
+  shortVersion,
+} from '../lib/model.js';
 import { PrBadge } from './GitHub.jsx';
 import { AgentBadge } from './Agents.jsx';
 import { areaLabel, byUuid, current, hashFor } from '../lib/store.js';
@@ -54,6 +64,7 @@ export function TaskCard({ task: t, hide = [], compact = false }) {
       {!compact && (
         <span class="card-meta">
           {!hide.includes('area') && t.project && <span class="meta">{areaLabel(t.project)}</span>}
+          {!hide.includes('area') && picksArea(t) && <span class="meta">{PICKS_AREA}</span>}
           {!hide.includes('horizon') && t.horizon && <span class="meta">{HORIZON_LABEL[t.horizon]}</span>}
           <RoleTags tags={t.tags} />
         </span>

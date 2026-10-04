@@ -1,6 +1,6 @@
 # IDEA-28 · Features and Chase mode
 
-Task: IDEA-28 on the board · Status: draft
+Task: IDEA-28 on the board, refined in BRK-115 · Status: draft, with the owner's answers (BRK-82, 4 Oct 2026)
 
 ## Problem
 The roadmap is two tags put on by hand: a release tag (`v1_2-0`) and a feature tag (`self-update`, `legacy-free`, `artifacts`) on every task. The board can filter by them, but it has no idea what a feature is: nothing says what it's called, which release it's aimed at, how far along it is, or what is stopping it. And when the owner wants a feature finished, they start agents one task at a time, watch the budget, and notice by hand when something upstream (a decision, a manual step, a pull request to merge) is holding the rest.
@@ -31,7 +31,12 @@ The owner presses **Chase** on a feature (or `breakaway chase <slug>`). While th
 1. **What it works on.** The feature's tasks that are open and `+agent`, plus every task that blocks one of them, found by following `depends` through the whole board (any area, any repository). Pulled-in blockers are marked "in chase because it blocks X" and don't need the feature tag.
 2. **When it starts them.** On the same tick as auto-start (an alarm after anything that could unblock a task, and the cron). A task that's ready (the existing `agentBlocker` is null) starts straight away, **without waiting for the others to finish**: ready tasks start together, up to the limits below, and a task that becomes ready when a blocker's pull request merges starts on the next tick.
 3. **The limits it never exceeds.** The shared agent slots and hourly budget, each repository's own cap and its routine's hourly limit, and a repository whose routine isn't connected (the same `repoRoom` and `repoCapBlocker` checks the other starters use). A chase doesn't get a budget of its own, and it never uses Force start ([IDEA-30](IDEA-30-new-agent.md), section 4). Order when slots run short: security fixes, general agents ([IDEA-30](IDEA-30-new-agent.md), section 3), and other auto-start tasks first, then the chase, nearest to unblocking the most work first (the ranking `startNext` uses, then by how many chase tasks a task unblocks).
-4. **Areas.** The one-agent-per-area rule (to keep agents out of each other's files) is relaxed inside a chase up to a per-feature **parallelism** (default 3), because the owner chose speed; two agents in one area still never start on tasks that `related` each other. See the decision below.
+4. **Areas.** The one-agent-per-area rule (to keep agents out of each other's files) is relaxed inside a chase up to a per-chase **parallelism**, because the owner chose speed (BRK-82, decision 1):
+   - **The limit.** A chase starts a task only while fewer than `parallel` agents are running in that area of that repository. It counts every agent running there, not only the chase's, because the point is to keep agents out of each other's files. `parallel` defaults to 3, is at least 1, and 1 is today's rule.
+   - **Related tasks.** Two agents never run at once on tasks in one area that are `related` to each other, whatever `parallel` says.
+   - **Waiting.** A task held back by either rule stays in the chase's queue with the reason, in the auto-start queue's words ("3 agents are already working in web, the most this chase allows").
+   - **How it's set.** The owner sets `parallel` when starting a chase or while it runs: `chase <slug> --parallel <n>`, the Chase control on the feature, or the chase route (section 4). It's kept on the feature with the rest of the chase state.
+   - **Outside a chase,** `agents next` and auto-start keep one agent per area, as today.
 5. **What it does at something only the owner can do.** It never starts, answers, or merges these; it shows them as **Needs you**, listed on the feature with what each unblocks, and keeps going on every branch that doesn't wait for them:
    - a `+decide` task or one with open questions: opens it on the board;
    - a `+owner` task (a manual step): the task, with its done when;
@@ -45,19 +50,19 @@ The owner presses **Chase** on a feature (or `breakaway chase <slug>`). While th
 
 ### 4. Data and API
 - **Storage:** a `features` table in the Durable Object's SQLite next to routines; its migration is idempotent and a fresh install has none. Chase state (`on`, `startedAt`, `parallel`, `stalledPingAt`) is columns on that record. Tasks gain nothing.
-- **API:** `GET/POST /api/features`, `GET/PATCH/DELETE /api/features/:slug` (the view includes progress, tasks, Needs you, Stuck, and the queue), `POST /api/features/:slug/chase` (`{ on, parallel, dryRun }`). The rest of the auth is the board's.
+- **API:** `GET/POST /api/features`, `GET/PATCH/DELETE /api/features/:slug` (the view includes progress, tasks, Needs you, Stuck, and the queue), `POST /api/features/:slug/chase` (`{ on, parallel, dryRun }`; `parallel` changes a running chase too, and the next tick follows it). The rest of the auth is the board's.
 - **Engine:** `chaseQueue(views)` computes who starts and why each other task waits (reusing `repoRoom`, `repoCapBlocker`, `agentBlocker`, `rank`); `chaseTick()` starts them through `startAgent(…, { trigger: 'chase' })`, called from `autostartTick`'s alarm and cron. Tests first, in the Workers pool, with GitHub and Claude mocked.
 - **Privacy:** no new data, nothing about people.
 
 ### 5. Teaching agents
 The core needs one line in "Shaping an idea": when you make tasks for an idea, give them one feature tag and add the feature (`tasks features add`) rather than a release tag. The CLI and skill are versioned copied files, so `CLI_VERSION` and `CLI_FINGERPRINT` move with that change.
 
-## Decisions for the owner
-Asked on the board as a decision (BRK-82): 
-1. **One agent per area in a chase.** Keep the rule, relax it to a per-feature number (recommended, default 3), or drop it.
-2. **A task in two features.** Allow, or one feature per task (recommended).
-3. **Release on the task or the feature.** The feature's (recommended), keeping release tags only as a fallback.
-4. **A chase's priority against auto-start.** After it (recommended), equal, or before.
+## Decisions
+Answered by the owner on BRK-82 (4 Oct 2026), each as recommended:
+1. **One agent per area in a chase:** relaxed to a per-chase number, default 3 (section 3.4).
+2. **A task in two features:** one feature per task (section 1).
+3. **Release on the task or the feature:** the feature's, with release tags kept only as a fallback (section 1).
+4. **A chase's priority against auto-start:** after it; security fixes, general agents, and other auto-start tasks start first (section 3.3).
 
 ## Out of scope
 Features across installs, sub-features, estimates and dates, burn-down charts, a chase that merges, deploys, or answers decisions, killing a running agent when a chase stops, chase schedules (start Friday), and moving existing release tags (they stay as they are).
@@ -69,7 +74,7 @@ Features across installs, sub-features, estimates and dates, burn-down charts, a
 ## Done when
 Built in order, each its own pull request, tests first:
 1. **Features**: the record, the tag membership, progress, suggested features, and the API; `pnpm interop` still passes.
-2. **Chase engine**: the queue, the tick, the limits, Needs you and Stuck, the stall ping, and the end.
-3. **CLI**: `features`, `chase`, and `--dry-run`; `CLI_VERSION` and the fingerprint move.
-4. **Web**: the Roadmap view, the feature card and detail, and Chase in the feature and the Agents view.
+2. **Chase engine** (`BRK-84`): the chase state and route, the queue, the tick, the limits (with the per-area `parallel` and the related-tasks rule), Needs you and Stuck, the stall ping, and the end.
+3. **CLI** (`BRK-85`): `features`, `chase` with `--parallel`, and `--dry-run`; `CLI_VERSION` and the fingerprint move.
+4. **Web** (`WEB-9`, `WEB-10`): the Roadmap view, the feature card and detail, and Chase in the feature (with its parallelism) and the Agents view.
 5. **Docs and prompts**: `docs/tasks.md`, the core's one line, the skill, and the decision log entry for the settled choices.

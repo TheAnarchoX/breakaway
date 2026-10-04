@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Bot, CircleX, Copy, ExternalLink, FileText, Rocket, Zap } from 'lucide-preact';
 import { api } from '../lib/api.js';
-import { ago } from '../lib/model.js';
+import { ago, ref } from '../lib/model.js';
 import {
   actions,
   agents,
@@ -717,8 +717,8 @@ export function AgentsView() {
                 <ul class="queue-list">
                   {d.queue.map((q) => (
                     <li key={q.uuid}>
-                      <a href={hashFor({ task: q.wid })}>
-                        <span class="wid">{q.wid}</span> <RepoChip slug={q.repo} /> <Title text={q.description} />
+                      <a href={hashFor({ task: ref(q) })}>
+                        <span class="wid">{ref(q)}</span> <RepoChip slug={q.repo} /> <Title text={q.description} />
                       </a>
                       <span class={`meta ${q.ready ? 'queue-ready' : ''}`}>
                         {q.ready ? 'Starts on the next check' : q.reason}
@@ -727,7 +727,7 @@ export function AgentsView() {
                         <button
                           type="button"
                           class="btn btn-outline btn-sm"
-                          aria-label={`Force start ${q.wid}, past: ${q.reason}`}
+                          aria-label={`Force start ${ref(q)}, past: ${q.reason}`}
                           onClick={() => actions.startAgent(q, '')}
                         >
                           Force start

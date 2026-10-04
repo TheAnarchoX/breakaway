@@ -207,62 +207,13 @@ function ModeSwitch({ mode }) {
   );
 }
 
-/** The first line of an idea, kept short, as the title of its task. */
-export function ideaTitle(text) {
-  const line =
-    text
-      .split('\n')
-      .find((l) => l.trim())
-      ?.trim() ?? '';
-  return line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line;
-}
-
-const IDEA_HORIZONS = [...HORIZONS, { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' }];
-
 /**
- * The repository an idea (or a new agent) is for: preset to the one in scope, and with every repository in scope
- * empty and required. A board with one repository shows nothing. Pass the same `repo`/`setRepo` pair to the form.
- * @param {{ repo: string, setRepo: (slug: string) => void, error?: string | null, id?: string }} props
+ * Images a form holds until its task exists: picked, dropped, or pasted, shrunk in the browser, up to
+ * MAX_IMAGES. `dropZone(className)` gives the form's class and its drop and paste handlers.
  */
-export function RepoField({ repo, setRepo, error, id = 'idea-repo' }) {
-  if (!multiRepo.value) return null;
-  return (
-    <label class="field">
-      <span class="field-label">Repository</span>
-      <select
-        name="repo"
-        class="select"
-        value={repo}
-        aria-required="true"
-        aria-invalid={error ? 'true' : undefined}
-        aria-describedby={error ? `${id}-error` : undefined}
-        onChange={(e) => setRepo(e.currentTarget.value)}
-      >
-        <option value="">Pick a repository</option>
-        {repos.value.list.map((r) => (
-          <option key={r.slug} value={r.slug}>
-            {r.name}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <span class="field-error" id={`${id}-error`}>
-          {error}
-        </span>
-      )}
-    </label>
-  );
-}
-
-function IdeaForm() {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const [repo, setRepo] = useState(repoScope.value ?? '');
-  const [repoError, setRepoError] = useState(null);
+export function useDraftImages() {
   const [images, setImages] = useState([]);
   const [over, setOver] = useState(false);
-
-  // Images wait in the form (already shrunk) and go up once the idea has its work ID.
   const pick = async (files) => {
     for (const file of files.filter(isImage).slice(0, Math.max(MAX_IMAGES - images.length, 0))) {
       try {
@@ -279,6 +230,99 @@ function IdeaForm() {
     URL.revokeObjectURL(image.url);
     setImages((list) => list.filter((i) => i !== image));
   };
+  const dropZone = (className) => ({
+    class: `${className} ${over ? 'attach-over' : ''}`,
+    onDragOver: (e) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        setOver(true);
+      }
+    },
+    onDragLeave: () => setOver(false),
+    onDrop: (e) => {
+      e.preventDefault();
+      setOver(false);
+      pick([...e.dataTransfer.files]);
+    },
+    onPaste: (e) => {
+      const files = pastedImages(e);
+      if (files.length) {
+        e.preventDefault();
+        pick(files);
+      }
+    },
+  });
+  return { images, pick, drop, dropZone };
+}
+
+/** Uploads a form's images to the task it made, with a toast when some don't attach. */
+export async function uploadDraftImages(task, images, failed) {
+  if (!images.length) return;
+  const sent = await attachFiles(
+    task.uuid,
+    images.map((i) => new File([i.blob], i.name, { type: i.blob.type })),
+  );
+  if (sent.length < images.length) toast(failed, 'error');
+}
+
+/** The first line of an idea, kept short, as the title of its task. */
+export function ideaTitle(text) {
+  const line =
+    text
+      .split('\n')
+      .find((l) => l.trim())
+      ?.trim() ?? '';
+  return line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line;
+}
+
+const IDEA_HORIZONS = [...HORIZONS, { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' }];
+
+/**
+ * The repository an idea (or a new agent) is for: preset to the one in scope, and with every repository in scope
+ * empty and required. A board with one repository shows nothing. Pass the same `repo`/`setRepo` pair to the form.
+ * `unavailable` says why a repository can't be picked (shown, but not pickable), or null when it can.
+ * @param {{ repo: string, setRepo: (slug: string) => void, error?: string | null, id?: string, unavailable?: (slug: string) => string | null }} props
+ */
+export function RepoField({ repo, setRepo, error, id = 'idea-repo', unavailable = () => null }) {
+  if (!multiRepo.value) return null;
+  return (
+    <label class="field">
+      <span class="field-label">Repository</span>
+      <select
+        name="repo"
+        class="select"
+        value={repo}
+        aria-required="true"
+        aria-invalid={error ? 'true' : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        onChange={(e) => setRepo(e.currentTarget.value)}
+      >
+        <option value="">Pick a repository</option>
+        {repos.value.list.map((r) => {
+          const why = unavailable(r.slug);
+          return (
+            <option key={r.slug} value={r.slug} disabled={Boolean(why)}>
+              {why ? `${r.name} (${why})` : r.name}
+            </option>
+          );
+        })}
+      </select>
+      {error && (
+        <span class="field-error" id={`${id}-error`}>
+          {error}
+        </span>
+      )}
+    </label>
+  );
+}
+
+function IdeaForm() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [repo, setRepo] = useState(repoScope.value ?? '');
+  const [repoError, setRepoError] = useState(null);
+  // Images wait in the form (already shrunk) and go up once the idea has its work ID.
+  const { images, pick, drop, dropZone } = useDraftImages();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -303,13 +347,7 @@ function IdeaForm() {
       autostart: data.get('autostart') ? 'yes' : undefined,
       brief: idea,
     });
-    if (created && images.length) {
-      const sent = await attachFiles(
-        ref(created),
-        images.map((i) => new File([i.blob], i.name, { type: i.blob.type })),
-      );
-      if (sent.length < images.length) toast('Some images didn’t attach. Add them again from the idea.', 'error');
-    }
+    if (created) await uploadDraftImages(created, images, 'Some images didn’t attach. Add them again from the idea.');
     images.forEach((i) => URL.revokeObjectURL(i.url));
     setBusy(false);
     if (created) {
@@ -319,30 +357,7 @@ function IdeaForm() {
   };
 
   return (
-    <form
-      class={`sheet ${over ? 'attach-over' : ''}`}
-      onSubmit={submit}
-      noValidate
-      onDragOver={(e) => {
-        if (e.dataTransfer?.types.includes('Files')) {
-          e.preventDefault();
-          setOver(true);
-        }
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        pick([...e.dataTransfer.files]);
-      }}
-      onPaste={(e) => {
-        const files = pastedImages(e);
-        if (files.length) {
-          e.preventDefault();
-          pick(files);
-        }
-      }}
-    >
+    <form {...dropZone('sheet')} onSubmit={submit} noValidate>
       <h2 id="new-title">New idea</h2>
       <ModeSwitch mode="idea" />
       <label class="field">

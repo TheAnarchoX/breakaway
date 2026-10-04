@@ -83,6 +83,11 @@ export function mainPr(t) {
 
 export const ref = (t) => t.wid ?? t.short ?? t.uuid.slice(0, 8);
 
+/** A general agent's open task with no area yet: its agent picks one, and the work ID comes with it. */
+export const picksArea = (t) => !t.project && t.status === 'pending' && (t.tags ?? []).includes('general');
+/** What shows where such a task's area would be. */
+export const PICKS_AREA = 'Its agent picks the area';
+
 const WID = /^([A-Z]+)-(\d+)$/u;
 const HORIZON_ORDER = { now: 0, next: 1, later: 2, archive: 3 };
 const PRIORITY_ORDER = { H: 0, M: 1, L: 2 };

@@ -19,12 +19,14 @@ import {
 } from 'lucide-preact';
 import {
   HORIZONS,
+  PICKS_AREA,
   PRIORITIES,
   ROLES,
   ago,
   dateInput,
   day,
   isStale,
+  picksArea,
   prLabel,
   prUrl,
   ref,
@@ -625,6 +627,7 @@ function Details({ task: t }) {
             </option>
           ))}
         </select>
+        {picksArea(t) && <span class="meta area-pending">{PICKS_AREA}, and its work ID comes with it.</span>}
       </Field>
       <Field label="Horizon" id={`horizon-${t.uuid}`}>
         <select

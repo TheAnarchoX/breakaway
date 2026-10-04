@@ -610,10 +610,12 @@ a code {
   .search .kbd {
     display: none;
   }
-  .new-task .new-label {
+  .new-task .new-label,
+  .new-agent .new-label {
     display: none;
   }
-  .new-task {
+  .new-task,
+  .new-agent {
     width: 44px;
     padding: 0;
   }
@@ -2583,6 +2585,10 @@ a code {
 .fact .input {
   max-width: 260px;
 }
+.fact .area-pending {
+  display: block;
+  margin-top: 4px;
+}
 .fact-top {
   align-items: start;
   padding: 8px 0;
@@ -3586,6 +3592,15 @@ fieldset.field {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.agent-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.agent-waiting .meta {
+  margin: 0;
 }
 
 .live-log {
