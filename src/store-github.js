@@ -281,6 +281,13 @@ export const githubMethods = {
       automation.errors.push(error.message);
     }
     await this.checkRegistry(repo.slug);
+    // Turn on deploys (WEB-13): what a repository without a pipeline has on its default branch once the move merged.
+    try {
+      await this.findPipeline(client, repo, fetched.commits[0]?.sha);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      automation.errors.push(error.message);
+    }
     try {
       await this.refreshFlowCompare(client, repo.slug);
     } catch (error) {
@@ -1167,6 +1174,8 @@ export const githubMethods = {
       runs: runs(),
       // Releases, Promote, Roll back, and deploys only where the repository has a pipeline (IDEA-14 section 3).
       pipeline: pipeline && { staging: pipeline.staging, production: pipeline.production },
+      // Merged, not on (WEB-13): the move's files on the default branch, and the pipeline one press would set.
+      pipelineFound: this.pipelineFoundOf(repo),
       deploys: !pipeline
         ? []
         : deploys(20).map((d) => ({

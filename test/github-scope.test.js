@@ -56,7 +56,16 @@ const all = {
 describe('the GitHub view per repository', () => {
   it('passes one repository’s answer through, with its flow', () => {
     const one = { connected: true, repo: 'acme/widgets', flow, open: [] };
-    expect(scopeGitHub(one, null)).toEqual({ ...one, flows: [one], empties: [], nextVersions: [] });
+    expect(scopeGitHub(one, null)).toEqual({
+      ...one,
+      flows: [one],
+      empties: [],
+      nextVersions: [],
+      pipelinesFound: [],
+    });
+    // The move to the deploy flow merged, not on yet (WEB-13): it offers Turn on deploys.
+    const moved = { ...one, flow: null, pipelineFound: { pipeline: {} } };
+    expect(scopeGitHub(moved, null).pipelinesFound).toEqual([moved]);
     // Pre-releases counted from package.json (BRK-100): it offers the next version.
     const counted = { ...one, nextVersion: { base: '1.1.2' } };
     expect(scopeGitHub(counted, null).nextVersions).toEqual([counted]);
@@ -72,6 +81,13 @@ describe('the GitHub view per repository', () => {
     expect(every.closed).toHaveLength(20);
     expect(every.flows.map((r) => r.slug)).toEqual(['widgets']);
     expect(every.empties).toEqual([]);
+    expect(every.pipelinesFound).toEqual([]);
+    expect(
+      scopeGitHub(
+        { ...all, repos: all.repos.map((r) => (r.slug === 'scratch' ? { ...r, pipelineFound: {} } : r)) },
+        null,
+      ).pipelinesFound.map((r) => r.slug),
+    ).toEqual(['scratch']);
     expect(
       scopeGitHub(
         { ...all, repos: all.repos.map((r) => (r.slug === 'scratch' ? { ...r, empty: true } : r)) },

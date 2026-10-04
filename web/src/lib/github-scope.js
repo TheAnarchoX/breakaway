@@ -18,6 +18,7 @@ export function scopeGitHub(data, scope = null) {
       flows: data.flow ? [data] : [],
       empties: data.empty ? [data] : [],
       nextVersions: data.nextVersion ? [data] : [],
+      pipelinesFound: data.pipelineFound ? [data] : [],
     };
   const one = scope ? (data.repos.find((r) => r.slug === scope) ?? null) : null;
   const mine = (list, keep) => {
@@ -45,6 +46,8 @@ export function scopeGitHub(data, scope = null) {
     empties: shown.filter((r) => r.empty),
     // Repositories whose pre-releases count from package.json (BRK-100): each offers its next minor and major.
     nextVersions: shown.filter((r) => r.nextVersion),
+    // Repositories whose move to the deploy flow merged, not on yet (WEB-13): each offers Turn on deploys.
+    pipelinesFound: shown.filter((r) => r.pipelineFound),
     pipeline: one ? one.pipeline : shown.some((r) => r.pipeline) ? {} : null,
     branch: branches.length === 1 ? branches[0] : null,
   };
