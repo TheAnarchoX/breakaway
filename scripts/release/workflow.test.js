@@ -62,3 +62,10 @@ describe('the release signature (BRK-51)', () => {
       expect(job).toMatch(/^ {4}environment: npm$/mu);
   });
 });
+
+// BRK-52: the signed manifest carries the bundle's checksum, which an install checks (SHA256SUMS isn't signed).
+describe('the manifest’s bundle checksum (BRK-52)', () => {
+  it('is computed from the bundle when the pre-release’s manifest is made', () => {
+    expect(WORKFLOW).toMatch(/plan\.mjs manifest main "\$VERSION" "\$SHA" --bundle out\/breakaway-bundle\.tar\.gz/u);
+  });
+});
