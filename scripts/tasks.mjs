@@ -40,7 +40,7 @@ import {
 } from './tasks/structure.js';
 import { looksLikeSecret } from '../src/ping.js';
 import { promptPathOf } from '../src/repos.js';
-import { sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
+import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import { CLI_PACKAGE, PROMPT_SECTIONS, initPlan, machineTaskrc, promptSections } from './tasks/init.js';
@@ -524,6 +524,20 @@ async function startSessionLog(t) {
     console.error(
       `tasks: this session's live output won't show on ${ref(t)} (${why}). In a cloud session, check its environment allows ${new URL(BASE).host} (docs/tasks.md#cloud-agents).`,
     );
+}
+
+/** The session hook couldn't post this checkout's live output: say so where the agent and the owner see it (BRK-86). */
+function warnHookFailure() {
+  try {
+    const claim = JSON.parse(readFileSync(join(REPO, '.task-session'), 'utf8'));
+    const failed = claim?.uuid && hookFailure(claim.uuid);
+    if (failed)
+      console.error(
+        `tasks: the session hook couldn't post ${claim.wid ?? 'this task'}'s live output (${failed.reason}, ${failed.at.slice(0, 16).replace('T', ' ')} UTC), so the board shows none. docs/tasks.md#cloud-agents says what to check.`,
+      );
+  } catch {
+    /* no claim here */
+  }
 }
 
 function unmarkSession(t) {
@@ -1959,5 +1973,6 @@ if (opts.help || command === 'help') {
 } else if (unknownSubcommand(command, args[0])) {
   fail(unknownSubcommand(command, args[0]));
 } else {
+  if (command !== 'hook') warnHookFailure();
   await commands[command]();
 }
