@@ -14,6 +14,7 @@ import {
 } from '../lib/decision.js';
 import { RichText, Title } from '../lib/richtext.jsx';
 import { useAutosize } from './ui.jsx';
+import { RefineFromAnswers } from './RefineFromAnswers.jsx';
 
 /** @param {Record<string, any>} props */
 function Comment({ id, value, onInput }) {
@@ -249,6 +250,7 @@ function Answered({ task: t }) {
           Change my answers
         </button>
       </div>
+      <RefineFromAnswers task={t} />
     </>
   );
 }

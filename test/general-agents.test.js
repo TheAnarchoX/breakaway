@@ -316,6 +316,48 @@ describe('refine from the answers (BRK-110)', () => {
     expect(next.task.uuid).not.toBe(first.task.uuid);
   });
 
+  it('shows the prompt it would write with dryRun, and makes nothing', async () => {
+    const { d, w } = await decided();
+    const before = (await body(await api('tasks?status=all'))).tasks.length;
+    const fired = fires.length;
+    const preview = await body(await fromDecision({ decision: d.wid, dryRun: true }));
+    expect(preview.status).toBe(200);
+    expect(preview).toMatchObject({ dryRun: true, task: null, already: null, refusal: null });
+    expect(preview.title).toBe(`Refine from the answers to ${d.wid}: Choose how edits land`);
+    expect(preview.prompt).toContain(`- ${w.wid}: Build the edits (feature: cross-edits)`);
+    expect(preview.prompt).not.toContain('Note from the owner');
+    expect((await body(await api('tasks?status=all'))).tasks.length).toBe(before);
+    expect(fires.length).toBe(fired);
+    // The start writes the same prompt.
+    const started = await body(await fromDecision({ decision: d.wid }));
+    expect(started.task.brief).toBe(preview.prompt);
+    // While it's open, the preview names it.
+    const again = await body(await fromDecision({ decision: d.wid, dryRun: true }));
+    expect(again.task.uuid).toBe(started.task.uuid);
+    expect(again.already).toBe(`${started.task.claim} is on it`);
+    // Without a decision there's nothing to show, and nothing is made.
+    expect((await general({ dryRun: true })).status).toBe(400);
+  });
+
+  it('says in the dry run why it can’t start, and still refuses an unanswered decision', async () => {
+    const { d } = await decided({ answer: false });
+    expect((await fromDecision({ decision: d.wid, dryRun: true })).status).toBe(409);
+    await api('repos', { method: 'POST', body: { slug: 'hushed', github: 'acme/hushed', areas: ['product:HU'] } });
+    const [q] = (
+      await body(
+        await api('tasks', {
+          method: 'POST',
+          body: [{ description: 'Pick a name', project: 'product', repo: 'hushed', decision: QUESTIONS }],
+        }),
+      )
+    ).tasks;
+    await api(`tasks/${q.wid}/decision/answers`, { method: 'POST', body: { answers: { edits: { value: 'direct' } } } });
+    const preview = await body(await fromDecision({ decision: q.wid, dryRun: true }));
+    expect(preview.status).toBe(200);
+    expect(preview.prompt).toContain('Questions and answers');
+    expect(preview.refusal).toMatch(/hushed’s agent routine isn’t connected/);
+  });
+
   it('takes the CLI’s request: agents new --decision <ID> "<note>"', async () => {
     const { d } = await decided();
     const built = generalAgentRequest('Keep it small', { decision: d.wid, force: true, by: 'owner' });
