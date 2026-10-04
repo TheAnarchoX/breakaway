@@ -1296,6 +1296,7 @@ const apiActions = {
         spec: body?.spec ?? null,
         note: typeof body?.note === 'string' ? body.note : null,
         dryRun: Boolean(body?.dryRun),
+        chase: body?.chase ?? null,
       });
       return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });
