@@ -7,6 +7,7 @@ import { CLI_PACKAGE } from './init.js';
 /** The subcommands each command knows. Without one, each lists or shows (horizon needs close). */
 export const SUBCOMMANDS = {
   agents: ['next', 'start', 'refine'],
+  github: ['fix', 'review'],
   repos: ['add', 'init', 'modify', 'remove', 'setup'],
   routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume'],
   horizon: ['close'],
@@ -18,7 +19,6 @@ export const NO_ARGUMENTS = new Set([
   'list',
   'next',
   'activity',
-  'github',
   'health',
   'connections',
   'export',
@@ -72,6 +72,45 @@ export function staleCliWarning({ own, board, boardCheckout, slug, packaged = fa
 export function githubRequest(repo, { sync = false } = {}) {
   if (sync) return ['POST', 'github/sync', repo ? { repo } : undefined];
   return ['GET', repo ? `github?repo=${encodeURIComponent(repo)}` : 'github', undefined];
+}
+
+/** What `github fix` accepts for --problem: the same three the pull request page offers. */
+export const FIX_PROBLEMS = ['conflicts', 'failing', 'review'];
+
+/**
+ * The request behind `npx breakaway github fix <n>` and `github review <n>` (BRK-81): the pull request page's "Fix with an
+ * agent" and "Safe to merge?" buttons (`POST github/pulls/<n>/fix` and `/review`). It names the checkout's repository
+ * like `github` does. Returns an error message instead when the number or `problem` can't be right.
+ * @param {'fix' | 'review'} action
+ * @param {string | number | undefined} number
+ * @param {{ repo?: string | null, problem?: string, note?: string }} [options]
+ * @returns {{ error?: string, request?: [string, string, Record<string, string>] }}
+ */
+export function pullAgentRequest(action, number, { repo = null, problem, note } = {}) {
+  const n = String(number ?? '').replace(/^#/u, '');
+  if (!/^[1-9]\d{0,8}$/u.test(n)) return { error: `say which pull request: npx breakaway github ${action} <number>` };
+  if (problem !== undefined && action !== 'fix') return { error: '--problem is for github fix' };
+  if (problem !== undefined && !FIX_PROBLEMS.includes(problem))
+    return { error: `--problem is ${FIX_PROBLEMS.join(', ')}` };
+  const body = {
+    ...(repo ? { repo } : {}),
+    ...(problem ? { problem } : {}),
+    ...(typeof note === 'string' && note.trim() ? { note } : {}),
+  };
+  return { request: ['POST', `github/pulls/${n}/${action}`, body] };
+}
+
+/**
+ * What the CLI says about an answer to those requests: which task and agent took the pull request, or who already has it.
+ * @param {'fix' | 'review'} action
+ * @param {string | number} number
+ * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, already?: string | null }} answer
+ */
+export function pullAgentSummary(action, number, { task, run, already }) {
+  const id = task.wid ?? task.short;
+  if (!run) return `${id} already has it: ${already}.`;
+  const what = action === 'fix' ? `fixing #${number}` : `testing #${number}`;
+  return `Started ${run.agent ? `${run.agent}, ` : 'an agent '}${what} on ${id}${run.url ? `: ${run.url}` : ''}`;
 }
 
 /**
