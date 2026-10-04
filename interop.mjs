@@ -39,6 +39,7 @@ const INSTALL = {
   worker: 'interop-board',
   url: 'https://board.interop.test',
   store: 'interop',
+  docs: 'https://docs.interop.test',
   repository: 'interop/widgets',
 };
 const config = join(work, 'wrangler.json');
@@ -198,7 +199,11 @@ try {
 
   step('the install');
   await check('the Worker runs as the configured install', async () => {
-    assert.deepEqual((await api('GET', 'session')).install, { name: INSTALL.name, url: INSTALL.url });
+    assert.deepEqual((await api('GET', 'session')).install, {
+      name: INSTALL.name,
+      url: INSTALL.url,
+      docs: INSTALL.docs,
+    });
   });
   const a = replica('a');
   const b = replica('b');

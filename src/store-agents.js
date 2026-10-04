@@ -21,13 +21,24 @@ const LOG_DAYS = 14;
 const KINDS = new Set(['tool', 'message', 'start', 'prompt']);
 /** "high" means high and critical; "all" includes low. */
 const SEVERITY = { off: 0, critical: 4, high: 3, medium: 2, moderate: 2, low: 1, all: 1 };
+/** An agent's verdict on a pull request (BRK-111), and how the board says it. */
+export const REVIEW_VERDICTS = {
+  ready: 'Looks ready',
+  'follow-up': 'Ready with a follow-up',
+  changes: 'Needs changes',
+};
+const REVIEW_NOTE_MAX = 10_000;
 
 export class AgentError extends Error {
-  /** `forceable`: only the board's own limits refuse the start, so Force start (the owner's) could skip it. */
-  constructor(message, status = 409, { forceable = false } = {}) {
+  /**
+   * `forceable`: only the board's own limits refuse the start, so Force start (the owner's) could skip it.
+   * `path`: the button that fits instead, for a pull request an agent can't review as it stands (`update` or `fix`).
+   */
+  constructor(message, status = 409, { forceable = false, path = null } = {}) {
     super(message);
     this.status = status;
     this.forceable = forceable;
+    this.path = path;
   }
 }
 
@@ -126,6 +137,7 @@ const TRIGGER_TEXT = {
   alert: 'for a GitHub security alert, from the board',
   manual: 'by hand, from the board',
   review: 'by “Safe to merge?” on a Dependabot pull request, from the board',
+  'pr-review': 'by “Review with an agent” on a pull request, from the board',
   next: 'as one of the next few ready tasks, from the board',
   auto: 'by itself, because the task became ready and is marked Start when ready',
   pr: 'to fix a pull request, from the board',
@@ -163,6 +175,7 @@ export function firePayload(
     ...(kind === 'refine' ? ['Mode: refine'] : []),
     ...(kind === 'review' ? ['Mode: review', `Pull request: #${task.pr}`] : []),
     ...(kind === 'fix-pr' ? ['Mode: fix-pr', `Pull request: #${pr}`] : []),
+    ...(kind === 'pr-review' ? ['Mode: pr-review', `Pull request: #${pr}`] : []),
     ...(kind === 'routine' ? ['Mode: routine', `Routine: ${routine}`] : []),
     ...(kind === 'general' ? ['Mode: general'] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
@@ -200,6 +213,14 @@ export const agentsMethods = {
     // Started with Force start (BRK-105). Runs from before weren't.
     if (!columns.includes('forced'))
       this.sql.exec('ALTER TABLE agent_runs ADD COLUMN forced INTEGER NOT NULL DEFAULT 0');
+    // An agent's review of a pull request (BRK-111): the latest one shows on its page; each is a task comment too.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS agent_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, number INTEGER NOT NULL, task TEXT NOT NULL,
+        verdict TEXT NOT NULL, note TEXT NOT NULL, agent TEXT NOT NULL, sha TEXT, at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS agent_reviews_pr ON agent_reviews (repo, number, id);
+    `);
   },
 
   // ---- routines per repository ----------------------------------------------------------------
@@ -469,8 +490,7 @@ export const agentsMethods = {
     // The pull request's repository decides its task's, and which routine starts the agent.
     const pr = { ...JSON.parse(row.data), repo: slug };
     if (pr.state !== 'open') throw new AgentError(`#${pr.number} isn’t open`, 409);
-    if (!/^dependabot(\[bot\])?$/iu.test(pr.author ?? ''))
-      throw new AgentError(`#${pr.number} isn’t a Dependabot pull request`, 400);
+    if (!/^dependabot(\[bot\])?$/iu.test(pr.author ?? '')) return this.reviewWithAgent(pr, { note, force });
     let uuid = this.closingTasks(pr).find((u) => this.tasks.get(u)?.status === 'pending');
     if (!uuid) {
       const res = await this.create([
@@ -496,6 +516,135 @@ export const agentsMethods = {
     const busy = this.claimBlocker({ ...map, uuid });
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
     return { ...(await this.startAgent(uuid, { trigger: 'review', note, kind: 'review', force })), already: null };
+  },
+
+  /**
+   * "Review with an agent" on any other open pull request (IDEA-30 section 9): only one that can merge as it stands,
+   * checked against GitHub now rather than the last sync, and only on the open task it closes. Anything else is
+   * refused with the button that fits it (`path`). The agent reviews and answers with `review <ID>`; it never
+   * pushes or merges.
+   */
+  async reviewWithAgent(stored, { note = null, force = false } = {}) {
+    const pr = { ...stored, ...(await this.livePull(stored.repo, stored.number)) };
+    const n = `#${pr.number}`;
+    const base = pr.base ?? this.repoBySlug(pr.repo)?.defaultBranch ?? 'main';
+    if (pr.state !== 'open') throw new AgentError(`${n} isn’t open`);
+    if (pr.draft) throw new AgentError(`${n} is a draft: mark it ready for review first`);
+    const verdict = prVerdict(pr);
+    if (verdict === 'behind')
+      throw new AgentError(`${n} is behind ${base}: Update branch, then ask for a review`, 409, { path: 'update' });
+    if (verdict === 'conflicts')
+      throw new AgentError(`${n} conflicts with ${base}: Fix with an agent resolves that first`, 409, { path: 'fix' });
+    if (verdict === 'failing')
+      throw new AgentError(`${n}’s checks are failing: Fix with an agent finds the cause first`, 409, { path: 'fix' });
+    if (verdict === 'review' && pr.review?.decision === 'changes_requested')
+      throw new AgentError(`${n} has changes requested on GitHub: Fix with an agent addresses them first`, 409, {
+        path: 'fix',
+      });
+    if (!['ready', 'running'].includes(verdict) || pr.mergeable !== true)
+      throw new AgentError(
+        verdict === 'review'
+          ? `${n} can’t merge as it stands: GitHub says it waits on a required review`
+          : `GitHub hasn’t worked out whether ${n} can merge yet; try again in a minute`,
+      );
+    const uuid = this.prTask(pr);
+    if (!uuid)
+      throw new AgentError(
+        `${n} closes no open task in ${pr.repo}: an agent reviews a pull request against the task it closes`,
+      );
+    const map = this.tasks.get(uuid);
+    const busy = this.claimBlocker({ ...map, uuid });
+    if (busy) return { task: this.detail(uuid), run: null, already: busy };
+    return {
+      ...(await this.startAgent(uuid, { trigger: 'pr-review', note, kind: 'pr-review', pr: pr.number, force })),
+      already: null,
+    };
+  },
+
+  /**
+   * An agent's answer on a pull request (`review <ID> --verdict …`, BRK-111): a comment on the task, as every agent's
+   * answer is, and kept for the pull request with the head commit it reviewed. Only the agent holding the task leaves
+   * one, on an open pull request that closes it (`pr` picks one when it has several). Safe to merge? answers this way too.
+   */
+  recordAgentReview(ref, { verdict, note, by, pr = null } = {}) {
+    if (!REVIEW_VERDICTS[verdict]) throw new AgentError('verdict is ready, follow-up, or changes', 400);
+    const text = String(note ?? '').trim();
+    if (!text) throw new AgentError('say what you found: the note is the review', 400);
+    if (text.length > REVIEW_NOTE_MAX) throw new AgentError(`keep the note under ${REVIEW_NOTE_MAX} characters`, 400);
+    const agent = String(by ?? '').trim();
+    if (!agent) throw new AgentError('say who reviewed: the agent holding the task', 400);
+    const uuid = this.resolve(ref);
+    const map = this.tasks.get(uuid);
+    const id = map.wid ?? uuid.slice(0, 8);
+    if (map.status !== 'pending') throw new AgentError(`${id} isn’t open`);
+    if (map.claim !== agent)
+      throw new AgentError(`${id} is ${map.claim ? `${map.claim}’s` : 'unclaimed'}: claim it first`);
+    const slug = this.repoOfTask(map)?.slug ?? this.defaultRepoSlug();
+    const open = this.sql
+      .exec('SELECT data FROM gh_pulls WHERE repo = ?', slug)
+      .toArray()
+      .map((r) => ({ ...JSON.parse(r.data), repo: slug }))
+      .filter((p) => p.state === 'open' && this.closingTasks(p).includes(uuid))
+      .sort((a, b) => a.number - b.number);
+    const wanted = pr === null || pr === undefined || pr === '' ? null : Number(String(pr).replace(/^#/u, ''));
+    const target = wanted ? open.find((p) => p.number === wanted) : open.length === 1 ? open[0] : null;
+    if (!target)
+      throw new AgentError(
+        wanted
+          ? `#${wanted} isn’t an open pull request that closes ${id}`
+          : open.length
+            ? `${id} has several open pull requests (${open.map((p) => `#${p.number}`).join(', ')}): say which with --pr`
+            : `${id} has no open pull request to review`,
+      );
+    this.writable();
+    const sha = target.headSha ?? null;
+    const at = Date.now();
+    const rowId = this.sql
+      .exec(
+        'INSERT INTO agent_reviews (repo, number, task, verdict, note, agent, sha, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+        slug,
+        target.number,
+        uuid,
+        verdict,
+        text,
+        agent,
+        sha,
+        at,
+      )
+      .one().id;
+    this.change(
+      uuid,
+      {
+        annotate: `Agent review of #${target.number}${sha ? ` at ${sha.slice(0, 7)}` : ''}: ${REVIEW_VERDICTS[verdict]}\n\n${text}`,
+        by: agent,
+      },
+      new Date(at),
+      'agents',
+    );
+    return { review: this.agentReviewRow(rowId, sha), task: this.detail(uuid) };
+  },
+
+  /** The latest agent's review of pull request `number`, marked `moved` when its branch has a newer head, or null. */
+  agentReviewOf(slug, number, headSha = null) {
+    const row = this.sql
+      .exec('SELECT id FROM agent_reviews WHERE repo = ? AND number = ? ORDER BY id DESC LIMIT 1', slug, Number(number))
+      .toArray()[0];
+    return row ? this.agentReviewRow(row.id, headSha) : null;
+  },
+
+  agentReviewRow(id, headSha) {
+    const r = this.sql.exec('SELECT * FROM agent_reviews WHERE id = ?', id).one();
+    return {
+      pr: r.number,
+      task: this.tasks.get(r.task)?.wid ?? null,
+      verdict: r.verdict,
+      label: REVIEW_VERDICTS[r.verdict],
+      note: r.note,
+      agent: r.agent,
+      sha: r.sha,
+      at: new Date(r.at).toISOString(),
+      moved: Boolean(headSha && r.sha && headSha !== r.sha),
+    };
   },
 
   /** After a sync: new alerts at or above the chosen severity become Start-when-ready tasks. */
@@ -534,7 +683,10 @@ export const agentsMethods = {
     if (pr.state !== 'open') throw new AgentError(`#${number} isn’t open`);
     if (pr.draft) throw new AgentError(`#${number} is a draft`);
     const verdict = prVerdict(pr);
-    const reviewOpen = pr.review?.decision === 'changes_requested' || pr.review?.comments > 0;
+    // An agent's review that needs changes, of the branch as it is now, counts as review comments (BRK-111).
+    const agentReview = this.agentReviewOf(slug, pr.number, pr.headSha ?? null);
+    const agentChanges = agentReview?.verdict === 'changes' && !agentReview.moved ? agentReview : null;
+    const reviewOpen = pr.review?.decision === 'changes_requested' || pr.review?.comments > 0 || Boolean(agentChanges);
     const applies = { conflicts: verdict === 'conflicts', failing: verdict === 'failing', review: reviewOpen };
     const chosen = problem ?? (['conflicts', 'failing'].includes(verdict) ? verdict : reviewOpen ? 'review' : null);
     if (!chosen || !(chosen in applies))
@@ -548,7 +700,16 @@ export const agentsMethods = {
     const what = {
       conflicts: `It conflicts with ${this.repoBySlug(slug)?.defaultBranch ?? 'main'} (merge state: ${pr.mergeableState ?? 'unknown'}). Merge ${this.repoBySlug(slug)?.defaultBranch ?? 'main'} into the branch and resolve the conflicts.`,
       failing: `Checks are failing: ${failing.join(', ') || 'see the pull request'}. Find the cause, fix it, and push.`,
-      review: `It has review comments to address${pr.review?.decision === 'changes_requested' ? ' (changes were requested)' : ''}. Read each open thread and address it or reply.`,
+      review: [
+        agentChanges
+          ? `An agent’s review of ${agentChanges.sha ? agentChanges.sha.slice(0, 7) : 'the branch'} (${agentChanges.agent}) needs changes:\n${agentChanges.note}`
+          : null,
+        pr.review?.decision === 'changes_requested' || pr.review?.comments > 0 || !agentChanges
+          ? `It has review comments to address${pr.review?.decision === 'changes_requested' ? ' (changes were requested)' : ''}. Read each open thread and address it or reply.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
     }[chosen];
 
     let uuid = this.prTask(pr);
@@ -662,7 +823,11 @@ export const agentsMethods = {
       const t = byUuid.get(run.task);
       if (t?.status !== 'pending' || t.claim !== run.agent) continue;
       // Agents on a pull request work on a task whose pull request is open, so that doesn't end their run.
-      if (!['review', 'fix-pr'].includes(run.kind) && t.github?.some((p) => p.closes && p.state === 'open')) continue;
+      if (
+        !['review', 'fix-pr', 'pr-review'].includes(run.kind) &&
+        t.github?.some((p) => p.closes && p.state === 'open')
+      )
+        continue;
       running.push({ run, task: t });
     }
     return running;
@@ -711,7 +876,7 @@ export const agentsMethods = {
     // Everything from here to the claim is synchronous: two starts can't both pass.
     const views = this.views();
     const task = views.find((t) => t.uuid === uuid);
-    const onPr = kind === 'review' || kind === 'fix-pr';
+    const onPr = kind === 'review' || kind === 'fix-pr' || kind === 'pr-review';
     const blocker =
       kind === 'refine' ? this.refineBlocker(task) : onPr ? this.prAgentBlocker(task, kind) : this.agentBlocker(task);
     if (blocker)
@@ -740,7 +905,8 @@ export const agentsMethods = {
       throw new AgentError(capped, /last hour/u.test(capped) ? 429 : 409, { forceable: !claude });
     }
 
-    // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check `claude-<id>-check`.
+    // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check
+    // `claude-<id>-check`, and a review of a pull request `claude-<id>-review`.
     const id = (kind === 'general' ? task.short : (task.wid ?? task.short)).toLowerCase();
     const agent =
       kind === 'refine'
@@ -749,7 +915,9 @@ export const agentsMethods = {
           ? `claude-${id}-fix`
           : kind === 'review'
             ? `claude-${id}-check`
-            : `claude-${id}`;
+            : kind === 'pr-review'
+              ? `claude-${id}-review`
+              : `claude-${id}`;
     this.writable();
     const taken = onPr && task.claim ? task.claim : null;
     this.change(
