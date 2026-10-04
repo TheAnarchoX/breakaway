@@ -29,6 +29,7 @@ import {
 } from './model.js';
 import { secret } from './secrets.js';
 import { githubMethods } from './store-github.js';
+import { packagesMethods } from './store-packages.js';
 import { DecisionError, summarize, validateAnswers } from './decision.js';
 import { AgentError, agentsMethods } from './store-agents.js';
 import { routinesMethods } from './store-routines.js';
@@ -84,6 +85,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.tasks = null;
     this.key = null;
     this.initGitHub();
+    this.initPackages();
     this.initAgents();
     this.initRoutines();
     this.initFeatures();
@@ -1174,6 +1176,7 @@ function summarise(ops) {
 Object.assign(
   TaskStore.prototype,
   githubMethods,
+  packagesMethods,
   agentsMethods,
   routinesMethods,
   featuresMethods,
