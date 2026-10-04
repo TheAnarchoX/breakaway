@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { CLI_PACKAGE } from './init.js';
 import {
+  chaseLines,
+  chaseRequest,
+  chaseSummary,
+  featureBody,
+  featureLines,
+  featureListLines,
+  progressLine,
   githubRequest,
   ideaTask,
   NO_ARGUMENTS,
@@ -261,5 +268,181 @@ describe('agents new and Force start (BRK-107)', () => {
       /^Saved a1b2c3d4, waiting to start: waiting for a free slot: 3 of 3 running\. .*agents start a1b2c3d4 --force$/u,
     );
     expect(generalAgentSummary({ task, run: null, waiting: 'the routine isn’t connected' })).not.toMatch(/--force/u);
+  });
+});
+
+const progress = (over = {}) => ({
+  total: 0,
+  done: 0,
+  running: 0,
+  ready: 0,
+  waiting: 0,
+  needsYou: 0,
+  inReview: 0,
+  shipped: 0,
+  ...over,
+});
+
+describe('features (BRK-85)', () => {
+  it('sends only the fields given, with none or a v-prefixed release read as the board reads them', () => {
+    expect(featureBody({})).toEqual({});
+    expect(featureBody({ title: 'Self update', release: 'v1.3.0' })).toEqual({
+      title: 'Self update',
+      release: '1.3.0',
+    });
+    expect(featureBody({ release: 'none' })).toEqual({ release: '' });
+    expect(featureBody({ brief: 'Why', state: 'shipped' })).toEqual({ brief: 'Why', state: 'shipped' });
+  });
+
+  it('knows its subcommands', () => {
+    for (const sub of ['list', 'add', 'show', 'modify']) expect(unknownSubcommand('features', sub)).toBeNull();
+    expect(unknownSubcommand('features', 'delete')).toMatch(
+      /^features has no "delete"; it has list, add, show, modify/u,
+    );
+  });
+
+  it('says progress in words, and nothing when there are no tasks', () => {
+    expect(progressLine(progress())).toBe('no tasks yet');
+    expect(progressLine(progress({ total: 3, done: 3 }))).toBe('3 of 3 done');
+    expect(progressLine(progress({ total: 10, done: 4, running: 2, ready: 1, needsYou: 1, inReview: 2 }))).toBe(
+      '4 of 10 done: 2 in review, 2 running, 1 ready, 1 waiting for you',
+    );
+  });
+
+  it('lists features by release, then unplanned, suggestions, and other tasks', () => {
+    const lines = featureListLines({
+      features: [
+        {
+          slug: 'self-update',
+          title: 'Self update',
+          release: '1.3.0',
+          progress: progress({ total: 2, done: 1, ready: 1 }),
+          chase: { state: 'on', parallel: 3 },
+          conflicts: [],
+        },
+        { slug: 'artifacts', title: 'Artifacts', release: null, progress: progress(), conflicts: [{ wid: 'BRK-9' }] },
+      ],
+      suggestions: [{ slug: 'legacy-free', tasks: 3, open: 2, release: '1.2.0' }],
+      releaseTasks: [{ release: '1.2.0', tasks: [{ wid: 'BRK-1' }, { wid: 'WEB-2' }] }],
+    });
+    expect(lines).toEqual([
+      '1.3.0',
+      '  self-update  Self update · 1 of 2 done: 1 ready · chasing, 3 at once in an area',
+      '',
+      'Unplanned',
+      '  artifacts    Artifacts · no tasks yet · 1 task in two features',
+      '',
+      'Tags that could be features (npx breakaway features add <slug>):',
+      '  legacy-free (2 open tasks, 1.2.0)',
+      '',
+      'Other tasks in 1.2.0: BRK-1, WEB-2',
+    ]);
+  });
+
+  it('says how to make the first feature on an empty board', () => {
+    expect(featureListLines({ features: [] })[0]).toMatch(/^No features yet\. Make one: npx breakaway features add/u);
+  });
+
+  it('shows a feature with its tasks in order, and without tasks says how to add them', () => {
+    const base = {
+      slug: 'self-update',
+      title: 'Self update',
+      brief: 'Update from the board.',
+      release: '1.3.0',
+      state: 'open',
+      shipped: false,
+      progress: progress({ total: 2, done: 1, needsYou: 1 }),
+      needsYou: [{ wid: 'BRK-50', why: 'it waits on your decision' }],
+      conflicts: [],
+    };
+    const text = featureLines({
+      ...base,
+      tasks: [
+        { wid: 'BRK-49', state: 'done', description: 'The record', why: null },
+        { wid: 'BRK-50', state: 'needs-you', description: 'Pick a channel', why: 'it waits on your decision' },
+      ],
+    }).join('\n');
+    expect(text).toContain('  Release     1.3.0');
+    expect(text).toContain('  Needs you   BRK-50 it waits on your decision');
+    expect(text).toContain('    BRK-50    needs-you Pick a channel (it waits on your decision)');
+    expect(text).toContain('  Update from the board.');
+    expect(featureLines({ ...base, release: null, tasks: [] }).join('\n')).toMatch(
+      /Release {5}unplanned[\s\S]*No tasks yet: tag them with self-update/u,
+    );
+  });
+});
+
+describe('chase (BRK-85)', () => {
+  it('starts, stops, sets parallel, and dry-runs, always saying who asks', () => {
+    expect(chaseRequest('Self-Update', undefined, { by: 'claude-x' })).toEqual({
+      request: ['POST', 'features/self-update/chase', { on: true, by: 'claude-x' }],
+    });
+    expect(chaseRequest('self-update', 'stop')).toEqual({
+      request: ['POST', 'features/self-update/chase', { on: false }],
+    });
+    expect(chaseRequest('self-update', undefined, { parallel: '2', dryRun: true })).toEqual({
+      request: ['POST', 'features/self-update/chase', { on: true, parallel: 2, dryRun: true }],
+    });
+  });
+
+  it('refuses what can’t be right before asking the board', () => {
+    expect(chaseRequest(undefined, undefined).error).toMatch(/^say which feature/u);
+    expect(chaseRequest('x', 'pause').error).toMatch(/chase has no "pause"/u);
+    for (const n of ['0', '-1', '1.5', 'three'])
+      expect(chaseRequest('x', undefined, { parallel: n }).error).toMatch(/^--parallel is how many/u);
+    expect(chaseRequest('x', 'stop', { parallel: 2 }).error).toMatch(/^--parallel is for a chase that runs/u);
+  });
+
+  const chase = {
+    state: 'on',
+    on: true,
+    startedAt: '2026-10-04T10:00:00.000Z',
+    parallel: 3,
+    summary: '1 running, 2 ready, 1 waiting for you',
+    needsYou: [{ wid: 'BRK-50', why: 'its pull request #12 is open: merging is yours', kind: 'merge' }],
+    stuck: [{ wid: 'WEB-3', why: 'it was refused 2 times', last: 'The build\nneeds a key' }],
+    queue: [
+      { wid: 'BRK-51', ready: true, reason: 'starting now' },
+      {
+        wid: 'CLI-4',
+        ready: false,
+        reason: '3 agents are already working in cli, the most this chase allows',
+        blocks: ['BRK-52'],
+      },
+    ],
+  };
+
+  it('prints the chase: its line, what needs you, what’s stuck, and who starts next with why the rest waits', () => {
+    expect(chaseLines(chase)).toEqual([
+      '  Chase       On since 2026-10-04 10:00 UTC, 3 agents at once in an area',
+      '              1 running, 2 ready, 1 waiting for you',
+      '  Needs you   BRK-50 its pull request #12 is open: merging is yours',
+      '  Stuck       WEB-3 it was refused 2 times; last: The build needs a key',
+      '  Next',
+      '    BRK-51    ready to start',
+      '    CLI-4     3 agents are already working in cli, the most this chase allows (in the chase because it blocks BRK-52)',
+    ]);
+    expect(chaseLines(undefined)).toEqual([]);
+  });
+
+  it('says what it started, would start, or stopped', () => {
+    expect(chaseSummary('self-update', { dryRun: false, chase, started: ['BRK-51'] })).toMatch(
+      /^Chasing self-update: started BRK-51\.\n\n {2}Chase {7}On since/u,
+    );
+    expect(chaseSummary('self-update', { dryRun: false, chase, started: [] })).toMatch(
+      /^Chasing self-update: the board starts BRK-51 on its next check\./u,
+    );
+    expect(chaseSummary('self-update', { dryRun: false, chase: { ...chase, queue: [] } })).toMatch(
+      /^Chasing self-update: nothing can start right now/u,
+    );
+    expect(chaseSummary('self-update', { dryRun: true, chase, wouldStart: [] }, { parallel: 1 })).toMatch(
+      /^A chase of self-update with 1 agent at once in an area would start nothing now\./u,
+    );
+    expect(chaseSummary('self-update', { dryRun: true, chase, wouldStart: ['BRK-51'] })).toMatch(
+      /^A chase of self-update would start BRK-51 now\. Nothing was started\./u,
+    );
+    expect(
+      chaseSummary('self-update', { dryRun: false, chase: { ...chase, state: 'stopped' } }, { stop: true }),
+    ).toMatch(/^Stopped the chase of self-update\. Running agents finish/u);
   });
 });
