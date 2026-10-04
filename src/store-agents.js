@@ -155,6 +155,7 @@ const TRIGGER_TEXT = {
   general: 'by a prompt from the owner, from the board',
   chase: 'by the owner’s chase of a feature, because the task became ready',
   'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
+  'road-captain': 'by the owner, as the road captain of a chase',
 };
 
 /**
@@ -328,6 +329,10 @@ export const agentsMethods = {
    * and sets the task's `spec` to the path; while one on that spec is open it returns that one instead. With
    * `dryRun` it makes nothing and returns the prompt it would write (without the note), the open one if any, and
    * why the repository's routine can't start one, for the web's dialog to show first.
+   *
+   * With `chase` (a feature's slug, BRK-137), the agent is that chase's road captain: the owner's prompt, with the
+   * chase as it stands now under it, in the chase's repository, tagged with the feature so it rides the chase's
+   * peloton. A road captain is always force started: the owner pressed for it while the chase holds the slots.
    */
   async startGeneral({
     prompt,
@@ -339,6 +344,7 @@ export const agentsMethods = {
     spec = null,
     note = null,
     dryRun = false,
+    chase = null,
   } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
@@ -347,8 +353,23 @@ export const agentsMethods = {
     let tags = ['agent', 'general'];
     let specPath = null;
     const given = (value) => value !== null && value !== undefined && value !== '';
-    if ([decision, next, spec].filter(given).length > 1)
-      throw new AgentError('start one from a decision, from a spec, or for the next version: only one of them', 400);
+    if ([decision, next, spec, chase].filter(given).length > 1)
+      throw new AgentError(
+        'start one from a decision, from a spec, for the next version, or for a chase: only one of them',
+        400,
+      );
+    if (given(chase)) {
+      if (dryRun) throw new AgentError('a road captain has no dry run: write what it should do', 400);
+      if (!text) throw new AgentError('write what the road captain should do first', 400);
+      const captain = this.roadCaptain(String(chase), text, this.views(), await this.connectedRepos());
+      if (repo && String(repo).trim().toLowerCase() !== captain.repo)
+        throw new AgentError(`the chase on ${captain.feature} runs in ${captain.repo}: its road captain does too`, 400);
+      repo = captain.repo;
+      text = captain.brief;
+      title = captain.title;
+      tags = ['agent', 'general', captain.slug];
+      force = true;
+    }
     /** @type {{ repo: string, open: [string, any] | undefined, write: (note: string | null) => { title: string, brief: string }, extra?: Record<string, any> } | null} */
     let source = null;
     if (given(decision)) {
@@ -492,7 +513,14 @@ export const agentsMethods = {
     if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t make a task for the agent', res.status);
     const uuid = res.body.tasks[0].uuid;
     try {
-      return { ...(await this.startAgent(uuid, { trigger: 'general', kind: 'general', force })), waiting: null };
+      return {
+        ...(await this.startAgent(uuid, {
+          trigger: given(chase) ? 'road-captain' : 'general',
+          kind: 'general',
+          force,
+        })),
+        waiting: null,
+      };
     } catch (error) {
       // Over the board's limits, or Claude's hourly one: the task stays and starts when there's room.
       const queued = error instanceof AgentError && (error.forceable || error.status === 429);

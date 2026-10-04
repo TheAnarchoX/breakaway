@@ -591,6 +591,53 @@ export const chaseMethods = {
     await this.chasePing(row, top);
   },
 
+  /**
+   * A road captain for the chase on feature `slug` (BRK-137): an agent the owner starts with their own prompt to
+   * help the chase along. Its repository is the one most of the feature's own tasks are in; its brief is the
+   * owner's prompt with the chase as it stands under it: the live line, the open pull requests and what's wrong
+   * with each, and what's Stuck or needs the owner.
+   */
+  roadCaptain(slug, prompt, views, connected) {
+    const row = this.featureRow(slug);
+    if (row.chase === 'off')
+      throw new AgentError(`${row.title} has no chase yet: press Chase first, then start its road captain`, 409);
+    const set = this.chaseMembers(row, views);
+    const counts = new Map();
+    for (const { t, member } of set) if (member) counts.set(t.repo, (counts.get(t.repo) ?? 0) + 1);
+    const repo = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? this.defaultRepoSlug();
+    const plan = this.chaseQueue(row, views, connected);
+    const pulls = [];
+    for (const { t } of set) {
+      if (t.status !== 'pending' || !inReview(t)) continue;
+      const pr = openPull(t);
+      const fix = this.chasePullProblem(t, pr);
+      pulls.push(`- #${pr.number} closes ${label(t)} (${t.repo}): ${fix ? fix.words : `it’s ${pr.verdict ?? 'open'}`}`);
+    }
+    const held = [
+      ...plan.stuck.map((x) => `- ${x.wid ?? x.description}: stuck, ${x.why}`),
+      ...plan.needsYou.map((x) => `- ${x.wid ?? x.description}: ${x.why}`),
+    ];
+    const first = (prompt.split('\n').find((line) => line.trim()) ?? prompt).trim();
+    const brief = [
+      prompt,
+      '',
+      `## The chase on ${row.title} (+${row.slug})`,
+      '',
+      `You're its road captain: the owner started you to help this chase along, in ${repo}. Your task carries the +${row.slug} tag, so you ride the chase's peloton too: read it, and answer its agents. \`npx breakaway chase ${row.slug} --dry-run\` shows it as it is when you read it, and \`npx breakaway github\` the pull requests' checks.`,
+      '',
+      `When the owner pressed it: ${this.chaseLine(plan.line)} (state ${row.chase}).`,
+      ...(pulls.length ? ['', 'Its open pull requests:', ...pulls] : []),
+      ...(held.length ? ['', 'What holds the rest:', ...held] : []),
+    ].join('\n');
+    return {
+      slug: row.slug,
+      feature: row.title,
+      repo,
+      brief,
+      title: `Road captain for ${row.title}: ${first}`.slice(0, 200),
+    };
+  },
+
   /** The stall ping (section 3.6): a `blocked` ping on the task that frees the most, as the board, which pushes. */
   async chasePing(row, item) {
     const what = {

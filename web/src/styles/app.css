@@ -6593,6 +6593,10 @@ fieldset.field {
   display: grid;
   gap: 6px;
 }
+.ch-captain {
+  display: grid;
+  gap: 10px;
+}
 .ch-group h3 {
   display: flex;
   align-items: center;

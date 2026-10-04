@@ -56,6 +56,8 @@ Leave out the insider words ("domestique", "lanterne rouge"), "attack" (it means
 
 **The peloton** is the exception, because it's a feature's name: where running agents on one repository, or one chase, check in with each other. Use it wherever you mean that feature, buttons, instructions, the CLI, the docs, and the board's panel included, and only for that. Lowercase it mid-sentence ("open the peloton"), and never use it for agents or tasks in general.
 
+**The road captain** is the other one: the agent you start on a chase, with your own prompt, to help it along (the rider who directs the team's chase on the road). Use it for that agent only, in buttons ("Start road captain") and instructions alike, lowercase mid-sentence, and never for agents in general.
+
 ### Instead of this, that
 
 | Instead of | Write |
