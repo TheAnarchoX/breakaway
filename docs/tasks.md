@@ -77,6 +77,7 @@ What a repository has of its own, and what the board shares across all of them:
 | Its Claude routine (the two `ROUTINE_URL` and `ROUTINE_TOKEN` secrets for the default repository, `ROUTINES` for the others) | The agents at once and starts an hour, shared by every start |
 | Its caps under those limits (`repos modify --agents-max`, `--agents-hourly`) | The cap on routine runs a day, and pausing all routines |
 | Its agent prompt (`repos modify --prompt <path>`, default `tools/tasks/routine-prompt.md`) | The prompt's shared core, [`prompts/core.md`](../prompts/core.md) |
+| Its specs directory (`repos modify --specs <dir>`, default `docs/specs`), read from its default branch by `GET /api/specs` | |
 | Its saved routines and their GitHub events | Connections' Cloudflare rows: the Worker, its secrets, the cron |
 | Releases, Promote, and Roll back, only with a deploy pipeline (`repos modify --pipeline <file.json>`), and Merge when green and Keep branches up to date (`CLD-125`) | |
 

@@ -40,6 +40,7 @@ import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
 import { messagesMethods } from './store-messages.js';
 import { pelotonMethods } from './store-peloton.js';
+import { specsMethods } from './store-specs.js';
 import { statsMethods } from './store-stats.js';
 import { reposMethods } from './store-repos.js';
 import { repoSlugOf, SHARED_AREAS } from './repos.js';
@@ -1249,6 +1250,7 @@ Object.assign(
   pushMethods,
   messagesMethods,
   pelotonMethods,
+  specsMethods,
   statsMethods,
   reposMethods,
   connectionsMethods,

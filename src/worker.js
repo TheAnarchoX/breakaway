@@ -416,6 +416,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts[2] === 'run' && parts.length === 3 && method === 'POST')
       return send(await s.routinesRunApi(parts[1], body));
   }
+  // A repository's specs (IDEA-31, section 2), read from GitHub: the path is the file's, like docs/specs/BRK-1-x.md.
+  if (parts[0] === 'specs' && method === 'GET') {
+    if (parts.length === 1) return send(await s.specsApi(url.searchParams.get('repo')));
+    return send(await s.specApi(url.searchParams.get('repo'), parts.slice(1).join('/')));
+  }
   if (parts[0] === 'pings' && parts.length === 1 && method === 'GET') return send(await s.pingsApi());
   // The peloton (IDEA-32): agents post as the holder of a claimed task, with the bearer token. The owner reads it
   // on the board and steers one agent with a message, so the signed-in browser doesn't post.
