@@ -14,6 +14,8 @@ import {
   me,
   menuOpen,
   navOrder,
+  canNewAgent,
+  newAgent,
   newTask,
   openTask,
   selected,
@@ -41,6 +43,7 @@ import { ConnectionsView, FirstRunNotice } from './views/ConnectionsView.jsx';
 import { AddRepoView } from './views/AddRepoView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
+import { NewAgentDialog } from './components/NewAgent.jsx';
 import { SignIn } from './components/SignIn.jsx';
 import { FilterBar, HelpContent, MenuDrawer, SettingsDialog, Sidebar, TopBar } from './components/Shell.jsx';
 import { ConfirmHost, Dialog, ForceStartHost, Toasts } from './components/ui.jsx';
@@ -85,6 +88,7 @@ function useShortcuts() {
       if (e.key === '/') document.getElementById('search')?.focus();
       else if (e.key === 'n') newTask.value = {};
       else if (e.key === 'i') newTask.value = { mode: 'idea' };
+      else if (e.key === 'p' && canNewAgent.value) newAgent.value = true;
       else if (e.key === 's') cycleRepo();
       else if (view_) go(view_.id);
       else if (e.key === 'j') step(1);
@@ -172,6 +176,7 @@ function Board() {
       {phone && <MenuDrawer />}
       <SettingsDialog />
       <NewTaskDialog />
+      <NewAgentDialog />
       <Dialog
         open={helpOpen.value}
         onClose={() => {

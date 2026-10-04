@@ -1,6 +1,18 @@
 import { useEffect } from 'preact/hooks';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-preact';
-import { HORIZONS, HORIZON_LABEL, PRIORITY_LABEL, STATES, ago, compareWid, rank, ref, stateOf } from '../lib/model.js';
+import {
+  HORIZONS,
+  HORIZON_LABEL,
+  PICKS_AREA,
+  PRIORITY_LABEL,
+  STATES,
+  ago,
+  compareWid,
+  picksArea,
+  rank,
+  ref,
+  stateOf,
+} from '../lib/model.js';
 import { areaLabel, areaList, byUuid, current, hashFor, listGroup, listSort, navOrder, visible } from '../lib/store.js';
 import { useMedia } from '../lib/media.js';
 import { ClaimChip, RepoChip, RoleTags, Segmented, StateBadge, widClass } from '../components/ui.jsx';
@@ -167,7 +179,9 @@ export function ListView() {
                         <td>
                           <StateBadge task={t} />
                         </td>
-                        <td>{areaLabel(t.project) ?? '—'}</td>
+                        <td>
+                          {areaLabel(t.project) ?? (picksArea(t) ? <span class="muted">Its agent picks it</span> : '—')}
+                        </td>
                         <td>{HORIZON_LABEL[t.horizon] ?? '—'}</td>
                         <td>{PRIORITY_LABEL[t.priority] ?? '—'}</td>
                         <td>{t.claim ? <ClaimChip task={t} /> : '—'}</td>
@@ -206,6 +220,7 @@ export function ListView() {
                       </span>
                       <span class="row-meta">
                         {t.project && <span class="meta">{areaLabel(t.project)}</span>}
+                        {picksArea(t) && <span class="meta">{PICKS_AREA}</span>}
                         {t.horizon && <span class="meta">{HORIZON_LABEL[t.horizon]}</span>}
                         <RoleTags tags={t.tags} />
                         <ClaimChip task={t} />

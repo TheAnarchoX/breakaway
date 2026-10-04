@@ -58,6 +58,8 @@ import {
   me,
   menuOpen,
   mergeMethod,
+  canNewAgent,
+  newAgent,
   newTask,
   openIn,
   pings,
@@ -801,7 +803,7 @@ function Notifications() {
 }
 
 /**
- * Search, New task, and the bell; on a phone also the menu button and the name.
+ * Search, New agent, New task, and the bell; on a phone also the menu button and the name.
  * @param {Record<string, any>} props
  */
 export function TopBar({ phone = false }) {
@@ -830,6 +832,23 @@ export function TopBar({ phone = false }) {
       )}
       <SearchBox />
       <div class="topbar-end">
+        {canNewAgent.value && (
+          <button
+            type="button"
+            class="btn btn-outline btn-sm new-agent"
+            aria-label="New agent"
+            aria-haspopup="dialog"
+            title="Start an agent from a prompt (p)"
+            onClick={() => {
+              newAgent.value = true;
+            }}
+          >
+            <Bot size={18} aria-hidden="true" />
+            <span class="new-label" aria-hidden="true">
+              New agent
+            </span>
+          </button>
+        )}
         <button
           type="button"
           class="btn btn-primary btn-sm new-task"
@@ -1004,6 +1023,7 @@ export const SHORTCUTS = [
       ['/', 'Search'],
       ['n', 'New task'],
       ['i', 'New idea'],
+      ['p', 'New agent, when an agent routine is connected'],
       ['[', 'Collapse or expand the menu'],
       ['s', 'Switch repository, when there are several'],
       ['j k', 'Next and previous task'],

@@ -392,6 +392,22 @@ export async function loadGitHub({ sync = false, quiet = false } = {}) {
   }
 }
 
+/** Whether repository `slug`'s agent routine is connected, from the Agents API (false until it loads). */
+export function routineConnected(slug) {
+  const want = slug ?? repos.value.default;
+  return Boolean(agents.value.data?.repos?.find((r) => r.slug === want)?.connected);
+}
+
+/**
+ * Whether New agent shows: the agent routine of the repository in scope is connected, and with every repository
+ * in scope, any is. Hidden rather than shown and refused.
+ */
+export const canNewAgent = computed(() => {
+  const d = agents.value.data;
+  if (!d?.connected) return false;
+  return !repoScope.value || routineConnected(repoScope.value);
+});
+
 export async function loadAgents() {
   try {
     agents.value = { loaded: true, data: await api('agents'), error: null };
@@ -697,6 +713,8 @@ export const listGroup = signal('none');
 export const selectedRoutine = signal(null); // a routine's slug, open in the routines view's panel
 export const focusPing = signal(null); // the ping the inbox scrolls to and focuses, from #/inbox?ping=<id>
 export const newTask = signal(null); // null, or the defaults for the new-task dialog
+/** Whether the New agent dialog is open (docs/specs/IDEA-30-new-agent.md, section 5). */
+export const newAgent = signal(false);
 export const helpOpen = signal(false);
 /** The repository the Add a repository wizard is on: `{ slug }` once registered, `{ github }` before, or null to pick one. */
 export const addRepoTarget = signal(null);
@@ -994,6 +1012,22 @@ export const actions = {
         }),
       `${ref(t)} is decided.`,
     ),
+  /**
+   * New agent: a task from the owner's prompt, and an agent on it, or waiting for room. Throws the board's
+   * refusal (no task is made then), so the dialog can show it beside the prompt.
+   * @param {{ prompt: string, repo?: string, force?: boolean }} body
+   */
+  async startGeneral({ prompt, repo, force = false }) {
+    const result = await api('agents/general', {
+      method: 'POST',
+      body: { prompt, repo: repo || undefined, force: force || undefined },
+    });
+    await loadTasks();
+    if (activity.value.loaded) loadActivity();
+    loadAgents();
+    loadHealth();
+    return result;
+  },
   /** `after` runs when the owner forces a start the board's limits refused. */
   async startAgent(t, note, after) {
     const result = await change(
