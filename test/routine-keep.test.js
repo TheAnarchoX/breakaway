@@ -125,7 +125,11 @@ describe('connecting a routine from the board (BRK-133)', () => {
 
   it('starts with gadgets not connected', async () => {
     expect(await body(await api('repos/gadgets'))).toMatchObject({ routineConnected: false, routineSource: null });
-    expect(await routineRow('gadgets')).toMatchObject({ state: 'attention' });
+    expect(await routineRow('gadgets')).toMatchObject({ state: 'attention', source: null });
+    // The wizard's connect step offers the form to connect it (WEB-38).
+    const setup = await body(await api('repos/setup?slug=gadgets'));
+    expect(setup.routine).toEqual({ connected: false, source: null });
+    expect(setup.steps.find((s) => s.id === 'connect')).toMatchObject({ name: 'Connect the routine', done: false });
     expect((await body(await start('GAD-1'))).error).toMatch(/gadgets’s agent routine isn’t connected yet/u);
   });
 
@@ -179,8 +183,21 @@ describe('connecting a routine from the board (BRK-133)', () => {
   it('shows on Connections like a routine in the Secrets Store', async () => {
     const kept = await routineRow('gadgets');
     const fromSecrets = await routineRow('breakaway');
-    expect(kept).toMatchObject({ name: 'Agent routine for gadgets', state: 'working', fix: null });
-    expect(fromSecrets).toMatchObject({ name: 'Agent routine for breakaway', state: 'working', fix: null });
+    expect(kept).toMatchObject({ name: 'Agent routine for gadgets', state: 'working', fix: null, source: 'board' });
+    expect(fromSecrets).toMatchObject({
+      name: 'Agent routine for breakaway',
+      state: 'working',
+      fix: null,
+      source: 'secrets',
+    });
+    // The form offers Replace where one is kept, and the wizard's connect step ticks from it (WEB-38).
+    const setup = await body(await api('repos/setup?slug=gadgets'));
+    expect(setup.routine).toEqual({ connected: true, source: 'board' });
+    expect(setup.steps.find((s) => s.id === 'connect')).toMatchObject({ done: true });
+    expect((await body(await api('repos/setup?slug=breakaway'))).routine).toEqual({
+      connected: true,
+      source: 'secrets',
+    });
     expect(kept.detail).toBe('connected; the last start worked');
     const output = (await inStore((s) => s.claudeConnections())).find(
       (c) => c.id === 'claude.output' && c.repo === 'gadgets',
@@ -226,7 +243,8 @@ describe('connecting a routine from the board (BRK-133)', () => {
       s.sql.exec('UPDATE kept_routines SET sealed = ? WHERE slug = ?', sealed, 'gadgets');
     });
     const row = await routineRow('gadgets');
-    expect(row).toMatchObject({ state: 'attention', name: 'Agent routine for gadgets' });
+    expect(row).toMatchObject({ state: 'attention', name: 'Agent routine for gadgets', source: 'board' });
+    expect((await body(await api('repos/setup?slug=gadgets'))).routine).toEqual({ connected: false, source: 'board' });
     expect(row.detail).toMatch(/can’t be read any more/u);
     expect(row.fix).toMatch(/Connect the routine again from the board/u);
     expect(row.fix).toContain('npx breakaway agents-connect --repo gadgets');
