@@ -16,7 +16,7 @@ The owner, 3 Oct: Kickoff is for people who aren't technical as much as for thos
 - **An install keeps its data.** Kickoff talks only to services the install already connected: GitHub through the board's App, and Claude through the new repository's routine. The idea, its images, and the answers stay on the board and in the new repository.
 - **The person who runs the board decides.** Every step that creates, registers, writes, or starts something is a button the person presses: creating the repository (on github.com), registering it, adding the board's files, starting each agent run, and merging the plan. No agent registers a repository, connects a routine, or merges; the board's own buttons do what `AGENTS.md` keeps from agents.
 - **One claim per task, and pull requests close tasks.** The interview and the plan are an `IDEA-` task in the new repository, worked by one agent and closed by its plan's pull request, like any idea.
-- **The Secrets Store stays the owner's** ([IDEA-14](IDEA-14-multi-repo.md), section 4): today the Worker reads secrets and never writes one, which is why connecting a routine needs a terminal. Kickoff asks the owner whether to change that (decision 1); without the change it still works, with one copied command.
+- **The Secrets Store stays the owner's** ([IDEA-14](IDEA-14-multi-repo.md), section 4): the Worker reads secrets and never writes one, which is why connecting a routine needed a terminal. The owner chose to change that for routine URLs and tokens only (`BRK-130`): the board keeps them itself, encrypted with a key from the Secrets Store. The Secrets Store's own secrets are still written only by the owner.
 
 ## Design
 
@@ -39,9 +39,9 @@ The page shows the steps in plain words, one at a time, each saying what happens
 1. **Make a private home for it on GitHub** (`create`). The board can't create a repository through its App on a personal account, so it gives a link that opens github.com's own form already filled in: `https://github.com/new?name=<name>&visibility=private&description=<first line>`. You press Create there. Private is the default and the page says why (your idea isn't public until you choose).
 2. **Let the board see it** (`install`): the link to the App's installation settings for that repository, and to the repository's Allow auto-merge setting. Ticks from the live check, as in the wizard.
 3. **Add it to the board** (`register`): one press, with the slug and areas from step 1. This is when the kickoff's IDEA is made (section 3).
-4. **Add the board's files** (`init`, `prompt`). On an empty repository, one press: the board writes the first commit through its App, with the same files `repos init` adds, the prompt's sections at their defaults, and a starter `AGENTS.md` (decision 2). The interview's plan fills them in later. A repository that already has commits gets the `repos init` command instead, as today, since that path opens a pull request and the board doesn't.
+4. **Add the board's files** (`init`, `prompt`). On an empty repository, one press: the board writes the first commit through its App (Contents write, which it already has), with the same files `repos init` adds, the prompt's sections at their defaults, and a starter `AGENTS.md` (`BRK-130`, decision 2). One renderer makes the files for both, so they never drift. The interview's plan fills them in later. A repository that already has commits gets the `repos init` command instead, as today, since that path opens a pull request and the board doesn't.
 5. **Make its agent routine on claude.ai** (`routine`). claude.ai has no way for the board to make a routine, so this is guided: the routine's name, the repository to pick, the stub to paste, the host to allow in its cloud environment, and where to add the API trigger, each with a **Copy** button and a line on what you should see.
-6. **Connect the routine** (`connect`). Decision 1 picks how: **a form on this page** (paste the URL and token; the board keeps them encrypted, never shows them again, and never returns them from any API), or **a command to copy** (`npx breakaway agents-connect --repo <slug>`), with one line on opening a terminal in the board's checkout. Either way it ticks when the board can start agents there.
+6. **Connect the routine** (`connect`): **a form on this page** (`BRK-130`, decision 1). Paste the routine's URL and token; the board checks them the way `agents-connect` does, keeps them encrypted at rest with a key from the Secrets Store, never shows them again, and never returns them from any API. Under the form, **Prefer a terminal?** shows `npx breakaway agents-connect --repo <slug>`, which keeps working and wins when both exist. It ticks when the board can start agents there. The same form connects or replaces a routine on the wizard's connect step and on Connections (`WEB-38`), so a routine whose token changes never needs a terminal either.
 
 The steps the board can tick itself never ask you to confirm. Nothing here starts an agent.
 
@@ -54,13 +54,13 @@ Once the routine is connected, **Start the interview** starts an agent on that I
 1. **Read the pitch and the images.** Look at the repository: it's empty apart from the board's files.
 2. **Ask, as a decision on the IDEA** (`modify <IDEA> --decision`, the [IDEA-6](IDEA-6-decisions-with-questions.md) types): the fewest questions that settle the first version, at most 12 in the first round, in three groups:
    - **What it is:** who it's for, what they do with it first, what the first version must have and can leave out, and how it should look and feel (images welcome).
-   - **How it's built:** the kind of thing (a website, an app on phones, a tool, a game, something else), with a stack the agent recommends for that kind, and **Pick for me** as the first option.
+   - **How it's built:** the kind of thing (a website, an app on phones, a tool, a game, something else), with **Pick for me** as the first option. For a website or an app, Pick for me means a Cloudflare Worker with static assets (`BRK-130`, decision 4): one default the docs and the deploy flow can count on, on the account the board already runs on. That covers anything that runs in a browser, an app on phones included, as a web app you add to the home screen. Only for what can't run there (an app from the phone's store, a tool for the terminal) does the agent recommend a stack, and **In short** says which and why.
    - **How it runs:** where it lives (on your own Cloudflare account, the default, since your board already runs there), who can use it (just you, people you invite, everyone), and whether the repository stays private.
 
    The rules for the words: everyday language in every `prompt`, one idea per question, options instead of open text where they work, the recommendation first and marked, and any technical term only in `help`, explained in a line. A question you can answer from the pitch isn't asked.
 3. **Release and stop.** The board shows the decision on the kickoff page.
 
-Answering works as every decision does. A kickoff's decision also has **Send answers and carry on**, which sends them and starts the next `Mode: kickoff` run on the IDEA in one press (the person's press starts it, so no agent starts by itself). The next run reads the answers:
+Answering works as every decision does. A kickoff's decision also has **Send answers and carry on** (`BRK-130`, decision 3), which sends them and starts the next `Mode: kickoff` run on the IDEA in one owner-signed press (the person's press starts it, so no agent starts by itself; at the agent limit it queues like any start). **Send answers** alone stays beside it, for answering now and starting later. The next run reads the answers:
 
 - **Something important is still open?** One more round, at most 6 questions, about only that. Two rounds at most: after that the agent picks sensible defaults and writes down which.
 - **Enough to plan?** It shapes the idea ("Shaping an idea" in the core) with three additions, in one pull request in the new repository: `AGENTS.md` says how to build, test, and check the chosen stack; the agent prompt's sections replace their defaults; and the spec opens with **In short**, a few plain sentences a non-technical reader can check against what they asked for. The first tasks get a feature named for the first version (`<slug>-v1`), depend on the IDEA, and the first of them sets up the stack, so building stays tasks. The pull request closes the IDEA.
@@ -76,6 +76,7 @@ A kickoff is finished when its plan merges; it leaves the Kickoff list, and the 
 - **No GitHub App on the board yet:** Kickoff says so and links to Connections first. It can still save the pitch.
 - **The name is taken on GitHub, or the repository has files:** github.com's form says so; a repository with commits takes the `repos init` path in step 4.
 - **A clash in the slug or prefix:** shown as you type, with the next free suggestion.
+- **The routine's URL or token is refused:** the form says which check failed and what to do, and stores nothing.
 - **The routine fails to start:** Connections' row and its fix, as in the wizard; the interview stays unstarted.
 - **Agents are at the limit:** the interview queues for room like any start, and says so.
 - **You close the page:** everything is saved; the Kickoff list picks it up where it was.
@@ -83,7 +84,7 @@ A kickoff is finished when its plan merges; it leaves the Kickoff list, and the 
 
 ## Privacy
 
-The board stores the pitch, its images, the name, and the step in the `kickoffs` row, and the rest as ordinary tasks, attachments, and decisions. With decision 1's form, it also stores each routine's URL and token encrypted at rest with a key from the Secrets Store; with the command, nothing changes. The idea leaves the install only to the new repository (on GitHub, private by default) and to the agent sessions in that repository's routine. It never goes into breakaway's repository or any other.
+The board stores the pitch, its images, the name, and the step in the `kickoffs` row, and the rest as ordinary tasks, attachments, and decisions. A routine connected from the form has its URL and token stored encrypted at rest with a key from the Secrets Store (preferably derived from a secret the install already has, so updating needs no owner step); one connected with `agents-connect` stays in the Secrets Store as before. Removing the repository drops its stored routine. The idea leaves the install only to the new repository (on GitHub, private by default) and to the agent sessions in that repository's routine. It never goes into breakaway's repository or any other.
 
 ## Out of scope
 
@@ -95,31 +96,34 @@ The board stores the pitch, its images, the name, and the step in the `kickoffs`
 - Deploying it: the deploy flow's work (`deploy-flow` feature), which Kickoff only links to.
 - Several people, accounts, or sharing a kickoff.
 
-## Open questions
+## Decided
 
-Asked as a decision on the board, `BRK-130`:
+The owner answered `BRK-130` on 4 Oct 2026, all as recommended:
 
-1. **How a routine gets connected:** a form on the page that stores the URL and token encrypted on the board (recommended for people without a terminal; it changes "the Worker never writes a secret" for routine tokens only), or the `agents-connect` command, as today.
-2. **Whether the board writes the first commit** to an empty repository through its App (recommended: it's the step a non-technical person can't do), or always `repos init` in a terminal.
-3. **Send answers and carry on:** one press that answers and starts the next interview run (recommended), or answers and a separate Start.
-4. **The default stack for "Pick for me"** on a website or an app: a Cloudflare Worker with static assets, matching the board's own account (recommended), or the agent's choice each time.
+1. **How a routine gets connected:** a form on the board, which keeps the URL and token encrypted (`BRK-133`, and `WEB-38` beyond Kickoff). This changes "the Worker never writes a secret" for routine tokens only.
+2. **The first commit:** the board writes it to an empty repository through its App (`BRK-132`). A repository with commits still gets `repos init`.
+3. **Send answers and carry on:** yes (`BRK-134` on the server, `WEB-35` on the page).
+4. **Pick for me:** a Cloudflare Worker with static assets for a website or an app (`BRK-134`, in the core's section).
+
+Nothing else was raised.
 
 ## Done when
 
-- A person with a working board and no terminal (with decision 1 and 2 as recommended) goes from a pitch to a private registered repository with its routine connected, answers plain questions, and merges a plan with the first tasks waiting, all from the board.
+- A person with a working board and no terminal goes from a pitch to a private registered repository with its routine connected, answers plain questions, and merges a plan with the first tasks waiting, all from the board.
 - The pitch is never written anywhere but the board and the new repository.
 - `docs/tasks.md`, the core, and the decision log describe it.
 
-Follow-up tasks, all in the `kickoff` feature, horizon `next`, and all waiting for this spec (IDEA-26) to merge:
+Follow-up tasks, all in the `kickoff` feature and all waiting for this spec (IDEA-26) to merge:
 
 | Task | What | Waits for |
 | --- | --- | --- |
-| `BRK-130` | Decide the four questions above (owner) | IDEA-26 |
+| `BRK-130` | Decide the four questions above (owner, answered) | IDEA-26 |
 | `BRK-131` | Kickoffs on the server: the table, API, steps, and the IDEA once registered | IDEA-26, `BRK-130` |
 | `BRK-132` | The board adds its files to an empty repository through its GitHub App | IDEA-26, `BRK-130` |
-| `BRK-133` | Connect a repository's routine from the board, kept encrypted, if decision 1 picks the form | IDEA-26, `BRK-130` |
+| `BRK-133` | Connect a repository's routine from the board, kept encrypted | IDEA-26, `BRK-130` |
 | `BRK-134` | The kickoff mode: the core's section, the payload, and Send answers and carry on | IDEA-26, `BRK-131` |
 | `WEB-35` | The Kickoff view: start, set up, interview, and get going | IDEA-26, `BRK-131`, `BRK-132`, `BRK-133`, `BRK-134` |
 | `DOC-20` | Docs: Kickoff in the manual, the README, and the decision log | IDEA-26, `WEB-35` |
 | `BRK-135` | Rehearse a kickoff end to end with a made-up idea (owner) | IDEA-26, `WEB-35`, `DOC-20` |
 | `WEB-36` | Put it online: Kickoff's last step offers the wizard's Deploys step | IDEA-26, `WEB-35`, `WEB-14` |
+| `WEB-38` | Connect or replace any repository's routine from the board's form, on Connections and the wizard | `BRK-133` |
