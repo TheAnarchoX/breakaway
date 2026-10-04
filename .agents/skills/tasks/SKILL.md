@@ -19,7 +19,7 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 
    A `409` means someone has it or it's blocked. Pick another; never `--force` someone else's claim.
 4. **Read it:** `tasks show <ID>` (description, done when, comments, spec, what it waits for and holds up), then [`AGENTS.md`](../../../AGENTS.md) if you haven't this session.
-5. **Work** on a branch. Record what you learn as you go: `tasks comment <ID> "<finding>"`. Comments are append-only; the description is the current brief, and you edit it only on a task you made or are refining. New work you find becomes `tasks add "<title>" --project <area> --tag agent|owner --horizon <h> --brief "<what and why>" --done-when "<done when>"`, with `--depends <ID>` when it waits for something. breakaway's areas: `board`, `web`, `docs`, `launch`, `brand`.
+5. **Work** on a branch. Record what you learn as you go: `tasks comment <ID> "<finding>"`. Comments are append-only; the description is the current brief, and you edit it only on a task you made or are refining. New work you find becomes `tasks add "<title>" --project <area> --tag agent|owner --horizon <h> --brief "<what and why>" --done-when "<done when>"`, with `--depends <ID>` when it waits for something. breakaway's areas: `board`, `web`, `docs`, `launch`, `brand`, `cli`.
 6. **Hand over:** open the pull request with `Closes <ID>.` in its description, then `tasks modify <ID> --pr <number>` and `tasks comment <ID> "<one-line result>"`. The board moves the task to In review and marks it done when the pull request merges; don't mark it done yourself. If you stop before a pull request: `comment` where you got to, then `release <ID>`.
 
 ## Rules
