@@ -6,7 +6,6 @@ import {
   actions,
   agents,
   areaLabel,
-  confirmDialog,
   hashFor,
   inScope,
   loadAgents,
@@ -21,6 +20,7 @@ import {
 } from '../lib/store.js';
 import { RepoChip, Segmented } from '../components/ui.jsx';
 import { ForcedMark, MessageButton, SILENT_AFTER, TRIGGER_LABEL } from '../components/Agents.jsx';
+import { AgentSettings } from '../components/BoardSettings.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
 import { PelotonPanel } from '../components/Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
@@ -443,143 +443,12 @@ function Pelotons() {
   );
 }
 
-/**
- * The owner's Claude plan (CLD-198). Claude doesn't tell the board which plan an account is on, so the owner
- * picks it here, and it sets the ceilings and defaults of the board's limits. Claude's own limits on starting
- * a routine are the same on every plan.
- * @param {Record<string, any>} props
- */
-function PlanField({ d }) {
-  const plans = d.plans ?? [];
-  const pick = async (id) => {
-    const plan = plans.find((p) => p.id === id);
-    if (!plan || id === d.settings.plan) return;
-    const ok = await confirmDialog({
-      title: `Switch to ${plan.name}?`,
-      body: `Agents at once goes to ${plan.agents.default} (up to ${plan.agents.most}), starts an hour to ${Math.min(plan.hourly.default, d.limits.hourly)}, and routine runs a day to ${plan.routinesDaily.default}. You can change each one after.`,
-      confirmLabel: `Use ${plan.name}`,
-    });
-    if (ok) actions.claudePlan(id);
-  };
-  return (
-    <div class="field plan-field">
-      <span class="field-label">Your Claude plan</span>
-      <Segmented
-        label="Your Claude plan"
-        options={plans.map((p) => ({
-          id: p.id,
-          label: p.name,
-          hint: p.usage > 1 ? `${p.usage}× Pro’s usage` : 'Claude Pro',
-        }))}
-        value={d.settings.plan}
-        onChange={pick}
-      />
-      <span class="field-hint">
-        Claude doesn’t tell the board your plan, so pick it here. It sets how high the limits below can go. Claude
-        allows {d.limits.routineHourly} starts an hour for each routine and {d.limits.accountHourly} for your account,
-        on every plan.
-      </span>
-    </div>
-  );
-}
-
 /** @param {Record<string, any>} props */
 function Settings({ d }) {
-  const s = d.settings;
-  const limits = d.limits ?? { agents: 6, hourly: 30 };
-  const setHourly = (e) => {
-    const n = Number(e.currentTarget.value);
-    if (Number.isInteger(n) && n >= 1 && n <= limits.hourly) actions.agentSettings({ hourly: n });
-  };
-  const setMax = (e) => {
-    const n = Number(e.currentTarget.value);
-    if (Number.isInteger(n) && n >= 1 && n <= limits.agents) actions.agentSettings({ max: n });
-  };
   return (
     <section class="gh-section" aria-labelledby="agent-settings">
       <h2 id="agent-settings">Settings</h2>
-      <PlanField d={d} />
-      <div class="settings-grid">
-        {limits.agents <= 6 ? (
-          <div class="field">
-            <span class="field-label">Agents at once</span>
-            <Segmented
-              label="Agents at once"
-              options={upTo(limits.agents).map((n) => ({ id: n, label: n }))}
-              value={String(s.max)}
-              onChange={(v) => actions.agentSettings({ max: Number(v) })}
-            />
-            <span class="field-hint">A task in review doesn’t count: its slot frees up when the PR opens.</span>
-          </div>
-        ) : (
-          <label class="field">
-            <span class="field-label">Agents at once</span>
-            <input
-              class="input input-sm"
-              type="number"
-              min="1"
-              max={limits.agents}
-              step="1"
-              defaultValue={s.max}
-              key={`${s.plan}-${s.max}`}
-              onChange={setMax}
-            />
-            <span class="field-hint">
-              1 to {limits.agents} on your plan. A task in review doesn’t count: its slot frees up when the PR opens.
-            </span>
-          </label>
-        )}
-        <label class="field">
-          <span class="field-label">Starts an hour</span>
-          <input
-            class="input input-sm"
-            type="number"
-            min="1"
-            max={limits.hourly}
-            step="1"
-            defaultValue={s.hourly}
-            key={`${s.plan}-${s.hourly}`}
-            onChange={setHourly}
-          />
-          <span class="field-hint">
-            Most agents the board starts in an hour, 1 to {limits.hourly} (
-            {limits.hourly > limits.routineHourly
-              ? `${limits.routineHourly} for each routine`
-              : 'Claude’s limit for the routine'}
-            ). Every start uses your Claude subscription.
-          </span>
-        </label>
-        <div class="field">
-          <span class="field-label">Start by itself</span>
-          <Segmented
-            label="Start by itself"
-            options={[
-              { id: 'on', label: 'On' },
-              { id: 'off', label: 'Off' },
-            ]}
-            value={s.autostart ? 'on' : 'off'}
-            onChange={(v) => actions.agentSettings({ autostart: v === 'on' })}
-          />
-          <span class="field-hint">
-            Tasks marked Start when ready start their agent as soon as nothing blocks them.
-          </span>
-        </div>
-        <label class="field">
-          <span class="field-label">New security alerts</span>
-          <select
-            class="select select-sm"
-            value={s.alerts}
-            onChange={(e) => actions.agentSettings({ alerts: e.currentTarget.value })}
-          >
-            <option value="off">Leave them to me</option>
-            <option value="critical">Critical ones get an agent</option>
-            <option value="high">High and critical get an agent</option>
-            <option value="medium">Medium and up get an agent</option>
-            <option value="all">Every alert gets an agent</option>
-          </select>
-          <span class="field-hint">A new alert at that level becomes a task that starts its own agent.</span>
-        </label>
-      </div>
+      <AgentSettings d={d} />
       <p class="meta">
         {d.budget.used} of {d.budget.limit} starts used this hour. Every start uses your Claude subscription.
       </p>

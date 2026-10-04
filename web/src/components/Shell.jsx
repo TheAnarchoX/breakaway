@@ -8,10 +8,8 @@ import {
   Inbox,
   GitPullRequest,
   Kanban,
-  Keyboard,
   List,
   ListFilter,
-  LogOut,
   Menu,
   Milestone,
   Network,
@@ -19,7 +17,6 @@ import {
   PanelLeftOpen,
   Plug,
   Plus,
-  RefreshCw,
   Repeat,
   ScrollText,
   Search,
@@ -40,7 +37,6 @@ import {
   openRepoSettings,
   openPingsHere,
   repoName,
-  repoSettingsHref,
   repoScope,
   repos,
   scopedPings,
@@ -54,28 +50,21 @@ import {
   healthFailed,
   helpOpen,
   lanes,
-  loadHealth,
   installName,
-  loadTasks,
   me,
   menuOpen,
   canNewAgent,
   newAgent,
   newTask,
-  openIn,
   pings,
   setFilter,
-  settingsOpen,
   sidebar,
   tasks,
-  theme,
-  toast,
   toggleSidebar,
   view,
   visible,
 } from '../lib/store.js';
 import { useMedia } from '../lib/media.js';
-import { notifications, turnOffNotifications, turnOnNotifications } from '../lib/push.js';
 import { Title } from '../lib/richtext.jsx';
 import { Dialog, Kbd, Popover, RepoChip, Segmented } from './ui.jsx';
 import { Logo } from './Logo.jsx';
@@ -279,7 +268,7 @@ function RepoSwitcher({ rail = false }) {
             e.currentTarget.value = value;
             openAddRepo(null);
           } else if (e.currentTarget.value === REPO_SETTINGS) {
-            // Repository settings opens the page of the repository it shows (WEB-30), and the list under All.
+            // Repository settings opens the page of the repository it shows (WEB-30), and Settings' list under All.
             e.currentTarget.value = value;
             openRepoSettings(repoScope.value);
           } else setRepo(e.currentTarget.value);
@@ -348,22 +337,19 @@ export function Sidebar({ drawer = false }) {
       </nav>
       <div class="sidebar-foot">
         <ServerStatus />
-        <button
-          type="button"
+        <a
           class="side-item"
-          aria-haspopup="dialog"
+          href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
+          aria-current={['settings', 'repo-settings'].includes(view.value) ? 'page' : undefined}
           title={tip('Settings')}
-          onClick={() => {
-            close?.();
-            settingsOpen.value = true;
-          }}
+          onClick={close}
         >
           <span class="side-icon">
             <Settings size={20} aria-hidden="true" />
           </span>
           <span class="side-label">Settings</span>
           <AttentionBadge />
-        </button>
+        </a>
         {!drawer && (
           <button
             type="button"
@@ -432,217 +418,6 @@ function SearchBox() {
       />
       <Kbd>/</Kbd>
     </label>
-  );
-}
-
-const ON_OFF = [
-  { id: 'on', label: 'On' },
-  { id: 'off', label: 'Off' },
-];
-
-/**
- * Where the pull request settings went (WEB-31): each repository's settings page, for the repository the switcher
- * shows, or the list of them under All. The Settings page replaces this dialog (WEB-32).
- * @param {Record<string, any>} props
- */
-function PullSettingsLink({ close }) {
-  if (!github.value.data?.connected) return null;
-  const slug = repoScope.value ?? (multiRepo.value ? null : repos.value.default);
-  return (
-    <div class="field">
-      <span class="field-label">Pull requests</span>
-      <span class="field-hint">
-        Keep branches up to date and Merge when green are on{' '}
-        <a href={repoSettingsHref(slug)} onClick={close}>
-          {slug ? `${repoName(slug)}’s settings` : 'each repository’s settings'}
-        </a>
-        .
-      </span>
-    </div>
-  );
-}
-
-const NOTIFICATION_HINTS = {
-  off: 'A notification when an agent pings you and needs you. Only in this browser.',
-  on: 'Agents’ pings that need you arrive here, even when the board is closed. Only in this browser.',
-  busy: 'One moment…',
-  nokey: 'Notifications need a key the owner hasn’t set up yet.',
-  blocked: 'This browser is blocking notifications for the board. Allow them in its site settings, then turn this on.',
-  unsupported:
-    'This browser can’t show notifications from the board. On an iPhone, add the board to the Home Screen first.',
-};
-
-/** Web Push for pings: off until turned on here, and only for this browser. */
-function NotificationSettings() {
-  const state = notifications.value;
-  const unavailable = state === 'nokey' || state === 'unsupported';
-  return (
-    <div class="field">
-      <span class="field-label">Notifications</span>
-      <Segmented
-        label="Notifications"
-        options={ON_OFF}
-        value={state === 'on' || state === 'busy' ? 'on' : 'off'}
-        onChange={(v) => {
-          if (unavailable || state === 'busy') return;
-          if (v === 'on') turnOnNotifications();
-          else turnOffNotifications();
-        }}
-      />
-      <span class={`field-hint ${state === 'blocked' ? 'field-error' : ''}`} role="status">
-        {NOTIFICATION_HINTS[state] ?? NOTIFICATION_HINTS.off}
-      </span>
-    </div>
-  );
-}
-
-/** Settings, in a dialog the sidebar's Settings opens. */
-export function SettingsDialog() {
-  const close = () => {
-    settingsOpen.value = false;
-  };
-  return (
-    <Dialog
-      open={settingsOpen.value}
-      onClose={close}
-      labelledBy="settings-title"
-      className="dialog-small dialog-settings"
-    >
-      <SettingsContent close={close} />
-    </Dialog>
-  );
-}
-
-/**
- * In settings: whether every connection works, and the way to the view that says what to fix.
- * @param {Record<string, any>} props
- */
-function ConnectionsLine({ close }) {
-  const n = connectionsAttention.value;
-  return (
-    <a
-      class={`settings-connections ${n ? 'is-bad' : ''}`}
-      href={hashFor({ view: 'connections', task: null, pr: null, ping: null })}
-      onClick={close}
-    >
-      <Plug size={15} aria-hidden="true" />
-      {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
-    </a>
-  );
-}
-
-/** @param {Record<string, any>} props */
-function SettingsContent({ close }) {
-  const h = health.value;
-  return (
-    <div class="sheet settings-panel">
-      <div class="settings-head">
-        <h2 id="settings-title">Settings</h2>
-        <button type="button" class="btn btn-quiet btn-icon" aria-label="Close settings" onClick={close}>
-          <X size={20} aria-hidden="true" />
-        </button>
-      </div>
-      <label class="field">
-        <span class="field-label">Claim as</span>
-        <input
-          class="input input-sm"
-          value={me.value}
-          onChange={(e) => {
-            me.value = e.currentTarget.value.trim() || 'owner';
-          }}
-          spellcheck={false}
-        />
-        <span class="field-hint">Your name on claims you make here. Agents use their own.</span>
-      </label>
-      <div class="field">
-        <span class="field-label" id="theme-label">
-          Theme
-        </span>
-        <Segmented
-          label="Theme"
-          options={[
-            { id: 'system', label: 'System' },
-            { id: 'dark', label: 'Dark' },
-            { id: 'light', label: 'Light' },
-          ]}
-          value={theme.value}
-          onChange={(v) => {
-            theme.value = v;
-          }}
-        />
-      </div>
-      <div class="field">
-        <span class="field-label" id="open-in-label">
-          Open tasks in
-        </span>
-        <Segmented
-          label="Open tasks in"
-          options={[
-            { id: 'sidebar', label: 'Sidebar' },
-            { id: 'modal', label: 'Modal' },
-          ]}
-          value={openIn.value}
-          onChange={(v) => {
-            openIn.value = v;
-          }}
-        />
-        <span class="field-hint">Phones always open a task full screen.</span>
-      </div>
-      <NotificationSettings />
-      <PullSettingsLink close={close} />
-      <div class="settings-health">
-        <strong>Server</strong>
-        {healthFailed.value && (
-          <span class="field-error">Can’t reach the board right now. It tries again every 30 seconds.</span>
-        )}
-        {h ? (
-          <>
-            <span>{h.ok ? 'Healthy' : `Can’t read its history: ${h.replicaError}`}</span>
-            <span class="muted">
-              {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
-            </span>
-            {h.secretsStoreInSync === false && (
-              <span class="field-error">
-                The Secrets Store is behind the server’s sync credentials. See docs/tasks.md.
-              </span>
-            )}
-          </>
-        ) : (
-          !healthFailed.value && <span class="muted">Checking…</span>
-        )}
-        <ConnectionsLine close={close} />
-      </div>
-      <div class="settings-actions">
-        <button
-          type="button"
-          class="btn btn-quiet btn-sm"
-          onClick={() => {
-            close();
-            Promise.all([loadTasks(), loadHealth()]).then(() => toast('Board refreshed.', 'success'));
-          }}
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-          Refresh
-        </button>
-        <button
-          type="button"
-          class="btn btn-quiet btn-sm"
-          onClick={() => {
-            close();
-            helpOpen.value = true;
-          }}
-        >
-          <Keyboard size={16} aria-hidden="true" />
-          Shortcuts
-        </button>
-        <form method="post" action="/logout">
-          <button type="submit" class="btn btn-quiet btn-sm">
-            <LogOut size={16} aria-hidden="true" />
-            Sign out
-          </button>
-        </form>
-      </div>
-    </div>
   );
 }
 
@@ -938,6 +713,7 @@ export function FilterBar() {
       'roadmap',
       'connections',
       'add-repo',
+      'settings',
       'repo-settings',
     ].includes(view.value)
   )
