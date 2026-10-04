@@ -396,7 +396,7 @@ function RunBox({ r }) {
   const run = async () => {
     if (blocked) return;
     setBusy(true);
-    const result = await actions.runRoutine(r, note.trim());
+    const result = await actions.runRoutine(r, note.trim(), () => setNote(''));
     setBusy(false);
     if (result) setNote('');
   };

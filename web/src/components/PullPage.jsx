@@ -515,17 +515,7 @@ function PrActions({ page, reload }) {
   const review = async () => {
     setBusy(true);
     setProblem(null);
-    try {
-      const r = await api(`github/pulls/${page.number}/review`, { method: 'POST', body: repoBody(page) });
-      toast(
-        r.run
-          ? `Started an agent to test #${page.number}. Its answer comes as a note and a comment.`
-          : `${r.task.wid} already has it: ${r.already}.`,
-      );
-      done();
-    } catch (e) {
-      setProblem(e.message);
-    }
+    if (await actions.reviewPull(page, done)) done();
     setBusy(false);
   };
   const waiting = ['running', 'review', 'failing', 'behind'].includes(page.verdict);
@@ -640,7 +630,7 @@ function FixWithAgent({ page, reload }) {
   const reason = agents.value.loaded && !connected ? 'the agent routine isn’t connected yet' : null;
   const run = async (problem) => {
     setBusy(true);
-    await actions.fixPull(page, problem);
+    await actions.fixPull(page, problem, reload);
     setBusy(false);
     reload();
   };

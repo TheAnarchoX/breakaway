@@ -917,15 +917,37 @@ export const navOrder = signal([]);
 
 // ---- changes -------------------------------------------------------------------------------
 
-async function change(request, message) {
+/**
+ * A start the board's own limits refused, which Force start could skip: the reason, and `run`, which starts it
+ * again past them. Shown by ForceStartHost, so every start control offers it the same way.
+ */
+export const forceOffer = signal(null);
+
+/**
+ * Runs a change and toasts the result. `request` gets whether this is a forced try. With `forceable`, a refusal
+ * only the board's limits caused (`data.forceable`) opens the Force start offer instead of a toast; `after` runs
+ * when the forced try works, since the caller has moved on by then.
+ * @param {(force: boolean) => Promise<any>} request
+ * @param {string | ((result: any) => string) | null} message
+ * @param {{ forceable?: boolean, force?: boolean, after?: (result: any) => void }} [options]
+ */
+async function change(request, message, { forceable = false, force = false, after } = {}) {
   try {
-    const result = await request();
+    const result = await request(force);
     if (message) toast(typeof message === 'function' ? message(result) : message, 'success');
     await loadTasks();
     if (activity.value.loaded) loadActivity();
     loadHealth();
+    if (force) after?.(result);
     return result;
   } catch (error) {
+    if (forceable && !force && error.data?.forceable) {
+      forceOffer.value = {
+        reason: error.message,
+        run: () => change(request, message, { forceable, force: true, after }),
+      };
+      return null;
+    }
     toast(error.message, 'error');
     return null;
   }
@@ -972,19 +994,27 @@ export const actions = {
         }),
       `${ref(t)} is decided.`,
     ),
-  async startAgent(t, note) {
+  /** `after` runs when the owner forces a start the board's limits refused. */
+  async startAgent(t, note, after) {
     const result = await change(
-      () => api('agents/start', { method: 'POST', body: { ref: t.uuid, note: note || undefined } }),
+      (force) =>
+        api('agents/start', {
+          method: 'POST',
+          body: { ref: t.uuid, note: note || undefined, force: force || undefined },
+        }),
       `Started an agent on ${ref(t)}.`,
+      { forceable: true, after },
     );
     loadAgents();
     return result;
   },
   /** Starts a refine run. Resolves to the result, or null after showing the error, so the caller can keep what was typed. */
-  async refineAgent(t, note) {
+  async refineAgent(t, note, after) {
     const result = await change(
-      () => api('agents/start', { method: 'POST', body: { ref: t.uuid, note, mode: 'refine' } }),
+      (force) =>
+        api('agents/start', { method: 'POST', body: { ref: t.uuid, note, mode: 'refine', force: force || undefined } }),
       `Started an agent refining ${ref(t)}.`,
+      { forceable: true, after },
     );
     loadAgents();
     return result;
@@ -1028,10 +1058,12 @@ export const actions = {
     );
   },
   /** Runs a routine. Resolves to the result, or null after showing the error, so the caller can keep what was typed. */
-  async runRoutine(r, note) {
+  async runRoutine(r, note, after) {
     const result = await change(
-      () => api(`routines/${r.slug}/run`, { method: 'POST', body: { note: note || undefined } }),
+      (force) =>
+        api(`routines/${r.slug}/run`, { method: 'POST', body: { note: note || undefined, force: force || undefined } }),
       (x) => `Started ${x.task.wid}, ${r.name}.`,
+      { forceable: true, after },
     );
     loadRoutines();
     return result;
@@ -1100,32 +1132,52 @@ export const actions = {
   },
   async fixAlert(alert) {
     const result = await change(
-      () =>
+      (force) =>
         api(`github/alerts/${alert.number}/fix`, {
           method: 'POST',
-          body: isDefaultRepo(alert.repo) ? {} : { repo: alert.repo },
+          body: { ...(isDefaultRepo(alert.repo) ? {} : { repo: alert.repo }), force: force || undefined },
         }),
       (r) =>
         r.run
           ? `Started an agent on ${ref(r.task)} for the ${alert.package} alert.`
           : `${ref(r.task)} already has it: ${r.already}.`,
+      { forceable: true },
     );
     loadAgents();
     loadGitHub();
     return result;
   },
   /** Fix with an agent on a pull request. `problem`: conflicts, failing, or review. */
-  async fixPull(pr, problem) {
+  async fixPull(pr, problem, after) {
     const result = await change(
-      () =>
+      (force) =>
         api(`github/pulls/${pr.number}/fix`, {
           method: 'POST',
-          body: { problem, ...(isDefaultRepo(pr.repo) ? {} : { repo: pr.repo }) },
+          body: { problem, ...(isDefaultRepo(pr.repo) ? {} : { repo: pr.repo }), force: force || undefined },
         }),
       (r) =>
         r.run
           ? `Started an agent on ${ref(r.task)} for #${pr.number}.`
           : `${ref(r.task)} already has it: ${r.already}.`,
+      { forceable: true, after },
+    );
+    loadAgents();
+    loadGitHub();
+    return result;
+  },
+  /** Safe to merge? on a Dependabot pull request. */
+  async reviewPull(pr, after) {
+    const result = await change(
+      (force) =>
+        api(`github/pulls/${pr.number}/review`, {
+          method: 'POST',
+          body: { ...(isDefaultRepo(pr.repo) ? {} : { repo: pr.repo }), force: force || undefined },
+        }),
+      (r) =>
+        r.run
+          ? `Started an agent to test #${pr.number}. Its answer comes as a note and a comment.`
+          : `${r.task.wid} already has it: ${r.already}.`,
+      { forceable: true, after },
     );
     loadAgents();
     loadGitHub();
