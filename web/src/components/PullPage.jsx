@@ -5,10 +5,11 @@ import {
   CircleCheck,
   CircleX,
   ExternalLink,
+  ListTodo,
   LoaderCircle,
   MessageSquare,
 } from 'lucide-preact';
-import { ago, plural } from '../lib/model.js';
+import { ago, canAgentReview, isDependabot, plural } from '../lib/model.js';
 import { api } from '../lib/api.js';
 import {
   actions,
@@ -511,7 +512,7 @@ function PrActions({ page, reload }) {
     }
     setBusy(false);
   };
-  const dependabot = /^dependabot(\[bot\])?$/iu.test(page.author ?? '');
+  const dependabot = isDependabot(page.author);
   const review = async () => {
     setBusy(true);
     setProblem(null);
@@ -593,16 +594,25 @@ function fixesFor(page) {
   const list = [];
   if (page.verdict === 'conflicts') list.push({ problem: 'conflicts', label: 'Fix conflicts with an agent' });
   if (page.verdict === 'failing') list.push({ problem: 'failing', label: 'Fix failing checks with an agent' });
-  if (page.review.decision === 'changes_requested' || page.review.comments > 0)
+  // An agent's review that needs changes, of the branch as it is, counts as review comments (BRK-111).
+  const agentChanges = page.agentReview?.verdict === 'changes' && !page.agentReview.moved;
+  if (page.review.decision === 'changes_requested' || page.review.comments > 0 || agentChanges)
     list.push({ problem: 'review', label: 'Address review comments with an agent' });
   return list;
 }
 
-/** @param {Record<string, any>} props */
-function FixWithAgent({ page, reload }) {
+/** Review with an agent (WEB-23): a pull request that can merge as it stands and closes an open task. */
+const reviewable = (page) => canAgentReview(page) && page.tasks.some((t) => t.closes && t.status === 'pending');
+
+/**
+ * Fix with an agent and Review with an agent: the buttons, or who's on the task already.
+ * @param {Record<string, any>} props
+ */
+function AgentActions({ page, reload }) {
   const [busy, setBusy] = useState(false);
   const fixes = fixesFor(page);
-  if (!fixes.length) return null;
+  const review = reviewable(page);
+  if (!fixes.length && !review) return null;
   // Someone's on its task already (WEB-6): say who, instead of offering to start another.
   if (page.agent) {
     const { wid, busy: what, session } = page.agent;
@@ -634,6 +644,19 @@ function FixWithAgent({ page, reload }) {
     setBusy(false);
     reload();
   };
+  const startReview = async () => {
+    setBusy(true);
+    await actions.reviewPull(page, reload);
+    setBusy(false);
+    reload();
+  };
+  const hint = [
+    fixes.length ? 'The agent pushes a fix to this branch, or leaves a note.' : null,
+    review ? 'A review checks the branch against its task and answers below the description.' : null,
+    fixes.length ? 'It never merges: that stays with you.' : 'It never pushes or merges.',
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
     <div class="pr-fix">
       {fixes.map((f) => (
@@ -648,12 +671,74 @@ function FixWithAgent({ page, reload }) {
           {f.label}
         </button>
       ))}
+      {review && (
+        <button
+          type="button"
+          class="btn btn-outline btn-sm"
+          disabled={busy || Boolean(reason)}
+          aria-describedby="pr-fix-hint"
+          onClick={startReview}
+        >
+          Review with an agent
+        </button>
+      )}
       <p class="meta" id="pr-fix-hint">
-        {reason
-          ? `Can’t start one: ${reason}.`
-          : 'The agent pushes a fix to this branch, or leaves a note. It never merges: that stays with you.'}
+        {reason ? `Can’t start one: ${reason}.` : hint}
       </p>
     </div>
+  );
+}
+
+const REVIEW_ICON = { ready: CircleCheck, 'follow-up': ListTodo, changes: CircleX };
+
+/**
+ * The latest agent's review (WEB-23): its verdict, who, when, and the commit it reviewed, marked when the branch
+ * has moved since, with the note as Markdown. Earlier ones stay as comments on the task.
+ * @param {Record<string, any>} props
+ */
+function AgentReview({ page }) {
+  const r = page.agentReview;
+  if (!r) return null;
+  const Icon = REVIEW_ICON[r.verdict] ?? CircleCheck;
+  const base = String(page.url ?? '').replace(/\/pull\/\d+$/u, '') || undefined;
+  const sha = r.sha ? r.sha.slice(0, 7) : null;
+  return (
+    <section class="gh-section agent-review" aria-labelledby="pr-agent-review">
+      <h2 id="pr-agent-review">Agent review</h2>
+      <p class="agent-review-head">
+        <span class={`agent-review-verdict agent-review-${r.verdict}`}>
+          <Icon size={16} aria-hidden="true" />
+          {r.label}
+        </span>
+        <span class="meta">
+          {r.agent} · <time dateTime={r.at}>{ago(r.at)}</time>
+          {sha && (
+            <>
+              {' · of '}
+              <a href={`${page.url}/commits/${r.sha}`} {...ext} aria-label={`commit ${sha}`}>
+                <code>{sha}</code>
+              </a>
+            </>
+          )}
+          {r.task && (
+            <>
+              {' · on '}
+              <a href={hashFor({ view: 'board', task: r.task, pr: null })}>
+                <span class="wid">{r.task}</span>
+              </a>
+            </>
+          )}
+        </span>
+      </p>
+      {r.moved && (
+        <p class="agent-review-moved">
+          The branch has moved since this review: it’s of an earlier commit, not what would merge now.
+        </p>
+      )}
+      <div class="pr-body pr-body-md">
+        <Markdown text={r.note} base={base} />
+      </div>
+    </section>
   );
 }
 
@@ -854,11 +939,12 @@ export function PullPage() {
             </ul>
           )}
           <PrActions page={page} reload={() => setTick((n) => n + 1)} />
-          <FixWithAgent page={page} reload={() => setTick((n) => n + 1)} />
+          <AgentActions page={page} reload={() => setTick((n) => n + 1)} />
         </section>
       </div>
 
       {page.body && <Description page={page} />}
+      <AgentReview page={page} />
       <Conversation page={page} />
       <Diff page={page} />
     </div>
