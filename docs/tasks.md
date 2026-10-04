@@ -21,7 +21,7 @@ Every task is a Taskwarrior task with a few fields of the board's own (UDAs):
 | `repo` | The repository the task belongs to ([Repositories](#repositories)). Empty means the default repository, the first one registered. Set when the task is made (`add --repo <slug>`); a task stays in its repository. |
 | `horizon` | `now`, `next`, `later`, or `archive`. `archive` is where finished work goes when a horizon is closed; the board and `list` hide it unless you filter for it. |
 | `priority` | `H` for the horizon's top priorities; `M` and `L` if useful. |
-| tags | `+agent` (an agent or contributor can do it in the repository), `+owner` (needs the owner: an install, dashboards, accounts, sign-offs), `+decide` (needs an owner decision before work starts; see [Decisions](#decisions)). Tasks often carry two. |
+| tags | `+agent` (an agent or contributor can do it in the repository), `+owner` (needs the owner: an install, dashboards, accounts, sign-offs), `+decide` (needs an owner decision before work starts; see [Decisions](#decisions)). Tasks often carry two. Any other tag can name the [feature](#features) a task belongs to. |
 | `depends` | What must be finished first. A task with open dependencies is **blocked**; Taskwarrior's `+BLOCKED`, `+BLOCKING`, and `+READY` follow from it. |
 | `claim` | Who is working on it (an agent name like `claude-brk-12`, or `owner`). Set only through `claim`, which is atomic. Claiming also starts the task. |
 | `spec` | Path to a spec in [`docs/specs/`](specs/README.md), when the task needs one. |
@@ -169,6 +169,8 @@ npx breakaway github review 12     # start an agent that reviews pull request 12
 npx breakaway github               # open pull requests with checks and reviews, failed runs, alerts (--sync to refresh)
 npx breakaway agents               # cloud agents: running, waiting to start (agents start <ID>, agents next)
 npx breakaway agents new "The inbox shows pings twice" --image shot.png   # start an agent from a prompt; it makes its own task (owner)
+npx breakaway features             # features by release, their progress and chase, and tags that could be features
+npx breakaway chase self-update --dry-run   # what a chase would start now; drop --dry-run to start it, `stop` to stop it (owner)
 npx breakaway connections          # is GitHub, Cloudflare, Claude, sync, and push wired up, and the fix for each that isn't
 npx breakaway health
 npx breakaway export --out tasks-backup.json   # every task, checked against health's count (see Backups)
@@ -301,6 +303,20 @@ When you'd rather write down an idea than fill in a task, use **New idea** (`i` 
 
 The agent follows the "Shaping an idea" part of the prompt's core ([`prompts/core.md`](../prompts/core.md)).
 
+## Features
+
+A feature is a piece of the roadmap with a name, a release it's aimed at, and its progress ([spec](specs/IDEA-28-features-and-chase.md), `BRK-83`, `WEB-9`). It's a small record of its own (`slug`, `title`, a short Markdown `brief`, `release`, and `state`, `open` or `shipped`), and **a task joins it by carrying its slug as a tag** (`modify BRK-50 --tag self-update`). Tasks gain no field, so Taskwarrior and sync carry membership as they are.
+
+- **One feature per task.** A task with two feature tags shows a warning and counts toward the first, alphabetically.
+- **The release is the feature's.** A feature's `release` (like `1.3.0`, or none for unplanned) is where its tasks are aimed, so new tasks don't need a release tag. Release tags already on tasks (`v1_2-0`) still count: a task with one and no feature groups under that release.
+- **Progress is computed**, never typed: done over all, with the counts that explain the rest (running, ready, waiting, needs you, in review). Each task's place says why in words ("it waits for BRK-50", "its pull request is open: merging is yours").
+- **Suggested features.** A tag on open tasks that isn't a feature yet is suggested, with **Make it a feature**, aimed at the release its tasks' release tags share. Nothing is made until someone presses. The board's own tags (`agent`, `owner`, `decide`, `idea`, `general`, `routine`, `security`, `horizon-*`) and release tags are never suggested and can't be features.
+- **Who changes what.** Anyone signed in reads features, and an agent shaping an idea adds one for its tasks (without a release). Aiming one at a release, changing it, deleting it, and chasing it are the owner's: a request signed with an agent's name is refused.
+
+**The Roadmap** (`#/roadmap`, `m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next blocker in words, and a chip while a chase is on. Open a feature for its brief and its tasks in dependency order with each one's state. **New feature** makes one; a fresh install shows "No features yet." with the suggested tags.
+
+From a terminal: `npx breakaway features` (by release, with suggestions), `features show <slug>`, `features add <slug> [--title …] [--brief … | --brief-file <path>] [--release <x.y.z>]`, and `features modify <slug> --title|--brief|--brief-file|--release <x.y.z|none>|--state open|shipped` (the owner's). The API is `GET/POST /api/features` and `GET/PATCH/DELETE /api/features/<slug>`.
+
 ## Images on tasks
 
 Images are kept in the board's Durable Object (an `attachments` table), never public ([spec](specs/IDEA-8-images-on-ideas.md), `CLD-92`). PNG, JPEG, WebP, and GIF only, found by their first bytes (not the file name or the sender's `Content-Type`; SVG is refused), up to 1 MB each and 4 per task. Deleting a task deletes its images. All of it needs the board's auth.
@@ -398,6 +414,7 @@ The board starts Claude Code cloud sessions on tasks, and shows what each one is
 - **For a Dependabot pull request:** **Safe to merge?** on a Dependabot pull request in the GitHub view (on its page) makes a task from it if it has none (in the repository's Tech debt area, `+agent`, its `pr` field set, so merging finishes it) and starts an agent in review mode ([prompt](../prompts/core.md)). The agent tests the update with the repository's own checks, reads the release notes, and answers with a verdict and the test output as a comment on the task and a comment on the pull request. The agent claims the task as `claude-<id>-check` (taking over a quiet agent's claim, as below). You still press Merge; the agent never merges. The API is `POST /api/github/pulls/<number>/review`, and `npx breakaway github review <number> [--note …]` does the same from a terminal; it says which task and agent took it, or who already has it. Like `agents start`, it starts an agent, so it's the owner's.
 - **From a prompt:** **New agent** in the top bar, or `agents new "…"`: the agent makes its own task ([below](#new-agent-general-agents)).
 - **To review a pull request:** **Review with an agent** on a pull request's page ([below](#review-with-an-agent)).
+- **For a whole feature:** **Chase** on a [feature](#features), or `chase <slug>`: it starts an agent on every ready task in the feature and on what blocks it, until they're all done or in review ([below](#chase)).
 - **For a security alert:** Fix with an agent on a Dependabot alert in the GitHub view makes a task from the alert (Tech debt, `+agent +security`, priority from the severity, the advisory and fixed version in its description, the alert in its `alert` field) and starts an agent on it. In the Agents settings, New security alerts can make that happen by itself for every new alert at or above a severity; it's off unless you choose one. A security task doesn't wait for its area to be free.
 
 Every start claims the task for `claude-<id>` first, in one step, so nothing ever starts two agents on one task; if Claude won't start the session, the claim is released. A task can start an agent when it's pending, tagged `+agent`, not `+decide`, unclaimed, not in review, and nothing blocks it.
@@ -459,6 +476,20 @@ From the command line: `npx breakaway agents` (what's running and waiting), `age
 - **On the pull request's page**, an **Agent review** section below the description shows the latest one: the verdict, the agent, when, the commit, and the note as Markdown, marked when the branch has moved since. Earlier ones stay as comments on the task. Nothing is posted to GitHub.
 - **Needs changes leads to the fix.** A review that needs changes, of the branch as it is, counts as review comments for Fix with an agent, and the fix agent's `What is wrong:` quotes it.
 - **The route** is `POST /api/github/pulls/<n>/review` (with `note` and `force`), the one Safe to merge? uses, and `npx breakaway github review <n> [--note …] [--repo <slug>] [--force]` from a terminal. Owner only.
+
+### Chase
+
+`BRK-84`, `BRK-85`, `WEB-10`, [spec](specs/IDEA-28-features-and-chase.md#3-chase-mode). When you want a [feature](#features) finished, chase it: **Chase** on the feature, or `npx breakaway chase <slug>`. While the chase is on, the board starts the agents for you, and stops at what only you can do.
+
+- **What it works on.** The feature's open tasks, and every open task that blocks one of them, followed through `depends` across the whole board (any area, any repository). A blocker pulled in that way says which chase tasks it blocks and needs no feature tag. Agents start only on `+agent` tasks.
+- **When it starts them.** On the same tick as Start by itself when ready (after anything that could unblock a task, and every 5 minutes), every ready task starts at once, without waiting for the others, and a task that becomes ready when its blocker's pull request merges starts on the next tick. Each start goes through its own repository's routine and prompt, so a blocker in another repository works when that repository's routine is connected.
+- **Its limits.** The board's shared agents at once and starts an hour, each repository's caps and its routine's limits: a chase has no budget of its own and never forces a start. Security fixes, general agents, and other tasks that start by themselves go first; then the chase, the task that frees the most work first. Waiting for a slot is shown, never pinged.
+- **Several agents in an area.** Outside a chase, one agent per area. Inside one, up to `parallel` agents run at once in an area of a repository (default 3, from 1, which is the usual rule, up to the agents-at-once ceiling), counting every agent running there; two tasks `related` to each other never run at once. Set it when you start the chase or while it runs: `chase <slug> --parallel <n>`.
+- **Needs you.** It never answers a decision, does a `+owner` step (or a task without `+agent`), or merges a pull request, and it can't start in a repository whose routine isn't connected: those show as **Needs you** on the feature, each with why and what it unblocks, and the chase keeps going on everything that doesn't wait for them. A task refused twice (a start that failed, or an agent that let go without a pull request) is **Stuck**, shown with the last refusal, and isn't tried again.
+- **When nothing can move.** If no agent runs, none can start, and only Needs you or Stuck holds the rest, it pings you once (`blocked`, with a push), naming the one thing that frees the most. It stays on and carries on by itself once you act.
+- **It ends** when every task is done or in review, with one note in the inbox and no push, or when you stop it (**Stop chase**, `chase <slug> stop`). Stopping starts nothing new and leaves running agents alone to finish and open their pull requests. A stopped or ended chase can be started again; one with no tasks, or all done, can't start.
+- **Seeing it.** `npx breakaway features show <slug>` and `chase <slug>` print it: what's running, ready, Needs you, Stuck, and the next ones in the order they'd start with why each waits. `chase <slug> --dry-run` shows what would start now and starts nothing. Activity records chase started, stopped, and ended, and each start says "started by a chase". The chase lives on the board only, never in a repository.
+- **Owner only.** Starting, stopping, and `parallel` are yours (a request signed with an agent's name is refused); agents never start a chase, and a chase never sets Start by itself when ready on a task. The route is `POST /api/features/<slug>/chase` with `{ on, parallel, dryRun }`.
 
 ### Agents in several repositories
 

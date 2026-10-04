@@ -38,8 +38,9 @@ The idea is the task's description, in the owner's own words. Never rewrite it: 
    - the horizon: if the idea has a tag `horizon-now`, `horizon-next`, or `horizon-later`, that's the owner's choice, so give every task exactly that horizon, and never change the tag. Only with `horizon-auto` do you choose, task by task, from the neighbouring tasks and the repository's horizons;
    - `--tag agent` for work an agent can do in the repository, `--tag owner` for production, dashboards, accounts, and sign-offs, and `--tag decide` when the owner has to choose first;
    - `--depends` for real blockers: existing tasks it waits on, the other new tasks it needs first, and always the idea's own work ID, so nothing gets built before the owner has merged and reviewed the spec;
-   - `--spec <path>` on the main task.
-   Never set `--autostart`, and never start an agent on a task you made. Whether a task starts by itself is the owner's choice, made on the board, and the idea's own setting is not yours to copy.
+   - `--spec <path>` on the main task;
+   - one feature tag on every task, not a release tag: if the idea's tasks belong together, add the feature first (`tasks features add <slug> --title "<name>"`, with no release: aiming it at one is the owner's) and give each task `--tag <slug>`; if they join a feature already on the board (`tasks features`), use its slug.
+   Never set `--autostart`, never start an agent or a chase on a task or feature you made. Whether a task starts by itself is the owner's choice, made on the board, and the idea's own setting is not yours to copy.
 5. **Hand over.** On the idea, `comment` the IDs you made and what each waits for, and `modify` nothing else about it (not its description). Open the pull request as the repository's **Pull requests** says: the title is `<IDEA-ID>: Shape <the idea in a few words>`, the description lists the new tasks and their blockers, and it ends with "Closes <IDEA-ID>." Then `modify <IDEA-ID> --pr <number>` and keep watching the pull request as in step 7.
 
 The pull request holds only the spec. The tasks already exist on the board, waiting for it to merge.
