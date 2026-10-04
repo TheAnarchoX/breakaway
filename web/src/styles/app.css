@@ -2905,6 +2905,9 @@ a code {
 .dialog-small {
   width: min(440px, calc(100vw - 24px));
 }
+.dialog-shortcuts {
+  width: min(640px, calc(100vw - 24px));
+}
 .dialog-sheet {
   width: 100vw;
   max-width: 100vw;
@@ -2945,6 +2948,23 @@ fieldset.field {
   padding: 0;
   min-width: 0;
 }
+.shortcut-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 32px;
+  align-items: start;
+}
+@media (max-width: 759px) {
+  .shortcut-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.shortcut-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
 .shortcuts {
   display: grid;
   gap: 8px;
@@ -2952,7 +2972,7 @@ fieldset.field {
 }
 .shortcut {
   display: grid;
-  grid-template-columns: 120px 1fr;
+  grid-template-columns: 64px 1fr;
   gap: 12px;
   align-items: center;
 }
