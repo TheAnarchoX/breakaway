@@ -1,5 +1,6 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { generalAgentRequest, generalAgentSummary } from '../scripts/tasks/cli.js';
 import { specPrompt } from '../src/spec-prompt.js';
 import { api } from './helpers.js';
 
@@ -19,6 +20,7 @@ const files = {
   'OPS-72-badges.md': spec('OPS-72', 'Badges'),
   'OPS-73-force.md': spec('OPS-73', 'Forced'),
   'OPS-74-dry.md': spec('OPS-74', 'A dry run'),
+  'OPS-75-cli.md': spec('OPS-75', 'From a terminal'),
 };
 const fires = [];
 
@@ -213,5 +215,34 @@ describe('the prompt for refining a spec', () => {
     expect(brief).toMatch(
       /closes your own task\. Never touch a claimed or closed task, an idea’s description, or a horizon-\* tag\.$/u,
     );
+  });
+});
+
+describe('agents new --spec from a terminal (BRK-121)', () => {
+  let spy;
+  beforeEach(async () => {
+    spy = mockFetch();
+    await runInDurableObject(stub(), (store) => {
+      store.specsCache = {};
+    });
+  });
+  afterEach(() => spy.mockRestore());
+
+  it('takes the CLI’s request: agents new --spec <path> "<what should change>"', async () => {
+    const built = generalAgentRequest('Badges in colour', {
+      spec: './docs/specs/OPS-75-cli.md',
+      repo: 'widgets',
+      force: true,
+      by: 'owner',
+    });
+    const [method, path, payload] = built.request;
+    const res = await body(await api(path, { method, body: payload }));
+    expect(res.code).toBe(201);
+    expect(res.task.spec).toBe('docs/specs/OPS-75-cli.md');
+    expect(res.task.brief).toContain('Badges in colour');
+    // Again while that one is open: the board answers with it, and the CLI says so.
+    const again = await body(await api(path, { method, body: payload }));
+    expect(again.task.uuid).toBe(res.task.uuid);
+    expect(generalAgentSummary(again, { spec: payload.spec })).toMatch(/already refines this spec: /u);
   });
 });
