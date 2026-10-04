@@ -50,6 +50,24 @@ export function stableOf(prereleaseTag) {
 }
 
 /**
+ * The version a stable release's pull request sets package.json to (BRK-118): the next minor or major after the stable,
+ * or null when there is nothing to set. A patch is null, since the pre-releases count patches by themselves, and so is
+ * a package.json already at or past the choice (main moved on before an older pre-release was promoted).
+ * @param {string} stable the version just promoted, like 1.3.0
+ * @param {string} next patch, minor, or major
+ * @param {string} current package.json's version on main
+ * @returns {string | null}
+ */
+export function nextVersion(stable, next, current) {
+  const [maj, min] = parts(stable);
+  parts(current);
+  if (next === 'patch') return null;
+  if (next !== 'minor' && next !== 'major') throw new Error(`next is patch, minor, or major, not "${next}".`);
+  const version = next === 'major' ? `${maj + 1}.0.0` : `${maj}.${min + 1}.0`;
+  return compareVersions(current, version) >= 0 ? null : version;
+}
+
+/**
  * manifest.json: what an install reads before it deploys.
  * `wranglerDeploy` says a manual release's only step is wrangler deploy (a new Durable Object class, a cron, a route), so
  * an install whose Deploy may run it does it itself (BRK-62).

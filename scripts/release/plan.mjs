@@ -5,12 +5,13 @@
  *   node scripts/release/plan.mjs stable <prerelease-tag>       the stable version a pre-release becomes
  *   node scripts/release/plan.mjs manifest <channel> <version> <commit> [builtAs] [--bundle <file>]    writes manifest.json to stdout
  *   node scripts/release/plan.mjs manual                         the Manual steps section for the notes, if any
+ *   node scripts/release/plan.mjs next <stable> <patch|minor|major>   the version to set package.json to, empty for none
  * Reads package.json, release.json, and wrangler.jsonc from the working directory.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parseJsonc } from '../../src/install.js';
-import { manifestOf, manualSection, shapeOf, nextPrerelease, stableOf } from './lib.js';
+import { manifestOf, manualSection, shapeOf, nextPrerelease, nextVersion, stableOf } from './lib.js';
 
 const [command, ...args] = process.argv.slice(2);
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -34,9 +35,15 @@ try {
     );
   } else if (command === 'manual') {
     process.stdout.write(manualSection(json('release.json')));
+  } else if (command === 'next') {
+    const current = json('package.json').version;
+    const version = nextVersion(args[0], args[1], current);
+    if (!version && args[1] !== 'patch')
+      console.error(`package.json already says ${current}, at or past the next ${args[1]} after ${args[0]}.`);
+    console.log(`version=${version ?? ''}`);
   } else {
     throw new Error(
-      'Usage: plan.mjs prerelease <tags-file> | stable <tag> | manifest <channel> <version> <commit> [builtAs] [--bundle <file>] | manual',
+      'Usage: plan.mjs prerelease <tags-file> | stable <tag> | manifest <channel> <version> <commit> [builtAs] [--bundle <file>] | manual | next <stable> <patch|minor|major>',
     );
   }
 } catch (error) {
