@@ -698,7 +698,7 @@ function Stream() {
                     <a class="event-task" href={hashFor({ task: e.task.wid ?? e.task.uuid.slice(0, 8) })}>
                       <span class="wid">{e.task.wid ?? e.task.uuid.slice(0, 8)}</span>
                       <RepoChip slug={e.task.repo} />
-                      <span class={e.task.status === 'gone' ? 'muted' : ''}>
+                      <span class={`event-title${e.task.status === 'gone' ? ' muted' : ''}`}>
                         <Title text={e.task.description} />
                       </span>
                     </a>
