@@ -230,6 +230,8 @@ Working
                          --pipeline <file.json|none> sets its deploy pipeline ({"workers": {"staging", "production"}, "workflows": {...}, "deployPaths"}) or clears it
   features add <slug>    new feature: its tasks join by carrying <slug> as a tag  [--title <text>]
                          [--brief <text> | --brief-file <path>] [--release <x.y.z>] (agents add one without a release)
+                         --from <ref> (owner): made from the group <ref> is in on the Dependencies view: its open tasks
+                         join, and tasks already in another feature stay there
   features modify <slug> change one (owner): --title, --brief, --brief-file, --release <x.y.z|none>, --state open|shipped
   routines add <slug>    new routine (owner)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
@@ -1080,11 +1082,18 @@ const commands = {
     const by = opts.as ?? setting('AGENT');
     if (sub === 'add') {
       const slug = need(args[1], 'slug').toLowerCase();
-      const { feature } = await call('POST', 'features', { slug, ...body(), ...(by ? { by } : {}) });
-      print({ feature }, (d) =>
+      const from = opts.from === undefined ? {} : { from: opts.from };
+      const added = await call('POST', 'features', { slug, ...body(), ...from, ...(by ? { by } : {}) });
+      print(added, (d) =>
         [
           `Added the feature ${d.feature.slug}${d.feature.release ? `, aimed at ${d.feature.release}` : ''}: ${progressLine(d.feature.progress)}.`,
-          `Tasks join it by the tag: npx breakaway modify <ref> --tag ${d.feature.slug}`,
+          ...(d.joined
+            ? [
+                `Joined by its tag: ${d.joined.join(', ')}.`,
+                ...d.kept.map((k) => `${k.wid} stays in ${k.feature}: a task is in one feature.`),
+                `Chase it: npx breakaway chase ${d.feature.slug}`,
+              ]
+            : [`Tasks join it by the tag: npx breakaway modify <ref> --tag ${d.feature.slug}`]),
         ].join('\n'),
       );
       return;

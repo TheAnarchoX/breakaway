@@ -25,6 +25,12 @@ A feature is **its own small record, joined by a tag**.
 ### 2. The roadmap view
 A new **Roadmap** view (next to Board and List). Releases are columns or rows in version order, then *Unplanned*; each holds its feature cards: title, a progress bar with the counts, the next blocker in words ("waits for BRK-50, a task for you"), and a chip when a chase is on. Open a feature for its tasks as a dependency-ordered list (the Graph view's data) with each task's state. A feature aimed at a release already promoted shows as shipped and folds away. Empty and first-run: a fresh install shows "No features yet" with the suggested tags and **New feature**. A phone gets a single column. Both themes, reduced motion respected, no colour-only states, per the brand guide.
 
+### 2a. From the Dependencies view
+The Dependencies view already draws the board as connected groups of tasks that wait for each other, and a group is often a piece of work worth taking on whole (`WEB-15`). Each group says how many tasks it has and which features they're in, with two entry points:
+- **Make a feature**: the feature form (tag, title, release, brief) with the group's open tasks to pick, all picked to start with. The picked tasks join by the tag in one version, with the feature. A task already in another feature can't be picked and is shown as "In +<slug>": one feature per task. Then the dialog shows the new feature's chase (section 3), so Chase is one more press.
+- **Chase**, when every open task in the group is in one feature: the feature's chase, with the same controls as its page.
+- **The CLI and API**: `features add <slug> --from <ref>` makes a feature from the group `<ref>` is in, and `POST /api/features` takes `tasks` (some of a group) or `from` (a task whose whole group joins). Both are the owner's, since they tag tasks the owner didn't hand to anyone; nothing is made when none of the tasks can join. The group is the view's: open tasks that wait for another or hold one up, the tasks right next to them, joined by `depends`, across the whole board.
+
 ### 3. Chase mode
 The owner presses **Chase** on a feature (or `breakaway chase <slug>`). While the chase is on, the board starts agents for the feature:
 

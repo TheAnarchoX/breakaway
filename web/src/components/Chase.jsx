@@ -50,7 +50,7 @@ function ChaseRow({ t, children }) {
  * chase's. The plan's ceiling is the most; buttons while they fit, a number past that.
  * @param {Record<string, any>} props
  */
-function ParallelField({ feature, chase, id }) {
+function ParallelField({ feature, chase, id, onChange }) {
   const most = Math.max(chase.parallel, agents.value.data?.limits?.agents ?? 6);
   const [value, setValue] = useState(String(chase.parallel));
   useEffect(() => setValue(String(chase.parallel)), [chase.parallel]);
@@ -58,7 +58,9 @@ function ParallelField({ feature, chase, id }) {
     const n = Number(v);
     setValue(String(v));
     if (Number.isInteger(n) && n >= 1 && n <= most && n !== chase.parallel)
-      actions.chase(feature, { parallel: n }, `Up to ${plural(n, 'agent')} at once in an area.`);
+      actions
+        .chase(feature, { parallel: n }, `Up to ${plural(n, 'agent')} at once in an area.`)
+        .then(() => onChange?.());
   };
   return (
     <div class="field ch-parallel">
@@ -93,7 +95,7 @@ function ParallelField({ feature, chase, id }) {
 }
 
 /** @param {Record<string, any>} props */
-function Controls({ feature, chase, open }) {
+function Controls({ feature, chase, open, onChange }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   useEffect(() => setPreview(null), [chase.on, chase.parallel]);
@@ -101,6 +103,7 @@ function Controls({ feature, chase, open }) {
     setBusy(true);
     await actions.chase(feature, body, message);
     setBusy(false);
+    onChange?.();
   };
   const start = () =>
     run({ on: true }, (r) =>
@@ -263,9 +266,10 @@ function Queue({ chase, compact }) {
 
 /**
  * The chase on feature `feature` (`{ slug, title }`), from its `chase` view.
- * @param {{ feature: { slug: string, title: string }, chase: Record<string, any>, open?: boolean, compact?: boolean }} props
+ * `onChange` runs after Chase, Stop chase, or a new number of agents, for a view that keeps its own copy.
+ * @param {{ feature: { slug: string, title: string }, chase: Record<string, any>, open?: boolean, compact?: boolean, onChange?: () => void }} props
  */
-export function ChasePanel({ feature, chase, open = true, compact = false }) {
+export function ChasePanel({ feature, chase, open = true, compact = false, onChange }) {
   const id = `ch-${feature.slug}`;
   return (
     <div class={`ch-panel ${chase.on ? 'is-on' : ''}`}>
@@ -273,8 +277,8 @@ export function ChasePanel({ feature, chase, open = true, compact = false }) {
         {chase.on && <span class="ch-on">Chasing</span>}
         <span class={chase.on ? '' : 'muted'}>{stateLine(chase)}</span>
       </p>
-      <Controls feature={feature} chase={chase} open={open} />
-      <ParallelField feature={feature} chase={chase} id={id} />
+      <Controls feature={feature} chase={chase} open={open} onChange={onChange} />
+      <ParallelField feature={feature} chase={chase} id={id} onChange={onChange} />
       {chase.on && (
         <>
           {!compact && <Running chase={chase} />}

@@ -16,6 +16,7 @@ import {
 } from '../lib/store.js';
 import { ClaimChip, Dialog, RepoChip, widClass } from '../components/ui.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
+import { FeatureForm } from '../components/FeatureForm.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 
 /**
@@ -34,8 +35,6 @@ const STANDINGS = [
   { id: 'waiting', count: 'waiting', label: 'Waiting', words: 'waiting' },
 ];
 const STANDING_LABEL = Object.fromEntries(STANDINGS.map((s) => [s.id, s.label]));
-const SLUG = '[a-z][a-z0-9_\\-]{0,39}';
-const RELEASE = '\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}';
 
 /** The server's reason as a sentence; one that starts with an agent's name keeps its case. */
 const sentence = (why) => `${why.startsWith('it') ? `I${why.slice(1)}` : why}.`;
@@ -182,92 +181,6 @@ function Suggestions({ list, first }) {
         ))}
       </ul>
     </section>
-  );
-}
-
-/**
- * Adds a feature, or edits `feature`. The slug is the tag its tasks carry, so it can't change later.
- * @param {Record<string, any>} props
- */
-function FeatureForm({ feature, onDone }) {
-  const [busy, setBusy] = useState(false);
-  const save = async (e) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const release = String(f.get('release') ?? '').trim();
-    const body = { title: String(f.get('title') ?? '').trim(), brief: String(f.get('brief') ?? '') };
-    if (feature) {
-      body.release = release;
-      body.state = f.get('released') ? 'shipped' : 'open';
-    } else {
-      body.slug = String(f.get('slug') ?? '').trim();
-      // Left out, the board aims a new feature at the release its tasks' tags share.
-      if (release) body.release = release;
-    }
-    setBusy(true);
-    const saved = await actions.saveFeature(feature?.slug ?? null, body, feature ? 'Saved.' : 'Feature added.');
-    setBusy(false);
-    if (saved) onDone(saved.slug);
-  };
-  return (
-    <form class="sheet" onSubmit={save}>
-      <h2 id="fr-form-title">{feature ? `Edit ${feature.title}` : 'New feature'}</h2>
-      {!feature && (
-        <label class="field">
-          <span class="field-label">Tag</span>
-          <input class="input mono" name="slug" required pattern={SLUG} maxLength={40} placeholder="self-update" />
-          <span class="field-hint">
-            Tasks join the feature by carrying this tag. Lowercase letters, digits, hyphens, and underscores. It can’t
-            change later.
-          </span>
-        </label>
-      )}
-      <label class="field">
-        <span class="field-label">Title</span>
-        <input
-          class="input"
-          name="title"
-          maxLength={200}
-          required={Boolean(feature)}
-          defaultValue={feature?.title ?? ''}
-          placeholder={feature ? undefined : 'Made from the tag when left empty'}
-        />
-      </label>
-      <label class="field">
-        <span class="field-label">Release</span>
-        <input
-          class="input mono"
-          name="release"
-          pattern={RELEASE}
-          maxLength={14}
-          placeholder="1.2.0"
-          defaultValue={feature?.release ?? ''}
-        />
-        <span class="field-hint">
-          The stable release it’s aimed at. Leave it empty to keep it unplanned
-          {feature ? '.' : ', or to use the release its tasks’ tags share.'}
-        </span>
-      </label>
-      <label class="field">
-        <span class="field-label">Brief</span>
-        <textarea class="textarea" name="brief" rows={5} maxLength={4000} defaultValue={feature?.brief ?? ''} />
-        <span class="field-hint">What it is and why, in Markdown.</span>
-      </label>
-      {feature && (
-        <label class="check-row">
-          <input type="checkbox" name="released" defaultChecked={feature.state === 'shipped'} />
-          It’s out in its release
-        </label>
-      )}
-      <div class="sheet-actions">
-        <button type="button" class="btn btn-quiet" onClick={() => onDone(null)}>
-          Cancel
-        </button>
-        <button type="submit" class="btn btn-primary" disabled={busy} aria-busy={busy}>
-          {feature ? 'Save' : 'Add feature'}
-        </button>
-      </div>
-    </form>
   );
 }
 

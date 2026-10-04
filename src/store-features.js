@@ -7,7 +7,7 @@
  * at a release, changing it, and deleting it are the owner's.
  */
 import { AgentError } from './store-agents.js';
-import { InputError, rank } from './model.js';
+import { InputError, diffOps, rank, withChanges } from './model.js';
 
 /** A feature's slug is a tag: lowercase letters, digits, hyphens, and underscores, starting with a letter. */
 const SLUG = /^[a-z][a-z0-9_-]{0,39}$/u;
@@ -109,6 +109,38 @@ function dependencyOrder(tasks) {
   return out;
 }
 
+/**
+ * The group task `uuid` is in, as the Dependencies view draws it: the open tasks that wait for another
+ * or hold one up, with the tasks right next to them, joined by `depends`. Null when it's in none.
+ * @param {any[]} views every task that isn't deleted
+ * @param {string} uuid
+ * @returns {string[] | null}
+ */
+export function dependencyGroup(views, uuid) {
+  const all = new Map(views.map((t) => [t.uuid, t]));
+  const nodes = new Set();
+  for (const t of views) if (t.status === 'pending' && (t.depends.length || t.blocking.length)) nodes.add(t.uuid);
+  for (const u of [...nodes])
+    for (const d of [...all.get(u).depends, ...all.get(u).blocking]) if (all.has(d)) nodes.add(d);
+  if (!nodes.has(uuid)) return null;
+  const neighbours = new Map([...nodes].map((u) => [u, []]));
+  for (const u of nodes)
+    for (const d of all.get(u).depends)
+      if (nodes.has(d)) {
+        neighbours.get(u).push(d);
+        neighbours.get(d).push(u);
+      }
+  const seen = new Set([uuid]);
+  const stack = [uuid];
+  while (stack.length)
+    for (const v of neighbours.get(stack.pop()))
+      if (!seen.has(v)) {
+        seen.add(v);
+        stack.push(v);
+      }
+  return [...seen];
+}
+
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const featuresMethods = {
   initFeatures() {
@@ -175,8 +207,10 @@ export const featuresMethods = {
     if (this.sql.exec('SELECT 1 FROM features WHERE slug = ?', slug).toArray().length)
       throw new AgentError(`the feature "${slug}" already exists`);
     const f = this.featureFields(input, { title: titleOf(slug), brief: null, release: null, state: 'open' });
-    // Made from a suggestion: the release its tasks' tags share, unless the owner said otherwise.
-    if (owner && !('release' in input)) f.release = sharedRelease(this.views((t) => t.tags.includes(slug)));
+    const picked = this.featurePick(input, owner);
+    // Made from a suggestion or a group: the release its tasks' tags share, unless the owner said otherwise.
+    if (owner && !('release' in input))
+      f.release = sharedRelease(picked ? picked.join : this.views((t) => t.tags.includes(slug)));
     const now = Date.now();
     this.sql.exec(
       'INSERT INTO features (slug, title, brief, release, state, created_by, created, edited_by, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -190,7 +224,64 @@ export const featuresMethods = {
       by,
       now,
     );
-    return this.featureDetail(slug);
+    if (picked) {
+      const at = new Date();
+      this.commit(
+        picked.join
+          .filter((t) => !t.tags.includes(slug))
+          .flatMap((t) => {
+            const before = this.tasks.get(t.uuid);
+            return diffOps(t.uuid, before, withChanges(before, { addTags: [slug] }, at), at.toISOString());
+          }),
+      );
+      return {
+        feature: this.featureDetail(slug),
+        joined: picked.join.map(label),
+        kept: picked.kept.map((x) => ({ wid: label(x.task), feature: x.feature })),
+      };
+    }
+    return { feature: this.featureDetail(slug) };
+  },
+
+  /**
+   * The tasks a new feature is made from (WEB-15): `tasks`, some of a group, or `from`, the whole group a
+   * task is in on the Dependencies view. Its open tasks join, except those already in another feature, which
+   * stay there (one feature per task). Null when neither is given. Checked before anything is written.
+   */
+  featurePick(input, owner) {
+    if (!('tasks' in input) && !('from' in input)) return null;
+    if (!owner) throw new AgentError('only the owner makes a feature from tasks; tag your own with --tag', 403);
+    this.writable();
+    const views = this.views((t) => t.status !== 'deleted');
+    let uuids;
+    if ('from' in input) {
+      const from = this.resolve(String(input.from ?? ''));
+      uuids = dependencyGroup(views, from);
+      if (!uuids) {
+        const t = views.find((x) => x.uuid === from);
+        throw new InputError(`${label(t)} waits for nothing and nothing waits for it, so it isn't in a group`);
+      }
+    } else {
+      const refs = Array.isArray(input.tasks) ? input.tasks : [input.tasks];
+      if (!refs.filter(Boolean).length) throw new InputError('pick at least one task for the feature');
+      uuids = refs.filter(Boolean).map((r) => this.resolve(String(r)));
+    }
+    const slugs = new Set(this.featureRows().map((r) => r.slug));
+    const order = new Map(dependencyOrder(views.filter((t) => uuids.includes(t.uuid))).map((t, i) => [t.uuid, i]));
+    const open = views.filter((t) => order.has(t.uuid) && t.status === 'pending');
+    open.sort((a, b) => order.get(a.uuid) - order.get(b.uuid));
+    const kept = [];
+    const join = [];
+    for (const t of open) {
+      const other = t.tags.filter((tag) => slugs.has(tag)).sort()[0];
+      if (other) kept.push({ task: t, feature: other });
+      else join.push(t);
+    }
+    if (!join.length)
+      throw new InputError(
+        'none of these tasks can join: they’re done or already in another feature, and a task is in one feature',
+      );
+    return { join, kept };
   },
 
   modifyFeature(slug, input) {

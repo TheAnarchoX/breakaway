@@ -1,8 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { rank, ref, stateOf } from '../lib/model.js';
-import { byUuid, filters, navOrder, visible } from '../lib/store.js';
+import { FastForward, Milestone } from 'lucide-preact';
+import { plural, rank, ref, stateOf } from '../lib/model.js';
+import { api, enc } from '../lib/api.js';
+import { byUuid, features, filters, hashFor, loadFeatures, navOrder, visible } from '../lib/store.js';
 import { TaskCard } from '../components/TaskCard.jsx';
 import { EmptyBoard } from '../components/EmptyBoard.jsx';
+import { Dialog } from '../components/ui.jsx';
+import { ChasePanel } from '../components/Chase.jsx';
+import { FeatureForm } from '../components/FeatureForm.jsx';
+import { Title } from '../lib/richtext.jsx';
 
 /**
  * Chains of tasks that wait for each other, each laid out left to right: a task sits one
@@ -188,23 +194,173 @@ function Chain({ chain }) {
   );
 }
 
+const featureHref = (slug) => hashFor({ view: 'roadmap', feature: slug, task: null });
+
+/** The feature a task is in: the first of its tags that's a feature, alphabetically (one feature per task). */
+const featureOf = (t, slugs) => t.tags.filter((tag) => slugs.has(tag)).sort()[0] ?? null;
+
+/**
+ * What a group can become (WEB-15): its open tasks, each with the feature it's already in, the features among
+ * them, and the one feature they all share, if they do.
+ */
+function groupFeatures(chain, slugs) {
+  const open = chain.columns.flat().filter((t) => t.status === 'pending');
+  const pick = open.map((task) => ({ task, feature: featureOf(task, slugs) }));
+  const counts = new Map();
+  for (const p of pick) if (p.feature) counts.set(p.feature, (counts.get(p.feature) ?? 0) + 1);
+  const free = pick.filter((p) => !p.feature).length;
+  const only = counts.size === 1 && !free ? [...counts.keys()][0] : null;
+  return { pick, counts: [...counts], free, only };
+}
+
+/**
+ * Making a feature from a group, or chasing one: the form with the group's tasks to pick, then (or straight
+ * away, for a group that's one feature already) the feature's chase with the same controls as its page.
+ * @param {{ chain: Record<string, any>, start: { mode: 'make' | 'chase', slug?: string }, onClose: () => void }} props
+ */
+function GroupDialog({ chain, start, onClose }) {
+  const [step, setStep] = useState(start);
+  const [made, setMade] = useState(null);
+  const [feature, setFeature] = useState(null);
+  const [error, setError] = useState(null);
+  const slug = step.mode === 'chase' ? step.slug : null;
+  const fetchFeature = async () => {
+    if (!slug) return;
+    try {
+      setFeature((await api(`features/${enc(slug)}`)).feature);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  useEffect(() => {
+    fetchFeature();
+    if (!slug) return undefined;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchFeature();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [slug]);
+  if (step.mode === 'make') {
+    const slugs = new Set((features.value.data?.features ?? []).map((f) => f.slug));
+    return (
+      <FeatureForm
+        pick={groupFeatures(chain, slugs).pick}
+        onDone={(result) => {
+          if (!result) return onClose();
+          setMade(result);
+          setStep({ mode: 'chase', slug: result.feature.slug });
+          setFeature(result.feature);
+          return undefined;
+        }}
+      />
+    );
+  }
+  const f = feature?.slug === slug ? feature : null;
+  return (
+    <div class="sheet">
+      <h2 id="fr-form-title">{made ? `+${slug} is a feature.` : `Chase +${slug}`}</h2>
+      {made && (
+        <p class="muted small">
+          {made.joined.join(', ')} {made.joined.length === 1 ? 'carries' : 'carry'} its tag now.
+          {made.kept.length > 0 &&
+            ` ${made.kept.map((k) => `${k.wid} stays in +${k.feature}`).join(', ')}: a task is in one feature.`}
+        </p>
+      )}
+      {f ? (
+        <>
+          {!made && (
+            <p class="small">
+              <Title text={f.title} /> · {f.progress.done} of {f.progress.total} done
+            </p>
+          )}
+          {f.chase && (
+            <ChasePanel feature={f} chase={f.chase} open={f.progress.total > 0 && !f.done} onChange={fetchFeature} />
+          )}
+        </>
+      ) : error ? (
+        <p class="field-error" role="alert">
+          {error}
+        </p>
+      ) : (
+        <p class="muted" aria-busy="true">
+          Loading +{slug}…
+        </p>
+      )}
+      <div class="sheet-actions">
+        <a class="btn btn-quiet" href={featureHref(slug)} onClick={onClose}>
+          Open the feature
+        </a>
+        <button type="button" class="btn" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A group's line above it: its size, the features its tasks are in, and what you can make of it. */
+function ChainHead({ chain, onOpen }) {
+  const data = features.value.data;
+  const slugs = new Set((data?.features ?? []).map((f) => f.slug));
+  const { pick, counts, free, only } = groupFeatures(chain, slugs);
+  const chasing = only && data?.features.find((f) => f.slug === only)?.chase?.on;
+  return (
+    <div class="chain-head">
+      <p class="chain-sum">
+        <span>
+          {plural(chain.size, 'task')}
+          {pick.length < chain.size ? `, ${pick.length} open` : ''}
+        </span>
+        {counts.map(([slug, n]) => (
+          <a key={slug} class="chain-feature" href={featureHref(slug)}>
+            {only ? `In +${slug}` : `${n} in +${slug}`}
+          </a>
+        ))}
+        {chasing && <span class="fr-pill fr-pill-chase">Chasing</span>}
+      </p>
+      {data && (
+        <div class="chain-actions">
+          {only && (
+            <button type="button" class="btn btn-sm" onClick={() => onOpen({ mode: 'chase', slug: only })}>
+              <FastForward size={15} aria-hidden="true" />
+              {chasing ? 'See the chase' : 'Chase'}
+            </button>
+          )}
+          {free > 0 && (
+            <button type="button" class="btn btn-sm" onClick={() => onOpen({ mode: 'make' })}>
+              <Milestone size={15} aria-hidden="true" />
+              Make a feature
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GraphView() {
   const chains = buildChains(visible.value, byUuid.value);
+  const [open, setOpen] = useState(null);
   useEffect(() => {
     navOrder.value = chains.flatMap((c) => c.columns.flat()).map((t) => t.uuid);
   });
+  useEffect(() => {
+    loadFeatures();
+  }, []);
   return (
     <div class="graph-view">
       <div class="view-intro">
         <h1>Dependencies</h1>
         <p class="muted">
           Arrows point from a task to what waits for it. Hover or focus a task to follow its chain. Finished tasks are
-          faded.
+          faded. Make a group a feature to chase it.
         </p>
       </div>
       {chains.length ? (
         chains.map((c) => (
           <section key={c.id} class="chain-wrap" aria-label={`Chain from ${ref(c.columns[0][0])}, ${c.size} tasks`}>
+            <ChainHead chain={c} onOpen={(start) => setOpen({ chain: c, start })} />
             <Chain chain={c} />
           </section>
         ))
@@ -216,6 +372,9 @@ export function GraphView() {
       ) : (
         <EmptyBoard />
       )}
+      <Dialog open={Boolean(open)} onClose={() => setOpen(null)} labelledBy="fr-form-title">
+        {open && <GroupDialog chain={open.chain} start={open.start} onClose={() => setOpen(null)} />}
+      </Dialog>
     </div>
   );
 }

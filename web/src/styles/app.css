@@ -6456,3 +6456,66 @@ fieldset.field {
 .ch-chase-title a:hover {
   text-decoration: underline;
 }
+
+/* ---------- a group on the Dependencies view as a feature (WEB-15) ---------- */
+
+.chain-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.chain-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.chain-feature {
+  font: 500 12px / 1.3 var(--font-mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.chain-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ff-pick {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.ff-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.ff-pick-row {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.ff-pick-title {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ff-pick-row.is-taken {
+  cursor: default;
+  color: var(--muted);
+}
+.ff-pick-in {
+  font: 500 12px / 1.3 var(--font-mono);
+  color: var(--muted);
+}
