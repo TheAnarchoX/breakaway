@@ -815,7 +815,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         throw new Conflict(`${label(task)} is claimed by ${task.claim}; answer once its agent has stopped`, { task });
       const answers = validateAnswers(task.decision, body?.answers);
       // The next run's own checks, before anything is answered: a routine that isn't connected refuses the press.
-      if (body?.carryOn) await this.checkRoutineReady(this.repoOfTask(this.tasks.get(uuid)).slug);
+      const repo = body?.carryOn ? this.repoOfTask(this.tasks.get(uuid)) : null;
+      if (repo) await this.checkRoutineReady(repo.slug);
       const answered = this.change(uuid, {
         decisionAnswers: { by: 'owner', at: new Date().toISOString(), answers },
         removeTags: ['decide'],
