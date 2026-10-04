@@ -44,6 +44,9 @@ import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import { CLI_PACKAGE, PROMPT_SECTIONS, initPlan, machineTaskrc, promptSections } from './tasks/init.js';
 import {
+  forceFields,
+  generalAgentRequest,
+  generalAgentSummary,
   githubRequest,
   ideaTask,
   pullAgentRequest,
@@ -133,15 +136,16 @@ Reading                (list, next, claim, and add work in this checkout's repos
     --project <p> --horizon <h> --tag <t>
   activity               recent changes, newest first  [--limit <n>]
   agents                 cloud agents: what's running, what's waiting to start
-  agents start <ref>     start a Claude cloud agent on a task  [--note <text>]
-  agents refine <ref>    start an agent that improves a task, not builds it  --note <what to look at or change>
+  agents new "<prompt>"  start an agent from a prompt: it makes its own task  [--image <file>]… [--repo <slug>] [--force] (owner)
+  agents start <ref>     start a Claude cloud agent on a task  [--note <text>] [--force]
+  agents refine <ref>    start an agent that improves a task, not builds it  --note <what to look at or change> [--force]
   agents plan [<plan>]   your Claude plan and what it allows; pro, max5, or max20 picks one (owner) and sets the limits to its defaults
   agents next            start the next few ready tasks, one per area  [--count <n>] [--dry-run] [--repo <slug>]
   routines               saved prompts the owner runs with a button, and their caps
-  routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>]
+  routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>] [--force]
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
-  github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>]
-  github review <n>      start an agent that tests a Dependabot pull request, as Safe to merge? does (owner)  [--note <text>] [--repo <slug>]
+  github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>] [--force]
+  github review <n>      start an agent that tests a Dependabot pull request, as Safe to merge? does (owner)  [--note <text>] [--repo <slug>] [--force]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
@@ -752,8 +756,30 @@ const commands = {
       );
       return;
     }
+    if (sub === 'new') {
+      const built = generalAgentRequest(args.slice(1).join(' '), {
+        repo: opts.repo ?? (await checkoutRepo()).slug,
+        force: Boolean(opts.force),
+        by: opts.as ?? setting('AGENT'),
+      });
+      if (built.error || !built.request) fail(built.error ?? 'bad request');
+      if ((opts.image ?? []).length > 4) fail('an agent takes up to 4 images');
+      for (const file of opts.image ?? []) if (!existsSync(file)) fail(`can't read ${file}`);
+      const answer = await call(...built.request);
+      // The task exists now: attach the images to it, as an idea's are.
+      for (const file of opts.image ?? []) {
+        const image = await upload(ref(answer.task), file);
+        if (!opts.json) console.log(`Attached ${image.name} (${Math.ceil(image.size / 1024)} KB).`);
+      }
+      print(answer, generalAgentSummary);
+      return;
+    }
     if (sub === 'start') {
-      const { task, run } = await call('POST', 'agents/start', { ref: need(args[1], 'task'), note: opts.note });
+      const { task, run } = await call('POST', 'agents/start', {
+        ref: need(args[1], 'task'),
+        note: opts.note,
+        ...forceFields(opts.force, opts.as ?? setting('AGENT')),
+      });
       print({ task, run }, () => `Started an agent on ${task.wid ?? task.short}: ${run.url}`);
       return;
     }
@@ -764,6 +790,7 @@ const commands = {
         ref: need(args[1], 'task'),
         note: opts.note,
         mode: 'refine',
+        ...forceFields(opts.force, opts.as ?? setting('AGENT')),
       });
       print({ task, run }, () => `Started an agent refining ${task.wid ?? task.short}: ${run.url}`);
       return;
@@ -938,7 +965,10 @@ const commands = {
     };
     const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
     if (sub === 'run') {
-      const { task, run } = await call('POST', `routines/${enc(need(args[1], 'routine'))}/run`, { note: opts.note });
+      const { task, run } = await call('POST', `routines/${enc(need(args[1], 'routine'))}/run`, {
+        note: opts.note,
+        ...forceFields(opts.force, opts.as ?? setting('AGENT')),
+      });
       print({ task, run }, () => `Started ${task.wid}: ${run.url}`);
       return;
     }
@@ -1206,6 +1236,8 @@ const commands = {
         repo: (await checkoutRepo()).slug,
         problem: opts.problem,
         note: opts.note,
+        force: Boolean(opts.force),
+        by: opts.as ?? setting('AGENT'),
       });
       if (built.error || !built.request) fail(built.error ?? 'bad request');
       const answer = await call(...built.request);
