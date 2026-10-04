@@ -5,6 +5,7 @@ import {
   Sparkles,
   FileText,
   Globe,
+  Hourglass,
   Pencil,
   Play,
   Search,
@@ -30,6 +31,7 @@ export const TRIGGER_LABEL = {
   auto: 'started by itself when ready',
   alert: 'started for a security alert',
   review: 'started to test a Dependabot update',
+  general: 'started from a prompt',
 };
 
 /** The same rules the server uses, to decide which controls to show. */
@@ -538,6 +540,11 @@ export function AgentSection({ task: t }) {
   const open = t.status === 'pending';
   const canAuto = open && t.tags.includes('agent') && !t.tags.includes('decide');
   const canStart = canAuto && !blocker && connected;
+  // Start when ready, and held back by the board's room (a general agent waits here until there's a slot).
+  const queued =
+    canAuto && !blocker && t.autostart && !t.claim
+      ? (agents.value.data?.queue?.find((q) => q.uuid === t.uuid && !q.ready) ?? null)
+      : null;
   // Every open task can be refined, so the section shows on all of them.
   if (!hasSession && !open) return null;
   const start = async () => {
@@ -626,6 +633,24 @@ export function AgentSection({ task: t }) {
         <p class="meta">
           <TriangleAlert size={13} aria-hidden="true" /> Waiting: {blocker}.
         </p>
+      )}
+      {queued && (
+        <div class="agent-waiting">
+          <p class="meta">
+            <Hourglass size={13} aria-hidden="true" /> Waiting to start: {queued.reason}.
+          </p>
+          {queued.forceable && (
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              aria-label={`Force start ${ref(t)}, past: ${queued.reason}`}
+              disabled={busy}
+              onClick={start}
+            >
+              Force start
+            </button>
+          )}
+        </div>
       )}
       {hasSession && <LiveLog task={t} />}
       {hasSession && t.status === 'pending' && t.claim && <MessageAgent task={t} url={run?.url ?? t.session ?? null} />}
