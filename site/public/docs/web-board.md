@@ -26,7 +26,48 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
 | **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
-| **Settings** | The name your claims use, how tasks open, notifications, and the two pull request settings. |
+| **Settings** | This browser’s settings, the board’s, and every repository, each with a page of its own. See [Settings](#settings). |
+
+## Settings
+
+**Settings** at the bottom of the sidebar opens the Settings page (`#/settings`). It’s a page, not a dialog, so it works on a phone and has a link. It has three sections.
+
+| Section | What’s in it | Where it’s kept |
+| --- | --- | --- |
+| **This browser** | Claim as (the name on claims you make here, `owner` by default), theme, open tasks in (sidebar or modal), notifications, and the merge method that Merge starts with and Merge when green uses | This browser only |
+| **The board** | Agents: your Claude plan, agents at once, starts an hour, start by itself, and new security alerts. Routines: whether routines can run, and all routines a day. Updates: self-updates on or off, with a link to Connections for the rest | The board, for everyone who uses it |
+| **Repositories** | Each repository with its GitHub repository and areas, and a link to its page; **Add a repository**; and the ones taken off the board, collapsed. On a board with no repository yet, the wizard’s first step | The board |
+
+The server’s state, the link to Connections, **Refresh**, **Shortcuts**, and **Sign out** are at the foot of the page.
+
+The Agents and Routines views keep their settings too. They’re the same controls, saved the same way, so a change in one place shows in the other. A routine’s own settings, like its schedule and triggers, stay on Routines.
+
+### A repository’s page
+
+Each repository has a page of its own (`#/settings/<slug>`). Open it from its row on Settings, **Repository settings…** in the repository switcher (under All repositories it opens Settings at the list), its row on Connections, the Agents view’s Repositories section, or the GitHub view’s repository header. Each section saves by itself with **Save**, so a refusal names its field and the other sections keep your edits. If someone changed the same thing somewhere else since you opened the page, it says so, shows what it is now, and keeps your edit.
+
+| Section | What you change | The same from the command line |
+| --- | --- | --- |
+| **General** | Its name, its GitHub repository (it asks first), its default branch (with GitHub’s beside it when they differ), and its specs directory. Its short name never changes | `repos modify <slug> --name`, `--github`, `--branch`, `--specs` |
+| **Areas** | Add an area with its prefix, rename one, or remove one that never had a task. A prefix never changes, so a work ID means one task forever. Ideas and Routines are the whole board’s, so they have no settings here | `repos modify <slug> --area <project:PREFIX:Name>` adds or renames one, `--remove-area` removes one |
+| **Agents** | Its caps under the board’s limits (at once and starts an hour), and its agent prompt’s path. It shows whether its routine is connected and how many saved routines run in it | `repos modify <slug> --agents-max`, `--agents-hourly`, `--prompt` |
+| **Deploys** | Its pipeline: the staging and production Workers, the deploy paths file, and the workflow files. **Copy as JSON** copies what `--pipeline` takes, and **Turn off deploys** clears it | `repos modify <slug> --pipeline <file.json\|none>` |
+| **Pull requests** | Keep branches up to date and Merge when green for this repository. They stay this browser’s, and work while the board is open in it | none |
+| **Take it off the board** | What removing it does, its open tasks and running agents, and the command to copy. The default repository stays | `repos remove <slug>` |
+
+A repository taken off the board shows its page read only, with **Release its short name and prefixes** when nothing holds them.
+
+### What stays in the command line
+
+Anything that holds a secret or changes the install itself has no button. Where the page needs one, it shows the command to copy:
+
+- `agents-connect [--repo <slug>]` connects a repository’s agent routine.
+- `github-connect` stores the GitHub App’s keys.
+- `rotate-sync` and `rotate-token` make new sync credentials or a new API token.
+- `init-secrets` writes a new board’s secrets.
+- `repos remove <slug>` takes a repository off the board, since it also drops its routine’s secret from the Secrets Store.
+
+`repos modify` still changes everything a repository’s page does, with the same checks and refusals. See [the CLI](https://leavethepack.dev/docs/cli/#repositories).
 
 ## A task
 

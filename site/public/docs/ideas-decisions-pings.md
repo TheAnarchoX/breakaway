@@ -64,4 +64,4 @@ The server checks it when it’s proposed, refusing cycles, dependencies another
 
 ### Push notifications
 
-The push goes to the installed board app, with Web Push. It’s off until you turn on **Notifications** in the board’s Settings, per browser, and it needs the VAPID key pair. Until then pings show in the inbox only. When a connection has needed attention for 10 minutes, the inbox also gets a note, with no push.
+The push goes to the installed board app, with Web Push. It’s off until you turn on **Notifications** under Settings, This browser, and it needs the VAPID key pair. Until then pings show in the inbox only. When a connection has needed attention for 10 minutes, the inbox also gets a note, with no push.
