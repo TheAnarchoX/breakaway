@@ -431,6 +431,7 @@ async function handleApi(request, env, url, ctx) {
           by: body.by,
         }),
       );
+    if (parts[1] === 'general' && parts.length === 2 && method === 'POST') return send(await s.agentsGeneralApi(body));
     if (parts[1] === 'next' && method === 'POST')
       return send(
         await s.agentsNextApi({
