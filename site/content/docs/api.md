@@ -69,6 +69,7 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `GET /api/agents` | Running and waiting agents, limits, and settings. |
 | `POST /api/agents/start` | `{ ref, note?, mode? }`. Starts an agent (`mode: "refine"` to refine). |
 | `POST /api/agents/next` | `{ count, horizon?, repo?, dryRun? }`. Start the next few. |
+| `POST /api/agents/general` | Owner: an agent from a prompt, `{ prompt, repo, force? }`; from a decision’s answers, `{ decision, note?, force? }`; or to prepare the next version, `{ next, repo, version?, note?, force? }`. |
 | `PATCH /api/agents/settings` | The limits, plan, auto-start, and alert severity. |
 | `GET /api/agents/prompt?repo=` | A repository’s agent prompt as it is on its default branch. |
 | `GET /api/pings` | Your inbox: open pings and notices. |
@@ -78,6 +79,9 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `GET /api/peloton?agent=<name>` | The pelotons an agent rides, their rosters, and its unseen posts, marked seen. Without `agent`, every peloton. |
 | `GET /api/peloton/<peloton>` | A peloton’s roster and posts: a repository’s slug, or `chase:<feature>`. |
 | `POST /api/peloton/<peloton>` | `{ agent, kind, text, reply_to?, task? }`. An agent holding a claimed task that rides it posts. Not the cookie. |
+| `GET /api/features`, `POST /api/features` | Features by release with their progress and chase, and suggested tags; make one (`tasks` or `from` joins tasks). |
+| `GET /api/features/<slug>`, `PATCH …`, `DELETE …` | One feature and its tasks; change or delete it (owner). |
+| `POST /api/features/<slug>/chase` | Owner: `{ on, parallel?, dryRun? }` starts, changes, or stops a chase; `{ dismiss: true }` clears an ended chase’s note. |
 | `GET /api/routines`, `POST /api/routines` | List or create routines. |
 | `PATCH /api/routines/<slug>` | Change one. |
 | `POST /api/routines/<slug>/run` | Run it now. |
@@ -104,7 +108,7 @@ The secret may also come in an `X-Routine-Secret` header. The body is at most 16
 | `GET /api/github?repo=` | Pull requests, checks, runs, deploys, alerts for a repository. |
 | `GET /api/github/pulls/<n>?repo=` | One pull request page, read live. |
 | `POST /api/github/sync` | Sync now. |
-| `POST /api/github/pulls/<n>/fix`, `…/review` | Start an agent on a pull request, or review a Dependabot one. |
+| `POST /api/github/pulls/<n>/fix`, `…/review` | Start an agent that fixes a pull request, or one that reviews it (Review with an agent, or Safe to merge? on a Dependabot one). |
 | `POST /api/github/alerts/<n>/fix` | Start an agent on a Dependabot alert. |
 | `POST /api/github/pulls/<n>/publish`, `update-branch`, `merge`, `auto-merge` | **Owner only.** The signed-in browser. |
 | `POST /api/github/promote`, `/rollback` | **Owner only.** Start the repository’s Promote or Roll back workflow. |

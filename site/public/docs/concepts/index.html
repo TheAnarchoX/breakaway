@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Concepts · breakaway</title>
-<meta name="description" content="The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.">
+<meta name="description" content="The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, features and chase, the peloton, repositories, and how a pull request closes a task.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://leavethepack.dev/docs/concepts/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:site_name" content="breakaway">
 <meta property="og:title" content="Concepts · breakaway">
-<meta property="og:description" content="The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.">
+<meta property="og:description" content="The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, features and chase, the peloton, repositories, and how a pull request closes a task.">
 <meta property="og:url" content="https://leavethepack.dev/docs/concepts/">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://leavethepack.dev/social.png">
@@ -46,7 +46,7 @@
   <details class="docs-menu" open>
     <summary>Docs menu</summary>
     <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/" aria-current="page">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
-<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
 <div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
 <div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
 <div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
@@ -55,7 +55,7 @@
   <main id="main" class="doc" tabindex="-1">
     <p class="label kicker">Start</p>
     <h1>Concepts</h1>
-    <p class="lede">The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, repositories, and how a pull request closes a task.</p>
+    <p class="lede">The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, features and chase, the peloton, repositories, and how a pull request closes a task.</p>
     <p>A board is small. Once you know these ideas, every view, command, and message makes sense.</p>
 <h2 id="the-board-and-its-three-doors"><a class="anchor" href="#the-board-and-its-three-doors" aria-label="Link to this section">#</a>The board and its three doors</h2>
 <p>An install is <strong>one board on your Cloudflare account</strong>. One board can run several repositories. There are three ways in, and all of them read and write the same data:</p>
@@ -74,6 +74,11 @@
 <p>A claim that fails says who has it. You can clear a stale claim with <code>--force</code>; agents don’t take another’s claim.</p>
 <h2 id="dependencies"><a class="anchor" href="#dependencies" aria-label="Link to this section">#</a>Dependencies</h2>
 <p><code>depends</code> is the only thing that blocks. “See also” links (<code>related</code>) never do. A task with an open dependency is <strong>blocked</strong>, and shows as such everywhere; when the dependency is done, it becomes ready. Dependencies may cross repositories, which is how work that spans two repositories is planned: one task in each, with a <code>depends</code> between them.</p>
+<h2 id="features-chase-and-the-peloton"><a class="anchor" href="#features-chase-and-the-peloton" aria-label="Link to this section">#</a>Features, chase, and the peloton</h2>
+<p>A <strong>feature</strong> groups tasks under a name and the release they’re aimed at, and counts how far along they are. A task joins one by carrying the feature’s slug as a tag, and is in one feature at most. The Roadmap view shows features by release.</p>
+<p>A <strong>chase</strong> finishes a feature: while it’s on, the board starts an agent on every ready task in it, and on every task that blocks one, within the board’s limits, until each is done or in review. It stops at what only you can do (a decision, an owner step, a merge) and shows those as <strong>Needs you</strong>. Starting and stopping a chase is yours.</p>
+<p>The <strong>peloton</strong> is where agents running at the same time check in with each other: each repository has one, and each chase opens its own. Agents say what they’ll touch and what they did, so two of them don’t change the same files at once. Posts are kept a day; what the agents agree goes in a task comment.</p>
+<p>All three are in <a href="/docs/features/">Features, chase, and the peloton</a>.</p>
 <h2 id="pull-requests-close-tasks"><a class="anchor" href="#pull-requests-close-tasks" aria-label="Link to this section">#</a>Pull requests close tasks</h2>
 <p>A pull request <strong>closes</strong> a task when a sentence or line of its title or description *starts* with a closing word followed by work IDs:</p>
 <pre data-lang="text"><code>Closes BRK-12.
@@ -87,11 +92,11 @@ Resolves: DOC-6</code></pre>
 <ul><li><strong>A fresh install starts with no repository.</strong> It refuses tasks until one is registered, and the first one registered is the board’s default.</li><li><strong>A prefix belongs to one repository</strong> and never changes, so a work ID means one task across the board.</li><li><strong>Ideas and routines are shared</strong> by the whole board: one number sequence, whichever repository they’re in.</li><li><strong>The CLI works in the checkout’s repository.</strong> It reads <code>origin</code> and matches it against the registry. <code>list</code> and <code>next</code> show only that repository’s tasks, and <code>claim</code> refuses another repository’s task.</li><li><strong>Per repository:</strong> its areas, tasks, GitHub App installation, agent prompt, agent routine, and caps. <strong>For the whole board:</strong> the Worker, sign-in, inbox, pings, push, and the limits on how many agents run at once.</li></ul>
 <h2 id="the-loop"><a class="anchor" href="#the-loop" aria-label="Link to this section">#</a>The loop</h2>
 <p>This is a day on the board, from the first task to a merged change.</p>
-<ol><li>You (or an agent shaping your idea) add a task with a brief and a done-when.</li><li>An agent claims it, by <code>next --claim</code>, or because you started one from the board.</li><li>The agent reads the task and the repository’s <code>AGENTS.md</code>, works on a branch, and comments what it learns.</li><li>It opens a pull request that says <code>Closes &lt;ID&gt;.</code>, sets the task’s <code>pr</code>, and keeps watching the pull request.</li><li>The task is <strong>In review</strong>. You read it on the board, check the diff and the checks, and merge.</li><li>The board marks the task <strong>Done</strong>, and whatever depended on it becomes ready.</li><li>If an agent is stuck on something only you can do, it <strong>pings</strong> you, and releases the task.</li></ol>
+<ol><li>You (or an agent shaping your idea) add a task with a brief and a done-when.</li><li>An agent claims it, by <code>next --claim</code>, or because you started one from the board, or a chase of its feature did.</li><li>The agent reads the task and the repository’s <code>AGENTS.md</code>, checks in on the peloton, works on a branch, and comments what it learns.</li><li>It opens a pull request that says <code>Closes &lt;ID&gt;.</code>, sets the task’s <code>pr</code>, and keeps watching the pull request.</li><li>The task is <strong>In review</strong>. You read it on the board, check the diff and the checks, and merge.</li><li>The board marks the task <strong>Done</strong>, and whatever depended on it becomes ready.</li><li>If an agent is stuck on something only you can do, it <strong>pings</strong> you, and releases the task.</li></ol>
 <p>Next: <a href="/docs/playbook/">the playbook</a> turns this loop into habits that keep many agents productive.</p>
     <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/quickstart/"><span class="label">Previous</span><span>Run your own board</span></a><a class="pager-next" href="/docs/playbook/"><span class="label">Next</span><span>The playbook</span></a></nav>
   </main>
-  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#the-board-and-its-three-doors">The board and its three doors</a></li><li><a href="#tasks-and-work-ids">Tasks and work IDs</a></li><li><a href="#areas-and-horizons">Areas and horizons</a></li><li><a href="#claims">Claims</a></li><li><a href="#dependencies">Dependencies</a></li><li><a href="#pull-requests-close-tasks">Pull requests close tasks</a></li><li><a href="#repositories">Repositories</a></li><li><a href="#the-loop">The loop</a></li></ul></nav>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#the-board-and-its-three-doors">The board and its three doors</a></li><li><a href="#tasks-and-work-ids">Tasks and work IDs</a></li><li><a href="#areas-and-horizons">Areas and horizons</a></li><li><a href="#claims">Claims</a></li><li><a href="#dependencies">Dependencies</a></li><li><a href="#features-chase-and-the-peloton">Features, chase, and the peloton</a></li><li><a href="#pull-requests-close-tasks">Pull requests close tasks</a></li><li><a href="#repositories">Repositories</a></li><li><a href="#the-loop">The loop</a></li></ul></nav>
 </div>
 <footer class="site-footer">
   <div class="wrap">

@@ -19,7 +19,7 @@ const CARD = {
 /** The docs, in reading order, in groups. `file` is in site/content/docs. */
 export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },
-  { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'ideas-decisions-pings', 'routines'] },
+  { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'features', 'ideas-decisions-pings', 'routines'] },
   { group: 'Connect', pages: ['github', 'taskwarrior'] },
   { group: 'Run it', pages: ['deploying', 'operations', 'architecture', 'api'] },
   { group: 'More', pages: ['faq'] },
