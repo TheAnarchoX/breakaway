@@ -5766,3 +5766,62 @@ fieldset.field {
   width: 100%;
   justify-content: flex-start;
 }
+
+/* The Version row's update controls on Connections: turn on, Update with its steps, Roll back. */
+.selfupd {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.selfupd-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.selfupd-note.is-ok {
+  color: var(--success);
+}
+.selfupd-note.is-bad {
+  color: var(--warn);
+}
+.selfupd-note svg {
+  flex: none;
+  margin-top: 3px;
+}
+.selfupd-note p {
+  margin: 0;
+}
+.selfupd-steps,
+.selfupd-manual {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.selfupd-manual {
+  list-style: decimal;
+  padding-left: 20px;
+}
+.selfupd-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.selfupd-steps li.is-done {
+  color: var(--success);
+}
+.selfupd-steps li.is-now {
+  color: var(--text);
+  font-weight: 600;
+}
+.selfupd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

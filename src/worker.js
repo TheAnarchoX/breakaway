@@ -346,12 +346,17 @@ async function handleApi(request, env, url, ctx) {
   // the owner's, from the signed-in browser only: never the bearer token agents and the CLI hold.
   if (parts[0] === 'self-update') {
     if (parts.length === 1 && method === 'GET') return send(await s.selfUpdateApi());
-    if (parts.length === 2 && method === 'POST' && ['enable', 'disable', 'start', 'rollback'].includes(parts[1])) {
+    if (
+      parts.length === 2 &&
+      method === 'POST' &&
+      ['enable', 'disable', 'start', 'rollback', 'check'].includes(parts[1])
+    ) {
       if (via !== 'cookie')
         return json(403, { error: 'only the signed-in web board can update or roll back the Worker' });
       if (parts[1] === 'enable') return send(await s.selfUpdateEnable(body));
       if (parts[1] === 'disable') return send(await s.selfUpdateDisable());
       if (parts[1] === 'rollback') return send(await s.selfUpdateRollback());
+      if (parts[1] === 'check') return send(await s.selfUpdateCheck());
       return send(await s.selfUpdateStart({ origin: url.origin }));
     }
   }
