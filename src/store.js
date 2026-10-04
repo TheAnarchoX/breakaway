@@ -501,7 +501,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     try {
       return await action();
     } catch (error) {
-      if (error instanceof AgentError) return fail(error.status, error.message);
+      if (error instanceof AgentError)
+        return fail(error.status, error.message, error.forceable ? { forceable: true } : {});
       if (error instanceof NotFound) return fail(404, error.message);
       if (error instanceof InputError || error instanceof RefError || error instanceof DecisionError)
         return fail(400, error.message);
@@ -989,7 +990,16 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           at: new Date(a.at).toISOString(),
           source: 'agents',
           task: map ? brief(a.task, map) : null,
-          changes: [{ kind: a.kind, trigger: a.trigger, url: a.url, error: a.error, by: a.agent }],
+          changes: [
+            {
+              kind: a.kind,
+              trigger: a.trigger,
+              ...(a.forced ? { forced: true } : {}),
+              url: a.url,
+              error: a.error,
+              by: a.agent,
+            },
+          ],
         });
       }
       for (const e of this.routineEvents(after, upTo)) {
@@ -1150,8 +1160,9 @@ const apiActions = {
   agentsApi() {
     return this.run(async () => this.agentsOverview());
   },
-  agentsStartApi(ref, note, mode) {
+  agentsStartApi(ref, note, mode, { force = false, by } = {}) {
     return this.run(async () => {
+      if (force) ownerOnly(by, 'force start an agent');
       if (mode && !['build', 'refine', 'routine'].includes(mode))
         throw new AgentError('mode is build, refine, or routine', 400);
       const uuid = this.resolve(ref);
@@ -1168,6 +1179,7 @@ const apiActions = {
           note,
           kind: routine ? 'routine' : (mode ?? 'build'),
           routine,
+          force: Boolean(force),
         }),
       );
     });
@@ -1182,7 +1194,12 @@ const apiActions = {
     return this.run(() => ok({ routine: this.modifyRoutine(slug, body ?? {}) }));
   },
   routinesRunApi(slug, body) {
-    return this.run(async () => ok(await this.runRoutine(slug, { note: body?.note ? String(body.note) : null })));
+    return this.run(async () => {
+      if (body?.force) ownerOnly(body.by, 'force start an agent');
+      return ok(
+        await this.runRoutine(slug, { note: body?.note ? String(body.note) : null, force: Boolean(body?.force) }),
+      );
+    });
   },
   routinesTriggerCreateApi(slug, body) {
     return this.run(async () => ok(await this.createTrigger(slug, body ?? {}), 201));
@@ -1205,22 +1222,30 @@ const apiActions = {
   routinesSettingsApi(body) {
     return this.run(() => ok({ settings: this.updateRoutineSettings(body ?? {}) }));
   },
-  fixAlertApi(number, note, repo = null) {
-    return this.run(async () => ok(await this.fixAlert(number, { note, repo })));
+  fixAlertApi(number, note, repo = null, { force = false, by } = {}) {
+    return this.run(async () => {
+      if (force) ownerOnly(by, 'force start an agent');
+      return ok(await this.fixAlert(number, { note, repo, force: Boolean(force) }));
+    });
   },
-  reviewPullApi(number, note, repo = null) {
-    return this.run(async () => ok(await this.reviewPull(number, { note, repo })));
+  reviewPullApi(number, note, repo = null, { force = false, by } = {}) {
+    return this.run(async () => {
+      if (force) ownerOnly(by, 'force start an agent');
+      return ok(await this.reviewPull(number, { note, repo, force: Boolean(force) }));
+    });
   },
   fixPrApi(number, body) {
-    return this.run(async () =>
-      ok(
+    return this.run(async () => {
+      if (body.force) ownerOnly(body.by, 'force start an agent');
+      return ok(
         await this.fixPr(number, {
           problem: body.problem ? String(body.problem) : null,
           note: body.note ? String(body.note) : null,
           repo: body.repo ?? null,
+          force: Boolean(body.force),
         }),
-      ),
-    );
+      );
+    });
   },
   agentsNextApi(body) {
     return this.run(async () => ok(await this.startNext(body)));

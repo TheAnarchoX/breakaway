@@ -22,9 +22,11 @@ const KINDS = new Set(['tool', 'message', 'start', 'prompt']);
 const SEVERITY = { off: 0, critical: 4, high: 3, medium: 2, moderate: 2, low: 1, all: 1 };
 
 export class AgentError extends Error {
-  constructor(message, status = 409) {
+  /** `forceable`: only the board's own limits refuse the start, so Force start (the owner's) could skip it. */
+  constructor(message, status = 409, { forceable = false } = {}) {
     super(message);
     this.status = status;
+    this.forceable = forceable;
   }
 }
 
@@ -192,6 +194,9 @@ export const agentsMethods = {
       this.sql.exec("ALTER TABLE agent_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'build'");
     // The repository a run started in (IDEA-14 section 4). Runs from before have none: the default repository's.
     if (!columns.includes('repo')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN repo TEXT');
+    // Started with Force start (BRK-105). Runs from before weren't.
+    if (!columns.includes('forced'))
+      this.sql.exec('ALTER TABLE agent_runs ADD COLUMN forced INTEGER NOT NULL DEFAULT 0');
   },
 
   // ---- routines per repository ----------------------------------------------------------------
@@ -214,14 +219,15 @@ export const agentsMethods = {
    * Why repository `slug` can't take another agent under its own caps right now, or null. Global limits are
    * checked apart. Claude's limit for one routine (30 starts an hour) is every repository's cap, since each
    * starts through its own routine, so a board-wide budget above 30 never runs one routine into it.
+   * `force` (the owner's Force start) skips the repository's own caps, never Claude's limit.
    */
-  repoCapBlocker(slug, running) {
+  repoCapBlocker(slug, running, { force = false } = {}) {
     const caps = routineCaps(this.repoBySlug(slug));
     const here = running.filter(({ task }) => task.repo === slug).length;
-    if (caps.max && here >= caps.max)
+    if (!force && caps.max && here >= caps.max)
       return `${here} ${here === 1 ? 'agent is' : 'agents are'} already running in ${slug} (its cap is ${caps.max})`;
     const started = this.startsThisHour(slug);
-    if (caps.hourly && started >= caps.hourly)
+    if (!force && caps.hourly && started >= caps.hourly)
       return `${caps.hourly} agents were started in ${slug} in the last hour, its cap`;
     if (started >= CLAUDE_LIMITS.routineHourly)
       return `${started} agents were started in ${slug} in the last hour, Claude’s limit for its routine`;
@@ -321,7 +327,7 @@ export const agentsMethods = {
   },
 
   /** "Fix with an agent" on an alert in repository `repo` (the default when none): its task (made if needed), and an agent on it. */
-  async fixAlert(number, { note = null, repo = null } = {}) {
+  async fixAlert(number, { note = null, repo = null, force = false } = {}) {
     await this.ready();
     const slug = this.checkRepoSlug(repo);
     const row = this.sql
@@ -331,7 +337,7 @@ export const agentsMethods = {
     const uuid = await this.createAlertTask(JSON.parse(row.data), { repo: slug });
     const map = this.tasks.get(uuid);
     if (map.claim) return { task: this.detail(uuid), run: null, already: `${map.claim} is on it` };
-    return { ...(await this.startAgent(uuid, { trigger: 'alert', note })), already: null };
+    return { ...(await this.startAgent(uuid, { trigger: 'alert', note, force })), already: null };
   },
 
   /**
@@ -339,7 +345,7 @@ export const agentsMethods = {
    * merging finishes it) and an agent in review mode, which tests the update and answers as a note and
    * a PR comment. The owner still merges.
    */
-  async reviewPull(number, { note = null, repo = null } = {}) {
+  async reviewPull(number, { note = null, repo = null, force = false } = {}) {
     await this.ready();
     const slug = this.checkRepoSlug(repo);
     const row = this.sql
@@ -375,7 +381,7 @@ export const agentsMethods = {
     const map = this.tasks.get(uuid);
     const busy = this.claimBlocker({ ...map, uuid });
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
-    return { ...(await this.startAgent(uuid, { trigger: 'review', note, kind: 'review' })), already: null };
+    return { ...(await this.startAgent(uuid, { trigger: 'review', note, kind: 'review', force })), already: null };
   },
 
   /** After a sync: new alerts at or above the chosen severity become Start-when-ready tasks. */
@@ -403,7 +409,7 @@ export const agentsMethods = {
    * agent on the PR. `problem` is conflicts, failing, or review; it must be true of the PR now.
    * The agent never merges: it pushes a fix or leaves a note.
    */
-  async fixPr(number, { problem = null, note = null, repo = null } = {}) {
+  async fixPr(number, { problem = null, note = null, repo = null, force = false } = {}) {
     await this.ready();
     const slug = this.checkRepoSlug(repo);
     const row = this.sql
@@ -456,7 +462,7 @@ export const agentsMethods = {
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
     const text = [what, note ? `Owner's note: ${String(note).slice(0, 2000)}` : null].filter(Boolean).join('\n');
     return {
-      ...(await this.startAgent(uuid, { trigger: 'pr', note: text, kind: 'fix-pr', pr: pr.number })),
+      ...(await this.startAgent(uuid, { trigger: 'pr', note: text, kind: 'fix-pr', pr: pr.number, force })),
       already: null,
     };
   },
@@ -567,9 +573,15 @@ export const agentsMethods = {
    * Starts one agent, through the routine of the task's repository. `trigger`: manual | next | auto.
    * Throws AgentError when it can't. The concurrent and hourly limits are the whole board's, whichever
    * repository the task is in, and a repository's own caps (its `routine`) apply on top.
-   * One start never checks areas; only batches and the auto-starter keep agents apart.
+   * One start never checks areas or the auto-start switch; only batches and the auto-starter keep agents apart.
+   * `force` is the owner's Force start: it skips the board's own limits (agents at once, starts an hour, a
+   * repository's caps) and nothing else. Claude's limits and everything that makes a start wrong still refuse
+   * it, and a refusal only the board's limits caused says so (`forceable`). The run records `forced`.
    */
-  async startAgent(uuid, { trigger = 'manual', note = null, kind = 'build', pr = null, routine = null } = {}) {
+  async startAgent(
+    uuid,
+    { trigger = 'manual', note = null, kind = 'build', pr = null, routine = null, force = false } = {},
+  ) {
     await this.ready();
     if (kind === 'routine' && !routine) throw new AgentError('a routine run needs its routine', 400);
     if (kind === 'refine' && !String(note ?? '').trim())
@@ -602,12 +614,25 @@ export const agentsMethods = {
       );
     const { max, hourly } = this.agentSettings();
     const running = this.runningAgents(views);
-    if (running.length >= max)
-      throw new AgentError(`${running.length} agents are already running (the limit is ${max})`);
-    if (this.startsThisHour() >= hourly)
-      throw new AgentError(`${hourly} agents were started in the last hour, the most the board starts`, 429);
-    const capped = this.repoCapBlocker(repo.slug, running);
-    if (capped) throw new AgentError(capped, /last hour/u.test(capped) ? 429 : 409);
+    if (!force && running.length >= max)
+      throw new AgentError(`${running.length} agents are already running (the limit is ${max})`, 409, {
+        forceable: true,
+      });
+    if (!force && this.startsThisHour() >= hourly)
+      throw new AgentError(`${hourly} agents were started in the last hour, the most the board starts`, 429, {
+        forceable: true,
+      });
+    // Claude's own limit for the whole account (100 an hour) holds for a forced start too.
+    if (this.startsThisHour() >= CLAUDE_LIMITS.accountHourly)
+      throw new AgentError(
+        `${this.startsThisHour()} agents were started in the last hour, Claude’s limit for the account`,
+        429,
+      );
+    const capped = this.repoCapBlocker(repo.slug, running, { force });
+    if (capped) {
+      const claude = /Claude’s limit/u.test(capped);
+      throw new AgentError(capped, /last hour/u.test(capped) ? 429 : 409, { forceable: !claude });
+    }
 
     // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check `claude-<id>-check`.
     const id = (task.wid ?? task.short).toLowerCase();
@@ -633,7 +658,7 @@ export const agentsMethods = {
     );
     const runId = this.sql
       .exec(
-        "INSERT INTO agent_runs (task, agent, trigger, kind, status, note, started, repo) VALUES (?, ?, ?, ?, 'starting', ?, ?, ?) RETURNING id",
+        "INSERT INTO agent_runs (task, agent, trigger, kind, status, note, started, repo, forced) VALUES (?, ?, ?, ?, 'starting', ?, ?, ?, ?) RETURNING id",
         uuid,
         agent,
         trigger,
@@ -641,6 +666,7 @@ export const agentsMethods = {
         note ? String(note).slice(0, 4000) : null,
         Date.now(),
         repo.slug,
+        force ? 1 : 0,
       )
       .one().id;
 
@@ -675,6 +701,7 @@ export const agentsMethods = {
           trigger: r.trigger,
           kind: r.kind,
           repo: r.repo ?? this.defaultRepoSlug(),
+          forced: Boolean(r.forced),
           status: r.status,
           url: r.url,
           error: r.error,
@@ -930,6 +957,7 @@ export const agentsMethods = {
         repo: task.repo,
         agent: run.agent,
         trigger: run.trigger,
+        forced: Boolean(run.forced),
         url: run.url,
         startedAt: new Date(run.started).toISOString(),
         lastAt: last ? new Date(last.at).toISOString() : null,
@@ -1054,6 +1082,7 @@ export const agentsMethods = {
         task: r.task,
         kind: r.status === 'failed' ? 'agent_failed' : 'agent_started',
         trigger: r.trigger,
+        forced: Boolean(r.forced),
         url: r.url,
         error: r.error,
         agent: r.agent,
