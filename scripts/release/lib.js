@@ -51,9 +51,9 @@ export function stableOf(prereleaseTag) {
 
 /**
  * manifest.json: what an install reads before it deploys.
- * @param {{ version: string, channel: 'main' | 'stable', commit: string, config: { manual?: boolean, manualSteps?: string[], updatesFrom?: string }, builtAs?: string, created: string }} o
+ * @param {{ version: string, channel: 'main' | 'stable', commit: string, config: { manual?: boolean, manualSteps?: string[], updatesFrom?: string }, builtAs?: string, bundleSha256?: string, created: string }} o
  */
-export function manifestOf({ version, channel, commit, config, builtAs, created }) {
+export function manifestOf({ version, channel, commit, config, builtAs, bundleSha256, created }) {
   const manual = config.manual === true;
   if (manual && !config.manualSteps?.length)
     throw new Error('release.json says manual, so it needs manualSteps: what an install does by hand.');
@@ -67,6 +67,8 @@ export function manifestOf({ version, channel, commit, config, builtAs, created 
     // install runs, so it could never update (BRK-67).
     updatesFrom: config.updatesFrom ?? '0.1.0-main.1',
     ...(builtAs ? { builtAs } : {}),
+    // The bundle's checksum, so the manifest's signature covers the bundle (BRK-52): SHA256SUMS isn't signed.
+    ...(bundleSha256 ? { bundleSha256 } : {}),
     created,
   };
 }

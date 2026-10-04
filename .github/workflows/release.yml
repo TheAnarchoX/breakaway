@@ -80,12 +80,12 @@ jobs:
         env:
           VERSION: ${{ steps.next.outputs.version }}
         run: |
-          node scripts/release/plan.mjs manifest main "$VERSION" "$SHA" > out/manifest.json
+          node scripts/release/plan.mjs manifest main "$VERSION" "$SHA" --bundle out/breakaway-bundle.tar.gz > out/manifest.json
           (cd out && sha256sum breakaway-bundle.tar.gz manifest.json > SHA256SUMS)
           from=$(cat "$RUNNER_TEMP/previous"); from=${from:-$(git rev-list --max-parents=0 "$SHA" | tail -1)}
           node scripts/release-notes.mjs --title breakaway --version "v$VERSION" --from "$from" --to "$SHA" --areas "$AREAS" > out/notes.md
           node scripts/release/plan.mjs manual >> out/notes.md
-      # BRK-51: the manifest holds the bundle's checksum, so one signature covers the bundle. RELEASE_SIGNING_KEY is
+      # BRK-51: the manifest holds the bundle's checksum (bundleSha256, BRK-52), so one signature covers the bundle. RELEASE_SIGNING_KEY is
       # a secret of the npm environment (only main can use it), never a repository secret: the site job passes those on.
       - name: Sign the manifest
         env:

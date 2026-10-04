@@ -43,6 +43,10 @@ describe('manifest and manual steps', () => {
     });
     expect(manualSection({})).toBe('');
   });
+  it('carries the bundle’s checksum when it has one (BRK-52)', () => {
+    expect(manifestOf({ ...base, config: {}, bundleSha256: 'ab'.repeat(32) }).bundleSha256).toBe('ab'.repeat(32));
+    expect(manifestOf({ ...base, config: {} })).not.toHaveProperty('bundleSha256');
+  });
   it('needs the steps when manual', () => {
     expect(() => manifestOf({ ...base, config: { manual: true, manualSteps: [] } })).toThrow(/manualSteps/);
     const config = { manual: true, manualSteps: ['Add the new cron trigger.'] };
