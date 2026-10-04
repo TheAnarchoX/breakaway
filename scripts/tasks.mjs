@@ -236,6 +236,7 @@ Working
   repos modify <slug>    change one (owner): --area <project:PREFIX> adds an area, --remove-area <project> drops one with no tasks, --name, --branch, --github,
                          --agents-max <n|none> and --agents-hourly <n|none> cap its agents under the board's shared limits,
                          --prompt <path|none> says where its agent prompt is in its checkout (default tools/tasks/routine-prompt.md)
+                         --specs <dir|none> says where its specs are (default docs/specs)
                          --pipeline <file.json|none> sets its deploy pipeline ({"workers": {"staging", "production"}, "workflows": {...}, "deployPaths"}) or clears it
   features add <slug>    new feature: its tasks join by carrying <slug> as a tag  [--title <text>]
                          [--brief <text> | --brief-file <path>] [--release <x.y.z>] (agents add one without a release)
@@ -935,9 +936,14 @@ const commands = {
     if (sub === 'modify') {
       const slug = need(args[1], 'repository');
       const change = fields();
+      const routineFlags =
+        opts['agents-max'] !== undefined || opts['agents-hourly'] !== undefined || opts.prompt !== undefined;
+      const current =
+        routineFlags || opts.specs !== undefined
+          ? (await call('GET', 'repos')).repos.find((r) => r.slug === slug.toLowerCase())
+          : null;
       // Its caps on agents, under the board's shared limits, and where its agent prompt is (CLD-127): kept with the rest of its routine settings.
-      if (opts['agents-max'] !== undefined || opts['agents-hourly'] !== undefined || opts.prompt !== undefined) {
-        const current = (await call('GET', 'repos')).repos.find((r) => r.slug === slug.toLowerCase());
+      if (routineFlags) {
         const routine = { ...current?.routine };
         for (const [flag, key] of [
           ['agents-max', 'max'],
@@ -948,6 +954,9 @@ const commands = {
         if (opts.prompt !== undefined) routine.prompt = opts.prompt === 'none' ? null : String(opts.prompt);
         change.routine = routine;
       }
+      // Where its specs are (IDEA-31), kept with the rest of its settings; none goes back to docs/specs.
+      if (opts.specs !== undefined)
+        change.settings = { ...current?.settings, specs: opts.specs === 'none' ? null : String(opts.specs) };
       // Its deploy pipeline (BRK-44): a JSON file, or none to clear it; the board refuses one it couldn't use, with the reason.
       if (opts.pipeline !== undefined) {
         if (opts.pipeline === 'none') change.pipeline = null;

@@ -10,6 +10,7 @@
  * repository, and a prefix to exactly one area, so a work ID means one task across the install.
  */
 import { AREA_NAMES, InputError, PROJECTS } from './model.js';
+import { checkSettings } from './specs.js';
 
 /** The slug a task without `repo` falls back to while the registry has no default: nothing is registered, so no task is. */
 export const NO_REPO = 'default';
@@ -292,6 +293,7 @@ export function checkRepo(
   for (const key of JSON_FIELDS) if (key in input) row[key] = jsonField(input[key], key);
   if ('pipeline' in input) row.pipeline = checkPipeline(row.pipeline);
   if ('routine' in input) row.routine = checkRoutine(row.routine, caps);
+  if ('settings' in input) row.settings = checkSettings(row.settings);
 
   const adding = [...list(input.areas), ...list(input.addAreas)].map(parseArea);
   for (const project of list(input.removeAreas).map((p) => String(p).trim().toLowerCase())) {
