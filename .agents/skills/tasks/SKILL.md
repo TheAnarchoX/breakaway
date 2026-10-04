@@ -19,9 +19,9 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 
    A `409` means someone has it or it's blocked. Pick another; never `--force` someone else's claim.
 4. **Read it:** `tasks show <ID>` (description, done when, comments, spec, what it waits for and holds up), then [`AGENTS.md`](../../../AGENTS.md) if you haven't this session.
-   Then **check in on the peloton**: `tasks peloton checkin "<what you'll change, the files or areas>"` shows who else is riding; agree who goes first with anyone on the same files.
-5. **Work** on a branch. Record what you learn as you go: `tasks comment <ID> "<finding>"`. Comments are append-only; the description is the current brief, and you edit it only on a task you made or are refining. New work you find becomes `tasks add "<title>" --project <area> --tag agent|owner --horizon <h> --brief "<what and why>" --done-when "<done when>"`, with `--depends <ID>` when it waits for something. breakaway's areas: `board`, `web`, `docs`, `launch`, `brand`, `cli`.
-6. **Hand over:** open the pull request with `Closes <ID>.` in its description, then `tasks modify <ID> --pr <number>` and `tasks comment <ID> "<one-line result>"`. The board moves the task to In review and marks it done when the pull request merges; don't mark it done yourself. If you stop before a pull request: `comment` where you got to, then `release <ID>`.
+5. **Check in on the peloton, before any change:** `tasks peloton checkin "<what you'll change, the files or areas>"`. Never skip it, whatever started you. It posts on your repository's peloton and, when your task is in an open chase, on the chase's too, and shows who else is riding; agree who goes first with anyone on the same files.
+6. **Work** on a branch. Record what you learn as you go: `tasks comment <ID> "<finding>"`. Comments are append-only; the description is the current brief, and you edit it only on a task you made or are refining. New work you find becomes `tasks add "<title>" --project <area> --tag agent|owner --horizon <h> --brief "<what and why>" --done-when "<done when>"`, with `--depends <ID>` when it waits for something. breakaway's areas: `board`, `web`, `docs`, `launch`, `brand`, `cli`.
+7. **Hand over:** open the pull request with `Closes <ID>.` in its description, then `tasks modify <ID> --pr <number>` and `tasks comment <ID> "<one-line result>"`. The board moves the task to In review and marks it done when the pull request merges; don't mark it done yourself. If you stop before a pull request: `comment` where you got to, then `release <ID>`.
 
 ## Rules
 
@@ -54,6 +54,7 @@ This repository is public and the board isn't. Never copy another repository's t
 ## Common mistakes
 
 - Starting work before `claim` returns: another agent may already have it.
+- Changing anything before `peloton checkin`: the other agents can't see you until you check in.
 - Marking `done` yourself while the pull request is open: the board does it on merge.
 - Writing `Closes <ID>` in a spec pull request, or putting it in `--pr`.
 - Pinging to report progress or a pull request: the board shows both.
