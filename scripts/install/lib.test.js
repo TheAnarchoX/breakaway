@@ -5,6 +5,7 @@ import {
   checkManifest,
   compareVersions,
   configStop,
+  deployPlan,
   deployTarget,
   isHealthy,
   latestReleases,
@@ -120,24 +121,141 @@ describe('a release that may deploy by itself', () => {
   });
 });
 
-describe('a config change the workflow can’t deploy', () => {
+describe('a manual release whose only step is wrangler deploy (BRK-62)', () => {
+  const manifest = {
+    version: '0.2.0',
+    manual: true,
+    manualSteps: ['Deploy with wrangler deploy: it adds the Durable Object class Archive.'],
+    wranglerDeploy: true,
+    updatesFrom: '0.1.0',
+  };
+
+  it('passes when the install lets Deploy run wrangler deploy', () => {
+    expect(checkManifest(manifest, { version: '0.2.0', apply: true })).toEqual({ ok: true, wrangler: true });
+  });
+
+  it('stops without it, saying how to let Deploy do it', () => {
+    const verdict = checkManifest(manifest, { version: '0.2.0' });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.message).toContain('- Deploy with wrangler deploy');
+    expect(verdict.message).toContain('BREAKAWAY_DEPLOY_CHANGES');
+  });
+
+  it('stops any other manual release, whatever the install allows', () => {
+    const other = { ...manifest, wranglerDeploy: undefined, manualSteps: ['Set the new secret.'] };
+    expect(checkManifest(other, { version: '0.2.0', apply: true }).ok).toBe(false);
+  });
+
+  it('still needs the running release to be one it updates from', () => {
+    const verdict = checkManifest(
+      { ...manifest, updatesFrom: '0.1.5' },
+      { version: '0.2.0', running: '0.1.0', apply: true },
+    );
+    expect(verdict.message).toContain('updates from 0.1.5');
+  });
+});
+
+describe('what a deploy changes that a version can’t carry', () => {
   const base = { name: 'board', worker: 'board' };
-  const shape = (config) => shapeOf(wranglerConfig(config));
+  const shape = (config, edit = (w) => w) => shapeOf(edit(wranglerConfig(config)));
+  const changes = (before, after) => shapeChanges(before, after).map((c) => [c.change, c.apply]);
+  const withClass = (w, migration, binding = { name: 'ARCHIVE', class_name: 'Archive' }) => ({
+    ...w,
+    durable_objects: { bindings: [...w.durable_objects.bindings, ...(binding ? [binding] : [])] },
+    migrations: [...w.migrations, migration],
+  });
 
   it('is none for a rename, a secrets prefix, or the same config', () => {
     expect(shapeChanges(shape(base), shape({ ...base, name: 'Other', secretsPrefix: 'OTHER_' }))).toEqual([]);
     expect(configStop([])).toBeNull();
   });
 
-  it('is the address, the Durable Object, and the jurisdiction', () => {
-    expect(shapeChanges(shape(base), shape({ ...base, url: 'https://tasks.example.com' }))).toEqual([
-      'its address (routes)',
-      'its workers.dev address',
+  it('applies an address, cron triggers, and a new Durable Object class', () => {
+    expect(changes(shape(base), shape({ ...base, url: 'https://tasks.example.com' }))).toEqual([
+      ['its address (routes)', true],
+      ['its workers.dev address', true],
     ]);
-    expect(shapeChanges(shape(base), shape({ ...base, jurisdiction: 'eu' }))).toEqual(['its jurisdiction']);
-    expect(configStop(['its address (routes)'])).toContain(
-      "changed its address (routes), which the workflow doesn't deploy",
-    );
+    expect(
+      changes(
+        shape(base),
+        shape(base, (w) => ({ ...w, triggers: { crons: ['*/10 * * * *'] } })),
+      ),
+    ).toEqual([['its cron triggers', true]]);
+    const added = shape(base, (w) => withClass(w, { tag: 'v2', new_sqlite_classes: ['Archive'] }));
+    expect(changes(shape(base), added)).toEqual([['its Durable Object classes: it adds Archive', true]]);
+  });
+
+  it('never applies another Worker, another Durable Object, or a class deleted, renamed, or moved', () => {
+    expect(changes(shape(base), shape({ ...base, worker: 'board-2' }))).toEqual([
+      ['its Worker’s name (worker)', false],
+    ]);
+    expect(changes(shape(base), shape({ ...base, store: 'other' }))).toEqual([['its Durable Object (store)', false]]);
+    expect(changes(shape(base), shape({ ...base, jurisdiction: 'eu' }))).toEqual([['its jurisdiction', false]]);
+    const moved = 'its Durable Object classes: it deletes, renames, or moves one';
+    const deleted = shape(base, (w) => withClass(w, { tag: 'v2', deleted_classes: ['TaskStore'] }, null));
+    expect(changes(shape(base), deleted)).toEqual([[moved, false]]);
+    const renamed = shape(base, (w) => ({
+      ...w,
+      durable_objects: { bindings: [{ name: 'STORE', class_name: 'Store' }] },
+      migrations: [...w.migrations, { tag: 'v2', renamed_classes: [{ from: 'TaskStore', to: 'Store' }] }],
+    }));
+    expect(changes(shape(base), renamed)).toEqual([[moved, false]]);
+    // A migration history rewritten, rather than added to, is never applied either.
+    const rewritten = shape(base, (w) => ({ ...w, migrations: [{ tag: 'v1', new_sqlite_classes: ['Other'] }] }));
+    expect(changes(shape(base), rewritten)).toEqual([[moved, false]]);
+  });
+});
+
+describe('the deploy plan', () => {
+  const base = { name: 'board', worker: 'board' };
+  const shape = (config) => shapeOf(wranglerConfig(config));
+  const manifest = { version: '0.2.0', manual: false, updatesFrom: '0.1.0' };
+  const plan = (after, opts = {}) => deployPlan(manifest, { version: '0.2.0', before: shape(base), after, ...opts });
+
+  it('uploads a version when nothing a version can’t carry changes, or there is nothing to compare', () => {
+    expect(plan(shape({ ...base, name: 'Other' }))).toEqual({
+      ok: true,
+      deploy: 'versions',
+      changes: [],
+      addressChanged: false,
+    });
+    expect(deployPlan(manifest, { version: '0.2.0' })).toMatchObject({ ok: true, deploy: 'versions' });
+  });
+
+  it('stops an address change without the install’s say-so, naming what to set', () => {
+    const verdict = plan(shape({ ...base, url: 'https://tasks.example.com' }));
+    expect(verdict.ok).toBe(false);
+    expect(verdict.message).toContain('its address (routes)');
+    expect(verdict.message).toContain('BREAKAWAY_DEPLOY_CHANGES');
+    expect(verdict.message).toContain('npx breakaway install config');
+    expect(configStop(['its address (routes)', 'its workers.dev address'])).toBe(verdict.message);
+  });
+
+  it('runs wrangler deploy for it with the install’s say-so', () => {
+    expect(plan(shape({ ...base, url: 'https://tasks.example.com' }), { apply: true })).toEqual({
+      ok: true,
+      deploy: 'wrangler',
+      changes: ['its address (routes)', 'its workers.dev address'],
+      addressChanged: true,
+    });
+  });
+
+  it('runs wrangler deploy for a manual release that says it is all wrangler deploy does', () => {
+    const release = { ...manifest, manual: true, manualSteps: ['Deploy with wrangler deploy.'], wranglerDeploy: true };
+    expect(deployPlan(release, { version: '0.2.0', apply: true })).toEqual({
+      ok: true,
+      deploy: 'wrangler',
+      changes: [],
+      addressChanged: false,
+    });
+  });
+
+  it('never deploys a change that opens an empty board, whatever the install allows', () => {
+    const verdict = plan(shape({ ...base, store: 'other' }), { apply: true });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.message).toContain('its Durable Object (store)');
+    expect(verdict.message).toContain('empty board');
+    expect(verdict.message).toContain('nothing was deployed');
   });
 });
 

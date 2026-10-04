@@ -11,14 +11,12 @@ import { ask } from '../tasks/ask.js';
 import { QUESTIONS, configFrom, stateFrom, writeInstall } from './init.js';
 import {
   bumpBody,
-  checkManifest,
-  configStop,
+  deployPlan,
   deployTarget,
   isHealthy,
   latestReleases,
   parseState,
   previousVersionId,
-  shapeChanges,
   shapeOf,
   updatePlan,
   workerMissing,
@@ -72,6 +70,28 @@ const configIn = (path) => {
   }
 };
 
+/** A file's JSON, or null when it's missing or isn't JSON. */
+const jsonIn = (path) => {
+  try {
+    return path ? JSON.parse(readFileSync(path, 'utf8')) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The running Worker's shape for `check`, or null when nothing says what it is. */
+function runningShape(opts) {
+  const running = jsonIn(opts['running-config']);
+  if (running && typeof running === 'object') return shapeOf(running);
+  const before = jsonIn(opts.before);
+  if (!before) return null; // no earlier config (the first deploy, or a dispatch): nothing to compare with
+  try {
+    return shapeOf(wranglerConfig(parseInstall(before)));
+  } catch {
+    return null;
+  }
+}
+
 /** The Worker's wrangler config for a downloaded release: the install's config, with the code and web app where the bundle put them. */
 export function bundleConfig(config, bundle) {
   const out = wranglerConfig(config);
@@ -99,20 +119,17 @@ export async function runStep(step, opts, io) {
     const version = opts.version;
     if (!version) throw new Stop('check needs --version, the release being deployed.');
     const manifest = readJson(opts.manifest ?? 'release/manifest.json', 'the release’s manifest');
-    const verdict = checkManifest(manifest, { version, running: opts.running || null });
-    if (verdict.ok === false) throw new Stop(verdict.message, 2);
-    if (opts.before) {
-      let before = null;
-      try {
-        before = parseInstall(JSON.parse(readFileSync(opts.before, 'utf8')));
-      } catch {
-        before = null; // no earlier config (the first deploy, or a dispatch): nothing to compare with
-      }
-      const now = configIn(join(dir, 'breakaway.config.json'));
-      const stop = before && configStop(shapeChanges(shapeOf(wranglerConfig(before)), shapeOf(wranglerConfig(now))));
-      if (stop) throw new Stop(stop, 2);
-    }
+    // The Worker as it runs: the config the running release's own CLI made (--running-config), else this release's code
+    // with the config from before this push (--before). Neither (a first deploy, or a dispatch): nothing to compare.
+    const before = runningShape(opts);
+    const after = before && shapeOf(wranglerConfig(configIn(join(dir, 'breakaway.config.json'))));
+    const apply = opts['deploy-changes'] === true || opts['deploy-changes'] === 'true';
+    const plan = deployPlan(manifest, { version, running: opts.running || null, before, after, apply });
+    if (plan.ok === false) throw new Stop(plan.message, 2);
     io.out('ok=true');
+    io.out(`deploy=${plan.deploy}`);
+    io.out(`changes=${plan.changes.join(', ')}`);
+    io.out(`address_changed=${plan.addressChanged}`);
     return 0;
   }
   if (step === 'config') {

@@ -1,7 +1,9 @@
 # Deploys a breakaway release to this install's Worker: the release breakaway.json pins (stable), or the latest
 # pre-release (main). Runs on a push to main, which is how a merged update pull request deploys, and by hand.
-# It stops with a plain message when the release needs steps by hand, or when breakaway.config.json changed
-# something it can't deploy (the address, cron triggers, or Durable Object classes): those are yours to deploy.
+# A deploy uploads a version of the Worker. A change a version can't carry (the address, cron triggers, or a new
+# Durable Object class) needs wrangler deploy: Deploy runs it when the repository variable BREAKAWAY_DEPLOY_CHANGES is
+# true, for a token that can (the README says which), and otherwise stops with a plain message, as it does for a release
+# that needs steps by hand. It never changes the Worker's name or its Durable Object, which would open an empty board.
 name: Deploy
 
 on:
@@ -40,6 +42,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DRY_RUN: ${{ inputs.dry-run }}
+      # true lets Deploy run wrangler deploy for an address, cron triggers, or a new Durable Object class (BRK-62).
+      DEPLOY_CHANGES: ${{ vars.BREAKAWAY_DEPLOY_CHANGES }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,6 +95,7 @@ jobs:
           (cd release && sha256sum --check SHA256SUMS)
 
       - name: Check it can deploy by itself
+        id: check
         env:
           CLI: ${{ steps.release.outputs.cli }}
           VERSION: ${{ steps.release.outputs.version }}
@@ -98,15 +103,34 @@ jobs:
           ADDRESS: ${{ vars.BREAKAWAY_URL }}
         run: |
           set -euo pipefail
-          # Nothing is deployed yet on the first run, so there is no running release to compare with.
-          address=${ADDRESS:-$(node -p "require('./breakaway.config.json').url || ''")}
-          running=""
-          # A board that doesn't say its release (one from before BRK-10) runs none this check knows.
-          if [ -n "$address" ]; then running=$(curl -fsS --max-time 20 "$address/api/ping" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).release ?? ''" 2>/dev/null || true); fi
-          # The config as it was before this push, to see whether it changed what a deploy can't.
-          rm -f before.json
+          # The config as it was before this push, to see whether it changed what a version upload can't carry.
+          rm -f before.json running.wrangler.json
           case "$BEFORE" in ''|0000000000000000000000000000000000000000) ;; *) git show "$BEFORE:breakaway.config.json" > before.json 2>/dev/null || rm -f before.json ;; esac
-          node "$CLI" install check --version "$VERSION" --manifest release/manifest.json --running "$running" --before before.json
+          was=breakaway.config.json
+          if [ -f before.json ]; then was=before.json; fi
+          # Where the running board answers: the address from before this push, if the push changes it.
+          address=${ADDRESS:-$(node -p "require('./$was').url || ''")}
+          running=""
+          # A board that doesn't say its release (one from before BRK-10) runs none this check knows. Nothing is deployed
+          # yet on the first run, so there is no running release to compare with.
+          if [ -n "$address" ]; then running=$(curl -fsS --max-time 20 "$address/api/ping" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).release ?? ''" 2>/dev/null || true); fi
+          # The Worker as it runs: the config the running release's own CLI makes from the config it was deployed with, so
+          # a release that changes the cron triggers or the Durable Object classes shows as a change too. Without it (the
+          # same release, or one that can't be read), the check compares the configs with this release's code.
+          if [ -n "$running" ] && [ "$running" != "$VERSION" ]; then
+            dir="$RUNNER_TEMP/running"
+            mkdir -p "$dir/src"
+            if gh release download "v$running" --repo "$BREAKAWAY_REPO" --archive tar.gz -O - 2>/dev/null | tar -xz -C "$dir/src" --strip-components 1 2>/dev/null; then
+              cp "$was" "$dir/breakaway.config.json"
+              (cd "$dir" && node src/scripts/tasks.mjs install config --out "$GITHUB_WORKSPACE/running.wrangler.json" > /dev/null 2>&1) || rm -f running.wrangler.json
+            fi
+          fi
+          status=0
+          node "$CLI" install check --version "$VERSION" --manifest release/manifest.json --running "$running" \
+            --before before.json --running-config running.wrangler.json --deploy-changes "${DEPLOY_CHANGES:-false}" > check.out || status=$?
+          cat check.out
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          cat check.out >> "$GITHUB_OUTPUT"
 
       - name: Make the Worker config
         env:
@@ -127,7 +151,15 @@ jobs:
 
       - name: Dry run
         if: ${{ inputs.dry-run }}
-        run: npx --yes wrangler@4 deploy --dry-run --outdir "$RUNNER_TEMP/dry" -c wrangler.generated.json
+        env:
+          DEPLOY: ${{ steps.check.outputs.deploy }}
+          CHANGES: ${{ steps.check.outputs.changes }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 deploy --dry-run --outdir "$RUNNER_TEMP/dry" -c wrangler.generated.json
+          if [ "$DEPLOY" != wrangler ]; then echo "A deploy would upload a version."
+          elif [ -n "$CHANGES" ]; then echo "A deploy would run wrangler deploy for $CHANGES."
+          else echo "A deploy would run wrangler deploy, the release's manual step."; fi
 
       - name: Upload and deploy
         if: ${{ !inputs.dry-run }}
@@ -135,6 +167,9 @@ jobs:
           CLI: ${{ steps.release.outputs.cli }}
           VERSION: ${{ steps.release.outputs.version }}
           ADDRESS: ${{ vars.BREAKAWAY_URL }}
+          DEPLOY: ${{ steps.check.outputs.deploy }}
+          CHANGES: ${{ steps.check.outputs.changes }}
+          ADDRESS_CHANGED: ${{ steps.check.outputs.address_changed }}
         run: |
           set -euo pipefail
           wrangler() { npx --yes wrangler@4 "$@" -c wrangler.generated.json; }
@@ -150,6 +185,11 @@ jobs:
           fi
           if [ -z "$previous" ]; then
             wrangler deploy --var "BREAKAWAY_VERSION:$VERSION"
+          elif [ "$DEPLOY" = wrangler ]; then
+            # What a version can't carry (BRK-62): wrangler deploy applies the address, cron triggers, and new Durable
+            # Object classes with the code, and the Worker can still go back to $previous unless a class was added.
+            if [ -n "$CHANGES" ]; then echo "This deploy changes $CHANGES, so it runs wrangler deploy."; else echo "breakaway $VERSION's manual step is wrangler deploy, so this deploy runs it."; fi
+            wrangler deploy --var "BREAKAWAY_VERSION:$VERSION" --message "breakaway $VERSION"
           else
             export WRANGLER_OUTPUT_FILE_PATH="$RUNNER_TEMP/wrangler-output.ndjson"
             wrangler versions upload --var "BREAKAWAY_VERSION:$VERSION" --message "breakaway $VERSION"
@@ -157,22 +197,33 @@ jobs:
             wrangler versions deploy "$uploaded@100%" --yes
           fi
           # Health check: the new release answers /api/ping. Without it, go back to the previous version.
-          address=${ADDRESS:-$(node -p "require('./breakaway.config.json').url || ''")}
+          url=$(node -p "require('./breakaway.config.json').url || ''")
+          address=${ADDRESS:-$url}
+          tries=12
+          if [ "$ADDRESS_CHANGED" = true ]; then
+            # A new address: check it, not the old one, and give its custom domain five minutes for its certificate.
+            address=${url:-$ADDRESS}
+            tries=60
+          fi
           if [ -z "$address" ]; then
             echo "::warning title=Not checked::There is no address to check. Set the repository variable BREAKAWAY_URL to where the board answers (a workers.dev address, say) and the next deploy checks it."
             exit 0
           fi
-          for attempt in $(seq 1 12); do
+          for attempt in $(seq 1 "$tries"); do
             if curl -fsS --max-time 15 "$address/api/ping" | node "$CLI" install healthy --version "$VERSION"; then
               echo "breakaway $VERSION is running at $address."
               exit 0
             fi
             sleep 5
           done
-          if [ -n "$previous" ]; then
-            wrangler rollback "$previous" --message "breakaway $VERSION failed its check" --yes
-            echo "::error title=Rolled back::breakaway $VERSION didn't answer $address/api/ping within a minute, so the Worker went back to its previous version. Nothing is lost; read the Worker's logs on Cloudflare."
+          waited=$([ "$tries" -gt 12 ] && echo "five minutes" || echo "a minute")
+          if [ -z "$previous" ]; then
+            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping within $waited, and this was the first deploy, so there is no version to go back to. Read the Worker's logs on Cloudflare."
+          elif wrangler rollback "$previous" --message "breakaway $VERSION failed its check" --yes; then
+            kept=""
+            if [ "$DEPLOY" = wrangler ]; then kept=" Rolling back brings back the code only: what wrangler deploy changed${CHANGES:+ ($CHANGES)} stays as it left it."; fi
+            echo "::error title=Rolled back::breakaway $VERSION didn't answer $address/api/ping within $waited, so the Worker went back to its previous version.$kept Nothing is lost; read the Worker's logs on Cloudflare."
           else
-            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping within a minute, and this was the first deploy, so there is no version to go back to. Read the Worker's logs on Cloudflare."
+            echo "::error title=Couldn't roll back::breakaway $VERSION didn't answer $address/api/ping within $waited, and the Worker couldn't go back to its previous version: Cloudflare doesn't roll back across a new Durable Object class. The board's data is still in its Durable Object. Read the Worker's logs on Cloudflare, then deploy a fix."
           fi
           exit 1

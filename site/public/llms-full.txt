@@ -98,7 +98,7 @@ Then open `breakaway.config.json` and add one line, so the board can look for up
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 
-1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`.
+1. Make an environment named `production` (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a Cloudflare API token, and `CLOUDFLARE_ACCOUNT_ID`. Workers Editor on the board’s Worker deploys each release; a token that can also run `wrangler deploy` lets Deploy apply a new address, cron triggers, or a new Durable Object class too. The install repository’s README says which token does what.
 2. Turn on Settings, Actions, General, “Allow GitHub Actions to create and approve pull requests”. The update workflow needs it.
 
 **Check:** nothing on Connections yet, because there’s no board. The files are in the repository, and the environment has its secrets.
@@ -119,7 +119,7 @@ It writes `tasks.env` in `~/.config/breakaway` and says which value goes where. 
 
 On GitHub, open the install repository’s Actions tab, pick **Deploy**, and run it with **dry-run** on. It checks the release and builds it, and stops before it touches the Worker. When it passes, run it again with dry-run off. It deploys, checks that the Worker answers `/api/ping`, and goes back to the previous version if it doesn’t.
 
-It stops with a message when something needs your hands: a release that has manual steps, or a change in `breakaway.config.json` the workflow can’t deploy (the address, cron triggers, or Durable Object classes). Do what the message says, then run Deploy again.
+It stops with a message when something needs your hands: a release that has manual steps, or a change a version upload can’t carry (the address, cron triggers, or a new Durable Object class) when its token can’t run `wrangler deploy` or the repository variable `BREAKAWAY_DEPLOY_CHANGES` isn’t `true`. Do what the message says, then run Deploy again. It never changes the Worker’s name or its Durable Object, since either opens an empty board.
 
 **Check:** the run is green. Then, once you’re signed in (next step), the Cloudflare rows read **Working**: **Worker**, **Secrets Store bindings**, **Cron (every 5 minutes)** (it reads “no run recorded yet” until the first run, within 5 minutes), and **TaskChampion sync server**.
 
@@ -1025,11 +1025,11 @@ Deploy -> checks -> wrangler deploy -> /api/ping -> keep it, or go back
 - **The CLI** is on npm as [`breakaway`](https://www.npmjs.com/package/breakaway), staged on npm by the same workflow, with provenance, and live once breakaway’s owner approves it there with 2FA. npm’s trusted publishing can’t yet read the OIDC identity of a repository as new as breakaway’s ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so until it can, a token that can stage but never publish by itself stands in, in an environment only `main` can use. Every pre-release goes out under the `next` dist-tag, and a stable release as `latest`.
 - **The version** is what `GET /api/ping` and `GET /api/health` report as `release`.
 
-A **manifest** records the version, channel, commit, whether the release needs steps by hand (`manual`), and the lowest version it updates from (`updatesFrom`).
+A **manifest** records the version, channel, commit, whether the release needs steps by hand (`manual`, and `wranglerDeploy` when its only step is `wrangler deploy`), and the lowest version it updates from (`updatesFrom`).
 
 ### Major releases and manual steps
 
-A **major release** is one where an install has to do something by hand: a config or binding change, a Durable Object class or migration, a route or cron. Its notes have a **Manual steps** section and its manifest says `manual: true`, which an install’s Deploy stops on. Data the Durable Object stores changes forward-only and additively, so an install can always go back one release.
+A **major release** is one where an install has to do something by hand: a config or binding change, a Durable Object class or migration, a route or cron. Its notes have a **Manual steps** section and its manifest says `manual: true`, which an install’s Deploy stops on. When the only step is `wrangler deploy` (a new Durable Object class, a cron, a route), the manifest also says `wranglerDeploy: true`, and an install whose Deploy may run `wrangler deploy` does it itself. Data the Durable Object stores changes forward-only and additively, so an install can always go back one release, except across a new Durable Object class, which Cloudflare doesn’t roll back.
 
 ## Choosing a channel
 
@@ -1057,10 +1057,10 @@ Keep it private. Both workflows run breakaway’s CLI from the release’s own s
 ### What Deploy does
 
 1. Picks the release: `breakaway.json`’s pinned version on `stable`, or the latest pre-release on `main`. It reads the update feed named by the repository variable `BREAKAWAY_FEED`, and asks GitHub when the feed has nothing. Then it downloads the release’s bundle and checks it against `SHA256SUMS`.
-2. Stops, deploying nothing, if the release needs manual steps or you changed something in `breakaway.config.json` the workflow can’t deploy: the address, cron triggers, or Durable Object classes.
+2. Compares the Worker as it runs (the config the running release makes) with what this deploy makes. It stops, deploying nothing, if the release needs manual steps, or if the deploy changes what a version upload can’t carry (the address, cron triggers, or a new Durable Object class) and the install hasn’t let it run `wrangler deploy`: that takes a token that can and the repository variable `BREAKAWAY_DEPLOY_CHANGES` set to `true`. It always stops on a new Worker name, Durable Object (`store`), or jurisdiction, since each opens an empty board.
 3. Builds the Worker’s config (`install config`). A **dry-run** run stops here, after `wrangler deploy --dry-run`.
-4. Uploads a new version and deploys it (the very first run creates the Worker and its Durable Object), so every later deploy can be rolled back.
-5. Asks the Worker for `/api/ping` for up to a minute and checks it reports the new release. If it doesn’t, it goes back to the previous version and the run fails.
+4. Uploads a new version and deploys it (the very first run creates the Worker and its Durable Object), so every later deploy can be rolled back. A change a version can’t carry goes out with `wrangler deploy` instead, which can be rolled back too, apart from a new Durable Object class; going back never undoes the address or cron triggers.
+5. Asks the Worker for `/api/ping` for up to a minute (five, at a new address, while its certificate is issued) and checks it reports the new release. If it doesn’t, it goes back to the previous version and the run fails.
 
 Deploy runs on every push to `main` of the install repository, so editing `breakaway.config.json` and merging it is how you change the install. Set the repository variable `BREAKAWAY_URL` so the post-deploy check knows where to ask.
 

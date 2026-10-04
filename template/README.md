@@ -17,7 +17,7 @@ The board answers at {{address}}.
 ## Set it up once
 
 1. **Push this to a private GitHub repository.**
-2. **Make a GitHub environment named `production`** (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a token that can edit Workers on your account, and `CLOUDFLARE_ACCOUNT_ID`.
+2. **Make a GitHub environment named `production`** (Settings, Environments) with two secrets: `CLOUDFLARE_API_TOKEN`, a Cloudflare API token ([which token does what](#which-token-does-what)), and `CLOUDFLARE_ACCOUNT_ID`.
 3. **Allow the update workflow to open pull requests:** Settings, Actions, General, "Allow GitHub Actions to create and approve pull requests".
 4. **Set the board's secrets** (`npx breakaway init-secrets`, then the Worker's secrets or your Secrets Store: see `.dev.vars.example`).
 5. **Run the Deploy workflow** from the Actions tab. Choose "dry-run" first to check everything up to the Worker without changing it.
@@ -32,7 +32,25 @@ Both workflows run breakaway's CLI from the release's own source on GitHub, with
 
 If Deploy stops with "Couldn't list the Worker's deployments", it changed nothing: only a Worker that doesn't exist yet counts as a first deploy. Check that `CLOUDFLARE_ACCOUNT_ID` is your account's ID (32 hex characters) and that `CLOUDFLARE_API_TOKEN` can read and edit Workers on it, then run Deploy again.
 
-A release can need steps by hand (a change to the Durable Object classes, say). The workflow stops with those steps in its message and deploys nothing; do them, then deploy with `wrangler`. The same stop happens when you change something in `breakaway.config.json` the workflow can't deploy: the address, cron triggers, or Durable Object classes. Apply that change yourself (`npx breakaway install config` makes the Worker config), then run Deploy again.
+A release can need steps by hand (a Durable Object class deleted or renamed, say). The workflow stops with those steps in its message and deploys nothing; do them, then deploy with `wrangler`. A release whose only step is `wrangler deploy` says so in its notes, and Deploy runs it itself when it may ([below](#which-token-does-what)). The same goes for a new address in `breakaway.config.json`, which a version upload can't carry: without that, apply it yourself (`npx breakaway install config` makes the Worker config), then run Deploy again.
+
+## Which token does what
+
+`CLOUDFLARE_API_TOKEN` decides what Deploy can do by itself. Most deploys only upload a new version of the Worker. A deploy that changes the address, the cron triggers, or the Durable Object classes needs `wrangler deploy`, and so a token that can run it:
+
+| Token | What Deploy does |
+| --- | --- |
+| **Workers Editor on this Worker** | Uploads each release, checks it, and goes back if it fails. It stops on an address, cron, or Durable Object class change, and you apply that yourself. |
+| **Workers Editor on every Worker**, and **Zone, Workers Routes, Write** on the board's zone | The same, and with the repository variable `BREAKAWAY_DEPLOY_CHANGES` set to `true`, it runs `wrangler deploy` for those changes too. Custom domains don't support per-Worker roles yet, so Editor has to cover every Worker. |
+
+Either token also needs **Account, Secrets Store, Edit** when the board has a Secrets Store: every deploy binds its secrets. The very first deploy makes the Worker, which takes **Workers Admin**; after that, Editor is enough.
+
+Whatever the token, Deploy never changes the Worker's name, its Durable Object (`store`), or its jurisdiction: each opens an empty board, so it stops instead.
+
+With `wrangler deploy`:
+
+- **A new address replaces the old one.** The Worker answers only on the addresses in its config, so the old one stops answering, and in a workflow `wrangler deploy` takes over the new hostname's DNS record, or another Worker's domain on it, without asking. Moving to another zone needs Workers Routes, Write on both zones. The check after the deploy asks the new address, for up to five minutes while its certificate is issued. If you set `BREAKAWAY_URL`, change it with the address.
+- **Going back brings back the code only.** The address and cron triggers stay as `wrangler deploy` left them, and Cloudflare doesn't roll back across a new Durable Object class, so after one the only way is forward.
 
 ## Change the install
 
