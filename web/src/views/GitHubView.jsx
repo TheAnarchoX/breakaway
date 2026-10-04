@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { signal } from '@preact/signals';
 import {
   CircleCheck,
   CircleX,
@@ -12,6 +13,7 @@ import {
   Tag,
 } from 'lucide-preact';
 import { ago, plural, shortVersion } from '../lib/model.js';
+import { checksOnMain, checksSummary, githubTabs, pickTab, runState } from '../lib/github-scope.js';
 import { api } from '../lib/api.js';
 import {
   actions,
@@ -32,11 +34,30 @@ import {
 } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
 import { PrRow } from '../components/GitHub.jsx';
-import { RepoChip } from '../components/ui.jsx';
+import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
-import { ReleaseFlow } from '../components/Release.jsx';
+import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
+
+// The tab under the dashboard, remembered in this browser (WEB-17).
+const TAB_KEY = 'tasks.githubTab';
+const savedTab = (() => {
+  try {
+    return localStorage.getItem(TAB_KEY);
+  } catch {
+    return null;
+  }
+})();
+const tabChoice = signal(savedTab);
+function chooseTab(id) {
+  tabChoice.value = id;
+  try {
+    localStorage.setItem(TAB_KEY, id);
+  } catch {
+    /* storage blocked: the tab lasts until reload */
+  }
+}
 
 /**
  * Step 1: post the App's manifest to GitHub. Step 2 (after GitHub sends you back): the command.
@@ -127,11 +148,6 @@ const RUN_ICON = {
   startup_failure: CircleX,
 };
 
-function runState(r) {
-  if (r.status !== 'completed') return 'pending';
-  return r.conclusion ?? 'neutral';
-}
-
 function duration(r) {
   if (r.status !== 'completed' || !r.started) return '';
   const secs = Math.max(0, Math.round((Date.parse(r.updated) - Date.parse(r.started)) / 1000));
@@ -147,10 +163,7 @@ function Runs({ runs }) {
   const sorted = [...runs].sort((a, b) => order(a) - order(b) || String(b.created).localeCompare(String(a.created)));
   const shown = all ? sorted : sorted.slice(0, 12);
   return (
-    <section class="gh-section" aria-labelledby="gh-runs">
-      <h2 id="gh-runs">
-        CI runs <span class="count">{runs.length}</span>
-      </h2>
+    <>
       {runs.length ? (
         <ul class="gh-runs">
           {shown.map((r) => {
@@ -190,7 +203,7 @@ function Runs({ runs }) {
           </button>
         </p>
       )}
-    </section>
+    </>
   );
 }
 
@@ -200,10 +213,7 @@ function Runs({ runs }) {
  */
 function Deploys({ deploys = [], releases = [], tags = [] }) {
   return (
-    <section class="gh-section" aria-labelledby="gh-deploys">
-      <h2 id="gh-deploys">
-        Deploys <span class="count">{deploys.length}</span>
-      </h2>
+    <>
       {deploys.length ? (
         <ul class="gh-runs">
           {deploys.map((d) => {
@@ -257,17 +267,14 @@ function Deploys({ deploys = [], releases = [], tags = [] }) {
             : tags.map((t) => <span key={t.name}>{t.name}</span>)}
         </p>
       )}
-    </section>
+    </>
   );
 }
 
 /** @param {Record<string, any>} props */
-function Commits({ commits, branch }) {
+function Commits({ commits }) {
   return (
-    <section class="gh-section" aria-labelledby="gh-commits">
-      <h2 id="gh-commits">
-        {branch ? `Commits on ${branch}` : 'Commits on each default branch'} <span class="count">{commits.length}</span>
-      </h2>
+    <>
       {commits.length ? (
         <ul class="gh-commits">
           {commits.map((c) => (
@@ -297,7 +304,7 @@ function Commits({ commits, branch }) {
       ) : (
         <p class="muted small">No commits yet.</p>
       )}
-    </section>
+    </>
   );
 }
 
@@ -361,8 +368,7 @@ function ClosedPrs({ prs }) {
   const [all, setAll] = useState(false);
   const shown = all ? prs : prs.slice(0, 8);
   return (
-    <section class="gh-section" aria-labelledby="gh-closed">
-      <h2 id="gh-closed">Recently merged and closed</h2>
+    <>
       {prs.length ? (
         <ul class="gh-prs">
           {shown.map((p) => (
@@ -382,6 +388,131 @@ function ClosedPrs({ prs }) {
             Show all {prs.length}
           </button>
         </p>
+      )}
+    </>
+  );
+}
+
+/** A staging or production card in a line: its state, version, commit, and when it went live. */
+function LiveLine({ name, card, commitUrl }) {
+  const s = STATES[card.state];
+  const b = card.build;
+  return (
+    <li class={`gh-live flow-${s.tone}`}>
+      <span class="gh-live-name">{name}</span>
+      <span class="flow-state">
+        <s.Icon size={15} aria-hidden="true" class={card.state === 'deploying' ? 'spin' : ''} />
+        {s.label}
+        {card.state === 'deploying' && card.step ? `: ${card.step}` : ''}
+      </span>
+      {b && (
+        <span class="gh-run-meta">
+          <code>{shortVersion(b)}</code>
+          {commitUrl ? (
+            <a class="gh-sha" href={commitUrl} {...ext}>
+              {b.sha7}
+            </a>
+          ) : (
+            <span class="gh-sha">{b.sha7}</span>
+          )}
+          <span class="meta" title={b.at}>
+            {ago(b.at)}
+          </span>
+        </span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * What's live now: each pipeline's staging and production, from the release flow. Promote and Roll
+ * back stay in the Releases tab; the button goes there.
+ * @param {Record<string, any>} props
+ */
+function LiveNow({ flows, several, onReleases }) {
+  return (
+    <section class="gh-section gh-tile" aria-labelledby="gh-live">
+      <h2 id="gh-live">Live now</h2>
+      <p class="visually-hidden" aria-live="polite">
+        {flows
+          .map(
+            (r) =>
+              `${several ? `${r.name}: ` : ''}${summary('Staging', r.flow.staging)}. ${summary('Production', r.flow.production)}.`,
+          )
+          .join(' ')}
+      </p>
+      {flows.map((r) => (
+        <div key={r.slug} class="gh-live-repo">
+          {several && <RepoChip slug={r.slug} />}
+          <ul class="gh-lives">
+            <LiveLine name="Staging" card={r.flow.staging} commitUrl={r.flow.staging.commitUrl} />
+            <LiveLine name="Production" card={r.flow.production} commitUrl={r.flow.production.commitUrl} />
+          </ul>
+        </div>
+      ))}
+      <p>
+        <button type="button" class="btn btn-outline btn-sm" onClick={onReleases}>
+          Promote or roll back
+        </button>
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Checks on main: each workflow's latest run on the default branch, failures first.
+ * @param {Record<string, any>} props
+ */
+function ChecksOnMain({ view }) {
+  const checks = checksOnMain(view);
+  const sum = checksSummary(checks);
+  const branch = view.branch ?? (view.all ? null : 'main');
+  const words = [
+    sum.failing && `${sum.failing} failing`,
+    sum.running && `${sum.running} running`,
+    sum.passing && `${sum.passing} passing`,
+  ].filter(Boolean);
+  return (
+    <section class="gh-section gh-tile" aria-labelledby="gh-main-checks">
+      <h2 id="gh-main-checks">
+        {branch ? `Checks on ${branch}` : 'Checks on each default branch'}
+        {words.length > 0 && (
+          <span
+            class={`gh-checks ${sum.failing ? 'checks-failure' : sum.running ? 'checks-pending' : 'checks-success'}`}
+          >
+            {sum.failing ? (
+              <CircleX size={15} aria-hidden="true" />
+            ) : sum.running ? null : (
+              <CircleCheck size={15} aria-hidden="true" />
+            )}
+            {words.join(', ')}
+          </span>
+        )}
+      </h2>
+      {checks.length ? (
+        <ul class="gh-runs gh-runs-main">
+          {checks.map((r) => {
+            const state = runState(r);
+            const Icon = state === 'pending' ? LoaderCircle : (RUN_ICON[state] ?? CircleDashed);
+            return (
+              <li key={`${r.repo}-${r.id}`} class={`gh-run run-${state}`}>
+                <Icon size={17} aria-hidden="true" class="run-icon" />
+                <a class="gh-run-title" href={r.url} {...ext}>
+                  <span class="gh-run-name">{r.name}</span>
+                  <span class="visually-hidden">: {state === 'pending' ? 'running' : state}. </span>
+                </a>
+                <span class="gh-run-meta">
+                  {r.repo && view.all && <RepoChip slug={r.repo} />}
+                  <span class="meta" title={r.created}>
+                    {ago(r.created)}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p class="muted small">No runs on {branch ?? 'a default branch'} yet.</p>
       )}
     </section>
   );
@@ -422,6 +553,8 @@ export function GitHubView() {
   // Every repository at once: the names, and the App to set up is the default repository's.
   const where = d?.repo ?? (d?.repos ?? []).map((r) => r.name).join(', ');
   const setupRepo = d?.repo ?? d?.repos?.find((r) => r.isDefault)?.repo;
+  const tabs = d?.connected ? githubTabs(d) : [];
+  const tab = pickTab(tabs, tabChoice.value);
 
   return (
     <div class="github-view">
@@ -481,32 +614,55 @@ export function GitHubView() {
             </div>
           </div>
         ))}
-      {d?.connected &&
-        d.flows.map((r) => <ReleaseFlow key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />)}
       {d?.connected && (
-        <div class="gh-grid">
-          <div class="gh-col">
+        <div class="gh-dash">
+          <div class="gh-dash-tiles">
+            {d.flows.length > 0 && (
+              <LiveNow
+                flows={d.flows}
+                several={d.all && multiRepo.value}
+                onReleases={() => {
+                  chooseTab('releases');
+                  requestAnimationFrame(() => document.getElementById('gh-tab-releases')?.focus());
+                }}
+              />
+            )}
+            <ChecksOnMain view={d} />
             <Alerts alerts={d.alerts} />
-            <section class="gh-section" aria-labelledby="gh-open">
-              <h2 id="gh-open">
-                Open pull requests <span class="count">{d.open.length}</span>
-              </h2>
-              {d.open.length ? (
-                <ul class="gh-prs">
-                  {d.open.map((p) => (
-                    <PrRow key={`${p.repo}#${p.number}`} pr={p} note={`updated ${ago(p.updated ?? p.created)}`} />
-                  ))}
-                </ul>
-              ) : (
-                <p class="muted small">None open.</p>
-              )}
-            </section>
-            <ClosedPrs prs={d.closed} />
           </div>
-          <div class="gh-col">
-            {d.pipeline && <Deploys deploys={d.deploys} releases={d.releases} tags={d.tags} />}
-            <Runs runs={d.runs} />
-            <Commits commits={d.commits} branch={d.branch ?? (d.all ? null : 'main')} />
+          <section class="gh-section gh-dash-prs" aria-labelledby="gh-open">
+            <h2 id="gh-open">
+              Open pull requests <span class="count">{d.open.length}</span>
+            </h2>
+            {d.open.length ? (
+              <ul class="gh-prs">
+                {d.open.map((p) => (
+                  <PrRow key={`${p.repo}#${p.number}`} pr={p} note={`updated ${ago(p.updated ?? p.created)}`} />
+                ))}
+              </ul>
+            ) : (
+              <p class="muted small">None open.</p>
+            )}
+          </section>
+        </div>
+      )}
+      {d?.connected && tab && (
+        <div class="gh-tabs">
+          <Tabs label="GitHub lists" tabs={tabs} value={tab} onChange={chooseTab} idBase="gh" />
+          <div
+            id={`gh-panel-${tab}`}
+            role="tabpanel"
+            aria-labelledby={`gh-tab-${tab}`}
+            class={tab === 'releases' ? 'gh-panel gh-panel-flows' : 'gh-section gh-panel'}
+          >
+            {tab === 'releases' &&
+              d.flows.map((r) => (
+                <ReleaseFlow key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
+              ))}
+            {tab === 'deploys' && <Deploys deploys={d.deploys} releases={d.releases} tags={d.tags} />}
+            {tab === 'completed' && <ClosedPrs prs={d.closed} />}
+            {tab === 'runs' && <Runs runs={d.runs} />}
+            {tab === 'commits' && <Commits commits={d.commits} />}
           </div>
         </div>
       )}

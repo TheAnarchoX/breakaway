@@ -342,3 +342,40 @@ export function useAutosize(ref, value) {
     };
   }, [value]);
 }
+
+/**
+ * Tabs over panels the caller renders: a tablist whose tabs move with the arrow keys, Home, and End,
+ * and select as they get focus. `tabs` is [{ id, label, count }]; the panel is `${idBase}-panel-${id}`.
+ * @param {Record<string, any>} props
+ */
+export function Tabs({ label, tabs, value, onChange, idBase }) {
+  const list = useRef(null);
+  const onKeyDown = (e) => {
+    const i = tabs.findIndex((t) => t.id === value);
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = tabs[(to + tabs.length) % tabs.length];
+    onChange(next.id);
+    requestAnimationFrame(() => list.current?.querySelector(`#${idBase}-tab-${next.id}`)?.focus());
+  };
+  return (
+    <div ref={list} class="tabs" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          id={`${idBase}-tab-${t.id}`}
+          aria-selected={t.id === value}
+          aria-controls={`${idBase}-panel-${t.id}`}
+          tabIndex={t.id === value ? 0 : -1}
+          onClick={() => onChange(t.id)}
+        >
+          {t.label}
+          {t.count != null && <span class="seg-count">{t.count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
