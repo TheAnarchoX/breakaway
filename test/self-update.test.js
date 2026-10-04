@@ -191,7 +191,7 @@ function mock() {
   });
 }
 
-const stub = () => env.STORE.get(env.STORE.idFromName('samewave'));
+const stub = () => env.STORE.get(env.STORE.idFromName('acme'));
 /** Runs `fn` as a board with no install repository, running `running`, holding the token. */
 const asBoard = (fn, { token = TOKEN, running = NOW_RUNNING, install = {} } = {}) =>
   runInDurableObject(stub(), async (instance) => {
