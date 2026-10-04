@@ -26,7 +26,7 @@ The board starts Claude Code cloud sessions on tasks and shows what each one is 
 - **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon `now` first, then by priority.
 - **By itself when ready.** Tick **Start by itself when ready** on a task (`modify <ID> --autostart yes`). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.
 - **For a Dependabot pull request.** **Safe to merge?** on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.
-- **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings, you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
+- **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings (on the Agents view and on Settings), you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
 - **From a prompt.** **New agent** in the top bar, or `agents new "…"`: the agent makes its own task ([below](#from-a-prompt-new-agent)).
 - **To review a pull request.** **Review with an agent** on a pull request’s page ([GitHub](/docs/github/#review-with-an-agent)).
 - **For a whole feature.** **Chase** on a feature, or `chase <slug>`: the board starts an agent on every ready task in the feature and on what blocks it, until they’re all done or in review ([Features, chase, and the peloton](/docs/features/#chase)).
@@ -98,7 +98,7 @@ Claude has no API that says which plan an account is on, so you pick it at the t
 | Max 5x | 6, up to 12 | 30 | 25, up to 250 | 6, up to 100 |
 | Max 20x | 10, up to 24 | 60 | 50, up to 500 | 10, up to 200 |
 
-Each repository’s routine is held to Claude’s 30 starts an hour, and a repository can be capped below the board’s limits (`repos modify <slug> --agents-max <n> --agents-hourly <n>`) so a busy one can’t take every slot.
+Each repository’s routine is held to Claude’s 30 starts an hour, and a repository can be capped below the board’s limits (on its page in Settings, the Agents view’s Repositories section, or `repos modify <slug> --agents-max <n> --agents-hourly <n>`) so a busy one can’t take every slot.
 
 ## Connecting the routine
 

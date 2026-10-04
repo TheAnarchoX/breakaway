@@ -134,7 +134,7 @@ See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/).
 | `repos add <slug> <owner/name> --area <project:PREFIX>…` | Registers one. Also `--name`, `--branch`, `--prompt <path>`. |
 | `repos init <slug>` | Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, the session hooks, a starter `AGENTS.md`, the `tasks` skill, and Taskwarrior files. Pushes them to an empty repository or opens a pull request. Never overwrites. `--dry-run` lists what it would add; `--update` refreshes the copied files. |
 | `repos setup <slug\|owner/name>` | The Add a repository wizard’s steps for it. Read only. |
-| `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. |
+| `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--name`, `--github`, `--branch`, `--specs`, `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. A repository’s page in the web board’s [Settings](https://leavethepack.dev/docs/web-board/#settings) changes the same. |
 | `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
 | `routines add\|modify\|trigger\|revoke\|pause\|resume\|cap` | Manage routines. See [Routines](https://leavethepack.dev/docs/routines/). |
 
