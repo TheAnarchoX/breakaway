@@ -5,11 +5,12 @@
  *   node scripts/release/plan.mjs stable <prerelease-tag>       the stable version a pre-release becomes
  *   node scripts/release/plan.mjs manifest <channel> <version> <commit> [builtAs] [--bundle <file>]    writes manifest.json to stdout
  *   node scripts/release/plan.mjs manual                         the Manual steps section for the notes, if any
- * Reads package.json and release.json from the working directory.
+ * Reads package.json, release.json, and wrangler.jsonc from the working directory.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { manifestOf, manualSection, nextPrerelease, stableOf } from './lib.js';
+import { parseJsonc } from '../../src/install.js';
+import { manifestOf, manualSection, shapeOf, nextPrerelease, stableOf } from './lib.js';
 
 const [command, ...args] = process.argv.slice(2);
 const json = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -29,7 +30,7 @@ try {
     const [channel, version, commit, builtAs] = args;
     const bundleSha256 = bundle ? createHash('sha256').update(readFileSync(bundle)).digest('hex') : undefined;
     process.stdout.write(
-      `${JSON.stringify(manifestOf({ version, channel: /** @type {'main' | 'stable'} */ (channel), commit, builtAs, bundleSha256, config: json('release.json'), created: new Date().toISOString() }), null, 2)}\n`,
+      `${JSON.stringify(manifestOf({ version, channel: /** @type {'main' | 'stable'} */ (channel), commit, builtAs, bundleSha256, shape: shapeOf(parseJsonc(readFileSync('wrangler.jsonc', 'utf8'))), config: json('release.json'), created: new Date().toISOString() }), null, 2)}\n`,
     );
   } else if (command === 'manual') {
     process.stdout.write(manualSection(json('release.json')));
