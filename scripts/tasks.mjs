@@ -269,6 +269,12 @@ Install repository     (no board needed: the files and steps that deploy a board
                          [--channel stable|main] [--version <release>]
   install resolve|check|config|previous|healthy|update   the steps those workflows run (docs in the install's README)
 
+Deploy and release flows   (no board needed: run in the checkout of the repository that deploys or publishes)
+  pipeline init          render .github/breakaway-pipeline.json into Deploy, Promote, and Roll back (for its workers),
+                         .github/deploy-paths.json, and Release (for its npm package); without the config it prints an
+                         example. Never overwrites a file  [--update] replaces what it rendered before  [--dry-run]
+  pipeline check         say whether the config is sound and the workflows are what it renders now (exits 1 if not)
+
 Repositories
   The checkout's repository is the one its origin remote names (git remote get-url origin), matched
   against repos. --repo <slug> or BREAKAWAY_REPO=<slug> picks another, --all shows every repository
@@ -2131,6 +2137,9 @@ if (opts.help || command === 'help') {
 } else if (command === 'install') {
   // An install repository's own steps (BRK-9): they need no board, so they run before the board's address is checked.
   await (await import('./install/cli.js')).run(args, opts);
+} else if (command === 'pipeline') {
+  // A repository's deploy and release workflows (BRK-90): rendered from its own config, so they need no board either.
+  process.exitCode = (await import('./tasks/pipeline.js')).run(args, opts);
 } else if (!commands[command]) {
   fail(`no command "${command}". npx breakaway help lists them.`);
 } else if (!BASE && command !== 'init-secrets') {

@@ -264,9 +264,13 @@ describe('repos init copies the release helpers (BRK-45)', () => {
     expect(files).toEqual(
       [
         'scripts/check-migrations.mjs',
+        'scripts/deploy-plan.mjs',
+        'scripts/lib/deploy-plan.js',
         'scripts/lib/deployments.js',
         'scripts/lib/migration-check.js',
+        'scripts/lib/package-release.js',
         'scripts/lib/promote.js',
+        'scripts/package-release.mjs',
         'scripts/lib/release-artifact.js',
         'scripts/lib/release-notes.js',
         'scripts/promote-check.mjs',

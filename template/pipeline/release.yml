@@ -1,0 +1,212 @@
+# {{header}}
+#
+# Release: the npm package {{packageName}}. Every merge to {{branchName}} that passes its checks stages a pre-release,
+# X.Y.Z-main.N, on next; the owner releases one as the stable X.Y.Z, on latest, from the same commit. Nothing is
+# published by itself: each version waits, staged on npm, until the owner approves it with 2FA (npm stage approve, or
+# Staged Packages on npmjs.com). The version comes from {{packageDirectory}}/package.json. Keep this file's name: npm's
+# trusted publisher names it, with the npm environment. Agents never run this workflow.
+name: Release
+
+on:
+  workflow_run:
+    workflows: {{checks}}
+    types: [completed]
+    branches: [{{branch}}]
+  # The owner releases a pre-release as stable: the board's Release button, or Actions, Run workflow.
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: The pre-release to release as stable, like {{prefixName}}1.4.0-main.5
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PACKAGE: {{package}}
+  DIRECTORY: {{directory}}
+  ACCESS: {{access}}
+  # The tags that count the versions: <prefix>X.Y.Z-main.N for each pre-release, <prefix>X.Y.Z for each stable.
+  PREFIX: {{prefix}}
+  CHECKS: {{checksEnv}}
+
+jobs:
+  prerelease:
+    name: pre-release
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The npm environment, which only {{branchName}} may use, is where npm's trusted publisher points, and holds
+    # NPM_TOKEN until that applies.
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOYS_PAUSED: ${{ vars.DEPLOYS_PAUSED }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Check it should release
+        id: plan
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOYS_PAUSED" = true ]; then
+            echo "::notice title=Paused::Releases are paused (DEPLOYS_PAUSED is true), so ${SHA:0:7} staged nothing."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/deploy-plan.mjs checks --sha "$SHA" --checks "$CHECKS" >> "$GITHUB_OUTPUT"
+
+      - name: Pick the version
+        id: version
+        if: steps.plan.outputs.ready == 'true'
+        run: node scripts/package-release.mjs prerelease --dir "$DIRECTORY" --prefix "$PREFIX" --sha "$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Install and build
+        if: steps.plan.outputs.ready == 'true' && steps.version.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if grep -q '"packageManager"' package.json 2>/dev/null; then corepack enable; fi
+          {{@install}}
+          {{@build}}
+          node -e "const f=require('path').join(process.env.DIRECTORY,'package.json'),p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.VERSION;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+
+      # Staged, never published: it goes live on next once the owner approves it with 2FA. npm tries trusted publishing
+      # first; NPM_TOKEN stands in until it applies, a token that can't bypass 2FA, so it never publishes by itself.
+      - name: Stage it on npm
+        if: steps.plan.outputs.ready == 'true' && steps.version.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: next
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # npm refuses provenance from a private repository.
+          PROVENANCE: ${{ github.event.repository.private && 'no' || 'yes' }}
+        run: |
+          set -euo pipefail
+          cd "$DIRECTORY"
+          npm install -g npm@^11.15.0
+          provenance=""
+          if [ "$PROVENANCE" = yes ]; then provenance=--provenance; fi
+          # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show
+          # npm's usual lines, and on a failure its oidc lines: never the whole verbose log.
+          if npm stage publish $provenance --access "$ACCESS" --tag "$DIST_TAG" --loglevel verbose > "$RUNNER_TEMP/npm.log" 2>&1; then
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+            echo "::notice title=Staged on npm::$PACKAGE@$VERSION goes live on $DIST_TAG once the owner approves it with 2FA: npm stage approve <id>, or Staged Packages on npmjs.com."
+          else
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+            if grep -qiE 'previously published|cannot publish over' "$RUNNER_TEMP/npm.log"; then
+              echo "::error title=Already on npm::$PACKAGE@$VERSION is already on npm, and npm takes a version once. Nothing was staged."
+              exit 1
+            fi
+            echo "npm's trusted publishing (OIDC):"
+            oidc=$(grep -i 'oidc' "$RUNNER_TEMP/npm.log" | grep -v 'eyJ' | cut -c1-300 || true)
+            echo "${oidc:-npm logged nothing about it.}"
+            echo "::error title=npm refused to stage it::npm's trusted publisher for $PACKAGE must name exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, environment npm. Until it applies, the npm environment needs NPM_TOKEN: a granular token with read and write access to $PACKAGE that doesn't bypass 2FA."
+            exit 1
+          fi
+
+      - name: Tag it
+        if: steps.plan.outputs.ready == 'true' && steps.version.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$SHA" > /dev/null
+
+  stable:
+    name: stable
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/{{branchName}}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      DEPLOYS_PAUSED: ${{ vars.DEPLOYS_PAUSED }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Pick the stable
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOYS_PAUSED" = true ]; then
+            echo "::error title=Paused::Releases are paused (DEPLOYS_PAUSED is true). Release again when the pause is over."
+            exit 1
+          fi
+          node scripts/package-release.mjs stable "$PRERELEASE" --prefix "$PREFIX" >> "$GITHUB_OUTPUT"
+
+      # The pre-release's own commit, under the stable version: nothing from a later commit.
+      - name: Install and build the pre-release's commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$COMMIT"
+          if grep -q '"packageManager"' package.json 2>/dev/null; then corepack enable; fi
+          {{@install}}
+          {{@build}}
+          node -e "const f=require('path').join(process.env.DIRECTORY,'package.json'),p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.VERSION;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+
+      - name: Stage it on npm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: latest
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PROVENANCE: ${{ github.event.repository.private && 'no' || 'yes' }}
+        run: |
+          set -euo pipefail
+          cd "$DIRECTORY"
+          npm install -g npm@^11.15.0
+          provenance=""
+          if [ "$PROVENANCE" = yes ]; then provenance=--provenance; fi
+          if npm stage publish $provenance --access "$ACCESS" --tag "$DIST_TAG" --loglevel verbose > "$RUNNER_TEMP/npm.log" 2>&1; then
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+            echo "::notice title=Staged on npm::$PACKAGE@$VERSION goes live on $DIST_TAG once the owner approves it with 2FA: npm stage approve <id>, or Staged Packages on npmjs.com."
+          else
+            grep -vE '^npm (verbose|http|timing|silly)' "$RUNNER_TEMP/npm.log" || true
+            if grep -qiE 'previously published|cannot publish over' "$RUNNER_TEMP/npm.log"; then
+              echo "::error title=Already on npm::$PACKAGE@$VERSION is already on npm, and npm takes a version once. Nothing was staged."
+              exit 1
+            fi
+            echo "npm's trusted publishing (OIDC):"
+            oidc=$(grep -i 'oidc' "$RUNNER_TEMP/npm.log" | grep -v 'eyJ' | cut -c1-300 || true)
+            echo "${oidc:-npm logged nothing about it.}"
+            echo "::error title=npm refused to stage it::npm's trusted publisher for $PACKAGE must name exactly: GitHub Actions, user ${GITHUB_REPOSITORY%%/*}, repository ${GITHUB_REPOSITORY#*/}, workflow release.yml, environment npm. Until it applies, the npm environment needs NPM_TOKEN: a granular token with read and write access to $PACKAGE that doesn't bypass 2FA."
+            exit 1
+          fi
+
+      - name: Tag it
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$COMMIT" > /dev/null

@@ -1,0 +1,98 @@
+# {{header}}
+#
+# Roll back: puts production, the Worker {{productionName}}, back on a version it ran before. The board's Roll back
+# button starts it, or Actions, Run workflow (the GitHub mobile app too). It is never paused. Staging goes back by
+# deploying again. Agents never run this workflow.
+name: Roll back
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: The Worker to roll back (production's)
+        required: true
+        default: {{production}}
+        type: string
+      version:
+        description: The version to go back to (blank for the one before)
+        required: false
+        type: string
+      reason:
+        description: What broke
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  PRODUCTION: {{production}}
+  HEALTH_URL: {{healthProduction}}
+
+jobs:
+  rollback:
+    name: roll back
+    if: github.ref == 'refs/heads/{{branchName}}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TARGET: ${{ inputs.worker }}
+      VERSION: ${{ inputs.version }}
+      REASON: ${{ inputs.reason }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Roll back
+        run: |
+          set -euo pipefail
+          if [ "$TARGET" != "$PRODUCTION" ]; then
+            echo "::error title=Production only::Roll back runs on production, $PRODUCTION, not $TARGET. Staging goes back by deploying again."
+            exit 1
+          fi
+          if [ -n "$VERSION" ] && ! [[ "$VERSION" =~ ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$ ]]; then
+            echo "::error title=Not a version::$VERSION isn't a Worker version ID. Leave it blank to go back to the one before."
+            exit 1
+          fi
+          helpers="$GITHUB_WORKSPACE/scripts"
+          # Outside the checkout, so wrangler reads no config: the Worker is named, and only its versions change.
+          cd "$RUNNER_TEMP"
+          wrangler() { npx --yes wrangler@4 "$@" --name "$PRODUCTION"; }
+          wrangler rollback ${VERSION:+"$VERSION"} --message "$REASON" --yes
+          wrangler deployments list --json > deployments.json
+          now=$(node "$helpers/deploy-plan.mjs" current < deployments.json | sed 's/^version=//')
+          sha=$(node "$helpers/deploy-plan.mjs" sha-of --environment "$PRODUCTION" --version "$now" | sed 's/^sha=//')
+          if [ -z "$sha" ]; then
+            echo "::warning title=Commit unknown::No Deployment recorded version $now, so the rollback is recorded on $GITHUB_SHA."
+            sha=$GITHUB_SHA
+          fi
+          deployment=$(node "$helpers/record-deployment.mjs" --environment "$PRODUCTION" --sha "$sha" --task rollback --production --state in_progress --description "rolling back" --log-url "$RUN_URL")
+          state=success
+          if [ -n "$HEALTH_URL" ]; then
+            state=failure
+            for attempt in $(seq 1 18); do
+              if curl -fsS --max-time 10 -o /dev/null "$HEALTH_URL"; then state=success; break; fi
+              sleep 5
+            done
+          fi
+          node "$helpers/record-deployment.mjs" --deployment "$deployment" --state "$state" --note "rolled back: $REASON" --version "$now" --log-url "$RUN_URL" > /dev/null
+          if [ "$state" != success ]; then
+            echo "::error title=Still failing::Production went back to version $now, but $HEALTH_URL doesn't answer. Read the Worker's logs on Cloudflare."
+            exit 1
+          fi
+          echo "Production runs version $now again (${sha:0:7})."
