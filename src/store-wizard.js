@@ -25,7 +25,8 @@ export const wizardMethods = {
   /**
    * GET /api/repos/setup?slug=<slug> (a registered repository) or ?github=<owner/name> (one not registered
    * yet). `check` asks GitHub live about it (at most every 15 seconds); otherwise the last check is used.
-   * Answers `{ slug, github, registered, suggestedSlug, checked, steps, now, done }`.
+   * Answers `{ slug, github, registered, suggestedSlug, checked, routine, steps, now, done }`; `routine` is
+   * `{ connected, source }` (source `secrets`, `board`, or null), never its URL or token (WEB-38's form).
    */
   repoSetupApi({ slug = null, github = null, check = false } = {}) {
     return this.run(async () => {
@@ -44,6 +45,7 @@ export const wizardMethods = {
           promptPath: promptPathOf(repo),
           app: facts.appInfo,
           checked: iso(facts.checkedAt),
+          routine: { connected: facts.routine, source: facts.routineSource },
           steps,
           now,
           done,
@@ -88,10 +90,11 @@ export const wizardMethods = {
     const connections = [];
     if (app && credentials) connections.push(...this.githubRepoConnections(repo, r, app, iso(checkedAt)));
     let routine = false;
+    let routineSource = null;
     let prompt = null;
     if (registered) {
       connections.push(...this.githubSyncConnections(live).filter((c) => c.repo === registered.slug));
-      routine = (await this.routineConnectedState(registered.slug)).routineConnected;
+      ({ routineConnected: routine, routineSource } = await this.routineConnectedState(registered.slug));
       connections.push(
         ...(await this.claudeConnections()).filter(
           (c) =>
@@ -111,6 +114,7 @@ export const wizardMethods = {
       synced: registered ? Number(this.ghMeta('gh_last_sync', registered.slug) ?? 0) || null : null,
       prompt,
       routine,
+      routineSource,
       work: registered ? this.wizardWork(registered.slug) : {},
       checkedAt,
     };
