@@ -15,6 +15,8 @@ export const packageUrl = (name, version = null) =>
   `https://www.npmjs.com/package/${name}${version ? `/v/${version}` : ''}`;
 
 const NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u;
+/** Whether `name` is a name npm would take for a package, scoped or not. */
+export const isPackageName = (name) => typeof name === 'string' && name.length <= 214 && NAME.test(name);
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 
@@ -32,8 +34,7 @@ export function stagedIn(message) {
   const out = [];
   for (const m of String(message ?? '').matchAll(STAGED)) {
     const [, name, version, tag] = m;
-    if (name.length <= 214 && NAME.test(name) && VERSION.test(version) && TAG.test(tag))
-      out.push({ name, version, tag });
+    if (isPackageName(name) && VERSION.test(version) && TAG.test(tag)) out.push({ name, version, tag });
   }
   return out;
 }

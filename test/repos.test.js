@@ -1,7 +1,7 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PROMPT_PATH, checkRepo, defaultRepo, prefixFor, promptPathOf, stubFor } from '../src/repos.js';
-import { pipelineOf } from '../src/release.js';
+import { packageOf, pipelineOf } from '../src/release.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { api, latestVersion, pushOps, readChild, twCreate } from './helpers.js';
 
@@ -160,7 +160,10 @@ describe('repositories on the board', () => {
     });
     const refused = [
       [{ workers: { staging: 'widgets-staging' } }, /workers.production is required/],
-      [{ workflows: {} }, /workers needs staging and production/],
+      [{ workflows: {} }, /needs workers .*, package .*, or both/],
+      [{ package: 'Not A Name' }, /package is the npm package’s name/],
+      [{ package: { name: 'widgets' } }, /package is the npm package’s name/],
+      [{ package: 'widgets', workflows: { release: 'a/b.yml' } }, /workflows.release is a workflow file name/],
       [{ workers: { staging: 'a b', production: 'widgets' } }, /workers.staging is a Worker name/],
       [
         { workers: { staging: 'a', production: 'b' }, workflows: { promote: '../x' } },
@@ -183,6 +186,45 @@ describe('repositories on the board', () => {
     const cleared = await json(await modify('acme', { pipeline: null }));
     expect(cleared.repo.pipeline).toBeNull();
     expect(pipelineOf(cleared.repo)).toBeNull();
+  });
+
+  it('takes a package with or without Workers, and packageOf reads it (BRK-103)', async () => {
+    await add({ slug: 'acme-pkg', github: 'acme/sprockets', areas: ['product:SPK'] });
+    expect(
+      (await json(await modify('acme-pkg', { pipeline: { package: '@acme/sprockets' }, by: 'claude-x-1' }))).status,
+    ).toBe(403);
+    const only = await json(await modify('acme-pkg', { pipeline: { package: ' @acme/sprockets ' } }));
+    expect(only.status).toBe(200);
+    expect(only.repo.pipeline).toEqual({ package: '@acme/sprockets' });
+    expect(pipelineOf(only.repo)).toBeNull(); // nothing deploys: no Releases card, Promote, or Roll back
+    expect(packageOf(only.repo)).toEqual({
+      name: '@acme/sprockets',
+      workflow: 'release.yml',
+      prefix: 'v',
+      branch: 'main',
+    });
+    const both = await json(
+      await modify('acme-pkg', {
+        pipeline: {
+          workers: { staging: 'sprockets-staging', production: 'sprockets' },
+          package: 'sprockets',
+          workflows: { release: 'npm-release.yml' },
+        },
+      }),
+    );
+    expect(both.status).toBe(200);
+    expect(pipelineOf(both.repo)).toMatchObject({ staging: 'sprockets-staging', production: 'sprockets' });
+    // Beside a Worker's deploys, which tag v… themselves, the package's tags carry its name.
+    expect(packageOf(both.repo)).toEqual({
+      name: 'sprockets',
+      workflow: 'npm-release.yml',
+      prefix: 'sprockets@',
+      branch: 'main',
+    });
+    const workersOnly = await json(
+      await modify('acme-pkg', { pipeline: { workers: { staging: 'sprockets-staging', production: 'sprockets' } } }),
+    );
+    expect(packageOf(workersOnly.repo)).toBeNull();
   });
 
   it('gives a repository’s tasks its own work IDs, and keeps ideas install-wide', async () => {

@@ -390,6 +390,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'DELETE') return send(await s.reposRemoveApi(parts[1], body));
     if (parts.length === 3 && parts[2] === 'release' && method === 'POST')
       return send(await s.reposReleaseApi(parts[1], body));
+    // Turn on deploys (WEB-13) is the owner's press on the GitHub page: the signed-in browser only, never the bearer token.
+    if (parts.length === 3 && parts[2] === 'pipeline' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });
+      return send(await s.turnOnDeploysApi(parts[1], body));
+    }
   }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
@@ -521,6 +526,15 @@ async function handleApi(request, env, url, ctx) {
         reason: body.reason,
         repo: body.repo ?? url.searchParams.get('repo'),
       }),
+    );
+  }
+  // Release a package's pre-release as stable (BRK-103): the owner's, from the signed-in browser or the owner's own CLI
+  // (a token with no agent's name). The board only starts release.yml's stable job; npm waits for the owner's 2FA.
+  if (parts[0] === 'github' && parts[1] === 'release' && parts.length === 2 && method === 'POST') {
+    if (via !== 'cookie' && body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
+      return json(403, { error: 'only the owner can release a package; agents never start a release' });
+    return send(
+      await s.githubRelease('release', { version: body.version, repo: body.repo ?? url.searchParams.get('repo') }),
     );
   }
   if (parts[0] === 'github' && parts[1] === 'packages' && parts.length === 2 && method === 'GET')
