@@ -13,6 +13,7 @@ import {
   ListFilter,
   LogOut,
   Menu,
+  Milestone,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -84,6 +85,7 @@ import { Logo } from './Logo.jsx';
 const VIEW_ICONS = {
   board: Kanban,
   list: List,
+  roadmap: Milestone,
   graph: Network,
   activity: Activity,
   github: GitPullRequest,
@@ -954,7 +956,7 @@ export function FilterBar() {
   const wide = useMedia('(min-width: 900px)');
   const [open, setOpen] = useState(false);
   const count = activeFilters.value;
-  if (['activity', 'inbox', 'github', 'agents', 'routines', 'connections', 'add-repo'].includes(view.value))
+  if (['activity', 'inbox', 'github', 'agents', 'routines', 'roadmap', 'connections', 'add-repo'].includes(view.value))
     return null;
   const here = tasks.value.filter((t) => t.status !== 'deleted' && inScope(t.repo));
   const scope = repoScope.value;
