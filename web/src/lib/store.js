@@ -132,6 +132,10 @@ effect(() => savePref('statsDays', statsDays.value));
 export const github = signal({ loaded: false, loading: false, data: null, error: null });
 export const agents = signal({ loaded: false, data: null, error: null });
 export const routines = signal({ loaded: false, data: null, error: null });
+/** The roadmap (docs/specs/IDEA-28-features-and-chase.md, section 2): features, suggested tags, and other release tasks. */
+export const features = signal({ loaded: false, data: null, error: null });
+/** The feature open on the roadmap, with its tasks: `{ slug, data, error }`, or null. */
+export const featureOpen = signal(null);
 /** The owner's inbox: open pings, newest first (docs/specs/IDEA-12-agent-pings.md). */
 export const pings = signal({ loaded: false, list: [], notices: [], error: null });
 /** What's open in the inbox: pings, and the notes about connections that broke or work again (CLD-121). */
@@ -478,6 +482,30 @@ export async function checkConnections() {
   }
 }
 
+export async function loadFeatures() {
+  try {
+    features.value = { loaded: true, data: await api('features'), error: null };
+  } catch (error) {
+    features.value = { ...features.value, loaded: true, error: error.message };
+  }
+}
+
+/** Loads the feature open on the roadmap; a reply for a feature that's no longer open is dropped. */
+export async function loadFeature(slug) {
+  if (!slug) return;
+  try {
+    const { feature } = await api(`features/${enc(slug)}`);
+    if (selectedFeature.peek() === slug) featureOpen.value = { slug, data: feature, error: null };
+  } catch (error) {
+    if (selectedFeature.peek() === slug)
+      featureOpen.value = {
+        slug,
+        data: error.status === 404 ? null : (featureOpen.peek()?.data ?? null),
+        error: error.message,
+      };
+  }
+}
+
 export async function loadRoutines() {
   try {
     routines.value = { loaded: true, data: await api('routines'), error: null };
@@ -643,6 +671,10 @@ export function startPolling() {
     if (view.value === 'activity' && activity.value.events.length <= 40) loadActivity();
     if (view.value === 'activity') loadStats({ quiet: true });
     if (view.value === 'connections') loadConnections();
+    if (view.value === 'roadmap') {
+      loadFeatures();
+      loadFeature(selectedFeature.value);
+    }
     loadGitHub(); // the nav counts what is ready to merge
     loadAgents();
     loadPings();
@@ -690,6 +722,7 @@ export function confirmDialog(options) {
 export const VIEWS = [
   { id: 'board', label: 'Board', key: 'b' },
   { id: 'list', label: 'List', key: 'l' },
+  { id: 'roadmap', label: 'Roadmap', key: 'm' },
   { id: 'graph', label: 'Dependencies', key: 'g' },
   { id: 'inbox', label: 'Inbox', key: 'o' },
   { id: 'activity', label: 'Activity', key: 'a' },
@@ -711,6 +744,7 @@ export const filters = signal(EMPTY_FILTERS);
 export const listSort = signal({ key: 'rank', dir: 'asc' });
 export const listGroup = signal('none');
 export const selectedRoutine = signal(null); // a routine's slug, open in the routines view's panel
+export const selectedFeature = signal(null); // a feature's slug, open on the roadmap
 export const focusPing = signal(null); // the ping the inbox scrolls to and focuses, from #/inbox?ping=<id>
 export const newTask = signal(null); // null, or the defaults for the new-task dialog
 /** Whether the New agent dialog is open (docs/specs/IDEA-30-new-agent.md, section 5). */
@@ -738,6 +772,8 @@ function parseHash() {
     view.value = VIEW_IDS.includes(path) ? path : 'board';
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
+    const feature = path === 'roadmap' ? p.get('feature') : null;
+    selectedFeature.value = feature && /^[a-z][a-z0-9_-]{0,39}$/u.test(feature) ? feature : null;
     focusPing.value = path === 'inbox' && /^\d+$/u.test(p.get('ping') ?? '') ? p.get('ping') : null;
     taskView.value = ['sidebar', 'modal'].includes(p.get('view')) ? p.get('view') : null;
     githubConnect.value = p.get('connect');
@@ -772,11 +808,13 @@ export function hashFor({
   pr = githubPr.value,
   mode = taskView.value,
   routine = selectedRoutine.value,
+  feature = selectedFeature.value,
   ping = focusPing.value,
 } = {}) {
   const p = new URLSearchParams();
   if (repoScope.value) p.set('repo', repoScope.value);
   if (v === 'routines' && routine) p.set('routine', routine);
+  if (v === 'roadmap' && feature) p.set('feature', feature);
   if (v === 'inbox' && ping) p.set('ping', ping);
   if (task) p.set('task', task);
   if (task && mode) p.set('view', mode);
@@ -844,6 +882,14 @@ export function setTaskMode(mode) {
 
 export function openRoutine(slug) {
   location.hash = hashFor({ view: 'routines', routine: slug });
+}
+
+export function openFeature(slug) {
+  location.hash = hashFor({ view: 'roadmap', feature: slug });
+}
+
+export function closeFeature() {
+  location.hash = hashFor({ view: 'roadmap', feature: null });
 }
 
 export function closeRoutine() {
@@ -1229,6 +1275,31 @@ export const actions = {
     );
     loadAgents();
     loadGitHub();
+    return result;
+  },
+  /** Adds a feature (no `slug` given: `body.slug`) or changes one. Resolves to the feature, or null after the error. */
+  async saveFeature(slug, body, message = 'Feature saved.') {
+    const result = await change(
+      () =>
+        slug ? api(`features/${enc(slug)}`, { method: 'PATCH', body }) : api('features', { method: 'POST', body }),
+      message,
+    );
+    loadFeatures();
+    if (result?.feature && selectedFeature.peek() === result.feature.slug)
+      featureOpen.value = { slug: result.feature.slug, data: result.feature, error: null };
+    return result?.feature ?? null;
+  },
+  async deleteFeature(f) {
+    const ok = await confirmDialog({
+      title: `Delete ${f.title}?`,
+      body: `Its tasks keep their +${f.slug} tag, so you can make it a feature again.`,
+      confirmLabel: 'Delete it',
+      tone: 'danger',
+    });
+    if (!ok) return null;
+    const result = await change(() => api(`features/${enc(f.slug)}`, { method: 'DELETE', body: {} }), 'Deleted.');
+    if (result) closeFeature();
+    loadFeatures();
     return result;
   },
   async create(input) {
