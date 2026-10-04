@@ -241,7 +241,7 @@ export function summarize(questions, answers) {
 }
 
 /** Tags that aren't a feature's (IDEA-28 section 1): the board's own, horizons, and release tags. */
-const NOT_FEATURES = new Set(['agent', 'owner', 'decide', 'idea', 'general']);
+const NOT_FEATURES = new Set(['agent', 'owner', 'decide', 'idea', 'general', 'version']);
 export const featureTags = (tags) =>
   (tags ?? []).filter((t) => !NOT_FEATURES.has(t) && !t.startsWith('horizon-') && !/^v\d/u.test(t));
 

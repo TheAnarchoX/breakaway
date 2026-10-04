@@ -1184,6 +1184,8 @@ export const githubMethods = {
       }),
       releases: JSON.parse(this.ghMeta('gh_releases', repo.slug) ?? '[]'),
       tags: JSON.parse(this.ghMeta('gh_tags', repo.slug) ?? '[]'),
+      // Prepare the next minor or major (BRK-100), where the pre-releases count from package.json's version.
+      nextVersion: this.nextVersionOffer(repo.slug),
       // "Merge branch 'main' into …" commits come in with merge-commit PRs; they say nothing new.
       commits: rows('SELECT data FROM gh_commits WHERE repo = ? ORDER BY date DESC LIMIT 60', repo.slug)
         .filter((c) => !/^Merge (remote-tracking )?branch /u.test(c.message))

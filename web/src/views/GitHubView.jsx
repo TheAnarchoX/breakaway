@@ -35,6 +35,7 @@ import { PrRow } from '../components/GitHub.jsx';
 import { RepoChip } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
 import { ReleaseFlow } from '../components/Release.jsx';
+import { NextVersion } from '../components/NextVersion.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -504,6 +505,9 @@ export function GitHubView() {
             <ClosedPrs prs={d.closed} />
           </div>
           <div class="gh-col">
+            {d.nextVersions.map((r) => (
+              <NextVersion key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
+            ))}
             {d.pipeline && <Deploys deploys={d.deploys} releases={d.releases} tags={d.tags} />}
             <Runs runs={d.runs} />
             <Commits commits={d.commits} branch={d.branch ?? (d.all ? null : 'main')} />

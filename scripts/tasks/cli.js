@@ -145,16 +145,21 @@ export function forceFields(force, by) {
  * `agents new`: the request that makes a task from a prompt and starts an agent on it. It's the checkout's repository
  * unless `--repo` names another. It always says who asks, so the board refuses an agent's name: only the owner starts one.
  * With `decision` (`agents new --decision <ID> ["<note>"]`, BRK-110) the board writes the prompt from that answered
- * decision, in the decision's repository, and the text is the owner's note under it.
+ * decision, in the decision's repository, and the text is the owner's note under it. With `next`
+ * (`agents new --next minor|major ["<note>"]`, BRK-100) it writes the prompt that sets the repository's next version.
  * @param {string} prompt
- * @param {{ repo?: string | null, force?: boolean, by?: string, decision?: string | null }} [options]
+ * @param {{ repo?: string | null, force?: boolean, by?: string, decision?: string | null, next?: string | null }} [options]
  */
-export function generalAgentRequest(prompt, { repo = null, force = false, by, decision = null } = {}) {
+export function generalAgentRequest(prompt, { repo = null, force = false, by, decision = null, next = null } = {}) {
   const text = String(prompt ?? '').trim();
-  if (!text && !decision)
+  if (decision && next) return { error: 'start one from --decision or --next, not both' };
+  if (next && !['minor', 'major'].includes(next))
+    return { error: 'patches count by themselves: --next minor or --next major' };
+  if (!text && !decision && !next)
     return { error: 'say what the agent should do: npx breakaway agents new "Tidy the docs" [--image <file>]' };
+  const board = decision ? { decision } : next ? { next } : null;
   const body = {
-    ...(decision ? { decision, ...(text ? { note: text } : {}) } : { prompt: text }),
+    ...(board ? { ...board, ...(text ? { note: text } : {}) } : { prompt: text }),
     ...(repo ? { repo } : {}),
     ...(force ? { force: true } : {}),
     ...(by ? { by } : {}),
@@ -164,12 +169,14 @@ export function generalAgentRequest(prompt, { repo = null, force = false, by, de
 
 /**
  * What the CLI says about a general agent's answer: the task and that it started, or why it waits (and whether Force
- * start could skip that), or, from a decision, the open one that already has it.
+ * start could skip that), or, from a decision or for the next version (`next`), the open one that already has it.
  * @param {{ task: { wid?: string, short?: string }, run?: { url?: string, agent?: string } | null, waiting?: string | null, forceable?: boolean, already?: string | null }} answer
+ * @param {{ next?: string | null }} [options]
  */
-export function generalAgentSummary({ task, run, waiting, forceable, already }) {
+export function generalAgentSummary({ task, run, waiting, forceable, already }, { next = null } = {}) {
   const id = task.wid ?? task.short;
-  if (!run && already) return `${id} already refines from these answers: ${already}.`;
+  if (!run && already)
+    return `${id} already ${next ? 'prepares the next version' : 'refines from these answers'}: ${already}.`;
   if (run) return `Started ${run.agent ? `${run.agent} ` : 'an agent '}on ${id}${run.url ? `: ${run.url}` : ''}`;
   return `Saved ${id}, waiting to start: ${waiting ?? 'no room yet'}.${forceable ? ` Start it now past the board's limits: npx breakaway agents start ${id} --force` : ''}`;
 }
