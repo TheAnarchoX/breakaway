@@ -44,6 +44,8 @@ import {
 const DEFAULT_PROMPT_PATH = 'tools/tasks/routine-prompt.md';
 const SHARED = AREAS.filter((a) => ['ideas', 'routines'].includes(a.id));
 const CHANGED_ELSEWHERE = 'Changed somewhere else. Here’s what it is now.';
+/** The server's refusal of a specs directory, in the page's words rather than the setting's key. */
+const SPECS_REFUSED = 'Use a folder in the repository, from its root and without .., like docs/specs.';
 
 /** A saved row with each area's counts carried over from the last read; a new area has no tasks yet. */
 const withCounts = (repo, before) =>
@@ -152,6 +154,7 @@ function FieldError({ id, text }) {
 /** Which General field a refusal is about, from the server's words; the name when nothing else fits. */
 function generalField(message, sent) {
   const text = message.toLowerCase();
+  if ('specs' in sent && /settings\.specs|spec/u.test(text)) return 'specs';
   if ('github' in sent && /github|registered as|owner\/name/u.test(text)) return 'github';
   if ('defaultBranch' in sent && /branch/u.test(text)) return 'defaultBranch';
   if ('name' in sent) return 'name';
@@ -159,7 +162,17 @@ function generalField(message, sent) {
 }
 
 /**
- * General: the name, the GitHub repository (asked first), the default branch with GitHub's beside it, and the slug.
+ * The PATCH body for General's changes: the specs directory goes in `settings`, which is saved whole, so the rest
+ * of the repository's settings go with it, as `repos modify --specs` does. Empty means the default, docs/specs.
+ */
+function generalBody(changed, settings) {
+  const { specs, ...rest } = changed;
+  return 'specs' in changed ? { ...rest, settings: { ...settings, specs: specs || null } } : rest;
+}
+
+/**
+ * General: the name, the GitHub repository (asked first), the default branch with GitHub's beside it, the specs
+ * directory, and the slug.
  * @param {Record<string, any>} props
  */
 function General({ data, onSaved, readOnly }) {
@@ -168,7 +181,12 @@ function General({ data, onSaved, readOnly }) {
   const [errors, setErrors] = useState(/** @type {Record<string, string>} */ ({}));
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
-  const saved = { name: repo.name ?? '', github: repo.github ?? '', defaultBranch: repo.defaultBranch ?? '' };
+  const saved = {
+    name: repo.name ?? '',
+    github: repo.github ?? '',
+    defaultBranch: repo.defaultBranch ?? '',
+    specs: repo.settings?.specs ?? '',
+  };
   const value = (k) => draft[k] ?? saved[k];
   const changed = Object.fromEntries(
     Object.keys(saved)
@@ -195,7 +213,7 @@ function General({ data, onSaved, readOnly }) {
     )
       return;
     setBusy(true);
-    const result = await patch(repo.slug, repo.edited, changed);
+    const result = await patch(repo.slug, repo.edited, generalBody(changed, repo.settings));
     setBusy(false);
     if (result.repo) {
       setDraft({});
@@ -206,7 +224,10 @@ function General({ data, onSaved, readOnly }) {
     } else if (result.conflict) {
       setConflict(true);
       onSaved(result.conflict);
-    } else setErrors({ [generalField(result.error, changed)]: result.error });
+    } else {
+      const k = generalField(result.error, changed);
+      setErrors({ [k]: k === 'specs' && /settings\.specs/iu.test(result.error) ? SPECS_REFUSED : result.error });
+    }
   };
   const field = (k) => ({
     'aria-invalid': errors[k] ? true : undefined,
@@ -296,6 +317,27 @@ function General({ data, onSaved, readOnly }) {
               )}
               <Now show={conflict && 'defaultBranch' in changed} value={saved.defaultBranch} />
               <FieldError id="rs-defaultBranch-error" text={errors.defaultBranch} />
+            </label>
+          )}
+          {(!readOnly || saved.specs) && (
+            <label class="field">
+              <span class="field-label">Specs directory</span>
+              <input
+                class="input"
+                maxLength={200}
+                autoComplete="off"
+                spellcheck={false}
+                placeholder="docs/specs"
+                value={value('specs')}
+                readOnly={readOnly}
+                onInput={set('specs')}
+                {...field('specs')}
+              />
+              <span class="field-hint" id="rs-specs-hint">
+                Where the repository keeps its specs, from its root. Empty means docs/specs.
+              </span>
+              <Now show={conflict && 'specs' in changed} value={saved.specs || 'docs/specs'} />
+              <FieldError id="rs-specs-error" text={errors.specs} />
             </label>
           )}
           <div class="field">

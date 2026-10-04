@@ -2,7 +2,7 @@
 
 > How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
 
-The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote and Roll back, which start two workflows. Nothing else writes to GitHub.
+The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote, Roll back, and Release, which start a repository’s own workflows. Nothing else writes to GitHub.
 
 ## Connecting it
 
@@ -81,26 +81,94 @@ Before you merge, an agent can review a pull request and leave its answer on the
 
 On the page of an open, non-draft pull request that has a merge conflict, failing checks, or review comments, **Fix with an agent** (or **Address review comments**) starts an agent on the pull request’s own task. An agent’s review that needs changes counts as review comments, and the fix agent reads it. It merges the default branch in, or fixes the checks, or answers the review threads, on the pull request’s own branch. It never rewrites history and never merges. `npx breakaway github fix <n> [--problem conflicts|failing|review]` does the same from a terminal.
 
-## Deploys, releases, Promote and Roll back
+## Move a repository to the deploy flow
 
-A repository with a **deploy pipeline** gets Releases, Promote, Roll back, and the warnings that merging deploys. Set it with `npx breakaway repos modify <slug> --pipeline pipeline.json`:
+breakaway can deploy a repository’s Cloudflare Worker and release its npm package: staging on every merge, **Promote** to production, **Roll back**, and **Release** for a package, with the board showing what shipped where. A repository gets there with one config file and the workflows `npx breakaway pipeline init` renders from it.
+
+### What it moves, and what it leaves alone
+
+| The repository | What the move does |
+| --- | --- |
+| Deploys a Worker with `wrangler`, from Actions or by hand | The deploy flow: Deploy, Promote, and Roll back. |
+| Publishes a package to npm, from Actions or by hand | The release flow: a pre-release on `next` for every merge, and a stable on `latest` when you release one. |
+| Both | Both flows, side by side. Neither waits on the other. |
+| Deploys somewhere else (Pages, Vercel, Fly, a server), or publishes to another registry | Nothing. The flow runs Cloudflare Workers and npm; keep the setup you have. |
+
+The move keeps the repository’s checks. Deploy and Release run after the workflows you name in `checks` pass on the exact commit, so your CI stays your own. Take a workflow that only deploys or only publishes out in the same pull request, so a merge can’t deploy or publish twice; one that checks and deploys keeps its checks and loses the deploy step. A step the flow can’t do (a manual approval, say) stays where it is.
+
+The first version takes one staging and production Worker pair, and one package, per repository.
+
+### Write the config
+
+`.github/breakaway-pipeline.json`, in the repository:
 
 ```json
 {
   "workers": { "staging": "widgets-staging", "production": "widgets" },
-  "workflows": { "deploy": "deploy.yml", "promote": "promote.yml", "rollback": "rollback.yml" },
+  "checks": ["CI"],
+  "install": "npm ci",
+  "build": "npm run build",
+  "beforeDeploy": ["npx wrangler d1 migrations apply DB --remote --env $BREAKAWAY_ENV"],
+  "deployPaths": { "widgets": "^(src|public|migrations)/|^wrangler\\.jsonc$|^package(-lock)?\\.json$" },
+  "healthCheck": { "staging": "https://widgets-staging.example.workers.dev/", "production": "https://widgets.example.com/" },
+  "package": { "name": "widgets", "directory": ".", "access": "public" }
+}
+```
+
+- `workers`, `package`, or both. A repository that only publishes leaves out `workers` and the fields for it.
+- `checks` are the `name:` lines of the workflows that must pass first.
+- `install`, `build`, and `beforeDeploy` are your own commands, one line each. `beforeDeploy` runs before each deploy and reads `$BREAKAWAY_ENV` (`staging` or `production`) and `$WORKER`.
+- `deployPaths` says, per Worker, which files need a deploy. The board reads the same file to mark a pull request “No deploy needed”.
+- `healthCheck` is the address each deploy checks; a deploy that doesn’t answer within 90 seconds goes back to the version before. A plain string checks staging only.
+- Optional: `branch` (default `main`) and `wranglerEnv`, the wrangler config’s environment for each Worker.
+- `package` names the package as its `package.json` does, the folder it’s in, and `public` or `restricted`. A `package.json` that says `"private": true` gets no release flow.
+
+### Render the workflows
+
+In the repository’s checkout:
+
+- `npx breakaway pipeline init` writes `.github/workflows/deploy.yml`, `promote.yml`, `rollback.yml`, and `.github/deploy-paths.json` for the Workers, and `release.yml` for the package. It never overwrites a file; `--dry-run` lists what it would write. Without a config it prints an example.
+- `npx breakaway pipeline check` says whether the config is sound and the workflows are what it renders now.
+- `npx breakaway pipeline init --update` replaces what it rendered before, after you change the config or update breakaway. It leaves a workflow of your own alone and says so.
+
+The workflows run helper scripts that `npx breakaway repos init <slug> --update` copies in; `pipeline init` names any that are missing. Open a pull request with the config, the rendered files, and the old deploy or publish steps taken out. Do your part below before you merge it: once the workflows are on the default branch, the merge’s own checks start them, so the first deploy to staging and the first pre-release come from the merge itself. Without your part, they fail.
+
+### Do your part by hand
+
+The board has no Cloudflare, GitHub settings, or npm credentials, and agents never get them. These are yours:
+
+- Create the staging and production Workers, or use the ones you have, and a Cloudflare API token for each.
+- Make the GitHub environments `staging` and `production`, each with its token as `CLOUDFLARE_API_TOKEN` and restricted to the default branch, and a repository variable `CLOUDFLARE_ACCOUNT_ID`.
+- Give the board’s GitHub App read and write on **Actions** for the repository: Promote, Roll back, and Release need it.
+- For a package: make the GitHub environment `npm`, restricted to the default branch. On npm, add a trusted publisher for `release.yml` and the `npm` environment, or put a granular `NPM_TOKEN` that can’t bypass 2FA in the environment.
+- Optional: the repository variable `DEPLOYS_PAUSED`, set to `true`, stops Promote and Release.
+
+### Turn on deploys
+
+Once the config and the workflows are on the default branch, the GitHub view shows **Turn on deploys**, with the Workers, the package, and the files it read. Press it and the board sets the repository’s pipeline from them, read again from GitHub. A file that’s missing or a config the board can’t use shows instead, with what to run. Nothing deploys from the press: the workflows run on the next merge.
+
+## Deploys, releases, Promote and Roll back
+
+A repository with a **deploy pipeline** gets Releases, Promote, Roll back, and the warnings that merging deploys; one whose pipeline names a package gets **Release**. [Turn on deploys](#turn-on-deploys) sets it, or set it yourself with `npx breakaway repos modify <slug> --pipeline pipeline.json`:
+
+```json
+{
+  "workers": { "staging": "widgets-staging", "production": "widgets" },
+  "package": "widgets",
+  "workflows": { "deploy": "deploy.yml", "promote": "promote.yml", "rollback": "rollback.yml", "release": "release.yml" },
   "deployPaths": ".github/deploy-paths.json"
 }
 ```
 
-`workers` is required. `workflows` and `deployPaths` are optional. Without a pipeline, merging deploys nothing and the GitHub view shows none of this.
+It needs `workers`, `package`, or both. `workflows` and `deployPaths` are optional. Without a pipeline, merging deploys nothing and the GitHub view shows none of this.
 
 - A repository’s **Deploy**, **Promote**, and **Roll back** workflows record each deploy as a GitHub Deployment. The board reads them and shows a card for staging and one for production, with the commit, version, when it went live, and the tasks it carries.
 - When a deploy succeeds, the board finds the merged pull requests since the previous successful deploy and marks the tasks they closed **On staging** or **Live**.
 - **Promote to production…** asks first, listing the tasks and migrations, and starts the repository’s `promote.yml` with the latest successful staging deploy. A destructive migration needs a tick. **Roll back…** asks for the version to go back to and what broke, and starts `rollback.yml`. Both are cookie only, and the workflows check everything again.
+- **Release** makes one of the package’s pre-releases the stable version on `latest`, from the same commit’s files. Only you can press it, in the browser or with `npx breakaway github release <pre-release>`. Every version waits on npm until you approve it with 2FA: `npm stage approve <id>`, or Staged Packages on npmjs.com. The board never publishes or approves anything there.
 - A merged pull request that changes only docs, skills, or CI shows “No deploy needed”.
 
-The scripts those workflows run (`record-deployment.mjs`, `promote-check.mjs`, `release-notes.mjs`, `check-migrations.mjs`, `release-artifact.mjs`) are copied into a repository by `repos init`, so every repository makes the same checks.
+The scripts those workflows run are copied into a repository by `repos init`, so every repository makes the same checks.
 
 ## Several repositories
 
