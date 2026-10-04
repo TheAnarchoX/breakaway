@@ -390,6 +390,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'DELETE') return send(await s.reposRemoveApi(parts[1], body));
     if (parts.length === 3 && parts[2] === 'release' && method === 'POST')
       return send(await s.reposReleaseApi(parts[1], body));
+    // Turn on deploys (WEB-13) is the owner's press on the GitHub page: the signed-in browser only, never the bearer token.
+    if (parts.length === 3 && parts[2] === 'pipeline' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });
+      return send(await s.turnOnDeploysApi(parts[1], body));
+    }
   }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).

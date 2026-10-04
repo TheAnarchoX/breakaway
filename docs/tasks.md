@@ -124,6 +124,8 @@ A repository with a deploy pipeline gets Releases, Promote, Roll back, and the w
 
 `workers` is required: the names of the staging and production Workers. `workflows` (the workflow files in the repository) and `deployPaths` (the JSON file that says which paths deploy) are optional. A pipeline the board couldn't use is refused with the reason instead of saved. `--pipeline none` clears it.
 
+A repository moved with `npx breakaway pipeline init` doesn't need the file: once `.github/breakaway-pipeline.json` and the workflows it rendered are on the default branch, the GitHub view shows **Turn on deploys** with the Workers and files it read, and your press sets the pipeline from them, read again from GitHub and checked the same way (`POST /api/repos/<slug>/pipeline`, the signed-in board only; `WEB-13`). Nothing changes before the press.
+
 #### Taking a repository off the board
 
 `npx breakaway repos remove <slug>` (the owner; `DELETE /api/repos/<slug>`). Its sync, webhooks, agent starts, and place on Connections and in the switcher stop, its saved routines are switched off, its agent routine leaves the `ROUTINES` secret and `~/.config/breakaway/tasks-routines.json`, and its report and context leave this machine's `~/.config/breakaway/taskrc`. It's refused while the repository has open tasks or running agents, unless `--force`. Its tasks stay: finished ones are readable with their chip, and **its slug and prefixes stay its own**, since a work ID means one task forever (`GET /api/repos` lists it under `removed`). Its GitHub repository can be registered again under a new slug. The default repository can't be removed.

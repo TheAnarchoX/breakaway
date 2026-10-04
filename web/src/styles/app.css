@@ -4125,6 +4125,57 @@ fieldset.field {
   margin: 8px 0 0;
 }
 
+/* ---------- turn on deploys (WEB-13) ---------- */
+
+.turn-on {
+  max-width: 720px;
+}
+.turn-on p {
+  margin: 0 0 10px;
+}
+.turn-on-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.turn-on-facts dt {
+  color: var(--muted);
+}
+.turn-on-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.turn-on-files {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.turn-on-files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.turn-on-files li svg {
+  color: var(--success);
+  flex: none;
+}
+.turn-on-files li.is-missing svg {
+  color: var(--muted);
+}
+.turn-on-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
 /* ---------- next version (BRK-100) ---------- */
 
 .next-version p {
