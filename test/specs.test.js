@@ -1,5 +1,6 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { specLines, specListLines, specRequest, specsRequest } from '../scripts/tasks/cli.js';
 import { checkSpecsDir, inSpecsDir, specMeta, specsDirOf } from '../src/specs.js';
 import { api } from './helpers.js';
 
@@ -308,6 +309,42 @@ describe('reading specs from GitHub', () => {
     for (const r of res) expect(r).toMatchObject({ status: 409, body: { error: 'Connect GitHub to read the specs' } });
     expect(gh.calls).toEqual([]);
     expect((await api('specs?repo=nope')).status).toBe(404);
+  });
+
+  it('takes the CLI’s requests: specs and specs show <path>, and prints what the board answers', async () => {
+    await api('tasks', {
+      method: 'POST',
+      body: [{ description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' }],
+    });
+    const [method, path] = specsRequest('widgets');
+    const list = await api(path, { method });
+    expect(list.status).toBe(200);
+    const lines = specListLines(await list.json());
+    expect(lines[0]).toBe('widgets: 3 specs in docs/specs (its introduction is docs/specs/README.md)');
+    expect(lines.find((l) => l.includes('BRK-7 · Sort the inbox'))).toMatch(
+      /^ {2}BRK-7 +approved +.*\(\d+ tasks?, \d+ open\)$/u,
+    );
+
+    const built = specRequest('./docs/specs/BRK-7-sort.md', 'widgets');
+    const one = await api(built.request[1], { method: built.request[0] });
+    expect(one.status).toBe(200);
+    const out = specLines(await one.json()).join('\n');
+    expect(out).toContain('BRK-7 · Sort the inbox (docs/specs/BRK-7-sort.md)');
+    expect(out).toContain('  Changed     2026-10-01 10:00 in abc1234: BRK-7: Write the spec');
+    expect(out).toContain('It’s unsorted.');
+    expect(out).toMatch(/Sort by age/u);
+
+    // What the board refuses comes back as its error, which the CLI prints.
+    const outside = specRequest('src/worker.js', 'widgets');
+    const refused = await body(await api(outside.request[1], { method: 'GET' }));
+    expect(refused).toMatchObject({ code: 400, error: 'src/worker.js isn’t a Markdown file in docs/specs' });
+    gh.files = {};
+    await runInDurableObject(stub(), (store) => {
+      store.specsCache = {};
+    });
+    expect(specListLines(await (await api(specsRequest('widgets')[1])).json())[0]).toMatch(
+      /^No specs in docs\/specs yet/u,
+    );
   });
 
   it('never stores a spec', async () => {

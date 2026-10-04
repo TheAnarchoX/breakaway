@@ -18,6 +18,10 @@ import {
   pullAgentRequest,
   pullAgentSummary,
   reviewRequest,
+  specLines,
+  specListLines,
+  specRequest,
+  specsRequest,
   SUBCOMMANDS,
   staleCliWarning,
   unknownSubcommand,
@@ -461,5 +465,148 @@ describe('github release, a package’s stable for the owner (BRK-103)', () => {
   it('refuses anything but a pre-release', () => {
     for (const bad of [undefined, '1.4.0', 'latest', '1.4.0-beta.1'])
       expect(packageReleaseRequest(bad).error).toMatch(/say which pre-release/u);
+  });
+});
+
+describe('specs (BRK-121)', () => {
+  it('reads the checkout’s repository unless --repo names another, and a spec by its path', () => {
+    expect(specsRequest('widgets')).toEqual(['GET', 'specs?repo=widgets', undefined]);
+    expect(specsRequest(null)).toEqual(['GET', 'specs', undefined]);
+    expect(specRequest('docs/specs/ACME-3-a b.md', 'widgets')).toEqual({
+      request: ['GET', 'specs/docs/specs/ACME-3-a%20b.md?repo=widgets', undefined],
+    });
+    expect(specRequest('./docs//specs/ACME-3.md', null)).toEqual({
+      request: ['GET', 'specs/docs/specs/ACME-3.md', undefined],
+    });
+  });
+
+  it('refuses a missing path, and one that climbs out', () => {
+    expect(specRequest(undefined, 'widgets')).toHaveProperty('error');
+    expect(specRequest('  ', 'widgets')).toHaveProperty('error');
+    expect(specRequest('docs/specs/../secret.md', 'widgets')).toHaveProperty('error');
+  });
+
+  it('knows its subcommands', () => {
+    expect(unknownSubcommand('specs', 'list')).toBeNull();
+    expect(unknownSubcommand('specs', 'show')).toBeNull();
+    expect(unknownSubcommand('specs', 'edit')).toMatch(/^specs has no "edit"; it has list, show/u);
+  });
+
+  const task = (wid, status, description = 'Do it') => ({ uuid: `${wid}-uuid`, wid, status, description });
+
+  it('lists the specs newest first, each with its status and how many of its tasks are open', () => {
+    const lines = specListLines({
+      slug: 'widgets',
+      dir: 'docs/specs',
+      missing: false,
+      readme: { path: 'docs/specs/README.md' },
+      specs: [
+        {
+          path: 'docs/specs/ACME-7-sort.md',
+          wid: 'ACME-7',
+          title: 'ACME-7 · Sort the inbox',
+          status: 'draft',
+          tasks: [task('ACME-8', 'pending'), task('ACME-9', 'completed'), task('ACME-10', 'pending')],
+        },
+        { path: 'docs/specs/notes.md', wid: null, title: 'Notes', status: null, tasks: [] },
+        {
+          path: 'docs/specs/ACME-2-big.md',
+          wid: 'ACME-2',
+          title: 'ACME-2-big',
+          status: null,
+          tasks: [],
+          tooLarge: true,
+        },
+      ],
+    });
+    expect(lines[0]).toBe('widgets: 3 specs in docs/specs (its introduction is docs/specs/README.md)');
+    expect(lines).toContain('  ACME-7    draft      ACME-7 · Sort the inbox  (3 tasks, 2 open)');
+    expect(lines).toContain('            -          Notes  (no tasks)');
+    expect(lines.find((l) => l.includes('ACME-2-big'))).toMatch(/over 1 MB: read it on GitHub/u);
+    expect(lines.at(-1)).toBe('Read one: npx breakaway specs show <path>, like docs/specs/ACME-7-sort.md');
+  });
+
+  it('says where specs go when there are none, or no directory', () => {
+    expect(specListLines({ slug: 'widgets', dir: 'docs/specs', missing: true, specs: [] }).join('\n')).toMatch(
+      /^No specs in docs\/specs yet: widgets has no docs\/specs on its default branch\.\n.*repos modify widgets --specs <dir>/su,
+    );
+    expect(specListLines({ slug: 'widgets', dir: 'specs', missing: false, specs: [] })[0]).toMatch(
+      /^No specs in specs yet\./u,
+    );
+  });
+
+  it('shows a spec: its header, last change, Markdown, and the tasks that link it', () => {
+    const out = specLines({
+      slug: 'widgets',
+      path: 'docs/specs/ACME-7-sort.md',
+      title: 'ACME-7 · Sort the inbox',
+      status: 'draft',
+      url: 'https://github.com/acme/widgets/blob/main/docs/specs/ACME-7-sort.md',
+      commit: { sha: 'abcdef1234567', date: '2026-01-02T03:04:05Z', message: 'ACME-7: Sort it' },
+      text: '# ACME-7 · Sort the inbox\n\nStatus: draft\n',
+      tasks: [task('ACME-8', 'pending', 'Sort by age'), task('ACME-9', 'completed', 'Sort by name')],
+    }).join('\n');
+    expect(out).toContain('ACME-7 · Sort the inbox (docs/specs/ACME-7-sort.md)');
+    expect(out).toContain('  Status      draft');
+    expect(out).toContain('  Changed     2026-01-02 03:04 in abcdef1: ACME-7: Sort it');
+    expect(out).toContain('  GitHub      https://github.com/acme/widgets/blob/main/docs/specs/ACME-7-sort.md');
+    expect(out).toContain('# ACME-7 · Sort the inbox\n\nStatus: draft');
+    expect(out).toContain(
+      '  Tasks (2, 1 open)\n    ACME-8    pending   Sort by age\n    ACME-9    completed Sort by name',
+    );
+    expect(out).toMatch(
+      /Refine it: npx breakaway agents new --spec docs\/specs\/ACME-7-sort\.md "<what should change>"$/u,
+    );
+  });
+
+  it('links a spec over 1 MB instead of printing it, and says when no task links it', () => {
+    const out = specLines({
+      path: 'docs/specs/ACME-2-big.md',
+      title: 'ACME-2-big',
+      status: null,
+      url: 'https://github.com/acme/widgets/blob/main/docs/specs/ACME-2-big.md',
+      commit: null,
+      text: null,
+      tooLarge: true,
+      tasks: [],
+    }).join('\n');
+    expect(out).toContain('Over 1 MB, too large to show here: read it on GitHub.');
+    expect(out).toContain('No task links it yet');
+    expect(out).not.toContain('Changed');
+  });
+});
+
+describe('agents new --spec (BRK-121)', () => {
+  it('sends the spec and the text as the owner’s note, for the checkout’s repository', () => {
+    expect(
+      generalAgentRequest('  Drop the web form ', { spec: 'docs/specs/ACME-7-sort.md', repo: 'widgets', by: 'owner' }),
+    ).toEqual({
+      request: [
+        'POST',
+        'agents/general',
+        { spec: 'docs/specs/ACME-7-sort.md', note: 'Drop the web form', repo: 'widgets', by: 'owner' },
+      ],
+    });
+    expect(generalAgentRequest('x', { spec: 'docs/specs/a.md', force: true })).toEqual({
+      request: ['POST', 'agents/general', { spec: 'docs/specs/a.md', note: 'x', force: true }],
+    });
+  });
+
+  it('needs what should change, and only one of --spec, --decision, and --next', () => {
+    expect(generalAgentRequest('  ', { spec: 'docs/specs/a.md' })).toEqual({
+      error: 'say what should change in the spec: npx breakaway agents new --spec <path> "<what should change>"',
+    });
+    expect(generalAgentRequest('x', { spec: 'docs/specs/a.md', decision: 'BRK-1' })).toHaveProperty('error');
+    expect(generalAgentRequest('x', { spec: 'docs/specs/a.md', next: 'minor' })).toHaveProperty('error');
+    expect(generalAgentRequest('x', { decision: 'BRK-1', next: 'minor' })).toHaveProperty('error');
+  });
+
+  it('says when an agent is already on the spec, instead of starting another', () => {
+    expect(
+      generalAgentSummary(
+        { task: { short: 'a1b2c3d4' }, run: null, already: 'claude-a1b2c3d4 is on it' },
+        { spec: true },
+      ),
+    ).toBe('a1b2c3d4 already refines this spec: claude-a1b2c3d4 is on it.');
   });
 });
