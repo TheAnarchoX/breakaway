@@ -384,6 +384,7 @@ async function handleApi(request, env, url, ctx) {
         await s.repoSetupApi({ slug: q.get('slug'), github: q.get('github'), check: q.get('check') === '1' }),
       );
     }
+    if (parts.length === 2 && method === 'GET') return send(await s.repoApi(parts[1]));
     if (parts.length === 1 && method === 'POST') return send(await s.reposAddApi(body));
     if (parts.length === 2 && method === 'PATCH') return send(await s.reposModifyApi(parts[1], body));
     if (parts.length === 2 && method === 'DELETE') return send(await s.reposRemoveApi(parts[1], body));

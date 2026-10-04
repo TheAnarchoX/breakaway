@@ -120,7 +120,9 @@ Without `repo`, the default repository is read.
 | --- | --- |
 | `GET /api/repos` | The registry: repositories, areas, the default, and `firstRun`. |
 | `POST /api/repos` | Register one (`dryRun: true` only checks). Owner. |
-| `PATCH /api/repos/<slug>`, `DELETE /api/repos/<slug>` | Change or take one off the board. Owner. |
+| `GET /api/repos/<slug>` | One repository for its settings page: its row, each area’s open and total tasks, whether its routine is connected, its saved routines, open tasks, running agents, and GitHub’s default branch. A removed one too, read only. |
+| `PATCH /api/repos/<slug>` | Change one (`dryRun: true` only checks; `edited`, the time `GET` gave, refuses with `409` and the current row when it changed since). Owner. |
+| `DELETE /api/repos/<slug>` | Take one off the board. Owner. |
 | `POST /api/repos/<slug>/release` | Give a removed repository’s slug and prefixes back. Owner. |
 | `GET /api/repos/setup?slug=` | The Add a repository wizard’s state. |
 

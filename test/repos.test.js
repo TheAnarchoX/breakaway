@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PROMPT_PATH, checkRepo, defaultRepo, prefixFor, promptPathOf, stubFor } from '../src/repos.js';
 import { pipelineOf } from '../src/release.js';
@@ -570,5 +570,158 @@ describe('the default branch of a new repository', () => {
     } finally {
       mock.mockRestore();
     }
+  });
+});
+
+describe('one repository’s settings (BRK-129)', () => {
+  const read = async (slug) => json(await api(`repos/${slug}`));
+  const inStore = (fn) => runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (s) => fn(s));
+  const githubSays = (branch) =>
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      const reply = (data, status = 200) =>
+        new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+      if (url.pathname === '/repos/acme/gizmos/installation') return reply({ id: 9, permissions: {} });
+      if (url.pathname === '/app/installations/9/access_tokens')
+        return reply({ token: 'ghs_fake', expires_at: new Date(Date.now() + 3_600_000).toISOString() });
+      if (url.pathname === '/repos/acme/gizmos') return reply({ full_name: 'acme/gizmos', default_branch: branch });
+      return reply({ message: 'Not Found' }, 404);
+    });
+
+  it('reads a repository with its areas’ counts, its routine, its saved routines, and its agents', async () => {
+    expect(
+      await json(
+        await add({
+          slug: 'gizmos',
+          github: 'acme/gizmos',
+          areas: ['product:GZP:Product', 'ops:GZO', 'cloud:GZC'],
+          defaultBranch: 'main',
+        }),
+      ),
+    ).toMatchObject({ status: 201 });
+    const open = (await create({ description: 'Gizmo work', project: 'product', repo: 'gizmos' })).tasks[0];
+    for (const project of ['product', 'ops']) {
+      const made = (await create({ description: `Finished ${project}`, project, repo: 'gizmos' })).tasks[0];
+      await api(`tasks/${made.uuid}/done`, { method: 'POST', body: { note: 'Done.' } });
+    }
+    expect((await api(`tasks/${open.uuid}/claim`, { method: 'POST', body: { agent: 'claude-gz' } })).ok).toBe(true);
+    await inStore((s) =>
+      s.sql.exec(
+        "INSERT INTO agent_runs (task, agent, trigger, status, started, repo) VALUES (?, 'claude-gz', 'manual', 'started', ?, 'gizmos')",
+        open.uuid,
+        Date.now() - 60_000,
+      ),
+    );
+    expect(
+      (
+        await api('routines', {
+          method: 'POST',
+          body: { slug: 'gizmos-weekly', name: 'Weekly', prompt: 'Look around.', repo: 'gizmos' },
+        })
+      ).status,
+    ).toBe(201);
+
+    const mock = githubSays('trunk');
+    let res;
+    try {
+      res = await read('Gizmos');
+    } finally {
+      mock.mockRestore();
+    }
+    expect(res).toMatchObject({
+      status: 200,
+      repo: { slug: 'gizmos', github: 'acme/gizmos', defaultBranch: 'main', isDefault: false },
+      removed: null,
+      routineConnected: false,
+      routines: 1,
+      open: 1,
+      running: 1,
+      githubDefaultBranch: 'trunk',
+    });
+    expect(res.areas).toEqual([
+      { project: 'product', prefix: 'GZP', name: 'Product', open: 1, total: 2 },
+      { project: 'ops', prefix: 'GZO', name: 'ops', open: 0, total: 1 },
+      { project: 'cloud', prefix: 'GZC', name: 'cloud', open: 0, total: 0 },
+    ]);
+    expect(Date.parse(res.repo.edited)).toBeGreaterThan(0);
+
+    // The default repository’s routine is connected: a yes, never its URL or token.
+    const widgets = await read('widgets');
+    expect(widgets).toMatchObject({ status: 200, routineConnected: true, repo: { isDefault: true } });
+    expect(JSON.stringify(widgets)).not.toMatch(/routines\/trig_|sk-ant-/);
+  });
+
+  it('reads it without GitHub’s default branch while the App isn’t connected', async () => {
+    const res = await inStore(async (s) => {
+      const saved = s.env.TASKS_GITHUB_APP_ID;
+      s.env.TASKS_GITHUB_APP_ID = 'unset';
+      try {
+        return await s.repoApi('gizmos');
+      } finally {
+        s.env.TASKS_GITHUB_APP_ID = saved;
+      }
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ githubDefaultBranch: null, open: 1, routines: 1 });
+    expect(res.body.areas.map((a) => a.total)).toEqual([2, 1, 0]);
+  });
+
+  it('says which repository it doesn’t know, and reads one taken off the board', async () => {
+    const unknown = await read('nowhere');
+    expect(unknown).toMatchObject({ status: 404 });
+    expect(unknown.error).toMatch(/no repository "nowhere"/);
+
+    await add({ slug: 'retired', github: 'acme/retired', areas: ['product:RTP'] });
+    expect((await api('repos/retired', { method: 'DELETE', body: {} })).status).toBe(200);
+    const gone = await read('retired');
+    expect(gone).toMatchObject({
+      status: 200,
+      repo: { slug: 'retired', github: 'acme/retired' },
+      open: 0,
+      running: 0,
+      routines: 0,
+      githubDefaultBranch: null,
+      releaseBlocker: null,
+    });
+    expect(Date.parse(gone.removed)).toBeGreaterThan(0);
+    expect(gone.areas).toEqual([{ project: 'product', prefix: 'RTP', name: 'product', open: 0, total: 0 }]);
+  });
+
+  it('checks a change with dryRun and saves nothing, whether it passes or not', async () => {
+    const before = (await read('gizmos')).repo;
+    const passes = await json(await modify('gizmos', { addAreas: ['brand:GZB'], dryRun: true }));
+    expect(passes).toMatchObject({ status: 200, dryRun: true });
+    expect(passes.repo.areas.map((a) => a.prefix)).toEqual(['GZP', 'GZO', 'GZC', 'GZB']);
+    const refused = await json(await modify('gizmos', { addAreas: ['brand:PRD'], dryRun: true }));
+    expect(refused.status).toBe(400);
+    expect(refused.error).toMatch(/PRD already belongs to widgets/);
+    expect((await json(await modify('gizmos', { removeAreas: ['product'], dryRun: true }))).error).toMatch(/has tasks/);
+    expect((await read('gizmos')).repo).toEqual(before);
+    // An agent can't check one either.
+    expect((await json(await modify('gizmos', { name: 'X', dryRun: true, by: 'claude-gz' }))).status).toBe(403);
+  });
+
+  it('refuses a change made over a newer one, with the row as it is now', async () => {
+    const loaded = (await read('gizmos')).repo;
+    const first = await json(await modify('gizmos', { name: 'Gizmos', edited: loaded.edited }));
+    expect(first).toMatchObject({ status: 200, repo: { name: 'Gizmos' } });
+    expect(first.repo.edited).not.toBe(loaded.edited);
+
+    const stale = await json(await modify('gizmos', { name: 'Other', edited: loaded.edited }));
+    expect(stale.status).toBe(409);
+    expect(stale.error).toMatch(/changed somewhere else/i);
+    expect(stale.repo).toEqual(first.repo);
+    expect((await json(await modify('gizmos', { name: 'Other', edited: loaded.edited, dryRun: true }))).status).toBe(
+      409,
+    );
+    expect((await read('gizmos')).repo.name).toBe('Gizmos');
+    expect((await json(await modify('gizmos', { name: 'Other', edited: 'yesterday' }))).status).toBe(400);
+
+    // The CLI sends no edited time and saves as before, even twice in a row.
+    expect((await json(await modify('gizmos', { name: 'Gizmos one' }))).status).toBe(200);
+    const again = await json(await modify('gizmos', { name: 'Gizmos two' }));
+    expect(again).toMatchObject({ status: 200, repo: { name: 'Gizmos two' } });
+    expect((await json(await modify('gizmos', { name: 'Gizmos three', edited: first.repo.edited }))).status).toBe(409);
+    expect((await json(await modify('gizmos', { name: 'Gizmos', edited: again.repo.edited }))).status).toBe(200);
   });
 });
