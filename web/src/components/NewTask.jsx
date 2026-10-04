@@ -219,9 +219,46 @@ export function ideaTitle(text) {
 
 const IDEA_HORIZONS = [...HORIZONS, { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' }];
 
+/**
+ * The repository an idea (or a new agent) is for: preset to the one in scope, and with every repository in scope
+ * empty and required. A board with one repository shows nothing. Pass the same `repo`/`setRepo` pair to the form.
+ * @param {{ repo: string, setRepo: (slug: string) => void, error?: string | null, id?: string }} props
+ */
+export function RepoField({ repo, setRepo, error, id = 'idea-repo' }) {
+  if (!multiRepo.value) return null;
+  return (
+    <label class="field">
+      <span class="field-label">Repository</span>
+      <select
+        name="repo"
+        class="select"
+        value={repo}
+        aria-required="true"
+        aria-invalid={error ? 'true' : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        onChange={(e) => setRepo(e.currentTarget.value)}
+      >
+        <option value="">Pick a repository</option>
+        {repos.value.list.map((r) => (
+          <option key={r.slug} value={r.slug}>
+            {r.name}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <span class="field-error" id={`${id}-error`}>
+          {error}
+        </span>
+      )}
+    </label>
+  );
+}
+
 function IdeaForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [repo, setRepo] = useState(repoScope.value ?? '');
+  const [repoError, setRepoError] = useState(null);
   const [images, setImages] = useState([]);
   const [over, setOver] = useState(false);
 
@@ -251,12 +288,16 @@ function IdeaForm() {
       setError('Write the idea first, rough is fine.');
       return;
     }
+    if (multiRepo.value && !repo) {
+      setRepoError('Pick the repository this idea is for.');
+      return;
+    }
     setBusy(true);
     // Auto-start and the horizon are the owner's choices, made here and nowhere else: the agent never changes them.
     const created = await actions.create({
       description: ideaTitle(idea),
       project: 'ideas',
-      repo: repoScope.value ?? undefined,
+      repo: multiRepo.value ? repo : undefined,
       horizon: 'now',
       tags: ['agent', 'idea', `horizon-${data.get('horizon')}`],
       autostart: data.get('autostart') ? 'yes' : undefined,
@@ -325,6 +366,14 @@ function IdeaForm() {
           if it needs one. You review all of it in a pull request.
         </span>
       </label>
+      <RepoField
+        repo={repo}
+        setRepo={(slug) => {
+          setRepo(slug);
+          setRepoError(null);
+        }}
+        error={repoError}
+      />
       <div class="field">
         <span class="field-label">Images</span>
         <Thumbnails images={images} onRemove={drop} />
