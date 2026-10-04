@@ -35,7 +35,7 @@ import { promptPlaceholders } from './wizard.js';
 import { BACKFILL_SHIPPED } from './backfill-shipped.js';
 import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
 import { pullAccess } from './github-access.js';
-import { buildFlow, compareFacts, pipelineOf } from './release.js';
+import { buildFlow, compareFacts, packageOf, pipelineOf, stableOf } from './release.js';
 import { candidate, productionSha } from './promote.js';
 
 const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 100 };
@@ -1192,7 +1192,7 @@ export const githubMethods = {
       access: pullAccess(live?.repos?.[repo.slug] ?? null, {
         github: repo.github,
         at: live?.at ?? null,
-        pipeline: Boolean(pipeline),
+        pipeline: Boolean(pipeline || packageOf(repo)),
       }),
       // What the runs staged on npm, and whether each is published yet (BRK-101); empty without a package.
       packages: this.packagesOf(repo.slug).versions,
@@ -1383,7 +1383,7 @@ export const githubMethods = {
             return pullAccess(live?.repos?.[repo.slug] ?? null, {
               github: repo.github,
               at: live?.at ?? null,
-              pipeline: Boolean(pipeline),
+              pipeline: Boolean(pipeline || packageOf(repo)),
             });
           })(),
           commits: p.commits,
@@ -1536,6 +1536,7 @@ export const githubMethods = {
     if (missing) return missing;
     const credentials = await appCredentials(this.env);
     if (!credentials) return { status: 409, body: { error: 'GitHub isn’t connected yet' } };
+    if (action === 'release') return this.packageRelease(repo, credentials, version);
     const pipeline = pipelineOf(repo);
     if (!pipeline)
       return {
@@ -1588,12 +1589,61 @@ export const githubMethods = {
         reason: text,
       };
     }
+    return this.dispatchRelease(repo, credentials, { workflow, ref: pipeline.branch, inputs, event });
+  },
+
+  /**
+   * Release (BRK-103, IDEA-27 section 2b): starts the stable job of the repository's release.yml with the pre-release
+   * the owner chose, so that commit's files are staged on npm as `X.Y.Z` on latest, waiting for the owner's 2FA
+   * there. The board never publishes or approves on npm. Refused unless the repository's pipeline names a package and
+   * the Packages feed knows the pre-release, and once the feed knows its stable, staged or published (npm takes a
+   * version once). The workflow checks the tags again.
+   */
+  async packageRelease(repo, credentials, version) {
+    const pkg = packageOf(repo);
+    if (!pkg)
+      return {
+        status: 409,
+        body: {
+          error: `${repo.name} releases no npm package: set the pipeline’s package first (repos modify --pipeline).`,
+        },
+      };
+    // Its tag (widgets@1.4.0-main.5, v1.4.0-main.5) names it too.
+    const given = String(version ?? '').trim();
+    const wanted = given.startsWith(`${pkg.name}@`) ? given.slice(pkg.name.length + 1) : given.replace(/^v/u, '');
+    const stable = stableOf(wanted);
+    if (!stable)
+      return {
+        status: 400,
+        body: { error: 'send the pre-release to release as "version", like 1.4.0-main.5' },
+      };
+    const known = this.sql
+      .exec('SELECT version, state FROM gh_packages WHERE repo = ? AND name = ?', repo.slug, pkg.name)
+      .toArray();
+    if (!known.some((v) => v.version === wanted))
+      return {
+        status: 409,
+        body: {
+          error: `The board hasn’t seen ${pkg.name}@${wanted} staged. Pick a pre-release from the Packages feed, or sync first.`,
+        },
+      };
+    if (known.some((v) => v.version === stable && ['staged', 'published'].includes(v.state)))
+      return {
+        status: 409,
+        body: {
+          error: `${pkg.name}@${stable} is already out, and npm takes a version once. Release a newer pre-release.`,
+        },
+      };
+    const inputs = { prerelease: `${pkg.prefix}${wanted}` };
+    const event = { kind: 'release_started', package: pkg.name, prerelease: wanted, version: stable };
+    return this.dispatchRelease(repo, credentials, { workflow: pkg.workflow, ref: pkg.branch, inputs, event });
+  },
+
+  /** Starts `workflow` on `ref` with `inputs` through the GitHub App, and records `event` in Activity once it has. */
+  async dispatchRelease(repo, credentials, { workflow, ref, inputs, event }) {
     const client = this.githubClient(credentials, repo);
     try {
-      await client.send('POST', `/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, {
-        ref: pipeline.branch,
-        inputs,
-      });
+      await client.send('POST', `/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, { ref, inputs });
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       if (error.status === 403 && /not accessible by integration/iu.test(error.reason ?? '')) {

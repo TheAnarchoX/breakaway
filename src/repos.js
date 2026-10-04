@@ -10,6 +10,7 @@
  * repository, and a prefix to exactly one area, so a work ID means one task across the install.
  */
 import { AREA_NAMES, InputError, PROJECTS } from './model.js';
+import { isPackageName } from './packages.js';
 import { checkSettings } from './specs.js';
 
 /** The slug a task without `repo` falls back to while the registry has no default: nothing is registered, so no task is. */
@@ -118,23 +119,37 @@ const WORKER_NAME = /^[\w.-]{1,100}$/u;
 const DEPLOY_PATHS_PATH = /^(?!\/)(?!.*\.\.)[\w./-]{1,200}\.json$/u;
 
 /**
- * A repository's deploy pipeline as the owner sets it: the shape `pipelineOf` (release.js) reads, refused with
- * the reason when it would read none. `workers.staging` and `workers.production` are required; `workflows`
- * (deploy, promote, rollback, workflow file names) and `deployPaths` (a JSON file in the repository) are optional.
+ * A repository's deploy pipeline as the owner sets it: the shape `pipelineOf` and `packageOf` (release.js) read,
+ * refused with the reason when they would read none. It needs `workers` (`staging` and `production`, the Workers it
+ * deploys), `package` (the npm package it releases, BRK-103), or both. `workflows` (deploy, promote, rollback, and
+ * release, workflow file names) and `deployPaths` (a JSON file in the repository) are optional.
  */
 function checkPipeline(pipeline) {
   if (!pipeline) return null;
-  const known = { workers: ['staging', 'production'], workflows: ['deploy', 'promote', 'rollback'] };
+  const known = { workers: ['staging', 'production'], workflows: ['deploy', 'promote', 'rollback', 'release'] };
   for (const key of Object.keys(pipeline)) {
-    if (!['workers', 'workflows', 'deployPaths'].includes(key))
-      throw new InputError(`pipeline has no "${key.slice(0, 40)}"; it has workers, workflows, and deployPaths`);
+    if (!['workers', 'workflows', 'deployPaths', 'package'].includes(key))
+      throw new InputError(
+        `pipeline has no "${key.slice(0, 40)}"; it has workers, package, workflows, and deployPaths`,
+      );
   }
   const out = {};
+  const hasPackage = pipeline.package !== undefined && pipeline.package !== null && pipeline.package !== '';
+  if (hasPackage) {
+    const name = typeof pipeline.package === 'string' ? pipeline.package.trim() : null;
+    if (!isPackageName(name))
+      throw new InputError(
+        'pipeline.package is the npm package’s name, as its package.json says, like widgets or @acme/widgets',
+      );
+    out.package = name;
+  }
   for (const [group, keys] of Object.entries(known)) {
     const value = pipeline[group];
     if (value === undefined || value === null) {
-      if (group === 'workers')
-        throw new InputError('pipeline.workers needs staging and production, the names of the two Workers');
+      if (group === 'workers' && !hasPackage)
+        throw new InputError(
+          'pipeline needs workers (staging and production, the names of the two Workers it deploys), package (the npm package it releases), or both',
+        );
       continue;
     }
     if (typeof value !== 'object' || Array.isArray(value)) throw new InputError(`pipeline.${group} is an object`);

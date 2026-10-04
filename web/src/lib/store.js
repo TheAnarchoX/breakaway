@@ -746,8 +746,11 @@ export const VIEWS = [
   { id: 'routines', label: 'Routines', key: 'u' },
   { id: 'connections', label: 'Connections', key: 'w' },
 ];
-/** Pages that aren't in the nav: the Add a repository wizard (CLD-194), reached from Connections and the switcher. */
-const PAGE_IDS = ['add-repo'];
+/**
+ * Pages that aren't in the nav: the Add a repository wizard (CLD-194), reached from Connections and the switcher,
+ * and a repository's settings (WEB-30), at #/settings/<slug>.
+ */
+const PAGE_IDS = ['add-repo', 'repo-settings'];
 const VIEW_IDS = [...VIEWS.map((v) => v.id), ...PAGE_IDS];
 
 export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], roles: [], claim: 'any', done: 'recent' };
@@ -771,6 +774,16 @@ export const focusComment = signal(null);
 export const helpOpen = signal(false);
 /** The repository the Add a repository wizard is on: `{ slug }` once registered, `{ github }` before, or null to pick one. */
 export const addRepoTarget = signal(null);
+/** The repository whose settings page is open (#/settings/<slug>, WEB-30), as the address spells it, or null for the list. */
+export const settingsSlug = signal(null);
+
+const safeDecode = (text) => {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+};
 
 const csv = (value) => (value ? value.split(',').filter(Boolean) : []);
 
@@ -784,7 +797,10 @@ function parseHash() {
     const repo = p.get('repo');
     if (repo || !firstParse) repoChoice.value = repo && /^[a-z][a-z0-9-]{0,31}$/u.test(repo) ? repo : 'all';
     firstParse = false;
-    view.value = VIEW_IDS.includes(path) ? path : 'board';
+    // A repository's settings live at #/settings/<slug>; the slug is kept as typed, so a misspelt one can say so.
+    const settings = /^settings(?:\/([^/]{0,64}))?$/u.exec(path);
+    view.value = settings ? 'repo-settings' : VIEW_IDS.includes(path) ? path : 'board';
+    settingsSlug.value = settings?.[1] ? safeDecode(settings[1]).toLowerCase() : null;
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
     const feature = path === 'roadmap' ? p.get('feature') : null;
@@ -825,6 +841,7 @@ export function hashFor({
   routine = selectedRoutine.value,
   feature = selectedFeature.value,
   ping = focusPing.value,
+  settings = settingsSlug.value,
 } = {}) {
   const p = new URLSearchParams();
   if (repoScope.value) p.set('repo', repoScope.value);
@@ -849,7 +866,8 @@ export function hashFor({
     if (listGroup.value !== 'none') p.set('group', listGroup.value);
   }
   const qs = p.toString().replaceAll('%2C', ',');
-  return `#/${v}${qs ? `?${qs}` : ''}`;
+  const path = v === 'repo-settings' ? `settings${settings ? `/${enc(settings)}` : ''}` : v;
+  return `#/${path}${qs ? `?${qs}` : ''}`;
 }
 
 // A push links to /?inbox=<ping id>: open the inbox on it.
@@ -884,6 +902,15 @@ export function go(v) {
 export function openAddRepo(target = null) {
   addRepoTarget.value = target;
   location.hash = hashFor({ view: 'add-repo', task: null, pr: null, ping: null });
+}
+
+/** A link to a repository's settings page (WEB-30), or to the list of repositories with none. */
+export const repoSettingsHref = (slug = null) =>
+  hashFor({ view: 'repo-settings', settings: slug, task: null, pr: null, ping: null });
+
+/** Opens a repository's settings page (WEB-30), or the list of repositories with none. */
+export function openRepoSettings(slug = null) {
+  location.hash = repoSettingsHref(slug);
 }
 
 export function openTask(t) {
