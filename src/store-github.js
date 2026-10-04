@@ -973,6 +973,9 @@ export const githubMethods = {
         author: pr.author,
         checks: { state: pr.checks.state, total: pr.checks.total, passed: pr.checks.passed },
         review: pr.review.decision,
+        // Whether it can merge as it stands, so the task menu offers Review with an agent only then (WEB-23).
+        verdict: pr.state === 'open' ? prVerdict(pr) : null,
+        mergeable: pr.mergeable ?? null,
         workers: pr.workers ?? null,
       };
       byNumber.set(`${row.repo}#${pr.number}`, short);

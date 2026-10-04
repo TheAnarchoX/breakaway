@@ -553,13 +553,16 @@ describe('GitHub on the board', () => {
         state: 'open',
         checks: { state: 'failure', total: 2, passed: 1 },
         review: 'changes_requested',
+        // What the task menu needs to offer Review with an agent (WEB-23).
+        verdict: 'failing',
+        mergeable: true,
       }),
     ]);
     const ops1 = (await body(await api('tasks/OPS-1'))).task;
     expect(ops1.status).toBe('pending');
     expect(ops1.github).toEqual([
       expect.objectContaining({ number: 10, closes: false }),
-      expect.objectContaining({ number: 9, closes: true, state: 'merged' }),
+      expect.objectContaining({ number: 9, closes: true, state: 'merged', verdict: null }),
     ]);
   });
 
