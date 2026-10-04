@@ -181,7 +181,9 @@ Reading                (list, next, claim, and add work in this checkout's repos
                          Review with an agent does; on a Dependabot one it tests the update, as Safe to merge? does
                          (owner)  [--note <text>] [--repo <slug>] [--force]
   github release <pre-release>   release a package's pre-release (1.4.0-main.5) as its stable on latest, as Release on the
-                         GitHub page does: the board starts release.yml's stable job, and npm waits for your 2FA (owner)  [--repo <slug>]
+                         GitHub page does: the board starts release.yml's stable job, and npm waits for your 2FA (owner);
+                         --next minor or major opens the pull request that sets the next version (patch, the default, counts
+                         by itself). Refused once that stable is out  [--next patch|minor|major] [--repo <slug>]
   specs                  the repository's specs, newest first: each one's status and its tasks  [--repo <slug>]
   specs show <path>      one spec: its status, last change, Markdown, and the tasks that link it  [--repo <slug>]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
@@ -1441,13 +1443,15 @@ const commands = {
       const built = packageReleaseRequest(args[1], {
         repo: (await checkoutRepo()).slug,
         by: opts.as ?? setting('AGENT'),
+        next: typeof opts.next === 'string' ? opts.next : null,
       });
       if (built.error || !built.request) fail(built.error ?? 'bad request');
       const answer = await call(...built.request);
+      const next = built.request[2].next;
       print(
         answer,
         () =>
-          `Started ${answer.workflow}'s stable job for ${args[1]}. It stages the stable on npm's latest, where it waits for your approval with 2FA.`,
+          `Started ${answer.workflow}'s stable job for ${args[1]}. It stages the stable on npm's latest, where it waits for your approval with 2FA.${next && next !== 'patch' ? ` Then a pull request sets package.json to the next ${next}.` : ''}`,
       );
       return;
     }

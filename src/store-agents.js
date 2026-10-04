@@ -527,21 +527,27 @@ export const agentsMethods = {
     const tags = JSON.parse(this.ghMeta('gh_tags', slug) ?? '[]');
     const found = versionBase([...releases.filter((r) => !r.draft).map((r) => r.tag), ...tags.map((t) => t.name)]);
     if (!found) return null;
+    return { ...found, choices: nextChoices(found.base), preparing: this.preparingVersion(slug) };
+  },
+
+  /**
+   * The open +version task preparing repository `slug`'s next minor or major (BRK-100), if any, with the version its
+   * title names while it still names one (its agent may retitle it).
+   */
+  preparingVersion(slug) {
     const fallback = this.defaultRepoSlug();
     const open = [...this.tasks].find(
       ([, map]) => map.status === 'pending' && map.tag_general && map.tag_version && repoSlugOf(map, fallback) === slug,
     );
-    const task = open ? this.detail(open[0]) : null;
+    if (!open) return null;
+    const task = this.detail(open[0]);
     return {
-      ...found,
-      choices: nextChoices(found.base),
-      preparing: task && {
-        uuid: task.uuid,
-        wid: task.wid,
-        short: task.short,
-        description: task.description,
-        claim: task.claim,
-      },
+      uuid: task.uuid,
+      wid: task.wid,
+      short: task.short,
+      description: task.description,
+      claim: task.claim,
+      version: /\b(\d+\.\d+\.\d+)\b/u.exec(task.description ?? '')?.[1] ?? null,
     };
   },
 

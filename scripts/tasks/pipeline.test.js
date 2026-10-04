@@ -130,12 +130,24 @@ describe('pipeline init renders (BRK-90)', () => {
     const doc = parseYaml(release);
     expect(doc.env).toMatchObject({ PACKAGE: 'widgets', DIRECTORY: '.', ACCESS: 'public', PREFIX: 'v' });
     expect(doc.on.workflow_run.workflows).toEqual(['CI']);
-    expect(Object.keys(doc.on.workflow_dispatch.inputs)).toEqual(['prerelease']);
-    expect(Object.keys(doc.jobs)).toEqual(['prerelease', 'stable']);
-    for (const job of Object.values(doc.jobs)) {
+    expect(Object.keys(doc.on.workflow_dispatch.inputs)).toEqual(['prerelease', 'next']);
+    expect(doc.on.workflow_dispatch.inputs.next).toMatchObject({
+      default: 'patch',
+      options: ['patch', 'minor', 'major'],
+    });
+    expect(Object.keys(doc.jobs)).toEqual(['prerelease', 'stable', 'next-version']);
+    for (const job of [doc.jobs.prerelease, doc.jobs.stable]) {
       expect(job.environment).toBe('npm');
       expect(job.permissions['id-token']).toBe('write');
     }
+    // WEB-39: the pull request that sets the next minor or major runs with no environment, no secrets, and no OIDC.
+    const next = doc.jobs['next-version'];
+    expect(next).toMatchObject({ needs: 'stable', if: "inputs.next == 'minor' || inputs.next == 'major'" });
+    expect(next.environment).toBeUndefined();
+    expect(next.permissions).toEqual({ contents: 'write', 'pull-requests': 'write' });
+    expect(next.env.STABLE).toBe('${{ needs.stable.outputs.version }}');
+    expect(doc.jobs.stable.outputs.version).toBe('${{ steps.version.outputs.version }}');
+    expect(JSON.stringify(next)).not.toMatch(/secrets\./u);
   });
 
   it('a Worker and a package together: both flows, the package’s tags <package>@…', () => {

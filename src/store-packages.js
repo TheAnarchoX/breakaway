@@ -10,6 +10,7 @@
 import { GitHubError } from './github.js';
 import { REGISTRY, distTags, packageUrl, registryUrl, stagedIn } from './packages.js';
 import { clip } from './connections.js';
+import { packageOf, releaseOffer, releasedFrom } from './release.js';
 
 /** Runs whose annotations are read per sync, newest first; the rest wait for the next one. */
 const MAX_RUNS = 5;
@@ -204,6 +205,12 @@ export const packagesMethods = {
           url: packageUrl(r.name, r.state === 'published' ? r.version : null),
         };
       });
+    // Release on each pre-release of the package the pipeline names (WEB-39), worked out from every version kept.
+    const offers = this.releaseOffers(slug);
+    for (const v of versions) {
+      const offer = offers?.(v);
+      if (offer) v.release = offer;
+    }
     const packages = [...new Set(versions.map((v) => v.name))].map((name) => ({
       repo: slug,
       name,
@@ -213,6 +220,27 @@ export const packagesMethods = {
       waiting: versions.filter((v) => v.name === name && v.state === 'staged').length,
     }));
     return { versions, packages };
+  },
+
+  /**
+   * Release for `slug`'s pre-releases (WEB-39): a function from a feed version to its offer (src/release.js
+   * releaseOffer), or null when the repository's pipeline names no package. Only that package's pre-releases get one.
+   */
+  releaseOffers(slug) {
+    const pkg = packageOf(this.repoBySlug(slug));
+    if (!pkg) return null;
+    const versions = this.sql
+      .exec('SELECT version, state FROM gh_packages WHERE repo = ? AND name = ?', slug, pkg.name)
+      .toArray()
+      .map((r) => ({ version: String(r.version), state: String(r.state) }));
+    const events = this.sql
+      .exec('SELECT data FROM gh_events WHERE repo = ? AND data LIKE \'%"release_started"%\'', slug)
+      .toArray()
+      .map((r) => JSON.parse(r.data))
+      .filter((e) => e.kind === 'release_started' && e.package === pkg.name);
+    const from = releasedFrom(JSON.parse(this.ghMeta('gh_tags', slug) ?? '[]'), events, pkg.prefix);
+    const preparing = this.preparingVersion(slug);
+    return (v) => (v.name === pkg.name ? releaseOffer(versions, v.version, { from, preparing }) : null);
   },
 
   /** What Connections shows for npm: when the registry last answered, and its last failure. */

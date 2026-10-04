@@ -19,6 +19,14 @@ on:
         description: The pre-release to release as stable, like {{prefixName}}1.4.0-main.5
         required: true
         type: string
+      # Pre-releases count patches from the stable by themselves. With minor or major, once the stable is staged, the
+      # next-version job opens the pull request that sets package.json to the next minor or major after it.
+      next:
+        description: What {{branchName}} works toward next. Patch opens nothing; minor or major opens a pull request that sets package.json
+        required: false
+        default: patch
+        type: choice
+        options: [patch, minor, major]
 
 permissions: {}
 
@@ -139,6 +147,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
@@ -210,3 +220,64 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           COMMIT: ${{ steps.version.outputs.commit }}
         run: gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$COMMIT" > /dev/null
+
+  # With next minor or major, a pull request sets package.json to the next minor or major after the stable, so the next
+  # merge stages X.Y.0-main.1 instead of the stable's next patch. It runs after the stable is staged, in its own job with
+  # no environment and no secrets, and writes through GitHub's API, so no credentials are kept in a checkout. A pull
+  # request opened with GITHUB_TOKEN starts no workflows, so its checks run once the owner closes and reopens it, or
+  # pushes to it.
+  next-version:
+    name: next version
+    needs: stable
+    if: inputs.next == 'minor' || inputs.next == 'major'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STABLE: ${{ needs.stable.outputs.version }}
+      NEXT: ${{ inputs.next }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: {{branchName}}
+          persist-credentials: false
+      - name: Open the pull request that sets the version
+        run: |
+          set -euo pipefail
+          version=$(node scripts/package-release.mjs next "$STABLE" "$NEXT" --dir "$DIRECTORY" | sed 's/^version=//')
+          if [ -z "$version" ]; then
+            echo "::notice title=No version to set::{{branchName}}'s package.json is already at or past the next $NEXT after $STABLE."
+            exit 0
+          fi
+          branch="next-version/$version"
+          if [ -n "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            echo "::notice title=Already open::A pull request from $branch sets $version."
+            exit 0
+          fi
+          file=package.json
+          if [ "$DIRECTORY" != . ]; then file="$DIRECTORY/package.json"; fi
+          # A run GitHub refused the pull request leaves its branch: open the pull request from it.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+            base=$(git rev-parse HEAD)
+            blob=$(git rev-parse "HEAD:$file")
+            export V=$version F=$file
+            node -e "const f=process.env.F,p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base" >/dev/null
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/$file" -f "branch=$branch" -f "sha=$blob" \
+              -f "message=Set $PACKAGE's version to $version" -f "content=$(base64 -w0 "$file")" >/dev/null
+          fi
+          printf '%s\n' \
+            "$PACKAGE@$STABLE is staged, and the Release workflow was run with next $NEXT: this sets $file's version to $version." \
+            "" \
+            "Once it merges, the next pre-release is $version-main.1 instead of $STABLE's next patch." \
+            "" \
+            "Opened with the workflow's token, which starts no workflows: close and reopen this pull request, or push to it, for its checks to run." \
+            > "$RUNNER_TEMP/body.md"
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --base {{branchName}} --head "$branch" \
+            --title "Set $PACKAGE's version to $version" --body-file "$RUNNER_TEMP/body.md"; then
+            echo "::error title=GitHub refused the pull request::$branch sets $version, but the repository doesn't let Actions open pull requests. Turn on Settings, Actions, General, Allow GitHub Actions to create and approve pull requests, then re-run this job, or open the pull request from $branch yourself."
+            exit 1
+          fi

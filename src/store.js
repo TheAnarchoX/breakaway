@@ -49,6 +49,7 @@ import { connectionsMethods } from './store-connections.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
+import { kickoffsMethods } from './store-kickoffs.js';
 import { initMethods } from './store-init.js';
 import { routineKeepMethods } from './store-routine-keep.js';
 
@@ -103,6 +104,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initStats();
     this.initRepos();
     this.initConnections();
+    this.initKickoffs();
     this.initRoutineKeep();
   }
 
@@ -1265,6 +1267,7 @@ Object.assign(
   updatesMethods,
   selfUpdateMethods,
   wizardMethods,
+  kickoffsMethods,
   initMethods,
   routineKeepMethods,
 );
