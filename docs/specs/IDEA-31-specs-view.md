@@ -1,6 +1,6 @@
 # IDEA-31 · Specs: read a repository's specs on the board, and refine one with an agent
 
-Task: IDEA-31 on the board · Status: draft
+Task: IDEA-31 on the board · Status: built (#161, #165, #167, #169, #172)
 
 ## Problem
 Specs are where the board's bigger work is decided, but on the board they are only a path in a task's `spec` field, which opens the file on GitHub. The owner can't see a repository's specs together, can't read one beside the tasks it made, and has no way to change one from the board. Changing a spec today means starting an agent on one of its tasks and explaining which spec, which tasks, and what to change, or editing by hand.
