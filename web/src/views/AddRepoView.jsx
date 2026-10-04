@@ -484,8 +484,11 @@ function Step({ step, index, d }) {
   );
 }
 
-/** Which repository: owner/name for a new one, or one already registered to carry on with. */
-function Pick() {
+/**
+ * Which repository: owner/name for a new one, or one already registered to carry on with. The wizard's first step,
+ * and Settings' Repositories on a fresh install (WEB-32).
+ */
+export function Pick() {
   const [value, setValue] = useState('');
   const [error, setError] = useState(null);
   const submit = (e) => {
