@@ -7346,3 +7346,23 @@ fieldset.field {
   font-family: var(--font-mono);
   font-size: 0.92em;
 }
+/* Release on a pre-release (WEB-39): beside its line in the tile, under it in the tab. */
+.pkg-release {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.gh-run-title .pkg-release,
+.gh-run-title .pkg-superseded {
+  justify-self: start;
+  margin-top: 4px;
+}
+.pkg-next {
+  display: grid;
+  gap: 2px;
+}
+.flow-versions .check-inline:has(.pkg-next) {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}

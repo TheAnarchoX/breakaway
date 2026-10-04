@@ -1665,7 +1665,12 @@ export const githubMethods = {
     // Patch is the stable job's default, so it isn't sent: a release.yml rendered before it took next still runs.
     const inputs = { prerelease: `${pkg.prefix}${wanted}`, ...(step === 'patch' ? {} : { next: step }) };
     const event = { kind: 'release_started', package: pkg.name, prerelease: wanted, version: stable, next: step };
-    const answer = await this.dispatchRelease(repo, credentials, { workflow: pkg.workflow, ref: pkg.branch, inputs, event });
+    const answer = await this.dispatchRelease(repo, credentials, {
+      workflow: pkg.workflow,
+      ref: pkg.branch,
+      inputs,
+      event,
+    });
     if (answer.status === 409 && answer.body.github === 422 && /unexpected inputs/iu.test(answer.body.error ?? ''))
       return {
         status: 409,

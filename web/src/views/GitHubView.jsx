@@ -42,6 +42,7 @@ import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
 import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
+import { PackageRelease } from '../components/PackageRelease.jsx';
 import { TurnOnDeploys } from '../components/TurnOnDeploys.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -431,7 +432,8 @@ function PackageState({ v }) {
 }
 
 /** A package's latest pre-release or release in a line, like a Live now line. */
-function PackageLine({ name, v }) {
+/** @param {{ name: string, v: any, versions?: any[] }} props */
+function PackageLine({ name, v, versions = [] }) {
   if (!v) {
     return (
       <li class="gh-live flow-muted">
@@ -454,6 +456,7 @@ function PackageLine({ name, v }) {
           {ago(when)}
         </span>
       </span>
+      <PackageRelease v={v} versions={versions} />
     </li>
   );
 }
@@ -488,7 +491,7 @@ function PackagesTile({ view, several }) {
             {several && p.repo && <RepoChip slug={p.repo} />}
           </span>
           <ul class="gh-lives">
-            <PackageLine name="Pre-release" v={p.prerelease} />
+            <PackageLine name="Pre-release" v={p.prerelease} versions={view.packages} />
             <PackageLine name="Release" v={p.release} />
           </ul>
           {p.waiting > 0 && <ApproveHint url={p.url} />}
@@ -523,6 +526,7 @@ function Packages({ versions, several }) {
                 )}
               </span>
               {!published && <ApproveHint url={v.url} />}
+              <PackageRelease v={v} versions={versions} />
             </span>
             <span class="gh-run-meta">
               {several && v.repo && <RepoChip slug={v.repo} />}
@@ -842,7 +846,7 @@ export function GitHubView() {
           {plural(d.open.length + d.closed.length, 'pull request')} kept · the board writes to GitHub only when you
           press{' '}
           {d.pipeline
-            ? 'Update branch, Merge, Merge when green, Promote, or Roll back'
+            ? `Update branch, Merge, Merge when green, Promote, Roll back${d.packages.some((v) => v.release) ? ', or Release' : ''}`
             : 'Update branch, Merge, or Merge when green'}
           {settings && ', or when your settings in this browser say so'}
         </p>

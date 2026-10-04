@@ -433,7 +433,14 @@ describe('the release flow: Promote and Roll back', () => {
       expect(of('1.3.1-main.4')).toMatchObject({
         allowed: true,
         leavesOut: ['1.3.1-main.5', '1.3.1-main.7'],
-        next: { ask: true, choices: [{ next: 'patch', version: '1.3.2' }, { next: 'minor', version: '1.4.0' }, { next: 'major', version: '2.0.0' }] },
+        next: {
+          ask: true,
+          choices: [
+            { next: 'patch', version: '1.3.2' },
+            { next: 'minor', version: '1.4.0' },
+            { next: 'major', version: '2.0.0' },
+          ],
+        },
       });
       expect(of('1.3.1-main.7')).toMatchObject({ allowed: true, leavesOut: [] });
     });
@@ -498,7 +505,9 @@ describe('the release flow: Promote and Roll back', () => {
       const post = await browser();
       const refused = await body(await post('github/release', { version: '1.4.0-main.2', next: 'major' }));
       expect(refused).toMatchObject({ status: 409 });
-      expect(refused.error).toMatch(/next version is already 1.4.1 \(1.4.1-main.1 is already out\): release it with patch/u);
+      expect(refused.error).toMatch(
+        /next version is already 1.4.1 \(1.4.1-main.1 is already out\): release it with patch/u,
+      );
       expect(gh.writes).toEqual([]);
       expect((await post('github/release', { version: '1.4.0-main.2' })).status).toBe(200);
     });
@@ -594,7 +603,16 @@ describe('Release on each pre-release (WEB-39): the rules', () => {
       '1.3.1': '1.3.1-main.4',
       '1.2.0': '1.2.0-main.8',
     });
-    expect(releasedFrom([{ name: 'w@2.0.0-main.1', sha: 'a' }, { name: 'w@2.0.0', sha: 'a' }], [], 'w@')).toEqual({
+    expect(
+      releasedFrom(
+        [
+          { name: 'w@2.0.0-main.1', sha: 'a' },
+          { name: 'w@2.0.0', sha: 'a' },
+        ],
+        [],
+        'w@',
+      ),
+    ).toEqual({
       '2.0.0': '2.0.0-main.1',
     });
   });

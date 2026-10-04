@@ -234,7 +234,7 @@ export const packagesMethods = {
       .toArray()
       .map((r) => ({ version: String(r.version), state: String(r.state) }));
     const events = this.sql
-      .exec("SELECT data FROM gh_events WHERE repo = ? AND data LIKE '%\"release_started\"%'", slug)
+      .exec('SELECT data FROM gh_events WHERE repo = ? AND data LIKE \'%"release_started"%\'', slug)
       .toArray()
       .map((r) => JSON.parse(r.data))
       .filter((e) => e.kind === 'release_started' && e.package === pkg.name);

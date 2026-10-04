@@ -133,7 +133,8 @@ export function releaseOffer(versions, version, { from = {}, preparing = null } 
 export function releasedFrom(tags, events, prefix) {
   /** @type {Record<string, string>} */
   const from = {};
-  for (const e of events) if (e.version && e.prerelease && stableOf(e.prerelease) === e.version) from[e.version] = e.prerelease;
+  for (const e of events)
+    if (e.version && e.prerelease && stableOf(e.prerelease) === e.version) from[e.version] = e.prerelease;
   const named = (t) => (t.name?.startsWith(prefix) ? t.name.slice(prefix.length) : null);
   const bySha = new Map();
   for (const t of tags) {

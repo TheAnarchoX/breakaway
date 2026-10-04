@@ -23,7 +23,6 @@ export const nextPrerelease = (current, tags) => prereleaseWith(current, tags, '
 /** The stable version a pre-release tag (`v1.4.0-main.37`) is promoted to. */
 export const stableOf = (prereleaseTag) => stableWith(prereleaseTag, 'v');
 
-
 /**
  * manifest.json: what an install reads before it deploys.
  * `wranglerDeploy` says a manual release's only step is wrangler deploy (a new Durable Object class, a cron, a route), so

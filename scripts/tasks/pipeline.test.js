@@ -129,7 +129,10 @@ describe('pipeline init renders (BRK-90)', () => {
     expect(doc.env).toMatchObject({ PACKAGE: 'widgets', DIRECTORY: '.', ACCESS: 'public', PREFIX: 'v' });
     expect(doc.on.workflow_run.workflows).toEqual(['CI']);
     expect(Object.keys(doc.on.workflow_dispatch.inputs)).toEqual(['prerelease', 'next']);
-    expect(doc.on.workflow_dispatch.inputs.next).toMatchObject({ default: 'patch', options: ['patch', 'minor', 'major'] });
+    expect(doc.on.workflow_dispatch.inputs.next).toMatchObject({
+      default: 'patch',
+      options: ['patch', 'minor', 'major'],
+    });
     expect(Object.keys(doc.jobs)).toEqual(['prerelease', 'stable', 'next-version']);
     for (const job of [doc.jobs.prerelease, doc.jobs.stable]) {
       expect(job.environment).toBe('npm');
