@@ -1,15 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import {
-  CircleCheck,
-  CircleSlash,
-  Copy,
-  FolderGit2,
-  FolderPlus,
-  PowerOff,
-  RotateCcw,
-  Trash2,
-  TriangleAlert,
-} from 'lucide-preact';
+import { CircleCheck, CircleSlash, Copy, FolderGit2, PowerOff, RotateCcw, Trash2, TriangleAlert } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { AREAS, plural } from '../lib/model.js';
 import { RepoPullSettings } from '../components/PullSettings.jsx';
@@ -96,25 +86,6 @@ function RepoList({ except = null }) {
   );
 }
 
-/** The page with no repository named, until the Settings page lists them (WEB-32). */
-function Pick() {
-  return (
-    <div class="repo-settings">
-      <div class="view-intro">
-        <h1>Repository settings</h1>
-        <p class="muted">Each repository on the board has its own: pick one.</p>
-      </div>
-      <RepoList />
-      <p>
-        <button type="button" class="btn btn-outline btn-sm" onClick={() => openAddRepo(null)}>
-          <FolderPlus size={16} aria-hidden="true" />
-          Add a repository
-        </button>
-      </p>
-    </div>
-  );
-}
-
 /** @param {Record<string, any>} props */
 function NotFound({ slug }) {
   return (
@@ -124,6 +95,9 @@ function NotFound({ slug }) {
         <p class="muted">Check the address, or pick one of the board’s repositories.</p>
       </div>
       <RepoList />
+      <p>
+        <a href={repoSettingsHref(null)}>Open Settings</a>
+      </p>
     </div>
   );
 }
@@ -1277,7 +1251,6 @@ export function RepoSettingsView() {
     setState({ loading: true, data: null, error: null, missing: false });
     load();
   }, [slug]);
-  if (!slug) return <Pick />;
   if (state.missing) return <NotFound slug={slug} />;
   const { data } = state;
   // A save (or a 409's current row) replaces the row; the counts stay from the last read.

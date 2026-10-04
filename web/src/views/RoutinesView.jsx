@@ -1,18 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import {
-  CalendarClock,
-  CirclePause,
-  Copy,
-  GitMerge,
-  Hand,
-  History,
-  Pencil,
-  Play,
-  Plus,
-  Repeat,
-  Webhook,
-  X,
-} from 'lucide-preact';
+import { CalendarClock, Copy, GitMerge, Hand, History, Pencil, Play, Plus, Repeat, Webhook, X } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import {
   actions,
@@ -29,6 +16,7 @@ import {
   routines,
   selectedRoutine,
 } from '../lib/store.js';
+import { RoutinesDailyCap, RoutinesSwitch } from '../components/BoardSettings.jsx';
 import { Dialog, RepoChip, Segmented } from '../components/ui.jsx';
 import { RichText } from '../lib/richtext.jsx';
 
@@ -768,25 +756,11 @@ export function RoutinePanel({ docked }) {
  */
 function RunningCard({ d, running }) {
   const s = d.settings;
-  // The cap for all routines together, up to the Claude plan's ceiling (CLD-199; the plan's from CLD-198).
-  const most = s.limits?.dailyCap ?? 100;
-  const setCap = (e) => {
-    const n = Number(e.currentTarget.value);
-    if (Number.isInteger(n) && n >= 1 && n <= most) actions.routineSettings({ dailyCap: n });
-  };
   return (
     <section class="gh-section" aria-labelledby="rt-can-run">
       <div class="section-head">
         <h2 id="rt-can-run">Routines can run</h2>
-        <Segmented
-          label="Routines can run"
-          options={[
-            { id: 'on', label: 'On' },
-            { id: 'off', label: 'Paused', icon: <CirclePause size={14} aria-hidden="true" /> },
-          ]}
-          value={s.paused ? 'off' : 'on'}
-          onChange={(v) => actions.routineSettings({ paused: v === 'off' })}
-        />
+        <RoutinesSwitch s={s} />
       </div>
       <dl class="rt-stats">
         <div>
@@ -805,23 +779,7 @@ function RunningCard({ d, running }) {
           </dd>
         </div>
       </dl>
-      <label class="field">
-        <span class="field-label">All routines a day</span>
-        <input
-          class="input input-sm rt-cap"
-          type="number"
-          min="1"
-          max={most}
-          step="1"
-          defaultValue={s.dailyCap}
-          key={s.dailyCap}
-          onChange={setCap}
-        />
-        <span class="field-hint">
-          Most runs all routines start together in 24 hours, 1 to {most} on your Claude plan. Each routine also has its
-          own cap.
-        </span>
-      </label>
+      <RoutinesDailyCap s={s} />
       <p class="meta">
         {s.paused
           ? 'Paused: no schedule, trigger, or Run starts anything until you switch it back on.'
