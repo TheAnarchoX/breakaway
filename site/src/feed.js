@@ -4,6 +4,8 @@ import { compareVersions } from '../../scripts/release/lib.js';
 const STABLE = /^v(\d+\.\d+\.\d+)$/u;
 const PRERELEASE = /^v(\d+\.\d+\.\d+)-main\.(\d+)$/u;
 const ASSETS = { bundle: 'breakaway-bundle.tar.gz', manifest: 'manifest.json', checksums: 'SHA256SUMS' };
+// Releases from before signing (BRK-51) have none: their entry says so, and an install updates by hand once.
+const SIGNATURE = 'manifest.json.sig';
 const TRIES = 3;
 
 /**
@@ -35,6 +37,7 @@ export function entryOf(release, manifest) {
     if (!asset?.browser_download_url) return null;
     urls[key] = asset.browser_download_url;
   }
+  urls.signature = release.assets?.find((a) => a.name === SIGNATURE)?.browser_download_url ?? null;
   const version = release.tag_name.replace(/^v/u, '');
   if (
     !manifest ||

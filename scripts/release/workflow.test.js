@@ -36,7 +36,7 @@ describe('the npm token (BRK-75)', () => {
   });
 
   it('reaches only the two publish steps', () => {
-    const uses = WORKFLOW.split('\n').filter((line) => /secrets\./u.test(line));
+    const uses = WORKFLOW.split('\n').filter((line) => /secrets\.NPM_TOKEN/u.test(line));
     expect(uses).toEqual([
       '          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}',
       '          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}',
@@ -44,5 +44,21 @@ describe('the npm token (BRK-75)', () => {
     const steps = WORKFLOW.split(/\n {6}- /u).filter((step) => step.includes('secrets.NPM_TOKEN'));
     expect(steps).toHaveLength(2);
     for (const step of steps) expect(step).toMatch(/^name: Stage the CLI on npm\n/u);
+  });
+});
+
+// BRK-51: each manifest is signed with the key in the npm environment, and the signature is a release asset.
+describe('the release signature (BRK-51)', () => {
+  it('signs the manifest before each release is created, with the secret reaching only those steps', () => {
+    const uses = WORKFLOW.split('\n').filter((line) => /secrets\.RELEASE_SIGNING_KEY/u.test(line));
+    expect(uses).toHaveLength(2);
+    const creates = WORKFLOW.match(/gh release create .*\n?/gu) ?? [];
+    expect(creates).toHaveLength(2);
+    for (const create of creates) expect(create).toMatch(/out\/manifest\.json\.sig/u);
+    expect(WORKFLOW.match(/scripts\/release\/sign\.mjs out\/manifest\.json out\/manifest\.json\.sig/gu)).toHaveLength(
+      2,
+    );
+    for (const job of WORKFLOW.split(/\n {2}(?=\w+:\n {4}name:)/u).filter((j) => j.includes('gh release create')))
+      expect(job).toMatch(/^ {4}environment: npm$/mu);
   });
 });
