@@ -21,6 +21,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -247,6 +248,11 @@ Working
                          --never-share <text>; --defaults takes the default for the rest without asking
     --update             refresh the copied files (the CLI, core, skill, Taskwarrior files) in a pull request when they're
                          older than this checkout's; the repository's own (its prompt, AGENTS.md) are never touched
+    --pipeline           also add the deploy flow: .github/breakaway-pipeline.json for the Workers --staging <name> and
+                         --production <name> (asked in a terminal; default <slug>-staging and <slug>), what it renders,
+                         and a minimal CI when the repository has no workflow. Only new files: never one it already has
+    --package            also add the release flow for the npm package package.json names, with its publishConfig.access
+                         (none for a private package.json); with --pipeline, both flows
   repos setup <slug|owner/name>   the Add a repository wizard's steps for it: which are done, the one to do now, and
                          any fix; read only, so an agent helping the owner may run it (the board's /#/add-repo)
   repos remove <slug>    take one off the board (owner): its sync, webhooks, agents, and routines stop; its tasks
@@ -362,7 +368,10 @@ const FLAGS = new Set([
   'replace',
   'update',
   'defaults',
+  'package',
 ]);
+/** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
+const INIT_FLAGS = new Set(['pipeline']);
 
 function parse(argv) {
   const positional = [];
@@ -375,7 +384,7 @@ function parse(argv) {
       continue;
     }
     const [name, inline] = arg.slice(2).split(/=(.*)/su);
-    if (FLAGS.has(name)) {
+    if (FLAGS.has(name) || (INIT_FLAGS.has(name) && positional[0] === 'repos' && positional[1] === 'init')) {
       opts[name] = true;
       continue;
     }
@@ -1814,6 +1823,11 @@ async function initRepo(slug) {
   const registry = await call('GET', 'repos');
   const repo = registry.repos.find((r) => r.slug === String(slug).toLowerCase());
   if (!repo) fail(unknownRepo(slug, registry.repos));
+  const flows = Boolean(opts.pipeline || opts.package);
+  if (flows && opts.update)
+    fail(
+      '--pipeline and --package add the deploy and release flows to a repository that has none. To refresh rendered ones, run npx breakaway pipeline init --update in its checkout.',
+    );
   const dir = resolve(opts.dir ?? join(dirname(REPO), repo.slug));
   const git = (...a) =>
     execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -1885,6 +1899,36 @@ async function initRepo(slug) {
     update,
     ...promptSections(answers),
   });
+  // The deploy flow, the package's release flow, and a minimal CI (BRK-91): new files in the same commit.
+  let starter = { files: [] };
+  if (flows) {
+    const { PipelineError, starterPlan } = await import('./tasks/pipeline.js');
+    const workers = opts.pipeline ? await workerNames(repo.slug) : null;
+    const at = join(dir, '.github', 'workflows');
+    const workflows = existsSync(at)
+      ? readdirSync(at)
+          .filter((name) => /\.ya?ml$/u.test(name))
+          .map((name) => ({ path: `.github/workflows/${name}`, text: readFileSync(join(at, name), 'utf8') }))
+      : [];
+    // package.json as the commit leaves it: repos init adds one when the repository has none.
+    const planned = (path) => plan.files.find((f) => f.path === path && !f.link)?.content ?? readTarget(path);
+    try {
+      starter = starterPlan({
+        branch,
+        workers,
+        withPackage: Boolean(opts.package),
+        readTarget: planned,
+        workflows,
+        readTemplate: (name) => readFileSync(join(PKG, 'template', 'pipeline', name), 'utf8'),
+      });
+    } catch (e) {
+      if (!(e instanceof PipelineError)) throw e;
+      fail(e.message);
+    }
+    plan.files.push(...starter.files);
+    plan.notes.push(...starter.notes);
+    plan.todo.push(...starter.todo);
+  }
   const report = [
     `${repo.github} ${empty ? 'has no commits yet' : `has commits on ${branch}`}.`,
     ...(plan.files.length
@@ -1959,7 +2003,9 @@ async function initRepo(slug) {
       `git add failed in ${dir}: ${String(e.stderr || e.message).trim()}. Nothing was committed. Fix that, then run repos init again (it leaves what's there alone), or use git checkout ${repo.defaultBranch || 'main'} && git branch -D ${work} to start over.`,
     );
   }
-  const first = initCommitMessage(repo.slug);
+  const first = initCommitMessage(repo.slug, {
+    by: `npx breakaway repos init ${repo.slug}${opts.pipeline ? ' --pipeline' : ''}${opts.package ? ' --package' : ''}`,
+  });
   const title = update ? "Update the task board's agent files" : first.title;
   git(
     'commit',
@@ -1968,7 +2014,7 @@ async function initRepo(slug) {
     '-m',
     update
       ? `The board's core, skill, release helpers, and Taskwarrior files as they are in ${board ?? 'breakaway'} now, and the session hooks run through npx, so an old copy of the CLI is removed: run it as npx ${CLI_PACKAGE} (CLI version ${CLI_VERSION}). This repository's own files are unchanged. Updated by npx ${CLI_PACKAGE} repos init ${repo.slug} --update.`
-      : first.body,
+      : `${first.body}${starter.files.length ? ` It also adds the deploy and release flows, rendered from ${starter.files[0].path}.` : ''}`,
   );
   const pushed = spawnSync('git', ['-C', dir, 'push', '-u', 'origin', empty ? `HEAD:refs/heads/${branch}` : work], {
     stdio: 'inherit',
@@ -2011,6 +2057,28 @@ async function initRepo(slug) {
     `Taskwarrior there: scripts/task, or plain task after direnv allow (direnv isn't needed: scripts/task works without it).`,
   );
   console.log(['', ...next].join('\n'));
+}
+
+/**
+ * The staging and production Workers for repos init --pipeline (BRK-91): --staging and --production, else asked in a
+ * terminal, else `<slug>-staging` and `<slug>`.
+ */
+async function workerNames(slug) {
+  const names = { staging: opts.staging, production: opts.production };
+  const defaults = { staging: `${slug}-staging`, production: slug };
+  const ask = !opts.defaults && !opts['dry-run'] && !opts.json && process.stdin.isTTY;
+  const { createInterface } = ask ? await import('node:readline') : {};
+  for (const env of /** @type {const} */ (['staging', 'production'])) {
+    if (names[env] !== undefined) continue;
+    if (ask) {
+      console.log(`\nThe ${env} Worker's name (Enter for ${defaults[env]}):`);
+      names[env] = await askIn('> ', { input: process.stdin, output: process.stdout, createInterface }).catch((error) =>
+        fail(error.message),
+      );
+    }
+    names[env] = String(names[env] ?? '').trim() || defaults[env];
+  }
+  return { staging: String(names.staging), production: String(names.production) };
 }
 
 /**

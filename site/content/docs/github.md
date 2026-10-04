@@ -132,6 +132,8 @@ In the repository’s checkout:
 - `npx breakaway pipeline check` says whether the config is sound and the workflows are what it renders now.
 - `npx breakaway pipeline init --update` replaces what it rendered before, after you change the config or update breakaway. It leaves a workflow of your own alone and says so.
 
+A new repository can get all of this from `repos init`: `npx breakaway repos init <slug> --pipeline` adds a starter config for the Workers `<slug>-staging` and `<slug>` (or `--staging` and `--production`, asked in a terminal), what it renders, and, when the repository has no workflow yet, a minimal `ci.yml` for them to wait for. `--package` adds the release flow for the package `package.json` names, with its `publishConfig.access`; a private `package.json` gets none. They are new files in the pull request `repos init` opens, and nothing that’s there is changed: a repository that already has the config or one of the workflows gets nothing from them. Narrow the starter `deployPaths` to the Worker’s code before you merge.
+
 The workflows run helper scripts that `npx breakaway repos init <slug> --update` copies in; `pipeline init` names any that are missing. Open a pull request with the config, the rendered files, and the old deploy or publish steps taken out. Do your part below before you merge it: once the workflows are on the default branch, the merge’s own checks start them, so the first deploy to staging and the first pre-release come from the merge itself. Without your part, they fail.
 
 ### Do your part by hand

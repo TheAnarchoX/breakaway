@@ -7,6 +7,7 @@ import { compileDeployPaths } from '../../src/deploy-paths.js';
 import { stagedIn } from '../../src/packages.js';
 import { RELEASE_ENTRIES } from './init.js';
 import {
+  CI_PATH,
   CONFIG_PATH,
   DEPLOY_PATHS,
   HEADER,
@@ -21,6 +22,7 @@ import {
   renderPipeline,
   run,
   runScripts,
+  starterPlan,
 } from './pipeline.js';
 
 const TEMPLATES = new URL('../../template/pipeline/', import.meta.url);
@@ -389,5 +391,180 @@ describe('pipeline init and check in a checkout (BRK-90)', () => {
     expect(out[0]).toBe(`Would write ${WORKFLOWS.deploy}`);
     expect(initPlan([{ path: 'a', text: 'x' }], () => null).write).toHaveLength(1);
     expect(() => readFileSync(join(dir, WORKFLOWS.deploy))).toThrow();
+  });
+});
+
+// BRK-91: repos init --pipeline and --package give a repository the flows, as new files in the pull request it opens.
+describe('repos init --pipeline (BRK-91)', () => {
+  const workers = { staging: 'widgets-staging', production: 'widgets' };
+  /** The repository as `files` (path → text), and what --pipeline and --package add to it. */
+  const plan = (files, options = {}) => {
+    const readTarget = (path) => files[path] ?? null;
+    const workflows = Object.entries(files)
+      .filter(([path]) => path.startsWith('.github/workflows/'))
+      .map(([path, text]) => ({ path, text }));
+    const out = starterPlan({ readTarget, workflows, readTemplate, ...options });
+    // Nothing the repository has is written over.
+    for (const file of out.files) expect(readTarget(file.path), file.path).toBeNull();
+    return {
+      ...out,
+      paths: out.files.map((f) => f.path),
+      text: (path) =>
+        fileOf(
+          out.files.map((f) => ({ path: f.path, text: f.content })),
+          path,
+        ),
+    };
+  };
+  // What repos init writes into a repository with no package.json.
+  const fresh = { 'package.json': `${JSON.stringify({ name: 'widgets', private: true, type: 'module' }, null, 2)}\n` };
+  const published = (extra = {}) => ({
+    'package.json': JSON.stringify({
+      name: 'widgets',
+      version: '0.1.0',
+      scripts: { build: 'vite build', test: 'vitest run' },
+      ...extra,
+    }),
+    'package-lock.json': '{}',
+  });
+
+  it('gives a fresh repository the deploy flow and a minimal CI, each sound, and no release flow', () => {
+    const out = plan(fresh, { workers });
+    expect(out.paths).toEqual([
+      CONFIG_PATH,
+      WORKFLOWS.deploy,
+      WORKFLOWS.promote,
+      WORKFLOWS.rollback,
+      DEPLOY_PATHS,
+      CI_PATH,
+    ]);
+    const config = JSON.parse(out.text(CONFIG_PATH));
+    expect(config).toEqual({
+      workers,
+      checks: ['CI'],
+      install: 'npm install',
+      deployPaths: { widgets: expect.any(String) },
+    });
+    // The rendered files are what pipeline init renders from that config, so pipeline check finds them current.
+    for (const file of render(config)) expect(out.text(file.path)).toBe(file.text);
+    for (const path of out.paths.filter((p) => p.endsWith('.yml')))
+      expect(problemsOf(out.text(path)), path).toEqual([]);
+    const ci = parseYaml(out.text(CI_PATH));
+    expect(ci.name).toBe('CI');
+    expect(ci.on.push.branches).toEqual(['main']);
+    expect(runScripts(out.text(CI_PATH))[0].script).toMatch(/^npm install$/mu);
+    expect(runScripts(out.text(CI_PATH))[0].script).not.toMatch(/npm run/u);
+    // The starter deploy paths deploy the code, not the docs or the board's own files.
+    const paths = new RegExp(config.deployPaths.widgets, 'u');
+    for (const file of ['src/index.js', 'wrangler.jsonc', 'package.json']) expect(paths.test(file), file).toBe(true);
+    for (const file of ['README.md', 'docs/a.md', 'tools/tasks/prompts/core.md', '.github/workflows/ci.yml'])
+      expect(paths.test(file), file).toBe(false);
+    expect(out.todo.join('\n')).toMatch(/create the Workers widgets-staging and widgets/u);
+    expect(out.todo.join('\n')).toMatch(/Turn on deploys/u);
+    expect(out.todo.join('\n')).not.toMatch(/npm environment|environment npm/u);
+  });
+
+  it('adds the release flow with --package, from the name and access in package.json', () => {
+    const out = plan(published(), { workers, withPackage: true });
+    expect(out.paths).toEqual([
+      CONFIG_PATH,
+      WORKFLOWS.deploy,
+      WORKFLOWS.promote,
+      WORKFLOWS.rollback,
+      DEPLOY_PATHS,
+      WORKFLOWS.release,
+      CI_PATH,
+    ]);
+    const config = JSON.parse(out.text(CONFIG_PATH));
+    expect(config).toMatchObject({
+      install: 'npm ci',
+      build: 'npm run build',
+      package: { name: 'widgets', directory: '.', access: 'public' },
+    });
+    for (const path of out.paths.filter((p) => p.endsWith('.yml')))
+      expect(problemsOf(out.text(path)), path).toEqual([]);
+    expect(runScripts(out.text(CI_PATH))[0].script).toMatch(/npm ci\nnpm run build\nnpm run test/u);
+    expect(out.todo.join('\n')).toMatch(/environment npm/u);
+
+    // A scoped package is restricted unless publishConfig says otherwise; the name is package.json's.
+    const scoped = (extra) =>
+      JSON.parse(plan(published({ name: '@acme/widgets', ...extra }), { withPackage: true }).text(CONFIG_PATH)).package;
+    expect(scoped({})).toEqual({ name: '@acme/widgets', directory: '.', access: 'restricted' });
+    expect(scoped({ publishConfig: { access: 'public' } }).access).toBe('public');
+  });
+
+  it('gives --package alone the release flow and CI, and no Worker workflows', () => {
+    const out = plan(published(), { withPackage: true });
+    expect(out.paths).toEqual([CONFIG_PATH, WORKFLOWS.release, CI_PATH]);
+    expect(JSON.parse(out.text(CONFIG_PATH)).workers).toBeUndefined();
+  });
+
+  it('gives no release flow without --package, or to a private package.json either way', () => {
+    expect(plan(published(), { workers }).paths).not.toContain(WORKFLOWS.release);
+    const out = plan(fresh, { workers, withPackage: true });
+    expect(out.paths).not.toContain(WORKFLOWS.release);
+    expect(JSON.parse(out.text(CONFIG_PATH)).package).toBeUndefined();
+    expect(out.notes.join('\n')).toMatch(/"private": true/u);
+    // Only a package to release, and it's private: nothing at all.
+    const none = plan(fresh, { withPackage: true });
+    expect(none.files).toEqual([]);
+    expect(none.notes.join('\n')).toMatch(/no release flow/u);
+    // A version the release flow can't count from is said, not guessed.
+    expect(plan(published({ version: 'next' }), { withPackage: true }).notes.join('\n')).toMatch(/version is next/u);
+  });
+
+  it('keeps an existing repository’s workflows, and gates on the ones that run on a push', () => {
+    const repoFiles = {
+      ...published(),
+      '.github/workflows/ci.yml': 'name: Tests\non:\n  push:\n    branches: [main]\n  pull_request:\njobs: {}\n',
+      '.github/workflows/lint.yml': 'name: Lint\non: [push, pull_request]\njobs: {}\n',
+      '.github/workflows/stale.yml': 'name: Stale\non:\n  schedule:\n    - cron: "0 0 * * *"\njobs: {}\n',
+    };
+    const out = plan(repoFiles, { workers, withPackage: true });
+    expect(out.paths).not.toContain(CI_PATH);
+    expect(out.paths).toEqual([
+      CONFIG_PATH,
+      WORKFLOWS.deploy,
+      WORKFLOWS.promote,
+      WORKFLOWS.rollback,
+      DEPLOY_PATHS,
+      WORKFLOWS.release,
+    ]);
+    expect(JSON.parse(out.text(CONFIG_PATH)).checks).toEqual(['Tests', 'Lint']);
+    expect(out.todo.join('\n')).toMatch(/checks \(Tests, Lint\) names only/u);
+
+    // No workflow that runs on a push: nothing would gate a deploy, so nothing is added.
+    const ungated = plan({ '.github/workflows/stale.yml': repoFiles['.github/workflows/stale.yml'] }, { workers });
+    expect(ungated.files).toEqual([]);
+    expect(ungated.notes.join('\n')).toMatch(/runs on a push/u);
+  });
+
+  it('adds nothing to a repository that has the config or a file it would render', () => {
+    const configured = plan({ ...fresh, [CONFIG_PATH]: '{}' }, { workers });
+    expect(configured.files).toEqual([]);
+    expect(configured.notes.join('\n')).toMatch(/already there.*pipeline init/u);
+    const own = plan({ ...fresh, [WORKFLOWS.deploy]: 'name: Ship\non: push\njobs: {}\n' }, { workers });
+    expect(own.files).toEqual([]);
+    expect(own.notes.join('\n')).toMatch(/deploy\.yml is already there/u);
+  });
+
+  it('installs with the repository’s own package manager, on its default branch', () => {
+    const out = plan(
+      { ...published(), 'package-lock.json': undefined, 'pnpm-lock.yaml': '' },
+      { workers, branch: 'trunk' },
+    );
+    const config = JSON.parse(out.text(CONFIG_PATH));
+    expect(config).toMatchObject({
+      branch: 'trunk',
+      install: 'corepack pnpm install --frozen-lockfile',
+      build: 'corepack pnpm run build',
+    });
+    expect(parseYaml(out.text(CI_PATH)).on.push.branches).toEqual(['trunk']);
+    // npm's placeholder test script fails, so CI doesn't run it.
+    const placeholder = plan(
+      { 'package.json': JSON.stringify({ name: 'w', scripts: { test: 'echo "Error: no test specified" && exit 1' } }) },
+      { workers },
+    );
+    expect(runScripts(placeholder.text(CI_PATH))[0].script).not.toMatch(/test/u);
   });
 });
