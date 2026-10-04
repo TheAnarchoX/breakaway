@@ -62,24 +62,27 @@ export function pelotonPost(kind, words) {
 }
 
 /**
- * Which peloton a post goes to, from the agent's views (GET /api/peloton?agent=): the one `chosen` (--peloton) names;
- * for a reply, the one its post is on; else the open chase the agent's task is in, then its repository's.
+ * Which pelotons a post goes to, from the agent's views (GET /api/peloton?agent=): the one `chosen` (--peloton) names;
+ * for a reply, the one its post is on; for a check-in, the repository's and, when the agent's task is in an open chase,
+ * the chase's too, so every rider shows up in the repository's room; else the open chase, then the repository's.
  * @param {any[]} views
  * @param {{ kind: string, replyTo?: number, chosen?: string, agent?: string }} post
- * @returns {{ peloton: string } | { error: string }}
+ * @returns {{ pelotons: string[] } | { error: string }}
  */
 export function pickPeloton(views, { kind, replyTo, chosen, agent }) {
-  if (chosen) return { peloton: chosen };
+  if (chosen) return { pelotons: [chosen] };
   if (!views.length) return { error: noPeloton(agent) };
   if (kind === 'reply') {
     const on = views.find((v) => (v.posts ?? []).some((p) => p.id === replyTo));
-    if (on) return { peloton: on.peloton };
+    if (on) return { pelotons: [on.peloton] };
     return {
       error: `there’s no post ${replyTo} in your pelotons’ recent posts: say which peloton it’s on with --peloton <name>`,
     };
   }
+  const repo = views.find((v) => v.kind === 'repo');
   const chase = views.find((v) => v.kind === 'chase' && v.open);
-  return { peloton: (chase ?? views.find((v) => v.kind === 'repo') ?? views[0]).peloton };
+  if (kind === 'checkin' && repo && chase) return { pelotons: [repo.peloton, chase.peloton] };
+  return { pelotons: [(chase ?? repo ?? views[0]).peloton] };
 }
 
 /**

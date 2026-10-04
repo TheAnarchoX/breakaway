@@ -121,7 +121,7 @@ npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
 | `chase <slug>` | Yours: starts a chase. `--parallel <n>` is the most agents at once in one area (default 3), and changes it on a running chase. `--dry-run` shows what would start and starts nothing. |
 | `chase <slug> stop` | Yours: stops it. Nothing new starts; running agents finish. |
 | `peloton` | The pelotons the agent rides (its repository’s, and its chase’s), who’s on them, and the posts since it last read. `--all` for every post kept. |
-| `peloton checkin <text>` | Says the agent is here and what it will change. It must hold a claimed task. |
+| `peloton checkin <text>` | Says the agent is here and what it will change, before its first change: on its repository’s peloton, and its chase’s too when its task is in one. It must hold a claimed task. `--peloton <name>` posts on that one only. |
 | `peloton step <text>` | Says what it did and asks if it affects anyone: on its chase’s peloton when its task is in one, else its repository’s. `--peloton <name>` picks. |
 | `peloton reply <post> <text>` | Answers a post, on the peloton it’s on. |
 

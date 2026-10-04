@@ -244,17 +244,20 @@ jobs:
             exit 0
           fi
           branch="next-version/v$version"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
-            echo "::notice title=Already open::$branch exists, so its pull request sets $version."
+          if [ -n "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            echo "::notice title=Already open::A pull request from $branch sets $version."
             exit 0
           fi
-          base=$(git rev-parse HEAD)
-          blob=$(git rev-parse HEAD:package.json)
-          export V=$version
-          node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base" >/dev/null
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/package.json" -f "branch=$branch" -f "sha=$blob" \
-            -f "message=Set the version to $version" -f "content=$(base64 -w0 package.json)" >/dev/null
+          # A run GitHub refused the pull request leaves its branch (BRK-127): open the pull request from it.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+            base=$(git rev-parse HEAD)
+            blob=$(git rev-parse HEAD:package.json)
+            export V=$version
+            node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/heads/$branch" -f "sha=$base" >/dev/null
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/package.json" -f "branch=$branch" -f "sha=$blob" \
+              -f "message=Set the version to $version" -f "content=$(base64 -w0 package.json)" >/dev/null
+          fi
           printf '%s\n' \
             "v$STABLE is out, and the Release workflow was run with next $NEXT: this sets package.json's version to $version." \
             "" \
@@ -262,8 +265,11 @@ jobs:
             "" \
             "Opened with the workflow's token, which starts no workflows: close and reopen this pull request, or push to it, for CI to run." \
             > "$RUNNER_TEMP/body.md"
-          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
-            --title "Set the version to $version" --body-file "$RUNNER_TEMP/body.md"
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+            --title "Set the version to $version" --body-file "$RUNNER_TEMP/body.md"; then
+            echo "::error title=GitHub refused the pull request::$branch sets $version, but the repository doesn't let Actions open pull requests. Turn on Settings, Actions, General, Allow GitHub Actions to create and approve pull requests, then re-run this job, or open the pull request from $branch yourself."
+            exit 1
+          fi
 
   # The site follows the stable release (LCH-15): the Site workflow moves the site branch to it, and Cloudflare's
   # Workers Builds deploys that branch. A called workflow sees only the secrets it inherits, so this passes them on
