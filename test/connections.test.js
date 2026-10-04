@@ -377,6 +377,14 @@ describe('GET /api/connections and Check now', () => {
 });
 
 describe('Cloudflare, Claude, Taskwarrior, and push states', () => {
+  // Every report reads each repository's agent prompt from GitHub, so none of these may reach the real one (BRK-76).
+  let spy;
+  beforeEach(() => {
+    reset();
+    spy = mockGitHub();
+  });
+  afterEach(() => spy.mockRestore());
+
   const report = () => inStore((s) => s.connectionsReport());
 
   it('records the cron’s run and says when it’s late or failing', async () => {
@@ -397,18 +405,12 @@ describe('Cloudflare, Claude, Taskwarrior, and push states', () => {
   });
 
   it('runs and records the cron from the scheduled tick', async () => {
-    const spy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => new Response('{"message":"down"}', { status: 503 }));
-    try {
-      await inStore(async (s) => {
-        s.setMeta('conn_cron_last', null);
-        s.setMeta('conn_live_at', Date.now()); // the hourly live check isn't due
-        await s.tick('cron');
-      });
-    } finally {
-      spy.mockRestore();
-    }
+    spy.mockImplementation(async () => new Response('{"message":"down"}', { status: 503 }));
+    await inStore(async (s) => {
+      s.setMeta('conn_cron_last', null);
+      s.setMeta('conn_live_at', Date.now()); // the hourly live check isn't due
+      await s.tick('cron');
+    });
     const cron = find(await report(), 'cloudflare.cron');
     expect(cron.at).not.toBeNull();
     expect(cron.detail).toMatch(/last run failed: GitHub 503/u);
@@ -569,6 +571,14 @@ describe('Cloudflare, Claude, Taskwarrior, and push states', () => {
 });
 
 describe('the nav’s count and the inbox’s notes (CLD-121)', () => {
+  // Every report reads each repository's agent prompt from GitHub, so none of these may reach the real one (BRK-76).
+  let spy;
+  beforeEach(() => {
+    reset();
+    spy = mockGitHub();
+  });
+  afterEach(() => spy.mockRestore());
+
   const report = () => inStore((s) => s.connectionsReport());
   const inbox = async () => (await (await api('pings')).json()).notices;
   const cron = 'cloudflare.cron';
@@ -659,18 +669,12 @@ describe('the nav’s count and the inbox’s notes (CLD-121)', () => {
   });
 
   it('runs the report from the cron, so the count follows without opening the view', async () => {
-    const spy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => new Response('{"message":"down"}', { status: 503 }));
-    try {
-      await inStore(async (s) => {
-        s.setMeta('conn_summary', null);
-        s.setMeta('conn_live_at', Date.now());
-        await s.tick('cron');
-      });
-    } finally {
-      spy.mockRestore();
-    }
+    spy.mockImplementation(async () => new Response('{"message":"down"}', { status: 503 }));
+    await inStore(async (s) => {
+      s.setMeta('conn_summary', null);
+      s.setMeta('conn_live_at', Date.now());
+      await s.tick('cron');
+    });
     expect(await inStore((s) => s.connectionsSummary())).toMatchObject({ attention: expect.any(Number) });
   });
 });
