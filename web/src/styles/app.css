@@ -6302,3 +6302,34 @@ fieldset.field {
   gap: 6px;
   font-size: 14px;
 }
+
+/* ---------- refine from the answers (WEB-22) ---------- */
+
+.refine-answers {
+  justify-self: start;
+  margin-top: 10px;
+}
+.refine-answers-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 0 0;
+}
+.refine-answers-link .linkish {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.refine-prompt {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 12px / 1.5 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: min(220px, 30vh);
+  overflow: auto;
+}

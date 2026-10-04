@@ -6,7 +6,7 @@ import { Dialog } from './ui.jsx';
 import { ImagePicker, Thumbnails } from './Attachments.jsx';
 import { RepoField, uploadDraftImages, useDraftImages } from './NewTask.jsx';
 
-const sentence = (text) => {
+export const sentence = (text) => {
   const s = String(text).trim();
   const capital = s.charAt(0).toUpperCase() + s.slice(1);
   return /[.!?]$/u.test(capital) ? capital : `${capital}.`;
