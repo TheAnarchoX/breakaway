@@ -21,6 +21,7 @@
     "!scripts/install/*.test.js",
     "src/cli-version.js",
     "src/decision.js",
+    "src/init.js",
     "src/install.js",
     "src/model.js",
     "src/packages.js",

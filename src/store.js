@@ -49,6 +49,7 @@ import { connectionsMethods } from './store-connections.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
+import { initMethods } from './store-init.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -1259,6 +1260,7 @@ Object.assign(
   updatesMethods,
   selfUpdateMethods,
   wizardMethods,
+  initMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
