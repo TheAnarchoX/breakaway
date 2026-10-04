@@ -11,10 +11,11 @@ import { loadGitHub, loadRepos, toast } from '../lib/store.js';
 
 /**
  * The card for one repository without a pipeline whose default branch has the move's files (`view.pipelineFound`).
- * `label` names the repository when the view shows several.
+ * `label` names the repository when the view shows several. The GitHub page and a repository's settings page (WEB-33)
+ * both show it: `heading` is its heading's level there, and `onDone` runs once it's on.
  * @param {Record<string, any>} props
  */
-export function TurnOnDeploys({ view, label = null }) {
+export function TurnOnDeploys({ view, label = null, heading = 'h2', onDone = null }) {
   const found = view?.pipelineFound;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(/** @type {string | null} */ (null));
@@ -23,6 +24,7 @@ export function TurnOnDeploys({ view, label = null }) {
   const pipeline = found.pipeline;
   const workers = pipeline?.workers ?? found.workers;
   const pkg = pipeline ? (pipeline.package ?? null) : found.package;
+  const Heading = heading;
   const flows = [workers && 'deploys', pkg && 'releases'].filter(Boolean).join(' and ');
 
   const turnOn = async () => {
@@ -31,7 +33,7 @@ export function TurnOnDeploys({ view, label = null }) {
     try {
       await api(`repos/${encodeURIComponent(view.slug)}/pipeline`, { method: 'POST', body: { pipeline } });
       toast(`Turned on for ${view.name}.`, 'success');
-      await Promise.all([loadGitHub({ sync: true }), loadRepos()]);
+      await Promise.all([loadGitHub({ sync: true }), loadRepos(), onDone?.()]);
     } catch (failure) {
       setError(failure.message);
       setBusy(false);
@@ -42,10 +44,10 @@ export function TurnOnDeploys({ view, label = null }) {
 
   return (
     <section class="gh-section turn-on" aria-labelledby={id}>
-      <h2 id={id}>
+      <Heading id={id}>
         <Rocket size={18} aria-hidden="true" />
         {label ? `Turn on deploys: ${label}` : 'Turn on deploys'}
-      </h2>
+      </Heading>
       {pipeline ? (
         <p class="small">
           The move to breakaway’s deploy flow is on {view.branch}. Turn it on and the board follows its {flows}
