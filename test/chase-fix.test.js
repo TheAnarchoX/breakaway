@@ -112,12 +112,12 @@ describe('a chase fixes its own pull requests', () => {
     expect(fixes()).toEqual([]);
   });
 
-  it('gives the agent ten minutes from when the chase saw it before it starts a fix', async () => {
+  it('gives the agent three minutes from when the chase saw it before it starts a fix', async () => {
     await later(60, { seen: false });
     await tick();
     expect(await stateOf('OPS-1')).toMatchObject({
       state: 'waiting',
-      why: expect.stringMatching(/#41 conflicts with its base branch: if no agent picks it up within 10 minutes/),
+      why: expect.stringMatching(/#41 conflicts with its base branch: if no agent picks it up within 3 minutes/),
     });
     expect(fixes()).toEqual([]);
     // Waiting on the grace keeps the chase on: it hasn't ended with a pull request nobody will fix.
@@ -125,7 +125,7 @@ describe('a chase fixes its own pull requests', () => {
   });
 
   it('then starts a fix agent on it, through Fix with an agent, telling it it’s one of the chase’s', async () => {
-    await later(11);
+    await later(4);
     await tick();
     expect(fixes()).toHaveLength(1);
     const text = fixes()[0];
