@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Bike, CircleAlert, FastForward, Hand, Hourglass, Megaphone, Square } from 'lucide-preact';
 import { ago, plural } from '../lib/model.js';
 import { actions, agents, byUuid, hashFor, toast } from '../lib/store.js';
-import { RepoChip, Segmented, widClass } from './ui.jsx';
+import { Dialog, RepoChip, Segmented, widClass } from './ui.jsx';
 import { PelotonPanel } from './Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 
@@ -101,10 +101,11 @@ function ParallelField({ feature, chase, id, onChange }) {
 
 /**
  * Start a road captain (BRK-137): an agent with the owner's prompt that helps this chase along, in the chase's
- * repository, with the chase as it stands under the prompt. It always starts now, past the board's limits.
- * @param {{ feature: { slug: string, title: string }, onDone: () => void }} props
+ * repository, with the chase as it stands under the prompt. It always starts now, past the board's limits. In a
+ * dialog, `titleId` names its heading.
+ * @param {{ feature: { slug: string, title: string }, onDone: () => void, titleId?: string }} props
  */
-function RoadCaptainForm({ feature, onDone }) {
+function RoadCaptainForm({ feature, onDone, titleId }) {
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -124,7 +125,8 @@ function RoadCaptainForm({ feature, onDone }) {
     setBusy(false);
   };
   return (
-    <form class="ch-captain" onSubmit={submit}>
+    <form class={titleId ? 'sheet ch-captain' : 'ch-captain'} onSubmit={submit}>
+      {titleId && <h2 id={titleId}>Start a road captain</h2>}
       <label class="field">
         <span class="field-label">What should the road captain do?</span>
         <textarea
@@ -158,9 +160,41 @@ function RoadCaptainForm({ feature, onDone }) {
   );
 }
 
+/**
+ * Start a road captain from a feature's header (WEB-43), beside Edit: the button, and the form in a dialog. Only
+ * once the feature has been chased, as in the chase's own controls.
+ * @param {{ feature: { slug: string, title: string, chase?: Record<string, any> | null }, onDone?: () => void }} props
+ */
+export function RoadCaptain({ feature, onDone }) {
+  const [open, setOpen] = useState(false);
+  if (!feature.chase || feature.chase.state === 'off') return null;
+  const titleId = `rc-${feature.slug}-title`;
+  const close = () => setOpen(false);
+  return (
+    <>
+      <button type="button" class="btn btn-outline btn-sm" onClick={() => setOpen(true)}>
+        <Megaphone size={15} aria-hidden="true" />
+        Start a road captain
+      </button>
+      <Dialog open={open} onClose={close} labelledBy={titleId}>
+        {open && (
+          <RoadCaptainForm
+            feature={feature}
+            titleId={titleId}
+            onDone={() => {
+              close();
+              onDone?.();
+            }}
+          />
+        )}
+      </Dialog>
+    </>
+  );
+}
+
 /** @param {Record<string, any>} props */
-function Controls({ feature, chase, open, onChange }) {
-  const [captain, setCaptain] = useState(false);
+function Controls({ feature, chase, open, captain, onChange }) {
+  const [captainOpen, setCaptain] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   useEffect(() => setPreview(null), [chase.on, chase.parallel]);
@@ -201,14 +235,14 @@ function Controls({ feature, chase, open, onChange }) {
             </button>
           </>
         )}
-        {chase.state !== 'off' && !captain && (
+        {captain && chase.state !== 'off' && !captainOpen && (
           <button type="button" class="btn btn-outline btn-sm" onClick={() => setCaptain(true)}>
             <Megaphone size={15} aria-hidden="true" />
             Start a road captain
           </button>
         )}
       </div>
-      {captain && (
+      {captainOpen && (
         <RoadCaptainForm
           feature={feature}
           onDone={() => {
@@ -347,9 +381,10 @@ function Queue({ chase, compact }) {
 /**
  * The chase on feature `feature` (`{ slug, title }`), from its `chase` view.
  * `onChange` runs after Chase, Stop chase, or a new number of agents, for a view that keeps its own copy.
- * @param {{ feature: { slug: string, title: string }, chase: Record<string, any>, open?: boolean, compact?: boolean, onChange?: () => void }} props
+ * `captain: false` leaves out Start a road captain, for a page that shows it in its header (WEB-43).
+ * @param {{ feature: { slug: string, title: string }, chase: Record<string, any>, open?: boolean, compact?: boolean, captain?: boolean, onChange?: () => void }} props
  */
-export function ChasePanel({ feature, chase, open = true, compact = false, onChange }) {
+export function ChasePanel({ feature, chase, open = true, compact = false, captain = true, onChange }) {
   const id = `ch-${feature.slug}`;
   return (
     <div class={`ch-panel ${chase.on ? 'is-on' : ''}`}>
@@ -366,7 +401,7 @@ export function ChasePanel({ feature, chase, open = true, compact = false, onCha
           <PelotonPanel name={`chase:${feature.slug}`} compact />
         </div>
       )}
-      <Controls feature={feature} chase={chase} open={open} onChange={onChange} />
+      <Controls feature={feature} chase={chase} open={open} captain={captain} onChange={onChange} />
       <ParallelField feature={feature} chase={chase} id={id} onChange={onChange} />
       {chase.on && (
         <>
