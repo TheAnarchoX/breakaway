@@ -46,6 +46,7 @@ import { statsMethods } from './store-stats.js';
 import { reposMethods } from './store-repos.js';
 import { repoSlugOf, SHARED_AREAS } from './repos.js';
 import { connectionsMethods } from './store-connections.js';
+import { githubStatusMethods } from './store-github-status.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
@@ -1364,6 +1365,7 @@ Object.assign(
   statsMethods,
   reposMethods,
   connectionsMethods,
+  githubStatusMethods,
   updatesMethods,
   selfUpdateMethods,
   wizardMethods,
