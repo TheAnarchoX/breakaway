@@ -67,7 +67,7 @@ Answering works as every decision does. A kickoff's decision also has **Send ans
 
 ### 4. Get going
 
-The kickoff page ends with what's next, in order: **Read the plan** (the pull request, with its **In short** quoted on the page), **Merge** it (the board's own Merge, the person's press), then **Start building**, which opens the first-version feature with its **Chase** button. Kickoff never starts the chase. When the deploy flow's optional **Deploys** step on the wizard lands (`WEB-14`), Kickoff offers it last as **Put it online**.
+The kickoff page ends with what's next, in order: **Read the plan** (the pull request, with its **In short** quoted on the page), **Merge** it (the board's own Merge, the person's press), then **Start building**, which opens the first-version feature with its **Chase** button. Kickoff never starts the chase. Last, Kickoff offers the wizard's optional **Deploys** step (`WEB-14`) as **Put it online** (`WEB-36`), once the plan merges.
 
 A kickoff is finished when its plan merges; it leaves the Kickoff list, and the repository carries on like any other.
 

@@ -17,6 +17,7 @@ import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { DeployCard, deploySkipped, unskipDeploys } from '../components/DeployCard.jsx';
 import { ago } from '../lib/model.js';
 import {
+  addRepoAt,
   addRepoTarget,
   github,
   githubRepoFacts,
@@ -526,14 +527,20 @@ function DeploysStep({ d, step, init, skipped, setSkipped, reload }) {
 function Step({ step, index, d, reload }) {
   const now = d.now === step.id;
   const c = stepContent(step.id, { ...d, promptUrl: step.url });
+  // Opened at this step (Kickoff's Put it online, WEB-36): it shows open, and asking for it undoes a Skip.
+  const [asked] = useState(() => addRepoAt.peek() === step.id);
   // Deploys (WEB-14): skipping is remembered in this browser, and shows on the step instead of a failure.
-  const [skipped, setSkipped] = useState(() => step.id === 'deploys' && deploySkipped(d.slug));
+  const [skipped, setSkipped] = useState(() => {
+    if (step.id !== 'deploys') return false;
+    if (asked) unskipDeploys(d.slug);
+    return !asked && deploySkipped(d.slug);
+  });
   const init = Boolean(d.steps.find((s) => s.id === 'init')?.done);
   // Skip hides only the offer, as on the GitHub page: a move under way still shows.
   const facts = c.deploys && d.registered ? factsFor(d.slug) : null;
   const moving = Boolean(facts?.pipelineFound || (facts?.move && facts.move.stage !== 'start'));
   const isSkipped = Boolean(c.deploys && skipped && !moving && !step.done);
-  const open = now || (c.deploys && d.registered && init && !step.done && !isSkipped);
+  const open = now || asked || (c.deploys && d.registered && init && !step.done && !isSkipped);
   const detail = isSkipped ? 'Skipped' : step.detail;
   const body = (
     <div class="wiz-body">
@@ -597,7 +604,11 @@ function Step({ step, index, d, reload }) {
     </div>
   );
   return (
-    <li class={`wiz-step ${step.done ? 'is-done' : ''} ${now ? 'is-now' : ''}`} aria-current={now ? 'step' : undefined}>
+    <li
+      id={`wiz-${step.id}`}
+      class={`wiz-step ${step.done ? 'is-done' : ''} ${now ? 'is-now' : ''}`}
+      aria-current={now ? 'step' : undefined}
+    >
       <details open={open}>
         <summary>
           <StepIcon step={step} now={now} skipped={isSkipped} />
@@ -758,6 +769,18 @@ export function AddRepoView() {
   useEffect(() => {
     if (d?.registered && target?.github) openAddRepo({ slug: d.slug });
   }, [d?.registered]);
+  // Opened at a step (Kickoff's Put it online): scroll to it once its steps show.
+  useEffect(() => {
+    const at = addRepoAt.value;
+    if (!at || !d || (target?.slug && d.slug !== target.slug)) return;
+    addRepoAt.value = null;
+    const el = document.getElementById(`wiz-${at}`);
+    if (!el) return;
+    // Clear of the top bar, which wraps to two rows on a phone.
+    const bar = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - bar - 16 });
+    el.querySelector('summary')?.focus({ preventScroll: true });
+  }, [addRepoAt.value, Boolean(d)]);
   const n = d ? d.steps.findIndex((s) => s.id === d.now) : -1;
   return (
     <div class="connections-view wizard">

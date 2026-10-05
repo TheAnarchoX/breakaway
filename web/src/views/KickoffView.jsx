@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Flag,
   GitMerge,
+  Globe,
   Play,
   Rocket,
   RefreshCw,
@@ -510,10 +511,10 @@ function Checks({ checks }) {
 }
 
 /** @param {Record<string, any>} props */
-function Step({ id, index, name, done, now, detail, children }) {
+function Step({ id, index, name, done, now, open = now, detail, children }) {
   return (
     <li class={`wiz-step ${done ? 'is-done' : ''} ${now ? 'is-now' : ''}`} aria-current={now ? 'step' : undefined}>
-      <details open={now}>
+      <details open={open}>
         <summary>
           <StepIcon done={done} now={now} />
           <span class="wiz-step-name" id={`ko-step-${id}`}>
@@ -757,8 +758,10 @@ function KickoffPage({ id }) {
     { id: 'interview', name: 'Tell it what you want', done: planned || merged },
     { id: 'plan', name: 'Read the plan and merge it', done: merged },
     { id: 'build', name: 'Start building', done: false },
+    // The wizard's optional Deploys step (WEB-14, WEB-36): offered last, and never the step to do now.
+    { id: 'online', name: 'Put it online', done: Boolean(step.deploys?.done), optional: true },
   ];
-  const now = steps.find((s) => !s.done)?.id ?? null;
+  const now = steps.find((s) => !s.done && !s.optional)?.id ?? null;
   const n = steps.findIndex((s) => s.id === now);
   const stub = STUB.replaceAll('<prompt path>', d.promptPath ?? 'AGENTS.md');
 
@@ -989,6 +992,42 @@ function KickoffPage({ id }) {
         </div>
       </>
     ),
+    online: step.deploys?.done ? (
+      <p>
+        It’s online: deploys are on. Releases on the{' '}
+        <button type="button" class="link-button" onClick={() => go('github')}>
+          GitHub page
+        </button>{' '}
+        shows what shipped where.
+      </p>
+    ) : (
+      <>
+        <p>
+          When there’s something to try, the board can put it online. An agent moves {k.github ?? k.name} to breakaway’s
+          deploy flow in a pull request; you merge it, then turn deploys on.
+        </p>
+        <p class="muted">
+          <strong>Where it goes:</strong> a website or an app goes on your Cloudflare account, beside the board. Every
+          merge updates a test copy, and Promote puts it live. A package goes on npm the same way. For anything else,
+          the step says what it can do.
+        </p>
+        <p class="muted">
+          <strong>Why it’s optional:</strong> agents build it either way. Do it now, later, or not at all.
+        </p>
+        <div class="wiz-actions">
+          <button
+            type="button"
+            class="btn btn-outline btn-sm"
+            disabled={!merged}
+            onClick={() => openAddRepo({ slug: k.slug }, 'deploys')}
+          >
+            <Globe size={16} aria-hidden="true" />
+            Put it online
+          </button>
+          {!merged && <span class="meta">Once the plan is merged.</span>}
+        </div>
+      </>
+    ),
   };
 
   return (
@@ -1050,6 +1089,8 @@ function KickoffPage({ id }) {
             name={s.name}
             done={s.done}
             now={now === s.id || (merged && s.id === 'build')}
+            open={now === s.id || (merged && (s.id === 'build' || s.id === 'online'))}
+            detail={s.optional && !s.done ? 'Optional' : null}
           >
             {content[s.id]}
           </Step>
