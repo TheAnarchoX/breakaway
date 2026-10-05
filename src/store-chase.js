@@ -181,6 +181,19 @@ export const chaseMethods = {
   },
 
   /**
+   * Whether task `t`'s open pull request `pr` merges without the owner: GitHub's auto-merge is on (Merge when
+   * green turns it on), and no review asks for changes.
+   */
+  chasePullMergesItself(t, pr) {
+    const row = this.sql
+      .exec('SELECT data FROM gh_pulls WHERE repo = ? AND number = ?', pr.repo ?? t.repo, pr.number)
+      .toArray()[0];
+    if (!row) return false;
+    const data = JSON.parse(row.data);
+    return Boolean(data.autoMerge) && !data.draft && data.review?.decision !== 'changes_requested';
+  },
+
+  /**
    * Who a chase on feature `row` starts now and why each other task in it waits (section 3): its tasks and
    * their blockers, sorted into done, in review, running, waiting, Needs you, Stuck, and the queue. `views`
    * and `connected` are the board's now. The queue counts what auto-start starts first (security fixes,
@@ -261,7 +274,10 @@ export const chaseMethods = {
         const busy = fix && this.claimBlocker(t);
         const agentOn = busy && /^(claude|codex)-/u.test(t.claim);
         if (fix) watch.push({ uuid: t.uuid, ...fix });
-        if (!fix || (busy && !agentOn)) {
+        if (!fix && this.chasePullMergesItself(t, pr))
+          // Set to merge when its checks pass (Merge when green, BRK-219): it frees what waits by itself.
+          add('in-review', `its pull request #${pr.number} merges by itself once its checks pass`, { until: true });
+        else if (!fix || (busy && !agentOn)) {
           const why = `its pull request #${pr.number} is open: merging is yours`;
           add('in-review', why);
           needsYou.push({ ...item, kind: 'merge', why, pr: pr.number });
