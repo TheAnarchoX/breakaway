@@ -13,6 +13,7 @@ import {
   tasks,
   toast,
 } from '../lib/store.js';
+import { canDictate } from '../lib/dictation.js';
 import { isImage, MAX_IMAGES, prepareImage } from '../lib/images.js';
 import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails, attachFiles, pastedImages } from './Attachments.jsx';
@@ -398,8 +399,9 @@ function IdeaForm() {
           </span>
         )}
         <span class="field-hint" id="idea-hint">
-          Rough is fine. An agent turns it into tasks with an area, a horizon and what they wait for, and writes a spec
-          if it needs one. You review all of it in a pull request.
+          Rough is fine{canDictate ? ', and you can say it instead of typing: press the microphone.' : '.'} An agent
+          turns it into tasks with an area, a horizon and what they wait for, and writes a spec if it needs one. You
+          review all of it in a pull request.
         </span>
       </label>
       <RepoField
