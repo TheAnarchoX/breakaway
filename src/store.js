@@ -1546,7 +1546,11 @@ const apiActions = {
       const added = this.appendSessionLog(uuid, body ?? {});
       // `messages: false` is a post that can't hand them on (a Stop hook): they stay waiting, and so do peloton posts.
       if (body?.messages === false) return ok({ added, messages: [], peloton: [] }, 201);
-      return ok({ added, messages: this.takeMessages(uuid, body?.agent), peloton: this.takePeloton(agent) }, 201);
+      const peloton = this.takePeloton(agent);
+      return ok(
+        { added, messages: this.takeMessages(uuid, body?.agent), peloton: peloton.posts, pelotonMore: peloton.more },
+        201,
+      );
     });
   },
   messagesApi(ref) {
@@ -1561,15 +1565,18 @@ const apiActions = {
   },
   /**
    * The idle hook asks here every few seconds; same rule and marking as the session post. Peloton posts come only
-   * with a reply to the agent's own (IDEA-32), so a busy peloton doesn't wake an agent waiting on CI.
+   * with an urgent one (IDEA-36 section 3): the owner's, a mention of the agent, or a reply to its own, so a busy
+   * peloton doesn't wake an agent waiting on CI.
    */
   messagesWaitingApi(ref, agent) {
     return this.run(() => {
       const uuid = this.resolve(ref);
       const name = String(agent ?? '').trim();
+      const peloton = this.holdsTask(name, uuid) ? this.takePeloton(name, { urgent: true }) : { posts: [], more: 0 };
       return ok({
         messages: this.takeMessages(uuid, agent, { poll: true }),
-        peloton: this.holdsTask(name, uuid) ? this.takePeloton(name, { replies: true }) : [],
+        peloton: peloton.posts,
+        pelotonMore: peloton.more,
       });
     });
   },
@@ -1582,6 +1589,10 @@ const apiActions = {
   },
   pelotonPostApi(peloton, body) {
     return this.run(() => ok(this.postPeloton(peloton, body ?? {}), 201));
+  },
+  /** The owner's post (IDEA-36 section 7): the worker sends it here from the signed-in board only. */
+  pelotonOwnerPostApi(peloton, body) {
+    return this.run(() => ok(this.postPeloton(peloton, body ?? {}, { owner: true }), 201));
   },
   sessionApi(ref, after) {
     return this.run(() => ok(this.sessionLog(this.resolve(ref), after)));

@@ -30,9 +30,26 @@ export function looksLikeSecret(text) {
   if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/u.test(value)) return true;
   for (const [word] of value.matchAll(/[A-Za-z0-9+/_=-]{32,}/gu)) {
     if (/^[0-9a-f]{40}$/u.test(word)) continue;
+    if (looksLikePath(word)) continue;
     if (/\d/u.test(word) && /[A-Za-z]/u.test(word) && !/^[a-z]+(?:-[a-z0-9]+)+$/u.test(word)) return true;
   }
   return false;
+}
+
+/**
+ * Whether a long word is a file path or a link's path (`docs/specs/IDEA-36-peloton-planning`), not a token with
+ * slashes in it: it has a slash, no `+` or `=`, and every name in it splits on `.`, `_`, and `-` into short pieces,
+ * a commit SHA, or pieces that don't look random (a long run of letters and digits, or of mixed case and digits).
+ */
+function looksLikePath(word) {
+  if (!word.includes('/') || /[+=]/u.test(word)) return false;
+  for (const piece of word.split(/[/._-]+/u)) {
+    if (!piece || /^[0-9a-f]{40}$/u.test(piece)) continue;
+    const digits = /\d/u.test(piece);
+    if (digits && /[A-Za-z]/u.test(piece) && piece.length >= 16) return false;
+    if (digits && /[a-z]/u.test(piece) && /[A-Z]/u.test(piece) && piece.length >= 8) return false;
+  }
+  return true;
 }
 
 /** A ping's kind and message, cleaned, or an InputError that says what to fix. */
