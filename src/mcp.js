@@ -941,12 +941,13 @@ const WRITERS = [
       ])
         if (args[arg]?.length) changes[key] = args[arg];
       if (!Object.keys(changes).length) throw new ToolError('modify_task: say what to change');
-      // A general agent's edits of other tasks follow the store's cross-task rule, which it checks itself. Otherwise
-      // the agent's fields need its claim, and the description and done when a task it made or refines (IDEA-5),
-      // whatever its name looks like.
+      // A general agent's edits of other tasks, and a chase agent's of its chase's (IDEA-36 section 6), follow the
+      // store's cross-task rule, which it checks itself. Otherwise the agent's fields need its claim, and the
+      // description and done when a task it made or refines (IDEA-5), whatever its name looks like.
       const { task: current } = body(await ctx.store.get(args.task));
-      const { tasks } = current.claim === me ? { tasks: [] } : body(await ctx.store.list('pending'));
-      if (!tasks.some((t) => t.claim === me && t.tags.includes('general'))) {
+      const { rights } =
+        current.claim === me ? { rights: null } : body(await ctx.store.crossTaskRightsApi(me, args.task));
+      if (!rights) {
         const own = Object.keys(changes).filter((k) => k !== 'brief' && k !== 'done_when');
         if (own.length) await held(ctx, args.task, me);
         const refining = current.claim === me && /^(claude|codex)-refine-/u.test(me);
