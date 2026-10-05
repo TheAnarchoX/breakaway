@@ -36,6 +36,9 @@ effect(() => savePref('openIn', openIn.value));
 effect(() => savePref('claimName', me.value));
 effect(() => savePref('theme', theme.value));
 effect(() => savePref('lanes', lanes.value));
+/** Whether a pull request's unified diff wraps long lines instead of scrolling sideways (WEB-45). */
+export const diffWrap = signal(pref('diffWrap', 'off') === 'on');
+effect(() => savePref('diffWrap', diffWrap.value ? 'on' : 'off'));
 /** The sidebar on a computer: 'open' (icons and labels) or 'rail' (icons). Saved once it's toggled. */
 const savedSidebar = pref('sidebar', '');
 export const sidebar = signal(['open', 'rail'].includes(savedSidebar) ? savedSidebar : sidebarDefault(innerWidth));
