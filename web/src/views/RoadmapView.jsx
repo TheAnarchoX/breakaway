@@ -27,6 +27,7 @@ import {
 import { ClaimChip, Dialog, RepoChip, widClass } from '../components/ui.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
+import { RefineFeature } from '../components/RefineFeature.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 
 /**
@@ -283,6 +284,7 @@ function FeatureDetail({ slug }) {
           </h1>
         </div>
         <div class="fr-actions">
+          {!f.shipped && <RefineFeature feature={f} />}
           <button type="button" class="btn btn-sm" onClick={() => setEditing(true)}>
             <Pencil size={15} aria-hidden="true" />
             Edit
