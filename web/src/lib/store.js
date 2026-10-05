@@ -624,6 +624,8 @@ const triedKey = (slug, step) => `${slug}:${actionKey(step)}`;
 async function runPullSettings() {
   const data = github.peek().data;
   if (pullRunning || !pullSettingsOn() || session.peek() !== 'in' || !data?.connected) return;
+  // GitHub's status page reports trouble (BRK-217): updates and merges wait until it's working again.
+  if (data.githubStatus?.held) return;
   const fallback = repos.peek().default;
   const plan = [];
   for (const { slug, keep, merge } of pullSettingsList.peek()) {

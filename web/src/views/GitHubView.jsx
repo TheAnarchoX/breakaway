@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   CircleDashed,
   Tag,
+  TriangleAlert,
 } from 'lucide-preact';
 import { ago, plural, shortVersion } from '../lib/model.js';
 import { checksOnMain, checksSummary, githubTabs, latestPackages, pickTab, runState } from '../lib/github-scope.js';
@@ -676,6 +677,46 @@ function ChecksOnMain({ view }) {
   );
 }
 
+/**
+ * What GitHub's status page says (BRK-217): a line while all's well, and while a part the board leans on is down,
+ * what's down and what the board holds until it's back.
+ * @param {{ status: Record<string, any> | null | undefined }} props
+ */
+function GitHubStatus({ status }) {
+  if (!status?.checked) return null;
+  const host = new URL(status.page).host;
+  if (!status.held)
+    return (
+      <p class="meta">
+        <a href={status.page} target="_blank" rel="noopener noreferrer">
+          GitHub’s status
+        </a>
+        : {status.error ? `couldn’t read ${host}` : 'working'}, checked {ago(status.checked)}
+      </p>
+    );
+  const incident = status.incidents?.find((i) => i.url);
+  return (
+    <div class="gh-outage" role="status">
+      <TriangleAlert size={18} aria-hidden="true" />
+      <div>
+        <p>
+          <strong>GitHub reports trouble</strong>: {status.summary}. It started {ago(status.since)}.
+        </p>
+        <p class="muted">
+          Chases start nothing new, and Keep branches up to date and Merge when green wait. They carry on by themselves
+          once {host} says it’s working again. You can still merge by hand once you’ve seen a pull request’s checks ran.
+        </p>
+        <p>
+          <a href={incident?.url ?? status.page} target="_blank" rel="noopener noreferrer">
+            Open {incident ? 'the incident' : host}
+            <ExternalLink size={14} aria-hidden="true" />
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** "Keep branches up to date and Merge when green", for the repositories the view shows that have them on. */
 function settingsLine(list) {
   const what = (r) =>
@@ -727,6 +768,7 @@ export function GitHubView() {
             {d?.connected && ' · updates by webhook, and every 5 minutes'}
           </p>
           {settings && <p class="meta">On in this browser: {settings} (in Settings)</p>}
+          {d?.connected && !d.githubStatus?.held && <GitHubStatus status={d.githubStatus} />}
           {shownSlug && (
             <p class="meta">
               <a href={repoSettingsHref(shownSlug)}>Settings for {repoName(shownSlug)}</a>
@@ -751,6 +793,7 @@ export function GitHubView() {
         </p>
       )}
       {d && !d.connected && <Setup repo={setupRepo} />}
+      {d?.connected && d.githubStatus?.held && <GitHubStatus status={d.githubStatus} />}
       {d?.connected && d.error && (
         <p class="field-error" role="alert">
           The last sync failed: {d.error}
