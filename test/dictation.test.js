@@ -14,6 +14,22 @@ describe('transcriptOf', () => {
     expect(transcriptOf(results())).toBe('');
     expect(transcriptOf(results('   '))).toBe('');
   });
+
+  // Chrome on Android sends each new result as everything heard so far in the phrase, not as
+  // the next words, and sometimes the same words twice.
+  it('keeps one copy of the phrase when each result repeats the one before', () => {
+    const android = results('when', 'when', 'when I', 'when I use', 'when I use', 'when I use voice mode');
+    expect(transcriptOf(android)).toBe('when I use voice mode');
+  });
+
+  it('keeps every phrase when the next one starts afresh', () => {
+    const android = results('when I', 'when I use voice', 'please', 'please fix', 'please fix it');
+    expect(transcriptOf(android)).toBe('when I use voice please fix it');
+  });
+
+  it('keeps words that only start like the phrase before', () => {
+    expect(transcriptOf(results('fix', ' fixed it'))).toBe('fix fixed it');
+  });
 });
 
 describe('dictationText', () => {
