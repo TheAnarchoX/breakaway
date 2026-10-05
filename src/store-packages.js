@@ -6,6 +6,9 @@
  *
  * The registry is read only for the packages a repository's runs name, and only while one of their versions is still
  * staged (or its dist-tags were never read). Its last read and any failure show on Connections.
+ *
+ * Each package's active versions, its latest pre-release and its latest release, are kept in gh_package_active
+ * (BRK-152): they're never pruned and always in the feed, however many pre-releases came after them.
  */
 import { GitHubError } from './github.js';
 import { REGISTRY, distTags, packageUrl, registryUrl, stagedIn } from './packages.js';
@@ -28,6 +31,13 @@ const TIMEOUT_MS = 10_000;
 
 const iso = (ms) => (ms ? new Date(Number(ms)).toISOString() : null);
 
+/** Whether a version is a pre-release (`1.3.0-main.4`): a hyphen before any build metadata. */
+const kindOf = (version) => (String(version).split('+')[0].includes('-') ? 'prerelease' : 'release');
+
+/** Matches a gh_packages row that is one of its package's active versions. */
+const ACTIVE = `EXISTS (SELECT 1 FROM gh_package_active a
+  WHERE a.repo = gh_packages.repo AND a.name = gh_packages.name AND a.version = gh_packages.version)`;
+
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const packagesMethods = {
   initPackages() {
@@ -39,6 +49,7 @@ export const packagesMethods = {
       );
       CREATE TABLE IF NOT EXISTS gh_package_tags (repo TEXT NOT NULL, name TEXT NOT NULL, tags TEXT NOT NULL, checked INTEGER NOT NULL, PRIMARY KEY (repo, name));
       CREATE TABLE IF NOT EXISTS gh_annotated (repo TEXT NOT NULL, id INTEGER NOT NULL, PRIMARY KEY (repo, id));
+      CREATE TABLE IF NOT EXISTS gh_package_active (repo TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, PRIMARY KEY (repo, name, kind));
     `);
   },
 
@@ -84,8 +95,9 @@ export const packagesMethods = {
         this.sql.exec('INSERT OR IGNORE INTO gh_annotated (repo, id) VALUES (?, ?)', slug, run.id);
       });
     }
+    this.keepActive(slug);
     this.sql.exec(
-      `DELETE FROM gh_packages WHERE repo = ?1 AND rowid NOT IN (SELECT rowid FROM gh_packages WHERE repo = ?1 ORDER BY staged DESC LIMIT ${KEEP})`,
+      `DELETE FROM gh_packages WHERE repo = ?1 AND rowid NOT IN (SELECT rowid FROM gh_packages WHERE repo = ?1 ORDER BY staged DESC LIMIT ${KEEP}) AND NOT ${ACTIVE}`,
       slug,
     );
     // The runs the sync keeps are the ones worth remembering as read.
@@ -93,6 +105,30 @@ export const packagesMethods = {
       'DELETE FROM gh_annotated WHERE repo = ?1 AND id NOT IN (SELECT id FROM gh_runs WHERE repo = ?1)',
       slug,
     );
+  },
+
+  /**
+   * Records each of `slug`'s packages' active versions: its newest pre-release and newest release, staged or published.
+   * The active ones are never pruned, so the newest kept version of each kind is always the active one or newer.
+   */
+  keepActive(slug) {
+    const seen = new Set();
+    const rows = this.sql
+      .exec('SELECT name, version FROM gh_packages WHERE repo = ? ORDER BY staged DESC, rowid DESC', slug)
+      .toArray();
+    for (const r of rows) {
+      const kind = kindOf(r.version);
+      const key = `${r.name}\n${kind}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      this.sql.exec(
+        'INSERT OR REPLACE INTO gh_package_active (repo, name, kind, version) VALUES (?, ?, ?, ?)',
+        slug,
+        r.name,
+        kind,
+        r.version,
+      );
+    }
   },
 
   /** What one run's notices say it staged: its check runs with annotations, then their notice annotations. */
@@ -179,7 +215,7 @@ export const packagesMethods = {
     return { reads };
   },
 
-  /** `slug`'s Packages feed, newest first, and each package's dist-tags as npm last said them. */
+  /** `slug`'s Packages feed, newest first (the newest versions, and each package's active ones however old), and each package's dist-tags as npm last said them. */
   packagesOf(slug) {
     const tags = new Map(
       this.sql
@@ -188,7 +224,11 @@ export const packagesMethods = {
         .map((r) => [r.name, { tags: JSON.parse(r.tags), checked: r.checked }]),
     );
     const versions = this.sql
-      .exec(`SELECT * FROM gh_packages WHERE repo = ? ORDER BY staged DESC LIMIT ${SHOWN}`, slug)
+      .exec(
+        `SELECT * FROM gh_packages WHERE repo = ?1 AND (rowid IN (SELECT rowid FROM gh_packages WHERE repo = ?1 ORDER BY staged DESC LIMIT ${SHOWN}) OR ${ACTIVE})
+         ORDER BY staged DESC`,
+        slug,
+      )
       .toArray()
       .map((r) => {
         const run = JSON.parse(r.data);
