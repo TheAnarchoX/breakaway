@@ -289,3 +289,16 @@ jobs:
     with:
       ref: v${{ needs.stable.outputs.version }}
     secrets: inherit
+
+  # The plugin follows the stable release too (LCH-24): the Plugin workflow moves the plugin branch, which Anthropic's
+  # plugin directory and this repository's marketplace follow, to the released tag with plugin.json at its version. It
+  # inherits the secrets for the same reason as the site job, so the plugin environment's deploy key reaches it.
+  plugin:
+    name: plugin
+    needs: stable
+    permissions:
+      contents: read
+    uses: ./.github/workflows/plugin.yml
+    with:
+      ref: v${{ needs.stable.outputs.version }}
+    secrets: inherit
