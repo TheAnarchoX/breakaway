@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import {
   Circle,
   CircleCheck,
+  CircleDashed,
   CircleOff,
   ExternalLink,
   FolderPlus,
@@ -48,6 +49,12 @@ export const STATE = {
   working: { label: 'Working', Icon: CircleCheck },
   attention: { label: 'Needs attention', Icon: TriangleAlert },
   off: { label: 'Not connected', Icon: CircleOff },
+};
+
+/** A routine's row says whether a session it started has reported back (BRK-142); it stays `working` for the rest. */
+const READING = {
+  verified: { label: 'Verified', Icon: CircleCheck },
+  unverified: { label: 'Not verified yet', Icon: CircleDashed },
 };
 
 /**
@@ -128,11 +135,12 @@ function Items({ c }) {
 
 /** @param {Record<string, any>} props */
 function Row({ c }) {
-  const { label, Icon } = STATE[c.state] ?? STATE.off;
+  const reading = c.state === 'working' ? READING[c.reading] : null;
+  const { label, Icon } = reading ?? STATE[c.state] ?? STATE.off;
   return (
     <li class={`conn conn-${c.state}`}>
       <div class="conn-head">
-        <span class={`conn-state conn-state-${c.state}`}>
+        <span class={`conn-state conn-state-${reading && c.reading === 'unverified' ? 'unverified' : c.state}`}>
           <Icon size={15} aria-hidden="true" />
           {label}
         </span>
@@ -149,12 +157,20 @@ function Row({ c }) {
           </a>
         </p>
       )}
-      {(c.at || c.since) && (
+      {c.verified ? (
         <p class="conn-meta meta">
-          <When iso={c.at} prefix="Seen" />
-          {c.at && c.since && ' · '}
-          <When iso={c.since} prefix={`${label} since`} />
+          <When iso={c.verified.at} prefix={`Verified by ${c.verified.task}`} />
+          {c.at && ' · '}
+          <When iso={c.at} prefix="last start" />
         </p>
+      ) : (
+        (c.at || c.since) && (
+          <p class="conn-meta meta">
+            <When iso={c.at} prefix="Seen" />
+            {c.at && c.since && ' · '}
+            <When iso={c.since} prefix={`${label} since`} />
+          </p>
+        )
       )}
       {c.fix && (
         <div class="conn-fix">
