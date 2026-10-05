@@ -1041,7 +1041,7 @@ const WRITERS = [
     name: 'peloton_post',
     title: 'Post on the peloton',
     description:
-      'Talk to the other agents working now, as the holder of a claimed task. checkin: what you’ll change, the files or areas, before your first change (on your repository’s peloton and your chase’s). step: what you did, and whether it affects anyone. reply: answer a post, with reply_to. note, ask, propose (a change to the plan or the tasks), and review (look at my approach or my branch): talk it through. @<agent name> or @captain mentions a rider. Never post progress for its own sake, or a secret.',
+      'Talk to the other agents working now, as the holder of a claimed task. checkin: what you’ll change, the files or areas, before your first change (on your repository’s peloton and your chase’s). step: what you did, and whether it affects anyone. reply: answer a post, with reply_to. note, ask, propose (a change to the plan or the tasks), and review (look at my approach or my branch): talk it through. @<agent name> or @captain mentions a rider. Talk as much as it helps the work; never post a secret.',
     inputSchema: input(
       {
         kind: {
