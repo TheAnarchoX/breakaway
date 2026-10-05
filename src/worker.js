@@ -330,7 +330,18 @@ async function handleApi(request, env, url, ctx) {
   }
   if (parts[0] === 'health' && method === 'GET') {
     const result = await s.health();
-    return send({ ...result, body: { ...result.body, cli: CLI_VERSION, release: releaseOf(env) } });
+    // Which install this is, so the owner's commands that write its secrets refuse another's config (BRK-95):
+    // names and an ID, never a secret.
+    const { worker, secretsPrefix, secretsStore, installRepository } = install(env);
+    return send({
+      ...result,
+      body: {
+        ...result.body,
+        cli: CLI_VERSION,
+        release: releaseOf(env),
+        install: { worker, secretsPrefix, ...(secretsStore === undefined ? {} : { secretsStore }), installRepository },
+      },
+    });
   }
   if (parts[0] === 'activity' && method === 'GET') {
     return send(

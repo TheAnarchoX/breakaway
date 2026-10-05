@@ -694,6 +694,8 @@ A new install starts from the root [`wrangler.jsonc`](../wrangler.jsonc) and [`b
 
 On an install without a Secrets Store, the commands that write secrets (`github-connect`, `agents-connect`, `rotate-sync`, `rotate-token`) set them on the Worker with `wrangler secret put`, under the same binding names; each one deploys a new version of it.
 
+**Run them from the install's checkout** (`BRK-95`). Those commands, and `repos remove` when it drops a routine, name the secrets from the `breakaway.config.json` in the checkout they run in. Before writing anything, each one checks that config against the board: health reports the board's Worker, its secrets' prefix, and its Secrets Store. When they differ (breakaway's own checkout has the template's config, and `npx breakaway` in another repository has the package's), the command stops, says what differs, and names where to run it: a checkout of the repository the board deploys from, or the one whose config names the board's Worker. A board from before this check doesn't report its install: the command says it can't check and carries on.
+
 After the deploy, the first run is the one Connections already shows a fresh install: open the board's workers.dev address, sign in with the token, and follow **Set up the board**: register a repository, connect the GitHub App, install it on the repository, add the board's files (`repos init`), connect its routine, and connect the CLI and Taskwarrior (`BREAKAWAY_URL` in `tasks.env`, then `npx breakaway setup`; done once a replica syncs). Each step ticks itself from the connection it names. [The self-hosting guide](self-hosting.md) walks through them (`DOC-2`).
 
 To check it without a Cloudflare account, run `vite build` and `wrangler deploy --dry-run`.
