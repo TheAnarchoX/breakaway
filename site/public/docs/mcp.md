@@ -1,10 +1,10 @@
 # MCP clients
 
-> Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how Claude’s apps sign in instead.
+> Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how apps sign in instead.
 
-Every board is also an MCP server, at `/mcp` on its own address. Claude Code, or any client that speaks MCP over HTTP, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules: one claim per task, and nothing merges or deploys on an agent’s word. It’s on as soon as your board updates, with nothing to turn on.
+Every board is also an MCP server, at `/mcp` on its own address. Any agent or app that speaks MCP over HTTP, in a terminal, an editor, or a chat app, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules: one claim per task, and nothing merges or deploys on an agent’s word. It’s on as soon as your board updates, with nothing to turn on.
 
-[The Claude Code plugin](https://leavethepack.dev/docs/plugin/) connects it for you. Without the plugin, it’s three steps.
+The board’s **MCP** page has its address to copy, a config to paste with the agent name and repository you pick, and the apps you connected. [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) connects Claude Code for you. Without the plugin, it’s three steps.
 
 ## Connect Claude Code
 
@@ -64,11 +64,11 @@ There’s no tool for `done` (pull requests close tasks), for `force`, or for `a
 
 The token is your board’s full token: it reaches everything the API does. Give it only to a client you run, on a machine you trust, and keep it in the environment, never in a committed file. When you rotate it ([Operating a board](https://leavethepack.dev/docs/operations/#rotating-secrets)), every MCP client stops with `401` until its config has the new one.
 
-## Claude’s apps
+## Sign in from an app
 
-claude.ai and Claude Desktop sign in instead of sending the token. Add your board’s address followed by `/mcp`, like `https://board.example.com/mcp`, as a custom connector. The board opens its sign-in page: signed in on the board, name the connection, pick its repository and the agent name it claims as, and press **Approve**, or **Deny**.
+An app that can open a sign-in, like claude.ai or Claude Desktop, signs in instead of sending the token. Add your board’s address followed by `/mcp`, like `https://board.example.com/mcp`, as a remote MCP server (some apps call it a custom connector). The board opens its sign-in page: signed in on the board, name the connection, pick its repository and the agent name it claims as, and press **Approve**, or **Deny**.
 
-Each connection gets its own token, never the board’s: it works only on `/mcp`, for that one repository and agent name. Connections lists them under **Claude’s apps**, with **Revoke**, which stops a connection at once.
+Each connection gets its own token, never the board’s: it works only on `/mcp`, for that one repository and agent name. The board’s **MCP** page lists them under **Connected apps**, with **Revoke**, which stops a connection at once.
 
 ## When it doesn’t work
 

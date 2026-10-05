@@ -1,7 +1,7 @@
 import { Logo } from './Logo.jsx';
 
 /**
- * The board's sign-in. `next` is the consent page of a sign-in from Claude's apps (BRK-157), which the board comes
+ * The board's sign-in. `next` is the consent page of a sign-in from MCP apps (BRK-157), which the board comes
  * back to once you're in.
  * @param {{ next?: string | null }} props
  */

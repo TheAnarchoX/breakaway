@@ -1,5 +1,5 @@
 /**
- * Sign-in from Claude's apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the board as the OAuth
+ * Sign-in from MCP apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the board as the OAuth
  * authorization server for its own /mcp, so claude.ai and Claude Desktop can connect without a header.
  *
  *   /.well-known/oauth-protected-resource[/mcp]  what /mcp is and who signs in for it (RFC 9728)

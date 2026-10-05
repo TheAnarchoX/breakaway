@@ -46,6 +46,7 @@ import { SpecsView } from './views/SpecsView.jsx';
 import { AgentsView } from './views/AgentsView.jsx';
 import { RoutinePanel, RoutinesView } from './views/RoutinesView.jsx';
 import { ConnectionsView, FirstRunNotice } from './views/ConnectionsView.jsx';
+import { McpView } from './views/McpView.jsx';
 import { AddRepoView } from './views/AddRepoView.jsx';
 import { RepoSettingsView } from './views/RepoSettingsView.jsx';
 import { KickoffView } from './views/KickoffView.jsx';
@@ -70,6 +71,7 @@ const VIEW_COMPONENTS = {
   specs: SpecsView,
   agents: AgentsView,
   routines: RoutinesView,
+  mcp: McpView,
   connections: ConnectionsView,
   'add-repo': AddRepoView,
   settings: SettingsView,
@@ -238,7 +240,7 @@ export function App() {
       </main>
     );
   }
-  // A sign-in from Claude's apps waits for the owner on its own page (BRK-157).
+  // A sign-in from MCP apps waits for the owner on its own page (BRK-157).
   if (authorizeId.value) return <Authorize id={authorizeId.value} />;
   return <Board />;
 }
