@@ -83,6 +83,7 @@ function entry(
     source = undefined,
     reading = undefined,
     verified = undefined,
+    hold = undefined,
   } = {},
 ) {
   return {
@@ -100,6 +101,7 @@ function entry(
     ...(source !== undefined ? { source } : {}),
     ...(reading && state === 'working' ? { reading } : {}),
     ...(verified && state === 'working' ? { verified } : {}),
+    ...(hold ? { hold } : {}),
   };
 }
 
@@ -925,12 +927,14 @@ export const connectionsMethods = {
         )
         .toArray()[0];
       const verified = await this.routineVerified(repo.slug, credentials);
+      await this.dropStaleHold(repo.slug);
       const row = this.routineConnection(repo, {
         isDefault,
         credentials,
         lastRun,
         off: isDefault ? off : [],
         verified,
+        hold: this.routineHold(repo.slug),
       });
       // An empty repository has no prompt yet; otherwise the one on its default branch, kept for a minute.
       out.push(
@@ -963,7 +967,7 @@ export const connectionsMethods = {
    * the name and fixes it always had; another repository's names itself, and a missing routine there
    * needs attention, since registering a repository means it should start agents (CLD-129).
    */
-  routineConnection(repo, { isDefault, credentials, lastRun, off, verified = null }) {
+  routineConnection(repo, { isDefault, credentials, lastRun, off, verified = null, hold = null }) {
     const name = isDefault ? 'Agent routine' : `Agent routine for ${repo.slug}`;
     const connect = connectCommand(isDefault ? null : repo.slug);
     if (!credentials) {
@@ -1015,9 +1019,15 @@ export const connectionsMethods = {
       state = 'attention';
       fix = `The routine’s URL isn’t a Claude routine /fire URL: copy the API trigger’s URL from claude.ai/code/routines and run ${connect}.`;
       detail = 'connected, but the URL doesn’t look like a routine’s';
+    } else if (hold?.kind === 'paused') {
+      // Claude refused the routine (BRK-144): auto-start and chase start nothing here until it's connected again.
+      state = 'attention';
+      detail = `paused: ${clip(hold.error)}; auto-start and chase start nothing here until it’s connected again`;
+      fix = routineFix(hold.error, connect);
     } else if (lastRun?.status === 'failed') {
       state = 'attention';
       detail = `the last start failed: ${clip(lastRun.error)}`;
+      if (hold) detail += `; auto-start and chase wait until ${iso(hold.until).slice(11, 16)} UTC`;
       fix = routineFix(lastRun.error, connect);
     } else if (problems.length) {
       state = 'attention';
@@ -1042,6 +1052,7 @@ export const connectionsMethods = {
       link: ROUTINES_URL,
       reading: goodUrl && !problems.length && verified ? 'verified' : 'unverified',
       verified: verified && !problems.length ? { task: by, at: iso(verified.at) } : undefined,
+      hold: hold ? { kind: hold.kind, at: iso(hold.at), until: iso(hold.until) } : undefined,
     });
   },
 

@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from './helpers.js';
+import { api, releaseRoutineHolds } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
@@ -138,6 +138,7 @@ describe('force start', () => {
     expect(res.error).toMatch(/Claude’s hourly limit/);
     expect(res.error).toMatch(/600/);
     expect(res.forceable).toBeUndefined();
+    await releaseRoutineHolds();
   });
 
   it('never skips what makes a start wrong: a task that is claimed, done, or not an agent’s', async () => {

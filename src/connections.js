@@ -137,6 +137,10 @@ export function routineFix(error, connect = 'npx breakaway agents-connect') {
   const text = String(error ?? '');
   if (/token was refused/iu.test(text))
     return `Claude refused the routine's token: on claude.ai/code/routines, open the routine, make a new API token, then replace it on Connections, or run ${connect}.`;
+  if (/has no access/iu.test(text))
+    return `Claude says the routine's token has no access to it: on claude.ai/code/routines, open the routine (signed in as the account that made it), make a new API token, then replace it on Connections, or run ${connect}. Auto-start and chase start again once it's connected.`;
+  if (/is gone on claude/iu.test(text))
+    return `Claude has no routine at that URL any more: make the routine again on claude.ai/code/routines with an API trigger (or copy the trigger's URL if it moved), then connect it on Connections with its URL and token, or run ${connect}. Auto-start and chase start again once it's connected.`;
   if (/hourly limit/iu.test(text))
     return "Claude's hourly limit for starting sessions was reached; starts work again within the hour. Lower Starts an hour on the Agents view to stay under it.";
   if (/paused/iu.test(text)) return 'The routine is paused on claude.ai: resume it at claude.ai/code/routines.';
