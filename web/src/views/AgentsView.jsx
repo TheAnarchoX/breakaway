@@ -23,6 +23,7 @@ import { RepoChip, Segmented } from '../components/ui.jsx';
 import { ForcedMark, MessageButton, RunStatus, TRIGGER_LABEL, runWords } from '../components/Agents.jsx';
 import { AgentSettings } from '../components/BoardSettings.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
+import { ChasePill } from '../components/Feature.jsx';
 import { PelotonPanel } from '../components/Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
@@ -666,6 +667,7 @@ export function AgentsView() {
                           {r.agent} · {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}
                         </span>
                         {r.forced && <ForcedMark />}
+                        <ChasePill uuid={r.uuid} />
                       </span>
                       {r.lastLine && <code class="agent-last">{r.lastLine}</code>}
                       <div class="agent-card-actions">

@@ -25,6 +25,7 @@ import { ago, openPr, ref, time } from '../lib/model.js';
 import { actions, agents, go, hashFor, openPull } from '../lib/store.js';
 import { RichText } from '../lib/richtext.jsx';
 import { Dialog, useAutosize, Dictate } from './ui.jsx';
+import { ChaseLine } from './Feature.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 export const TRIGGER_LABEL = {
@@ -777,6 +778,7 @@ export function AgentSection({ task: t }) {
           {run.startedAt && ` ${ago(run.startedAt)}`} {run.forced && <ForcedMark />}
         </p>
       )}
+      <ChaseLine task={t} />
       {open && (
         <div class="agent-start">
           {canStart && writing && (
