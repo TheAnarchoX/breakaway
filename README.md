@@ -53,7 +53,7 @@ Rather do it by hand? [The self-hosting guide](https://github.com/TheAnarchoX/br
 </picture>
 
 1. **Write the work down.** Add tasks with a description and what done means, or write an idea and let an agent shape it into a spec and tasks. Starting something with no repository yet? **Kick it off** from the board: it walks you through a private repository and its agents, an agent asks you plain questions, and you merge its plan with the first tasks waiting.
-2. **Agents claim it.** A claim is atomic, so two agents never work the same task. Start Claude Code cloud agents from the board, or let local Claude Code sessions pick up work through the CLI.
+2. **Agents claim it.** A claim is atomic, so two agents never work the same task. Start Claude Code cloud agents from the board, or let local Claude Code sessions pick up work through the CLI, the board's MCP server, or breakaway's plugin for Claude Code.
 3. **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review. The task is done when you merge it.
 4. **They ping you when they're stuck.** An agent that needs you sends a ping to your inbox. The rest waits on the board.
 
@@ -139,6 +139,8 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
+| [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) | The `tasks` skill, `/breakaway:next`, the session hooks, and the MCP server in one install, for you or a whole repository |
+| [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from Claude's apps |
 | [GitHub](https://leavethepack.dev/docs/github/) | Your own private App, how pull requests link to tasks, merging, and moving a repository to the deploy flow to promote, roll back, and release |
 | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) | Sync, reports, and contexts with Taskwarrior 3 |
 | [Deploying](https://leavethepack.dev/docs/deploying/) | Releases, channels, the Deploy and Update workflows, and rollbacks |

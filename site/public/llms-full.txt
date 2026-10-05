@@ -1409,7 +1409,7 @@ Then open a checkout of a repository the board tracks and type `/breakaway:next`
 
 **Already set up?** The plugin’s settings come last. The environment (`BREAKAWAY_URL`, `BREAKAWAY_TOKEN`, `BREAKAWAY_AGENT`), `tasks.env` from `npx breakaway setup`, and the checkout’s `.taskrc` all come first ([The CLI](https://leavethepack.dev/docs/cli/#settings)), so a machine you already connected keeps working unchanged. `npx breakaway health` says where each setting came from, never its value.
 
-The marketplace takes the plugin from breakaway’s `plugin` branch, which a stable release moves, so you get released versions, never work in progress.
+The marketplace takes the plugin from breakaway’s `plugin` branch, which a stable release moves, so you get released versions, never work in progress. The plugin first ships with 1.5.0.
 
 ## Install it for a repository
 

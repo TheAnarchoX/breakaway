@@ -161,3 +161,45 @@ A thread of four posts. Post it when 1.4.0 is published. Each post replies to th
 > You merge it and turn on deploys. Promote, roll back, and release from the board.
 
 **Alt text:** A card headed "Deploy with breakaway." Three steps: 1, an agent moves your CI/CD, in a pull request; 2, you merge and turn on deploys; 3, promote, roll back, release. At the foot: "You merge. You deploy."
+
+## 8. 1.5.0: what's new, the plugin, and the MCP server
+
+A thread of three posts. Post it when 1.5.0 is published and its plugin job has made the `plugin` branch: post 8b tells people to install from the marketplace, which follows that branch. Each post replies to the one before it. The release's own notes are [`docs/releases/v1.5.0.md`](../docs/releases/v1.5.0.md).
+
+### 8a. What's new
+
+**Media:** [`media/13-new-in-1-5-0.png`](media/13-new-in-1-5-0.png)
+
+> breakaway 1.5.0 is out. New:
+>
+> - Every board is an MCP server, at /mcp
+> - A plugin for Claude Code
+> - /breakaway:next and /breakaway:hand-over
+> - Claude’s apps sign in, and you approve it
+> - Pull a release into next on the roadmap
+
+**Alt text:** A card headed "New in 1.5.0." with five lines: Every board is an MCP server, at /mcp. A plugin for Claude Code. /breakaway:next and /breakaway:hand-over. Claude's apps sign in, and you approve it. Pull a release into next on the roadmap.
+
+### 8b. The plugin
+
+**Media:** [`media/14-plugin.png`](media/14-plugin.png)
+
+> breakaway in Claude Code. One install: the tasks skill, /breakaway:next and /breakaway:hand-over, the hooks that show a session's output on its task, and the MCP server.
+>
+> /plugin marketplace add TheAnarchoX/breakaway
+>
+> Or turn it on for a repository with npx breakaway repos init.
+
+**Alt text:** A card headed "In Claude Code." Below it: "One install: the skill, the commands, the hooks, and the MCP server." Then two lines to type: /plugin marketplace add TheAnarchoX/breakaway, and /plugin install breakaway@breakaway. Under them, /breakaway:next, with "claims BRK-12" beside it. At the foot: "You still merge."
+
+### 8c. The MCP server
+
+**Media:** [`media/15-mcp.png`](media/15-mcp.png)
+
+> Every board is an MCP server now. Claude Code lists, claims, and comments with tools, by the same rules: one claim per task.
+>
+> claude.ai and Claude Desktop add it as a connector. You approve each one on your board, for one repository, and revoke it there.
+>
+> No tool merges. You do.
+
+**Alt text:** A card headed "Every board is an MCP server." Three steps: 1, add your board's /mcp as a connector; 2, approve it on your board, for one repository; 3, revoke it under Connections. At the foot: "No tool merges."
