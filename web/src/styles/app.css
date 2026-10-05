@@ -4303,6 +4303,27 @@ fieldset.field {
   margin-top: 2px;
   color: var(--muted);
 }
+.deploy-card-flows {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.deploy-card-flows li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.deploy-card-flows svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.deploy-card-flows code {
+  overflow-wrap: anywhere;
+}
 .deploy-card .gh-prs {
   margin: 0 0 12px;
 }
@@ -7369,6 +7390,49 @@ fieldset.field {
 }
 .rs-details > .field-hint {
   margin-bottom: 10px;
+}
+/* The two flows (WEB-72): deploys and releases, each with its fields and whether it's on. */
+.rs-flows {
+  display: grid;
+  gap: 12px;
+}
+.rs-flow {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.rs-flow-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 650;
+}
+.rs-flow-head svg {
+  flex: none;
+  color: var(--muted);
+}
+.rs-flow-state {
+  padding: 1px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.rs-flow-state.is-on {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.rs-section .deploy-card {
+  max-width: none;
+}
+.rs-by-hand-head {
+  margin: 4px 0 0;
 }
 .rs-by-hand {
   display: flex;
