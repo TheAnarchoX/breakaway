@@ -5405,6 +5405,17 @@ fieldset.field {
 .rt-panel-title:focus {
   outline: none;
 }
+/* Who made a routine an agent made (BRK-220 section 5), under its name. */
+.rt-made-by {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rt-made-by svg {
+  flex: none;
+}
 .panel-section > .meta {
   margin: 0;
 }

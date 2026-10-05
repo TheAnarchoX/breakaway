@@ -100,8 +100,15 @@ export function mainPr(t) {
 
 export const ref = (t) => t.wid ?? t.short ?? t.uuid.slice(0, 8);
 
-/** A general agent's open task with no area yet: its agent picks one, and the work ID comes with it. */
-export const picksArea = (t) => !t.project && t.status === 'pending' && (t.tags ?? []).includes('general');
+/**
+ * A general agent's open task with no area yet: its agent picks one, and the work ID comes with it. A routine maker's
+ * needs none: its work is on the board (BRK-220 section 2).
+ */
+export const picksArea = (t) =>
+  !t.project &&
+  t.status === 'pending' &&
+  (t.tags ?? []).includes('general') &&
+  !(t.tags ?? []).includes('routine-maker');
 /** What shows where such a task's area would be. */
 export const PICKS_AREA = 'Its agent picks the area';
 

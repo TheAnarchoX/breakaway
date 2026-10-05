@@ -1,8 +1,22 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { CalendarClock, Copy, GitMerge, Hand, History, Pencil, Play, Plus, Repeat, Webhook, X } from 'lucide-preact';
+import {
+  Bot,
+  CalendarClock,
+  Copy,
+  GitMerge,
+  Hand,
+  History,
+  Pencil,
+  Play,
+  Plus,
+  Repeat,
+  Webhook,
+  X,
+} from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import {
   actions,
+  canNewAgent,
   closeRoutine,
   hashFor,
   inScope,
@@ -18,6 +32,7 @@ import {
 } from '../lib/store.js';
 import { RoutinesDailyCap, RoutinesSwitch } from '../components/BoardSettings.jsx';
 import { Dialog, RepoChip, Segmented, Dictate } from '../components/ui.jsx';
+import { MakeRoutinesDialog } from '../components/MakeRoutines.jsx';
 import { RichText } from '../lib/richtext.jsx';
 
 const RUN_TRIGGER = {
@@ -558,6 +573,24 @@ function PanelTop({ label, children, onClose }) {
 }
 
 /** @param {Record<string, any>} props */
+/**
+ * Who made a routine an agent made (BRK-220 section 5): its agent, and the routine maker's task it made it for.
+ * @param {{ by: { uuid: string, wid: string | null, short: string, agent: string | null } }} props
+ */
+function MadeBy({ by }) {
+  return (
+    <p class="meta rt-made-by">
+      <Bot size={14} aria-hidden="true" />
+      <span>
+        Made by {by.agent ?? 'an agent'} for{' '}
+        <a href={hashFor({ task: by.wid ?? by.short })}>
+          <span class="wid">{by.wid ?? by.short}</span>
+        </a>
+      </span>
+    </p>
+  );
+}
+
 function PanelContent({ r, onClose }) {
   const [editing, setEditing] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -584,6 +617,7 @@ function PanelContent({ r, onClose }) {
         {r.name}
       </h2>
       {r.disabledReason && <p class="claim-line claim-line-stale">Switched off: {r.disabledReason}.</p>}
+      {r.madeBy && <MadeBy by={r.madeBy} />}
       {editing ? (
         <Section title="Edit routine" id="rt-edit">
           <RoutineForm routine={r} onDone={() => setEditing(false)} />
@@ -836,6 +870,7 @@ function RecentRuns({ d }) {
 export function RoutinesView() {
   const state = routines.value;
   const [adding, setAdding] = useState(false);
+  const [making, setMaking] = useState(false);
   useEffect(() => {
     navOrder.value = [];
     loadRoutines();
@@ -857,10 +892,24 @@ export function RoutinesView() {
             follow.
           </p>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
-          <Plus size={16} aria-hidden="true" />
-          New routine
-        </button>
+        <span class="row-gap rt-new">
+          {canNewAgent.value && (
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              aria-haspopup="dialog"
+              title="Say what you want, and an agent makes the routines"
+              onClick={() => setMaking(true)}
+            >
+              <Bot size={16} aria-hidden="true" />
+              Make with an agent
+            </button>
+          )}
+          <button type="button" class="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+            <Plus size={16} aria-hidden="true" />
+            New routine
+          </button>
+        </span>
       </div>
       {state.error && (
         <p class="field-error" role="alert">
@@ -888,6 +937,7 @@ export function RoutinesView() {
               <p class="muted small">
                 No routines yet. Make one with New routine: a prompt the board can start as a task, by hand, on a
                 schedule, or from a trigger.
+                {canNewAgent.value && ' Or press Make with an agent, say what you want, and an agent makes them.'}
               </p>
             )}
           </section>
@@ -897,6 +947,7 @@ export function RoutinesView() {
           </div>
         </div>
       )}
+      <MakeRoutinesDialog open={making} onClose={() => setMaking(false)} />
       <Dialog open={adding} onClose={() => setAdding(false)} labelledBy="rt-new-title">
         <div class="sheet">
           <h2 id="rt-new-title">New routine</h2>
