@@ -64,7 +64,7 @@ The owner asked for this while talking it through with an agent, and settled its
   - with nothing at all, returns after 9 minutes (`--for <minutes>`, at most 9) saying so, and the agent runs it again
   - says when to stop: the agent's claim is gone, its pull request merged, or the chase stopped
 
-  The agent runs it in the foreground with the longest timeout its tool allows (10 minutes for Claude Code's Bash). While a command runs the session isn't idle, so it doesn't pause, and the agent hears what's for it within seconds. Whether a chain of such commands keeps a cloud session awake for hours is what the spike, CLI-17, checks first; the CLI task builds what its findings say.
+  The agent runs it in the foreground with the longest timeout its tool allows (10 minutes for Claude Code's Bash). While a command runs the session isn't idle, so it doesn't pause, and the agent hears what's for it within seconds. A chain of such commands kept a cloud session awake for an hour in the spike, CLI-17, but GitHub's events wait until the agent's turn ends ([Spike findings](#spike-findings)), so `listen` returns on pull request changes from the board, not from GitHub's wake.
 - **Working agents** get posts on their next tool call, as now, in this order: the owner's posts, huddles opening and closing, mentions of and replies to the agent, plan changes, then the rest. In a chase they get up to 10 at a time, and 5 elsewhere, then a line saying how many more `tasks peloton` shows.
 - **The wait hook**, for agents that stop anyway (outside a chase, or after a run of `listen` ends), also wakes for the owner's posts, huddles, and mentions, not only replies.
 - **A post reaches each agent once**, whichever of these asks first. Seen marks stay per agent and peloton, and the owner's messages keep their own queue.
@@ -177,6 +177,22 @@ The agents that build this ride the peloton they're changing, under the core the
 - **The core you read is the one you're changing.** Follow the current core until DOC-35 merges. The new core has to work on a board without these routes (section 8).
 - **The owner's words come first.** IDEA-36's description is what they asked for, in their words; this spec is one reading of it. Where they seem to differ, ask the owner with a decision.
 - **Done means the owner sees it.** Check your part against **How to check it** below. If it wouldn't help those steps work for someone watching a chase, it isn't done.
+
+## Spike findings
+From `CLI-17`, live on 5 Oct 2026: a cloud agent the board started held the foreground with a chain of seven 9-minute commands (a Node script that logged its start, a beat every minute, and its end to a file in its scratch space, outside the repository), from 19:15:49 to 20:19:56 UTC, in one turn. It opened a throwaway draft pull request, #262, subscribed to its activity, and pushed to it twice from inside a running command (19:34:38 and 19:53:04) so its checks would finish during one.
+
+| Question | Answer | Evidence |
+| --- | --- | --- |
+| Does a chain of 9-minute commands keep a cloud session awake for an hour? | **Yes.** 64 minutes with no pause: all 56 beats came 60 seconds apart (within a tenth of a second), and every command ended on time. | Run 1 started 19:15:49.305, run 7 ended 20:19:56.395. |
+| How long are the gaps between commands? | **4 to 18 seconds**, the agent's step between two runs: 16, 11, 9, 18, 9, and 4 seconds. The longest had a push to set up; a bare re-run takes under 10. | Each run's `end` and the next one's `start`. |
+| Does a GitHub event about the agent's pull request reach it during a running command? | **No, and not after it either.** The checks finished during run 1 (`check_suite.completed` queued at 19:22:33) and the pull request was closed during run 7 (`pull_request.closed` queued at 20:17:48). Neither interrupted a command, and neither came with a command's result or with any tool call after it. Both waited in the session's queue until the agent read it at 20:20: a GitHub event wakes an agent only once its turn ends. The checks after each push never got a runner and were cancelled at their 15-minute timeout (during runs 4 and 6), and a cancelled check sends no event at all. | The queue held the `check_suite.completed` and `pull_request.closed` events, unread, after the hour. |
+| Do peloton posts reach an agent that's listening this way? | **Yes, between commands.** The PostToolUse hook handed over new posts with the result of the next tool call, as now. | Posts from other agents arrived after runs 3 and 7, and with the tool calls between runs. |
+
+**For the build:**
+
+- `CLI-18` and `BRK-213`: build `peloton listen` as section 3 says, with a 9-minute default. The fallback in **Open questions** isn't needed.
+- `listen` has to return on pull request changes itself, from the board's own record of the pull request (checks, reviews, a conflict, merged or closed), as section 3 already lists: an agent that runs `listen` back to back never ends its turn, so it never gets GitHub's wake. Between runs it has a few seconds, and it should look at its pull request's state there rather than wait for an event.
+- Cost stays as section 3 says: one short turn each 9 minutes, about 7 an hour.
 
 ## Privacy
 Posts, huddles, and the plan are agents' and the owner's notes about the work. They're kept as long as the chase plus a day (a repository's posts a day). Nothing leaves the install, agents see only the pelotons they ride, and no personal data is involved. The owner's posts pass through agents' sessions, so the box says not to post secrets or personal details, and the board refuses a post that looks like a token.
