@@ -1,10 +1,13 @@
 import { useState } from 'preact/hooks';
-import { actions } from '../lib/store.js';
+import { actions, multiRepo, repoScope } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
+import { IDEA_HORIZONS, RepoField } from './NewTask.jsx';
 import { RepoChip, widClass } from './ui.jsx';
 
 const SLUG = '[a-z][a-z0-9_\\-]{0,39}';
 const RELEASE = '\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}';
+/** The horizons a shaped feature's tasks can start in: new work is never archived. */
+const SHAPE_HORIZONS = IDEA_HORIZONS.filter((h) => h.id !== 'archive');
 
 /**
  * The open tasks of a group to pick from (WEB-15): each one picked to start with, except a task already in
@@ -50,6 +53,12 @@ function TaskPicker({ pick }) {
 export function FeatureForm({ feature, pick, onDone }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
+  // Shape it with an agent (WEB-42): only a new feature with no tasks picked; its brief becomes an idea.
+  const canShape = !feature && !pick;
+  const [shape, setShape] = useState(false);
+  const [repo, setRepo] = useState(repoScope.value ?? '');
+  const [repoError, setRepoError] = useState(null);
+  const [briefError, setBriefError] = useState(false);
   const save = async (e) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -70,8 +79,26 @@ export function FeatureForm({ feature, pick, onDone }) {
         return;
       }
     }
+    if (shape) {
+      if (!body.brief.trim()) {
+        setBriefError(true);
+        e.currentTarget.querySelector('[name="brief"]')?.focus();
+        return;
+      }
+      if (multiRepo.value && !repo) {
+        setRepoError('Pick the repository the idea is for.');
+        return;
+      }
+      body.shape = { horizon: String(f.get('horizon') ?? 'auto'), ...(multiRepo.value ? { repo } : {}) };
+    }
     setProblem(null);
     setBusy(true);
+    if (shape) {
+      const made = await actions.shapeFeature(body);
+      setBusy(false);
+      if (made) onDone(made.slug);
+      return;
+    }
     if (pick) {
       const made = await actions.featureFromTasks(body);
       setBusy(false);
@@ -129,9 +156,70 @@ export function FeatureForm({ feature, pick, onDone }) {
           rows={pick ? 3 : 5}
           maxLength={4000}
           defaultValue={feature?.brief ?? ''}
+          aria-required={shape ? 'true' : undefined}
+          aria-invalid={briefError ? 'true' : undefined}
+          aria-describedby={briefError ? 'ff-brief-error' : undefined}
+          onInput={() => setBriefError(false)}
         />
-        <span class="field-hint">What it is and why, in Markdown.</span>
+        {briefError ? (
+          <span class="field-error" id="ff-brief-error" role="alert">
+            Write the brief first: the agent shapes the feature from it.
+          </span>
+        ) : (
+          <span class="field-hint">
+            {shape ? 'What it is and why, in your words. Rough is fine.' : 'What it is and why, in Markdown.'}
+          </span>
+        )}
       </label>
+      {canShape && (
+        <>
+          <label class="check-row">
+            <input
+              type="checkbox"
+              name="shape"
+              checked={shape}
+              aria-describedby="ff-shape-hint"
+              onChange={(e) => {
+                setShape(e.currentTarget.checked);
+                setBriefError(false);
+              }}
+            />
+            <span>Shape it with an agent, like an idea</span>
+          </label>
+          <p class="field-hint" id="ff-shape-hint">
+            The board adds the feature and an idea from its brief, and starts an agent on it. The agent writes the tasks
+            with this tag, keeps them to the title and brief, and leaves the release to you. You review it all in a pull
+            request.
+          </p>
+          {shape && (
+            <>
+              <RepoField
+                repo={repo}
+                setRepo={(slug) => {
+                  setRepo(slug);
+                  setRepoError(null);
+                }}
+                error={repoError}
+                id="ff-repo"
+              />
+              <fieldset class="field">
+                <legend class="field-label">Horizon for the tasks it makes</legend>
+                <div class="check-inline">
+                  {SHAPE_HORIZONS.map((h) => (
+                    <label key={h.id} class="check-row" title={h.hint}>
+                      <input type="radio" name="horizon" value={h.id} defaultChecked={h.id === 'auto'} />
+                      {h.label}
+                    </label>
+                  ))}
+                </div>
+                <span class="field-hint">
+                  Auto lets the agent choose for each task, from what’s already on the board.
+                </span>
+              </fieldset>
+            </>
+          )}
+        </>
+      )}
       {pick && <TaskPicker pick={pick} />}
       {feature && (
         <label class="check-row">
@@ -149,7 +237,7 @@ export function FeatureForm({ feature, pick, onDone }) {
           Cancel
         </button>
         <button type="submit" class="btn btn-primary" disabled={busy} aria-busy={busy}>
-          {feature ? 'Save' : pick ? 'Make it a feature' : 'Add feature'}
+          {feature ? 'Save' : pick ? 'Make it a feature' : shape ? 'Add and start shaping' : 'Add feature'}
         </button>
       </div>
     </form>

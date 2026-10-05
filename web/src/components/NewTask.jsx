@@ -275,7 +275,10 @@ export function ideaTitle(text) {
   return line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line;
 }
 
-const IDEA_HORIZONS = [...HORIZONS, { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' }];
+export const IDEA_HORIZONS = [
+  ...HORIZONS,
+  { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' },
+];
 
 /**
  * The repository an idea (or a new agent) is for: preset to the one in scope, and with every repository in scope

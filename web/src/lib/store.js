@@ -1146,9 +1146,11 @@ export const actions = {
    * still be `version`; with `spec` (a path in `repo`'s specs directory, WEB-26), the prompt that refines that spec,
    * and `note` is the owner's request; with `chase` (a feature's slug, BRK-137), a road captain for that chase, in
    * its repository and always force started.
-   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, spec?: string, note?: string, chase?: string }} body
+   * With `feature` (a feature's slug, BRK-150), the board writes the prompt from the feature and its tasks, and `note`
+   * is what to refine.
+   * @param {{ prompt?: string, repo?: string, force?: boolean, decision?: string, next?: string, version?: string, spec?: string, note?: string, chase?: string, feature?: string }} body
    */
-  async startGeneral({ prompt, repo, force = false, decision, next, version, spec, note, chase }) {
+  async startGeneral({ prompt, repo, force = false, decision, next, version, spec, note, chase, feature }) {
     const result = await api('agents/general', {
       method: 'POST',
       body: {
@@ -1161,9 +1163,11 @@ export const actions = {
         spec,
         note: note || undefined,
         chase,
+        feature,
       },
     });
     if (next) loadGitHub({ quiet: true });
+    if (feature) loadFeature(feature);
     await loadTasks();
     if (activity.value.loaded) loadActivity();
     loadAgents();
@@ -1185,6 +1189,8 @@ export const actions = {
    * repository `repo`, the task already on it, and why its routine can't start one. Makes nothing.
    */
   previewSpec: (repo, path) => api('agents/general', { method: 'POST', body: { repo, spec: path, dryRun: true } }),
+  /** Refine a feature with an agent, before starting (BRK-150): the prompt, the open one, and why it can't start. */
+  previewFeature: (slug) => api('agents/general', { method: 'POST', body: { feature: slug, dryRun: true } }),
   /** `after` runs when the owner forces a start the board's limits refused. */
   async startAgent(t, note, after) {
     const result = await change(
@@ -1386,6 +1392,18 @@ export const actions = {
       featureOpen.value = { slug: result.feature.slug, data: result.feature, error: null };
       loadFeature(result.feature.slug); // with its chase's queue, which a save doesn't return
     }
+    return result?.feature ?? null;
+  },
+  /**
+   * Adds a feature and shapes it as an idea (WEB-42): the board makes an idea from its brief, tagged with it, and
+   * starts its agent. Resolves to the feature, or null after the error.
+   */
+  async shapeFeature(body) {
+    const result = await change(
+      () => api('features', { method: 'POST', body }),
+      (r) => `Feature added. ${r.idea.wid ?? 'Its idea'} shapes it: an agent starts on it when there’s room.`,
+    );
+    loadFeatures();
     return result?.feature ?? null;
   },
   /**

@@ -7,6 +7,7 @@
  * at a release, changing it, and deleting it are the owner's.
  */
 import { AgentError } from './store-agents.js';
+import { featureIdea } from './feature-prompt.js';
 import { InputError, diffOps, rank, withChanges } from './model.js';
 
 /** A feature's slug is a tag: lowercase letters, digits, hyphens, and underscores, starting with a letter. */
@@ -17,6 +18,8 @@ const RELEASE_TAG = /^v(\d{1,4})_(\d{1,4})-(\d{1,4})$/u;
 /** Tags the board and its agents use for something else: never a feature, never suggested. */
 const BOARD_TAGS = new Set(['agent', 'owner', 'decide', 'idea', 'general', 'routine', 'security']);
 const STATES = ['open', 'shipped'];
+/** The horizons the owner may give an idea's tasks: `auto` lets its agent choose. */
+const IDEA_HORIZONS = ['auto', 'now', 'next', 'later'];
 const MAX_TITLE = 200;
 const MAX_BRIEF = 4000;
 
@@ -193,7 +196,7 @@ export const featuresMethods = {
     return out;
   },
 
-  createFeature(input) {
+  async createFeature(input) {
     const slug = String(input.slug ?? '').trim();
     const problem = featureTagProblem(slug);
     if (problem) throw new InputError(problem);
@@ -208,9 +211,29 @@ export const featuresMethods = {
       throw new AgentError(`the feature "${slug}" already exists`);
     const f = this.featureFields(input, { title: titleOf(slug), brief: null, release: null, state: 'open' });
     const picked = this.featurePick(input, owner);
+    const shape = this.featureShape(input, owner, picked, f);
     // Made from a suggestion or a group: the release its tasks' tags share, unless the owner said otherwise.
     if (owner && !('release' in input))
       f.release = sharedRelease(picked ? picked.join : this.views((t) => t.tags.includes(slug)));
+    // The idea first: when the board can't make it, there's no feature without the agent the owner asked for.
+    let idea = null;
+    if (shape) {
+      const written = featureIdea({ slug, ...f });
+      const res = await this.create([
+        {
+          description: written.title,
+          project: 'ideas',
+          horizon: 'now',
+          tags: ['agent', 'idea', `horizon-${shape.horizon}`, slug],
+          autostart: 'yes',
+          brief: written.brief,
+          ...(shape.repo ? { repo: shape.repo } : {}),
+          by: 'owner',
+        },
+      ]);
+      if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t make the idea', res.status);
+      idea = res.body.tasks[0];
+    }
     const now = Date.now();
     this.sql.exec(
       'INSERT INTO features (slug, title, brief, release, state, created_by, created, edited_by, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -240,7 +263,33 @@ export const featuresMethods = {
         kept: picked.kept.map((x) => ({ wid: label(x.task), feature: x.feature })),
       };
     }
+    if (idea) return { feature: this.featureDetail(slug), idea: this.detail(idea.uuid) };
     return { feature: this.featureDetail(slug) };
+  },
+
+  /**
+   * Shape a new feature as an idea (WEB-42): `shape` asks for an IDEA that carries the feature's tag, with its brief
+   * as the owner's words and what the feature is under them, which starts its agent by itself. `shape` is true or
+   * `{ repo, horizon }`: the idea's repository (needed when the board runs more than one) and the horizon for the
+   * tasks it makes (`auto` by default). The owner's, with a brief, and not with picked tasks. Null when not asked.
+   */
+  featureShape(input, owner, picked, fields) {
+    if (!input.shape) return null;
+    if (!owner) throw new AgentError('only the owner shapes a feature with an agent', 403);
+    if (picked) throw new InputError('a feature made from tasks has its tasks already: shape one without picking any');
+    if (!fields.brief) throw new InputError('write the brief first: it’s what the agent shapes the feature from');
+    const options = typeof input.shape === 'object' ? input.shape : {};
+    const horizon = String(options.horizon ?? 'auto');
+    if (!IDEA_HORIZONS.includes(horizon)) throw new InputError(`the horizon is ${IDEA_HORIZONS.join(', ')}`);
+    const repo = options.repo ? String(options.repo) : null;
+    if (!repo && this.repos().length > 1)
+      throw new InputError(
+        `say which repository the idea is for: ${this.repos()
+          .map((r) => r.slug)
+          .join(', ')}`,
+      );
+    this.checkRepoSlug(repo);
+    return { repo, horizon };
   },
 
   /**

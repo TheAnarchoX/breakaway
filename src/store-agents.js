@@ -12,6 +12,7 @@ import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
 import { repoSlugOf, routineCaps } from './repos.js';
 import { specPrompt } from './spec-prompt.js';
+import { REFINE_FEATURE_TITLE, featurePrompt } from './feature-prompt.js';
 import { normalPath } from './specs.js';
 import { CLAUDE_LIMITS, DEFAULT_PLAN, hourlyCeiling, isPlan, planChoices, planLimits, planOf, PLANS } from './plans.js';
 
@@ -336,6 +337,10 @@ export const agentsMethods = {
    * With `chase` (a feature's slug, BRK-137), the agent is that chase's road captain: the owner's prompt, with the
    * chase as it stands now under it, in the chase's repository, tagged with the feature so it rides the chase's
    * peloton. A road captain is always force started: the owner pressed for it while the chase holds the slots.
+   *
+   * With `feature` (a feature's slug, BRK-150), the board writes the prompt from the feature and its tasks, with the
+   * owner's `note` (what to refine, required) under it, in the repository most of its tasks are in (or `repo` when it
+   * has none), and tags the task with the feature; while one refining it is open it returns that one instead.
    */
   async startGeneral({
     prompt,
@@ -348,6 +353,7 @@ export const agentsMethods = {
     note = null,
     dryRun = false,
     chase = null,
+    feature = null,
   } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
@@ -356,9 +362,9 @@ export const agentsMethods = {
     let tags = ['agent', 'general'];
     let specPath = null;
     const given = (value) => value !== null && value !== undefined && value !== '';
-    if ([decision, next, spec, chase].filter(given).length > 1)
+    if ([decision, next, spec, chase, feature].filter(given).length > 1)
       throw new AgentError(
-        'start one from a decision, from a spec, for the next version, or for a chase: only one of them',
+        'start one from a decision, from a spec, from a feature, for the next version, or for a chase: only one of them',
         400,
       );
     if (given(chase)) {
@@ -455,6 +461,39 @@ export const agentsMethods = {
             n,
           ),
       };
+    } else if (given(feature)) {
+      // Refine a feature (BRK-150): the board writes the prompt from the feature and its tasks.
+      if (text)
+        throw new AgentError('the board writes the prompt from the feature: send what to refine as a note', 400);
+      if (!dryRun && !String(note ?? '').trim())
+        throw new AgentError('say what to refine in the feature: the note is the agent’s request', 400);
+      const row = this.featureRow(String(feature));
+      const members = (this.featureMembership().members.get(row.slug) ?? []).map((m) => m.task);
+      const work = members.filter((t) => !t.tags.includes('general'));
+      const counts = new Map();
+      for (const t of work) counts.set(t.repo, (counts.get(t.repo) ?? 0) + 1);
+      const slug = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? this.generalRepo(repo);
+      const open = members.find(
+        (t) => t.status === 'pending' && t.tags.includes('general') && t.description.startsWith(REFINE_FEATURE_TITLE),
+      );
+      tags = ['agent', 'general', row.slug];
+      source = {
+        repo: slug,
+        open: open ? [open.uuid, this.tasks.get(open.uuid)] : undefined,
+        write: (n) =>
+          featurePrompt(
+            row,
+            work.map((t) => ({
+              ref: t.wid ?? t.short,
+              description: t.description,
+              status: t.status,
+              repo: t.repo,
+              claimed: Boolean(t.claim),
+            })),
+            slug,
+            n,
+          ),
+      };
     }
     if (source) {
       repo = source.repo;
@@ -494,7 +533,7 @@ export const agentsMethods = {
     }
     if (dryRun)
       throw new AgentError(
-        'a dry run shows the prompt the board writes from a decision, from a spec, or for the next version',
+        'a dry run shows the prompt the board writes from a decision, from a spec, from a feature, or for the next version',
         400,
       );
     if (!text) throw new AgentError('write what the agent should do first', 400);
