@@ -24,6 +24,7 @@ These docs cover all of it. Start where you are.
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
+| Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) |
 | Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |

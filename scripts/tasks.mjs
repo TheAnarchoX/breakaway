@@ -83,7 +83,7 @@ import {
   unknownSubcommand,
 } from './tasks/cli.js';
 import { keepLines } from './tasks/keep.js';
-import { checkMcp, mcpAgent, mcpConfig, mcpLines } from './tasks/mcp.js';
+import { checkMcp, headersRepo, mcpAgent, mcpConfig, mcpHeaders, mcpLines } from './tasks/mcp.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
@@ -250,6 +250,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
   mcp                    print the claude mcp add line and the .mcp.json entry that connect an MCP client to the board's
                          /mcp from this checkout, with the token as $BREAKAWAY_TOKEN, never its value. Writes nothing
     --check              …or check the server answers: initialize and tools/list, or the board's error
+    --headers            …or print the headers Claude Code sends to /mcp as JSON, the token included: the plugin's
+                         headersHelper. Only Authorization outside a repository the board tracks
   export                 every task (all repositories, statuses, and horizons) as JSON, checked against health's count  [--out <file>]
   connections            is everything the board leans on wired up: GitHub, Cloudflare, Claude, sync, push; the fix for each that isn't
 
@@ -442,6 +444,7 @@ const FLAGS = new Set([
   'defaults',
   'package',
   'check',
+  'headers',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline', 'copies']);
@@ -1623,7 +1626,8 @@ const commands = {
   },
   /** How to connect an MCP client to the board's /mcp from this checkout, and --check whether it answers (CLI-6). */
   async mcp() {
-    const { slug } = await checkoutRepo();
+    // --headers is the plugin's headersHelper: it asks the board itself, and never fails (CLI-9).
+    const { slug } = opts.headers ? { slug: null } : await checkoutRepo();
     let branch = null;
     try {
       branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
@@ -1634,6 +1638,30 @@ const commands = {
       /* not a git checkout */
     }
     const name = mcpAgent({ named: opts.as ?? setting('AGENT'), branch, fallback: agent() });
+    if (opts.headers) {
+      const token = setting('TOKEN');
+      let remote = null;
+      try {
+        remote = execFileSync('git', ['remote', 'get-url', 'origin'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+      } catch {
+        /* not a git checkout, or no origin */
+      }
+      // Claude Code says which server it's connecting: the plugin's board_url, when the CLI's settings don't name one.
+      const server = process.env.CLAUDE_CODE_MCP_SERVER_URL?.replace(/\/mcp\/?$/u, '');
+      const repo = await headersRepo({
+        base: BASE ?? (server?.startsWith('http') ? server : null),
+        token,
+        named: opts.repo ?? setting('REPO'),
+        remote,
+        fetch,
+      });
+      // Standard output is Claude Code's, and only the headers go there: never --json's wrapping, never a line of text.
+      console.log(JSON.stringify(mcpHeaders({ token, agent: name, repo })));
+      return;
+    }
     const tokenVar = envName('TOKEN');
     const config = mcpConfig({ url: BASE, agent: name, repo: slug, tokenVar });
     if (!opts.check) {

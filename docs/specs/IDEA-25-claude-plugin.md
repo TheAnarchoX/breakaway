@@ -71,6 +71,13 @@ The plugin is the default as soon as it ships (decided on BRK-158): few reposito
 
 The MCP server ships in a plugin release only once `/mcp` is on the installs (BRK-154). Until then the plugin has no `.mcp.json`, and the commands run the CLI.
 
+What Claude Code allows shaped how it's built (CLI-9). A plugin's `headersHelper` runs in the plugin's folder, through a shell, without the plugin's options and without environment variables named like a credential (so no `BREAKAWAY_TOKEN`), and it can't reference `${user_config.*}`. So:
+
+- The token reaches `/mcp` as a static header, `Authorization: Bearer ${user_config.token}`, which Claude Code fills in from the keychain. The helper's own `Authorization`, from the CLI's settings that it can read (`tasks.env`), overrides it, so a machine set up with `npx breakaway setup` comes first, as for the CLI.
+- The helper is `cd "${CLAUDE_PROJECT_DIR}" && npx --yes breakaway@1 mcp --headers`, so the checkout's `origin` and branch are the session's.
+- When the helper can ask the board (`GET /api/repos`, with a token), it sends the board's slug, or only `Authorization` outside a tracked repository. When it can't (only the plugin's token is set up), it sends the checkout's GitHub `owner/name`, and `/mcp` matches that against its repositories itself; one it doesn't track still connects, and the repository's tools say it isn't on the board.
+- The agent's name is `BREAKAWAY_AGENT` or `tasks.env`'s, else `claude-<branch>`: the plugin's `agent_name` can't reach the helper.
+
 ### 5. Publishing from a branch, like the site
 The directory follows a branch or a tag. Following `main` would publish every merged pull request, including pre-release changes, to everyone who installed the plugin. So it follows a `plugin` branch, moved the way the **Site** workflow moves `site` (`.github/workflows/site.yml`):
 
@@ -79,6 +86,8 @@ The directory follows a branch or a tag. Following `main` would publish every me
 - **CI** runs `claude plugin validate --strict plugin` on every pull request that touches `plugin/`, so the directory's own checks never fail first at release.
 
 Moving `plugin` gives the directory the new version (Source: `TheAnarchoX/breakaway`, plugin path `plugin`, branch `plugin`), and the repository's own marketplace (section 3) the same.
+
+The owner set it up on 5 Oct 2026 (LCH-26), the same way as `site`: a write deploy key, its private half as `PLUGIN_DEPLOY_KEY` in the `plugin` environment, and the ruleset **Plugin branch: deploy keys only**, which lets only a deploy key create, move, delete, or force-push `plugin`. The first stable with the plugin is 1.5.0: v1.4.0 and earlier have no `plugin/`, and the workflow refuses them, so the branch first exists when 1.5.0's stable job runs it (LCH-27). Until then the marketplace's `ref: plugin` has nothing to install, and `repos init` copies the skill and hooks (section 7).
 
 ### 6. What the directory asks, and our answers
 The plugin's `README.md` (over 40 words, in `plugin/`, as the directory requires) says what the plugin does, how to set it up, and everything it runs, sends, or fetches:
@@ -136,9 +145,10 @@ The owner answered BRK-158 on 5 Oct 2026:
 The tasks, all in the `ai-native` feature, all waiting for IDEA-25: listed in the pull request that adds this spec.
 
 ## How to check it
-1. Once the tasks are merged and a stable release is out, open Claude Code in a checkout of one of your repositories and type `/plugin marketplace add TheAnarchoX/breakaway`, then `/plugin install breakaway@breakaway`.
+1. Once the tasks are merged and 1.5.0, the first stable with the plugin, is out, open Claude Code in a checkout of one of your repositories and type `/plugin marketplace add TheAnarchoX/breakaway`, then `/plugin install breakaway@breakaway`.
 2. When it asks, give it your board's address and token. You should see the plugin enabled, and `/breakaway:` should list `claim`, `next`, and `hand-over`.
 3. Type `/breakaway:next`. Claude should claim the best ready task in that repository and tell you what it is; on the web board, the task shows as claimed.
 4. Ask it to finish the task and type `/breakaway:hand-over`. A pull request should open with the work ID in its title and `Closes <ID>.` in its description, and the task should move to In review on the board.
 5. Type `/mcp`. Once the MCP server is on your board, you should see `breakaway` connected.
 6. Run `npx breakaway repos init <slug> --update` for one of your repositories and merge its pull request. Its `.claude/settings.json` should name the breakaway plugin, and the copied `tasks` skill should be gone. Start an agent from the board on one of its tasks. Its output should show on the task while it works, as it does today.
+7. After 1.5.0 is published, run `git fetch origin plugin` and `git log --oneline -2 origin/plugin` in a checkout of breakaway. You should see "The breakaway plugin, version 1.5.0" on top of v1.5.0's commit. Then run `git push --force origin origin/main:refs/heads/plugin`. GitHub should refuse it, because only the deploy key moves `plugin`; if it goes through, run the **Plugin** workflow with v1.5.0 to put the branch back.

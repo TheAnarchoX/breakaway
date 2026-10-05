@@ -2,7 +2,7 @@
   "name": "breakaway",
   "displayName": "breakaway",
   "version": "1.5.0",
-  "description": "A task board for you and your coding agents: they claim the work, you merge it. The tasks skill, /breakaway:claim, /breakaway:next, /breakaway:hand-over, and the session hooks that show an agent's output on its task.",
+  "description": "A task board for you and your coding agents: they claim the work, you merge it. The tasks skill, /breakaway:claim, /breakaway:next, /breakaway:hand-over, the board's MCP server, and the session hooks that show an agent's output on its task.",
   "author": {
     "name": "breakaway",
     "url": "https://github.com/TheAnarchoX/breakaway"

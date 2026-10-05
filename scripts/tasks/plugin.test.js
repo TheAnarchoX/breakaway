@@ -57,6 +57,22 @@ describe('the breakaway plugin (CLI-7)', () => {
     expect(userConfig.agent_name.sensitive).toBeFalsy();
   });
 
+  it('connects the board’s MCP server with its settings, and the CLI’s headers for the checkout (CLI-9)', () => {
+    const { mcpServers } = json(`${PLUGIN_DIR}.mcp.json`);
+    expect(Object.keys(mcpServers)).toEqual(['breakaway']);
+    const server = mcpServers.breakaway;
+    expect(server).toMatchObject({
+      type: 'http',
+      url: '${user_config.board_url}/mcp',
+      headers: { Authorization: 'Bearer ${user_config.token}' },
+    });
+    // The helper runs in the plugin's folder, through a shell: it moves to the checkout, and can't name an option.
+    expect(server.headersHelper).toBe(`cd "\${CLAUDE_PROJECT_DIR}" && npx --yes ${CLI_PACKAGE} mcp --headers`);
+    const { userConfig } = json(`${PLUGIN_DIR}.claude-plugin/plugin.json`);
+    for (const [, key] of JSON.stringify(server).matchAll(/\$\{user_config\.(\w+)\}/gu))
+      expect(Object.keys(userConfig)).toContain(key);
+  });
+
   it('is offered by this repository’s marketplace, from the plugin branch', () => {
     const market = json('.claude-plugin/marketplace.json');
     expect(market.name).toBe('breakaway');

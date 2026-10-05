@@ -504,6 +504,23 @@ describe('the MCP endpoint (BRK-154)', () => {
       expect((await call('show_task', { task: elsewhere.wid })).structuredContent.task.wid).toBe(elsewhere.wid);
     });
 
+    it('takes the checkout’s owner/name for the repository, as the plugin’s headersHelper sends it (CLI-9)', async () => {
+      const listed = await call('list_tasks', {}, { repo: 'Acme/Gadgets' });
+      expect(listed.isError).toBeUndefined();
+      expect(listed.structuredContent.tasks.map((t) => t.wid)).toEqual([elsewhere.wid]);
+      // A checkout the board doesn't track still connects; the repository's tools say why they can't work.
+      const init = await json(
+        await post(
+          { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: LEGACY, capabilities: {} } },
+          { repo: 'acme/nowhere' },
+        ),
+      );
+      expect(init.result.protocolVersion).toBe(LEGACY);
+      const untracked = await call('list_tasks', {}, { repo: 'acme/nowhere' });
+      expect(untracked.isError).toBe(true);
+      expect(text(untracked)).toMatch(/this checkout's repository, acme\/nowhere, isn't on the board/u);
+    });
+
     it('needs the agent’s name for the agent’s tools', async () => {
       for (const [name, args] of [
         ['peloton', {}],

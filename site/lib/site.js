@@ -20,7 +20,7 @@ const CARD = {
 export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },
   { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'features', 'ideas-decisions-pings', 'routines'] },
-  { group: 'Connect', pages: ['github', 'taskwarrior'] },
+  { group: 'Connect', pages: ['github', 'plugin', 'taskwarrior'] },
   { group: 'Run it', pages: ['deploying', 'operations', 'architecture', 'api'] },
   { group: 'More', pages: ['faq'] },
 ];
