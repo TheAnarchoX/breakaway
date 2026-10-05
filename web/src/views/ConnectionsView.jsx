@@ -20,6 +20,7 @@ import {
   navOrder,
   noRepos,
   openAddRepo,
+  openKickoff,
   registerRepo,
   repoName,
   repoScope,
@@ -311,6 +312,10 @@ function Setup({ setup }) {
         Or follow every step, through to a first agent’s merged pull request, in{' '}
         <button type="button" class="link-button" onClick={() => openAddRepo(null)}>
           Add a repository
+        </button>
+        . Starting something new?{' '}
+        <button type="button" class="link-button" onClick={() => openKickoff(null)}>
+          Kick off a project
         </button>
         .
       </p>

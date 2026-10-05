@@ -153,7 +153,7 @@ describe('kickoffs on the board (IDEA-26)', () => {
     const agent = await body(await owner('kickoffs', { method: 'POST', body: { pitch: PITCH, by: 'claude-brk-1' } }));
     expect(agent.status).toBe(403);
     expect(agent.error).toMatch(/only the owner/);
-    expect(await body(await api('kickoffs'))).toEqual({ status: 200, kickoffs: [] });
+    expect(await body(await api('kickoffs'))).toEqual({ status: 200, kickoffs: [], app: true });
   });
 
   it('checks the form as it’s typed and saves nothing', async () => {
@@ -222,9 +222,11 @@ describe('kickoffs on the board (IDEA-26)', () => {
   it('lists and resumes it, with the wizard’s own steps for the same repository', async () => {
     const listed = await body(await api('kickoffs'));
     expect(listed.kickoffs.map((k) => k.id)).toEqual([plant.id]);
+    expect(listed.app).toBe(true);
     // Before it has a GitHub name, nothing is done yet.
     const fresh = await body(await api(`kickoffs/${plant.id}`));
-    expect(fresh).toMatchObject({ now: 'create', done: false });
+    expect(fresh).toMatchObject({ now: 'create', done: false, routine: { connected: false, source: null } });
+    expect(fresh.promptPath).toMatch(/\.md$/u);
     expect(fresh.steps.map((s) => s.id)).toEqual([
       'create',
       'install',
@@ -261,6 +263,12 @@ describe('kickoffs on the board (IDEA-26)', () => {
     const wizard = await body(await api('repos/setup?github=acme/plant-diary&check=1'));
     expect(kickoff.steps).toEqual(wizard.steps);
     expect(kickoff.now).toBe(wizard.now);
+    // What the Kickoff view needs for its links and its routine guide: the wizard's own facts.
+    expect(kickoff.app).toEqual(wizard.app);
+    expect(kickoff.app).toMatchObject({ slug: 'widgets-tasks' });
+    expect(kickoff.routine).toEqual(wizard.routine);
+    expect(kickoff.routine).toEqual({ connected: false, source: null });
+    expect(kickoff.promptPath).toBe(wizard.promptPath);
     expect(kickoff.now).toBe('register');
     expect(kickoff.kickoff.step).toBe('register');
   });

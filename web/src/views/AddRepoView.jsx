@@ -22,6 +22,7 @@ import {
   loadRepos,
   navOrder,
   openAddRepo,
+  openKickoff,
   openTask,
   repoName,
   repos,
@@ -543,6 +544,13 @@ export function Pick() {
           Start
         </button>
       </form>
+      <p class="muted small">
+        Starting from scratch?{' '}
+        <button type="button" class="link-button" onClick={() => openKickoff(null)}>
+          Kick it off
+        </button>
+        : say what you want to make, and the board sets up its repository and asks you the rest.
+      </p>
       {repos.value.list.length > 0 && (
         <section class="conn-group" aria-labelledby="wiz-carry-on">
           <h2 id="wiz-carry-on">Carry on with one</h2>

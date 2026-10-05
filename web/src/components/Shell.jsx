@@ -6,6 +6,7 @@ import {
   FolderGit2,
   FolderPlus,
   Inbox,
+  Rocket,
   GitPullRequest,
   Kanban,
   List,
@@ -34,6 +35,7 @@ import {
   inScope,
   multiRepo,
   openAddRepo,
+  openKickoff,
   openRepoSettings,
   openPingsHere,
   repoName,
@@ -189,6 +191,7 @@ function Brand({ onClick }) {
  * repository is registered, so the board looks as it always did.
  */
 const ADD_REPO = '+add';
+const KICKOFF = '+kickoff';
 const REPO_SETTINGS = '+settings';
 
 /** @param {Record<string, any>} props */
@@ -244,6 +247,17 @@ function RepoSwitcher({ rail = false }) {
               class="btn btn-quiet btn-sm repo-switch-add"
               onClick={() => {
                 close();
+                openKickoff(null);
+              }}
+            >
+              <Rocket size={16} aria-hidden="true" />
+              Kick off a project
+            </button>
+            <button
+              type="button"
+              class="btn btn-quiet btn-sm repo-switch-add"
+              onClick={() => {
+                close();
                 openRepoSettings(repoScope.value);
               }}
             >
@@ -267,6 +281,9 @@ function RepoSwitcher({ rail = false }) {
           if (e.currentTarget.value === ADD_REPO) {
             e.currentTarget.value = value;
             openAddRepo(null);
+          } else if (e.currentTarget.value === KICKOFF) {
+            e.currentTarget.value = value;
+            openKickoff(null);
           } else if (e.currentTarget.value === REPO_SETTINGS) {
             // Repository settings opens the page of the repository it shows (WEB-30), and Settings' list under All.
             e.currentTarget.value = value;
@@ -280,6 +297,7 @@ function RepoSwitcher({ rail = false }) {
           </option>
         ))}
         <option value={ADD_REPO}>Add a repository…</option>
+        <option value={KICKOFF}>Kick off a project…</option>
         <option value={REPO_SETTINGS}>Repository settings…</option>
       </select>
     </label>
@@ -713,6 +731,7 @@ export function FilterBar() {
       'roadmap',
       'connections',
       'add-repo',
+      'kickoff',
       'settings',
       'repo-settings',
     ].includes(view.value)
