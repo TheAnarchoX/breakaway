@@ -158,13 +158,13 @@ The Peloton panel, in the Agents view and on a feature with a chase on:
   - `POST /api/peloton/:peloton` `{ kind, text, reply_to?, agent, task? }` takes the new kinds. From a signed-in browser without `agent`, it's the owner's post; with the bearer token, `agent` is required and can't be `owner` or `board`.
   - `GET /api/peloton/:peloton` and `GET /api/peloton?agent=<name>` add the open huddle and the plan.
   - `PUT /api/peloton/:peloton/plan` `{ text, why, agent? }` revises the plan under section 5's rule. `GET` on the same route lists its revisions.
-  - `GET /api/peloton/listen?agent=<name>` answers at once:
+  - `GET /api/peloton/listen?agent=<name>[&task=<ID>]` answers at once:
 
     ```
-    { urgent, posts: [...], messages: [...], pr: { checks, review, conflict } | null, stop: null | "<why>" }
+    { urgent, posts: [...], more, messages: [...], pr: { number, url, checks, review, conflict, changed } | null, stop: null | "<why>" }
     ```
 
-    It marks what it hands over delivered. The CLI asks it every 5 seconds.
+    It marks what it hands over delivered. The CLI asks it every 5 seconds. `posts` are every unseen post on the agent's chase's peloton and, from its repository's, only when one there is urgent; `pr` comes on the first ask with what's already there, then only when it changes. `task` names the task when the agent holds more than one, or when its claim is gone, so `stop` can say why.
   - The session answer's `peloton` list follows section 3's order and batch sizes. The wait route also wakes for the owner's posts, huddles, and mentions.
 - **Ping proposals** get a `delete` change, `{ type: "delete", task }`, for a task the agent may not delete itself.
 
