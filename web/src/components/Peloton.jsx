@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { CornerDownRight, FastForward, LogIn, LogOut, Square, StepForward } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { ago, plural } from '../lib/model.js';
@@ -125,12 +125,31 @@ function Post({ post, byId }) {
   );
 }
 
-/** The posts, newest last; only the latest `shown` until you ask for the earlier ones. */
-function Posts({ posts, shown, id }) {
+/**
+ * The posts, newest last, in a box of fixed height that scrolls (WEB-51); only the latest `shown` until you ask
+ * for the earlier ones. It opens on the newest and follows new posts while you're at the bottom, as the live log
+ * does.
+ */
+function Posts({ posts, shown, compact, id }) {
   const [all, setAll] = useState(false);
+  const box = useRef(/** @type {HTMLElement | null} */ (null));
+  const stick = useRef(true);
   const byId = new Map(posts.map((p) => [p.id, p]));
   const list = all ? posts : posts.slice(-shown);
   const earlier = posts.length - list.length;
+  const newest = posts.at(-1)?.id;
+  const scroller = compact ? 'pl-scroll is-compact' : 'pl-scroll';
+  useLayoutEffect(() => {
+    if (stick.current && box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [newest]);
+  // Asking for the earlier posts takes you to the first of them.
+  useLayoutEffect(() => {
+    if (all && box.current) box.current.scrollTop = 0;
+  }, [all]);
+  const onScroll = () => {
+    const el = box.current;
+    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
   return (
     <>
       {earlier > 0 && (
@@ -138,18 +157,21 @@ function Posts({ posts, shown, id }) {
           Show {plural(earlier, 'earlier post')}
         </button>
       )}
-      <ol class="pl-posts" aria-labelledby={id}>
-        {list.map((p) => (
-          <Post key={p.id} post={p} byId={byId} />
-        ))}
-      </ol>
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the posts scroll, so they take focus to scroll by keyboard. */}
+      <section class={scroller} ref={box} onScroll={onScroll} tabIndex={0} aria-labelledby={id}>
+        <ol class="pl-posts" aria-labelledby={id}>
+          {list.map((p) => (
+            <Post key={p.id} post={p} byId={byId} />
+          ))}
+        </ol>
+      </section>
     </>
   );
 }
 
 /**
- * Peloton `name` (a repository's slug, or `chase:<feature>`). `compact` shows fewer posts at first, for a
- * peloton that sits inside another panel.
+ * Peloton `name` (a repository's slug, or `chase:<feature>`). `compact` shows fewer posts at first, in a shorter
+ * box, for a peloton that sits inside another panel.
  * @param {{ name: string, compact?: boolean }} props
  */
 export function PelotonPanel({ name, compact = false }) {
@@ -190,7 +212,7 @@ export function PelotonPanel({ name, compact = false }) {
               <h4 class="pl-sub" id={`${id}-posts`}>
                 Posts, newest last <span class="count">{posts.length}</span>
               </h4>
-              <Posts posts={posts} shown={compact ? 5 : 20} id={`${id}-posts`} />
+              <Posts posts={posts} shown={compact ? 5 : 20} compact={compact} id={`${id}-posts`} />
             </>
           )}
         </>

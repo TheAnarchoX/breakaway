@@ -366,18 +366,44 @@ a code {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Each item: the link to it, and beside it a Dismiss that clears it without opening the inbox. */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+  transition: background var(--dur-fast) var(--ease);
+}
+.notif-item:hover,
+.notif-item:focus-within {
+  background: var(--surface-2);
+}
 .notif {
+  flex: 1;
+  min-width: 0;
   display: grid;
   gap: 4px;
   padding: 10px;
   border-radius: var(--radius-s);
   text-decoration: none;
   color: var(--text);
-  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
-  transition: background var(--dur-fast) var(--ease);
 }
-.notif:hover {
-  background: var(--surface-2);
+.notif-dismiss {
+  --btn-fg: var(--muted);
+  flex: none;
+  margin: 3px 3px 0 -6px;
+}
+.notif-dismiss:hover {
+  --btn-fg: var(--text);
+  background: var(--surface-3);
+}
+/* The list scrolls, so the focus ring sits inside the button, where the list can't clip it. */
+.notif-dismiss:focus-visible {
+  outline-offset: -2px;
+}
+.notif-dismiss[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: progress;
 }
 .notif-top {
   display: flex;
@@ -911,6 +937,13 @@ a code {
 }
 .empty p {
   margin: 0 0 8px;
+}
+/* A fresh install's empty board (WEB-40): Set up the board, and New task beside it. */
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 .board-more {
   display: flex;
@@ -5793,6 +5826,11 @@ fieldset.field {
 .setup-register .field,
 .setup-register .field-row {
   width: 100%;
+  min-width: 0;
+}
+/* Short name and GitHub repository sit side by side only when both fit; on a narrow screen they stack (WEB-52). */
+.setup-register .field-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 .setup-register .wiz-release {
   display: flex;
@@ -5844,16 +5882,81 @@ fieldset.field {
 .sidebar-repo {
   padding: 10px 10px 0;
 }
-.repo-switch {
+/* With the sidebar open: a button that names the repository, and the list drops below it at its width (WEB-54). */
+.repo-switch-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 0 0 10px;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.repo-switch-trigger:hover {
+  border-color: var(--faint);
+  background: var(--surface-2);
+}
+.repo-switch-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+.repo-switch-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.repo-switch-trigger .side-icon {
   color: var(--muted);
 }
-.repo-switch .select {
+.repo-switch-text {
   flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.repo-switch-kicker {
+  font: 600 10.5px / 1 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.repo-switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.repo-switch-chevron {
+  flex: none;
+  color: var(--muted);
+}
+.repo-switch-pop.is-open-sidebar .popover-panel {
+  right: 0;
+  min-width: 0;
+}
+.repo-switch-pop .check-row {
+  min-width: 0;
+}
+.repo-switch-option {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-switch-actions {
+  display: grid;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
 }
 .is-rail .sidebar-repo {
   padding: 10px 10px 0;
@@ -6069,6 +6172,14 @@ fieldset.field {
 .wiz-skipped {
   align-items: center;
 }
+/* The agent step's Start (WEB-40): a failed start and its fix above, then Start or Try again and the task. */
+.wiz-start {
+  display: grid;
+  gap: 10px;
+}
+.wiz-start .meta {
+  margin: 0;
+}
 .wiz-body .turn-on h3 {
   margin: 0;
   font-size: 15px;
@@ -6124,7 +6235,6 @@ fieldset.field {
   }
 }
 .repo-switch-pop .repo-switch-add {
-  margin-top: 4px;
   width: 100%;
   justify-content: flex-start;
 }
@@ -6838,6 +6948,16 @@ fieldset.field {
 }
 .pl-earlier {
   justify-self: start;
+}
+/* The posts scroll in a box of their own, so a busy peloton doesn't push the page down (WEB-51). */
+.pl-scroll {
+  max-height: min(420px, 55dvh);
+  overflow-y: auto;
+  min-width: 0;
+  border-radius: var(--radius-s);
+}
+.pl-scroll.is-compact {
+  max-height: min(300px, 45dvh);
 }
 
 /* ---------- a group on the Dependencies view as a feature (WEB-15) ---------- */

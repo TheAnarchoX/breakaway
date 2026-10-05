@@ -3,6 +3,7 @@ import {
   Activity,
   Bell,
   Bot,
+  ChevronsUpDown,
   FolderGit2,
   FolderPlus,
   Inbox,
@@ -32,6 +33,7 @@ import {
   agents,
   areaList,
   countByRepo,
+  dismissInboxItem,
   inScope,
   multiRepo,
   openAddRepo,
@@ -187,50 +189,64 @@ function Brand({ onClick }) {
 
 /**
  * The repository switcher (IDEA-14 section 6): one repository or all of them, for every view that lists
- * work. A select with the sidebar open, a button with a short list on the rail. Nothing while only one
- * repository is registered, so the board looks as it always did.
+ * work. With the sidebar open it's a button showing the repository, on the rail an icon; both open the same
+ * list (WEB-54). Nothing while only one repository is registered, so the board looks as it always did.
  */
-const ADD_REPO = '+add';
-const KICKOFF = '+kickoff';
-const REPO_SETTINGS = '+settings';
-
 /** @param {Record<string, any>} props */
 function RepoSwitcher({ rail = false }) {
   if (!multiRepo.value) return null;
   const value = repoScope.value ?? 'all';
+  const current = value === 'all' ? 'All repositories' : repoName(value);
   const options = [
     { id: 'all', label: 'All repositories' },
     ...repos.value.list.map((r) => ({ id: r.slug, label: r.name })),
   ];
-  if (rail) {
-    return (
-      <Popover
-        className="repo-switch-pop"
-        buttonClass="side-item repo-switch-button"
-        icon={
-          <span class="side-icon">
-            <FolderGit2 size={20} aria-hidden="true" />
-          </span>
-        }
-        label={<span class="visually-hidden">Repository: {value === 'all' ? 'all' : repoName(value)} (s)</span>}
-      >
-        {(close) => (
-          <fieldset class="check-list">
-            <legend class="kicker">Repository</legend>
-            {options.map((o) => (
-              <label key={o.id} class="check-row">
-                <input
-                  type="radio"
-                  name="repo-rail"
-                  checked={o.id === value}
-                  onChange={() => {
-                    setRepo(o.id);
-                    close();
-                  }}
-                />
+  return (
+    <Popover
+      className={`repo-switch-pop ${rail ? '' : 'is-open-sidebar'}`}
+      buttonClass={rail ? 'side-item repo-switch-button' : 'repo-switch-trigger'}
+      icon={
+        <span class="side-icon">
+          <FolderGit2 size={rail ? 20 : 18} aria-hidden="true" />
+        </span>
+      }
+      label={
+        rail ? (
+          <span class="visually-hidden">Repository: {value === 'all' ? 'all' : repoName(value)} (s)</span>
+        ) : (
+          <>
+            <span class="repo-switch-text">
+              <span class="repo-switch-kicker">Repository</span>
+              <span class="repo-switch-name" title={current}>
+                {current}
+              </span>
+            </span>
+            <ChevronsUpDown size={16} class="repo-switch-chevron" aria-hidden="true" />
+          </>
+        )
+      }
+    >
+      {(close) => (
+        <fieldset class="check-list">
+          {/* The open sidebar's button already says Repository, so its list's legend is for screen readers. */}
+          <legend class={rail ? 'kicker' : 'visually-hidden'}>Repository</legend>
+          {options.map((o) => (
+            <label key={o.id} class="check-row">
+              <input
+                type="radio"
+                name={rail ? 'repo-rail' : 'repo-open'}
+                checked={o.id === value}
+                onChange={() => {
+                  setRepo(o.id);
+                  close();
+                }}
+              />
+              <span class="repo-switch-option" title={o.label}>
                 {o.label}
-              </label>
-            ))}
+              </span>
+            </label>
+          ))}
+          <div class="repo-switch-actions">
             <button
               type="button"
               class="btn btn-quiet btn-sm repo-switch-add"
@@ -258,49 +274,17 @@ function RepoSwitcher({ rail = false }) {
               class="btn btn-quiet btn-sm repo-switch-add"
               onClick={() => {
                 close();
+                // Repository settings opens the page of the repository it shows (WEB-30), and Settings' list under All.
                 openRepoSettings(repoScope.value);
               }}
             >
               <Settings size={16} aria-hidden="true" />
               Repository settings
             </button>
-          </fieldset>
-        )}
-      </Popover>
-    );
-  }
-  return (
-    <label class="repo-switch" title="Switch repository (s)">
-      <FolderGit2 size={18} aria-hidden="true" />
-      <span class="visually-hidden">Repository</span>
-      <select
-        class="select select-sm"
-        value={value}
-        onChange={(e) => {
-          // The last option opens the Add a repository wizard (CLD-194) and leaves the switcher as it was.
-          if (e.currentTarget.value === ADD_REPO) {
-            e.currentTarget.value = value;
-            openAddRepo(null);
-          } else if (e.currentTarget.value === KICKOFF) {
-            e.currentTarget.value = value;
-            openKickoff(null);
-          } else if (e.currentTarget.value === REPO_SETTINGS) {
-            // Repository settings opens the page of the repository it shows (WEB-30), and Settings' list under All.
-            e.currentTarget.value = value;
-            openRepoSettings(repoScope.value);
-          } else setRepo(e.currentTarget.value);
-        }}
-      >
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-        <option value={ADD_REPO}>Add a repository…</option>
-        <option value={KICKOFF}>Kick off a project…</option>
-        <option value={REPO_SETTINGS}>Repository settings…</option>
-      </select>
-    </label>
+          </div>
+        </fieldset>
+      )}
+    </Popover>
   );
 }
 
@@ -441,6 +425,43 @@ function SearchBox() {
 
 const RECENT_PINGS = 5;
 
+/**
+ * Dismiss one item from the bell's list without opening the inbox. While it runs the button stays focusable
+ * (aria-disabled, not disabled), and once it's dismissed focus moves on before the item leaves, so focus never
+ * drops out of the dropdown and closes it.
+ * @param {Record<string, any>} props
+ */
+function NotifDismiss({ type, item, label }) {
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+  // The next item's Dismiss, else the one before, else Open inbox.
+  const moveFocus = () => {
+    const li = ref.current?.closest('li');
+    const next = li?.nextElementSibling ?? li?.previousElementSibling;
+    const target =
+      next?.querySelector('.notif-dismiss') ?? ref.current?.closest('.notif-panel')?.querySelector('.notif-all');
+    target?.focus();
+  };
+  return (
+    <button
+      type="button"
+      ref={ref}
+      class="btn btn-quiet btn-icon btn-sm notif-dismiss"
+      aria-disabled={busy ? 'true' : undefined}
+      title="Dismiss"
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        await dismissInboxItem(type, item, moveFocus);
+        setBusy(false);
+      }}
+    >
+      <X size={16} aria-hidden="true" />
+      <span class="visually-hidden">Dismiss {label}</span>
+    </button>
+  );
+}
+
 /** The bell: how many pings need you, the latest few, and the way to the inbox. */
 function Notifications() {
   const n = openPingsHere.value;
@@ -498,7 +519,7 @@ function Notifications() {
             <ol class="notif-list" aria-label={n > RECENT_PINGS ? `The latest ${RECENT_PINGS}` : 'Open in the inbox'}>
               {recent.map((p) =>
                 p.type === 'chase' ? (
-                  <li key={`chase-${p.id}`}>
+                  <li key={`chase-${p.id}`} class="notif-item">
                     <a
                       class="notif"
                       href={hashFor({ view: 'inbox', task: null, pr: null, ping: null })}
@@ -513,9 +534,10 @@ function Notifications() {
                       <span class="notif-title">{p.title}</span>
                       <span class="notif-message">{p.detail}</span>
                     </a>
+                    <NotifDismiss type="chase" item={p} label={`Chase ended: ${p.title}`} />
                   </li>
                 ) : p.type === 'notice' ? (
-                  <li key={`notice-${p.id}`}>
+                  <li key={`notice-${p.id}`} class="notif-item">
                     <a
                       class="notif"
                       href={hashFor({ view: 'connections', task: null, pr: null, ping: null })}
@@ -532,9 +554,10 @@ function Notifications() {
                       <span class="notif-title">{p.name}</span>
                       <span class="notif-message">{p.detail}</span>
                     </a>
+                    <NotifDismiss type="notice" item={p} label={`${NOTICE_LABEL[p.kind]}: ${p.name}`} />
                   </li>
                 ) : (
-                  <li key={p.id}>
+                  <li key={p.id} class="notif-item">
                     <a class="notif" href={hashFor({ view: 'inbox', pr: null, ping: String(p.id) })} onClick={close}>
                       <span class="notif-top">
                         <span class={`ping-kind ping-${p.kind}`}>{PING_KIND_LABEL[p.kind] ?? p.kind}</span>
@@ -549,6 +572,11 @@ function Notifications() {
                       </span>
                       <span class="notif-message">{p.message}</span>
                     </a>
+                    <NotifDismiss
+                      type="ping"
+                      item={p}
+                      label={`${p.task ?? p.taskUuid.slice(0, 8)} ${PING_KIND_LABEL[p.kind] ?? p.kind}`}
+                    />
                   </li>
                 ),
               )}

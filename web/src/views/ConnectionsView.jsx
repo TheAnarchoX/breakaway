@@ -312,7 +312,8 @@ function Setup({ setup }) {
       <h2 id="setup-title">Set up the board</h2>
       <p class="muted">
         A new board needs a few things before agents can work on it, and it’s set up once a first task is closed by its
-        merged pull request. Each step’s connection below says how to finish it.
+        merged pull request. Each step’s connection below says how to finish it, and the last one starts an agent and
+        follows it to that pull request.
       </p>
       <ol class="setup-steps">
         {setup.steps.map((s) => (
@@ -321,6 +322,15 @@ function Setup({ setup }) {
             <span>
               {s.name}
               <span class="visually-hidden">{s.done ? ', done' : ', to do'}</span>
+              {/* The last step is the wizard's agent step: Start is there, and its checks tick to merged (WEB-40). */}
+              {s.id === 'first' && setup.repo && !s.done && (
+                <>
+                  {' · '}
+                  <button type="button" class="link-button" onClick={() => openAddRepo({ slug: setup.repo }, 'agent')}>
+                    Start the first agent
+                  </button>
+                </>
+              )}
             </span>
           </li>
         ))}

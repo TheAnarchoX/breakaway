@@ -234,6 +234,8 @@ describe('the last setup step: a first closed task (BRK-143)', () => {
       await s.reposAddApi({ slug: 'breakaway', github: 'someone/breakaway', areas: ['product:BRK'] });
       const connections = readyBut({ routine: true });
       expect(last(s.setupSteps(connections))).toMatchObject({ name: 'A first agent’s pull request merged' });
+      // It names the repository, so its last step opens that repository's wizard at the agent step (WEB-40).
+      expect(s.setupSteps(connections).repo).toBe('breakaway');
 
       // A pull request merged by hand, with no agent run, isn't an agent's.
       const task = (await s.create([{ description: 'Add a README', project: 'product' }])).body.tasks[0];
