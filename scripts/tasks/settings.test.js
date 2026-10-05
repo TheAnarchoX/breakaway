@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { boardUrl, configDir, parseEnvFile, readSetting, taskrcFixes, taskrcUrl, tildePath } from './settings.js';
+import {
+  boardUrl,
+  configDir,
+  parseEnvFile,
+  readSetting,
+  settingFrom,
+  taskrcFixes,
+  taskrcUrl,
+  tildePath,
+} from './settings.js';
 
 describe('settings (CLD-136)', () => {
   it('reads each setting’s breakaway name, the environment before the file', () => {
@@ -25,15 +34,49 @@ describe('settings (CLD-136)', () => {
     expect(taskrcUrl('# nothing')).toBe(null);
     expect(boardUrl({ env: { BREAKAWAY_URL: 'https://a.example/' }, taskrc })).toEqual({
       url: 'https://a.example',
-      from: 'setting',
+      from: 'environment',
     });
-    expect(boardUrl({ file: { BREAKAWAY_URL: 'https://s.example' }, taskrc }).url).toBe('https://s.example');
+    expect(boardUrl({ file: { BREAKAWAY_URL: 'https://s.example' }, taskrc })).toEqual({
+      url: 'https://s.example',
+      from: 'tasks.env',
+    });
     expect(boardUrl({ taskrc, config: { url: 'https://c.example' } })).toEqual({
       url: 'https://b.example',
       from: '.taskrc',
     });
     expect(boardUrl({ config: { url: 'https://c.example' } })).toEqual({ url: 'https://c.example', from: 'config' });
     expect(boardUrl({})).toEqual({ url: null, from: 'default' });
+  });
+
+  it('reads the plugin’s settings last: the environment, tasks.env, .taskrc, then the plugin (CLI-8)', () => {
+    const plugin = {
+      CLAUDE_PLUGIN_OPTION_BOARD_URL: 'https://p.example/',
+      CLAUDE_PLUGIN_OPTION_TOKEN: 'plugin-token',
+      CLAUDE_PLUGIN_OPTION_AGENT_NAME: 'claude-plugin',
+    };
+    const taskrc = 'sync.server.url=https://b.example\n';
+    const file = { BREAKAWAY_URL: 'https://s.example', BREAKAWAY_TOKEN: 'file-token', BREAKAWAY_AGENT: 'claude-file' };
+    const env = { ...plugin, BREAKAWAY_URL: 'https://a.example', BREAKAWAY_TOKEN: 'env-token', BREAKAWAY_AGENT: 'e' };
+
+    expect(boardUrl({ env, file, taskrc }).from).toBe('environment');
+    expect(boardUrl({ env: plugin, file, taskrc }).from).toBe('tasks.env');
+    expect(boardUrl({ env: plugin, taskrc }).from).toBe('.taskrc');
+    expect(boardUrl({ env: plugin, config: { url: 'https://c.example' } }).from).toBe('config');
+    expect(boardUrl({ env: plugin })).toEqual({ url: 'https://p.example', from: 'plugin' });
+
+    expect(settingFrom('TOKEN', { env, file })).toEqual({ value: 'env-token', from: 'environment' });
+    expect(settingFrom('TOKEN', { env: plugin, file })).toEqual({ value: 'file-token', from: 'tasks.env' });
+    expect(settingFrom('TOKEN', { env: plugin })).toEqual({ value: 'plugin-token', from: 'plugin' });
+    expect(settingFrom('AGENT', { env: plugin, file: {} })).toEqual({ value: 'claude-plugin', from: 'plugin' });
+    expect(settingFrom('AGENT', { env: { ...plugin, CLAUDE_PLUGIN_OPTION_AGENT_NAME: '' } })).toEqual({
+      value: undefined,
+      from: null,
+    });
+    // Only the three the plugin asks for: the rest stay the CLI's own.
+    expect(settingFrom('REPO', { env: { CLAUDE_PLUGIN_OPTION_REPO: 'x' } }).from).toBe(null);
+    // readSetting is the CLI's own settings only.
+    expect(readSetting('TOKEN', { env: plugin, file: {} })).toBe(undefined);
+    expect(() => settingFrom('NOPE', {})).toThrow();
   });
 
   it('parses an env file', () => {
