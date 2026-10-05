@@ -81,6 +81,7 @@ import {
   unknownSubcommand,
 } from './tasks/cli.js';
 import { keepLines } from './tasks/keep.js';
+import { checkMcp, mcpAgent, mcpConfig, mcpLines } from './tasks/mcp.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
@@ -244,6 +245,9 @@ Reading                (list, next, claim, and add work in this checkout's repos
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
   hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
+  mcp                    print the claude mcp add line and the .mcp.json entry that connect an MCP client to the board's
+                         /mcp from this checkout, with the token as $BREAKAWAY_TOKEN, never its value. Writes nothing
+    --check              …or check the server answers: initialize and tools/list, or the board's error
   export                 every task (all repositories, statuses, and horizons) as JSON, checked against health's count  [--out <file>]
   connections            is everything the board leans on wired up: GitHub, Cloudflare, Claude, sync, push; the fix for each that isn't
 
@@ -431,6 +435,7 @@ const FLAGS = new Set([
   'update',
   'defaults',
   'package',
+  'check',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline']);
@@ -1609,6 +1614,35 @@ const commands = {
         out.push('', 'Recent failed runs', ...failing.map((r) => `  ${r.name} on ${r.branch}: ${r.url}`));
       return out.join('\n');
     });
+  },
+  /** How to connect an MCP client to the board's /mcp from this checkout, and --check whether it answers (CLI-6). */
+  async mcp() {
+    const { slug } = await checkoutRepo();
+    let branch = null;
+    try {
+      branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      /* not a git checkout */
+    }
+    const name = mcpAgent({ named: opts.as ?? setting('AGENT'), branch, fallback: agent() });
+    const tokenVar = envName('TOKEN');
+    const config = mcpConfig({ url: BASE, agent: name, repo: slug, tokenVar });
+    if (!opts.check) {
+      print(config, () => mcpLines(config, { repo: slug, tokenVar }).join('\n'));
+      return;
+    }
+    const checked = await checkMcp({
+      endpoint: config.endpoint,
+      token: setting('TOKEN'),
+      agent: name,
+      repo: slug,
+      fetch,
+    });
+    print(checked, (c) => c.lines.join('\n'));
+    if (!checked.ok) process.exitCode = 1;
   },
   async health() {
     const settings = settingSources();

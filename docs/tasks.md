@@ -232,6 +232,7 @@ npx breakaway agents new --spec docs/specs/BRK-13-inbox-filters.md "Drop the dat
 npx breakaway features             # features by release, their progress and chase, and tags that could be features
 npx breakaway chase self-update --dry-run   # what a chase would start now; drop --dry-run to start it, `stop` to stop it (owner)
 npx breakaway connections          # is GitHub, Cloudflare, Claude, sync, and push wired up, and the fix for each that isn't
+npx breakaway mcp                  # the claude mcp add line and .mcp.json entry for this checkout (--check: does /mcp answer?)
 npx breakaway health
 npx breakaway export --out tasks-backup.json   # every task, checked against health's count (see Backups)
 ```
