@@ -7,6 +7,8 @@
   "assets": { "directory": "./web/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/mcp", "/oauth/*", "/.well-known/oauth-*", "/login", "/logout"] },
   "vars": {
     "TASKS_GITHUB_REPO": "acme/widgets",
+    // GitHub's status page (BRK-217) is off here; test/github-status.test.js turns it on with a pretend page.
+    "TASKS_GITHUB_STATUS": "off",
     "TASKS_INSTALL": { "name": "widgets tasks", "worker": "widgets-tasks", "url": "https://tasks.acme.example", "secretsPrefix": "WIDGETS_TASKS_", "store": "widgets", "docs": "https://github.com/acme/widgets/blob/main/docs/tasks.md" }
   },
   "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "TaskStore" }] },
