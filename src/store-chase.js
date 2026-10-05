@@ -305,6 +305,11 @@ export const chaseMethods = {
           const why = `${t.repo}’s agent routine isn’t connected: connect ${t.repo}`;
           add('needs-you', why);
           needsYou.push({ ...item, kind: 'connect', why });
+        } else if (connected && this.routineHold(t.repo)?.kind === 'paused') {
+          // Claude refused the routine (BRK-144): connecting it again is the owner's.
+          const why = this.holdReason(t.repo, this.routineHold(t.repo));
+          add('needs-you', why);
+          needsYou.push({ ...item, kind: 'connect', why });
         } else candidates.push({ t, item });
       }
     }
@@ -321,7 +326,9 @@ export const chaseMethods = {
       const name = this.areaName(t.repo, t.project);
       const near = t.project ? (workingIn.get(area) ?? []) : [];
       const related = near.find((o) => o.uuid !== t.uuid && (t.related.includes(o.uuid) || o.related.includes(t.uuid)));
+      const hold = connected ? this.routineHold(t.repo) : null;
       if (autoNow.has(t.uuid)) reason = 'auto-start starts it now';
+      else if (hold) reason = this.holdReason(t.repo, hold);
       else if (related)
         reason = `it’s related to ${label(related)}, which an agent is working on in ${name}: never two at once`;
       else if (t.project && (inArea.get(area) ?? 0) >= parallel)
@@ -505,6 +512,8 @@ export const chaseMethods = {
       let startedHere = 0;
       for (const t of plan.start) {
         if (!on && !t.fix) continue;
+        // A start refused earlier this tick may hold the routine (BRK-144).
+        if (this.routineHold(t.repo)) continue;
         try {
           if (t.fix) await this.chaseFix(row, t);
           else await this.startAgent(t.uuid, { trigger: 'chase' });

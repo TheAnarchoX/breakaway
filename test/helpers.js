@@ -84,3 +84,14 @@ export async function setPipeline(slug = 'widgets') {
 export const DEPLOY_PATHS = {
   widgets: String.raw`^(src/|public/|migrations/|index\.html$|vite\.config\.js$|wrangler\.jsonc$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.github/workflows/deploy\.yml$|\.github/deploy-paths\.json$)`,
 };
+
+/**
+ * Lets every routine the board holds after Claude refused a start (BRK-144) go, as if its wait ran out or it was
+ * connected again, so a test that makes Claude refuse once can start agents after it.
+ */
+export async function releaseRoutineHolds(name = 'widgets') {
+  const { env, runInDurableObject } = await import('cloudflare:test');
+  await runInDurableObject(env.STORE.get(env.STORE.idFromName(name)), (instance) => {
+    instance.sql.exec("DELETE FROM meta WHERE key LIKE 'routine_hold:%'");
+  });
+}

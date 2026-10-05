@@ -1,6 +1,6 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from './helpers.js';
+import { api, releaseRoutineHolds } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
@@ -111,6 +111,7 @@ describe('cloud agents', () => {
     expect(res.status).toBe(429);
     expect(res.error).toMatch(/hourly limit.*600/);
     expect((await task('DEBT-1')).claim).toBeNull();
+    await releaseRoutineHolds();
     routine.fail = { status: 401, message: 'bad token' };
     expect((await body(await start('DEBT-1'))).error).toMatch(/token was refused/);
     // The card says the last run didn't start, and why, so a page can offer to start it again (WEB-47).
@@ -119,6 +120,7 @@ describe('cloud agents', () => {
       status: 'failed',
       error: expect.stringMatching(/token was refused/),
     });
+    await releaseRoutineHolds();
   });
 
   it('keeps to the limit on agents running at once', async () => {
