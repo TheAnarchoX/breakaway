@@ -7,7 +7,7 @@ An **agent** is a coding agent working on a task: Claude Code. Cloud agents star
 
 ## Local agents
 
-A local agent works in a checkout of the repository with the CLI. The `tasks` skill, which `repos init` copies into the repository, tells it the loop:
+A local agent works in a checkout of the repository with the CLI. The `tasks` skill tells it the loop. It comes with [the Claude Code plugin](/docs/plugin/), which `repos init` turns on for the repository, and whose `/breakaway:claim`, `/breakaway:next`, and `/breakaway:hand-over` run these steps for you:
 
 1. Name yourself: `export BREAKAWAY_AGENT=claude-brk-12`.
 2. `npx breakaway health` to check the board answers.

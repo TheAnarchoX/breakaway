@@ -201,6 +201,8 @@ For agents this is the [`tasks` skill](../.agents/skills/tasks/SKILL.md). In sho
 3. **Work** on a branch. Check in on the [peloton](#the-peloton) first, so agents running at the same time know what you'll touch. Add comments as you learn things (`comment <ID> "…"`; `note` is the same), and add new tasks for work you find (`add`), with `--depends` where one waits for another.
 4. **Hand over.** Open the pull request with `Closes <ID>.` in its description, then `modify <ID> --pr <number>` and a `comment` with the result. The board shows the task **In review** with the pull request's checks and reviews, and marks it done when the pull request merges ([GitHub](#github)). If you stop before a pull request, `release <ID>` with a note saying where you got to.
 
+In Claude Code with [the plugin](#claude-code-the-plugin), `/breakaway:claim <ID>` or `/breakaway:next` does steps 1 and 2, and `/breakaway:hand-over` does step 4.
+
 An owner part left after the agent part (for example "deploy, then check X") becomes its own `+owner` task, so the agent's task can be done.
 
 ## Commands
@@ -271,6 +273,15 @@ Then either use `scripts/task …`, or install [direnv](https://direnv.net/) and
 ### Another machine or a contributor
 
 Copy `tasks.env` to `~/.config/breakaway/tasks.env` on that machine (chmod 600), then `npx breakaway setup`. Without Taskwarrior, the CLI still works with just the token (`BREAKAWAY_TOKEN`).
+
+### Claude Code: the plugin
+
+breakaway's Claude Code plugin ([`plugin/`](../plugin/README.md), [IDEA-25](specs/IDEA-25-claude-plugin.md)) brings the board into any Claude Code session in a checkout of a repository the board tracks: the `tasks` skill, `/breakaway:claim <ID>`, `/breakaway:next` (with `--project` or `--horizon`), `/breakaway:hand-over`, and the session hooks that show a session's output on the task it holds and wake it for the owner's messages. Each command runs the CLI (`npx --yes breakaway@1`); none merges, deploys, or starts an agent, and hand-over ends the pull request with `Closes <ID>.` and never marks the task done. There are two ways to install it:
+
+- **For one person**, in Claude Code: `/plugin marketplace add TheAnarchoX/breakaway`, then `/plugin install breakaway@breakaway`. When it's enabled, Claude Code asks for the board's address, its token, and an agent name (optional; empty means `claude-<branch>`), and `/plugin` changes them later. They come last, after the environment, `tasks.env`, and the checkout's `.taskrc` ([the plugin's settings](#another-install)), so a machine already set up keeps working unchanged. The marketplace is [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json): it takes the plugin from the `plugin` branch, which a stable release moves (the README's **Releases**), so people get released versions, never `main`'s.
+- **For a repository and every agent in it**: `npx breakaway repos init <slug>` turns the plugin on in the repository's `.claude/settings.json` (`extraKnownMarketplaces` and `enabledPlugins`), so every Claude Code session there gets it, the board's cloud agents included ([Adding a repository](#adding-a-repository)). A cloud session can't answer the settings prompt, so it uses `BREAKAWAY_URL`, `BREAKAWAY_TOKEN` or the environment's API credential, and `BREAKAWAY_AGENT`, as [Cloud agents](#cloud-agents) says. `repos init <slug> --update` moves a repository that has the copied `tasks` skill and session hooks over to the plugin in one pull request; `--copies` (and `--update --copies`) keeps the copies, for a repository whose agents read `.agents/skills/` instead.
+
+What it sends and where: the plugin runs the CLI from npm's public registry, and talks to the board it's set up with and nowhere else (the task claimed, comments, peloton posts, the linked pull request, and the session's output, redacted, while it holds a task). It stores nothing of its own: the token is in the system keychain, and for a running session in Claude Code's file for that session's environment. Taskwarrior isn't in the plugin: it's per machine (`setup`) and per checkout (`.taskrc`), so `repos init` keeps copying it.
 
 ### Another install
 

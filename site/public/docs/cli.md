@@ -20,6 +20,8 @@ Each comes from the environment first, then from `tasks.env` in `$BREAKAWAY_HOME
 | `BREAKAWAY_SESSION_LOG=off` | Turns the live-output session hook off. |
 | `BREAKAWAY_HOME` | Another folder for this install’s settings. Use it when one machine works with two boards. |
 
+In a Claude Code session with [the plugin](https://leavethepack.dev/docs/plugin/), its settings (the board’s address, token, and agent name) come last: after the environment and `tasks.env`, and for the address after `.taskrc` and `breakaway.config.json` too. `health` says where each setting came from, never its value.
+
 ## The repository
 
 The CLI works in the repository the checkout’s `origin` names, matched against the board’s registry. `--repo <slug>` or `BREAKAWAY_REPO` picks another; `--all` shows every repository in `list` and `next`.
@@ -138,7 +140,7 @@ See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/).
 | --- | --- |
 | `repos` | The repositories the board runs, their areas and prefixes. |
 | `repos add <slug> <owner/name> --area <project:PREFIX>…` | Registers one. Also `--name`, `--branch`, `--prompt <path>`. |
-| `repos init <slug>` | Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, the session hooks, a starter `AGENTS.md`, the `tasks` skill, and Taskwarrior files. Pushes them to an empty repository or opens a pull request. Never overwrites. `--dry-run` lists what it would add; `--update` refreshes the copied files. `--pipeline` adds the deploy flow too (`.github/breakaway-pipeline.json`, what it renders, and a minimal CI when the repository has no workflow), and `--package` the release flow for the npm package `package.json` names, unless it’s private. Both add only new files. |
+| `repos init <slug>` | Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, a starter `AGENTS.md`, Taskwarrior files, and [the Claude Code plugin](https://leavethepack.dev/docs/plugin/), turned on in `.claude/settings.json`. Pushes them to an empty repository or opens a pull request. Never overwrites. `--dry-run` lists what it would add; `--update` refreshes the copied files and moves a repository with the copied `tasks` skill and session hooks to the plugin; `--copies` copies the skill and hooks instead of the plugin. `--pipeline` adds the deploy flow too (`.github/breakaway-pipeline.json`, what it renders, and a minimal CI when the repository has no workflow), and `--package` the release flow for the npm package `package.json` names, unless it’s private. Both add only new files. |
 | `repos setup <slug\|owner/name>` | The Add a repository wizard’s steps for it. Read only. |
 | `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--name`, `--github`, `--branch`, `--specs`, `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. A repository’s page in the web board’s [Settings](https://leavethepack.dev/docs/web-board/#settings) changes the same. |
 | `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
@@ -174,4 +176,4 @@ These need no board: they’re the files and steps that deploy a board from its 
 
 ## Hooks
 
-`npx breakaway hook session` and `hook wait` are what a repository’s `.claude/settings.json` runs so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
+`npx breakaway hook session` and `hook wait` are what [the Claude Code plugin](https://leavethepack.dev/docs/plugin/) runs (or, with `repos init --copies`, a repository’s `.claude/settings.json`) so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
