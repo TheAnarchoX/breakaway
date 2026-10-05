@@ -18,7 +18,7 @@ const QUEUE_SHOWN = 8;
 const upTo = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
 const taskHref = (t) => hashFor({ task: t.wid ?? t.uuid });
 /** The server's reason as a sentence; one that starts with a name (an agent's, a repository's) keeps its case. */
-const sentence = (why) => `${/^(it|no|auto|\d)/u.test(why) ? `${why[0].toUpperCase()}${why.slice(1)}` : why}.`;
+export const sentence = (why) => `${/^(it|no|auto|\d)/u.test(why) ? `${why[0].toUpperCase()}${why.slice(1)}` : why}.`;
 
 /** A stopped or ended chase's peloton keeps its posts a day (docs/specs/IDEA-32-peloton.md, section 2). */
 const closedToday = (chase) => !chase.on && chase.endedAt && Date.now() - Date.parse(chase.endedAt) < 86_400_000;
