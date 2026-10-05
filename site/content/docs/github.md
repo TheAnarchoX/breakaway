@@ -86,6 +86,10 @@ On the page of an open, non-draft pull request that has a merge conflict, failin
 
 breakaway can deploy a repository’s Cloudflare Worker and release its npm package: staging on every merge, **Promote** to production, **Roll back**, and **Release** for a package, with the board showing what shipped where. A repository gets there with one config file and the workflows `npx breakaway pipeline init` renders from it.
 
+### From the GitHub view
+
+A registered repository without a pipeline shows **Deploy with breakaway** on the GitHub view (**Release with breakaway** when it only publishes a package, **Deploy and release with breakaway** with both), and the same card in its settings page’s Deploys section and the Add a repository wizard’s Deploys step. **Move to breakaway’s deploy flow** adds one task and starts its agent, which follows the `pipeline` skill and does what the rest of this section describes, in a pull request you merge. The card follows it: the agent and its live output, the pull request and what’s left for you after merging, the merge, and [Turn on deploys](#turn-on-deploys). If the agent stops without a pull request, **Try again** starts a new one on the same task. **Skip** hides the offer in this browser. The steps below are the same by hand.
+
 ### What it moves, and what it leaves alone
 
 | The repository | What the move does |

@@ -177,6 +177,12 @@ jobs:
           from=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
           from=${from:-$(git rev-list --max-parents=0 "$commit" | tail -1)}
           node scripts/release-notes.mjs --title breakaway --version "v$version" --from "$from" --to "$commit" --areas "$AREAS" > out/notes.md
+          # The stable's own words, when docs/releases has them (on the branch the workflow runs from), go under the heading.
+          export OWN="docs/releases/v$version.md"
+          node -e "
+            const fs=require('fs');if(!fs.existsSync(process.env.OWN))process.exit(0);
+            const [head,...rest]=fs.readFileSync('out/notes.md','utf8').split('\n');
+            fs.writeFileSync('out/notes.md',[head,'',fs.readFileSync(process.env.OWN,'utf8').trim(),'','---',...rest].join('\n'));"
           node -e "
             const m=require('./out/manifest.json');
             if(m.manual)process.stdout.write('\n### Manual steps\n\n'+m.manualSteps.map(s=>'- '+s).join('\n')+'\n');" >> out/notes.md

@@ -10,4 +10,4 @@ breakaway is built by its owner and their agents. It doesn't take pull requests,
 
 ## How it's built
 
-Work lives on a breakaway board. Agents claim a task, build it on a branch, and open a pull request; the owner reviews and merges it. [`AGENTS.md`](AGENTS.md) holds the rules and conventions they follow, and anything people see or read follows the [brand guide](brand/README.md). The [README](README.md#run-it-locally) says how to run it locally.
+Work lives on a breakaway board. Agents claim a task, build it on a branch, and open a pull request; the owner reviews and merges it. [`AGENTS.md`](AGENTS.md) holds the rules and conventions they follow, and anything people see or read follows the [brand guide](brand/README.md). The [README](README.md) says how to run it locally, under **Run it locally**.

@@ -57,6 +57,16 @@ A chase never answers a decision, does a `+owner` step or a task without `+agent
 
 A task refused twice (a start that failed, or an agent that let go without a pull request) is **Stuck**. It shows the last refusal and the agent’s last comment, and isn’t tried again.
 
+### It fixes its own pull requests
+
+When a chase task’s pull request conflicts with its base branch or its checks fail, the agent that opened it gets 3 minutes to pick it up. If it hasn’t, and no person holds the task, the chase starts a fix agent on it, the same one **Fix with an agent** starts. Two fixes that leave the same commit with the same problem make the task **Stuck**. A chase that ended by itself keeps doing this for its open pull requests for 30 days, and starts nothing else; a stopped chase doesn’t.
+
+### Its road captain
+
+**Start a road captain** on a chase that’s on or has run (on the feature’s page, or the chase in the Agents view) asks what it should do, and starts an agent with your prompt and the chase as it stands under it: the live line, each open pull request and what’s wrong with it, and what’s Stuck or needs you. It rides the chase’s peloton, follows the rules for an agent started from a prompt, and always starts past the board’s limits. Use it to look over the chase and add the tasks it’s missing.
+
+### When nothing can move
+
 If nothing can move (no agent runs, none can start, and only Needs you or Stuck holds the rest), the chase pings you once, with a push, naming the one thing that frees the most. It stays on, and carries on by itself once you act.
 
 ### How it ends
