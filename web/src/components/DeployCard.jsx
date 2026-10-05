@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { Bot, CircleSlash, ExternalLink, GitMerge, Rocket } from 'lucide-preact';
+import { Bot, CircleSlash, ExternalLink, GitMerge, Package, Rocket, Server } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { hashFor, loadGitHub, toast } from '../lib/store.js';
 import { PrRow } from './GitHub.jsx';
@@ -131,11 +131,7 @@ export function DeployCard({ view, label = null, heading = 'h2', skippable = tru
   };
   const sync = () => loadGitHub({ sync: true });
 
-  const deploysLine = `every merge to ${view.branch} deploys to staging, and Promote and Roll back move production`;
-  const releasesLine = `every merge stages a pre-release of ${flows.pkg} on npm, and Release publishes a stable one once you approve it with 2FA`;
-  const what =
-    flows.publishes && flows.deploys ? `${deploysLine}; ${releasesLine}` : flows.publishes ? releasesLine : deploysLine;
-
+  const both = flows.publishes && flows.deploys;
   return (
     <section class="gh-section turn-on deploy-card" aria-labelledby={id}>
       <Heading id={id}>
@@ -146,9 +142,29 @@ export function DeployCard({ view, label = null, heading = 'h2', skippable = tru
       {stage === 'start' && (
         <>
           <p class="small">
-            Move {view.name} to breakaway’s {flowName}: {what}. An agent reads your workflows and opens one pull request
-            that keeps your checks as they are.
+            An agent moves {view.name} to breakaway’s {both ? 'two flows' : flowName} in one pull request, and keeps
+            your checks as they are.
           </p>
+          <ul class="deploy-card-flows">
+            {flows.deploys && (
+              <li>
+                <Server size={16} aria-hidden="true" />
+                <span>
+                  <strong>Deploy flow.</strong> Every merge to {view.branch} deploys to staging, and Promote and Roll
+                  back move production.
+                </span>
+              </li>
+            )}
+            {flows.publishes && (
+              <li>
+                <Package size={16} aria-hidden="true" />
+                <span>
+                  <strong>Release flow.</strong> Every merge stages a pre-release of <code>{flows.pkg}</code> on npm,
+                  and Release publishes a stable one once you approve it with 2FA.
+                </span>
+              </li>
+            )}
+          </ul>
           {flows.isPrivate && (
             <p class="meta">
               <code>{flows.pkg}</code>’s package.json says it’s private, so the move adds no release flow for it.

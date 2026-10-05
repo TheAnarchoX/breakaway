@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { CircleCheck, CircleSlash, Copy, FolderGit2, PowerOff, RotateCcw, Trash2, TriangleAlert } from 'lucide-preact';
+import {
+  CircleCheck,
+  CircleSlash,
+  Copy,
+  FolderGit2,
+  Package,
+  PowerOff,
+  RotateCcw,
+  Server,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { AREAS, plural } from '../lib/model.js';
 import { RepoPullSettings } from '../components/PullSettings.jsx';
@@ -900,18 +911,31 @@ function Agents({ data, onSaved, readOnly }) {
   );
 }
 
-/** What the pipeline does, in a sentence, or what having none means. */
+/** What the pipeline does, in a sentence, or what having none means; the two flows below say the rest. */
 function deploysIntro(repo) {
-  const p = repo.pipeline;
-  if (!p)
-    return `${repo.name} has no pipeline, so the board shows no releases for it and merging deploys nothing. Name its two Workers to turn deploys on, its npm package to follow its releases, or both.`;
-  const deploys = p.workers
-    ? `Merging to ${repo.defaultBranch} deploys ${repo.name} to staging, and Promote and Roll back move production.`
-    : '';
-  const releases = p.package
-    ? `Merging to ${repo.defaultBranch} publishes a pre-release of ${p.package} on npm, and Release on the GitHub page publishes a stable one.`
-    : '';
-  return `${deploys} ${releases} The Releases card on GitHub shows where each version is.`.trim();
+  if (!repo.pipeline)
+    return `Merging to ${repo.defaultBranch} deploys nothing yet, and the board shows no releases for ${repo.name}. breakaway has two flows: turn on either, or both.`;
+  return 'The Releases card on GitHub shows where each version is.';
+}
+
+/**
+ * One of the two flows (WEB-72): its name, whether it's on, and what it does, over the fields that turn it on.
+ * @param {Record<string, any>} props
+ */
+function Flow({ id, icon: Icon, title, on, what, children }) {
+  return (
+    <fieldset class="rs-flow" aria-describedby={`${id}-what`}>
+      <legend class="rs-flow-head">
+        <Icon size={16} aria-hidden="true" />
+        <span>{title}</span>
+        <span class={`rs-flow-state${on ? ' is-on' : ''}`}>{on ? 'On' : 'Off'}</span>
+      </legend>
+      <p class="small muted" id={`${id}-what`}>
+        {what}
+      </p>
+      {children}
+    </fieldset>
+  );
 }
 
 /**
@@ -1031,26 +1055,36 @@ function Deploys({ data, onSaved, onReload, readOnly }) {
   const deployForm = (
     <>
       <form class="rs-form" onSubmit={submit}>
-        <div class="rs-fields">
-          {input(
-            'staging',
-            'Staging Worker',
-            'my-app-staging',
-            'Where merging deploys. Leave both Workers empty for a package alone.',
-          )}
-          {input('production', 'Production Worker', 'my-app', 'Where Promote sends a version.')}
-          {input(
-            'package',
-            'npm package',
-            '@acme/widgets',
-            'The name in its package.json. Each merge publishes a pre-release, and Release publishes a stable one.',
-          )}
-          {input(
-            'deployPaths',
-            'Deploy paths',
-            '.github/deploy-paths.json',
-            'A JSON file in the repository listing the paths that need a deploy. Empty means every change does.',
-          )}
+        <div class="rs-flows">
+          <Flow
+            id="rs-flow-deploy"
+            icon={Server}
+            title="Deploy flow"
+            on={Boolean(repo.pipeline?.workers)}
+            what={`${repo.pipeline?.workers ? 'Every' : 'Name two Workers: every'} merge to ${repo.defaultBranch} deploys to staging, and Promote and Roll back move production.`}
+          >
+            <div class="rs-fields">
+              {input('staging', 'Staging Worker', 'my-app-staging', 'Where every merge deploys.')}
+              {input('production', 'Production Worker', 'my-app', 'Where Promote sends a version.')}
+              {input(
+                'deployPaths',
+                'Deploy paths',
+                '.github/deploy-paths.json',
+                'A JSON file in the repository listing the paths that need a deploy. Empty means every change does.',
+              )}
+            </div>
+          </Flow>
+          <Flow
+            id="rs-flow-release"
+            icon={Package}
+            title="Release flow"
+            on={Boolean(repo.pipeline?.package)}
+            what={`${repo.pipeline?.package ? 'Every' : 'Name an npm package: every'} merge to ${repo.defaultBranch} publishes a pre-release, and Release on the GitHub page publishes a stable one.`}
+          >
+            <div class="rs-fields">
+              {input('package', 'npm package', '@acme/widgets', 'The name in its package.json.')}
+            </div>
+          </Flow>
         </div>
         <details class="rs-details" open={flowsOpen}>
           <summary>Workflow files</summary>
@@ -1096,6 +1130,7 @@ function Deploys({ data, onSaved, onReload, readOnly }) {
         </p>
       ) : (
         <>
+          {offer && <h3 class="rs-by-hand-head">Or set it by hand</h3>}
           <Conflict show={conflict} />
           {deployForm}
         </>
