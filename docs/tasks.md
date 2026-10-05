@@ -230,6 +230,7 @@ npx breakaway github review 12     # start an agent that reviews pull request 12
 npx breakaway github               # open pull requests with checks and reviews, failed runs, alerts (--sync to refresh)
 npx breakaway agents               # cloud agents: running, waiting to start (agents start <ID>, agents next)
 npx breakaway agents new "The inbox shows pings twice" --image shot.png   # start an agent from a prompt; it makes its own task (owner)
+npx breakaway routines new "Every Monday, update the changelog from what merged"   # an agent asks how it should run, then makes the routines (owner)
 npx breakaway specs                # the repository's specs with their status and tasks (specs show <path> reads one)
 npx breakaway agents new --spec docs/specs/BRK-13-inbox-filters.md "Drop the date filter"   # an agent changes a spec and its tasks (owner)
 npx breakaway features             # features by release, their progress and chase, and tags that could be features
