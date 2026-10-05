@@ -62,7 +62,13 @@ describe('the GitHub view per repository', () => {
       empties: [],
       nextVersions: [],
       pipelinesFound: [],
+      moves: [],
     });
+    // Deploy with breakaway (WEB-12): a repository without a pipeline shows the card; one with commits only.
+    const offered = { ...one, flow: null, pipeline: null, move: { stage: 'start' } };
+    expect(scopeGitHub(offered, null).moves).toEqual([offered]);
+    expect(scopeGitHub({ ...offered, empty: true }, null).moves).toEqual([]);
+    expect(scopeGitHub({ ...offered, pipeline: {} }, null).moves).toEqual([]);
     // The move to the deploy flow merged, not on yet (WEB-13): it offers Turn on deploys.
     const moved = { ...one, flow: null, pipelineFound: { pipeline: {} } };
     expect(scopeGitHub(moved, null).pipelinesFound).toEqual([moved]);
@@ -82,6 +88,13 @@ describe('the GitHub view per repository', () => {
     expect(every.flows.map((r) => r.slug)).toEqual(['widgets']);
     expect(every.empties).toEqual([]);
     expect(every.pipelinesFound).toEqual([]);
+    expect(every.moves).toEqual([]);
+    expect(
+      scopeGitHub(
+        { ...all, repos: all.repos.map((r) => (r.slug === 'scratch' ? { ...r, move: { stage: 'running' } } : r)) },
+        'scratch',
+      ).moves.map((r) => r.slug),
+    ).toEqual(['scratch']);
     expect(
       scopeGitHub(
         { ...all, repos: all.repos.map((r) => (r.slug === 'scratch' ? { ...r, pipelineFound: {} } : r)) },

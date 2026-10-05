@@ -43,7 +43,7 @@ import { PullPage } from '../components/PullPage.jsx';
 import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
 import { PackageRelease } from '../components/PackageRelease.jsx';
-import { TurnOnDeploys } from '../components/TurnOnDeploys.jsx';
+import { DeployCard } from '../components/DeployCard.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -780,9 +780,7 @@ export function GitHubView() {
           </div>
         ))}
       {d?.connected &&
-        d.pipelinesFound.map((r) => (
-          <TurnOnDeploys key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
-        ))}
+        d.moves.map((r) => <DeployCard key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />)}
       {d?.connected && (
         <div class="gh-dash">
           <div class="gh-dash-tiles">

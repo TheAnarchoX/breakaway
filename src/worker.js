@@ -422,6 +422,13 @@ async function handleApi(request, env, url, ctx) {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });
       return send(await s.turnOnDeploysApi(parts[1], body));
     }
+    // Move to breakaway's deploy flow (WEB-12): the owner's press adds the move's task and starts its agent. The
+    // signed-in browser only, never the bearer token agents hold.
+    if (parts.length === 3 && parts[2] === 'move' && method === 'POST') {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can move a repository to the deploy flow' });
+      return send(await s.moveApi(parts[1], body));
+    }
   }
   // Kickoffs (IDEA-26): anyone signed in reads them; starting, changing, registering, and stopping one is the
   // owner's, from the signed-in browser only, never the bearer token agents and the CLI hold.
