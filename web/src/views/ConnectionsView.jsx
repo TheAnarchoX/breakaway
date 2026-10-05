@@ -15,6 +15,7 @@ import {
 import { ago } from '../lib/model.js';
 import {
   checkConnections,
+  confirmDialog,
   connections,
   go,
   hashFor,
