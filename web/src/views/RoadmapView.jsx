@@ -25,7 +25,7 @@ import {
   selectedFeature,
 } from '../lib/store.js';
 import { ClaimChip, Dialog, RepoChip, widClass } from '../components/ui.jsx';
-import { ChasePanel } from '../components/Chase.jsx';
+import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
@@ -285,6 +285,7 @@ function FeatureDetail({ slug }) {
         </div>
         <div class="fr-actions">
           {!f.shipped && <RefineFeature feature={f} />}
+          <RoadCaptain feature={f} onDone={() => loadFeature(slug)} />
           <button type="button" class="btn btn-sm" onClick={() => setEditing(true)}>
             <Pencil size={15} aria-hidden="true" />
             Edit
@@ -339,7 +340,7 @@ function FeatureDetail({ slug }) {
                 <FastForward size={18} aria-hidden="true" />
                 Chase
               </h2>
-              <ChasePanel feature={f} chase={f.chase} open={f.progress.total > 0 && !f.done} />
+              <ChasePanel feature={f} chase={f.chase} open={f.progress.total > 0 && !f.done} captain={false} />
             </section>
           )}
           {/* A chase that's on lists its own Needs you, with the blockers it pulled in. */}
