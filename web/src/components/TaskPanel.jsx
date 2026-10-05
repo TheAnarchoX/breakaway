@@ -58,7 +58,7 @@ import {
   tasks,
   toast,
 } from '../lib/store.js';
-import { Popover, RepoChip, StateBadge, useAutosize, widClass } from './ui.jsx';
+import { Popover, RepoChip, StateBadge, useAutosize, widClass, Dictate } from './ui.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 import { copy } from '../lib/clipboard.js';
 import { inSpecsDir, specsDirOf } from '../lib/specs.js';
@@ -410,24 +410,26 @@ function Brief({ task: t, field, label, empty, by, rows = 6, preview = false }) 
             {label}
           </label>
           <div class={preview ? 'brief-split' : ''}>
-            <textarea
-              id={id}
-              ref={area}
-              class="textarea brief-input"
-              rows={rows}
-              maxLength={10000}
-              value={draft}
-              onInput={(e) => setDraft(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save(e);
-                if (e.key === 'Escape') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDraft(value);
-                  close();
-                }
-              }}
-            />
+            <Dictate>
+              <textarea
+                id={id}
+                ref={area}
+                class="textarea brief-input"
+                rows={rows}
+                maxLength={10000}
+                value={draft}
+                onInput={(e) => setDraft(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save(e);
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDraft(value);
+                    close();
+                  }
+                }}
+              />
+            </Dictate>
             {preview && (
               <div class="brief-preview" aria-label={`Preview of the ${label.toLowerCase()}`} role="group">
                 <span class="meta">Preview</span>
@@ -580,18 +582,20 @@ function Comments({ task: t }) {
         <label class="visually-hidden" for={`comment-${t.uuid}`}>
           Add a comment
         </label>
-        <textarea
-          id={`comment-${t.uuid}`}
-          ref={area}
-          class="textarea"
-          rows={2}
-          value={draft}
-          placeholder="What happened, what you found, what’s next"
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-          }}
-        />
+        <Dictate>
+          <textarea
+            id={`comment-${t.uuid}`}
+            ref={area}
+            class="textarea"
+            rows={2}
+            value={draft}
+            placeholder="What happened, what you found, what’s next"
+            onInput={(e) => setDraft(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+            }}
+          />
+        </Dictate>
         <div class="note-actions">
           <span class="meta">Ctrl + Enter adds it</span>
           <button type="submit" class="btn btn-outline btn-sm" disabled={!draft.trim()}>

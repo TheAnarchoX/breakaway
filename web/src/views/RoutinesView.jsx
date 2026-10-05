@@ -17,7 +17,7 @@ import {
   selectedRoutine,
 } from '../lib/store.js';
 import { RoutinesDailyCap, RoutinesSwitch } from '../components/BoardSettings.jsx';
-import { Dialog, RepoChip, Segmented } from '../components/ui.jsx';
+import { Dialog, RepoChip, Segmented, Dictate } from '../components/ui.jsx';
 import { RichText } from '../lib/richtext.jsx';
 
 const RUN_TRIGGER = {
@@ -134,14 +134,18 @@ function RoutineForm({ routine, from, onDone, id }) {
       )}
       <label class="field">
         <span class="field-label">What the agent should do</span>
-        <textarea class="textarea" name="prompt" required rows={8} defaultValue={src?.prompt} />
+        <Dictate>
+          <textarea class="textarea" name="prompt" required rows={8} defaultValue={src?.prompt} />
+        </Dictate>
         <span class="field-hint">
           Every run copies this into its task’s description, so write it as you’d write a task. Agents can’t change it.
         </span>
       </label>
       <label class="field">
         <span class="field-label">Done when</span>
-        <textarea class="textarea" name="done_when" rows={3} defaultValue={src?.done_when ?? ''} />
+        <Dictate>
+          <textarea class="textarea" name="done_when" rows={3} defaultValue={src?.done_when ?? ''} />
+        </Dictate>
       </label>
       <div class="field-row">
         <label class="field">

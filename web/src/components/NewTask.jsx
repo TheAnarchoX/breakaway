@@ -14,7 +14,7 @@ import {
   toast,
 } from '../lib/store.js';
 import { isImage, MAX_IMAGES, prepareImage } from '../lib/images.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails, attachFiles, pastedImages } from './Attachments.jsx';
 
 /** @param {Record<string, any>} props */
@@ -156,18 +156,22 @@ function Form({ defaults }) {
       </label>
       <label class="field">
         <span class="field-label">Description</span>
-        <textarea name="brief" class="textarea" rows={4} maxLength={10000} placeholder="What it’s for and why" />
+        <Dictate>
+          <textarea name="brief" class="textarea" rows={4} maxLength={10000} placeholder="What it’s for and why" />
+        </Dictate>
         <span class="field-hint">The current brief. You can edit it later; comments never change it.</span>
       </label>
       <label class="field">
         <span class="field-label">Done when</span>
-        <textarea
-          name="done_when"
-          class="textarea"
-          rows={2}
-          maxLength={10000}
-          placeholder="What has to be true to call it done"
-        />
+        <Dictate>
+          <textarea
+            name="done_when"
+            class="textarea"
+            rows={2}
+            maxLength={10000}
+            placeholder="What has to be true to call it done"
+          />
+        </Dictate>
       </label>
       <label class="field">
         <span class="field-label">Spec</span>
@@ -377,15 +381,17 @@ function IdeaForm() {
       <ModeSwitch mode="idea" />
       <label class="field">
         <span class="field-label">Your idea</span>
-        <textarea
-          name="idea"
-          class="textarea"
-          rows={7}
-          maxLength={4000}
-          autoFocus
-          aria-describedby={error ? 'idea-error idea-hint' : 'idea-hint'}
-          onInput={() => setError(null)}
-        />
+        <Dictate>
+          <textarea
+            name="idea"
+            class="textarea"
+            rows={7}
+            maxLength={4000}
+            autoFocus
+            aria-describedby={error ? 'idea-error idea-hint' : 'idea-hint'}
+            onInput={() => setError(null)}
+          />
+        </Dictate>
         {error && (
           <span class="field-error" id="idea-error">
             {error}
