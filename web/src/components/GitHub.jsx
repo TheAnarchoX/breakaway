@@ -1,4 +1,5 @@
 import {
+  CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleX,
@@ -122,19 +123,52 @@ export function Review({ decision, compact = false }) {
 }
 
 /**
- * A task card's small PR mark: state, number, checks, review. Not a link (the card is one).
+ * The card's mark for each verdict: an icon, and a word when it's something to act on, so a pull request with
+ * conflicts never reads as green because its checks passed. A draft has none: the PR icon already says it.
+ */
+const CARD_VERDICT = {
+  ready: { icon: CircleCheck },
+  conflicts: { icon: CircleX, word: 'Conflicts' },
+  failing: { icon: CircleX, word: 'Failing' },
+  behind: { icon: CircleAlert, word: 'Behind' },
+  running: { icon: LoaderCircle, spin: true },
+  review: { icon: CircleAlert, word: 'Review' },
+  unknown: { icon: CircleDashed, word: 'Checking' },
+};
+
+/**
+ * What GitHub says about merging an open pull request, small enough for a card: the same verdict the GitHub page shows.
+ * @param {Record<string, any>} props
+ */
+export function CardVerdict({ verdict }) {
+  const mark = CARD_VERDICT[verdict];
+  if (!mark) return null;
+  const Icon = mark.icon;
+  return (
+    <span class={`card-verdict card-verdict-${VERDICT[verdict].tone}${mark.spin ? ' card-verdict-spin' : ''}`}>
+      <Icon size={14} aria-hidden="true" />
+      {mark.word ? <span>{mark.word}</span> : <span class="visually-hidden">{VERDICT[verdict].label}</span>}
+    </span>
+  );
+}
+
+/**
+ * A task card's small PR mark: state, number, whether it can merge (or, without a verdict, its checks), and review.
+ * Not a link (the card is one).
  * @param {Record<string, any>} props
  */
 export function PrBadge({ pr }) {
   if (!pr) return null;
+  const open = pr.state === 'open';
+  const verdict = open ? VERDICT[pr.verdict] : null;
   return (
     <span
       class={`pr-badge pr-badge-${pr.state}${pr.draft ? ' pr-badge-draft' : ''}`}
-      title={`Pull request #${pr.number}, ${prStateLabel(pr).toLowerCase()}`}
+      title={`Pull request #${pr.number}, ${prStateLabel(pr).toLowerCase()}${verdict && pr.verdict !== 'draft' ? `: ${verdict.label.toLowerCase()}. ${verdict.hint}` : ''}`}
     >
       <PrIcon pr={pr} size={14} />
       <span>#{pr.number}</span>
-      {pr.state === 'open' && <Checks checks={pr.checks} compact />}
+      {open && (pr.verdict ? <CardVerdict verdict={pr.verdict} /> : <Checks checks={pr.checks} compact />)}
       {pr.state === 'open' && <Review decision={pr.review?.decision ?? pr.review} compact />}
     </span>
   );
