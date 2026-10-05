@@ -16,6 +16,7 @@ import {
 } from 'lucide-preact';
 import { api, enc, uploadKickoffImage } from '../lib/api.js';
 import { copy } from '../lib/clipboard.js';
+import { canDictate } from '../lib/dictation.js';
 import { MAX_IMAGES } from '../lib/images.js';
 import { ago, ref } from '../lib/model.js';
 import {
@@ -361,8 +362,9 @@ function KickoffStart() {
             </span>
           )}
           <span class="field-hint" id="ko-pitch-hint">
-            In your own words, as long as you like. Who it’s for, what it does, what it looks like. Rough is fine: the
-            agent asks about the rest.
+            In your own words, as long as you like. Who it’s for, what it does, what it looks like.
+            {canDictate && ' You can say it instead of typing: press the microphone.'} Rough is fine: the agent asks
+            about the rest.
           </span>
         </label>
         <div class="field">
