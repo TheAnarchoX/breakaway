@@ -12,6 +12,7 @@
  * and have no force, no autostart, no done, and no horizon-* tag. The resources and prompts (BRK-156) come later.
  */
 import { authenticate } from './auth.js';
+import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
 import { MAX_MESSAGE, PING_KINDS, looksLikeSecret } from './ping.js';
 
@@ -68,12 +69,24 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const origin = request.headers.get('Origin');
   if (origin !== null && origin !== url.origin)
     return rpcError(403, null, INVALID_REQUEST, 'requests to /mcp from another origin are refused');
-  // The bearer token only, never the web board's cookie: the browser has the web board (section 2).
-  if ((await authenticate(request, env)) !== 'token')
-    return new Response(JSON.stringify({ error: 'send the board’s token as "Authorization: Bearer <token>"' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' },
-    });
+  // The bearer token only, never the web board's cookie: the browser has the web board (section 2). A connection
+  // from Claude's apps has its own token, for its one repository and agent name (section 8).
+  let pinned = null;
+  if ((await authenticate(request, env)) !== 'token') {
+    const found = await connectionOf(request, store);
+    if (!found?.connection) {
+      const challenge = `Bearer ${found?.invalid ? 'error="invalid_token", ' : ''}resource_metadata="${metadataUrl(url.origin)}"`;
+      return new Response(
+        JSON.stringify({
+          error: found?.invalid
+            ? 'this sign-in has run out or was revoked: refresh it, or sign in again'
+            : 'send the board’s token as "Authorization: Bearer <token>", or sign in',
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': challenge } },
+      );
+    }
+    pinned = found.connection;
+  }
 
   const raw = await readBody(request, maxBody);
   if (raw === null) return rpcError(413, null, INVALID_REQUEST, `the request is over ${maxBody} bytes`);
@@ -102,7 +115,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const era = eraOf(request, method, params);
   if (era.error) return rpcError(era.status ?? 400, id, era.error.code, era.error.message, era.error.data);
 
-  const ctx = callContext(request, store, waitUntil);
+  const ctx = callContext(request, store, waitUntil, pinned);
   const answer = (result) =>
     rpcResult(id, era.modern ? { resultType: 'complete', ...result, _meta: serverMeta(env) } : result);
   const failed = (status, code, text, data) => rpcError(era.modern ? status : 200, id, code, text, data);
@@ -231,15 +244,17 @@ function rpcError(status, id, code, message, data) {
 // ---- Who's calling -----------------------------------------------------------------------
 
 /**
- * The agent's name and repository from the request's headers (section 2), and the board's registry, read once and
- * only when a tool needs it. `waitUntil` keeps work going after the answer (a ping's push).
+ * The agent's name and repository from the request's headers (section 2), or from the connection a sign-in from
+ * Claude's apps made (section 8), whatever the headers say; and the board's registry, read once and only when a tool
+ * needs it. `waitUntil` keeps work going after the answer (a ping's push).
  * @param {Request} request
  * @param {any} store
  * @param {(promise: Promise<any>) => void} [waitUntil]
+ * @param {{ agent: string, repo: string } | null} [pinned]
  */
-function callContext(request, store, waitUntil = (_promise) => {}) {
-  const agent = (request.headers.get('X-Breakaway-Agent') ?? '').trim();
-  const repo = (request.headers.get('X-Breakaway-Repo') ?? '').trim().toLowerCase();
+function callContext(request, store, waitUntil = (_promise) => {}, pinned = null) {
+  const agent = pinned ? pinned.agent : (request.headers.get('X-Breakaway-Agent') ?? '').trim();
+  const repo = pinned ? pinned.repo : (request.headers.get('X-Breakaway-Repo') ?? '').trim().toLowerCase();
   let registry;
   const ctx = {
     store,

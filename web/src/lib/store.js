@@ -810,6 +810,8 @@ export const addRepoTarget = signal(null);
 export const settingsSlug = signal(null);
 /** The kickoff open on #/kickoff/<id> (WEB-35), or null for #/kickoff: the list and the form to start one. */
 export const kickoffId = signal(null);
+/** The sign-in from Claude's apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
+export const authorizeId = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
 export const addRepoAt = signal(null);
 /** Where the Settings page scrolls to once it opens (`'repos'` for its list of repositories), or null for the top. */
@@ -840,6 +842,7 @@ function parseHash() {
     const settings = /^settings(?:\/([^/]{0,64}))?$/u.exec(path);
     const kickoff = /^kickoff(?:\/([0-9a-f-]{36}))?$/u.exec(path);
     kickoffId.value = kickoff?.[1] ?? null;
+    authorizeId.value = /^authorize\/([\w-]{20,64})$/u.exec(path)?.[1] ?? null;
     view.value = settings
       ? settings[1]
         ? 'repo-settings'
@@ -895,6 +898,8 @@ export function hashFor({
   spec = selectedSpec.value,
   kickoff = kickoffId.value,
 } = {}) {
+  // The consent page stands alone: nothing else in the hash, so the URL stays the one the sign-in came to.
+  if (authorizeId.value) return `#/authorize/${authorizeId.value}`;
   const p = new URLSearchParams();
   if (repoScope.value) p.set('repo', repoScope.value);
   if (v === 'routines' && routine) p.set('routine', routine);
