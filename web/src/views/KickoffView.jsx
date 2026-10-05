@@ -749,12 +749,17 @@ function KickoffPage({ id }) {
 
   // Kickoff's steps, in its own words: the wizard's ticks, then the interview, the plan, and building.
   const steps = [
-    { id: 'create', name: 'Make a private home for it on GitHub', done: step.create.done },
-    { id: 'install', name: 'Let the board see it', done: step.install.done, problem: step.install.problem },
+    // WEB-46: the repository and the App's access are one step, since it only ticks once the App can see it; the
+    // routine and its connect form are one step too, since the board can't see claude.ai to tick the first alone.
+    {
+      id: 'create',
+      name: 'Make a private home for it on GitHub',
+      done: step.create.done && step.install.done,
+      problem: step.install.problem,
+    },
     { id: 'register', name: 'Add it to the board', done: k.registered },
     { id: 'files', name: 'Add the board’s files', done: filesDone, problem: step.init.problem },
-    { id: 'routine', name: 'Make its agent routine on claude.ai', done: connected },
-    { id: 'connect', name: 'Connect the routine', done: connected, problem: step.agent.problem },
+    { id: 'routine', name: 'Make its agent routine on claude.ai', done: connected, problem: step.agent.problem },
     { id: 'interview', name: 'Tell it what you want', done: planned || merged },
     { id: 'plan', name: 'Read the plan and merge it', done: merged },
     { id: 'build', name: 'Start building', done: false },
@@ -768,42 +773,57 @@ function KickoffPage({ id }) {
   const content = {
     create: (
       <>
-        <p>
-          GitHub’s own form opens filled in: the name <strong>{k.name}</strong>, private, and your first line as its
-          description. Press <strong>Create repository</strong> there, and leave the README, licence, and .gitignore
-          off.
-        </p>
-        <p class="muted">
-          <strong>Why private:</strong> your idea isn’t public until you choose. You can make it public later, on
-          GitHub.
-        </p>
-        <div class="wiz-actions">
-          <ExtLink href={k.links.create} primary={!k.github}>
-            Open GitHub’s form
-          </ExtLink>
-        </div>
-        <WhereOnGitHub k={k} onSaved={() => load(true)} />
-        <p class="wiz-expect">
-          <strong>When it worked:</strong> this ticks with the next step, once the board’s GitHub App can see it. If
-          GitHub says the name is taken, pick another there and change it here.
-        </p>
-      </>
-    ),
-    install: (
-      <>
-        <p>
-          Give the board’s GitHub App access to <strong>{k.github ?? k.name}</strong>, then turn on{' '}
-          <strong>Allow auto-merge</strong> in its settings (General, then Pull Requests).
-        </p>
-        <p class="muted">
-          <strong>Why:</strong> the App is how the board reads the repository, writes its first files, and links pull
-          requests to tasks.
-        </p>
-        <div class="wiz-actions">
-          <ExtLink href={appInstall}>Give the App access</ExtLink>
-          {k.github && <ExtLink href={`https://github.com/${k.github}/settings`}>Open its settings</ExtLink>}
-        </div>
+        <ol class="ko-guide">
+          <li>
+            <p>
+              GitHub’s own form opens filled in: the name <strong>{k.name}</strong>, private, and your first line as its
+              description. Press <strong>Create repository</strong> there, and leave the README, licence, and .gitignore
+              off.
+            </p>
+            <p class="muted">
+              <strong>Why private:</strong> your idea isn’t public until you choose. You can make it public later, on
+              GitHub.
+            </p>
+            <div class="wiz-actions">
+              <ExtLink href={k.links.create} primary={!k.github}>
+                Open GitHub’s form
+              </ExtLink>
+            </div>
+          </li>
+          <li>
+            <WhereOnGitHub k={k} onSaved={() => load(true)} />
+            <p class="meta">If GitHub says the name is taken, pick another there and change it here.</p>
+          </li>
+          <li>
+            <p>
+              Give the board’s GitHub App access to <strong>{k.github ?? k.name}</strong>.
+            </p>
+            <p class="muted">
+              <strong>Why:</strong> the App is how the board reads the repository, writes its first files, and links
+              pull requests to tasks.
+            </p>
+            <div class="wiz-actions">
+              <ExtLink href={appInstall} primary={Boolean(k.github) && !step.install.done}>
+                Give the App access
+              </ExtLink>
+            </div>
+          </li>
+          <li>
+            <p>
+              Turn on <strong>Allow auto-merge</strong> in its settings: General, then Pull Requests.
+            </p>
+            {k.github && (
+              <div class="wiz-actions">
+                <ExtLink href={`https://github.com/${k.github}/settings`}>Open its settings</ExtLink>
+              </div>
+            )}
+          </li>
+        </ol>
         <Checks checks={step.install.checks} />
+        <p class="wiz-expect">
+          <strong>When it worked:</strong> these tick once the board’s GitHub App can see it. Press Check now if they
+          don’t.
+        </p>
         <Problem problem={step.install.problem} />
       </>
     ),
@@ -882,8 +902,11 @@ function KickoffPage({ id }) {
       <>
         <p>
           On claude.ai, make a routine: it’s how the board starts an agent in <strong>{k.github ?? k.name}</strong>.
-          claude.ai has no way for the board to make one, so copy each of these in.
+          claude.ai has no way for the board to make one, so copy each of these in, then connect it here.
         </p>
+        <div class="wiz-actions">
+          <ExtLink href={ROUTINES_URL}>Open routines on claude.ai</ExtLink>
+        </div>
         <ol class="ko-guide">
           <li>
             <CopyRow label="Name it:" text={`${k.name} agent`} what="Name" />
@@ -902,31 +925,25 @@ function KickoffPage({ id }) {
             />
           </li>
           <li>
-            <p class="meta">Add an API trigger, and keep its page open: the next step needs its URL and a token.</p>
+            <p class="meta">Add an API trigger, and keep its page open for its URL and a token.</p>
+          </li>
+          <li>
+            <p class="meta">
+              Paste the trigger’s URL and token here. The board checks them, keeps them encrypted, and never shows them
+              again.
+            </p>
+            {!k.registered && <p class="muted">Once it’s on the board, paste them here.</p>}
+            {k.registered && !connected && (
+              <RoutineConnect slug={k.slug} source={d.routine?.source ?? null} open onDone={() => load(true)} />
+            )}
+            {connected && <p class="meta">Connected. The board can start agents there.</p>}
           </li>
         </ol>
-        <div class="wiz-actions">
-          <ExtLink href={ROUTINES_URL}>Open routines on claude.ai</ExtLink>
-        </div>
         <p class="wiz-expect">
-          <strong>When it worked:</strong> the board can’t see claude.ai, so this ticks with the next step.
+          <strong>When it worked:</strong> this ticks once the board has checked them and can start agents there.
         </p>
-      </>
-    ),
-    connect: k.registered ? (
-      <>
-        <p>
-          Paste the routine’s URL and token from its API trigger. The board checks them, keeps them encrypted, and never
-          shows them again.
-        </p>
-        {!connected && (
-          <RoutineConnect slug={k.slug} source={d.routine?.source ?? null} open onDone={() => load(true)} />
-        )}
-        {connected && <p class="meta">Connected. The board can start agents there.</p>}
         <Problem problem={step.agent.problem} />
       </>
-    ) : (
-      <p class="muted">Once it’s on the board, paste the routine’s URL and token here.</p>
     ),
     interview: (
       <>
