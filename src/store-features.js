@@ -471,17 +471,21 @@ export const featuresMethods = {
     const releaseTasks = [...releases]
       .sort((a, b) => byRelease(a[0], b[0]))
       .map(([release, tasks]) => ({ release, tasks }));
-    const next = this.releasePulls(membership)[0];
-    const nextPull = next ? { release: next.release, tasks: next.moves.length } : null;
-    return { features, suggestions, releaseTasks, nextPull };
+    const first = (into) => {
+      const pull = this.releasePulls(membership, into)[0];
+      return pull ? { release: pull.release, tasks: pull.moves.length } : null;
+    };
+    return { features, suggestions, releaseTasks, nextPull: first('now'), stagePull: first('next') };
   },
 
   /**
-   * What pulling each release into now would move (BRK-126), for the releases that have any, in version
-   * order: the release's open tasks (its features' and its loose ones') and every open task they wait for,
-   * whatever its release or feature, that isn't in now yet. A task's release is its feature's, else its tag's.
+   * What pulling each release into `into` would move (BRK-126; next is BRK-209), for the releases that have
+   * any, in version order: the release's open tasks (its features' and its loose ones') and every open task
+   * they wait for, whatever its release or feature, that isn't in `into` or a nearer horizon yet. A task's
+   * release is its feature's, else its tag's.
    */
-  releasePulls(given) {
+  releasePulls(given, into = 'now') {
+    const there = new Set(into === 'next' ? ['now', 'next'] : ['now']);
     const membership = given ?? this.featureMembership();
     const open = (t) => t.status === 'pending';
     const byUuid = new Map(membership.views.map((t) => [t.uuid, t]));
@@ -502,26 +506,35 @@ export const featuresMethods = {
             seen.add(d);
             stack.push(d);
           }
-      const moves = dependencyOrder([...seen].map((u) => byUuid.get(u)).filter((t) => t.horizon !== 'now'));
+      const moves = dependencyOrder([...seen].map((u) => byUuid.get(u)).filter((t) => !there.has(t.horizon)));
       if (moves.length) pulls.push({ release, moves: moves.map((t) => ({ task: t, chain: !own.has(t.uuid) })) });
     }
     return pulls;
   },
 
   /**
-   * Pulls `release` into now (BRK-126): the owner's. Only the first release with work outside now can be
-   * pulled, so the roadmap fills now in version order. `dryRun` only says what would move.
+   * Pulls `release` into now (BRK-126), or stages it in next (BRK-209) when `input.into` is `next`: the
+   * owner's. Only the first release with work outside that horizon can be pulled, so the roadmap fills now
+   * and next in version order. `dryRun` only says what would move.
    */
   pullRelease(release, input) {
-    this.ownerOnlyFeatures(input.by, 'pull a release into now');
+    const into = input.into ?? 'now';
+    if (into !== 'now' && into !== 'next') throw new InputError(`a release is pulled into now or next (not "${into}")`);
+    this.ownerOnlyFeatures(input.by, `pull a release into ${into}`);
     const version = String(release ?? '').trim();
     if (!RELEASE.test(version)) throw new InputError(`the release is a version like 1.2.0 (not "${version}")`);
     this.writable();
-    const pulls = this.releasePulls();
+    const pulls = this.releasePulls(undefined, into);
     const pull = pulls.find((p) => p.release === version);
-    if (!pull) throw new InputError(`${version}’s open tasks, and what they wait for, are already in now`);
+    if (!pull)
+      throw new InputError(
+        `${version}’s open tasks, and what they wait for, are already in ${into === 'next' ? 'now or next' : 'now'}`,
+      );
     if (pulls[0] !== pull)
-      throw new AgentError(`pull ${pulls[0].release} into now first: the next release goes in before a later one`, 409);
+      throw new AgentError(
+        `pull ${pulls[0].release} into ${into} first: the next release goes in before a later one`,
+        409,
+      );
     const tasks = pull.moves.map(({ task, chain }) => ({
       uuid: task.uuid,
       wid: task.wid ?? null,
@@ -534,10 +547,10 @@ export const featuresMethods = {
       const ops = [];
       for (const { task } of pull.moves) {
         const before = this.tasks.get(task.uuid);
-        ops.push(...diffOps(task.uuid, before, withChanges(before, { horizon: 'now' }, now), now.toISOString()));
+        ops.push(...diffOps(task.uuid, before, withChanges(before, { horizon: into }, now), now.toISOString()));
       }
       this.commit(ops);
     }
-    return { release: version, tasks, dryRun: Boolean(input.dryRun) };
+    return { release: version, into, tasks, dryRun: Boolean(input.dryRun) };
   },
 };
