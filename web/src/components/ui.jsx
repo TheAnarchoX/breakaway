@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { CircleAlert, CircleCheck, Info, Mic, Square } from 'lucide-preact';
 import { confirmState, forceOffer, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
 import { STATE_LABEL, age, isStale, stateOf } from '../lib/model.js';
-import { canDictate, dictate } from '../lib/dictation.js';
+import { canDictate, checkOnDevice, dictate } from '../lib/dictation.js';
 
 /**
  * A native <dialog>, shown modally while `open`. Escape and a click on the backdrop call
@@ -329,7 +329,10 @@ export function Dictate({ children }) {
   const stop = useRef(/** @type {(() => void) | null} */ (null));
   const [listening, setListening] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => () => stop.current?.(), []);
+  useEffect(() => {
+    checkOnDevice();
+    return () => stop.current?.();
+  }, []);
   if (!canDictate) return children;
 
   const field = () => /** @type {HTMLTextAreaElement | null} */ (root.current?.querySelector('textarea, input'));
@@ -343,13 +346,17 @@ export function Dictate({ children }) {
     setError('');
     setListening(true);
     el.focus();
-    stop.current = dictate(el, {
+    let ended = false;
+    const stopIt = dictate(el, {
       onEnd: () => {
+        ended = true;
         stop.current = null;
         setListening(false);
       },
       onError: setError,
     });
+    // It can end before it returns, when the browser refuses to start.
+    if (!ended) stop.current = stopIt;
   };
 
   return (
