@@ -112,7 +112,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   if (method === 'initialize' || method === 'server/discover') {
     // A slug the board doesn't track is refused when the client connects, so its config is fixed first (section 2).
     const scope = await ctx.scope();
-    if (ctx.repo && scope.error) return failed(400, INVALID_PARAMS, scope.error);
+    if (ctx.repo && scope.error && !scope.untracked) return failed(400, INVALID_PARAMS, scope.error);
     if (method === 'initialize')
       return rpcResult(id, {
         protocolVersion: LEGACY,
@@ -279,6 +279,16 @@ function callContext(request, store, waitUntil = (_promise) => {}) {
       if (!slugs.length)
         return { error: 'the board has no repositories yet: the owner adds one on the board, under Repositories' };
       if (!repo) return { error: `name the repository: set the X-Breakaway-Repo header to one of ${slugs.join(', ')}` };
+      // The plugin's headersHelper can't always ask the board for the slug, so it sends the checkout's owner/name
+      // (CLI-9). One the board doesn't track is a checkout outside the board, not a config to fix: it still connects.
+      if (repo.includes('/')) {
+        const match = (reg.repos ?? []).find((r) => String(r.github ?? '').toLowerCase() === repo);
+        if (match) return { slug: match.slug, registry: reg };
+        return {
+          error: `this checkout's repository, ${repo.slice(0, 100)}, isn't on the board; it has ${slugs.join(', ')}. The owner adds it on the board, under Repositories`,
+          untracked: true,
+        };
+      }
       if (!SLUG.test(repo) || !slugs.includes(repo))
         return {
           error: `no repository "${repo.slice(0, 40)}" on the board; it has ${slugs.join(', ')}. Set X-Breakaway-Repo to one of them`,

@@ -2,6 +2,7 @@
  * npx breakaway mcp (docs/specs/IDEA-24-mcp-server.md, section 5; CLI-6): how a checkout connects an MCP client to the
  * board's /mcp, and whether it answers. Pure apart from the `fetch` it's handed, so it's tested without a board.
  */
+import { githubFromRemote, pickRepo } from './repo.js';
 
 /** The MCP revision `--check` speaks: the one with an `initialize` handshake, which /mcp accepts (src/mcp.js, LEGACY). */
 export const CHECK_PROTOCOL = '2025-11-25';
@@ -44,6 +45,52 @@ export function mcpConfig({ url, agent, repo = null, tokenVar }) {
     ...(repo ? [`  --header "X-Breakaway-Repo: ${repo}"`] : []),
   ].join(' \\\n');
   return { endpoint, command, json: { mcpServers: { [SERVER]: { type: 'http', url: endpoint, headers } } } };
+}
+
+/**
+ * `--headers`: the headers Claude Code sends to /mcp, for the plugin's `headersHelper` (CLI-9,
+ * docs/specs/IDEA-25-claude-plugin.md, section 4). Claude Code reads them as JSON from standard output, so the token is
+ * its value here, and only there. Outside a repository the board tracks there's only Authorization, and the repository's
+ * tools say what's missing; without a token there's none, so a session's proxy can add it.
+ * @param {{ token?: string | null, agent: string, repo?: string | null }} options
+ * @returns {Record<string, string>}
+ */
+export function mcpHeaders({ token = null, agent, repo = null }) {
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(repo ? { 'X-Breakaway-Agent': agent, 'X-Breakaway-Repo': repo } : {}),
+  };
+}
+
+/**
+ * The repository `--headers` names: the board's slug for the checkout when the board says which (`GET /api/repos`), and
+ * null when it tracks none of them. A plugin's headersHelper runs without the plugin's settings, so with only the
+ * plugin set up there's no token to ask with: then it's the checkout's GitHub `owner/name`, which /mcp matches against
+ * its repositories itself (src/mcp.js). `named` is --repo or BREAKAWAY_REPO. Never throws: Claude Code is waiting.
+ * @param {{ base?: string | null, token?: string | null, named?: string | null, remote?: string | null, fetch: typeof globalThis.fetch }} options
+ * @returns {Promise<string | null>}
+ */
+export async function headersRepo({ base = null, token = null, named = null, remote = null, fetch }) {
+  let registry = null;
+  if (base)
+    try {
+      const res = await fetch(`${String(base).replace(/\/+$/u, '')}/api/repos`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) registry = await res.json();
+    } catch {
+      /* the board can't be reached: /mcp will say so itself */
+    }
+  if (registry) {
+    try {
+      return pickRepo({ named, remote, registry });
+    } catch {
+      return null; // --repo names a repository the board doesn't have
+    }
+  }
+  if (named) return String(named).trim().toLowerCase();
+  return githubFromRemote(remote)?.toLowerCase() ?? null;
 }
 
 /**
