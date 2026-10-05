@@ -691,7 +691,8 @@ function GitHubStatus({ status }) {
         <a href={status.page} target="_blank" rel="noopener noreferrer">
           GitHub’s status
         </a>
-        : {status.error ? `couldn’t read ${host}` : 'working'}, checked {ago(status.checked)}
+        : {status.error ? `couldn’t read ${host}` : status.overridden ? 'you marked it working' : 'working'}, checked{' '}
+        {ago(status.checked)}
       </p>
     );
   const incident = status.incidents?.find((i) => i.url);

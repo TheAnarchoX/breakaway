@@ -6,6 +6,7 @@ import {
   CircleOff,
   ExternalLink,
   FolderPlus,
+  CirclePause,
   Plug,
   RefreshCw,
   Settings,
@@ -14,6 +15,7 @@ import {
 import { ago } from '../lib/model.js';
 import {
   checkConnections,
+  confirmDialog,
   connections,
   go,
   hashFor,
@@ -23,6 +25,7 @@ import {
   noRepos,
   openAddRepo,
   openKickoff,
+  overrideGitHubStatus,
   registerRepo,
   repoName,
   repoScope,
@@ -134,6 +137,36 @@ function Items({ c }) {
   );
 }
 
+/**
+ * Treat as working, or Hold again, on GitHub's status row (BRK-218): for when an incident is over but the status
+ * page still shows it open.
+ * @param {{ on: boolean }} props
+ */
+function StatusOverride({ on }) {
+  const [busy, setBusy] = useState(false);
+  const press = async () => {
+    if (!on) {
+      const ok = await confirmDialog({
+        title: 'Treat GitHub as working?',
+        body: 'Chases start agents again, and Keep branches up to date and Merge when green carry on. Do it once you’ve seen pushes go through and checks run. The board holds again if the status page reports something new.',
+        confirmLabel: 'Treat as working',
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    await overrideGitHubStatus(!on);
+    setBusy(false);
+  };
+  return (
+    <p class="conn-meta">
+      <button type="button" class="btn btn-outline btn-sm" disabled={busy} aria-busy={busy} onClick={press}>
+        {on ? <CirclePause size={15} aria-hidden="true" /> : <CircleCheck size={15} aria-hidden="true" />}
+        {on ? 'Hold again' : 'Treat as working'}
+      </button>
+    </p>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Row({ c }) {
   const reading = c.state === 'working' ? READING[c.reading] : null;
@@ -187,6 +220,7 @@ function Row({ c }) {
           )}
         </div>
       )}
+      {c.override && <StatusOverride on={c.override.on} />}
       {c.id === 'board.version' && <SelfUpdate />}
       {c.id === 'claude.routine' && c.repo && 'source' in c && (
         <RoutineConnect slug={c.repo} source={c.source} onDone={loadConnections} />
