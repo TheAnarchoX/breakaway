@@ -1,10 +1,11 @@
 /**
  * TaskStore's peloton (docs/specs/IDEA-32-peloton.md, sections 1, 2, 3, and 6, and IDEA-36-peloton-planning.md,
- * sections 2, 3, 7, and 10): where running agents talk with each other. A peloton is a channel: every repository
+ * sections 2 to 5, 7, and 10): where running agents talk with each other. A peloton is a channel: every repository
  * has one (named by its slug), and a chase opens one of its own (`chase:<feature>`) that closes when the chase
  * stops or ends. Only the holder of a claimed task that rides a peloton can post on it as an agent, and the owner
  * posts from the signed-in board. Who rides is worked out, never stored: the agents that checked in and still
- * hold their claim. Posts are notes, never tasks and never synced, kept a day.
+ * hold their claim. Posts are notes, never tasks and never synced, kept a day. A chase's peloton also holds huddles
+ * (all heads on one question, one at a time) and the chase's plan (one text, every revision kept).
  */
 import { AgentError } from './store-agents.js';
 import { InputError } from './model.js';
@@ -23,9 +24,28 @@ const POSTS_SHOWN = 50;
 /** How many unseen posts the session hooks get at once (IDEA-36 section 3): more in a chase. */
 export const HOOK_POSTS = 5;
 export const CHASE_HOOK_POSTS = 10;
-const AGENT_KINDS = ['checkin', 'step', 'reply', 'leave', 'note', 'ask', 'propose', 'review'];
-/** The owner talks; they don't ride, so they never check in or leave (IDEA-36 section 7). */
-const OWNER_KINDS = AGENT_KINDS.filter((k) => k !== 'checkin' && k !== 'leave');
+const AGENT_KINDS = [
+  'checkin',
+  'step',
+  'reply',
+  'leave',
+  'note',
+  'ask',
+  'propose',
+  'review',
+  'huddle',
+  'in',
+  'outcome',
+];
+/** The owner talks; they don't ride, so they never check in, leave, or say they're in a huddle (IDEA-36 section 7). */
+const OWNER_KINDS = AGENT_KINDS.filter((k) => k !== 'checkin' && k !== 'leave' && k !== 'in');
+/** The kinds only a chase's peloton takes (IDEA-36 section 1); `plan` is the board's line, never posted. */
+const HUDDLE_KINDS = new Set(['huddle', 'in', 'outcome']);
+/** A huddle closes by itself after 20 minutes, and an agent calls at most one every 30 (IDEA-36 section 4). */
+export const HUDDLE_MS = 20 * 60_000;
+export const HUDDLE_EVERY_MS = 30 * 60_000;
+export const PLAN_MAX = 4000;
+const WHY_MAX = 300;
 /** Names no agent posts as: the owner's posts and the board's lines carry them. */
 const RESERVED = new Set(['owner', 'board']);
 /** `@<agent name>` or `@captain`, not inside a word or an address; a name's trailing punctuation isn't part of it. */
@@ -57,6 +77,15 @@ export const pelotonMethods = {
       CREATE TABLE IF NOT EXISTS peloton_seen (
         peloton TEXT NOT NULL, agent TEXT NOT NULL, last_id INTEGER NOT NULL, at INTEGER NOT NULL,
         PRIMARY KEY (peloton, agent)
+      );
+      CREATE TABLE IF NOT EXISTS peloton_huddles (
+        post INTEGER PRIMARY KEY, peloton TEXT NOT NULL, caller TEXT NOT NULL, task TEXT, opened INTEGER NOT NULL,
+        closes INTEGER NOT NULL, closed INTEGER, outcome INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS peloton_huddles_peloton ON peloton_huddles (peloton, closed);
+      CREATE TABLE IF NOT EXISTS peloton_plans (
+        peloton TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, agent TEXT NOT NULL, task TEXT,
+        at INTEGER NOT NULL, why TEXT NOT NULL, PRIMARY KEY (peloton, version)
       );
     `);
     // The riders a post mentions, as JSON (IDEA-36 section 10). Posts from before mention nobody.
@@ -210,6 +239,7 @@ export const pelotonMethods = {
    * merged, or the claim moved. Each gets a `leave` post saying why. A closed chase's peloton keeps quiet.
    */
   pelotonSweep() {
+    this.closeHuddles();
     const rows = this.checkedIn();
     if (!rows.length) return;
     let chases = null;
@@ -279,6 +309,8 @@ export const pelotonMethods = {
       ...(p.feature ? { feature: p.feature.slug, title: p.feature.title } : {}),
       open: p.open,
       roster: this.pelotonRoster(p.name, p.open),
+      huddle: this.huddleOf(p),
+      plan: this.planOf(p),
       posts: this.pelotonPosts(p.name),
     };
   },
@@ -376,6 +408,8 @@ export const pelotonMethods = {
       open: p.open,
       task: map?.wid ?? uuid.slice(0, 8),
       roster: this.pelotonRoster(p.name, p.open),
+      huddle: this.huddleOf(p),
+      plan: this.planOf(p),
       posts,
       unseen,
     };
@@ -383,10 +417,10 @@ export const pelotonMethods = {
 
   /**
    * The posts in `agent`'s pelotons it hasn't seen, for its session hooks, each once (IDEA-36 section 3): the owner's
-   * first, then mentions of and replies to the agent, then the rest in order; up to 10 when it rides a chase and 5
+   * first, then huddles opening and closing, mentions of and replies to the agent, plan changes, then the rest in order; up to 10 when it rides a chase and 5
    * elsewhere. Every one is marked seen, and `more` says how many weren't handed over (`tasks peloton` shows them).
-   * `urgent`: the wait hook's ask, which takes them only when one of them is urgent (the owner's, a mention, or a
-   * reply), so a busy peloton doesn't wake an idle agent.
+   * `urgent`: the wait hook's ask, which takes them only when one of them is urgent (any but the rest), so a busy
+   * peloton doesn't wake an idle agent.
    * @returns {{ posts: any[], more: number }}
    */
   takePeloton(agent, { urgent = false } = {}) {
@@ -395,6 +429,7 @@ export const pelotonMethods = {
     if (!AGENT.test(name)) return none;
     const rides = this.ridesOf(name);
     if (!rides.size) return none;
+    this.closeHuddles();
     const mine = new Set(
       this.sql
         .exec("SELECT id FROM peloton_posts WHERE agent = ? AND kind != 'leave'", name)
@@ -405,8 +440,17 @@ export const pelotonMethods = {
     for (const peloton of rides.keys()) rows.push(...this.unseenRows(peloton, name));
     const toYou = (row) => row.kind === 'reply' && mine.has(row.reply_to);
     const mentionsYou = (row) => mentionsOf(row).includes(name);
-    // The spec's order. Huddles (after the owner's) and plan changes (before the rest) come with BRK-212.
-    const rank = (row) => (row.agent === 'owner' && !row.task ? 0 : mentionsYou(row) || toYou(row) ? 2 : 4);
+    // The spec's order: the owner's, huddles opening and closing, mentions and replies, plan changes, the rest.
+    const rank = (row) =>
+      row.agent === 'owner' && !row.task
+        ? 0
+        : row.kind === 'huddle' || row.kind === 'outcome'
+          ? 1
+          : mentionsYou(row) || toYou(row)
+            ? 2
+            : row.kind === 'plan'
+              ? 3
+              : 4;
     if (!rows.length || (urgent && !rows.some((row) => rank(row) < 4))) return none;
     for (const peloton of rides.keys()) {
       const last = rows.filter((r) => r.peloton === peloton).at(-1);
@@ -452,15 +496,19 @@ export const pelotonMethods = {
       );
     const p = this.pelotonOf(raw);
     if (!p.open) throw new AgentError(`the chase on ${p.feature.title} has ended: its peloton takes no new posts`, 409);
+    if (HUDDLE_KINDS.has(kind) && p.kind !== 'chase')
+      throw new InputError('huddle, in, and outcome are only on a chase’s peloton: talk it through with ask or note');
     this.pelotonSweep();
     if (owner) {
+      const huddle = this.huddleRule(p, kind, 'owner', { owner: true });
       const row = this.addPost(p.name, {
         agent: 'owner',
         kind,
         text: clean,
-        replyTo: this.replyTarget(p.name, kind, replyTo)?.id ?? null,
+        replyTo: huddle?.post ?? this.replyTarget(p.name, kind, replyTo)?.id ?? null,
         mentions: this.mentionsIn(p.name, clean),
       });
+      this.huddleAfter(p, kind, row, null);
       return { post: this.postView(row), peloton: this.pelotonDetail(p.name) };
     }
     const rides = this.ridesOf(name);
@@ -479,6 +527,7 @@ export const pelotonMethods = {
         `${name} holds no claimed task that rides ${p.name}: claim your task first, and post on its repository’s or its chase’s peloton`,
         403,
       );
+    const huddle = this.huddleRule(p, kind, name);
     const reply = this.replyTarget(p.name, kind, replyTo);
     const hour = this.sql
       .exec(
@@ -499,10 +548,259 @@ export const pelotonMethods = {
       repo: repoSlugOf(map, this.defaultRepoSlug()),
       kind,
       text: clean,
-      replyTo: reply?.id ?? null,
+      replyTo: huddle?.post ?? reply?.id ?? null,
       mentions: this.mentionsIn(p.name, clean),
     });
+    this.huddleAfter(p, kind, row, uuid);
     return { post: this.postView(row), peloton: this.agentView(p.name, name, uuid) };
+  },
+
+  /** The open huddle on `peloton`, as stored, or null. */
+  openHuddle(peloton) {
+    return (
+      this.sql
+        .exec('SELECT * FROM peloton_huddles WHERE peloton = ? AND closed IS NULL ORDER BY post DESC LIMIT 1', peloton)
+        .toArray()[0] ?? null
+    );
+  },
+
+  /**
+   * Whether `name` may post `kind` on chase peloton `p` as far as huddles go (IDEA-36 section 4), and the open huddle
+   * an `in` or `outcome` answers. One huddle at a time, an agent calls one every 30 minutes (the owner isn't held to
+   * it), and an outcome is its caller's, the road captain's, or the owner's.
+   */
+  huddleRule(p, kind, name, { owner = false } = {}) {
+    if (!HUDDLE_KINDS.has(kind)) return null;
+    const open = this.openHuddle(p.name);
+    if (kind === 'huddle') {
+      if (open)
+        throw new AgentError(
+          `one huddle at a time: #${open.post} is open on ${p.name}; join it, or wait for its outcome`,
+          409,
+        );
+      if (!owner) {
+        const last = this.sql.exec('SELECT MAX(opened) AS at FROM peloton_huddles WHERE caller = ?', name).one().at;
+        if (last && Date.now() - last < HUDDLE_EVERY_MS)
+          throw new AgentError(
+            `an agent calls one huddle every 30 minutes: ask on the peloton instead, or call it after ${new Date(last + HUDDLE_EVERY_MS).toISOString().slice(11, 16)} UTC`,
+            429,
+          );
+      }
+      return null;
+    }
+    if (!open)
+      throw new AgentError(
+        `no huddle is open on ${p.name}: there’s nothing to ${kind === 'in' ? 'join' : 'close'}`,
+        409,
+      );
+    if (kind === 'outcome' && !owner && open.caller !== name && this.ridersOf(p.name).captain !== name)
+      throw new AgentError(
+        `a huddle is closed by its caller, the road captain, or the owner: post what you’d agree with as a note`,
+        403,
+      );
+    return open;
+  },
+
+  /** A huddle post opens one, and an outcome closes the open one. */
+  huddleAfter(p, kind, row, uuid) {
+    if (kind === 'huddle')
+      this.sql.exec(
+        'INSERT INTO peloton_huddles (post, peloton, caller, task, opened, closes) VALUES (?, ?, ?, ?, ?, ?)',
+        row.id,
+        p.name,
+        row.agent,
+        uuid,
+        row.at,
+        row.at + HUDDLE_MS,
+      );
+    else if (kind === 'outcome')
+      this.sql.exec(
+        'UPDATE peloton_huddles SET closed = ?, outcome = ? WHERE peloton = ? AND closed IS NULL',
+        row.at,
+        row.id,
+        p.name,
+      );
+  },
+
+  /**
+   * Closes the huddles whose 20 minutes are up, each with a line from the board saying it ended without an outcome,
+   * and, quietly, any on a chase that's no longer on.
+   */
+  closeHuddles() {
+    const open = this.sql.exec('SELECT * FROM peloton_huddles WHERE closed IS NULL').toArray();
+    if (!open.length) return;
+    const now = Date.now();
+    for (const h of open) {
+      const on =
+        this.sql.exec('SELECT chase FROM features WHERE slug = ?', h.peloton.slice(CHASE.length)).toArray()[0]
+          ?.chase === 'on';
+      if (!on) {
+        this.sql.exec('UPDATE peloton_huddles SET closed = ? WHERE post = ?', now, h.post);
+        continue;
+      }
+      if (h.closes > now) continue;
+      const row = this.addPost(h.peloton, {
+        agent: 'board',
+        kind: 'outcome',
+        text: `The huddle #${h.post} ended without an outcome after 20 minutes.`,
+        replyTo: h.post,
+      });
+      this.sql.exec('UPDATE peloton_huddles SET closed = ?, outcome = ? WHERE post = ?', row.at, row.id, h.post);
+    }
+  },
+
+  /** The open huddle on peloton `p` for the board and agents: its question, caller, times, and who's in; or null. */
+  huddleOf(p) {
+    if (p.kind !== 'chase' || !p.open) return null;
+    const h = this.openHuddle(p.name);
+    if (!h) return null;
+    const question = this.sql.exec('SELECT text FROM peloton_posts WHERE id = ?', h.post).toArray()[0]?.text ?? '';
+    const map = h.task ? this.tasks.get(h.task) : null;
+    return {
+      id: h.post,
+      question,
+      caller: h.caller,
+      task: h.task ? (map?.wid ?? h.task.slice(0, 8)) : null,
+      opened: iso(h.opened),
+      closes: iso(h.closes),
+      in: this.sql
+        .exec(
+          "SELECT agent FROM peloton_posts WHERE peloton = ? AND kind = 'in' AND reply_to = ? GROUP BY agent ORDER BY MIN(id)",
+          p.name,
+          h.post,
+        )
+        .toArray()
+        .map((r) => r.agent),
+    };
+  },
+
+  planView(row) {
+    const map = row.task ? this.tasks.get(row.task) : null;
+    return {
+      version: row.version,
+      text: row.text,
+      agent: row.agent,
+      task: row.task ? (map?.wid ?? row.task.slice(0, 8)) : null,
+      at: iso(row.at),
+      why: row.why,
+    };
+  },
+
+  /** The chase's plan as it stands on peloton `p` (IDEA-36 section 5), or null: a repository's has none. */
+  planOf(p) {
+    if (p.kind !== 'chase') return null;
+    const row = this.sql
+      .exec('SELECT * FROM peloton_plans WHERE peloton = ? ORDER BY version DESC LIMIT 1', p.name)
+      .toArray()[0];
+    return row ? this.planView(row) : null;
+  },
+
+  /** GET /api/peloton/<peloton>/plan: the plan and every revision of it, newest first. */
+  planRevisions(raw) {
+    const p = this.pelotonOf(raw);
+    return {
+      peloton: p.name,
+      plan: this.planOf(p),
+      revisions: this.sql
+        .exec('SELECT * FROM peloton_plans WHERE peloton = ? ORDER BY version DESC', p.name)
+        .toArray()
+        .map((row) => this.planView(row)),
+    };
+  },
+
+  /**
+   * PUT /api/peloton/<peloton>/plan: revises the chase's plan (IDEA-36 section 5). The owner may at any time (the
+   * signed-in board, `owner`); while a road captain runs on the chase, only it; with none, any agent riding the chase.
+   * Every revision is kept, and the board posts its line as a `plan` post.
+   */
+  revisePlan(raw, { text, why, agent } = {}, { owner = false } = {}) {
+    this.writable();
+    const name = owner ? 'owner' : String(agent ?? '').trim();
+    if (owner && agent !== undefined && agent !== null && agent !== '')
+      throw new InputError('from the board you revise the plan as the owner: leave agent out');
+    if (!owner && !AGENT.test(name)) throw new InputError('say which agent revises it: agent is its name on the board');
+    if (!owner && RESERVED.has(name.toLowerCase()))
+      throw new AgentError('owner and board are the board’s names: revise it as your agent’s name', 403);
+    const p = this.pelotonOf(raw);
+    if (p.kind !== 'chase') throw new InputError('only a chase’s peloton has a plan: this is a repository’s');
+    if (!p.open) throw new AgentError(`the chase on ${p.feature.title} has ended: its plan stays as it is`, 409);
+    const clean = String(text ?? '')
+      .replace(/\r\n?/gu, '\n')
+      .trim();
+    if (!clean) throw new InputError('write the plan first');
+    if (clean.length > PLAN_MAX)
+      throw new InputError(`the plan is up to ${PLAN_MAX.toLocaleString('en-GB')} characters`);
+    const line = String(why ?? '')
+      .replace(/\s+/gu, ' ')
+      .trim();
+    if (!line) throw new InputError('say in a line what changed: why');
+    if (line.length > WHY_MAX) throw new InputError(`say what changed in up to ${WHY_MAX} characters`);
+    if (looksLikeSecret(clean) || looksLikeSecret(line))
+      throw new InputError('that plan looks like it holds a token or key; write it without it');
+    this.pelotonSweep();
+    let uuid = null;
+    if (!owner) {
+      uuid = this.ridesOf(name).get(p.name) ?? null;
+      if (!uuid)
+        throw new AgentError(`${name} holds no claimed task in this chase: only its riders revise its plan`, 403);
+      const { captain } = this.ridersOf(p.name);
+      if (captain && captain !== name)
+        throw new AgentError(
+          `${captain} keeps the plan while it runs as the chase’s road captain: post a propose with your change instead`,
+          403,
+        );
+      const hour = this.sql
+        .exec(
+          "SELECT COUNT(*) AS n FROM peloton_posts WHERE agent = ? AND at > ? AND kind != 'leave'",
+          name,
+          Date.now() - 3_600_000,
+        )
+        .one().n;
+      if (hour >= POSTS_AN_HOUR)
+        throw new AgentError(
+          `${POSTS_AN_HOUR} posts in the last hour is the most an agent makes: revise it later`,
+          429,
+        );
+    }
+    const version =
+      (this.sql.exec('SELECT MAX(version) AS v FROM peloton_plans WHERE peloton = ?', p.name).one().v ?? 0) + 1;
+    const now = Date.now();
+    const row = this.sql
+      .exec(
+        'INSERT INTO peloton_plans (peloton, version, text, agent, task, at, why) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *',
+        p.name,
+        version,
+        clean,
+        name,
+        uuid,
+        now,
+        line,
+      )
+      .one();
+    const map = uuid ? this.tasks.get(uuid) : null;
+    const post = this.addPost(p.name, {
+      agent: name,
+      task: uuid,
+      repo: map ? repoSlugOf(map, this.defaultRepoSlug()) : null,
+      kind: 'plan',
+      text: `Plan v${version}: ${line}`,
+    });
+    return {
+      plan: this.planView(row),
+      post: this.postView(post),
+      peloton: owner ? this.pelotonDetail(p.name) : this.agentView(p.name, name, uuid),
+    };
+  },
+
+  /** The plan of the open chase task `uuid` is in, if it has one: what an agent the chase starts reads first. */
+  planForTask(uuid) {
+    if (!this.chasing()) return null;
+    for (const { row, tasks } of this.openChases()) {
+      if (!tasks.has(uuid)) continue;
+      const plan = this.planOf({ kind: 'chase', name: `${CHASE}${row.slug}` });
+      if (plan) return { peloton: `${CHASE}${row.slug}`, ...plan };
+    }
+    return null;
   },
 
   /** The post a `reply` answers on `peloton`, or null for any other kind; a 400 or 404 when there's none. */
@@ -545,5 +843,15 @@ export const pelotonMethods = {
       this.sql.exec('DELETE FROM peloton_posts WHERE peloton = ? AND at < ?', peloton, before);
     }
     this.sql.exec('DELETE FROM peloton_seen WHERE at < ?', now - 2 * DAY);
+    // The plan and the huddles go with the chase's posts: once it's been closed a day, or its feature is gone.
+    for (const { peloton } of this.sql
+      .exec('SELECT peloton FROM peloton_plans UNION SELECT peloton FROM peloton_huddles')
+      .toArray()) {
+      const row = features.get(peloton.slice(CHASE.length));
+      if (row?.chase === 'on') continue;
+      if (row?.chase_ended && now - row.chase_ended < DAY) continue;
+      this.sql.exec('DELETE FROM peloton_plans WHERE peloton = ?', peloton);
+      this.sql.exec('DELETE FROM peloton_huddles WHERE peloton = ?', peloton);
+    }
   },
 };

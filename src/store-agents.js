@@ -218,6 +218,7 @@ export function firePayload(
   routine = null,
   attachments = 0,
   repo = null,
+  plan = null,
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
@@ -243,6 +244,8 @@ export function firePayload(
           String(note).slice(0, 4000),
         ]
       : []),
+    // The chase's plan (IDEA-36 section 5), for an agent the chase starts: it starts lined up with the rest.
+    ...(plan ? ['', `The chase’s plan (${plan.peloton}, version ${plan.version}):`, plan.text] : []),
   ].join('\n');
 }
 
@@ -1470,9 +1473,10 @@ export const agentsMethods = {
 
     try {
       const attachments = this.sql.exec('SELECT COUNT(*) AS n FROM attachments WHERE task = ?', uuid).one().n;
+      const plan = trigger === 'chase' || trigger === 'chase-fix' ? this.planForTask(uuid) : null;
       const session = await fireRoutine(
         credentials,
-        firePayload(task, agent, trigger, note, kind, pr, routine, attachments, repo),
+        firePayload(task, agent, trigger, note, kind, pr, routine, attachments, repo, plan),
         isDefault ? null : repo.slug,
       );
       this.sql.exec(

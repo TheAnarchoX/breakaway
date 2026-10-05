@@ -526,6 +526,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'GET') return send(await s.pelotonDetailApi(parts[1]));
     if (parts.length === 2 && method === 'POST')
       return send(await (via === 'cookie' ? s.pelotonOwnerPostApi(parts[1], body) : s.pelotonPostApi(parts[1], body)));
+    if (parts.length === 3 && parts[2] === 'plan' && method === 'GET') return send(await s.pelotonPlanApi(parts[1]));
+    if (parts.length === 3 && parts[2] === 'plan' && method === 'PUT')
+      return send(
+        await (via === 'cookie' ? s.pelotonOwnerPlanApi(parts[1], body) : s.pelotonPlanReviseApi(parts[1], body)),
+      );
   }
   // Notifications are the owner's: the signed-in browser only, never the bearer token agents hold.
   if (parts[0] === 'push' && parts.length <= 2) {
