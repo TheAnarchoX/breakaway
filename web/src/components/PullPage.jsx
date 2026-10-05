@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   ArrowLeft,
+  ArrowRight,
   ChevronRight,
   CircleCheck,
   CircleX,
@@ -14,10 +15,12 @@ import { api } from '../lib/api.js';
 import {
   actions,
   agents,
+  byUuid,
   confirmDialog,
   diffWrap,
   github,
   hashFor,
+  isKickoffIdea,
   loadGitHub,
   mergeMethod,
   mergeSkip,
@@ -785,6 +788,62 @@ function Description({ page }) {
   );
 }
 
+/**
+ * The kickoff whose plan this pull request is (WEB-48): the one whose IDEA it closes, finished or not, or null. An IDEA
+ * the board hasn't loaded is asked about by its work ID alone.
+ */
+function useKickoff(page) {
+  const idea = page?.tasks.find((t) => {
+    if (!t.closes) return false;
+    const known = byUuid.value.get(t.uuid);
+    return known ? isKickoffIdea(known) : t.wid.startsWith('IDEA-');
+  });
+  const uuid = idea?.uuid ?? null;
+  const [kickoff, setKickoff] = useState(null);
+  useEffect(() => {
+    setKickoff(null);
+    if (!uuid) return;
+    let live = true;
+    api(`kickoffs?idea=${encodeURIComponent(uuid)}`)
+      .then((data) => {
+        if (live) setKickoff(data.kickoffs?.[0] ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [uuid]);
+  return kickoff;
+}
+
+/** The way back to the kickoff: alongside Merge while it's open, and the next thing to do once it's merged. */
+function BackToKickoff({ kickoff, page }) {
+  const merged = page.state === 'merged';
+  const href = hashFor({ view: 'kickoff', kickoff: kickoff.id, task: null, pr: null, ping: null });
+  return (
+    <div class="pr-actions pr-kickoff">
+      <p class="meta">
+        {merged
+          ? `${kickoff.name}’s plan is in. Its first tasks are waiting on its kickoff page.`
+          : `This is ${kickoff.name}’s plan. Once it’s merged, you start building from its kickoff page.`}
+      </p>
+      <a class={`btn ${merged ? 'btn-primary' : 'btn-outline'} btn-sm`} href={href}>
+        {merged ? (
+          <>
+            Back to {kickoff.name}: start building
+            <ArrowRight size={16} aria-hidden="true" />
+          </>
+        ) : (
+          <>
+            <ArrowLeft size={16} aria-hidden="true" />
+            Back to {kickoff.name}’s kickoff
+          </>
+        )}
+      </a>
+    </div>
+  );
+}
+
 export function PullPage() {
   const { number, repo } = pullRef.value ?? { number: null, repo: null };
   const [state, setState] = useState({ page: null, error: null, loading: true });
@@ -805,6 +864,7 @@ export function PullPage() {
   }, [number, repo, tick]);
 
   const { page, error, loading } = state;
+  const kickoff = useKickoff(page);
   // While an agent is on its task, look again each minute, so the page follows it and Fix with an agent comes back after.
   const onIt = page?.agent?.busy ?? null;
   useEffect(() => {
@@ -956,6 +1016,7 @@ export function PullPage() {
           )}
           <PrActions page={page} reload={() => setTick((n) => n + 1)} />
           <AgentActions page={page} reload={() => setTick((n) => n + 1)} />
+          {kickoff && page.state !== 'closed' && <BackToKickoff kickoff={kickoff} page={page} />}
         </section>
       </div>
 

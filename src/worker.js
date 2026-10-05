@@ -444,7 +444,8 @@ async function handleApi(request, env, url, ctx) {
   // Kickoffs (IDEA-26): anyone signed in reads them; starting, changing, registering, and stopping one is the
   // owner's, from the signed-in browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'kickoffs' && parts.length <= 3) {
-    if (parts.length === 1 && method === 'GET') return send(await s.kickoffsApi());
+    if (parts.length === 1 && method === 'GET')
+      return send(await s.kickoffsApi({ idea: url.searchParams.get('idea') }));
     if (parts.length === 2 && method === 'GET')
       return send(await s.kickoffApi(parts[1], { check: url.searchParams.get('check') === '1' }));
     if (method !== 'GET' && via !== 'cookie')
