@@ -6,6 +6,7 @@
  */
 import { secret } from './secrets.js';
 import { refinePrompt } from './decision.js';
+import { isKickoffIdea } from './kickoff.js';
 import { prVerdict } from './github.js';
 import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
@@ -154,6 +155,9 @@ const TRIGGER_TEXT = {
   cloudflare: 'by a Cloudflare alert, from the board',
   general: 'by a prompt from the owner, from the board',
   chase: 'by the owner’s chase of a feature, because the task became ready',
+  'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
+  'road-captain': 'by the owner, as the road captain of a chase',
+  kickoff: 'by “Send answers and carry on” on a kickoff’s decision, from the board',
 };
 
 /**
@@ -185,6 +189,7 @@ export function firePayload(
     ...(kind === 'pr-review' ? ['Mode: pr-review', `Pull request: #${pr}`] : []),
     ...(kind === 'routine' ? ['Mode: routine', `Routine: ${routine}`] : []),
     ...(kind === 'general' ? ['Mode: general'] : []),
+    ...(kind === 'kickoff' ? ['Mode: kickoff'] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
     ...(attachments > 0 ? [`Attachments: ${attachments}`] : []),
     ...(note
@@ -327,6 +332,10 @@ export const agentsMethods = {
    * and sets the task's `spec` to the path; while one on that spec is open it returns that one instead. With
    * `dryRun` it makes nothing and returns the prompt it would write (without the note), the open one if any, and
    * why the repository's routine can't start one, for the web's dialog to show first.
+   *
+   * With `chase` (a feature's slug, BRK-137), the agent is that chase's road captain: the owner's prompt, with the
+   * chase as it stands now under it, in the chase's repository, tagged with the feature so it rides the chase's
+   * peloton. A road captain is always force started: the owner pressed for it while the chase holds the slots.
    */
   async startGeneral({
     prompt,
@@ -338,6 +347,7 @@ export const agentsMethods = {
     spec = null,
     note = null,
     dryRun = false,
+    chase = null,
   } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
@@ -346,8 +356,23 @@ export const agentsMethods = {
     let tags = ['agent', 'general'];
     let specPath = null;
     const given = (value) => value !== null && value !== undefined && value !== '';
-    if ([decision, next, spec].filter(given).length > 1)
-      throw new AgentError('start one from a decision, from a spec, or for the next version: only one of them', 400);
+    if ([decision, next, spec, chase].filter(given).length > 1)
+      throw new AgentError(
+        'start one from a decision, from a spec, for the next version, or for a chase: only one of them',
+        400,
+      );
+    if (given(chase)) {
+      if (dryRun) throw new AgentError('a road captain has no dry run: write what it should do', 400);
+      if (!text) throw new AgentError('write what the road captain should do first', 400);
+      const captain = this.roadCaptain(String(chase), text, this.views(), await this.connectedRepos());
+      if (repo && String(repo).trim().toLowerCase() !== captain.repo)
+        throw new AgentError(`the chase on ${captain.feature} runs in ${captain.repo}: its road captain does too`, 400);
+      repo = captain.repo;
+      text = captain.brief;
+      title = captain.title;
+      tags = ['agent', 'general', captain.slug];
+      force = true;
+    }
     /** @type {{ repo: string, open: [string, any] | undefined, write: (note: string | null) => { title: string, brief: string }, extra?: Record<string, any> } | null} */
     let source = null;
     if (given(decision)) {
@@ -491,7 +516,14 @@ export const agentsMethods = {
     if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t make a task for the agent', res.status);
     const uuid = res.body.tasks[0].uuid;
     try {
-      return { ...(await this.startAgent(uuid, { trigger: 'general', kind: 'general', force })), waiting: null };
+      return {
+        ...(await this.startAgent(uuid, {
+          trigger: given(chase) ? 'road-captain' : 'general',
+          kind: 'general',
+          force,
+        })),
+        waiting: null,
+      };
     } catch (error) {
       // Over the board's limits, or Claude's hourly one: the task stays and starts when there's room.
       const queued = error instanceof AgentError && (error.forceable || error.status === 429);
@@ -526,21 +558,27 @@ export const agentsMethods = {
     const tags = JSON.parse(this.ghMeta('gh_tags', slug) ?? '[]');
     const found = versionBase([...releases.filter((r) => !r.draft).map((r) => r.tag), ...tags.map((t) => t.name)]);
     if (!found) return null;
+    return { ...found, choices: nextChoices(found.base), preparing: this.preparingVersion(slug) };
+  },
+
+  /**
+   * The open +version task preparing repository `slug`'s next minor or major (BRK-100), if any, with the version its
+   * title names while it still names one (its agent may retitle it).
+   */
+  preparingVersion(slug) {
     const fallback = this.defaultRepoSlug();
     const open = [...this.tasks].find(
       ([, map]) => map.status === 'pending' && map.tag_general && map.tag_version && repoSlugOf(map, fallback) === slug,
     );
-    const task = open ? this.detail(open[0]) : null;
+    if (!open) return null;
+    const task = this.detail(open[0]);
     return {
-      ...found,
-      choices: nextChoices(found.base),
-      preparing: task && {
-        uuid: task.uuid,
-        wid: task.wid,
-        short: task.short,
-        description: task.description,
-        claim: task.claim,
-      },
+      uuid: task.uuid,
+      wid: task.wid,
+      short: task.short,
+      description: task.description,
+      claim: task.claim,
+      version: /\b(\d+\.\d+\.\d+)\b/u.exec(task.description ?? '')?.[1] ?? null,
     };
   },
 
@@ -855,9 +893,10 @@ export const agentsMethods = {
   /**
    * "Fix with an agent" on an open pull request: its task (made from the PR if it has none), and an
    * agent on the PR. `problem` is conflicts, failing, or review; it must be true of the PR now.
-   * The agent never merges: it pushes a fix or leaves a note.
+   * The agent never merges: it pushes a fix or leaves a note. A chase passes `chase` (its feature's slug and
+   * title) and its own `trigger`, so the agent knows it fixes the pull request as one of the chase's agents.
    */
-  async fixPr(number, { problem = null, note = null, repo = null, force = false } = {}) {
+  async fixPr(number, { problem = null, note = null, repo = null, force = false, chase = null, trigger = 'pr' } = {}) {
     await this.ready();
     const slug = this.checkRepoSlug(repo);
     const row = this.sql
@@ -920,9 +959,17 @@ export const agentsMethods = {
     const map = this.tasks.get(uuid);
     const busy = this.claimBlocker({ ...map, uuid });
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
-    const text = [what, note ? `Owner's note: ${String(note).slice(0, 2000)}` : null].filter(Boolean).join('\n');
+    const text = [
+      what,
+      chase
+        ? `This pull request is part of the chase on ${chase.title} (+${chase.slug}), and the agent that opened it has stopped. Fix it as one of the chase's agents: check in on the chase's peloton too while it's open.`
+        : null,
+      note ? `Owner's note: ${String(note).slice(0, 2000)}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
     return {
-      ...(await this.startAgent(uuid, { trigger: 'pr', note: text, kind: 'fix-pr', pr: pr.number, force })),
+      ...(await this.startAgent(uuid, { trigger, note: text, kind: 'fix-pr', pr: pr.number, force })),
       already: null,
     };
   },
@@ -1053,6 +1100,10 @@ export const agentsMethods = {
     if (kind === 'refine' && !String(note ?? '').trim())
       throw new AgentError('say what it should look at or change', 400);
     const map = this.tasks.get(uuid);
+    // A kickoff's IDEA is interviewed and planned, not shaped from its words alone (BRK-134): any start on it is
+    // the kickoff mode, whichever button or tick asked.
+    if (kind === 'build' && isKickoffIdea(map)) kind = 'kickoff';
+    if (kind === 'kickoff' && !isKickoffIdea(map)) throw new AgentError('that task isn’t a kickoff’s idea', 400);
     const repo = map ? this.repoOfTask(map) : this.githubRepo();
     if (!repo) throw new AgentError(`${map.wid ?? 'This task'} is in ${map.repo}, which isn’t a registered repository`);
     const isDefault = repo.slug === this.defaultRepoSlug();
@@ -1110,6 +1161,8 @@ export const agentsMethods = {
       {
         claim: agent,
         start: true,
+        // A kickoff's run that waited for room (Send answers and carry on) starts once, not again after it.
+        ...(kind === 'kickoff' && map?.autostart ? { autostart: null } : {}),
         ...(taken ? { annotate: `${agent} took over the claim from ${taken}.`, by: 'board' } : {}),
       },
       new Date(),
@@ -1247,24 +1300,28 @@ export const agentsMethods = {
     const repoRoom = new Map();
     let free = max - running.length;
     const queue = [];
-    // Security fixes first, then general agents (the owner asked for them now), then the rest.
-    const order = (t) => (t.alert ? 0 : t.tags.includes('general') ? 1 : 2);
+    // A kickoff's next run waiting for room was the owner's press too (Send answers and carry on).
+    const pressed = (t) => t.tags.includes('general') || isKickoffIdea(t);
+    // Security fixes first, then what the owner asked for now (general agents, a kickoff's next run), then the rest.
+    const order = (t) => (t.alert ? 0 : pressed(t) ? 1 : 2);
     const waiting = views.filter((v) => v.autostart && v.status === 'pending' && !v.claim);
     for (const t of waiting.sort((a, b) => order(a) - order(b) || rank(a, b))) {
       const blocker = this.agentBlocker(t);
       let reason = blocker;
-      // A general agent has no area until it picks one, and the owner pressed Start: only room holds it back.
+      // A general agent has no area until it picks one, and the owner pressed Start: only room holds it back. So does
+      // a kickoff's next run, which the owner's Send answers and carry on queued.
       const general = t.tags.includes('general');
       // Force start (BRK-105) skips the board's own limits only: not a blocked task, an unconnected routine, or Claude's limit.
       let forceable = false;
       if (!repoRoom.has(t.repo)) repoRoom.set(t.repo, this.repoRoom(t.repo, running));
-      if (!reason && !autostart && !general) {
+      const kickoff = !general && isKickoffIdea(t);
+      if (!reason && !autostart && !general && !kickoff) {
         reason = 'auto-start is off';
         forceable = true;
       }
       if (!reason && connected && !connected.has(t.repo)) reason = `${t.repo}’s agent routine isn’t connected`;
       // A security fix doesn't wait for its area to be free.
-      if (!reason && busy.has(area(t)) && !t.alert && !general) {
+      if (!reason && busy.has(area(t)) && !t.alert && !general && !kickoff) {
         reason = `an agent is already working in ${this.areaName(t.repo, t.project)} (${busy.get(area(t))})`;
         forceable = true;
       }
@@ -1279,7 +1336,7 @@ export const agentsMethods = {
       if (!reason) {
         free -= 1;
         repoRoom.set(t.repo, repoRoom.get(t.repo) - 1);
-        if (!general) busy.set(area(t), t.wid);
+        if (!general && !kickoff) busy.set(area(t), t.wid);
       }
       queue.push({
         uuid: t.uuid,
@@ -1288,6 +1345,7 @@ export const agentsMethods = {
         project: t.project,
         repo: t.repo,
         general,
+        kickoff,
         reason: reason ?? 'starting now',
         ready: !reason,
         forceable: Boolean(reason) && forceable,
@@ -1305,7 +1363,14 @@ export const agentsMethods = {
     const started = [];
     for (const item of this.autostartQueue(this.views(), connected).filter((q) => q.ready)) {
       try {
-        await this.startAgent(item.uuid, item.general ? { trigger: 'general', kind: 'general' } : { trigger: 'auto' });
+        await this.startAgent(
+          item.uuid,
+          item.general
+            ? { trigger: 'general', kind: 'general' }
+            : item.kickoff
+              ? { trigger: 'kickoff', kind: 'kickoff' }
+              : { trigger: 'auto' },
+        );
         started.push(item.wid ?? item.uuid);
       } catch {
         // It stays in the queue; the next tick tries again.

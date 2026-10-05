@@ -31,6 +31,7 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 | You need the owner to choose | Ask with a decision, not prose: `add "<title>" --tag owner --decision <file.json>` and make the work that waits `--depends` on it. Only the owner answers, on the board; read the answers with `show`. |
 | Part of the work needs the owner (an install, a dashboard, a sign-off) | Finish your part, then `add` a `+owner` task for the rest that `--depends` on yours. |
 | Task needs design choices | Write the spec in `docs/specs/<ID>-<slug>.md` and `modify <ID> --spec <path>`. |
+| Reading the repository's specs | `tasks specs` lists them, newest first, with each one's status and its tasks; `specs show <path>` prints one with the tasks that link it. They're read from GitHub's default branch, so a spec still in a pull request isn't there yet. |
 | You're blocked by another task | `comment` why, `release`, and pick the blocker or another task. |
 | A claim looks abandoned | Ask the owner; don't take it. |
 | Opening a pull request for a spec, plan, or partial step | Write `Part of <ID>.`, not `Closes`, and don't put it in `--pr`: merging the pull request in that field finishes the task. A branch name alone never closes anything. |
@@ -38,6 +39,7 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 | `claim` says the task belongs to another repository | Don't cross it with `--repo`: that work belongs in a checkout of its own repository. `comment` and `release` if the board started you on it. |
 | The board started you | Follow [`prompts/breakaway.md`](../../../prompts/breakaway.md), which starts with the core. Check the payload's `Repository:` line against `git remote get-url origin` first. |
 | The task is an `IDEA-` | Shape it, don't build it: "Shaping an idea" in the core. |
+| The board started you on a kickoff (`Mode: kickoff`) | Interview the owner first: ask plain questions as a decision on the IDEA (at most 12, then at most 6 more if something important is open), `release`, and stop; once they're answered, shape it with `AGENTS.md`, the prompt's sections, an **In short**, and a `<slug>-v1` feature. "Kicking off a project" in the core. |
 | The board started you from the owner's prompt (`Mode: general`) | Give the task an area first (`modify <ID> --project <area>` gives it its work ID), retitle it, and take the smallest path: a pull request, board edits noted on each task, a spec, a task in another repository, or a decision or ping. Releasing it with no pull request closes it. "Running a general agent" in the core. |
 | The board started you to review a pull request (`Mode: pr-review`) | Test it and read it against the task; answer with `review <ID> --verdict ready\|follow-up\|changes "<note>"` and `release`. Never push or merge. "Reviewing a pull request" in the core. |
 | Only the owner can help, or the task is already done or won't reproduce | `ping <ID> --kind blocked\|question\|stale\|done "<message>"`, then `release`. Ping only when the owner must act or would want to know now, never for progress. Full rules: "Pinging the owner" in the core. |

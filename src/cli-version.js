@@ -1,8 +1,7 @@
 /**
- * The version of the board's CLI and the files repos init copies with it (CLD-193). The board reports it
- * (every API answer's X-Tasks-Cli header, and health), so a copy in another repository can say it's older
- * and how to update it. scripts/tasks/version.test.js fails when the copied files change and this doesn't:
- * so it lives in the board's package (CLD-135) and the CLI imports it from here.
+ * The number the board's CLI and the files repos init copies were versioned by (CLD-193), frozen by BRK-148: never
+ * change it. The board still sends it (every API answer's X-Tasks-Cli header, and `cli` in health), so an old copy of
+ * the CLI in another repository says how to switch to npx. What a checkout compares now is the board's release (the
+ * X-Tasks-Release header): pull requests no longer bump anything when a copied file changes.
  */
-export const CLI_VERSION = 71;
-export const CLI_FINGERPRINT = '248397d3e09c4dc1';
+export const CLI_VERSION = 73;

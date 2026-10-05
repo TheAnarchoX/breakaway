@@ -5,7 +5,11 @@
  * chase's per-area limit (`parallel`). It never starts, answers, or merges what only the owner can do: those are
  * Needs you. A task refused twice is Stuck. When nothing can run and only the owner can help, it pings once; when
  * every task is done or in review, it ends. Stopping starts nothing new and leaves running agents alone.
+ * A chase also fixes its own pull requests (BRK-137): when one conflicts or its checks fail and no agent
+ * picks it up within FIX_GRACE_MS, it starts a fix agent on it, and a chase that ended by itself keeps
+ * doing that for its open pull requests.
  */
+import { prVerdict } from './github.js';
 import { AgentError } from './store-agents.js';
 import { InputError, rank } from './model.js';
 
@@ -14,6 +18,10 @@ const DEFAULT_PARALLEL = 3;
 const STUCK_AFTER = 2;
 const NOTES_KEPT_MS = 30 * 86_400_000;
 const STATES = ['off', 'on', 'stopped', 'done'];
+/** How long a chase's pull request that conflicts or fails waits for its own agent before the chase starts a fix. */
+const FIX_GRACE_MS = 10 * 60_000;
+/** The problems a chase fixes on its pull requests, in the words its view uses. */
+const PROBLEMS = { conflicts: 'conflicts with its base branch', failing: 'has failing checks' };
 
 const label = (t) => t.wid ?? t.short;
 const inReview = (t) => Boolean(t.github?.some((p) => p.closes && p.state === 'open'));
@@ -73,6 +81,10 @@ export const chaseMethods = {
         detail TEXT, dismissed INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS chase_events_at ON chase_events (at);
+      CREATE TABLE IF NOT EXISTS chase_fixes (
+        task TEXT NOT NULL, pr INTEGER NOT NULL, head TEXT NOT NULL, problem TEXT NOT NULL, slug TEXT NOT NULL,
+        seen INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (task, pr, head, problem)
+      );
     `);
   },
 
@@ -144,6 +156,31 @@ export const chaseMethods = {
   },
 
   /**
+   * What's wrong with an in-review chase task's pull request that an agent can fix (conflicts or failing
+   * checks), or null: the problem on its current head, when the chase first saw it, and the fixes it started.
+   */
+  chasePullProblem(t, pr) {
+    const row = this.sql
+      .exec('SELECT data FROM gh_pulls WHERE repo = ? AND number = ?', pr.repo ?? t.repo, pr.number)
+      .toArray()[0];
+    if (!row) return null;
+    const data = JSON.parse(row.data);
+    const problem = prVerdict(data);
+    if (!(problem in PROBLEMS)) return null;
+    const head = data.headSha ?? '';
+    const fix = this.sql
+      .exec(
+        'SELECT seen, tries FROM chase_fixes WHERE task = ? AND pr = ? AND head = ? AND problem = ?',
+        t.uuid,
+        pr.number,
+        head,
+        problem,
+      )
+      .toArray()[0];
+    return { pr: pr.number, head, problem, words: PROBLEMS[problem], seen: fix?.seen ?? null, tries: fix?.tries ?? 0 };
+  },
+
+  /**
    * Who a chase on feature `row` starts now and why each other task in it waits (section 3): its tasks and
    * their blockers, sorted into done, in review, running, waiting, Needs you, Stuck, and the queue. `views`
    * and `connected` are the board's now. The queue counts what auto-start starts first (security fixes,
@@ -210,6 +247,8 @@ export const chaseMethods = {
     const needsYou = [];
     const stuck = [];
     const candidates = [];
+    // Pull requests that conflict or fail, for the tick to note when it first saw them.
+    const watch = [];
     for (const entry of set) {
       const { t } = entry;
       const item = brief(entry);
@@ -218,9 +257,26 @@ export const chaseMethods = {
       else if (t.status !== 'pending') add('done', `it’s ${t.status}`);
       else if (inReview(t)) {
         const pr = openPull(t);
-        const why = `its pull request #${pr.number} is open: merging is yours`;
-        add('in-review', why);
-        needsYou.push({ ...item, kind: 'merge', why, pr: pr.number });
+        const fix = this.chasePullProblem(t, pr);
+        const busy = fix && this.claimBlocker(t);
+        const agentOn = busy && /^(claude|codex)-/u.test(t.claim);
+        if (fix) watch.push({ uuid: t.uuid, ...fix });
+        if (!fix || (busy && !agentOn)) {
+          const why = `its pull request #${pr.number} is open: merging is yours`;
+          add('in-review', why);
+          needsYou.push({ ...item, kind: 'merge', why, pr: pr.number });
+        } else if (agentOn) add('running', `${t.claim} is on its pull request #${pr.number}, which ${fix.words}`);
+        else if (fix.tries >= STUCK_AFTER) {
+          const why = `its pull request #${pr.number} still ${fix.words} after ${fix.tries} agents tried to fix it`;
+          add('stuck', why);
+          stuck.push({ ...item, why, last: t.comments.at(-1)?.text ?? null, pr: pr.number });
+        } else if (fix.seen === null || Date.now() - fix.seen < FIX_GRACE_MS)
+          add(
+            'waiting',
+            `its pull request #${pr.number} ${fix.words}: if no agent picks it up within ${FIX_GRACE_MS / 60_000} minutes, the chase starts one to fix it`,
+            { until: true },
+          );
+        else candidates.push({ t, item: { ...item, fix: { pr: pr.number, problem: fix.problem } }, fix });
       } else if (t.claim || running.has(t.uuid)) add('running', `${t.claim} has it`);
       else if (t.blocked)
         add(
@@ -253,11 +309,12 @@ export const chaseMethods = {
       }
     }
 
-    // Nearest to unblocking the most work first: the ranking startNext uses, then what each unblocks.
-    candidates.sort((a, b) => rank(a.t, b.t) || b.item.unblocks - a.item.unblocks);
+    // Fixes first, since their tasks are nearly done; then nearest to unblocking the most work first: the
+    // ranking startNext uses, then what each unblocks.
+    candidates.sort((a, b) => Number(!a.fix) - Number(!b.fix) || rank(a.t, b.t) || b.item.unblocks - a.item.unblocks);
     const queue = [];
     const start = [];
-    for (const { t, item } of candidates) {
+    for (const { t, item, fix } of candidates) {
       let reason = null;
       let capacity = true;
       const area = areaOf(t);
@@ -281,7 +338,7 @@ export const chaseMethods = {
           inArea.set(area, (inArea.get(area) ?? 0) + 1);
           workingIn.set(area, [...near, t]);
         }
-        start.push(t);
+        start.push(fix ? { ...t, fix: item.fix } : t);
       }
       queue.push({ ...item, ready: !reason, reason: reason ?? 'starting now', capacity: capacity && Boolean(reason) });
       tasks.push({ ...item, state: 'ready', why: reason });
@@ -300,7 +357,7 @@ export const chaseMethods = {
     };
     const order = new Map(set.map((e, i) => [e.t.uuid, i]));
     tasks.sort((a, b) => order.get(a.uuid) - order.get(b.uuid));
-    return { tasks, needsYou, stuck, queue, start, line };
+    return { tasks, needsYou, stuck, queue, start, line, watch };
   },
 
   /** "3 running, 2 ready, 1 waiting for you": the chase's live line (section 3.9). */
@@ -415,32 +472,84 @@ export const chaseMethods = {
   /**
    * Starts every ready task in every chase that's on, after auto-start (the alarm and the cron call it), then
    * ends a chase with nothing left to do and pings once about one that can't move without the owner.
+   * A chase that ended by itself in the last 30 days only fixes its open pull requests: it starts nothing else.
    * Returns the work IDs it started.
    */
   async chaseTick({ only = null } = {}) {
     await this.ready();
+    const now = Date.now();
+    this.sql.exec('DELETE FROM chase_fixes WHERE seen < ?', now - NOTES_KEPT_MS);
     const rows = this.sql
-      .exec("SELECT * FROM features WHERE chase = 'on' ORDER BY chase_started, slug")
+      .exec(
+        "SELECT * FROM features WHERE chase = 'on' OR (chase = 'done' AND chase_ended > ?) ORDER BY chase_started, slug",
+        now - NOTES_KEPT_MS,
+      )
       .toArray()
       .filter((r) => !only || r.slug === only);
     if (!rows.length) return [];
     const connected = await this.connectedRepos();
     const started = [];
     for (const row of rows) {
+      const on = row.chase === 'on';
       const plan = this.chaseQueue(row, this.views(), connected);
+      for (const w of plan.watch)
+        this.sql.exec(
+          'INSERT OR IGNORE INTO chase_fixes (task, pr, head, problem, slug, seen) VALUES (?, ?, ?, ?, ?, ?)',
+          w.uuid,
+          w.pr,
+          w.head,
+          w.problem,
+          row.slug,
+          now,
+        );
       let startedHere = 0;
       for (const t of plan.start) {
+        if (!on && !t.fix) continue;
         try {
-          await this.startAgent(t.uuid, { trigger: 'chase' });
+          if (t.fix) await this.chaseFix(row, t);
+          else await this.startAgent(t.uuid, { trigger: 'chase' });
           started.push(label(t));
           startedHere += 1;
         } catch {
           // It stays in the queue; a failed fire counts toward Stuck, and the next tick tries again.
         }
       }
-      await this.chaseSettle(this.featureRow(row.slug), startedHere ? null : plan);
+      if (on) await this.chaseSettle(this.featureRow(row.slug), startedHere ? null : plan);
     }
     return started;
+  },
+
+  /**
+   * Starts a fix agent on chase task `t`'s pull request (`t.fix`), through Fix with an agent, telling it it's
+   * one of the chase's agents. Each try counts, started or refused, so a pull request two fixes couldn't
+   * mend on the same head is Stuck.
+   */
+  async chaseFix(row, t) {
+    const { pr, problem } = t.fix;
+    const fix = this.chasePullProblem(t, { number: pr, repo: t.repo });
+    if (fix?.problem !== problem) throw new AgentError(`#${pr} changed since the chase looked`, 409);
+    const tried = () =>
+      this.sql.exec(
+        'UPDATE chase_fixes SET tries = tries + 1 WHERE task = ? AND pr = ? AND head = ? AND problem = ?',
+        t.uuid,
+        pr,
+        fix.head,
+        problem,
+      );
+    let res;
+    try {
+      res = await this.fixPr(pr, {
+        problem,
+        repo: t.repo,
+        chase: { slug: row.slug, title: row.title },
+        trigger: 'chase-fix',
+      });
+    } catch (error) {
+      tried();
+      throw error;
+    }
+    if (res.already) throw new AgentError(res.already, 409);
+    tried();
   },
 
   /**
@@ -480,6 +589,53 @@ export const chaseMethods = {
     if (!held.length) return;
     const top = held.sort((a, b) => b.unblocks - a.unblocks)[0];
     await this.chasePing(row, top);
+  },
+
+  /**
+   * A road captain for the chase on feature `slug` (BRK-137): an agent the owner starts with their own prompt to
+   * help the chase along. Its repository is the one most of the feature's own tasks are in; its brief is the
+   * owner's prompt with the chase as it stands under it: the live line, the open pull requests and what's wrong
+   * with each, and what's Stuck or needs the owner.
+   */
+  roadCaptain(slug, prompt, views, connected) {
+    const row = this.featureRow(slug);
+    if (row.chase === 'off')
+      throw new AgentError(`${row.title} has no chase yet: press Chase first, then start its road captain`, 409);
+    const set = this.chaseMembers(row, views);
+    const counts = new Map();
+    for (const { t, member } of set) if (member) counts.set(t.repo, (counts.get(t.repo) ?? 0) + 1);
+    const repo = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? this.defaultRepoSlug();
+    const plan = this.chaseQueue(row, views, connected);
+    const pulls = [];
+    for (const { t } of set) {
+      if (t.status !== 'pending' || !inReview(t)) continue;
+      const pr = openPull(t);
+      const fix = this.chasePullProblem(t, pr);
+      pulls.push(`- #${pr.number} closes ${label(t)} (${t.repo}): ${fix ? fix.words : `it’s ${pr.verdict ?? 'open'}`}`);
+    }
+    const held = [
+      ...plan.stuck.map((x) => `- ${x.wid ?? x.description}: stuck, ${x.why}`),
+      ...plan.needsYou.map((x) => `- ${x.wid ?? x.description}: ${x.why}`),
+    ];
+    const first = (prompt.split('\n').find((line) => line.trim()) ?? prompt).trim();
+    const brief = [
+      prompt,
+      '',
+      `## The chase on ${row.title} (+${row.slug})`,
+      '',
+      `You're its road captain: the owner started you to help this chase along, in ${repo}. Your task carries the +${row.slug} tag, so you ride the chase's peloton too: read it, and answer its agents. \`npx breakaway chase ${row.slug} --dry-run\` shows it as it is when you read it, and \`npx breakaway github\` the pull requests' checks.`,
+      '',
+      `When the owner pressed it: ${this.chaseLine(plan.line)} (state ${row.chase}).`,
+      ...(pulls.length ? ['', 'Its open pull requests:', ...pulls] : []),
+      ...(held.length ? ['', 'What holds the rest:', ...held] : []),
+    ].join('\n');
+    return {
+      slug: row.slug,
+      feature: row.title,
+      repo,
+      brief,
+      title: `Road captain for ${row.title}: ${first}`.slice(0, 200),
+    };
   },
 
   /** The stall ping (section 3.6): a `blocked` ping on the task that frees the most, as the board, which pushes. */

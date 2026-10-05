@@ -11,7 +11,6 @@ import {
   agentsMd,
   boardSources,
   cliCopySources,
-  copiedSources,
   importClosure,
   initCommitMessage,
   initPlan,
@@ -615,22 +614,6 @@ describe('repos init --update (CLD-193)', () => {
     expect(plan.removals).toEqual([]);
     expect(plan.notes.join('\n')).not.toMatch(/session hooks to/u);
   });
-
-  it('versions every file it copies, and not cli-version.js itself', () => {
-    const sources = copiedSources(read);
-    expect(sources).toEqual(
-      expect.arrayContaining([
-        'scripts/tasks.mjs',
-        'scripts/record-deployment.mjs',
-        'prompts/core.md',
-        'taskrc',
-        'scripts/task',
-        '.agents/skills/tasks/SKILL.md',
-        '.agents/skills/pipeline/SKILL.md',
-      ]),
-    );
-    expect(sources).not.toContain('src/cli-version.js');
-  });
 });
 
 describe('this machine’s taskrc (CLD-193)', () => {
@@ -663,7 +646,7 @@ describe('the board’s copy of the files, for an empty repository’s first com
     expect(sources).toEqual(expect.arrayContaining(['prompts/repository.md', 'prompts/core.md', 'scripts/task']));
     expect(
       BOARD_FILES,
-      'src/board-files.json is behind the files repos init copies: run node scripts/board-files.mjs and commit it.',
+      'src/board-files.json is behind the files repos init copies: pnpm test writes it first, or run node scripts/board-files.mjs.',
     ).toEqual(Object.fromEntries(sources.map((path) => [path, read(path)])));
   });
 

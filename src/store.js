@@ -49,6 +49,8 @@ import { connectionsMethods } from './store-connections.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
+import { kickoffsMethods } from './store-kickoffs.js';
+import { isKickoffIdea } from './kickoff.js';
 import { initMethods } from './store-init.js';
 import { routineKeepMethods } from './store-routine-keep.js';
 
@@ -103,6 +105,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initStats();
     this.initRepos();
     this.initConnections();
+    this.initKickoffs();
     this.initRoutineKeep();
   }
 
@@ -785,31 +788,63 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * Submits a decision (IDEA-6): the owner's answers are checked against the questions, then in one
    * version stored, +decide removed, the task finished, and a plain summary added as a comment. Only
    * the owner submits: a request with no `by`, or `owner`, is theirs; an agent's name is refused.
+   *
+   * A kickoff's IDEA asks its decision on itself (BRK-134), so answering it keeps the IDEA open: its plan's pull
+   * request closes it. `carryOn` is Send answers and carry on, a kickoff's only: the same answers, then the next
+   * kickoff run started on the IDEA, or queued for room like any start. worker.js takes it from the signed-in
+   * browser only. A routine that isn't connected refuses the press before anything is answered; a start refused
+   * after that (Claude said no) keeps the answers, and `refusal` says why, for a Start later.
    */
   submitDecision(ref, body) {
-    return this.run(() => {
+    return this.run(async () => {
       const uuid = this.resolve(ref);
-      ownerOnly(body?.by, 'answer a decision');
+      ownerOnly(body?.by, body?.carryOn ? 'answer a decision and start the next run' : 'answer a decision');
       const task = this.detail(uuid);
       if (!task.decision) throw new InputError(`${label(task)} has no decision to answer`);
+      const kickoff = isKickoffIdea(task);
+      if (body?.carryOn && !kickoff)
+        throw new InputError(`${label(task)} isn't a kickoff's idea: send its answers, then start an agent`);
       if (task.status === 'completed' && task.decisionAnswers)
         throw new Conflict(`${label(task)} is already decided; reopen it to change an answer`, { task });
       if (task.status !== 'pending') throw new Conflict(`${label(task)} is ${task.status}`, { task });
+      if (kickoff && !task.tags.includes('decide'))
+        throw new Conflict(`${label(task)}'s questions are already answered; reopen them to change an answer`, {
+          task,
+        });
+      if (kickoff && task.claim)
+        throw new Conflict(`${label(task)} is claimed by ${task.claim}; answer once its agent has stopped`, { task });
       const answers = validateAnswers(task.decision, body?.answers);
-      return ok({
-        task: this.change(uuid, {
-          decisionAnswers: { by: 'owner', at: new Date().toISOString(), answers },
-          removeTags: ['decide'],
-          status: 'completed',
-          claim: null,
-          annotate: summarize(task.decision, answers),
-          by: 'board',
-        }),
+      // The next run's own checks, before anything is answered: a routine that isn't connected refuses the press.
+      const repo = body?.carryOn ? this.repoOfTask(this.tasks.get(uuid)) : null;
+      if (repo) await this.checkRoutineReady(repo.slug);
+      const answered = this.change(uuid, {
+        decisionAnswers: { by: 'owner', at: new Date().toISOString(), answers },
+        removeTags: ['decide'],
+        ...(kickoff ? {} : { status: 'completed' }),
+        claim: null,
+        annotate: summarize(task.decision, answers),
+        by: 'board',
       });
+      if (!body?.carryOn) return ok({ task: answered });
+      try {
+        const started = await this.startAgent(uuid, { trigger: 'kickoff', kind: 'kickoff' });
+        return ok({ ...started, waiting: null });
+      } catch (error) {
+        // Over the board's limits, or Claude's hourly one: the run waits for room and starts on its own.
+        const queued = error instanceof AgentError && (error.forceable || error.status === 429);
+        if (!(error instanceof AgentError)) throw error;
+        if (!queued) return ok({ task: this.detail(uuid), run: null, waiting: null, refusal: error.message });
+        const task = this.change(uuid, { autostart: 'yes' }, new Date(), 'agents');
+        this.scheduleAgentsCheck();
+        return ok({ task, run: null, waiting: error.message, forceable: Boolean(error.forceable) }, 202);
+      }
     });
   }
 
-  /** Reopens a submitted decision: pending with +decide again, answers kept and editable. Owner only. */
+  /**
+   * Reopens a submitted decision: pending with +decide again, answers kept and editable. Owner only. A kickoff's
+   * IDEA stays open when it's answered, so reopening it only puts +decide back, while no agent holds it.
+   */
   reopenDecision(ref, body) {
     return this.run(() => {
       const uuid = this.resolve(ref);
@@ -817,6 +852,13 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const task = this.detail(uuid);
       if (!task.decision || !task.decisionAnswers)
         throw new Conflict(`${label(task)} has no submitted decision`, { task });
+      if (isKickoffIdea(task) && task.status === 'pending') {
+        if (task.tags.includes('decide')) throw new Conflict(`${label(task)}'s questions are open already`, { task });
+        if (task.claim) throw new Conflict(`${label(task)} is claimed by ${task.claim}`, { task });
+        return ok({
+          task: this.change(uuid, { addTags: ['decide'], annotate: 'Decision reopened by the owner.', by: 'board' }),
+        });
+      }
       if (task.status !== 'completed')
         throw new Conflict(`${label(task)} isn't decided; it's ${task.status}`, { task });
       return ok({
@@ -1221,6 +1263,16 @@ function summarise(ops) {
       changes.push({ kind: 'decision-reopened' });
     else changes.push({ kind: status === 'completed' ? 'done' : status === 'deleted' ? 'deleted' : 'reopened' });
   }
+  // A kickoff's IDEA stays open when its decision is answered or reopened (BRK-134): only +decide moves.
+  const decideOp = ops.find((o) => o.type === 'update' && o.property === 'tag_decide');
+  if (decideOp && !set.has('status') && !created) {
+    if (!decideOp.value && set.get('decision_answers')) changes.push({ kind: 'decision-answered' });
+    else if (
+      decideOp.value &&
+      [...set].some(([key, value]) => key.startsWith('annotation_') && /^Decision reopened/u.test(String(value)))
+    )
+      changes.push({ kind: 'decision-reopened' });
+  }
   if (set.has('claim'))
     changes.push(set.get('claim') ? { kind: 'claimed', by: set.get('claim') } : { kind: 'released' });
   if (set.has('brief'))
@@ -1265,6 +1317,7 @@ Object.assign(
   updatesMethods,
   selfUpdateMethods,
   wizardMethods,
+  kickoffsMethods,
   initMethods,
   routineKeepMethods,
 );
@@ -1293,6 +1346,7 @@ const apiActions = {
         spec: body?.spec ?? null,
         note: typeof body?.note === 'string' ? body.note : null,
         dryRun: Boolean(body?.dryRun),
+        chase: body?.chase ?? null,
       });
       return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });

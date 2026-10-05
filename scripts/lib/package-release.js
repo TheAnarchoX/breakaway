@@ -56,6 +56,25 @@ export function nextPrerelease(current, tags, prefix = 'v') {
   return { version, base, tag: `${prefix}${version}` };
 }
 
+/**
+ * The version a stable release's pull request sets package.json to (BRK-118, WEB-39): the next minor or major after
+ * the stable, or null when there is nothing to set. A patch is null, since the pre-releases count patches by
+ * themselves, and so is a package.json already at or past the choice (main moved on before an older pre-release was
+ * released).
+ * @param {string} stable the version just released, like 1.3.0
+ * @param {string} next patch, minor, or major
+ * @param {string} current package.json's version on the default branch
+ * @returns {string | null}
+ */
+export function nextVersion(stable, next, current) {
+  const [maj, min] = parts(stable);
+  parts(current);
+  if (next === 'patch') return null;
+  if (next !== 'minor' && next !== 'major') throw new Error(`next is patch, minor, or major, not "${next}".`);
+  const version = next === 'major' ? `${maj + 1}.0.0` : `${maj}.${min + 1}.0`;
+  return compareVersions(current, version) >= 0 ? null : version;
+}
+
 /** The pre-release among `tags` (the tags on one commit), if one was already staged from it. */
 export function prereleaseAmong(tags, prefix = 'v') {
   const prerelease = prereleasePattern(prefix);

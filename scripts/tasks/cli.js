@@ -49,17 +49,18 @@ export function unknownSubcommand(command, first) {
 
 /**
  * What a CLI says about where it runs from, or null to say nothing (BRK-7). The CLI ships on npm, so `packaged` (run
- * through npx) has nothing to say. In a checkout of the board's own repository, `own` older than the board's (`board`,
- * its X-Tasks-Cli header) means pull. Anywhere else the CLI is an old copy that `repos init` used to commit: it
- * works while the API stays compatible, and on each run it says how to switch.
+ * through npx) has nothing to say. In a checkout of the board's own repository, `behind` (the board's `release`, its
+ * X-Tasks-Release header, isn't in this checkout's history: releaseBehind) means pull (BRK-148). Anywhere else the
+ * CLI is an old copy that `repos init` used to commit: it works while the API stays compatible, and on each run it says
+ * how to switch. `own` and `board` are the frozen CLI number (src/cli-version.js) such a copy carries and the board sends.
  */
-export function staleCliWarning({ own, board, boardCheckout, slug, packaged = false }) {
+export function staleCliWarning({ own, board, boardCheckout, slug, packaged = false, release = null, behind = false }) {
   if (packaged) return null;
   const theirs = Number(board);
   const older = Number.isInteger(theirs) && theirs > own;
   if (boardCheckout) {
-    if (!older) return null;
-    return `this checkout's board CLI (version ${own}) is older than the board's (${theirs}), so a command may be missing or behave differently: pull the default branch to update it.`;
+    if (!release || !behind) return null;
+    return `this checkout is behind the board's release (v${release}), so a command may be missing or behave differently: pull the default branch to update it.`;
   }
   const newer = older ? `, older than the board's (${theirs}), so a command may be missing or behave differently` : '';
   return `this checkout carries a copy of the board's CLI (version ${own}${newer}). The CLI is on npm now: run it as npx ${CLI_PACKAGE} <command> instead of node scripts/tasks.mjs, and remove the copy with npx ${CLI_PACKAGE} repos init ${slug || '<slug>'} --update, which opens a pull request here.`;
@@ -75,6 +76,22 @@ export function staleCliWarning({ own, board, boardCheckout, slug, packaged = fa
 export function githubRequest(repo, { sync = false } = {}) {
   if (sync) return ['POST', 'github/sync', repo ? { repo } : undefined];
   return ['GET', repo ? `github?repo=${encodeURIComponent(repo)}` : 'github', undefined];
+}
+
+/**
+ * Whether the checkout `git` runs in is behind the board's release `release` (BRK-148): it has the release's tag
+ * (`v1.4.0-main.9`, which the release workflow pushes) and that commit isn't in HEAD's history. Without the tag (tags
+ * not fetched yet), or in a `shallow` clone, whose cut history can hide an ancestor, it can't tell, and says no.
+ * `git(args)` runs git and returns its exit code.
+ * @param {string | null} release
+ * @param {(args: string[]) => number | null} git
+ * @param {{ shallow?: boolean }} [options]
+ */
+export function releaseBehind(release, git, { shallow = false } = {}) {
+  if (shallow || !release || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(release)) return false;
+  const tag = `refs/tags/v${release}`;
+  if (git(['rev-parse', '-q', '--verify', `${tag}^{commit}`]) !== 0) return false;
+  return git(['merge-base', '--is-ancestor', tag, 'HEAD']) === 1;
 }
 
 /** What `github fix` accepts for --problem: the same three the pull request page offers. */
@@ -106,18 +123,27 @@ export function pullAgentRequest(action, number, { repo = null, problem, note, f
 }
 
 /**
- * `npx breakaway github release <pre-release>` (BRK-103): the owner releases a package's pre-release as its stable, as
- * Release on the GitHub page does. The board starts the repository's release.yml stable job, and npm waits for the
- * owner's 2FA; it refuses an agent, so the request always says who asks.
+ * `npx breakaway github release <pre-release> [--next patch|minor|major]` (BRK-103, WEB-39): the owner releases a
+ * package's pre-release as its stable, as Release on the GitHub page does, with what the default branch works toward
+ * next. The board starts the repository's release.yml stable job, and npm waits for the owner's 2FA; it refuses an
+ * agent, so the request always says who asks, and refuses a pre-release whose stable is already out (409).
  * @param {string | undefined} version the pre-release, like 1.4.0-main.5 (or its tag)
- * @param {{ repo?: string | null, by?: string }} [options]
+ * @param {{ repo?: string | null, by?: string, next?: string | null }} [options]
  * @returns {{ error?: string, request?: [string, string, Record<string, string>] }}
  */
-export function packageReleaseRequest(version, { repo = null, by } = {}) {
+export function packageReleaseRequest(version, { repo = null, by, next = null } = {}) {
   const v = String(version ?? '').trim();
   if (!/^(?:\S+@|v)?\d+\.\d+\.\d+-main\.\d+$/u.test(v))
     return { error: 'say which pre-release: npx breakaway github release <version>, like 1.4.0-main.5' };
-  return { request: ['POST', 'github/release', { version: v, ...(repo ? { repo } : {}), ...(by ? { by } : {}) }] };
+  if (next !== null && next !== undefined && !['patch', 'minor', 'major'].includes(String(next)))
+    return { error: '--next is patch, minor, or major' };
+  return {
+    request: [
+      'POST',
+      'github/release',
+      { version: v, ...(next ? { next: String(next) } : {}), ...(repo ? { repo } : {}), ...(by ? { by } : {}) },
+    ],
+  };
 }
 
 export const REVIEW_VERDICTS = ['ready', 'follow-up', 'changes'];

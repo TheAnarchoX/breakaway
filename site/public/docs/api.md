@@ -42,7 +42,7 @@ curl -H "Authorization: Bearer $BREAKAWAY_TOKEN" "$BREAKAWAY_URL/api/health"
 | `POST /api/tasks/<ref>/done` | `{ note?, by? }`. |
 | `POST /api/tasks/<ref>/comments` | `{ text, by? }`. Append-only. |
 | `POST /api/tasks/<ref>/pings` | An agent pings you: `{ kind, message, proposal? }`. |
-| `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. |
+| `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. On a kickoff’s idea, `carryOn: true` also starts its next run, or queues it for room (`202`, `waiting`); signed-in board only. |
 | `POST /api/next` | The best ready task; with `claim: true`, claims it in one step. |
 
 A task you create or change takes these fields: `description` (the title), `brief`, `done_when`, `project` (the area), `priority`, `horizon`, `spec`, `pr`, `due`, `wait`, `scheduled`, `status`, `autostart`, `decision`, and `repo` (on create). A create also takes `tags`, `depends`, `related`, and `note`; a change takes `addTags`, `removeTags`, `addDepends`, `removeDepends`, `addRelated`, `removeRelated`, and `annotate`.
@@ -126,8 +126,25 @@ Without `repo`, the default repository is read.
 | `POST /api/repos/<slug>/release` | Give a removed repository’s slug and prefixes back. Owner. |
 | `GET /api/repos/setup?slug=` | The Add a repository wizard’s state. |
 
+## Kickoffs
+
+A kickoff is a new project on its way from a pitch to a registered repository with its idea. Writing is the owner’s, from the signed-in web board only: the bearer token reads.
+
+| Route | Does |
+| --- | --- |
+| `GET /api/kickoffs` | The kickoffs in progress, oldest first. One whose idea is done leaves the list. |
+| `GET /api/kickoffs/<id>` | One kickoff, with the Add a repository wizard’s steps for its repository (`check=1` asks GitHub live). |
+| `POST /api/kickoffs` | Start one from its `pitch`; the `name`, `slug`, and `areas` are suggested unless given (`dryRun: true` only checks). Owner. |
+| `PATCH /api/kickoffs/<id>` | Change its pitch, name, slug, areas, or `github` until it’s registered. Owner. |
+| `POST /api/kickoffs/<id>/register` | Register its repository with the slug and areas it saved. Owner. |
+| `DELETE /api/kickoffs/<id>` | Stop it, with the images still waiting for its idea. A registered repository and its idea stay. Owner. |
+| `POST /api/kickoffs/<id>/images` | Add an image, as on a task (up to 4). Owner. |
+| `DELETE /api/kickoffs/<id>/images/<n>` | Delete one of its images. Owner. |
+
+Registering a kickoff’s repository, from here, the wizard, or `repos add`, makes its idea there: the pitch as its description, its images, and the tag `kickoff-project`.
+
 ## The sync protocol
 
 `/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/).
 
-> **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. The board reports the CLI version it was built with in the `X-Tasks-Cli` header of every answer; a copy of the CLI that’s too old says how to update.
+> **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. Every answer carries the board’s release in the `X-Tasks-Release` header, and the CLI number an old copy of the CLI compares in `X-Tasks-Cli`; a copy that’s too old says how to update.
