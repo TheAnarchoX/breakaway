@@ -52,10 +52,10 @@ A plugin is installed once and works in every checkout, so it has to be told whi
 | Option | Type | What |
 | --- | --- | --- |
 | `board_url` | string, required | The board's address, like `https://board.example.com` |
-| `token` | string, sensitive | The board's token. Claude Code keeps it in the system keychain, never in a file |
+| `token` | string, sensitive | The board's token. Claude Code keeps it in the system keychain (section 2 says where a session sees it) |
 | `agent_name` | string, optional | The name to claim with; empty means `claude-<branch>` |
 
-The hooks and commands see them as `CLAUDE_PLUGIN_OPTION_BOARD_URL`, `CLAUDE_PLUGIN_OPTION_TOKEN`, and `CLAUDE_PLUGIN_OPTION_AGENT_NAME`. The CLI reads them **after** its own settings: the environment (`BREAKAWAY_URL`, `BREAKAWAY_TOKEN`, `BREAKAWAY_AGENT`), then `tasks.env`, then the checkout's `.taskrc`, and only then the plugin's options. So a machine already set up with `npx breakaway setup` keeps working unchanged, and a cloud session, which can't answer a prompt, uses the environment's credentials as it does today. `npx breakaway health` says which source it used, never the value.
+The hooks and commands see them as `CLAUDE_PLUGIN_OPTION_BOARD_URL`, `CLAUDE_PLUGIN_OPTION_TOKEN`, and `CLAUDE_PLUGIN_OPTION_AGENT_NAME`. The CLI reads them **after** its own settings: the environment (`BREAKAWAY_URL`, `BREAKAWAY_TOKEN`, `BREAKAWAY_AGENT`), then `tasks.env`, then the checkout's `.taskrc`, and only then the plugin's options. So a machine already set up with `npx breakaway setup` keeps working unchanged, and a cloud session, which can't answer a prompt, uses the environment's credentials as it does today. `npx breakaway health` says which source it used, never the value. Claude Code exports the options only to the plugin's hooks, not to the commands its skills run, so the plugin's `SessionStart` hook appends them, under the same names, to `CLAUDE_ENV_FILE`, which Claude Code applies to the session's later Bash commands (CLI-8). For the session, the token is then in that file, as it is in `tasks.env` for a machine set up with `npx breakaway setup`.
 
 ### 3. Two ways to install it
 - **For one person:** `/plugin marketplace add TheAnarchoX/breakaway`, then `/plugin install breakaway@breakaway`; or from Anthropic's directory once it's listed (section 6). This repository's root carries `.claude-plugin/marketplace.json`, naming one plugin whose source is this repository's `plugin/` folder on the `plugin` branch (a `git-subdir` source with `ref: plugin`), so people get released versions, never `main`'s.
@@ -107,7 +107,7 @@ Listing details (name `breakaway`, the description from the brand guide, the ico
 - **A new major of the CLI:** the plugin pins `breakaway@1`, as `repos init` does, and moves with the release that changes the pin.
 
 ## Privacy
-- The plugin stores nothing itself; the token lives in Claude Code's keychain, and the URL and agent name in its settings.
+- The plugin stores nothing itself; the token lives in Claude Code's keychain, and the URL and agent name in its settings. While a session runs, they're also in Claude Code's file for that session's environment (section 2), so the CLI in its Bash commands can read them.
 - Nothing new leaves the machine: everything goes to the person's own board, plus the npm download the hooks already do.
 - An agent sees what the CLI shows it today, for the checkout's repository.
 
