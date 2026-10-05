@@ -17,12 +17,15 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { checkoutRunsHooks } from './plugin-hooks.js';
 import { boardConfig, claimedTask, projectRoot } from './hook-config.js';
 import { sessionRequest } from './proxy.js';
 import { waitForMessages } from './session-messages.js';
 
 async function main() {
   const root = projectRoot();
+  // The plugin's copy of this hook steps aside when the checkout's settings run it too (BRK-159).
+  if (checkoutRunsHooks(root)) return 0;
   const claim = claimedTask(root);
   if (!claim?.agent) return 0;
   for await (const _ of process.stdin); // Claude Code sends the hook's input; it isn't needed.
