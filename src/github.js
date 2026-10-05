@@ -90,6 +90,17 @@ export class GitHubError extends Error {
   }
 }
 
+/** UTF-8 text as base64, for the contents API's writes. */
+export const base64 = (text) => {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+};
+
+/** The contents API's base64 (wrapped in newlines) back to UTF-8 text. */
+export const fromBase64 = (content) =>
+  new TextDecoder().decode(Uint8Array.from(atob(String(content ?? '').replace(/\s+/gu, '')), (c) => c.charCodeAt(0)));
+
 /**
  * Whether GitHub refused because the repository has no commits yet (CLD-191): it answers 409 "Git Repository
  * is empty." to /commits and /contents until the first push, which `npx breakaway repos init` makes.
