@@ -430,15 +430,18 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const agents = this.agentLinks();
     const shipped = this.shippedLinks();
     const fallback = this.defaultRepoSlug();
-    const all = [...this.tasks].map(([uuid, map]) => ({
-      ...view(uuid, map, this.tasks, now),
-      repo: map.repo || fallback,
-      github: this.githubFor(map, links),
-      shipped: shipped.get(map.wid)?.live ?? null,
-      staged: shipped.get(map.wid)?.staging ?? null,
-      ships: shipped.get(map.wid)?.list ?? [],
-      agentRun: this.agentFor(uuid, map, agents),
-    }));
+    const all = [...this.tasks].map(([uuid, map]) => {
+      const github = this.githubFor(map, links);
+      return {
+        ...view(uuid, map, this.tasks, now),
+        repo: map.repo || fallback,
+        github,
+        shipped: shipped.get(map.wid)?.live ?? null,
+        staged: shipped.get(map.wid)?.staging ?? null,
+        ships: shipped.get(map.wid)?.list ?? [],
+        agentRun: this.agentFor(uuid, map, agents, github),
+      };
+    });
     for (const task of all) {
       if (task.status !== 'pending') continue;
       for (const dep of task.depends) blocking.set(dep, [...(blocking.get(dep) ?? []), task.uuid]);

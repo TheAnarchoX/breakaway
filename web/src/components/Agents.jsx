@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   Bot,
+  CircleAlert,
   ExternalLink,
+  Hand,
+  CirclePause,
+  RefreshCw,
   Sparkles,
   FileText,
   Globe,
@@ -16,15 +20,13 @@ import {
   MessageSquareText,
   Send,
 } from 'lucide-preact';
-import { api, enc } from '../lib/api.js';
+import { api, enc, sentence } from '../lib/api.js';
 import { ago, openPr, ref, time } from '../lib/model.js';
-import { actions, agents, go } from '../lib/store.js';
+import { actions, agents, go, hashFor, openPull } from '../lib/store.js';
 import { RichText } from '../lib/richtext.jsx';
 import { Dialog, useAutosize, Dictate } from './ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
-/** A session that has sent nothing for this long after starting is shown as not sending. */
-export const SILENT_AFTER = 3 * 60_000;
 export const TRIGGER_LABEL = {
   manual: 'started by hand',
   next: 'started with the next few',
@@ -274,11 +276,172 @@ function Entry({ e }) {
   );
 }
 
+/** States of a run whose session started, so it has output to watch. */
+const SESSION_STATES = new Set(['starting', 'working', 'quiet', 'silent']);
+
+/** States that ask nothing of you while the run goes well. */
+const QUIET_STATES = new Set(['starting', 'working', 'quiet']);
+
+/** Run kinds Try again starts the same way (Start an agent); the others start from their own button. */
+const AGAIN_KINDS = new Set(['build', 'kickoff', null, undefined]);
+
+/** Why Claude refused the routine, in plain words, from a paused run's error (BRK-144's wordings). */
+function pausedWhy(error) {
+  const text = String(error ?? '');
+  if (/token was refused/iu.test(text)) return 'Claude refused the routine’s token.';
+  if (/has no access/iu.test(text)) return 'Claude says the routine’s token has no access to it.';
+  if (/is gone on claude/iu.test(text)) return 'Claude has no routine at that address any more.';
+  return text.trim() ? sentence(text) : 'Claude refused the routine.';
+}
+
+/**
+ * A run's state in words (docs/specs/IDEA-33-onboarding-hardening.md, "When an agent run goes wrong"): its label,
+ * the `tone` it shows in, what it means and what happens next, and whether it asks something of you. Null for a
+ * run that finished its part.
+ * @param {Record<string, any> | null | undefined} state the run's `state` from the board (src/run-state.js)
+ * @param {number} [now]
+ */
+export function runWords(state, now = Date.now()) {
+  if (!state || state.id === 'ended') return null;
+  const at = (iso) => time(iso);
+  switch (state.id) {
+    case 'starting':
+      return state.late
+        ? {
+            label: 'Starting',
+            tone: 'warn',
+            line: `Nothing from it for ${ago(state.since, now).replace(' ago', '')}. Open the session to see what it’s doing.`,
+            yours: true,
+          }
+        : {
+            label: 'Starting',
+            tone: 'quiet',
+            line: 'Nothing to do. It shows here once the session says something; the first run can take several minutes.',
+          };
+    case 'working':
+      return { label: 'Working now', tone: 'live', line: 'Nothing to do.' };
+    case 'quiet':
+      return {
+        label: `Quiet for ${ago(state.since, now).replace(' ago', '')}`,
+        tone: 'quiet',
+        line: 'Nothing to do. Agents go quiet while they think or wait on checks.',
+      };
+    case 'silent':
+      return {
+        label: `Silent since ${at(state.since)}`,
+        tone: 'warn',
+        line: 'It keeps its claim and its slot. Open the session and decide: let it carry on, or stop it and release the task.',
+        yours: true,
+      };
+    case 'retrying':
+      return state.again
+        ? {
+            label: 'Retrying',
+            tone: 'quiet',
+            line: `Claude’s limit for starting sessions. Nothing to do: it starts again by itself at ${at(state.until)}.`,
+          }
+        : {
+            label: 'Claude’s limit',
+            tone: 'quiet',
+            line: `Claude’s limit for starting sessions. Start it again after ${at(state.until)}.`,
+          };
+    case 'paused':
+      return {
+        label: 'Paused',
+        tone: 'warn',
+        line: `${pausedWhy(state.error)} Reconnect the routine; starts resume once it works.`,
+        yours: true,
+      };
+    case 'failed':
+      return {
+        label: 'Couldn’t start',
+        tone: 'error',
+        line: `${state.error ? sentence(state.error) : 'Claude didn’t start the session.'}${state.until ? ` Auto-start tries again at ${at(state.until)}.` : ''}`,
+        yours: !state.until,
+      };
+    case 'needs-you':
+      return {
+        label: 'Needs you',
+        tone: 'warn',
+        line: state.fix
+          ? `${state.fix.tries} fix agents on #${state.fix.pr} didn’t get it green, so no third starts by itself. Read what they tried, then fix it yourself or force start one more.`
+          : `It pinged you: “${state.ping?.message ?? ''}”`,
+        yours: true,
+      };
+    default:
+      return null;
+  }
+}
+
+const TONE_ICON = { warn: TriangleAlert, error: CircleAlert, quiet: Hourglass };
+
+/**
+ * A run's state, what happens next, and your action, if any: Try again, Reconnect the routine, or Open the session.
+ * `compact` keeps it to the label and the line, for the Agents view's lists.
+ * @param {Record<string, any>} props
+ */
+export function RunStatus({ state, run = null, repo = null, onRetry = null, busy = false, compact = false }) {
+  const words = runWords(state);
+  if (!words) return null;
+  const Icon = state.id === 'paused' ? CirclePause : state.id === 'needs-you' ? Hand : TONE_ICON[words.tone];
+  const url = run?.url ?? null;
+  const retry = onRetry && state.id === 'failed' && !state.until && AGAIN_KINDS.has(run?.kind);
+  const openSession = url && (state.id === 'silent' || (state.id === 'starting' && state.late));
+  return (
+    <div class={`run-status is-${words.tone} ${compact ? 'is-compact' : ''}`}>
+      <span class={`live-state run-label ${words.tone === 'live' ? 'is-live' : ''}`}>
+        {words.tone === 'live' ? (
+          <span class="live-dot" aria-hidden="true" />
+        ) : (
+          Icon && <Icon size={14} aria-hidden="true" />
+        )}
+        {words.label}
+      </span>
+      {/* In a list, a run that's fine needs only its label: the line is for what happens next or what to do. */}
+      {!(compact && QUIET_STATES.has(state.id) && !words.yours) && <p class="run-line small">{words.line}</p>}
+      {(retry || openSession || state.id === 'paused' || state.id === 'needs-you') && (
+        <div class="run-actions">
+          {retry && (
+            <button type="button" class="btn btn-primary btn-sm" disabled={busy} onClick={onRetry}>
+              <RefreshCw size={16} aria-hidden="true" />
+              {busy ? 'Starting…' : 'Try again'}
+            </button>
+          )}
+          {state.id === 'paused' && (
+            <a class="btn btn-outline btn-sm" href={hashFor({ view: 'connections', task: null, pr: null, ping: null })}>
+              Reconnect the routine
+            </a>
+          )}
+          {state.id === 'needs-you' && state.fix && (
+            <button type="button" class="btn btn-outline btn-sm" onClick={() => openPull(state.fix.pr, repo)}>
+              Open #{state.fix.pr}
+            </button>
+          )}
+          {state.id === 'needs-you' && state.ping && (
+            <a
+              class="btn btn-outline btn-sm"
+              href={hashFor({ view: 'inbox', task: null, pr: null, ping: String(state.ping.id) })}
+            >
+              Open the ping
+            </a>
+          )}
+          {openSession && (
+            <a class="btn btn-outline btn-sm" href={url} {...ext}>
+              Open the session
+              <ExternalLink size={14} aria-hidden="true" />
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * What the session has done, as it happens. Polls while it's on screen; for watching only.
  * @param {Record<string, any>} props
  */
-export function LiveLog({ task: t }) {
+export function LiveLog({ task: t, onRetry = null, busy = false }) {
   const [entries, setEntries] = useState([]);
   const [info, setInfo] = useState(null);
   const box = useRef(null);
@@ -319,27 +482,23 @@ export function LiveLog({ task: t }) {
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   };
   const run = info?.run;
-  // Past a few minutes with nothing at all, the session isn't sending, rather than still starting.
-  const silent = !info?.lastAt && run?.startedAt && Date.now() - Date.parse(run.startedAt) > SILENT_AFTER;
+  // Started a while ago with nothing at all: the session isn't sending, rather than still starting.
+  const silent = !info?.lastAt && (run?.state?.late || run?.state?.id === 'silent');
+  // Until the first poll answers, the task's own copy of its run says where it is.
+  const state = run ? run.state : (t.agentRun?.state ?? null);
   return (
     <div class="live-log">
       <div class="live-head">
-        <span class={`live-state ${info?.live ? 'is-live' : ''}`}>
-          {info?.live ? (
-            <>
-              <span class="live-dot" aria-hidden="true" />
-              Working now
-            </>
-          ) : info?.lastAt ? (
-            `Quiet for ${ago(info.lastAt).replace(' ago', '')}`
-          ) : silent ? (
-            'No live output'
-          ) : (
-            'Starting…'
-          )}
-        </span>
-        {run?.url && (
-          <a class="btn btn-quiet btn-sm" href={run.url} {...ext}>
+        {state && runWords(state) ? (
+          <RunStatus state={state} run={run ?? t.agentRun} repo={t.repo} onRetry={onRetry} busy={busy} />
+        ) : (
+          <span class="live-state">
+            {!info ? 'Loading…' : info.lastAt ? `Not running · last output ${ago(info.lastAt)}` : 'Not running'}
+          </span>
+        )}
+        {/* Silent, or late to start: Open the session is the action, in the state's own line. */}
+        {run?.url && !(state?.id === 'silent' || state?.late) && (
+          <a class="btn btn-quiet btn-sm live-session" href={run.url} {...ext}>
             Open the session
             <ExternalLink size={14} aria-hidden="true" />
           </a>
@@ -357,14 +516,16 @@ export function LiveLog({ task: t }) {
           from main, and hooks load when a session starts), or it can’t reach the board. Open the session on claude.ai
           to follow it there.
         </p>
-      ) : (
+      ) : state?.id === 'starting' ? (
         <p class="muted small">
           Nothing yet. The session shows up here once it has claimed the task; that takes a minute while it starts.
         </p>
+      ) : null}
+      {(entries.length > 0 || SESSION_STATES.has(state?.id)) && (
+        <p class="meta">
+          For watching only: kept 14 days, never in Taskwarrior. Secrets are removed before they leave the session.
+        </p>
       )}
-      <p class="meta">
-        For watching only: kept 14 days, never in Taskwarrior. Secrets are removed before they leave the session.
-      </p>
     </div>
   );
 }
@@ -579,7 +740,10 @@ export function AgentSection({ task: t }) {
   const connected = agents.value.data?.connected;
   const { blocker, canAuto, canStart, queued } = startState(t);
   const run = t.agentRun;
-  const hasSession = Boolean(run?.url || run?.lastAt);
+  // A run whose start failed has no session, but its state (and Try again) still shows (WEB-41).
+  const hasSession = Boolean(run?.url || run?.lastAt || runWords(run?.state));
+  // Try again in the run's state stands in for Start an agent.
+  const again = canStart && run?.state?.id === 'failed' && !run.state.until && AGAIN_KINDS.has(run.kind);
   const open = t.status === 'pending';
   // Every open task can be refined, so the section shows on all of them.
   if (!hasSession && !open) return null;
@@ -623,7 +787,7 @@ export function AgentSection({ task: t }) {
             </label>
           )}
           <div class="agent-actions">
-            {canStart && (
+            {canStart && !again && (
               <button type="button" class="btn btn-primary btn-sm" disabled={busy} onClick={start}>
                 <Bot size={16} aria-hidden="true" />
                 {busy ? 'Starting…' : 'Start an agent'}
@@ -663,7 +827,8 @@ export function AgentSection({ task: t }) {
       {queued && (
         <div class="agent-waiting">
           <p class="meta">
-            <Hourglass size={13} aria-hidden="true" /> Waiting to start: {queued.reason}.
+            <Hourglass size={13} aria-hidden="true" /> Waiting to start: {queued.reason}. It starts by itself once that
+            clears.
           </p>
           {queued.forceable && (
             <button
@@ -678,7 +843,7 @@ export function AgentSection({ task: t }) {
           )}
         </div>
       )}
-      {hasSession && <LiveLog task={t} />}
+      {hasSession && <LiveLog task={t} onRetry={canStart ? start : null} busy={busy} />}
       {hasSession && t.status === 'pending' && t.claim && <MessageAgent task={t} url={run?.url ?? t.session ?? null} />}
     </section>
   );

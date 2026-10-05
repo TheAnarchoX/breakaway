@@ -9,6 +9,7 @@ import { shortHash } from './session-report.js';
 import { refinePrompt } from './decision.js';
 import { isKickoffIdea } from './kickoff.js';
 import { prVerdict } from './github.js';
+import { holdsTask, runState } from './run-state.js';
 import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
 import { repoSlugOf, routineCaps } from './repos.js';
@@ -273,6 +274,9 @@ export const agentsMethods = {
     // Silent (BRK-145): since when a running session has said nothing, and the one ping the run sent about it.
     if (!columns.includes('silent')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN silent INTEGER');
     if (!columns.includes('silent_ping')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN silent_ping INTEGER');
+    // How Claude's refusal held the routine after this run failed, and until when (WEB-41): Retrying or Paused.
+    if (!columns.includes('hold')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN hold TEXT');
+    if (!columns.includes('hold_until')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN hold_until INTEGER');
     // Fix agents started on each pull request since it was last green, and when a third became Needs you (BRK-145).
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS pr_fixes (
@@ -1484,8 +1488,15 @@ export const agentsMethods = {
       if (hold) this.setMeta(`routine_hold:${repo.slug}`, null);
       return { run: this.agentRun(runId), task: this.detail(uuid) };
     } catch (error) {
-      this.sql.exec("UPDATE agent_runs SET status = 'failed', error = ? WHERE id = ?", error.message, runId);
-      if (error instanceof AgentError && error.hold) await this.holdRoutine(repo.slug, error, credentials);
+      const held = error instanceof AgentError ? error.hold : null;
+      this.sql.exec(
+        "UPDATE agent_runs SET status = 'failed', error = ?, hold = ?, hold_until = ? WHERE id = ?",
+        error.message,
+        held,
+        held === 'limit' ? error.until : held === 'backoff' ? Date.now() + BACKOFF_MS : null,
+        runId,
+      );
+      if (held) await this.holdRoutine(repo.slug, error, credentials);
       if (this.tasks.get(uuid)?.claim === agent) this.change(uuid, { claim: null, start: false }, new Date(), 'agents');
       throw error instanceof AgentError ? error : new AgentError(error.message, 502);
     }
@@ -1732,14 +1743,16 @@ export const agentsMethods = {
       .toArray()
       .map((r) => ({ id: r.id, at: new Date(r.at).toISOString(), ...JSON.parse(r.data) }));
     const last = this.sql.exec('SELECT MAX(at) AS at FROM agent_logs WHERE task = ?', uuid).one().at;
-    const runRow = this.sql
-      .exec('SELECT id FROM agent_runs WHERE task = ? ORDER BY id DESC LIMIT 1', uuid)
-      .toArray()[0];
+    const runRow = this.sql.exec('SELECT * FROM agent_runs WHERE task = ? ORDER BY id DESC LIMIT 1', uuid).toArray()[0];
+    const map = this.tasks.get(uuid);
+    const task = map && { ...map, uuid, github: this.githubFor(map, this.githubLinks()) };
     return {
       entries,
       lastAt: last ? new Date(last).toISOString() : null,
       live: Boolean(last && Date.now() - last < LIVE_MS),
-      run: runRow ? this.agentRun(runRow.id) : null,
+      run: runRow
+        ? { ...this.agentRun(runRow.id), state: this.stateOf(runRow, task, last ?? null, this.runFacts()) }
+        : null,
     };
   },
 
@@ -1754,9 +1767,7 @@ export const agentsMethods = {
   agentLinks() {
     const runs = new Map();
     for (const r of this.sql
-      .exec(
-        'SELECT task, agent, url, started, trigger, status, error, silent FROM agent_runs WHERE id IN (SELECT MAX(id) FROM agent_runs GROUP BY task)',
-      )
+      .exec('SELECT * FROM agent_runs WHERE id IN (SELECT MAX(id) FROM agent_runs GROUP BY task)')
       .toArray())
       runs.set(r.task, r);
     const logs = new Map(
@@ -1765,10 +1776,61 @@ export const agentsMethods = {
         .toArray()
         .map((r) => [r.task, r.at]),
     );
-    return { runs, logs };
+    return { runs, logs, facts: this.runFacts() };
   },
 
-  agentFor(uuid, map, links) {
+  /**
+   * What a run's state needs beyond the run itself (WEB-41): each task's latest open ping (a silent run's own
+   * ping is its Silent state, not a ping), the pull requests two fix agents didn't get green, and which
+   * repositories' routines are paused.
+   */
+  runFacts() {
+    const pings = new Map();
+    for (const p of this.sql
+      .exec(
+        'SELECT id, task, message, created FROM pings WHERE resolved IS NULL AND id NOT IN (SELECT silent_ping FROM agent_runs WHERE silent_ping IS NOT NULL) ORDER BY id',
+      )
+      .toArray())
+      pings.set(p.task, p);
+    const fixes = new Map(
+      this.sql
+        .exec('SELECT repo, number, tries, needs_you FROM pr_fixes WHERE needs_you IS NOT NULL')
+        .toArray()
+        .map((r) => [`${r.repo}#${r.number}`, r]),
+    );
+    const paused = new Map();
+    const isPaused = (slug) => {
+      if (!paused.has(slug)) paused.set(slug, this.routineHold(slug)?.kind === 'paused');
+      return paused.get(slug);
+    };
+    return { pings, fixes, isPaused };
+  },
+
+  /**
+   * The state of run row `run` (WEB-41, src/run-state.js) on task `task` (its map with `uuid` and `github`), whose
+   * session last said something at `lastAt`. Only a task's latest run (`latest`) can be Needs you.
+   */
+  stateOf(run, task, lastAt, facts, latest = true) {
+    const repo = run.repo ?? task?.repo ?? this.defaultRepoSlug();
+    let needsYou = null;
+    if (latest && task) {
+      const pr = task.github?.find((p) => p.closes && p.state === 'open');
+      const fix = pr ? facts.fixes.get(`${pr.repo ?? repo}#${pr.number}`) : null;
+      const ping = facts.pings.get(task.uuid);
+      if (fix) needsYou = { kind: 'fix', pr: fix.number, tries: fix.tries, at: fix.needs_you };
+      else if (ping) needsYou = { kind: 'ping', id: ping.id, message: ping.message, at: ping.created };
+    }
+    return runState({
+      run: { ...run, holdUntil: run.hold_until ?? null },
+      holding: Boolean(task) && run.status === 'started' && holdsTask(run, task),
+      lastAt,
+      paused: run.hold === 'paused' && facts.isPaused(repo),
+      autostart: Boolean(task?.autostart),
+      needsYou,
+    });
+  },
+
+  agentFor(uuid, map, links, github = []) {
     const run = links.runs.get(uuid);
     const lastAt = links.logs.get(uuid) ?? null;
     if (!run && !lastAt) return null;
@@ -1776,6 +1838,7 @@ export const agentsMethods = {
       agent: run?.agent ?? map.claim ?? null,
       url: run?.url ?? map.session ?? null,
       trigger: run?.trigger ?? null,
+      kind: run?.kind ?? null,
       // starting, started, or failed (Claude wouldn't start the session, and `error` says why).
       status: run?.status ?? null,
       error: run?.error ?? null,
@@ -1783,6 +1846,8 @@ export const agentsMethods = {
       silentSince: run?.silent ? new Date(run.silent).toISOString() : null,
       lastAt: lastAt ? new Date(lastAt).toISOString() : null,
       live: Boolean(lastAt && Date.now() - lastAt < LIVE_MS),
+      // What it's doing, what happens next, and what to do (WEB-41); null for output with no run behind it.
+      state: run ? this.stateOf(run, { ...map, uuid, github }, lastAt, links.facts) : null,
     };
   },
 
@@ -1791,6 +1856,7 @@ export const agentsMethods = {
     const connected = await this.connectedRepos();
     const views = this.views();
     const live = this.runningAgents(views);
+    const facts = this.runFacts();
     const running = live.map(({ run, task }) => {
       const last = this.sql
         .exec('SELECT at, data FROM agent_logs WHERE task = ? ORDER BY id DESC LIMIT 1', task.uuid)
@@ -1816,19 +1882,25 @@ export const agentsMethods = {
         lastAt: last ? new Date(last.at).toISOString() : null,
         live: Boolean(last && Date.now() - last.at < LIVE_MS),
         lastLine,
+        state: this.stateOf(run, task, last?.at ?? null, facts),
       };
     });
+    const byUuid = new Map(views.map((t) => [t.uuid, t]));
     const recent = this.sql
-      .exec('SELECT id FROM agent_runs ORDER BY id DESC LIMIT 15')
+      .exec(
+        'SELECT r.*, (SELECT MAX(id) FROM agent_runs WHERE task = r.task) AS latest, (SELECT MAX(at) FROM agent_logs WHERE task = r.task) AS last_at FROM agent_runs r ORDER BY r.id DESC LIMIT 15',
+      )
       .toArray()
-      .map((r) => {
-        const run = this.agentRun(r.id);
-        const map = this.tasks.get(this.sql.exec('SELECT task FROM agent_runs WHERE id = ?', r.id).one().task);
+      .map((row) => {
+        const map = this.tasks.get(row.task);
         return {
-          ...run,
+          ...this.agentRun(row.id),
+          uuid: row.task,
+          latest: row.latest === row.id,
           wid: map?.wid ?? null,
           description: map?.description ?? '(deleted task)',
           taskStatus: map?.status ?? 'gone',
+          state: this.stateOf(row, byUuid.get(row.task) ?? null, row.last_at ?? null, facts, row.latest === row.id),
         };
       });
     // Each repository's share of the board's slots and budget, and its own caps (IDEA-14 section 4).
