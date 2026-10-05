@@ -6455,6 +6455,7 @@ fieldset.field {
 }
 .fr-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .fr-detail {
