@@ -45,7 +45,7 @@ import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/pro
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { appInPlace } from './tasks/github-connect.js';
 import { unsupportedSystem, wranglerFailure } from './tasks/platform.js';
-import { checkInstall } from './tasks/install-check.js';
+import { checkInstall, confirmInstall, tokenTarget, unverifiedInstall } from './tasks/install-check.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import {
   CLI_PACKAGE,
@@ -143,6 +143,28 @@ async function ensureBoardInstall(command, health = null) {
   const result = checkInstall(installConfig(), board, { command, configFile: tildePath(CONFIG_FILE, homedir()) });
   if (!result.ok) fail(result.message);
   if (result.warning) console.error(`tasks: ${result.warning}`);
+}
+
+/**
+ * rotate-token without a token the board accepts (CLI-5): it can't ask the board which install it is, so it says
+ * where it would write, and the owner names the Worker (or the Secrets Store) with --worker or when asked.
+ */
+async function confirmUnverifiedInstall(hadToken) {
+  const local = installConfig();
+  const where = { configFile: tildePath(CONFIG_FILE, homedir()) };
+  console.log(unverifiedInstall(local, { ...where, token: hadToken }));
+  let answer = opts.worker;
+  if (answer === undefined) {
+    if (!process.stdin.isTTY) fail(`${NO_TERMINAL}, or pass --worker <name>.`);
+    const { createInterface } = await import('node:readline');
+    answer = await askIn("The Worker's name: ", {
+      input: process.stdin,
+      output: process.stdout,
+      createInterface,
+    }).catch((error) => fail(error.message));
+  }
+  const confirmed = confirmInstall(local, answer, where);
+  if (!confirmed.ok) fail(confirmed.message);
 }
 
 /** Stops `command` before it does anything on a system the install doesn't support: Windows outside WSL (CLI-3). */
@@ -304,8 +326,9 @@ Working
 
 Setup (owner)
   setup                  connect this machine's Taskwarrior (writes taskrc in this machine's folder for the board, with every repository's report and context)
-  rotate-sync            new client ID and sync secret; the server re-encrypts its history
-  rotate-token           new API token; every browser is signed out
+  rotate-sync            new client ID and sync secret; the server re-encrypts its history (the old secret isn't needed)
+  rotate-token           new API token; every browser is signed out. Works without the old one: you confirm the install
+                         by the Worker's name, asked for or given with --worker <name>
   github-connect <code>  store the GitHub App's keys (the board's GitHub view gives the code); refuses when the board
                          already has an App, unless --replace
   agents-connect         store the agent routine's URL and token (docs/tasks.md#cloud-agents-from-the-board)
@@ -1643,12 +1666,17 @@ const commands = {
   /**
    * Owner: new client ID and sync secret. The server re-encrypts its whole history under the new
    * key in one step and keeps every version ID, so replicas carry on once they have the new
-   * values. The new values are saved before the server switches, so they can't be lost.
+   * values. The new values are saved before the server switches, so they can't be lost. The old
+   * secret isn't needed: the server re-encrypts with the key it holds, so this is also how an
+   * owner who lost the secret everywhere gets Taskwarrior sync back (CLI-5).
    */
   async 'rotate-sync'() {
     ensureSupportedSystem('rotate-sync');
     const env = readEnvFile();
-    if (!readSetting('SECRET', { file: env })) fail(`${ENV_FILE} has no sync secret; this is for the owner's machine.`);
+    if (!readSetting('SECRET', { file: env }))
+      console.log(
+        `${ENV_FILE} has no sync secret. That's fine: the board re-encrypts its history with the key it holds, and this writes new values.`,
+      );
     const health = await call('GET', 'health');
     if (!health.ok) fail(`the server can't read its history (${health.replicaError}); fix that first (docs/tasks.md).`);
     await ensureBoardInstall('rotate-sync', health);
@@ -1679,10 +1707,23 @@ const commands = {
       ].join('\n'),
     );
   },
-  /** Owner: a new API token. Every browser is signed out; cloud environments need the new one. */
+  /**
+   * Owner: a new API token. Every browser is signed out; cloud environments need the new one. With the
+   * old token lost, or refused, the board can't say which install it is, so the owner confirms the
+   * one the checkout's config names (CLI-5): --worker <name>, or typed when asked.
+   */
   async 'rotate-token'() {
     ensureSupportedSystem('rotate-token');
-    await ensureBoardInstall('rotate-token');
+    const old = setting('TOKEN');
+    let res;
+    try {
+      res = await fetch(`${BASE}/api/health`, { headers: old ? { Authorization: `Bearer ${old}` } : {} });
+    } catch (error) {
+      fail(`can't reach ${BASE} (${reasonOf(error)}), so nothing was changed.`);
+    }
+    if (res.status === 401) await confirmUnverifiedInstall(Boolean(old));
+    else if (!res.ok) fail(`the board answered HTTP ${res.status} to health, so nothing was changed.`);
+    else await ensureBoardInstall('rotate-token', await res.json());
     const env = readEnvFile();
     const token = randomBytes(32).toString('base64url');
     writePrivate(`${ENV_FILE}.next`, envFile({ ...env, [envName('TOKEN')]: token }));
@@ -1704,7 +1745,7 @@ const commands = {
       await new Promise((r) => setTimeout(r, 2000));
     }
     fail(
-      "the Secrets Store has the new token, but the server doesn't accept it yet. Try npx breakaway health in a minute.",
+      `${tokenTarget(installConfig())} has the new token, but the server doesn't accept it yet. Try npx breakaway health in a minute.`,
     );
   },
   /** Owner, once for a new board: fresh credentials in tasks.env (the Secrets Store comes next). */
