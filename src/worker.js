@@ -511,6 +511,14 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 1) return send(await s.specsApi(url.searchParams.get('repo')));
     return send(await s.specApi(url.searchParams.get('repo'), parts.slice(1).join('/')));
   }
+  // Mark approved and Mark built on a spec (BRK-215) open a pull request: the owner's press, from the signed-in
+  // browser only, never the bearer token agents and the CLI hold.
+  if (parts[0] === 'specs' && parts.length > 1 && method === 'POST') {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can mark a spec approved or built' });
+    return send(
+      await s.specStatusApi(url.searchParams.get('repo') ?? body?.repo ?? null, parts.slice(1).join('/'), body),
+    );
+  }
   // Sign-ins from Claude's apps (BRK-157): approving, denying, listing, and revoking are the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'oauth') {

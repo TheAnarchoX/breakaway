@@ -3,11 +3,19 @@
 // spec: the server reads it through the GitHub App and keeps it a minute.
 import { useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { ArrowLeft, ExternalLink, ListFilter, RefreshCw, X } from 'lucide-preact';
+import { ArrowLeft, ExternalLink, GitPullRequest, ListFilter, RefreshCw, X } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { ago, plural, ref, stateOf } from '../lib/model.js';
 import { Markdown, Title } from '../lib/richtext.jsx';
-import { filterSpecs, inSpecsDir, shortTitle, specTaskCounts, specsDirOf, withoutTitle } from '../lib/specs.js';
+import {
+  filterSpecs,
+  inSpecsDir,
+  markStep,
+  shortTitle,
+  specTaskCounts,
+  specsDirOf,
+  withoutTitle,
+} from '../lib/specs.js';
 import {
   byUuid,
   closeSpec,
@@ -21,6 +29,7 @@ import {
   selectedSpec,
   specHref,
   tasks,
+  toast,
 } from '../lib/store.js';
 import { RepoChip } from '../components/ui.jsx';
 import { RefineSpec } from '../components/RefineSpec.jsx';
@@ -29,6 +38,8 @@ import { RefineSpec } from '../components/RefineSpec.jsx';
 const lists = signal(/** @type {Record<string, any>} */ ({}));
 /** Each open spec, by `<slug>\n<path>`: `{ loading, data, error, status }`. */
 const docs = signal(/** @type {Record<string, any>} */ ({}));
+/** Each spec's Mark approved or Mark built press, by `<slug>\n<path>`: `{ busy, pull, error }`. */
+const marks = signal(/** @type {Record<string, any>} */ ({}));
 /** What the filter field says, kept while the view is left and come back to. */
 const query = signal('');
 
@@ -178,6 +189,63 @@ function RepoSpecs({ slug, heading }) {
       )}
       {body}
     </section>
+  );
+}
+
+/**
+ * Mark approved or Mark built (BRK-215): the board opens a pull request that moves the spec one step and changes only
+ * its status line. Once it's open, the button gives way to a link to it; the spec shows its new status when it merges.
+ * @param {Record<string, any>} props
+ */
+function MarkSpec({ slug, path, status }) {
+  const step = markStep(status);
+  if (!step) return null;
+  const key = `${slug}\n${path}`;
+  const state = marks.value[key];
+  if (state?.pull && state.pull.status === step.status)
+    return (
+      <a class="btn btn-outline btn-sm" href={state.pull.url} target="_blank" rel="noopener noreferrer">
+        <GitPullRequest size={16} aria-hidden="true" />
+        Pull request #{state.pull.number}
+      </a>
+    );
+  const press = async () => {
+    marks.value = { ...marks.value, [key]: { busy: true } };
+    try {
+      const res = await api(`specs/${path.split('/').map(enc).join('/')}?repo=${enc(slug)}`, {
+        method: 'POST',
+        body: { status: step.status },
+      });
+      marks.value = { ...marks.value, [key]: { pull: { ...res.pull, status: step.status } } };
+      toast(
+        res.existing ? `Pull request #${res.pull.number} is already open.` : `Pull request #${res.pull.number} opened.`,
+      );
+    } catch (error) {
+      marks.value = { ...marks.value, [key]: { error: error.message } };
+    }
+  };
+  return (
+    <button
+      type="button"
+      class="btn btn-outline btn-sm"
+      onClick={press}
+      disabled={state?.busy}
+      aria-busy={state?.busy ? 'true' : undefined}
+    >
+      <GitPullRequest size={16} aria-hidden="true" />
+      {state?.busy ? 'Opening…' : step.label}
+    </button>
+  );
+}
+
+/** Why Mark approved or Mark built couldn't open its pull request, under the spec's buttons. @param {Record<string, any>} props */
+function MarkSpecError({ slug, path }) {
+  const error = marks.value[`${slug}\n${path}`]?.error;
+  if (!error) return null;
+  return (
+    <p class="field-error" role="alert">
+      Couldn’t open the pull request. {error}
+    </p>
   );
 }
 
@@ -335,8 +403,10 @@ function SpecPane({ slug, path }) {
               <ExternalLink size={16} aria-hidden="true" />
               Open on GitHub
             </a>
+            <MarkSpec slug={slug} path={d.path} status={d.status} />
             <RefineSpec slug={slug} path={d.path} title={shortTitle(d.title, d.wid)} />
           </div>
+          <MarkSpecError slug={slug} path={d.path} />
         </div>
         {d.tooLarge || d.text === null ? (
           <p class="muted">This spec is over 1 MB, too large to show here. Read it on GitHub.</p>

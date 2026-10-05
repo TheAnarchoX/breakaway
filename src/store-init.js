@@ -6,7 +6,7 @@
  * request there; the board never does.
  */
 import BOARD_FILES from './board-files.json' with { type: 'json' };
-import { GitHubError, appCredentials, isEmptyRepo } from './github.js';
+import { GitHubError, appCredentials, base64, isEmptyRepo } from './github.js';
 import { PLUGIN_BRANCH, PLUGIN_REPO, initCommitMessage, initPlan, promptSections } from './init.js';
 import { BREAKAWAY_REPO } from './updates.js';
 
@@ -33,13 +33,6 @@ async function pluginReleased() {
     return null;
   }
 }
-
-/** UTF-8 text as base64, for the contents API. */
-const base64 = (text) => {
-  let binary = '';
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-};
 
 /** A git tree entry for one planned file: a symlink, an executable, or a plain file. */
 const treeEntry = (f) =>
