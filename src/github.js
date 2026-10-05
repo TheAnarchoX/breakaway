@@ -274,28 +274,50 @@ export function ownLinks({ closes, mentions }, slug, owners) {
 
 // ---- summaries ---------------------------------------------------------------------------
 
-const FAILED = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'error']);
+/** The states a check fails in, after each check's newest run is picked. */
+export const FAILED_CHECK = new Set([
+  'failure',
+  'timed_out',
+  'cancelled',
+  'action_required',
+  'startup_failure',
+  'error',
+]);
 
-/** Check runs and commit statuses → one roll-up and the list of checks by name. */
+/**
+ * Check runs and commit statuses → one roll-up and the list of checks by name.
+ * Each name's newest run wins (by start time, then id), whatever order GitHub lists them in, so a run
+ * cancelled because a newer one started on the same commit doesn't count as failing (BRK-170). Runs
+ * without a start time or id keep the old rule: the later one in the list wins.
+ */
 export function rollupChecks(checkRuns = [], statuses = []) {
   const runs = [
     ...checkRuns.map((c) => ({
       name: c.name,
       state: c.status === 'completed' ? (c.conclusion ?? 'neutral') : c.status,
       url: c.html_url ?? c.details_url ?? null,
+      at: Date.parse(c.started_at ?? c.created_at ?? '') || 0,
+      id: Number(c.id) || 0,
     })),
     ...statuses.map((s) => ({
       name: s.context,
       state: s.state === 'pending' ? 'in_progress' : s.state,
       url: s.target_url ?? null,
+      at: Date.parse(s.updated_at ?? s.created_at ?? '') || 0,
+      id: Number(s.id) || 0,
     })),
   ];
-  // The latest run of each check name wins (re-runs).
+  /** @type {Map<string, typeof runs[number]>} */
   const byName = new Map();
-  for (const r of runs) byName.set(r.name, r);
-  const list = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  for (const r of runs) {
+    const seen = byName.get(r.name);
+    if (!seen || r.at > seen.at || (r.at === seen.at && r.id >= seen.id)) byName.set(r.name, r);
+  }
+  const list = [...byName.values()]
+    .map(({ name, state, url }) => ({ name, state, url }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   let state = 'none';
-  if (list.some((r) => FAILED.has(r.state))) state = 'failure';
+  if (list.some((r) => FAILED_CHECK.has(r.state))) state = 'failure';
   else if (list.some((r) => ['queued', 'in_progress', 'pending', 'waiting', 'requested'].includes(r.state)))
     state = 'pending';
   else if (list.length) state = 'success';
