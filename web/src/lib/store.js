@@ -459,6 +459,28 @@ export async function loadPings() {
   }
 }
 
+/**
+ * Dismiss one thing in the inbox, from the inbox or the bell: a ping, a note about a connection, or a note that a
+ * chase ended. Says how it went in a toast and reloads the inbox either way; `dismissed` runs first, once it's gone
+ * from the board and before it leaves the page.
+ * @param {'ping' | 'notice' | 'chase'} type
+ * @param {Record<string, any>} item
+ * @param {() => void} [dismissed]
+ */
+export async function dismissInboxItem(type, item, dismissed) {
+  try {
+    if (type === 'ping') await api(`pings/${enc(item.id)}/dismiss`, { method: 'POST', body: {} });
+    else if (type === 'notice') await api(`connections/notices/${enc(item.id)}/dismiss`, { method: 'POST', body: {} });
+    else await api(`features/${enc(item.feature)}/chase`, { method: 'POST', body: { dismiss: true } });
+    toast('Dismissed.', 'success');
+    dismissed?.();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    await loadPings();
+  }
+}
+
 // The count on the browser tab's title and the installed app's icon, where the browser has them.
 effect(() => {
   const n = openPings.value;
