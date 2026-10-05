@@ -13,7 +13,20 @@ export const SUBCOMMANDS = {
   features: ['list', 'add', 'show', 'modify'],
   horizon: ['close'],
   hook: ['session', 'wait'],
-  peloton: ['checkin', 'step', 'reply'],
+  peloton: [
+    'checkin',
+    'step',
+    'note',
+    'ask',
+    'propose',
+    'review',
+    'reply',
+    'huddle',
+    'in',
+    'outcome',
+    'plan',
+    'listen',
+  ],
   specs: ['list', 'show'],
 };
 
