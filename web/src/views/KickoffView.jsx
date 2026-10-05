@@ -27,6 +27,7 @@ import {
   loadConnections,
   loadRepos,
   loadTasks,
+  me,
   navOrder,
   openAddRepo,
   openFeature,
@@ -40,6 +41,7 @@ import {
 import { useDraftImages } from '../components/NewTask.jsx';
 import { ImagePicker, Thumbnails } from '../components/Attachments.jsx';
 import { DecisionSection } from '../components/Decision.jsx';
+import { LiveLog, TRIGGER_LABEL } from '../components/Agents.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { useAutosize } from '../components/ui.jsx';
 import { Markdown } from '../lib/richtext.jsx';
@@ -54,6 +56,10 @@ import STUB from '../../../prompts/stub.md?raw';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 const POLL_MS = 20_000;
+/** While a run is starting, waiting for room, or just asked for, the interview step refreshes this often instead. */
+const SOON_MS = 5_000;
+/** A run that has held the idea this long without a word has most likely stopped (the first run sets up first). */
+const STALLED_MS = 15 * 60_000;
 const ROUTINES_URL = 'https://claude.ai/code/routines';
 const MAX_PITCH = 4000;
 
@@ -468,6 +474,137 @@ async function startRun(idea) {
   loadAgents();
 }
 
+/**
+ * Where the interview's latest run is, from the IDEA's claim and its latest run (WEB-47): `running`, `stalled` (it
+ * holds the idea but hasn't said anything for STALLED_MS), `failed` (Claude wouldn't start it), `ended` (it let go
+ * with no questions and no plan), or null when there's nothing to say.
+ */
+export function runState(idea, now = Date.now()) {
+  if (!idea || idea.pr || idea.status !== 'pending') return null;
+  const run = idea.agentRun;
+  if (idea.claim) {
+    if (!run || run.agent !== idea.claim) return 'running';
+    const last = Date.parse(run.lastAt ?? run.startedAt ?? '');
+    return last && now - last > STALLED_MS ? 'stalled' : 'running';
+  }
+  const decisionOpen = Boolean(idea.decision?.length) && idea.tags.includes('decide');
+  if (!run?.startedAt || decisionOpen || idea.autostart) return null;
+  // Answers sent after it ran mean it did its part: what's next is the next run, not this one again.
+  const answeredAt = Date.parse(idea.decisionAnswers?.at ?? '') || 0;
+  if (Date.parse(run.startedAt) < answeredAt) return null;
+  return run.status === 'failed' ? 'failed' : 'ended';
+}
+
+/** Whether the interview step should look again soon: a run starting, waiting for room, or just asked for. */
+function soon(idea) {
+  if (!idea || idea.pr || idea.status !== 'pending') return false;
+  if (idea.claim) return !idea.agentRun?.lastAt;
+  if (idea.autostart) return true;
+  const answeredAt = Date.parse(idea.decisionAnswers?.at ?? '') || 0;
+  return Date.now() - answeredAt < 2 * 60_000;
+}
+
+/** Start it again: lets go of a run that stopped (its claim, when it still holds one), then starts a new one. */
+async function startAgain(idea, state) {
+  if (state === 'stalled') {
+    const ok = await confirmDialog({
+      title: 'Start it again?',
+      body: `${idea.claim} may still be working. Open its session to check first. Starting again lets go of its claim on ${ref(idea)} and starts a new run.`,
+      confirmLabel: 'Start it again',
+    });
+    if (!ok) return;
+    try {
+      await api(`tasks/${enc(idea.uuid)}/release`, { method: 'POST', body: { agent: me.value, force: true } });
+    } catch (error) {
+      toast(`Couldn’t let go of ${idea.claim}’s claim: ${error.message}`, 'error');
+      return;
+    }
+  }
+  await startRun(idea);
+}
+
+/**
+ * The interview's run, on every run (the interview and the plan alike): who's on it and since when, what comes
+ * next, and its live output and session; or, when it stopped with nothing to show, why it likely did and Start it
+ * again (WEB-47).
+ * @param {Record<string, any>} props
+ */
+function InterviewRun({ idea, answered, busy, onStart }) {
+  const state = runState(idea);
+  if (!state) return null;
+  const run = idea.agentRun;
+  const host = location.host;
+  if (state === 'running')
+    return (
+      <div class="ko-run">
+        <p class="meta agent-line" role="status">
+          <CircleDot size={14} aria-hidden="true" /> <strong>{idea.claim}</strong> is on it
+          {run?.trigger && `, ${TRIGGER_LABEL[run.trigger] ?? run.trigger}`}
+          {run?.startedAt && (
+            <>
+              {' '}
+              <time dateTime={run.startedAt}>{ago(run.startedAt)}</time>
+            </>
+          )}
+          .
+        </p>
+        <p class="meta">
+          {answered
+            ? 'With your answers it plans it, or asks a little more: new questions show here, or the plan’s pull request in the next step.'
+            : 'It reads your pitch, then its questions show here.'}
+        </p>
+        {!run?.lastAt && (
+          <p class="muted small">
+            A run takes a minute or two to start, and the first one several minutes while claude.ai sets up its cloud
+            environment (its setup script). A slow start is expected.
+          </p>
+        )}
+        {run && <LiveLog task={idea} />}
+      </div>
+    );
+  const why =
+    state === 'stalled'
+      ? `${idea.claim} has said nothing for ${ago(run.lastAt ?? run.startedAt).replace(' ago', '')}, with no questions and no plan yet. It has most likely stopped.`
+      : state === 'failed'
+        ? `The last run didn’t start: ${(run.error ?? 'Claude didn’t start the session').replace(/\.$/u, '')}.`
+        : `The last run, ${run.agent}, ended with no questions and no plan.`;
+  return (
+    <div class="ko-run">
+      <div class="conn-fix" role="status">
+        <p>
+          <TriangleAlert size={15} aria-hidden="true" class="wiz-warn" /> {why}
+        </p>
+        {state !== 'failed' && (
+          <p>
+            <strong>Likely why:</strong> the routine’s cloud environment on claude.ai. It has to allow this board’s
+            host, <code>{host}</code>, and have the board’s token as BREAKAWAY_TOKEN. Check both on the routine, then
+            start it again.
+          </p>
+        )}
+        <div class="wiz-actions">
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            disabled={busy}
+            aria-busy={busy}
+            onClick={() => onStart(() => startAgain(idea, state))}
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Start it again
+          </button>
+          {state !== 'failed' && <ExtLink href={ROUTINES_URL}>Open routines on claude.ai</ExtLink>}
+        </div>
+      </div>
+      {state !== 'failed' && run.url && (
+        <details class="ko-more">
+          <summary>What it did</summary>
+          <LiveLog task={idea} />
+        </details>
+      )}
+    </div>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function StepIcon({ done, now }) {
   if (done) return <CircleCheck size={20} aria-hidden="true" class="wiz-icon is-done" />;
@@ -643,6 +780,8 @@ function KickoffPage({ id }) {
   const [state, setState] = useState({ data: null, error: null, checking: false, gone: false });
   const [busy, setBusy] = useState(null);
   const [initCommand, setInitCommand] = useState(null);
+  const ideaUuid = state.data?.kickoff?.idea?.uuid;
+  const looking = soon(ideaUuid ? byUuid.value.get(ideaUuid) : null);
   const load = async (quiet = false) => {
     if (!quiet) setState((s) => ({ ...s, checking: true }));
     try {
@@ -666,6 +805,14 @@ function KickoffPage({ id }) {
     }, POLL_MS);
     return () => clearInterval(poll);
   }, [id]);
+  // Right after a start or Send answers and carry on, the run shows within seconds, not on the next poll.
+  useEffect(() => {
+    if (!looking) return;
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') loadTasks();
+    }, SOON_MS);
+    return () => clearInterval(poll);
+  }, [looking]);
 
   const d = state.data;
   if (!d)
@@ -692,6 +839,8 @@ function KickoffPage({ id }) {
   const decisionOpen = Boolean(idea?.decision?.length) && idea.tags.includes('decide');
   const answered = Boolean(idea?.decisionAnswers) && !decisionOpen;
   const planned = Boolean(idea?.pr);
+  // A run that stopped with nothing to show offers Start it again instead of the usual start.
+  const stopped = ['stalled', 'failed', 'ended'].includes(runState(idea));
   const merged = idea?.status === 'completed';
   const appInstall = d.app?.slug
     ? `https://github.com/apps/${d.app.slug}/installations/new`
@@ -952,17 +1101,21 @@ function KickoffPage({ id }) {
           them here; then it asks a little more, or plans it.
         </p>
         {!idea && <p class="muted">Your idea shows here once it’s on the board.</p>}
-        {idea?.claim && (
-          <p class="meta" role="status">
-            <CircleDot size={14} aria-hidden="true" /> {idea.claim} is on it. Its questions show here when it’s done.
-          </p>
+        {idea && !planned && (
+          <InterviewRun idea={idea} answered={answered} busy={busy === 'start'} onStart={(fn) => run('start', fn)} />
         )}
-        {idea && !idea.claim && idea.autostart === 'yes' && (
+        {idea && !idea.claim && idea.autostart && (
           <p class="meta" role="status">
             Waiting for room to start. It starts by itself as soon as there is.
           </p>
         )}
-        {idea && !idea.claim && !planned && !decisionOpen && idea.autostart !== 'yes' && (
+        {idea && !idea.agentRun && !idea.claim && !planned && (
+          <p class="muted small">
+            The first run can take several minutes: claude.ai sets up its cloud environment first (its setup script), so
+            a slow start is expected.
+          </p>
+        )}
+        {idea && !idea.claim && !planned && !decisionOpen && !idea.autostart && !stopped && (
           <div class="wiz-actions">
             <button
               type="button"

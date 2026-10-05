@@ -7539,6 +7539,15 @@ fieldset.field {
   display: grid;
   gap: 10px;
 }
+/* The interview's run (WEB-47): who's on it, what's next, and its live output, or why it stopped. */
+.ko-run {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.ko-run > p {
+  margin: 0;
+}
 .ko-inshort {
   margin: 0;
   padding: 10px 14px;

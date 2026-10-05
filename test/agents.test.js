@@ -92,6 +92,7 @@ describe('cloud agents', () => {
     expect(routine.fires[0].text).toContain('Agent name: claude-ops-1');
     expect(routine.fires[0].text).toContain('Repository: widgets (acme/widgets)');
     expect(routine.fires[0].text).toContain('Keep it short.');
+    expect(res.task.agentRun).toMatchObject({ agent: 'claude-ops-1', status: 'started', error: null });
     // The agent claims it again under the same name: that works.
     expect((await api('tasks/OPS-1/claim', { method: 'POST', body: { agent: 'claude-ops-1' } })).status).toBe(200);
     // Anyone else can't, and neither can a second start.
@@ -112,6 +113,12 @@ describe('cloud agents', () => {
     expect((await task('DEBT-1')).claim).toBeNull();
     routine.fail = { status: 401, message: 'bad token' };
     expect((await body(await start('DEBT-1'))).error).toMatch(/token was refused/);
+    // The card says the last run didn't start, and why, so a page can offer to start it again (WEB-47).
+    expect((await task('DEBT-1')).agentRun).toMatchObject({
+      agent: 'claude-debt-1',
+      status: 'failed',
+      error: expect.stringMatching(/token was refused/),
+    });
   });
 
   it('keeps to the limit on agents running at once', async () => {
