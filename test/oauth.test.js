@@ -366,8 +366,12 @@ describe('sign-in from Claude’s apps (BRK-157)', () => {
 
     it('refuses its repository’s tools once that repository leaves the board, and says to revoke it', async () => {
       expect(
-        (await api('repos', { method: 'POST', body: { slug: 'doohickeys', github: 'acme/doohickeys', areas: ['doo:DH'] } }))
-          .status,
+        (
+          await api('repos', {
+            method: 'POST',
+            body: { slug: 'doohickeys', github: 'acme/doohickeys', areas: ['doo:DH'] },
+          })
+        ).status,
       ).toBe(201);
       const { tokens } = await connect({ repo: 'doohickeys' });
       expect((await api('repos/doohickeys', { method: 'DELETE', body: {} })).status).toBe(200);

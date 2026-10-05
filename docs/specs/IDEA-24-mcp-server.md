@@ -117,7 +117,7 @@ claude.ai and Claude Desktop connect to remote MCP servers through OAuth, not a 
 **Out of scope here.** Client ID metadata documents (the board would have to fetch a URL a client names), token revocation and introspection endpoints (the owner revokes on the board), scopes beyond `mcp`, and CORS for browser-based MCP clients (`/mcp` already refuses another origin).
 
 ## Privacy
-- Nothing new is stored: the server is stateless, and every write is one the API already makes and logs in the task's activity, signed with the agent's name. The sign-in (section 8) adds only its connections: each one's name, repository, agent name, and hashed token, kept until the owner revokes it.
+- Nothing new is stored: the server is stateless, and every write is one the API already makes and logs in the task's activity, signed with the agent's name. The sign-in (section 8) adds only its connections (each one's name, repository, agent name, and hashed tokens, kept until the owner revokes it) and what a sign-in needs on the way: the clients that registered (a name and redirect addresses, forgotten after a day if nothing came of them), and requests and codes that run out in minutes.
 - Nothing new leaves the install: the server makes no outbound call that the API route it wraps doesn't already make (GitHub, for specs and pull requests).
 - A client sees what the CLI shows an agent in that repository. The token is the board's full token: the manual says so, and that it goes only into a client the owner runs.
 
