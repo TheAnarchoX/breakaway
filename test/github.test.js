@@ -191,6 +191,35 @@ describe('checks and reviews', () => {
     expect(rollupChecks()).toMatchObject({ state: 'none', total: 0 });
   });
 
+  it("rolls up each check's newest run, so a superseded cancelled run isn't a failure (BRK-170)", () => {
+    const cancelled = {
+      id: 10,
+      name: 'Test and build',
+      status: 'completed',
+      conclusion: 'cancelled',
+      started_at: '2026-10-05T10:00:00Z',
+    };
+    const running = { id: 11, name: 'Test and build', status: 'in_progress', started_at: '2026-10-05T10:01:00Z' };
+    const passed = { ...running, status: 'completed', conclusion: 'success' };
+    // GitHub lists check runs newest first, but the order mustn't matter.
+    for (const order of [
+      [running, cancelled],
+      [cancelled, running],
+    ]) {
+      const r = rollupChecks(order);
+      expect(r).toMatchObject({ state: 'pending', total: 1 });
+      expect(r.runs[0].state).toBe('in_progress');
+    }
+    expect(rollupChecks([passed, cancelled])).toMatchObject({ state: 'success', total: 1, passed: 1 });
+    expect(rollupChecks([cancelled, passed])).toMatchObject({ state: 'success', total: 1, passed: 1 });
+    // Same start time: the higher id is the newer run.
+    expect(rollupChecks([{ ...passed, started_at: cancelled.started_at }, cancelled])).toMatchObject({
+      state: 'success',
+    });
+    // A lone cancelled run still fails.
+    expect(rollupChecks([cancelled])).toMatchObject({ state: 'failure', total: 1 });
+  });
+
   it("takes each reviewer's latest decision", () => {
     const r = (login, state) => ({ user: { login }, state });
     expect(reviewDecision([r('a', 'CHANGES_REQUESTED'), r('a', 'APPROVED')]).decision).toBe('approved');
