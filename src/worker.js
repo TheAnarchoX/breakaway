@@ -4,6 +4,7 @@
  *   /v1/client/*  TaskChampion sync protocol, for `task sync` (the install's client ID only)
  *   /api/*        JSON API for `npx breakaway`, agents, and the web app (token or cookie)
  *   /github/*     GitHub App webhooks and the end of its setup (docs/specs/CLD-24-github.md)
+ *   /mcp          the board as an MCP server, for agents' MCP clients (token only; docs/specs/IDEA-24-mcp-server.md)
  *   /login        exchanges the token for a cookie; /logout clears it
  *   everything else: the web app's static files (./public)
  *
@@ -13,6 +14,7 @@ import { authenticate, login, logout, sameOrigin } from './auth.js';
 import { isUuid } from './crypto.js';
 import { appCredentials, verifyWebhook } from './github.js';
 import { install } from './install.js';
+import { handleMcp } from './mcp.js';
 import { CLI_VERSION } from './cli-version.js';
 import { releaseOf } from './build.js';
 import { unreadableSecrets } from './secrets.js';
@@ -55,6 +57,11 @@ export default {
       // release this build is, so a checkout of the board's own repository can say it's behind (BRK-148).
       const res = withHeaders(await handleApi(request, env, url, ctx));
       res.headers.set('X-Tasks-Cli', String(CLI_VERSION));
+      res.headers.set('X-Tasks-Release', releaseOf(env));
+      return res;
+    }
+    if (url.pathname === '/mcp') {
+      const res = withHeaders(await handleMcp(request, env, store(env), { maxBody: MAX_BODY }));
       res.headers.set('X-Tasks-Release', releaseOf(env));
       return res;
     }
