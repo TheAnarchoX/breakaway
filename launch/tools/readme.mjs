@@ -1,4 +1,4 @@
-// Builds the README's images (DOC-7): docs/media/<name>-dark.png and -light.png, in carbon and chalk, so GitHub shows
+// Builds the README's images (DOC-7, DOC-36): docs/media/<name>-dark.png and -light.png, in carbon and chalk, so GitHub shows
 // the one that matches the reader's theme. Each is a wide scene drawn from the brand's own tokens, fonts, and logo,
 // with made-up tasks. It also builds the social card (LCH-12), site/public/social.png: the hero at 1280 by 640, carbon only,
 // which the site names as og:image and the owner uploads as the repository's social preview. Run: node readme.mjs [name ...]
@@ -56,6 +56,28 @@ html,body{width:${WIDTH}px;height:auto;overflow:hidden}
 .cloud .box.lead{border-color:var(--red)}
 .cloud .box.lead b::before{content:'';display:inline-block;width:10px;height:10px;margin-right:10px;background:var(--red);border-radius:2px}
 .link{font:600 13px var(--font-mono);color:var(--muted);text-align:center;letter-spacing:.06em}
+
+/* Chase and the peloton (DOC-36): a chased feature beside its peloton. */
+.pair{display:grid;grid-template-columns:1fr 1.1fr;gap:22px;margin-top:34px;align-items:start}
+.pair .task{grid-template-columns:84px 1fr}
+.posts{display:grid;gap:10px}
+.post{padding:12px 14px;border-radius:var(--radius);background:var(--bg);border:1px solid var(--surface-3)}
+.post .who{display:flex;gap:10px;align-items:baseline;font:600 13px var(--font-mono);color:var(--muted)}
+.post .kind{font:700 12px var(--font-mono);letter-spacing:.08em;color:var(--text)}
+.post p{margin-top:6px;font:500 16px/1.4 var(--font-body)}
+.post.huddle{border-color:var(--text)}
+.post.reply{margin-left:28px}
+.aside{margin-top:14px;font:500 15px/1.5 var(--font-body);color:var(--muted)}
+
+/* In Claude Code (DOC-36): the plugin and the MCP server. */
+.cc{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px;align-items:stretch}
+.panel{padding:22px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3);display:flex;flex-direction:column;gap:14px}
+.panel h2{font:700 24px var(--font-body);letter-spacing:-.015em}
+.panel .sub{font:500 15px/1.5 var(--font-body);color:var(--muted)}
+.term{padding:14px 16px;border-radius:var(--radius);background:var(--bg);border:1px solid var(--surface-3);font:500 15px/1.7 var(--font-mono);white-space:pre}
+.term .dim{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips span{font:600 14px var(--font-mono);padding:5px 9px;border-radius:var(--radius-xs);border:1px solid var(--surface-3);color:var(--text)}
 `;
 
 const logo = (theme) => (theme === 'dark' ? logoOnDark : logoOnLight);
@@ -128,6 +150,62 @@ const SCENES = {
       <div class="box"><b>GitHub</b><span>Its own GitHub App: pull requests, checks, reviews, deploys</span></div>
       <div class="box"><b>Claude Code</b><span>Your routine starts cloud agents on tasks</span></div>
       <div class="box"><b>Your agents</b><span>Claim, comment, and hand over through the CLI or MCP</span></div>
+    </div>
+  </div>
+</div>`,
+  },
+  peloton: {
+    alt: 'Chase a feature. The agents ride together. On the left, a chased feature, Inbox filters, aimed at 2.1.0: two tasks running with their agents, one waiting for both, and one that needs you, a decision. On the right, its peloton: claude-api-5 checks in and posts a step; claude-app-2 calls a huddle, sort inside each kind or across all of them; claude-app-6 is in; the outcome: sort inside each kind, APP-6 lands first; and the chase’s plan moves to version 2.',
+    html: (theme) => `
+<div class="stage">
+  ${top(theme, 'Chase and the peloton')}
+  <div class="title">Chase a feature. <span class="red">The agents ride together.</span></div>
+  <div class="pair">
+    <div>
+      <div class="board">
+        <div class="board-head"><span class="label">Inbox filters · 2.1.0</span><span class="label">Chasing</span></div>
+        <div class="task"><span class="wid">API-5</span><span class="task-title">Return inbox items by kind</span><span class="task-meta"><span class="state go">RUNNING</span>claude-api-5</span></div>
+        <div class="task"><span class="wid">APP-6</span><span class="task-title">Add a filter bar to the inbox</span><span class="task-meta"><span class="state go">RUNNING</span>claude-app-6</span></div>
+        <div class="task"><span class="wid">DOC-3</span><span class="task-title">Explain inbox filters</span><span class="task-meta"><span class="state">WAITING</span>waits for API-5, APP-6</span></div>
+        <div class="task"><span class="wid">APP-7</span><span class="task-title">Pick the inbox’s default filter</span><span class="task-meta"><span class="state">NEEDS YOU</span>a decision</span></div>
+      </div>
+      <p class="aside">The board starts an agent on every ready task, and on what blocks it, within your limits. It stops at decisions, owner steps, and merges.</p>
+    </div>
+    <div class="board">
+      <div class="board-head"><span class="label">Peloton</span><span class="label">3 riding</span></div>
+      <div class="posts">
+        <div class="post"><div class="who"><span class="kind">CHECKED IN</span>claude-api-5 · API-5</div><p>Adding kind to GET /inbox: src/inbox.js and its tests.</p></div>
+        <div class="post"><div class="who"><span class="kind">STEP</span>claude-api-5 · API-5</div><p>GET /inbox takes kind now. Does this affect anyone?</p></div>
+        <div class="post huddle"><div class="who"><span class="kind">HUDDLE</span>claude-app-2 · APP-2</div><p>APP-6 and I both change the inbox list. Sort inside each kind, or across all of them?</p></div>
+        <div class="post reply"><div class="who"><span class="kind">IN</span>claude-app-6 · APP-6</div><p>In. Paused after the chip styles.</p></div>
+        <div class="post reply"><div class="who"><span class="kind">OUTCOME</span>claude-app-2 · APP-2</div><p>Sort inside each kind. APP-6 lands first; APP-2 rebases on it.</p></div>
+        <div class="post"><div class="who"><span class="kind">PLAN</span>v2 · the chase’s plan</div><p>APP-2 waits for APP-6.</p></div>
+      </div>
+    </div>
+  </div>
+</div>`,
+  },
+  claude: {
+    alt: 'In Claude Code. On the left, breakaway’s plugin for Claude Code: two commands install it from breakaway’s marketplace, and it carries the tasks skill, the commands /breakaway:claim, /breakaway:next, and /breakaway:hand-over, the session hooks, and the board’s MCP server. On the right, the MCP server at your board’s address followed by /mcp: tools to list, show, claim, and release tasks, comment, add and change tasks, ping you, review, and post on the peloton, with the same token and rules as the CLI.',
+    html: (theme) => `
+<div class="stage">
+  ${top(theme, 'New in 1.5')}
+  <div class="title">The board, <span class="red">in Claude Code.</span></div>
+  <div class="cc">
+    <div class="panel">
+      <span class="label">The plugin</span>
+      <h2>One install. Every session.</h2>
+      <div class="term"><span class="dim">/plugin marketplace add</span> TheAnarchoX/breakaway
+<span class="dim">/plugin install</span> breakaway@breakaway</div>
+      <div class="chips"><span>tasks skill</span><span>/breakaway:claim</span><span>/breakaway:next</span><span>/breakaway:hand-over</span><span>session hooks</span><span>MCP server</span></div>
+      <p class="sub">For you, or for every session in a repository, the board’s cloud agents included.</p>
+    </div>
+    <div class="panel">
+      <span class="label">The MCP server</span>
+      <h2>Every board answers on /mcp.</h2>
+      <div class="term">npx breakaway mcp   <span class="dim"># prints the line to add it</span></div>
+      <div class="chips"><span>next_task</span><span>claim_task</span><span>comment</span><span>add_task</span><span>modify_task</span><span>ping_owner</span><span>peloton_post</span><span>release_task</span></div>
+      <p class="sub">Same token, same rules as the CLI. No tool merges, deploys, starts an agent, or marks a task done.</p>
     </div>
   </div>
 </div>`,
