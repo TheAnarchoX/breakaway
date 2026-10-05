@@ -635,6 +635,16 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     return this.run(() => ok({ task: this.detail(this.resolve(ref)) }));
   }
 
+  /**
+   * Whether an agent's edit of a task follows the cross-task rule (crossTaskRightsOf): its general task, or a task it
+   * holds in an open chase the task is in too. MCP's modify_task leaves the check to update then.
+   * @param {string} agent
+   * @param {string} ref
+   */
+  crossTaskRightsApi(agent, ref) {
+    return this.run(() => ok({ rights: this.crossTaskRightsOf(agent, this.resolve(ref)) }));
+  }
+
   /** Creates one or more tasks in one version; later items may depend on earlier ones by work ID. */
   create(items) {
     return this.run(() => {
