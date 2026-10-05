@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseInstall } from '../../src/install.js';
-import { checkInstall } from './install-check.js';
+import { checkInstall, confirmInstall, tokenTarget, unverifiedInstall } from './install-check.js';
 
 const STORE = 'a'.repeat(32);
 const where = { command: 'rotate-token', configFile: '~/work/breakaway/breakaway.config.json' };
@@ -51,5 +51,38 @@ describe('the owner’s commands that write secrets check the install (BRK-95)',
   it('warns, and carries on, on a board too old to say which install it is', () => {
     const result = checkInstall(parseInstall({}), undefined, where);
     expect(result).toMatchObject({ ok: true, warning: expect.stringContaining("can't check") });
+  });
+});
+
+describe('rotate-token without a token the board accepts names the install instead (CLI-5)', () => {
+  const at = { configFile: '~/work/breakaway/breakaway.config.json' };
+
+  it('says where the token goes, from the config', () => {
+    expect(tokenTarget(parseInstall({}))).toBe('the secret TASKS_API_TOKEN on the Worker breakaway');
+    expect(tokenTarget(acmeConfig)).toBe(`ACME_API_TOKEN in the Secrets Store ${STORE}, for the Worker acme-board`);
+  });
+
+  it('says why it can’t ask the board, and what the owner confirms', () => {
+    const none = unverifiedInstall(acmeConfig, { ...at, token: false });
+    expect(none).toContain("There's no token on this machine");
+    expect(none).toContain(`~/work/breakaway/breakaway.config.json says the new token goes in ACME_API_TOKEN`);
+    expect(none).toContain("the Worker's name or the Secrets Store's ID");
+    expect(unverifiedInstall(parseInstall({}), { ...at, token: true })).toContain(
+      "The board refused this machine's token",
+    );
+    expect(unverifiedInstall(parseInstall({}), { ...at, token: true })).not.toContain('Secrets Store');
+  });
+
+  it('goes ahead only when the owner names the config’s Worker, or its Secrets Store', () => {
+    expect(confirmInstall(acmeConfig, 'acme-board', at)).toEqual({ ok: true });
+    expect(confirmInstall(acmeConfig, ` ${STORE} `, at)).toEqual({ ok: true });
+    expect(confirmInstall(parseInstall({}), 'breakaway', at)).toEqual({ ok: true });
+    const wrong = confirmInstall(parseInstall({}), 'acme-board', at);
+    expect(wrong.ok).toBe(false);
+    expect(wrong.message).toContain(
+      '"acme-board" isn\'t the Worker breakaway that ~/work/breakaway/breakaway.config.json names',
+    );
+    expect(wrong.message).toContain('nothing was written');
+    for (const empty of ['', '  ', undefined, null]) expect(confirmInstall(acmeConfig, empty, at).ok).toBe(false);
   });
 });
