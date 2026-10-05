@@ -1,6 +1,6 @@
 # Launch post and thread
 
-Drafts for the owner to post: agents never post. The post and thread point to the repository, the self-hosting guide, and `npx breakaway`. Public copy says what the board does, never what someone shipped with it ([Say what it does](../brand/README.md#say-what-it-does)). The licence is called "free" and "fair source".
+Drafts for the owner to post: agents never post. They go out from breakaway's own account, [@leavethepackdev](https://x.com/leavethepackdev) on X ([`profile.md`](profile.md)), and the owner may share them from their own. The post and thread point to the repository, the self-hosting guide, and `npx breakaway`. Public copy says what the board does, never what someone shipped with it ([Say what it does](../brand/README.md#say-what-it-does)). The licence is called "free" and "fair source".
 
 Each post fits X (280 characters, a link counts as 23) and Bluesky (300), and stands on its own. Post to both from the same text. Put the media on the post it's listed under, with its alt text. Counts are as X counts them.
 
