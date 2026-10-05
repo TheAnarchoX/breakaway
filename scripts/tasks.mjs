@@ -78,6 +78,7 @@ import {
   removedRepoByHand,
   unknownSubcommand,
 } from './tasks/cli.js';
+import { keepLines } from './tasks/keep.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
@@ -1794,13 +1795,26 @@ const commands = {
         ...newSyncCredentials(),
       }),
     );
+    const keep = keepLines({
+      envFile: tildePath(ENV_FILE, homedir()),
+      routinesFile: tildePath(ROUTINES_FILE, homedir()),
+      githubFile: tildePath(join(CONFIG_DIR, 'github-app.json'), homedir()),
+    });
     if (install.secretsStore) {
-      console.log(`Wrote ${ENV_FILE} (0600). Next: put the values in the Secrets Store (docs/tasks.md#secrets).`);
+      console.log(
+        [
+          `Wrote ${ENV_FILE} (0600). Next: put the values in the Secrets Store (docs/tasks.md#secrets).`,
+          '',
+          ...keep,
+        ].join('\n'),
+      );
       return;
     }
     console.log(
       [
-        `Wrote ${ENV_FILE} (0600). Keep it, and a copy in your password manager: it holds the sync secret.`,
+        `Wrote ${ENV_FILE} (0600).`,
+        '',
+        ...keep,
         '',
         'Next, deploy the board (docs/tasks.md#deploy-to-cloudflare) with three of its values as secrets:',
         `  TASKS_API_TOKEN  is ${envName('TOKEN')}`,

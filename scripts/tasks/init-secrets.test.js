@@ -56,3 +56,23 @@ describe('init-secrets never loses the sync secret (CLI-2)', () => {
     expect(result.stdout).not.toContain('Kept the old one');
   });
 });
+
+describe('init-secrets names what to keep (DOC-22)', () => {
+  /** @type {string} */
+  let home;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'breakaway-init-secrets-'));
+  });
+  afterEach(() => rmSync(home, { recursive: true, force: true }));
+
+  it('lists each file the owner keeps, and never prints a value', () => {
+    const result = run(home, 'init-secrets');
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('docs/tasks.md#what-to-keep');
+    for (const file of ['tasks.env', 'tasks-routines.json', 'github-app.json'])
+      expect(result.stdout).toContain(join(home, file).replace(home, '~'));
+    const written = readFileSync(join(home, 'tasks.env'), 'utf8');
+    for (const line of written.split('\n').filter((l) => /^BREAKAWAY_(TOKEN|SECRET|SYNC_KEY|CLIENT_ID)=/u.test(l)))
+      expect(result.stdout).not.toContain(line.slice(line.indexOf('=') + 1));
+  });
+});
