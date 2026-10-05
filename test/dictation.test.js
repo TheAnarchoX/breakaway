@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { dictationError, dictationText, transcriptOf } from '../web/src/lib/dictation.js';
+import { dictationError, dictationText, dictationWorks, transcriptOf } from '../web/src/lib/dictation.js';
+import HEADERS from '../web/public/_headers?raw';
 
 /** A SpeechRecognitionResultList's shape: a list of results, each a list of alternatives. */
 const results = (...texts) => texts.map((transcript) => [{ transcript }]);
@@ -61,5 +62,35 @@ describe('dictationError', () => {
   it('falls back to a plain message', () => {
     expect(dictationError('network')).toContain('speech service');
     expect(dictationError('something-new')).toBe('Dictation stopped. Try again.');
+  });
+});
+
+describe('dictationWorks', () => {
+  class Recognition {}
+
+  it('needs the browser’s speech recognition', () => {
+    expect(dictationWorks({}, Recognition)).toBe(true);
+    expect(dictationWorks({}, undefined)).toBe(false);
+  });
+
+  it('is off in Brave, which has the API but no speech service behind it', () => {
+    expect(dictationWorks({ brave: { isBrave: () => Promise.resolve(true) } }, Recognition)).toBe(false);
+  });
+});
+
+describe('the served headers', () => {
+  /** The board's pages' Permissions-Policy, as web/public/_headers serves it. */
+  const policy = () => {
+    const line = HEADERS.split('\n').find((l) => l.trim().startsWith('Permissions-Policy:'));
+    const pairs = (line ?? '').replace(/^\s*Permissions-Policy:/, '').split(',');
+    return Object.fromEntries(pairs.map((p) => p.trim().split('=')));
+  };
+
+  it('let the board’s own pages use the microphone, so dictation can ask for it', () => {
+    expect(policy().microphone).toBe('(self)');
+  });
+
+  it('keep the camera and location off', () => {
+    expect(policy()).toMatchObject({ camera: '()', geolocation: '()' });
   });
 });
