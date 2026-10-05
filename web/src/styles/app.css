@@ -5793,6 +5793,11 @@ fieldset.field {
 .setup-register .field,
 .setup-register .field-row {
   width: 100%;
+  min-width: 0;
+}
+/* Short name and GitHub repository sit side by side only when both fit; on a narrow screen they stack (WEB-52). */
+.setup-register .field-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 .setup-register .wiz-release {
   display: flex;
