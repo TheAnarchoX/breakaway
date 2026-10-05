@@ -3181,7 +3181,22 @@ fieldset.field {
 .review-commented {
   color: var(--muted);
 }
+.card-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-verdict-ok {
+  color: var(--success);
+}
+.card-verdict-bad {
+  color: var(--danger);
+}
+.card-verdict-warn {
+  color: var(--warn);
+}
 .checks-pending svg,
+.card-verdict-spin svg,
 .spin {
   animation: spin 1.2s linear infinite;
 }
@@ -3666,12 +3681,13 @@ fieldset.field {
 
 @media (prefers-reduced-motion: reduce) {
   .checks-pending svg,
+  .card-verdict-spin svg,
   .spin,
   .run-pending .run-icon {
     animation: none;
   }
 }
-:root[data-motion="reduce"] :is(.checks-pending svg, .spin, .run-pending .run-icon) {
+:root[data-motion="reduce"] :is(.checks-pending svg, .card-verdict-spin svg, .spin, .run-pending .run-icon) {
   animation: none;
 }
 
