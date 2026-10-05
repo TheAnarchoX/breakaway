@@ -55,7 +55,6 @@ import {
   healthFailed,
   helpOpen,
   lanes,
-  installDocs,
   installName,
   me,
   menuOpen,
@@ -89,6 +88,8 @@ const VIEW_ICONS = {
 };
 /** The views in the sidebar. The inbox opens from the bell at the top right instead. */
 const NAV_VIEWS = VIEWS.filter((v) => v.id !== 'inbox');
+/** breakaway's docs, on its site: the sidebar links them on every install. */
+const DOCS_URL = 'https://leavethepack.dev/docs/';
 
 /** How many connections need attention, on the Connections item and the Settings gear (CLD-121). */
 function AttentionBadge() {
@@ -341,24 +342,22 @@ export function Sidebar({ drawer = false }) {
       </nav>
       <div class="sidebar-foot">
         <ServerStatus />
-        {installDocs.value && (
-          <a
-            class="side-item"
-            href={installDocs.value}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={tip('Docs')}
-            onClick={close}
-          >
-            <span class="side-icon">
-              <BookOpen size={20} aria-hidden="true" />
-            </span>
-            <span class="side-label">
-              Docs
-              <span class="visually-hidden"> (opens in a new tab)</span>
-            </span>
-          </a>
-        )}
+        <a
+          class="side-item"
+          href={DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={tip('Docs')}
+          onClick={close}
+        >
+          <span class="side-icon">
+            <BookOpen size={20} aria-hidden="true" />
+          </span>
+          <span class="side-label">
+            Docs
+            <span class="visually-hidden"> (opens in a new tab)</span>
+          </span>
+        </a>
         <a
           class="side-item"
           href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
