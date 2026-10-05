@@ -1,4 +1,4 @@
-// The README's screenshots of the board (DOC-7): docs/media/<name>-dark.png and -light.png, in carbon and chalk.
+// The README's screenshots of the board (DOC-7, DOC-36): docs/media/<name>-dark.png and -light.png, in carbon and chalk.
 // They're of a local board seeded with made-up work (seed.sh), never a real one. Run: node screens.mjs [name ...]
 // with the board's web app at BOARD (default http://localhost:5173) and its token in BREAKAWAY_TOKEN.
 import { chromium } from 'playwright-core';
@@ -21,6 +21,8 @@ const VIEWS = {
   inbox: { hash: '#/inbox', viewport: { width: 1440, height: 900 }, clip: { x: 236, y: 158, width: 852, height: 164 } },
   // The board on a phone.
   phone: { hash: '#/board', viewport: { width: 390, height: 844 }, mobile: true },
+  // A chased feature (DOC-36): its tasks in order, and the chase with its plan and who rides it.
+  chase: { hash: '#/roadmap?feature=inbox-filters', viewport: { width: 1440, height: 1000 } },
 };
 
 const only = process.argv.slice(2);
