@@ -51,7 +51,7 @@ The owner wants a **Specs** view: the repository's specs, each one readable on t
 The board reads the repository's spec files from GitHub when the view asks and keeps them for a minute in memory, never in storage. The owner's request is a general task's description, as any prompt is. An agent sees what any agent in that repository already can.
 
 ## Out of scope
-- Editing a spec in the browser, or the board committing one: changes come as an agent's pull request the owner merges.
+- Editing a spec in the browser, or the board committing one: changes come as an agent's pull request the owner merges. The one exception is a spec's status: **Mark approved** and **Mark built** (`BRK-215`) open a pull request that changes only its `Status:` line, which the owner merges like any other.
 - Specs on branches or in open pull requests (a spec still in review is read on the pull request page).
 - Subdirectories, files other than Markdown, and specs that live outside a repository.
 - A web form for the specs directory: that is IDEA-29's settings page.

@@ -89,6 +89,71 @@ export function specMeta(name, text) {
   return { wid, title, status };
 }
 
+/** The step a status takes when the owner marks a spec (BRK-215): draft to approved, approved to built. */
+export const NEXT_STATUS = Object.freeze({ draft: 'approved', approved: 'built' });
+
+/** The status after `status`, or null when it has none (built, or a word the board doesn't know). */
+export const nextStatus = (status) => (Object.hasOwn(NEXT_STATUS, status) ? NEXT_STATUS[status] : null);
+
+/** `Status:`, its word, and what its brackets say, as the template writes it: `Status: approved (1 Oct 2026)`. */
+const STATUS = /(\bStatus:\s*\**\s*)([A-Za-z][\w-]*)(?:\s*\(([^)\n]*)\))?/u;
+
+/** The index of the line under a spec's title (its first `# ` heading), or -1. */
+function statusLineAt(lines) {
+  const at = lines.findIndex((l) => /^#\s+\S/u.test(l));
+  if (at < 0) return -1;
+  return lines.findIndex((l, i) => i > at && l.trim() !== '');
+}
+
+/**
+ * The status on the line under a spec's title, lowercased, and what its brackets say (null without them), or
+ * null when that line has no `Status:`, as specMeta reads it.
+ * @param {string} text
+ * @returns {{ status: string, detail: string | null } | null}
+ */
+export function readStatus(text) {
+  const lines = String(text).split('\n');
+  const at = statusLineAt(lines);
+  const m = at < 0 ? null : STATUS.exec(lines[at]);
+  return m ? { status: m[2].toLowerCase(), detail: m[3]?.trim() || null } : null;
+}
+
+/**
+ * `text` with the status on the line under its title set to `status (detail)`, and nothing else changed: the rest
+ * of that line, a later `Status:` in the body, and the line endings stay. Null when that line has no `Status:`.
+ * @param {string} text
+ * @param {string} status
+ * @param {string} detail
+ */
+export function withStatus(text, status, detail) {
+  const lines = String(text).split('\n');
+  const at = statusLineAt(lines);
+  if (at < 0 || !STATUS.test(lines[at])) return null;
+  lines[at] = lines[at].replace(STATUS, (_, lead) => `${lead}${status} (${detail})`);
+  return lines.join('\n');
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A day as the specs and the decision log write it, in UTC: `29 Sep 2026`. */
+export function specDate(ms) {
+  const d = new Date(ms);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/**
+ * What a built spec's brackets say: the merged pull requests of the tasks that link it (`#41, #42`), else the day,
+ * and then when it was approved, from the brackets it had (`approved 1 Oct 2026, by the owner`).
+ * @param {number[]} pulls
+ * @param {string | null} approved
+ * @param {number} now
+ */
+export function builtDetail(pulls, approved, now) {
+  const numbers = [...new Set(pulls.map(Number).filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+  const built = numbers.length ? numbers.map((n) => `#${n}`).join(', ') : `as of ${specDate(now)}`;
+  return approved ? `${built}; approved ${approved}` : built;
+}
+
 /** Newest first by the work ID's number, then by path; specs without a work ID last. */
 export function bySpecOrder(a, b) {
   const n = (s) => (s.wid ? Number(s.wid.split('-')[1]) : -1);
