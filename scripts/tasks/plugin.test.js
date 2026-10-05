@@ -43,6 +43,20 @@ describe('the breakaway plugin (CLI-7)', () => {
     expect(read(`${PLUGIN_DIR}README.md`).split(/\s+/u).length).toBeGreaterThan(40);
   });
 
+  it('asks for the board’s address, token, and agent name, the token kept secret (CLI-8)', () => {
+    const { userConfig } = json(`${PLUGIN_DIR}.claude-plugin/plugin.json`);
+    expect(Object.keys(userConfig)).toEqual(['board_url', 'token', 'agent_name']);
+    for (const option of Object.values(userConfig)) {
+      expect(option).toMatchObject({ type: 'string', title: expect.any(String), description: expect.any(String) });
+      // Claude Code refuses an option with a key it doesn't know.
+      for (const key of Object.keys(option))
+        expect(['type', 'title', 'description', 'required', 'default', 'sensitive']).toContain(key);
+    }
+    expect(userConfig.board_url.required).toBe(true);
+    expect(userConfig.token.sensitive).toBe(true);
+    expect(userConfig.agent_name.sensitive).toBeFalsy();
+  });
+
   it('is offered by this repository’s marketplace, from the plugin branch', () => {
     const market = json('.claude-plugin/marketplace.json');
     expect(market.name).toBe('breakaway');

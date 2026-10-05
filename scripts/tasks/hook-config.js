@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { boardUrl, configDir, parseEnvFile, readSetting } from './settings.js';
+import { boardUrl, configDir, parseEnvFile, readSetting, settingFrom } from './settings.js';
 
 /** The git root of the current folder, or null outside a repository. */
 function gitRoot() {
@@ -69,8 +69,9 @@ export function boardConfig(root = projectRoot()) {
     /* the CLI says what's wrong with it */
   }
   const { url } = boardUrl({ env: process.env, file, taskrc: readOptional(join(root, '.taskrc')), config });
-  // In a cloud session there's no token here: the environment's API credential adds it.
-  const token = readSetting('TOKEN', { env: process.env, file });
+  // In a cloud session there's no token here: the environment's API credential adds it. In the plugin's hooks, its
+  // `token` comes after the CLI's own (CLI-8).
+  const token = settingFrom('TOKEN', { env: process.env, file }).value;
   return { base: url, headers: token ? { Authorization: `Bearer ${token}` } : {} };
 }
 
