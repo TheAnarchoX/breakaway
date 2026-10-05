@@ -44,6 +44,7 @@ import { promptPathOf } from '../src/repos.js';
 import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { appInPlace } from './tasks/github-connect.js';
+import { unsupportedSystem, wranglerFailure } from './tasks/platform.js';
 import { checkInstall } from './tasks/install-check.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import {
@@ -79,6 +80,7 @@ import {
   removedRepoByHand,
   unknownSubcommand,
 } from './tasks/cli.js';
+import { keepLines } from './tasks/keep.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
@@ -141,6 +143,12 @@ async function ensureBoardInstall(command, health = null) {
   const result = checkInstall(installConfig(), board, { command, configFile: tildePath(CONFIG_FILE, homedir()) });
   if (!result.ok) fail(result.message);
   if (result.warning) console.error(`tasks: ${result.warning}`);
+}
+
+/** Stops `command` before it does anything on a system the install doesn't support: Windows outside WSL (CLI-3). */
+function ensureSupportedSystem(command) {
+  const message = unsupportedSystem(command, process.platform);
+  if (message) fail(message);
 }
 
 /** A file in this checkout, or null when it isn't there. */
@@ -1595,6 +1603,7 @@ const commands = {
     });
   },
   async setup() {
+    ensureSupportedSystem('setup');
     const clientId = setting('CLIENT_ID');
     const secret = setting('SECRET');
     if (!clientId || !secret)
@@ -1637,6 +1646,7 @@ const commands = {
    * values. The new values are saved before the server switches, so they can't be lost.
    */
   async 'rotate-sync'() {
+    ensureSupportedSystem('rotate-sync');
     const env = readEnvFile();
     if (!readSetting('SECRET', { file: env })) fail(`${ENV_FILE} has no sync secret; this is for the owner's machine.`);
     const health = await call('GET', 'health');
@@ -1671,6 +1681,7 @@ const commands = {
   },
   /** Owner: a new API token. Every browser is signed out; cloud environments need the new one. */
   async 'rotate-token'() {
+    ensureSupportedSystem('rotate-token');
     await ensureBoardInstall('rotate-token');
     const env = readEnvFile();
     const token = randomBytes(32).toString('base64url');
@@ -1703,6 +1714,7 @@ const commands = {
    * the install's ROUTINES secret (BREAKAWAY_ROUTINES with breakaway's prefix), JSON keyed by slug, merged with this machine's copy of the others.
    */
   async 'agents-connect'() {
+    ensureSupportedSystem('agents-connect');
     const { repos, default: fallback } = await call('GET', 'repos');
     const slug = opts.repo ? String(opts.repo).toLowerCase() : fallback;
     if (!repos.some((r) => r.slug === slug)) fail(unknownRepo(slug, repos));
@@ -1723,13 +1735,11 @@ const commands = {
       fail("that isn't a routine token; generate one in the routine's API trigger.");
     if (!others) {
       if (!updateSecretsStore({ ROUTINE_URL: url, ROUTINE_TOKEN: token }))
-        fail("couldn't update the Secrets Store (is wrangler logged in?).");
+        fail("couldn't update the Secrets Store (the reason is above), so the routine isn't connected.");
     } else {
       const next = { ...others, [slug]: { url, token } };
       if (!updateSecretsStore({ ROUTINES: JSON.stringify(next) }))
-        fail(
-          `couldn't update the Secrets Store (is wrangler logged in, and does ${secretName(installConfig(), 'ROUTINES')} exist?).`,
-        );
+        fail("couldn't update the Secrets Store (the reason is above), so the routine isn't connected.");
       writePrivate(ROUTINES_FILE, `${JSON.stringify(next, null, 2)}\n`);
     }
     console.log(
@@ -1743,6 +1753,7 @@ const commands = {
    * the App's ID, key, and webhook secret, and pipe them into the Secrets Store.
    */
   async 'github-connect'() {
+    ensureSupportedSystem('github-connect');
     const code = need(args[0], 'code');
     // Before the code is traded: it works once, and the keys it gives have to go into the board's own secrets.
     await ensureBoardInstall('github-connect');
@@ -1811,13 +1822,26 @@ const commands = {
         ...newSyncCredentials(),
       }),
     );
+    const keep = keepLines({
+      envFile: tildePath(ENV_FILE, homedir()),
+      routinesFile: tildePath(ROUTINES_FILE, homedir()),
+      githubFile: tildePath(join(CONFIG_DIR, 'github-app.json'), homedir()),
+    });
     if (install.secretsStore) {
-      console.log(`Wrote ${ENV_FILE} (0600). Next: put the values in the Secrets Store (docs/tasks.md#secrets).`);
+      console.log(
+        [
+          `Wrote ${ENV_FILE} (0600). Next: put the values in the Secrets Store (docs/tasks.md#secrets).`,
+          '',
+          ...keep,
+        ].join('\n'),
+      );
       return;
     }
     console.log(
       [
-        `Wrote ${ENV_FILE} (0600). Keep it, and a copy in your password manager: it holds the sync secret.`,
+        `Wrote ${ENV_FILE} (0600).`,
+        '',
+        ...keep,
         '',
         'Next, deploy the board (docs/tasks.md#deploy-to-cloudflare) with three of its values as secrets:',
         `  TASKS_API_TOKEN  is ${envName('TOKEN')}`,
@@ -2179,8 +2203,10 @@ async function promptAnswers() {
 async function removeRepo(slug, signer) {
   const { default: fallback } = await call('GET', 'repos');
   // Dropping a routine this machine connected rewrites the ROUTINES secret: check before anything changes.
-  if (existsSync(ROUTINES_FILE) && JSON.parse(readFileSync(ROUTINES_FILE, 'utf8'))[slug])
+  if (existsSync(ROUTINES_FILE) && JSON.parse(readFileSync(ROUTINES_FILE, 'utf8'))[slug]) {
+    ensureSupportedSystem('repos remove');
     await ensureBoardInstall('repos remove');
+  }
   const res = await call('DELETE', `repos/${enc(slug)}`, { by: signer, ...(opts.force ? { force: true } : {}) });
   const lines = [
     `Took ${res.removed.slug} (${res.removed.github}) off the board. Its tasks stay, readable, and its slug and prefixes (${res.removed.areas.map((a) => a.prefix).join(', ')}) stay its own.`,
@@ -2201,7 +2227,7 @@ async function removeRepo(slug, signer) {
       delete next[res.removed.slug];
       if (!updateSecretsStore({ ROUTINES: JSON.stringify(next) }))
         lines.push(
-          `Couldn't drop its routine from the Secrets Store (is wrangler logged in?); the board doesn't use it any more.`,
+          `Couldn't drop its routine from the Secrets Store (the reason is above); the board doesn't use it any more.`,
         );
       else {
         writePrivate(ROUTINES_FILE, `${JSON.stringify(next, null, 2)}\n`);
@@ -2283,7 +2309,7 @@ function updateSecretsStore(values) {
     { cwd: REPO, encoding: 'utf8' },
   );
   if (list.status !== 0) {
-    console.error(`tasks: couldn't list the Secrets Store (is wrangler logged in?)`);
+    console.error(`tasks: couldn't list the Secrets Store: ${wranglerFailure(list)}`);
     return false;
   }
   const ids = Object.fromEntries(
@@ -2303,7 +2329,7 @@ function updateSecretsStore(values) {
       { cwd: REPO, encoding: 'utf8', input: value },
     );
     if (res.status !== 0) {
-      console.error(`tasks: couldn't update ${name} in the Secrets Store`);
+      console.error(`tasks: couldn't update ${name} in the Secrets Store: ${wranglerFailure(res)}`);
       ok = false;
     }
   }
@@ -2324,7 +2350,7 @@ function updateWorkerSecrets(install, values) {
       input: value,
     });
     if (res.status !== 0) {
-      console.error(`tasks: couldn't set ${binding} on the Worker ${install.worker} (is wrangler logged in?)`);
+      console.error(`tasks: couldn't set ${binding} on the Worker ${install.worker}: ${wranglerFailure(res)}`);
       ok = false;
     }
   }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Bike, CircleAlert, FastForward, Hand, Hourglass, Megaphone, Square } from 'lucide-preact';
 import { ago, plural } from '../lib/model.js';
 import { actions, agents, byUuid, hashFor, toast } from '../lib/store.js';
-import { Dialog, RepoChip, Segmented, widClass } from './ui.jsx';
+import { Dialog, RepoChip, Segmented, widClass, Dictate } from './ui.jsx';
 import { PelotonPanel } from './Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 
@@ -129,14 +129,16 @@ function RoadCaptainForm({ feature, onDone, titleId }) {
       {titleId && <h2 id={titleId}>Start a road captain</h2>}
       <label class="field">
         <span class="field-label">What should the road captain do?</span>
-        <textarea
-          class="input"
-          id={id}
-          rows={3}
-          value={prompt}
-          placeholder="Fix the conflicts on the chase’s pull requests, then see why the stuck task was refused."
-          onInput={(e) => setPrompt(e.currentTarget.value)}
-        />
+        <Dictate>
+          <textarea
+            class="input"
+            id={id}
+            rows={3}
+            value={prompt}
+            placeholder="Fix the conflicts on the chase’s pull requests, then see why the stuck task was refused."
+            onInput={(e) => setPrompt(e.currentTarget.value)}
+          />
+        </Dictate>
         <span class="field-hint">
           It works in the chase’s repository and rides its peloton, with the chase as it stands now under your prompt.
           It starts now, even when the board is at its limits.

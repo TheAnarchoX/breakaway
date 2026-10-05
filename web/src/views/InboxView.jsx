@@ -15,7 +15,7 @@ import {
   toast,
 } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
-import { Dialog, RepoChip } from '../components/ui.jsx';
+import { Dialog, RepoChip, Dictate } from '../components/ui.jsx';
 
 const link = (wid) => (
   <a class="wid" href={hashFor({ task: wid })}>
@@ -189,21 +189,25 @@ function ApplyDialog({ ping, onClose }) {
                 </label>
                 <label class="field">
                   <span class="field-label">Description</span>
-                  <textarea
-                    class="input"
-                    rows={3}
-                    value={edits[i]?.brief ?? c.brief}
-                    onInput={(e) => edit(i, 'brief', e.currentTarget.value)}
-                  />
+                  <Dictate>
+                    <textarea
+                      class="input"
+                      rows={3}
+                      value={edits[i]?.brief ?? c.brief}
+                      onInput={(e) => edit(i, 'brief', e.currentTarget.value)}
+                    />
+                  </Dictate>
                 </label>
                 <label class="field">
                   <span class="field-label">Done when</span>
-                  <textarea
-                    class="input"
-                    rows={2}
-                    value={edits[i]?.done_when ?? c.done_when}
-                    onInput={(e) => edit(i, 'done_when', e.currentTarget.value)}
-                  />
+                  <Dictate>
+                    <textarea
+                      class="input"
+                      rows={2}
+                      value={edits[i]?.done_when ?? c.done_when}
+                      onInput={(e) => edit(i, 'done_when', e.currentTarget.value)}
+                    />
+                  </Dictate>
                 </label>
               </details>
             )}

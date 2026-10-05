@@ -10,6 +10,7 @@
 import { GitHubClient, GitHubError, appCredentials, appGet } from './github.js';
 import { AgentError, connectCommand } from './store-agents.js';
 import { promptPathOf, repoSlugOf } from './repos.js';
+import { firstResult } from './wizard.js';
 import { CLAUDE_LIMITS } from './plans.js';
 import { vapidKeys } from './push.js';
 import { docsLink, install, secretName } from './install.js';
@@ -175,6 +176,12 @@ export const connectionsMethods = {
   connectionsReplicaSeen() {
     const now = Date.now();
     if (now - Number(this.meta('conn_replica_seen') ?? 0) > SEEN_EVERY_MS) this.setMeta('conn_replica_seen', now);
+  },
+
+  /** The API token was used (the CLI, or a script with the token): the setup's CLI step (BRK-143); at most once a minute. */
+  connectionsCliSeen() {
+    const now = Date.now();
+    if (now - Number(this.meta('conn_cli_seen') ?? 0) > SEEN_EVERY_MS) this.setMeta('conn_cli_seen', now);
   },
 
   /** A replica asked for the child of a version the board never had (410 Gone); written at most once a minute. */
@@ -348,6 +355,7 @@ export const connectionsMethods = {
       ...(await this.githubConnections(live)),
       ...this.npmConnections(),
       ...(await this.claudeConnections()),
+      this.cliConnection(),
       this.taskwarriorConnection(),
       await this.pushConnection(),
     ];
@@ -433,13 +441,19 @@ export const connectionsMethods = {
   /**
    * A fresh install's setup steps, in order, each with the connection that shows it: register a repository,
    * connect the GitHub App, install it on that repository, add the board's files to it (repos init), connect
-   * its routine, and connect a machine's CLI and Taskwarrior. Null on an older install.
+   * its routine, connect a machine's CLI, sync Taskwarrior (optional), and the first result (BRK-143): a first
+   * agent's pull request merged when the repository has a routine, else a first task closed by its pull request,
+   * from the Add a repository wizard's own facts so the two agree. `done` once every step not `optional` is.
+   * Null on an older install.
    */
   setupSteps(connections) {
     if (!this.firstRunInstall()) return null;
     const first = this.repos().find((r) => r.isDefault) ?? null;
     const state = (id, repo) =>
       connections.find((c) => c.id === id && (repo === undefined || c.repo === repo))?.state ?? null;
+    const routine = Boolean(first) && state('claude.routine', first.slug) === 'working';
+    const result = firstResult(first ? this.wizardWork(first.slug) : {}, routine);
+    /** @type {{ id: string, name: string, connection: string | null, done: boolean, optional?: boolean, wid?: string | null, number?: number | null }[]} */
     const steps = [
       { id: 'repo', name: 'Register a repository', connection: 'repos.registered', done: Boolean(first) },
       { id: 'app', name: 'Connect the GitHub App', connection: 'github.app', done: state('github.app') === 'working' },
@@ -456,21 +470,34 @@ export const connectionsMethods = {
         connection: 'github.sync',
         done: Boolean(first) && state('github.sync', first.slug) === 'working',
       },
+      // Routines are how the board starts agents, so this is a step to do; but a first task closed from a local
+      // session is the end of setup without one, and then the routine is left optional (IDEA-33's journey).
       {
         id: 'routine',
         name: 'Connect its agent routine',
         connection: 'claude.routine',
-        done: Boolean(first) && state('claude.routine', first.slug) === 'working',
+        done: routine,
+        ...(!routine && result.done ? { optional: true } : {}),
       },
-      // A machine that syncs has the CLI's token and Taskwarrior's credentials both (npx breakaway setup, CLD-139).
+      // Any call with the API token counts: Taskwarrior is a way in, not a step everyone takes (BRK-143).
+      { id: 'cli', name: 'Connect the CLI', connection: 'cli', done: state('cli') === 'working' },
       {
-        id: 'cli',
-        name: 'Connect the CLI and Taskwarrior',
+        id: 'taskwarrior',
+        name: 'Sync Taskwarrior (optional)',
         connection: 'taskwarrior',
+        optional: true,
         done: Boolean(num(this.meta('conn_replica_seen'))),
       },
+      {
+        id: 'first',
+        name: routine ? 'A first agent’s pull request merged' : 'A first task closed',
+        connection: null,
+        done: result.done,
+        wid: result.wid,
+        number: result.number,
+      },
     ];
-    return { steps, done: steps.every((s) => s.done) };
+    return { steps, done: steps.every((s) => s.done || s.optional) };
   },
 
   /** Keeps when each connection last changed state, so the view can say "since". */
@@ -1160,16 +1187,31 @@ export const connectionsMethods = {
 
   // ---- Taskwarrior and push --------------------------------------------------------------
 
+  /** Whether a machine's CLI reached the board with the API token (BRK-143): the setup's CLI step. */
+  cliConnection() {
+    const seen = num(this.meta('conn_cli_seen'));
+    if (!seen)
+      return entry('cli', 'cli', 'Command line', 'off', {
+        detail: 'no call with the API token yet',
+        fix: 'Connect a machine: put the board’s URL and token in tasks.env in ~/.config/breakaway, then run npx breakaway health. Agents the board starts reach it through their routine’s API credential.',
+        link: doc(this.env, 'another-install'),
+      });
+    return entry('cli', 'cli', 'Command line', 'working', {
+      detail: 'the CLI, or a script with the API token, last reached the board',
+      at: iso(seen),
+    });
+  },
+
   taskwarriorConnection() {
     const seen = num(this.meta('conn_replica_seen'));
     const pushed = num(this.sql.exec("SELECT MAX(created) AS at FROM versions WHERE source = 'replica'").one().at);
     const gone = num(this.meta('conn_replica_gone'));
     const stuck = gone !== null && Date.now() - gone < GONE_FOR_MS;
-    // On a fresh install no machine has synced yet: connecting one is its last setup step (CLD-139).
+    // On a fresh install no machine has synced yet: an optional setup step (CLD-139, BRK-143).
     if (!seen && !pushed && !stuck && this.firstRunInstall()) {
       return entry('taskwarrior', 'taskwarrior', 'Taskwarrior sync', 'off', {
         detail: 'no replica has synced yet',
-        fix: 'Connect a machine: put the board’s URL, token, client ID, and secret (from init-secrets) in tasks.env in ~/.config/breakaway, check the CLI reaches the board with npx breakaway health, then run npx breakaway setup, which writes Taskwarrior’s settings and runs the first task sync.',
+        fix: 'Optional: to use Taskwarrior, put the sync client ID and secret (from init-secrets) in tasks.env in ~/.config/breakaway next to the URL and token, then run npx breakaway setup, which writes Taskwarrior’s settings and runs the first task sync. The board and the CLI work without it.',
         link: doc(this.env, 'another-install'),
       });
     }

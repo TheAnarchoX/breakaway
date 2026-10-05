@@ -30,6 +30,8 @@ The board answers at {{address}}.
 
 Both workflows run breakaway's CLI from the release's own source on GitHub, with Node. Apart from `wrangler`, nothing comes from npm.
 
+If Deploy stops with "There is no Worker named …, but this install already has a board", it changed nothing: `worker` in `breakaway.config.json` isn't the name the board runs as, and deploying it would make a second, empty board. Put the name back. Only if that board is gone and you want an empty one, delete the repository variable `BREAKAWAY_URL`, then run Deploy again.
+
 If Deploy stops with "Couldn't list the Worker's deployments", it changed nothing: only a Worker that doesn't exist yet counts as a first deploy. Check that `CLOUDFLARE_ACCOUNT_ID` is your account's ID (32 hex characters) and that `CLOUDFLARE_API_TOKEN` can read and edit Workers on it, then run Deploy again.
 
 A release can need steps by hand (a Durable Object class deleted or renamed, say). The workflow stops with those steps in its message and deploys nothing; do them, then deploy with `wrangler`. A release whose only step is `wrangler deploy` says so in its notes, and Deploy runs it itself when it may ([below](#which-token-does-what)). The same goes for a new address in `breakaway.config.json`, which a version upload can't carry: without that, apply it yourself (`npx breakaway install config` makes the Worker config), then run Deploy again.

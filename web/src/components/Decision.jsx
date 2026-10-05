@@ -13,7 +13,7 @@ import {
   typeOf,
 } from '../lib/decision.js';
 import { RichText, Title } from '../lib/richtext.jsx';
-import { useAutosize } from './ui.jsx';
+import { useAutosize, Dictate } from './ui.jsx';
 import { RefineFromAnswers } from './RefineFromAnswers.jsx';
 
 /** @param {Record<string, any>} props */
@@ -155,16 +155,18 @@ function Open({ id, d, set, label }) {
   const ref = useRef(null);
   useAutosize(ref, d.value ?? '');
   return (
-    <textarea
-      id={id}
-      ref={ref}
-      class="textarea"
-      rows={3}
-      maxLength={10000}
-      aria-label={label}
-      value={d.value ?? ''}
-      onInput={(e) => set({ value: e.currentTarget.value })}
-    />
+    <Dictate>
+      <textarea
+        id={id}
+        ref={ref}
+        class="textarea"
+        rows={3}
+        maxLength={10000}
+        aria-label={label}
+        value={d.value ?? ''}
+        onInput={(e) => set({ value: e.currentTarget.value })}
+      />
+    </Dictate>
   );
 }
 
@@ -364,24 +366,26 @@ function Decide({ task: t }) {
       <label class="visually-hidden" for={`decide-${t.uuid}`}>
         What you decided
       </label>
-      <textarea
-        id={`decide-${t.uuid}`}
-        ref={area}
-        class="textarea"
-        rows={3}
-        maxLength={10000}
-        value={text}
-        placeholder="What you decided, and why if it helps"
-        onInput={(e) => setText(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(false);
-          }
-        }}
-      />
+      <Dictate>
+        <textarea
+          id={`decide-${t.uuid}`}
+          ref={area}
+          class="textarea"
+          rows={3}
+          maxLength={10000}
+          value={text}
+          placeholder="What you decided, and why if it helps"
+          onInput={(e) => setText(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+        />
+      </Dictate>
       <div class="note-actions">
         <span class="meta">Ctrl + Enter decides it</span>
         <span class="row-gap">
