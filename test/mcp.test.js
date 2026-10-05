@@ -276,7 +276,7 @@ describe('the MCP endpoint (BRK-154)', () => {
   });
 
   describe('the tools', () => {
-    it('lists the read-only tools, each with a JSON Schema and readOnlyHint', async () => {
+    it('lists section 3’s tools, each with a JSON Schema, and readOnlyHint on the ones that only read', async () => {
       const { result } = await json(await modern('tools/list'));
       expect(result).toMatchObject({ resultType: 'complete', ttlMs: 300_000, cacheScope: 'public' });
       expect(result.tools.map((t) => t.name)).toEqual(TOOL_NAMES);
@@ -284,25 +284,59 @@ describe('the MCP endpoint (BRK-154)', () => {
         'health',
         'list_tasks',
         'show_task',
+        'next_task',
+        'claim_task',
+        'release_task',
+        'comment',
+        'add_task',
+        'modify_task',
+        'ping_owner',
+        'review',
         'peloton',
+        'peloton_post',
         'messages',
         'list_specs',
         'show_spec',
         'features',
         'pull_request',
       ]);
+      const writes = [
+        'next_task',
+        'claim_task',
+        'release_task',
+        'comment',
+        'add_task',
+        'modify_task',
+        'ping_owner',
+        'review',
+        'peloton_post',
+      ];
       for (const tool of result.tools) {
         expect(tool.inputSchema).toMatchObject({ type: 'object', additionalProperties: false });
-        expect(tool.annotations.readOnlyHint).toBe(true);
+        expect(tool.annotations.readOnlyHint, tool.name).toBe(!writes.includes(tool.name));
         expect(tool.description).toBeTruthy();
         expect(tool.run).toBeUndefined();
+        // No tool takes force, autostart, or a status, whatever a client sends (section 3).
+        for (const never of ['force', 'autostart', 'status', 'done'])
+          expect(Object.keys(tool.inputSchema.properties), tool.name).not.toContain(never);
       }
       // The client of the revision before gets the same list.
       expect((await json(await legacy('tools/list'))).result.tools).toHaveLength(TOOL_NAMES.length);
     });
 
     it('never has a tool for what is the owner’s, and refuses a name it doesn’t know', async () => {
-      for (const name of ['done', 'merge', 'start_agent', 'release', 'claim_task']) {
+      for (const name of [
+        'done',
+        'merge',
+        'start_agent',
+        'release',
+        'promote',
+        'answer_decision',
+        'resolve_ping',
+        'message_agent',
+        'chase',
+        'repos_add',
+      ]) {
         const res = await json(await modern('tools/call', { name, arguments: {} }));
         expect(res).toMatchObject({ status: 400, error: { code: -32602 } });
       }
@@ -496,6 +530,281 @@ describe('the MCP endpoint (BRK-154)', () => {
       }
       const bad = await call('peloton', {}, { agent: 'not a name!' });
       expect(bad.isError).toBe(true);
+    });
+  });
+
+  describe('the tools that write (BRK-155)', () => {
+    const WRITER = 'claude-mcp-w';
+    const as = (agent) => ({ agent });
+    let fix;
+    let keys;
+    let waits;
+    beforeAll(async () => {
+      const created = await json(
+        await api('tasks', {
+          method: 'POST',
+          body: [
+            { description: 'Fix the pager', project: 'ops', tags: ['agent'], horizon: 'now' },
+            { description: 'Rotate the keys', project: 'ops', tags: ['agent'], horizon: 'now' },
+          ],
+        }),
+      );
+      [fix, keys] = created.tasks;
+      const later = await json(
+        await api('tasks', {
+          method: 'POST',
+          body: { description: 'Audit the keys', project: 'ops', tags: ['agent'], depends: [keys.wid] },
+        }),
+      );
+      [waits] = later.tasks;
+    });
+
+    it('claim_task, comment, and release_task: the loop, always as the agent the header names', async () => {
+      const claimed = await call('claim_task', { task: fix.wid }, as(WRITER));
+      expect(claimed.isError).toBeUndefined();
+      expect(claimed.structuredContent.task).toMatchObject({ wid: fix.wid, claim: WRITER });
+      expect(text(claimed)).toBe(`Claimed ${fix.wid} as ${WRITER}: Fix the pager`);
+      // Claiming again is the same claim, not a conflict.
+      expect((await call('claim_task', { task: fix.wid }, as(WRITER))).isError).toBeUndefined();
+
+      const commented = await call('comment', { task: fix.wid, text: 'The pager rotates at noon.' }, as(WRITER));
+      expect(text(commented)).toBe(`Commented on ${fix.wid}.`);
+      expect(commented.structuredContent.task.comments.at(-1)).toMatchObject({
+        by: WRITER,
+        text: 'The pager rotates at noon.',
+      });
+
+      const released = await call('release_task', { task: fix.wid, comment: 'Stopped at the config.' }, as(WRITER));
+      expect(text(released)).toBe(`Released ${fix.wid}.`);
+      expect(released.structuredContent.task.claim).toBeFalsy();
+      expect(released.structuredContent.task.comments.at(-1)).toMatchObject({
+        by: WRITER,
+        text: 'Stopped at the config.',
+      });
+    });
+
+    it('refuses a claim with no agent name, on another repository’s task, on a claimed task, and with force', async () => {
+      const nameless = await call('claim_task', { task: keys.wid }, as(null));
+      expect(nameless.isError).toBe(true);
+      expect(text(nameless)).toMatch(/set the X-Breakaway-Agent header/u);
+
+      const elsewhereClaim = await call('claim_task', { task: elsewhere.wid }, as(WRITER));
+      expect(elsewhereClaim.isError).toBe(true);
+      expect(text(elsewhereClaim)).toMatch(/belongs to gadgets/u);
+
+      // The agent that holds it keeps it: another's claim is refused, and so is its release.
+      expect((await call('claim_task', { task: keys.wid }, as(WRITER))).isError).toBeUndefined();
+      const taken = await call('claim_task', { task: keys.wid }, as('claude-mcp-other'));
+      expect(taken.isError).toBe(true);
+      expect(text(taken)).toMatch(/claimed by claude-mcp-w/u);
+      const dropped = await call('release_task', { task: keys.wid }, as('claude-mcp-other'));
+      expect(dropped.isError).toBe(true);
+      expect(text(dropped)).toMatch(/claimed by claude-mcp-w/u);
+
+      const forced = await call('claim_task', { task: keys.wid, force: true }, as('claude-mcp-other'));
+      expect(forced.isError).toBe(true);
+      expect(text(forced)).toMatch(/there is no argument force/u);
+
+      const blocked = await call('claim_task', { task: waits.wid }, as('claude-mcp-other'));
+      expect(blocked.isError).toBe(true);
+      expect(text(blocked)).toMatch(/blocked by/u);
+
+      const show = await call('show_task', { task: keys.wid });
+      expect(show.structuredContent.task.claim).toBe(WRITER);
+    });
+
+    it('never writes as the owner or the board: those names are refused', async () => {
+      for (const name of ['owner', 'board', 'routine:nightly', 'Owner']) {
+        const result = await call('comment', { task: fix.wid, text: 'Hi.' }, as(name));
+        expect(result.isError, name).toBe(true);
+        expect(text(result)).toMatch(/your own name/u);
+      }
+      const { task } = (await call('show_task', { task: fix.wid })).structuredContent;
+      expect(task.comments.map((c) => c.text)).not.toContain('Hi.');
+    });
+
+    it('next_task: the best ready agent task in the repository, claimed in the same step when asked', async () => {
+      const peek = await call('next_task', {}, { repo: 'gadgets', agent: 'claude-gadget' });
+      expect(peek.structuredContent.task).toMatchObject({ wid: elsewhere.wid });
+      expect(peek.structuredContent.task.claim).toBeFalsy();
+      expect(text(peek)).toMatch(/^Next up: /u);
+
+      const taken = await call('next_task', { claim: true }, { repo: 'gadgets', agent: 'claude-gadget' });
+      expect(taken.structuredContent.task).toMatchObject({ wid: elsewhere.wid, claim: 'claude-gadget' });
+      expect(text(taken)).toMatch(/^Claimed: /u);
+
+      const none = await call('next_task', { claim: true }, { repo: 'gadgets', agent: 'claude-gadget-2' });
+      expect(none.structuredContent.task).toBeNull();
+      expect(text(none)).toBe('Nothing ready for an agent right now.');
+
+      // In widgets it never hands out a gadget's task, and it needs the agent's name.
+      const widgets = await call('next_task', {}, as(WRITER));
+      expect(widgets.structuredContent.task.repo).toBe('widgets');
+      expect((await call('next_task', { claim: true }, as(null))).isError).toBe(true);
+      expect((await call('next_task', { autostart: true }, as(WRITER))).isError).toBe(true);
+    });
+
+    it('add_task: a new task in the repository, made by the agent, never with a horizon-* tag or autostart', async () => {
+      const added = await call(
+        'add_task',
+        {
+          title: 'Document the pager',
+          project: 'ops',
+          horizon: 'next',
+          tags: ['agent'],
+          depends: [fix.wid],
+          brief: 'Nobody knows how it rotates.',
+          done_when: 'docs/pager.md says how.',
+        },
+        as(WRITER),
+      );
+      expect(added.isError).toBeUndefined();
+      const task = added.structuredContent.task;
+      expect(task).toMatchObject({
+        repo: 'widgets',
+        project: 'ops',
+        horizon: 'next',
+        brief: 'Nobody knows how it rotates.',
+        doneWhen: 'docs/pager.md says how.',
+      });
+      expect(task.wid).toMatch(/^OPS-\d+$/u);
+      expect(task.tags).toContain('agent');
+      expect(task.dependsOn.map((d) => d.wid)).toEqual([fix.wid]);
+      expect(text(added)).toBe(`Added ${task.wid}: Document the pager`);
+
+      const asked = await call(
+        'add_task',
+        {
+          title: 'Pick the pager’s vendor',
+          project: 'ops',
+          tags: ['owner'],
+          decision: [{ id: 'vendor', type: 'open', prompt: 'Which vendor?' }],
+        },
+        as(WRITER),
+      );
+      expect(asked.isError).toBeUndefined();
+      expect(asked.structuredContent.task.decision).toEqual([expect.objectContaining({ id: 'vendor' })]);
+
+      const horizon = await call('add_task', { title: 'Sneak in', tags: ['horizon-now'] }, as(WRITER));
+      expect(horizon.isError).toBe(true);
+      expect(text(horizon)).toMatch(/horizon-\* tag/u);
+      for (const extra of [{ autostart: 'yes' }, { status: 'completed' }, { repo: 'gadgets' }]) {
+        const refused = await call('add_task', { title: 'Sneak in', ...extra }, as(WRITER));
+        expect(refused.isError, JSON.stringify(extra)).toBe(true);
+      }
+      expect((await call('add_task', { title: 'Nameless' }, as(null))).isError).toBe(true);
+      const sneaked = (await call('list_tasks')).structuredContent.tasks.map((t) => t.description);
+      expect(sneaked).not.toContain('Sneak in');
+      expect(sneaked).not.toContain('Nameless');
+    });
+
+    it('modify_task: the agent’s own fields on a task it holds, and the description on one it made', async () => {
+      const changed = await call(
+        'modify_task',
+        { task: keys.wid, pr: 12, spec: 'docs/specs/OPS-2-keys.md', tag: ['runbooks'], related: [fix.wid] },
+        as(WRITER),
+      );
+      expect(changed.isError).toBeUndefined();
+      expect(changed.structuredContent.task).toMatchObject({ pr: '12', spec: 'docs/specs/OPS-2-keys.md' });
+      expect(changed.structuredContent.task.tags).toContain('runbooks');
+
+      // Another agent's task, or one nobody holds, is refused.
+      const unheld = await call('modify_task', { task: fix.wid, tag: ['runbooks'] }, as(WRITER));
+      expect(unheld.isError).toBe(true);
+      expect(text(unheld)).toMatch(/unclaimed: claim it first/u);
+      const theirs = await call('modify_task', { task: keys.wid, tag: ['x'] }, as('claude-mcp-other'));
+      expect(theirs.isError).toBe(true);
+      expect(text(theirs)).toMatch(/claimed by claude-mcp-w/u);
+
+      // Never a horizon-* tag, its status, or autostart.
+      for (const args of [
+        { tag: ['horizon-later'] },
+        { untag: ['horizon-now'] },
+        { status: 'completed' },
+        { autostart: 'yes' },
+        { horizon: 'later' },
+        {},
+      ]) {
+        const refused = await call('modify_task', { task: keys.wid, ...args }, as(WRITER));
+        expect(refused.isError, JSON.stringify(args)).toBe(true);
+      }
+      expect((await call('show_task', { task: keys.wid })).structuredContent.task.status).toBe('pending');
+
+      // The description of a task it made, without holding it; another's description stays the owner's.
+      const made = (
+        await call('add_task', { title: 'Write the pager runbook', project: 'ops', brief: 'A runbook.' }, as(WRITER))
+      ).structuredContent.task;
+      const brief = await call('modify_task', { task: made.wid, brief: 'Step by step.' }, as(WRITER));
+      expect(brief.structuredContent.task.brief).toBe('Step by step.');
+      const owners = await call('modify_task', { task: fix.wid, brief: 'Rewritten.' }, as(WRITER));
+      expect(owners.isError).toBe(true);
+      expect(text(owners)).toMatch(/only on a task you made/u);
+      // Whatever the agent's name looks like.
+      const plain = await call('modify_task', { task: fix.wid, done_when: 'Never.' }, as('pager-bot'));
+      expect(plain.isError).toBe(true);
+      expect((await call('show_task', { task: fix.wid })).structuredContent.task.doneWhen).toBeFalsy();
+    });
+
+    it('ping_owner: a ping on the task the agent holds, and only that', async () => {
+      const pinged = await call(
+        'ping_owner',
+        { task: keys.wid, kind: 'question', message: 'Which key store holds the old keys?' },
+        as(WRITER),
+      );
+      expect(pinged.isError).toBeUndefined();
+      expect(pinged.structuredContent.ping).toMatchObject({ kind: 'question', task: keys.wid });
+      expect(text(pinged)).toMatch(new RegExp(`^Pinged the owner about ${keys.wid} \\(question\\)`, 'u'));
+      const inbox = await json(await api('pings'));
+      expect(inbox.pings.map((p) => p.message)).toContain('Which key store holds the old keys?');
+
+      const notHeld = await call('ping_owner', { task: fix.wid, kind: 'blocked', message: 'Help.' }, as(WRITER));
+      expect(notHeld.isError).toBe(true);
+      expect(text(notHeld)).toMatch(/only the agent that holds/u);
+      const secret = await call(
+        'ping_owner',
+        { task: keys.wid, kind: 'fyi', message: 'The token is ghp_abcdefghijklmnopqrstuvwxyz0123456789' },
+        as(WRITER),
+      );
+      expect(secret.isError).toBe(true);
+      expect(text(secret)).toMatch(/token or key/u);
+      expect((await call('ping_owner', { task: keys.wid, kind: 'urgent', message: 'x' }, as(WRITER))).isError).toBe(
+        true,
+      );
+    });
+
+    it('review: the agent’s verdict goes to the store as the agent, which wants an open pull request', async () => {
+      const none = await call('review', { task: keys.wid, verdict: 'ready', note: 'Looks right.' }, as(WRITER));
+      expect(none.isError).toBe(true);
+      expect(text(none)).toMatch(/no open pull request to review/u);
+      const notHeld = await call('review', { task: fix.wid, verdict: 'ready', note: 'Looks right.' }, as(WRITER));
+      expect(notHeld.isError).toBe(true);
+      expect(text(notHeld)).toMatch(/claim it first/u);
+      expect((await call('review', { task: keys.wid, verdict: 'lgtm', note: 'x' }, as(WRITER))).isError).toBe(true);
+    });
+
+    it('peloton_post: a check-in, a step, and a reply, as the holder of a claimed task', async () => {
+      const checkin = await call(
+        'peloton_post',
+        { kind: 'checkin', text: 'Rotating the keys in ops/keys.json' },
+        as(WRITER),
+      );
+      expect(checkin.isError).toBeUndefined();
+      const [post] = checkin.structuredContent.posts;
+      expect(post).toMatchObject({ peloton: 'widgets', agent: WRITER, kind: 'checkin' });
+      expect(text(checkin)).toBe(`Posted #${post.id} on widgets.`);
+
+      const reply = await call('peloton_post', { kind: 'reply', reply_to: post.id, text: 'Go first.' }, as(AGENT));
+      expect(reply.isError).toBeUndefined();
+      expect(reply.structuredContent.posts[0]).toMatchObject({ peloton: 'widgets', replyTo: post.id });
+
+      const step = await call('peloton_post', { kind: 'step', text: 'Rotated; does this affect anyone?' }, as(WRITER));
+      expect(step.structuredContent.posts[0]).toMatchObject({ peloton: 'widgets', kind: 'step' });
+
+      const idle = await call('peloton_post', { kind: 'checkin', text: 'Here.' }, as('claude-idle'));
+      expect(idle.isError).toBe(true);
+      expect(text(idle)).toMatch(/rides no peloton/u);
+      expect((await call('peloton_post', { kind: 'reply', text: 'No post.' }, as(WRITER))).isError).toBe(true);
+      expect((await call('peloton_post', { kind: 'leave', text: 'Bye.' }, as(WRITER))).isError).toBe(true);
     });
   });
 });

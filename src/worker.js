@@ -61,7 +61,12 @@ export default {
       return res;
     }
     if (url.pathname === '/mcp') {
-      const res = withHeaders(await handleMcp(request, env, store(env), { maxBody: MAX_BODY }));
+      const res = withHeaders(
+        await handleMcp(request, env, store(env), {
+          maxBody: MAX_BODY,
+          waitUntil: (promise) => ctx?.waitUntil(promise),
+        }),
+      );
       res.headers.set('X-Tasks-Release', releaseOf(env));
       return res;
     }
