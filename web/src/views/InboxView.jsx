@@ -3,6 +3,7 @@ import { Check, CircleCheck, FastForward, Inbox, Plug, TriangleAlert, X } from '
 import { api, enc } from '../lib/api.js';
 import { HORIZONS, NOTICE_LABEL, PING_KIND_LABEL as KIND_LABEL, ago } from '../lib/model.js';
 import {
+  dismissInboxItem,
   focusPing,
   hashFor,
   loadPings,
@@ -238,11 +239,11 @@ function ApplyDialog({ ping, onClose }) {
 /** @param {Record<string, any>} props */
 function PingCard({ ping, focused, onApply }) {
   const [busy, setBusy] = useState(false);
-  const resolve = async (how) => {
+  const handled = async () => {
     setBusy(true);
     try {
-      await api(`pings/${enc(ping.id)}/${how}`, { method: 'POST', body: {} });
-      toast(how === 'dismiss' ? 'Dismissed.' : 'Marked handled.', 'success');
+      await api(`pings/${enc(ping.id)}/handled`, { method: 'POST', body: {} });
+      toast('Marked handled.', 'success');
       await loadPings();
     } catch (error) {
       toast(error.message, 'error');
@@ -250,6 +251,11 @@ function PingCard({ ping, focused, onApply }) {
     } finally {
       setBusy(false);
     }
+  };
+  const dismiss = async () => {
+    setBusy(true);
+    await dismissInboxItem('ping', ping);
+    setBusy(false);
   };
   const label = `${ping.task} ${KIND_LABEL[ping.kind] ?? ping.kind}`;
   return (
@@ -292,12 +298,12 @@ function PingCard({ ping, focused, onApply }) {
             </button>
           )}
           {!ping.proposal && (
-            <button type="button" class="btn btn-primary btn-sm" disabled={busy} onClick={() => resolve('handled')}>
+            <button type="button" class="btn btn-primary btn-sm" disabled={busy} onClick={handled}>
               <CircleCheck size={16} aria-hidden="true" />
               Handled<span class="visually-hidden"> {ping.task}</span>
             </button>
           )}
-          <button type="button" class="btn btn-quiet btn-sm" disabled={busy} onClick={() => resolve('dismiss')}>
+          <button type="button" class="btn btn-quiet btn-sm" disabled={busy} onClick={dismiss}>
             <X size={16} aria-hidden="true" />
             Dismiss<span class="visually-hidden"> {ping.task}</span>
           </button>
@@ -315,15 +321,8 @@ function NoticeCard({ notice: x }) {
   const [busy, setBusy] = useState(false);
   const dismiss = async () => {
     setBusy(true);
-    try {
-      await api(`connections/notices/${enc(x.id)}/dismiss`, { method: 'POST', body: {} });
-      toast('Dismissed.', 'success');
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      setBusy(false);
-      loadPings();
-    }
+    await dismissInboxItem('notice', x);
+    setBusy(false);
   };
   const label = `${NOTICE_LABEL[x.kind]}: ${x.name}`;
   return (
@@ -363,15 +362,8 @@ function ChaseCard({ chase: x }) {
   const [busy, setBusy] = useState(false);
   const dismiss = async () => {
     setBusy(true);
-    try {
-      await api(`features/${enc(x.feature)}/chase`, { method: 'POST', body: { dismiss: true } });
-      toast('Dismissed.', 'success');
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      setBusy(false);
-      loadPings();
-    }
+    await dismissInboxItem('chase', x);
+    setBusy(false);
   };
   const label = `Chase ended: ${x.title}`;
   const feature = hashFor({ view: 'roadmap', feature: x.feature, task: null, pr: null, ping: null });
