@@ -144,4 +144,5 @@ Each registered repository starts its agents through its own routine, because a 
 - One that comments “Started in …, but … is …’s” was started by a routine saved with the wrong repository: fix the routine’s repository on claude.ai.
 - A task that never shows live output while its agent works means the hook can’t reach the board: look for `claim`’s warning in the session, and check the environment’s allowed hosts.
 - “The routine’s token was refused” means the token was regenerated on claude.ai: run `npx breakaway agents-connect` again.
+- A routine Claude refuses (its token, no access, or gone) reads **Paused** on Connections: auto-start and chase start nothing there until it’s connected again. After Claude’s hourly limit, starts wait until the time Claude gives.
 - No agent starts in a repository whose prompt still has a `<…>` placeholder. Fill it in and merge it.
