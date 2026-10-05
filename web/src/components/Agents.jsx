@@ -543,7 +543,14 @@ function messageStatus(m) {
  * next step; the board only queues it. Polls while on screen; shows nothing once there's no agent and no messages.
  * @param {Record<string, any>} props
  */
-export function MessageAgent({ task: t, url = null, autoFocus = false, onSent }) {
+export function MessageAgent({
+  task: t,
+  url = null,
+  autoFocus = false,
+  label = 'Message the agent',
+  placeholder = 'Something to add or keep in mind',
+  onSent,
+}) {
   const [data, setData] = useState(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -629,7 +636,7 @@ export function MessageAgent({ task: t, url = null, autoFocus = false, onSent })
             </p>
           )}
           <label class="field-label" for={id}>
-            Message the agent
+            {label}
           </label>
           <Dictate>
             <textarea
@@ -641,7 +648,7 @@ export function MessageAgent({ task: t, url = null, autoFocus = false, onSent })
               autoFocus={autoFocus}
               value={text}
               aria-describedby={error ? `${id}-error ${id}-hint` : `${id}-hint`}
-              placeholder="Something to add or keep in mind"
+              placeholder={placeholder}
               onInput={(e) => {
                 setText(e.currentTarget.value);
                 setError(null);
