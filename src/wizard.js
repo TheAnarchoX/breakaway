@@ -5,8 +5,22 @@
  * should see) is the web board's; what's wrong and its fix come from Connections' rows, never a second copy.
  */
 
-/** The steps, in order. A step the board can't see itself ticks with the next one that proves it. */
-export const STEP_IDS = ['create', 'install', 'register', 'init', 'prompt', 'routine', 'connect', 'task', 'agent'];
+/**
+ * The steps, in order. A step the board can't see itself ticks with the next one that proves it. Deploys is
+ * optional (WEB-14): it ticks once the repository has a pipeline, and is never the step to do now.
+ */
+export const STEP_IDS = [
+  'create',
+  'install',
+  'register',
+  'init',
+  'deploys',
+  'prompt',
+  'routine',
+  'connect',
+  'task',
+  'agent',
+];
 
 /** What each step and check is called, for the web board and `repos setup` alike. */
 export const STEP_NAMES = {
@@ -14,6 +28,7 @@ export const STEP_NAMES = {
   install: 'Install the GitHub App and turn on Allow auto-merge',
   register: 'Register it on the board',
   init: 'Add the board’s files (repos init)',
+  deploys: 'Deploy with breakaway (optional)',
   prompt: 'Fill in the agent prompt and AGENTS.md',
   routine: 'Make its routine on claude.ai',
   connect: 'Connect the routine',
@@ -110,7 +125,8 @@ function problemOf(row) {
  * - `routine`: whether its routine's URL and token are on the board;
  * - `work`: `{ tasks, claimed, started, output, pull, merged }`, each a `{ wid, … }` or null.
  *
- * Returns `{ steps, now, done }`: each step `{ id, done, detail, checks?, problem }`, and the first not done.
+ * Returns `{ steps, now, done }`: each step `{ id, done, detail, checks?, problem, optional? }`, and the first
+ * not done that isn't optional; `done` once only optional steps are left.
  */
 export function wizardSteps(facts) {
   const {
@@ -187,6 +203,9 @@ export function wizardSteps(facts) {
       // "No commits yet" is the normal state before init, so only a real sync failure counts.
       problem: sync && sync.state === 'attention' ? problemOf(sync) : null,
     },
+    // The move to breakaway's deploy flow (IDEA-27): the web board shows the GitHub page's card here. An agent can
+    // claim tasks without a pipeline, so skipping it is a choice, and the steps after it never wait for it.
+    { id: 'deploys', optional: true, done: Boolean(registered?.pipeline), problem: null },
     {
       id: 'prompt',
       done: filled,
@@ -222,6 +241,6 @@ export function wizardSteps(facts) {
     step.name = STEP_NAMES[step.id];
     for (const check of step.checks ?? []) check.name = CHECK_NAMES[check.id];
   }
-  const now = steps.find((s) => !s.done)?.id ?? null;
+  const now = steps.find((s) => !s.done && !s.optional)?.id ?? null;
   return { steps, now, done: !now };
 }
