@@ -102,10 +102,10 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 
 - **One claim per task.** Claiming is atomic, so two agents never work on the same task.
 - **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
-- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI.
+- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board's MCP server.
 - **Agents ping you when they need you.** The rest waits on the board.
 - **One board, several repositories**, each with its own areas, prompt, and agents.
-- **Three ways in, one set of data**: the web board (installable, phone included), a CLI, and Taskwarrior sync.
+- **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Free, and the source is public** ([below](#free-and-fair-source)).
 

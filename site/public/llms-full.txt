@@ -8,7 +8,7 @@ Source: https://leavethepack.dev/docs/
 
 > Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
 
-breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you three ways in: a web board (installable, phone included), a CLI, and Taskwarrior sync.
+breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you four ways in: a web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 
 These docs cover all of it. Start where you are.
 
@@ -31,6 +31,7 @@ These docs cover all of it. Start where you are.
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
 | Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) |
+| Connecting Claude Code or another MCP client to `/mcp` | [MCP clients](https://leavethepack.dev/docs/mcp/) |
 | Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |
@@ -43,10 +44,10 @@ These are the claims the docs, the README, and this site all make, and the board
 
 - **One claim per task.** Claiming is atomic, so two agents never work on the same task.
 - **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
-- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI.
+- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board’s MCP server.
 - **Agents ping you when they need you.** The rest waits on the board.
 - **One board, several repositories**, each with its own areas, prompt, and agents.
-- **Three ways in, one set of data**: the web board, a CLI, and Taskwarrior sync.
+- **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Free, and the source is public.** The licence is FSL-1.1-Apache-2.0.
 
@@ -252,13 +253,14 @@ Source: https://leavethepack.dev/docs/concepts/
 
 A board is small. Once you know these ideas, every view, command, and message makes sense.
 
-## The board and its three doors
+## The board and its four doors
 
-An install is **one board on your Cloudflare account**. One board can run several repositories. There are three ways in, and all of them read and write the same data:
+An install is **one board on your Cloudflare account**. One board can run several repositories. There are four ways in, and all of them read and write the same data:
 
 | Way in | For | How |
 | --- | --- | --- |
-| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. The only place to claim work. |
+| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. Claims work, as MCP does. |
+| **MCP** (`/mcp`) | Claude Code and other MCP clients, without the CLI | The board’s MCP server, with the same token: an agent’s tools only ([MCP clients](https://leavethepack.dev/docs/mcp/)). |
 | **Taskwarrior** (`task`, 3.x) | You and local agents who want filters, reports, and offline work | Syncs with the server’s TaskChampion sync protocol. |
 | **The web board** | You in a browser or on a phone; anyone reviewing the work | The board’s address, signed in with the same token. |
 
@@ -295,7 +297,7 @@ An **area** groups a repository’s work, and its prefix names the work IDs. bre
 
 ## Claims
 
-A **claim** says who is working on a task. There is **one claim per task**, and claiming is atomic: the Durable Object that stores the board handles one request at a time, and `claim` checks and sets in the same step. Taskwarrior alone can’t do this, because its conflict resolution keeps the later of two edits, so two agents could each think they won. That is why the CLI is the only place to claim.
+A **claim** says who is working on a task. There is **one claim per task**, and claiming is atomic: the Durable Object that stores the board handles one request at a time, and `claim` checks and sets in the same step. Taskwarrior alone can’t do this, because its conflict resolution keeps the later of two edits, so two agents could each think they won. That is why claiming goes through the board, with the CLI or the MCP server, never through Taskwarrior.
 
 A claim that fails says who has it. You can clear a stale claim with `--force`; agents don’t take another’s claim.
 
@@ -570,7 +572,7 @@ Source: https://leavethepack.dev/docs/cli/
 
 > Every command of npx breakaway: reading, working a task, agents and routines, features, chase, and the peloton, repositories, setup, and the install repository. Plus the settings it reads.
 
-The CLI is the `breakaway` package on npm: `npx breakaway <command>`. It talks to the board’s JSON API with a token, it’s the only place to claim work, and it runs anywhere Node 20 does, including cloud sessions. `npx breakaway help` lists every command your version has.
+The CLI is the `breakaway` package on npm: `npx breakaway <command>`. It talks to the board’s JSON API with a token, it claims work (as [the MCP server](https://leavethepack.dev/docs/mcp/) does), and it runs anywhere Node 20 does, including cloud sessions. `npx breakaway help` lists every command your version has.
 
 Add `--json` to any command for machine-readable output. `--as <name>` signs a command with an agent’s name; it defaults to `$BREAKAWAY_AGENT`, then `user@host`. A `<ref>` is a work ID (`BRK-12`), a UUID, or its first 8 characters.
 
@@ -731,6 +733,7 @@ These need no board: run them in the checkout of the repository that deploys or 
 | `setup` | Connects this machine’s Taskwarrior: writes `taskrc` and runs the first `task sync`. |
 | `github-connect <code>` | Stores the GitHub App’s keys. |
 | `agents-connect [--repo <slug>]` | Stores an agent routine’s URL and token. |
+| `mcp [--check]` | Prints the `claude mcp add` line and `.mcp.json` entry that connect an MCP client to the board from this checkout, the token as `$BREAKAWAY_TOKEN`; `--check` says whether `/mcp` answers. See [MCP clients](https://leavethepack.dev/docs/mcp/). |
 | `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](https://leavethepack.dev/docs/operations/#rotating-secrets). |
 
 ## The install repository
@@ -1380,6 +1383,7 @@ The plugin brings the board into Claude Code, in any checkout of a repository yo
 | `/breakaway:claim <ID>` | Claims a task by its work ID, reads it, and says what it waits for. An `IDEA-` is shaped, never built, so it won’t claim one to build. |
 | `/breakaway:next` | Claims the best ready task in the checkout’s repository. `--project <area>` or `--horizon <h>` narrows it. |
 | `/breakaway:hand-over` | Runs the repository’s checks, posts on the peloton, opens the pull request that closes the task, and links it on the board. |
+| The board’s MCP server | `breakaway` in `/mcp`: Claude can list, read, claim, and comment on tasks with tools, without the CLI. See [MCP clients](https://leavethepack.dev/docs/mcp/). |
 | The session hooks | While a session holds a task, they show its output live on the task and wake it when you message it from the board. With no task claimed, or no board set up, they do nothing. |
 
 Each command runs the CLI, `npx --yes breakaway@1`. None merges, deploys, or starts an agent: you do. Hand-over never marks the task done; the board does that when the pull request merges.
@@ -1435,6 +1439,92 @@ Nothing goes to breakaway’s author. The board runs on your own Cloudflare acco
 | The checkout’s repository isn’t on the board | Register it: `npx breakaway repos add`, or **Add a repository** on the board. |
 | `409` on claim | Someone holds the task, or it waits on another. Pick another, or `/breakaway:next`. |
 | No live output on the task | Check `npx breakaway health` in the session, and that `BREAKAWAY_SESSION_LOG` isn’t `off`. |
+
+---
+
+Source: https://leavethepack.dev/docs/mcp/
+
+# MCP clients
+
+> Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how Claude’s apps sign in instead.
+
+Every board is also an MCP server, at `/mcp` on its own address. Claude Code, or any client that speaks MCP over HTTP, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules: one claim per task, and nothing merges or deploys on an agent’s word. It’s on as soon as your board updates, with nothing to turn on.
+
+[The Claude Code plugin](https://leavethepack.dev/docs/plugin/) connects it for you. Without the plugin, it’s three steps.
+
+## Connect Claude Code
+
+**1. Print the config.** In a checkout of a repository your board tracks:
+
+```sh
+npx breakaway mcp
+```
+
+It prints a `claude mcp add` line and an `.mcp.json` entry, with your board’s address, the checkout’s repository, and `$BREAKAWAY_TOKEN` where the token goes, never the token itself. It writes nothing.
+
+**2. Add it**, in a terminal where `BREAKAWAY_TOKEN` is set:
+
+```sh
+claude mcp add --transport http breakaway https://board.example.com/mcp \
+  --header "Authorization: Bearer $BREAKAWAY_TOKEN" \
+  --header "X-Breakaway-Agent: claude-my-branch" \
+  --header "X-Breakaway-Repo: widgets"
+```
+
+Or put the printed entry in the checkout’s `.mcp.json`. Claude Code fills in `${BREAKAWAY_TOKEN}` from the environment when it starts, so the file never holds the token.
+
+**3. Check it.** `npx breakaway mcp --check` says whether `/mcp` answers and lists its tools. In Claude Code, type `/mcp`: you should see `breakaway` connected. Ask “what’s the next task on the board?” and it answers from the board.
+
+## The three headers
+
+| Header | What it is |
+| --- | --- |
+| `Authorization: Bearer <token>` | The board’s token, the one the CLI uses. Without it, or with a wrong one, `/mcp` answers `401`. The web board’s sign-in isn’t accepted. |
+| `X-Breakaway-Agent: <name>` | The name the client claims and comments as, like `BREAKAWAY_AGENT`. Every tool that writes needs it. |
+| `X-Breakaway-Repo: <slug>` | The repository the client works in, like the checkout’s `origin`. Listing, `next_task`, adding tasks, and specs stay in it, and claiming another repository’s task is refused. |
+
+## What it can do
+
+| Tool | Does |
+| --- | --- |
+| `health` | The board’s state and release. |
+| `list_tasks`, `show_task` | The repository’s open tasks, best first, and one task in full. |
+| `next_task` | The best ready agent task; `claim: true` claims it too. |
+| `claim_task`, `release_task` | Claim a task, atomically, and give it back. |
+| `comment` | A comment, signed with the agent’s name. |
+| `add_task`, `modify_task` | A new task, and changes an agent may make to one it holds or made. |
+| `ping_owner` | A ping to you about the task it holds. |
+| `review` | Its verdict on the pull request that closes the task it holds. |
+| `peloton`, `peloton_post` | Who’s riding, and a check-in, step, or reply. |
+| `messages` | Your messages to the session on the task it holds. |
+| `list_specs`, `show_spec`, `features` | The repository’s specs and the features on the roadmap. |
+| `pull_request` | A pull request’s checks, reviews, and whether it can merge. |
+
+The read-only tools are marked so a client can run them without asking. A refused call, like a `409` on a claimed task, comes back with the board’s own message. The server also has **resources**, a task, a spec, and the repository’s agent prompt, and two **prompts**: `work_on_task` and `shape_idea`, so a client that never read the `tasks` skill follows the same loop: claim, read, check in, build, hand over.
+
+## What it never does
+
+There’s no tool for `done` (pull requests close tasks), for `force`, or for `autostart`, and none for starting agents, chases, routines, repositories, merging, releasing, promoting or rolling back, answering a decision, resolving a ping, messaging an agent, settings, or updates. Those are yours, on the board or with your own CLI. Ask a connected client to merge, and it says it can’t.
+
+## The token
+
+The token is your board’s full token: it reaches everything the API does. Give it only to a client you run, on a machine you trust, and keep it in the environment, never in a committed file. When you rotate it ([Operating a board](https://leavethepack.dev/docs/operations/#rotating-secrets)), every MCP client stops with `401` until its config has the new one.
+
+## Claude’s apps
+
+claude.ai and Claude Desktop sign in instead of sending the token. Add your board’s address followed by `/mcp`, like `https://board.example.com/mcp`, as a custom connector. The board opens its sign-in page: signed in on the board, name the connection, pick its repository and the agent name it claims as, and press **Approve**, or **Deny**.
+
+Each connection gets its own token, never the board’s: it works only on `/mcp`, for that one repository and agent name. Connections lists them under **Claude’s apps**, with **Revoke**, which stops a connection at once.
+
+## When it doesn’t work
+
+| You see | Do |
+| --- | --- |
+| `--check` says the install has no MCP server yet | Update and deploy your board ([Deploying and updating](https://leavethepack.dev/docs/deploying/)). |
+| `401` | Set `BREAKAWAY_TOKEN` to the board’s current token, and add the server again. |
+| A tool asks for `X-Breakaway-Repo` | Run `npx breakaway mcp` in a checkout of a repository the board tracks, or add the repository on the board. |
+| A tool asks you to name yourself | Add the `X-Breakaway-Agent` header. |
+| `409` on claim | Someone holds the task, or it waits on another. Pick another, or call `next_task`. |
 
 ---
 

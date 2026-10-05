@@ -90,8 +90,8 @@ Rather do it by hand? [The self-hosting guide](https://github.com/TheAnarchoX/br
 <table>
   <tr>
     <td valign="top">
-      <h3>Three ways in, one set of data.</h3>
-      <p>The web board in your browser, installable on your phone. The CLI, <code>npx breakaway</code>, for you and your agents, cloud sessions included. And Taskwarrior 3, which syncs with the board using its own protocol.</p>
+      <h3>Four ways in, one set of data.</h3>
+      <p>The web board in your browser, installable on your phone. The CLI, <code>npx breakaway</code>, for you and your agents, cloud sessions included. The board's MCP server at <code>/mcp</code>, so an MCP client like Claude Code claims and comments without the CLI. And Taskwarrior 3, which syncs with the board using its own protocol.</p>
 
 ```sh
 npx breakaway next --claim --as claude-brk-12
@@ -121,10 +121,10 @@ npx breakaway list --ready
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/built-light.png">
-  <img alt="How breakaway is built. Three ways in: the web board, the CLI, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/built-dark.png" width="100%">
+  <img alt="How breakaway is built. Four ways in: the web board, the CLI, the MCP server, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI or MCP." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/built-dark.png" width="100%">
 </picture>
 
-One Cloudflare Worker serves the API, the web app (Preact), and Taskwarrior sync, and one SQLite Durable Object holds every task, claim, comment, and change. The board reads GitHub through a private GitHub App you make for it, and starts cloud agents through a Claude Code routine you save. [Architecture](https://leavethepack.dev/docs/architecture/) has the rest.
+One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and Taskwarrior sync, and one SQLite Durable Object holds every task, claim, comment, and change. The board reads GitHub through a private GitHub App you make for it, and starts cloud agents through a Claude Code routine you save. [Architecture](https://leavethepack.dev/docs/architecture/) has the rest.
 
 ## Docs
 

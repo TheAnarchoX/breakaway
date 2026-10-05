@@ -4,13 +4,14 @@
 
 A board is small. Once you know these ideas, every view, command, and message makes sense.
 
-## The board and its three doors
+## The board and its four doors
 
-An install is **one board on your Cloudflare account**. One board can run several repositories. There are three ways in, and all of them read and write the same data:
+An install is **one board on your Cloudflare account**. One board can run several repositories. There are four ways in, and all of them read and write the same data:
 
 | Way in | For | How |
 | --- | --- | --- |
-| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. The only place to claim work. |
+| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. Claims work, as MCP does. |
+| **MCP** (`/mcp`) | Claude Code and other MCP clients, without the CLI | The board’s MCP server, with the same token: an agent’s tools only ([MCP clients](https://leavethepack.dev/docs/mcp/)). |
 | **Taskwarrior** (`task`, 3.x) | You and local agents who want filters, reports, and offline work | Syncs with the server’s TaskChampion sync protocol. |
 | **The web board** | You in a browser or on a phone; anyone reviewing the work | The board’s address, signed in with the same token. |
 
@@ -47,7 +48,7 @@ An **area** groups a repository’s work, and its prefix names the work IDs. bre
 
 ## Claims
 
-A **claim** says who is working on a task. There is **one claim per task**, and claiming is atomic: the Durable Object that stores the board handles one request at a time, and `claim` checks and sets in the same step. Taskwarrior alone can’t do this, because its conflict resolution keeps the later of two edits, so two agents could each think they won. That is why the CLI is the only place to claim.
+A **claim** says who is working on a task. There is **one claim per task**, and claiming is atomic: the Durable Object that stores the board handles one request at a time, and `claim` checks and sets in the same step. Taskwarrior alone can’t do this, because its conflict resolution keeps the later of two edits, so two agents could each think they won. That is why claiming goes through the board, with the CLI or the MCP server, never through Taskwarrior.
 
 A claim that fails says who has it. You can clear a stale claim with `--force`; agents don’t take another’s claim.
 
