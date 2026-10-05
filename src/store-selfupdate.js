@@ -225,7 +225,13 @@ export const selfUpdateMethods = {
         ...(settings.observability ? { observability: settings.observability } : {}),
         bindings,
         keep_bindings: KEPT,
-        assets: { jwt, config: { run_worker_first: settings.assets?.config?.run_worker_first ?? WORKER_FIRST } },
+        // The install's own routes, and any a release adds (like /mcp, BRK-154).
+        assets: {
+          jwt,
+          config: {
+            run_worker_first: [...new Set([...(settings.assets?.config?.run_worker_first ?? []), ...WORKER_FIRST])],
+          },
+        },
         annotations: { 'workers/message': `breakaway ${version}`, 'workers/tag': version },
       });
       state.targetId = targetId;
