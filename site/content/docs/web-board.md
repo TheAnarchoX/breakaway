@@ -27,6 +27,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, every chase that’s on, each repository’s peloton, the Agents settings, and the agent prompts. |
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](/docs/github/#the-github-view). |
+| **MCP** | How to connect any MCP client to the board: its address, a config with the board’s token, the apps you approved (with **Revoke**), and the Claude Code plugin. See [MCP clients](/docs/mcp/). |
 | **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
 | **Settings** | This browser’s settings, the board’s, and every repository, each with a page of its own. See [Settings](#settings). |
 
@@ -100,6 +101,7 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 | `i` | New idea |
 | `p` | New agent |
 | `b` `l` `m` `g` `o` `a` `h` `e` `x` `u` | Switch views |
+| `t` | MCP |
 | `w` | Connections |
 | `[` | Collapse or expand the sidebar |
 | `s` | Switch repository (with several) |

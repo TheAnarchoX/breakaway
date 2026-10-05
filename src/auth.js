@@ -69,7 +69,7 @@ export async function authenticate(request, env) {
   return (await sameSecret(signature ?? '', await sign(token, expiry))) ? 'cookie' : null;
 }
 
-/** Where the board may go after signing in, besides itself: the consent page of a sign-in from Claude's apps (BRK-157). */
+/** Where the board may go after signing in, besides itself: the consent page of a sign-in from MCP apps (BRK-157). */
 const NEXT = /^#\/authorize\/[\w-]{20,64}$/u;
 
 /** POST /login with a form field `token` (and an optional `next`): sets the cookie and goes back to the board. */

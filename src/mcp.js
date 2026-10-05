@@ -72,7 +72,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   if (origin !== null && origin !== url.origin)
     return rpcError(403, null, INVALID_REQUEST, 'requests to /mcp from another origin are refused');
   // The bearer token only, never the web board's cookie: the browser has the web board (section 2). A connection
-  // from Claude's apps has its own token, for its one repository and agent name (section 8).
+  // from MCP apps has its own token, for its one repository and agent name (section 8).
   let pinned = null;
   if ((await authenticate(request, env)) !== 'token') {
     const found = await connectionOf(request, store);
@@ -267,7 +267,7 @@ function rpcError(status, id, code, message, data) {
 
 /**
  * The agent's name and repository from the request's headers (section 2), or from the connection a sign-in from
- * Claude's apps made (section 8), whatever the headers say; and the board's registry, read once and only when a tool
+ * MCP apps made (section 8), whatever the headers say; and the board's registry, read once and only when a tool
  * needs it. `waitUntil` keeps work going after the answer (a ping's push).
  * @param {Request} request
  * @param {any} store
