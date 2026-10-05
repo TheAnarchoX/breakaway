@@ -1,6 +1,6 @@
 # IDEA-6 · Decisions as questions and answers
 
-Task: IDEA-6 on the board · Status: draft
+Task: IDEA-6 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 A `+decide` task is a title and notes. To decide, the owner has to write a comment, and then someone (the owner, or an agent) has to remove the tag, finish the task, and notice what it unblocks. Nothing says what exactly is being asked, so agents write the question in prose and read the answer back out of prose.

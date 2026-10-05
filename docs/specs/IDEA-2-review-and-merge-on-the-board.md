@@ -1,6 +1,6 @@
 # IDEA-2 · Review and merge pull requests on the board
 
-Task: IDEA-2 on the board · Status: draft
+Task: IDEA-2 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # WEB-17 · The GitHub view as a dashboard, with its lists in tabs
 
-Task: WEB-17 on the board · Status: draft (built in the same pull request)
+Task: WEB-17 on the board · Status: built (in the same pull request as the spec)
 
 ## Problem
 The GitHub view stacked every section in one long column: Connect, the release flow, alerts, open pull requests, recently merged and closed, deploys with releases and tags, CI runs, and commits. Finding what's live, or whether main is green, meant scrolling past lists you rarely need. The owner wants an overview at the top with what's live now, and the long lists in tabs under it.

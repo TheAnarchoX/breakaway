@@ -1,6 +1,6 @@
 # CLD-24 · GitHub on the task board
 
-Task: `CLD-24` on the board · Status: approved (29 Sep 2026, by the owner: GitHub App, done on merge, read-only, every part of the GitHub view)
+Task: `CLD-24` on the board · Status: built (before the move to breakaway, under the first install's work IDs; approved 29 Sep 2026, by the owner: GitHub App, done on merge, read-only, every part of the GitHub view)
 
 ## Problem
 

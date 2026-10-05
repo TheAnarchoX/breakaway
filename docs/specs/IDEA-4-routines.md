@@ -1,6 +1,6 @@
 # IDEA-4 · Routines on the task board
 
-Task: IDEA-4 on the board · Status: draft
+Task: IDEA-4 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 Some agent work repeats: draft the changelog from what shipped, check something weekly, react to an alert. Today each run means picking or writing a task and starting an agent by hand. The owner wants **routines**: a saved prompt and target, started by a button, a schedule, a webhook, a GitHub event, or an alert. The first use is keeping `content/changelog.md` (the What's new page, `BRD-10`) up to date.

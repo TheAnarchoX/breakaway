@@ -1,6 +1,6 @@
 # IDEA-32 · The peloton: where running agents check in with each other
 
-Task: IDEA-32 on the board · Status: draft
+Task: IDEA-32 on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 Agents the board starts work alone. Each one reads its task, builds, and opens a pull request, and the only things it knows about the others are the claims and comments it happens to read. That was fine with one agent per area. A chase ([IDEA-28](IDEA-28-features-and-chase.md)) changes it: it runs up to three agents in one area at once, on tasks of the same feature, and it's how the owner wants to drive the big pushes (the first is Artifacts). Those agents step on each other's files, settle the same question twice, and notice follow-up work nobody writes down.

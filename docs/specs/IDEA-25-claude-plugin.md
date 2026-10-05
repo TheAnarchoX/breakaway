@@ -1,6 +1,6 @@
 # IDEA-25 · breakaway as a Claude Code plugin
 
-Task: IDEA-25 on the board · Status: draft
+Task: IDEA-25 on the board · Status: built (as of 5 Oct 2026; what's left is the owner's: LCH-25, LCH-26, and LCH-27)
 
 ## Problem
 A repository joins a board today through `npx breakaway repos init`, which opens a pull request that copies the board's files into it: the `tasks` and `pipeline` skills, the session hooks in `.claude/settings.json`, the core and the stub, the release helpers, and a record of what it copied (`tools/tasks/copied.json`). Every change to the skill or the hooks then needs `repos init --update` in every repository, and a local Claude Code session in a repository nobody ran `repos init` in knows nothing about the board.

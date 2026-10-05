@@ -1,6 +1,6 @@
 # CLD-47 · Ideas: write an idea, let an agent shape it
 
-Task: CLD-47 on the board · Status: draft
+Task: CLD-47 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 

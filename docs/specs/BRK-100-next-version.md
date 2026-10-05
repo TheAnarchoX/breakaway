@@ -1,6 +1,6 @@
 # BRK-100 · Prepare the next minor or major version from the board
 
-Task: BRK-100 on the board · Status: draft
+Task: BRK-100 on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 Pre-releases count patches by themselves: every merge to `main` publishes `vX.Y.Z-main.N`, where X.Y.Z is `package.json`'s version, or the next patch once that stable is out (`nextPrerelease` in `scripts/release/lib.js`). Moving to the next minor or major takes a pull request that sets `package.json`, and on 4 Oct you made two of them by hand (LCH-20 to 1.1.0, BRK-99 to 1.2.0). A button on the board should start the agent that makes it.

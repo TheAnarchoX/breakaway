@@ -1,6 +1,6 @@
 # IDEA-27 · Move a repository's CI/CD to breakaway's deploy and release flows from the GitHub page
 
-Task: `IDEA-27` on the board · Status: draft · The npm release flow added by `BRK-102` (4 Oct 2026)
+Task: `IDEA-27` on the board · Status: built (as of 5 Oct 2026, every task it planned is done) · The npm release flow added by `BRK-102` (4 Oct 2026)
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # CLD-27 · Continuous deployment from main (the board's side)
 
-Task: `CLD-27` on the board · Status: approved (29 Sep 2026, by the owner, [answers](#the-owners-answers-29-sep-2026))
+Task: `CLD-27` on the board · Status: built (before the move to breakaway, under the first install's work IDs; approved 29 Sep 2026, by the owner, [answers](#the-owners-answers-29-sep-2026))
 
 This spec was written for samewave, the first install, whose repository deploys two Workers: its app and the board. This copy keeps the board's side: how the board's own Worker deploys, and how a repository's deploys reach the board. The app's side (its database migrations, domains, and health checks) stays with samewave.
 

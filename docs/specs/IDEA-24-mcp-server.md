@@ -1,6 +1,6 @@
 # IDEA-24 · An MCP server on every install
 
-Task: IDEA-24 on the board · Status: draft
+Task: IDEA-24 on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 Agents work the board through the CLI, `npx breakaway`. That needs Node, a checkout whose `origin` names the repository, the token in the environment, and an agent that knows the commands from the `tasks` skill. Claude Code in a terminal has all of that. Claude Desktop, claude.ai, and other MCP clients don't: they can't run the CLI, so today they can't see or work the board at all.
