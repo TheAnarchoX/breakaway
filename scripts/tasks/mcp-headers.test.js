@@ -1,20 +1,29 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { headersRepo, mcpHeaders } from './mcp.js';
+import { settingFrom } from './settings.js';
 
 const CLI = fileURLToPath(new URL('../tasks.mjs', import.meta.url));
 const TOKEN = 'fake-token-for-tests-0123456789abcdef';
 
 describe('mcpHeaders: what the plugin’s headersHelper hands Claude Code (CLI-9)', () => {
   it('sends the token, the agent, and the repository in a tracked checkout', () => {
-    expect(mcpHeaders({ token: TOKEN, agent: 'claude-wid-2', repo: 'widgets' })).toEqual({
+    expect(mcpHeaders({ token: TOKEN, named: 'claude-wid-2', agent: 'claude-wid-2', repo: 'widgets' })).toEqual({
       Authorization: `Bearer ${TOKEN}`,
       'X-Breakaway-Agent': 'claude-wid-2',
+      'X-Breakaway-Repo': 'widgets',
+    });
+  });
+
+  it('sends claude-<branch> only as the default when the CLI has no name of its own, so agent_name comes first (CLI-16)', () => {
+    expect(mcpHeaders({ token: TOKEN, agent: 'claude-inbox-sort', repo: 'widgets' })).toEqual({
+      Authorization: `Bearer ${TOKEN}`,
+      'X-Breakaway-Agent-Default': 'claude-inbox-sort',
       'X-Breakaway-Repo': 'widgets',
     });
   });
@@ -160,7 +169,7 @@ describe('npx breakaway mcp --headers (CLI-9)', () => {
     expect(out.status).toBe(0);
     expect(JSON.parse(out.stdout)).toEqual({
       Authorization: `Bearer ${TOKEN}`,
-      'X-Breakaway-Agent': 'claude-inbox-sort',
+      'X-Breakaway-Agent-Default': 'claude-inbox-sort',
       'X-Breakaway-Repo': 'widgets',
     });
     expect(out.stderr).not.toContain(TOKEN);
@@ -207,7 +216,7 @@ describe('npx breakaway mcp --headers (CLI-9)', () => {
     );
     expect(out.status).toBe(0);
     expect(JSON.parse(out.stdout)).toEqual({
-      'X-Breakaway-Agent': 'claude-inbox-sort',
+      'X-Breakaway-Agent-Default': 'claude-inbox-sort',
       'X-Breakaway-Repo': 'acme/widgets',
     });
   });
@@ -219,5 +228,61 @@ describe('npx breakaway mcp --headers (CLI-9)', () => {
     });
     expect(out.status).toBe(0);
     expect(JSON.parse(out.stdout)).toEqual({ Authorization: `Bearer ${TOKEN}` });
+  });
+
+  /**
+   * What Claude Code sends to /mcp for the plugin, as it builds it: `.mcp.json`'s static headers with the plugin's
+   * options filled in (each option's default, then the person's value), under the helper's.
+   */
+  const sent = (options, helper) => {
+    const { userConfig } = JSON.parse(
+      readFileSync(new URL('../../plugin/.claude-plugin/plugin.json', import.meta.url)),
+    );
+    const values = {
+      ...Object.fromEntries(Object.entries(userConfig).flatMap(([k, o]) => ('default' in o ? [[k, o.default]] : []))),
+      ...options,
+    };
+    const { mcpServers } = JSON.parse(readFileSync(new URL('../../plugin/.mcp.json', import.meta.url)));
+    const fill = (text) =>
+      text.replace(/\$\{user_config\.(\w+)\}/gu, (all, key) => (key in values ? values[key] : all));
+    const fixed = Object.fromEntries(Object.entries(mcpServers.breakaway.headers).map(([k, v]) => [k, fill(v)]));
+    return { ...fixed, ...helper };
+  };
+
+  it('claims as the plugin’s agent_name over MCP, as the session’s CLI does, with nothing else set (CLI-16)', async () => {
+    // The helper sees no option and no BREAKAWAY_*: only the server's URL, which Claude Code gives it.
+    const out = await headers(
+      temp(checkout('git@github.com:acme/widgets.git')),
+      temp(mkdtempSync(join(tmpdir(), 'h-'))),
+      { CLAUDE_CODE_MCP_SERVER_URL: `${board.url}/mcp` },
+    );
+    expect(out.status).toBe(0);
+    const helper = JSON.parse(out.stdout);
+    const options = { board_url: board.url, token: TOKEN, agent_name: 'claude-wid-2' };
+    const mcp = sent(options, helper);
+    expect(mcp).toMatchObject({
+      Authorization: `Bearer ${TOKEN}`,
+      'X-Breakaway-Agent': 'claude-wid-2',
+      'X-Breakaway-Repo': 'acme/widgets',
+    });
+    // The session's Bash gets the options from the plugin's hook (CLI-8), and the CLI claims with the same name.
+    const cli = settingFrom('AGENT', { env: { CLAUDE_PLUGIN_OPTION_AGENT_NAME: options.agent_name } });
+    expect(cli).toEqual({ value: mcp['X-Breakaway-Agent'], from: 'plugin' });
+
+    // Without agent_name the static header is empty, and /mcp takes the helper's claude-<branch> (test/mcp.test.js).
+    const { agent_name: _, ...unset } = options;
+    expect(sent(unset, helper)).toMatchObject({
+      'X-Breakaway-Agent': '',
+      'X-Breakaway-Agent-Default': 'claude-inbox-sort',
+    });
+  });
+
+  it('keeps a name of the CLI’s own ahead of the plugin’s agent_name, as the CLI does', async () => {
+    const out = await headers(
+      temp(checkout('git@github.com:acme/widgets.git')),
+      temp(mkdtempSync(join(tmpdir(), 'h-'))),
+      { CLAUDE_CODE_MCP_SERVER_URL: `${board.url}/mcp`, BREAKAWAY_AGENT: 'claude-mine' },
+    );
+    expect(sent({ agent_name: 'claude-wid-2' }, JSON.parse(out.stdout))['X-Breakaway-Agent']).toBe('claude-mine');
   });
 });
