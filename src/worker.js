@@ -51,9 +51,11 @@ export default {
     const fire = /^\/api\/routines\/([a-z][a-z0-9-]{0,39})\/fire$/u.exec(url.pathname);
     if (fire && request.method === 'POST') return withHeaders(await fireRoutine(request, env, fire[1]));
     if (url.pathname.startsWith('/api/')) {
-      // The CLI version this build carries, so an older copy of the CLI in another repository can say so (CLD-193).
+      // The frozen CLI number, so an old copy of the CLI in another repository says how to switch (CLD-193), and the
+      // release this build is, so a checkout of the board's own repository can say it's behind (BRK-148).
       const res = withHeaders(await handleApi(request, env, url, ctx));
       res.headers.set('X-Tasks-Cli', String(CLI_VERSION));
+      res.headers.set('X-Tasks-Release', releaseOf(env));
       return res;
     }
     if (url.pathname === '/github/webhook' && request.method === 'POST')

@@ -50,15 +50,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "test": "vitest run && vitest run --config scripts/tasks/vitest.config.js",
+    "prepare": "node scripts/board-files.mjs",
+    "build": "node scripts/board-files.mjs && vite build",
+    "test": "node scripts/board-files.mjs && vitest run && vitest run --config scripts/tasks/vitest.config.js",
     "brand": "node scripts/brand-lint.mjs",
     "format": "biome format --write .",
     "lint": "biome check .",
-    "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p scripts/tsconfig.json && tsc -p web/tsconfig.json",
+    "typecheck": "node scripts/board-files.mjs && wrangler types && tsc -p tsconfig.json && tsc -p scripts/tsconfig.json && tsc -p web/tsconfig.json",
     "site": "node site/build.mjs",
     "interop": "node interop.mjs",
-    "deploy": "vite build && wrangler deploy -c wrangler.jsonc"
+    "deploy": "node scripts/board-files.mjs && vite build && wrangler deploy -c wrangler.jsonc"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

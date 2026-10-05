@@ -11,3 +11,5 @@ dist/
 .task-session
 
 worker-configuration.d.ts
+# Generated from the files repos init copies by node scripts/board-files.mjs (install, build, typecheck, test, deploy).
+src/board-files.json

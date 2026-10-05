@@ -208,9 +208,10 @@ describe('task API', () => {
     expect(res.snapshot.version).toMatch(/[0-9a-f-]{36}/u);
   });
 
-  it('says which CLI version it carries, so an older copy can warn (CLD-193)', async () => {
+  it('says which CLI version it carries, so an older copy can warn (CLD-193), and which release it is (BRK-148)', async () => {
     const res = await api('health');
     expect(res.headers.get('X-Tasks-Cli')).toBe(String(CLI_VERSION));
+    expect(res.headers.get('X-Tasks-Release')).toBe(pkg.version);
     expect((await res.json()).cli).toBe(CLI_VERSION);
     // Every API answer has it, refusals too, so whatever command the CLI runs can tell.
     expect((await api('tasks/NOPE-999')).headers.get('X-Tasks-Cli')).toBe(String(CLI_VERSION));

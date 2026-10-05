@@ -68,7 +68,7 @@ const GITATTRIBUTES = ['scripts/task text eol=lf', '.envrc text eol=lf'];
 /**
  * The board's own files initPlan reads (repository paths, sorted): the prompt template, what it copies as it is or
  * adapted, and the release helpers with what they import. src/board-files.json holds them for the Worker, and
- * scripts/tasks/init.test.js fails when it falls behind (`node scripts/board-files.mjs` writes it again).
+ * `node scripts/board-files.mjs` writes it before every build and test run (it isn't committed, BRK-148).
  */
 export function boardSources(read) {
   return [...new Set(['prompts/repository.md', ...COPIED, ...ADAPTED, ...importClosure(RELEASE_ENTRIES, read)])].sort();
@@ -114,19 +114,6 @@ export function importClosure(entries, read) {
     }
   }
   return [...seen].sort();
-}
-
-/**
- * Every file CLI_VERSION in src/cli-version.js versions (repository paths, sorted): what repos init copies, as it is
- * or adapted, and the CLI's own files, which the npm package carries and an old copy still holds. cli-version.js
- * itself is left out, so the fingerprint can live in it.
- */
-export function copiedSources(read) {
-  return [
-    ...new Set([...importClosure(CLI_ENTRIES, read), ...importClosure(RELEASE_ENTRIES, read), ...COPIED, ...ADAPTED]),
-  ]
-    .filter((path) => path !== 'src/cli-version.js')
-    .sort();
 }
 
 /**
@@ -199,16 +186,6 @@ export function declaredCopies(agents) {
     .find((l) => /^- \*\*Copied files\.\*\*/u.test(l));
   if (!line) return [];
   return [...line.split(/ come from \[/u)[0].matchAll(/`([^`]+)`/gu)].map((m) => m[1]);
-}
-
-/** A short SHA-256 of `paths` and their text: changes whenever one of them does. */
-export async function fingerprint(paths, read) {
-  const text = paths.map((path) => `${path}\0${read(path)}\0`).join('');
-  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(hash)]
-    .slice(0, 8)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 /**
