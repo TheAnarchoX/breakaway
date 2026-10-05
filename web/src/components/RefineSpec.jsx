@@ -3,7 +3,7 @@ import { ArrowRight, Sparkles } from 'lucide-preact';
 import { ref } from '../lib/model.js';
 import { refiningSpec, SPEC_REQUEST_MAX } from '../lib/specs.js';
 import { actions, agents, hashFor, openTask, repoName, repos, routineConnected, tasks, toast } from '../lib/store.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, Dictate } from './ui.jsx';
 import { sentence } from './NewAgent.jsx';
 
 /*
@@ -109,27 +109,29 @@ export function RefineDialog({ id, title, what, lead, load, start, open, onClose
           <>
             <label class="field">
               <span class="field-label">What should change?</span>
-              <textarea
-                id={`${id}-note`}
-                class="textarea"
-                rows={4}
-                maxLength={SPEC_REQUEST_MAX}
-                value={note}
-                required
-                aria-required="true"
-                aria-invalid={empty ? 'true' : undefined}
-                aria-describedby={empty ? `${id}-empty` : `${id}-note-hint`}
-                placeholder="I want this and this"
-                disabled={!preview || Boolean(blocked)}
-                onInput={(e) => {
-                  setNote(e.currentTarget.value);
-                  setEmpty(false);
-                  setRefusal(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-                }}
-              />
+              <Dictate>
+                <textarea
+                  id={`${id}-note`}
+                  class="textarea"
+                  rows={4}
+                  maxLength={SPEC_REQUEST_MAX}
+                  value={note}
+                  required
+                  aria-required="true"
+                  aria-invalid={empty ? 'true' : undefined}
+                  aria-describedby={empty ? `${id}-empty` : `${id}-note-hint`}
+                  placeholder="I want this and this"
+                  disabled={!preview || Boolean(blocked)}
+                  onInput={(e) => {
+                    setNote(e.currentTarget.value);
+                    setEmpty(false);
+                    setRefusal(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+                  }}
+                />
+              </Dictate>
               {empty ? (
                 <span class="field-error" id={`${id}-empty`} role="alert">
                   Say what should change first: the agent works from your words.

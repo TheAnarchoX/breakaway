@@ -7572,3 +7572,46 @@ fieldset.field {
     justify-content: center;
   }
 }
+
+/* ---- dictation: a microphone in the corner of a text field ---- */
+.dictate {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.dictate > textarea {
+  padding-right: 48px;
+}
+.dictate-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  color: var(--muted);
+}
+.dictate-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+/* Listening is the pack's color, like a primary button: red stays for the one action that leads. */
+.dictate-btn[aria-pressed="true"] {
+  color: var(--on-invert);
+  background: var(--invert);
+}
+.dictate-btn[aria-pressed="true"]:hover:not(:disabled) {
+  color: var(--on-invert);
+  background: color-mix(in srgb, var(--invert) 86%, var(--bg));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dictate-btn[aria-pressed="true"] {
+    animation: dictate-pulse 1.6s var(--ease) infinite;
+  }
+}
+@keyframes dictate-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--invert) 40%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
