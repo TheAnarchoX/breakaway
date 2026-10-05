@@ -32,6 +32,7 @@ import {
   agents,
   areaList,
   countByRepo,
+  dismissInboxItem,
   inScope,
   multiRepo,
   openAddRepo,
@@ -441,6 +442,43 @@ function SearchBox() {
 
 const RECENT_PINGS = 5;
 
+/**
+ * Dismiss one item from the bell's list without opening the inbox. While it runs the button stays focusable
+ * (aria-disabled, not disabled), and once it's dismissed focus moves on before the item leaves, so focus never
+ * drops out of the dropdown and closes it.
+ * @param {Record<string, any>} props
+ */
+function NotifDismiss({ type, item, label }) {
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+  // The next item's Dismiss, else the one before, else Open inbox.
+  const moveFocus = () => {
+    const li = ref.current?.closest('li');
+    const next = li?.nextElementSibling ?? li?.previousElementSibling;
+    const target =
+      next?.querySelector('.notif-dismiss') ?? ref.current?.closest('.notif-panel')?.querySelector('.notif-all');
+    target?.focus();
+  };
+  return (
+    <button
+      type="button"
+      ref={ref}
+      class="btn btn-quiet btn-icon btn-sm notif-dismiss"
+      aria-disabled={busy ? 'true' : undefined}
+      title="Dismiss"
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        await dismissInboxItem(type, item, moveFocus);
+        setBusy(false);
+      }}
+    >
+      <X size={16} aria-hidden="true" />
+      <span class="visually-hidden">Dismiss {label}</span>
+    </button>
+  );
+}
+
 /** The bell: how many pings need you, the latest few, and the way to the inbox. */
 function Notifications() {
   const n = openPingsHere.value;
@@ -498,7 +536,7 @@ function Notifications() {
             <ol class="notif-list" aria-label={n > RECENT_PINGS ? `The latest ${RECENT_PINGS}` : 'Open in the inbox'}>
               {recent.map((p) =>
                 p.type === 'chase' ? (
-                  <li key={`chase-${p.id}`}>
+                  <li key={`chase-${p.id}`} class="notif-item">
                     <a
                       class="notif"
                       href={hashFor({ view: 'inbox', task: null, pr: null, ping: null })}
@@ -513,9 +551,10 @@ function Notifications() {
                       <span class="notif-title">{p.title}</span>
                       <span class="notif-message">{p.detail}</span>
                     </a>
+                    <NotifDismiss type="chase" item={p} label={`Chase ended: ${p.title}`} />
                   </li>
                 ) : p.type === 'notice' ? (
-                  <li key={`notice-${p.id}`}>
+                  <li key={`notice-${p.id}`} class="notif-item">
                     <a
                       class="notif"
                       href={hashFor({ view: 'connections', task: null, pr: null, ping: null })}
@@ -532,9 +571,10 @@ function Notifications() {
                       <span class="notif-title">{p.name}</span>
                       <span class="notif-message">{p.detail}</span>
                     </a>
+                    <NotifDismiss type="notice" item={p} label={`${NOTICE_LABEL[p.kind]}: ${p.name}`} />
                   </li>
                 ) : (
-                  <li key={p.id}>
+                  <li key={p.id} class="notif-item">
                     <a class="notif" href={hashFor({ view: 'inbox', pr: null, ping: String(p.id) })} onClick={close}>
                       <span class="notif-top">
                         <span class={`ping-kind ping-${p.kind}`}>{PING_KIND_LABEL[p.kind] ?? p.kind}</span>
@@ -549,6 +589,11 @@ function Notifications() {
                       </span>
                       <span class="notif-message">{p.message}</span>
                     </a>
+                    <NotifDismiss
+                      type="ping"
+                      item={p}
+                      label={`${p.task ?? p.taskUuid.slice(0, 8)} ${PING_KIND_LABEL[p.kind] ?? p.kind}`}
+                    />
                   </li>
                 ),
               )}
