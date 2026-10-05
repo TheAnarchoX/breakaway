@@ -183,6 +183,20 @@ export function retryAt(header, now = Date.now()) {
 /** A time as the board says it in a message: `14:05 UTC`. */
 const clock = (ms) => `${new Date(ms).toISOString().slice(11, 16)} UTC`;
 
+/** The tag on a routine maker's task (docs/specs/BRK-220-routines-with-an-agent.md, section 2). */
+export const ROUTINE_MAKER_TAG = 'routine-maker';
+
+/**
+ * Whether a task (a view or a stored map) is a routine maker's: a general agent's task the owner started with
+ * Make with an agent. Its agent starts in `Mode: routines`, and holding it is what lets the agent write routines.
+ */
+export function isRoutineMaker(task) {
+  if (!task) return false;
+  const tags = Array.isArray(task.tags) ? task.tags : [];
+  const general = tags.includes('general') || Boolean(task.tag_general);
+  return general && (tags.includes(ROUTINE_MAKER_TAG) || Boolean(task[`tag_${ROUTINE_MAKER_TAG}`]));
+}
+
 const TRIGGER_TEXT = {
   alert: 'for a GitHub security alert, from the board',
   manual: 'by hand, from the board',
@@ -201,6 +215,8 @@ const TRIGGER_TEXT = {
   'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
   'road-captain': 'by the owner, as the road captain of a chase',
   kickoff: 'by “Send answers and carry on” on a kickoff’s decision, from the board',
+  routines: 'by “Make with an agent” on the Routines view, from the board',
+  'routines-carry-on': 'by “Send answers and carry on” on a routine maker’s decision, from the board',
   move: 'by “Move to breakaway’s deploy flow” on the GitHub page, from the board',
 };
 
@@ -235,6 +251,7 @@ export function firePayload(
     ...(kind === 'routine' ? ['Mode: routine', `Routine: ${routine}`] : []),
     ...(kind === 'general' ? ['Mode: general'] : []),
     ...(kind === 'kickoff' ? ['Mode: kickoff'] : []),
+    ...(kind === 'routines' ? ['Mode: routines'] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
     ...(attachments > 0 ? [`Attachments: ${attachments}`] : []),
     ...(note
@@ -453,6 +470,10 @@ export const agentsMethods = {
    * With `feature` (a feature's slug, BRK-150), the board writes the prompt from the feature and its tasks, with the
    * owner's `note` (what to refine, required) under it, in the repository most of its tasks are in (or `repo` when it
    * has none), and tags the task with the feature; while one refining it is open it returns that one instead.
+   *
+   * With `maker` (BRK-220 section 2, Make with an agent on the Routines view), the agent is a routine maker: the
+   * owner's prompt says what the routines should do, the task is tagged +routine-maker, and its agent starts in
+   * `Mode: routines`, which lets it write routines in that repository while it holds the task (store-routines.js).
    */
   async startGeneral({
     prompt,
@@ -466,6 +487,7 @@ export const agentsMethods = {
     dryRun = false,
     chase = null,
     feature = null,
+    maker = false,
   } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
@@ -474,6 +496,9 @@ export const agentsMethods = {
     let tags = ['agent', 'general'];
     let specPath = null;
     const given = (value) => value !== null && value !== undefined && value !== '';
+    if (maker && [decision, next, spec, chase, feature].some(given))
+      throw new AgentError('a routine maker starts from the owner’s prompt only', 400);
+    if (maker) tags = ['agent', 'general', ROUTINE_MAKER_TAG];
     if ([decision, next, spec, chase, feature].filter(given).length > 1)
       throw new AgentError(
         'start one from a decision, from a spec, from a feature, for the next version, or for a chase: only one of them',
@@ -669,8 +694,8 @@ export const agentsMethods = {
     try {
       return {
         ...(await this.startAgent(uuid, {
-          trigger: given(chase) ? 'road-captain' : 'general',
-          kind: 'general',
+          trigger: given(chase) ? 'road-captain' : maker ? 'routines' : 'general',
+          kind: maker ? 'routines' : 'general',
           force,
         })),
         waiting: null,
@@ -1382,6 +1407,10 @@ export const agentsMethods = {
     if (kind === 'routine' && !routine) throw new AgentError('a routine run needs its routine', 400);
     if (kind === 'general' && !this.tasks.get(uuid)?.tag_general)
       throw new AgentError('that task isn’t a general agent’s', 400);
+    // A routine maker's task always starts its agent in the routines mode, and only it does (BRK-220 section 2).
+    if (kind === 'general' && isRoutineMaker(this.tasks.get(uuid))) kind = 'routines';
+    if (kind === 'routines' && !isRoutineMaker(this.tasks.get(uuid)))
+      throw new AgentError('that task isn’t a routine maker’s', 400);
     if (kind === 'refine' && !String(note ?? '').trim())
       throw new AgentError('say what it should look at or change', 400);
     const map = this.tasks.get(uuid);
@@ -1435,7 +1464,7 @@ export const agentsMethods = {
 
     // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check
     // `claude-<id>-check`, and a review of a pull request `claude-<id>-review`.
-    const id = (kind === 'general' ? task.short : (task.wid ?? task.short)).toLowerCase();
+    const id = (kind === 'general' || kind === 'routines' ? task.short : (task.wid ?? task.short)).toLowerCase();
     const agent =
       kind === 'refine'
         ? `claude-refine-${id}`
@@ -1453,8 +1482,9 @@ export const agentsMethods = {
       {
         claim: agent,
         start: true,
-        // A kickoff's run that waited for room (Send answers and carry on) starts once, not again after it.
-        ...(kind === 'kickoff' && map?.autostart ? { autostart: null } : {}),
+        // A kickoff's or a routine maker's run that waited for room (Send answers and carry on) starts once, not
+        // again after it.
+        ...((kind === 'kickoff' || kind === 'routines') && map?.autostart ? { autostart: null } : {}),
         ...(taken ? { annotate: `${agent} took over the claim from ${taken}.`, by: 'board' } : {}),
       },
       new Date(),
@@ -1653,6 +1683,7 @@ export const agentsMethods = {
         project: t.project,
         repo: t.repo,
         general,
+        maker: isRoutineMaker(t),
         kickoff,
         reason: reason ?? 'starting now',
         ready: !reason,
@@ -1675,11 +1706,13 @@ export const agentsMethods = {
       try {
         await this.startAgent(
           item.uuid,
-          item.general
-            ? { trigger: 'general', kind: 'general' }
-            : item.kickoff
-              ? { trigger: 'kickoff', kind: 'kickoff' }
-              : { trigger: 'auto' },
+          item.maker
+            ? { trigger: 'routines', kind: 'routines' }
+            : item.general
+              ? { trigger: 'general', kind: 'general' }
+              : item.kickoff
+                ? { trigger: 'kickoff', kind: 'kickoff' }
+                : { trigger: 'auto' },
         );
         started.push(item.wid ?? item.uuid);
       } catch {
