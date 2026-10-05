@@ -356,6 +356,12 @@ describe('kickoffs on the board (IDEA-26)', () => {
     // Its plan merged: the IDEA is done, and the kickoff with it.
     expect((await api('tasks/IDEA-2', { method: 'PATCH', body: { status: 'completed' } })).status).toBe(200);
     expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    // Asked for by its IDEA, a finished one still answers, so its plan's pull request page can lead back (WEB-48).
+    const herbIdea = (await body(await api('tasks/IDEA-2'))).task.uuid;
+    const byIdea = await body(await api(`kickoffs?idea=${herbIdea}`));
+    expect(byIdea.kickoffs).toHaveLength(1);
+    expect(byIdea.kickoffs[0]).toMatchObject({ name: 'herb-log', finished: true, idea: { wid: 'IDEA-2' } });
+    expect((await body(await api('kickoffs?idea=00000000-0000-4000-8000-000000000000'))).kickoffs).toEqual([]);
     const gone = await body(await owner(`kickoffs/${plant.id}`, { method: 'DELETE' }));
     expect(gone).toMatchObject({ stopped: plant.id, registered: 'plant-diary' });
     expect((await body(await api('tasks/IDEA-1'))).task.status).toBe('pending');
