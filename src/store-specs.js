@@ -4,9 +4,23 @@
  * agent prompt is (`routinePromptApi`), in memory only: the board never stores a spec. The linked tasks are the
  * board's own and are worked out on every read, so a task that changes shows at once.
  */
-import { GitHubError, appCredentials, isEmptyRepo, repoRef } from './github.js';
+import { GitHubError, appCredentials, base64, fromBase64, isEmptyRepo, repoRef } from './github.js';
 import { repoSlugOf } from './repos.js';
-import { SPEC_MAX_BYTES, bySpecOrder, inSpecsDir, isSpecFile, normalPath, specMeta, specsDirOf } from './specs.js';
+import {
+  NEXT_STATUS,
+  SPEC_MAX_BYTES,
+  builtDetail,
+  bySpecOrder,
+  inSpecsDir,
+  isSpecFile,
+  nextStatus,
+  normalPath,
+  readStatus,
+  specDate,
+  specMeta,
+  specsDirOf,
+  withStatus,
+} from './specs.js';
 
 const SPECS_CACHE_MS = 60_000;
 const NOT_CONNECTED = 'Connect GitHub to read the specs';
@@ -173,11 +187,7 @@ export const specsMethods = {
       if (Array.isArray(file.value) || file.value?.type === 'dir') return notThere;
       const size = Number(file.value.size ?? 0);
       const tooLarge = size > SPEC_MAX_BYTES || file.value.encoding === 'none';
-      const text = tooLarge
-        ? null
-        : new TextDecoder().decode(
-            Uint8Array.from(atob(String(file.value.content ?? '').replace(/\s+/gu, '')), (c) => c.charCodeAt(0)),
-          );
+      const text = tooLarge ? null : fromBase64(file.value.content);
       const last = commits.status === 'fulfilled' ? commits.value[0] : null;
       const name = path.slice(dir.length + 1);
       kept = {
@@ -204,5 +214,144 @@ export const specsMethods = {
       this.specsCache[key] = kept;
     }
     return { status: 200, body: { ...kept.body, tasks: this.specTasks(repo).get(path) ?? [] } };
+  },
+
+  /**
+   * `POST /api/specs/<path>?repo=<slug>` `{ status }` (BRK-215): the owner's press on Mark approved or Mark built.
+   * The board opens a pull request that moves the spec one step, draft to approved or approved to built, and changes
+   * only its status line, on a branch of its own (`spec-status/<name>-<status>`). It closes no task. Pressed again
+   * while that pull request is open, it answers with that one.
+   * @param {string | null} slug
+   * @param {string} rawPath
+   * @param {{ status?: unknown }} body
+   */
+  async specStatusApi(slug, rawPath, { status } = {}) {
+    const setup = await this.specsSetup(slug);
+    if (setup.error) return setup.error;
+    const { repo, dir, credentials } = setup;
+    const path = normalPath(rawPath);
+    if (!inSpecsDir(dir, path) || !isSpecFile(path.slice(dir.length + 1)))
+      return {
+        status: 400,
+        body: { slug: repo.slug, dir, error: `${path.slice(0, 200) || 'that'} isn’t a spec in ${dir}` },
+      };
+    const to = String(status ?? '').toLowerCase();
+    if (!(/** @type {string[]} */ (Object.values(NEXT_STATUS)).includes(to)))
+      return { status: 400, body: { slug: repo.slug, path, error: 'status is approved or built' } };
+    const key = `${repo.slug}\n${path}`;
+    this.specMarking ??= new Set();
+    if (this.specMarking.has(key))
+      return {
+        status: 409,
+        body: { slug: repo.slug, path, error: `The board is already opening a pull request for ${path}.` },
+      };
+    this.specMarking.add(key);
+    try {
+      return await this.markSpec(credentials, repo, path, to);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      return {
+        status: 502,
+        body: {
+          slug: repo.slug,
+          path,
+          error: `GitHub refused the pull request for ${path}: ${error.reason ?? error.message}. Check the App can write to ${repo.github} (Connections), then try again.`,
+          github: error.status,
+        },
+      };
+    } finally {
+      this.specMarking.delete(key);
+    }
+  },
+
+  async markSpec(credentials, repo, path, to) {
+    const client = this.githubClient(credentials, repo);
+    const base = repo.defaultBranch;
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    const branch = `spec-status/${name.replace(/\.md$/u, '')}-${to}`;
+    const head = { slug: repo.slug, path, status: to, branch };
+    const refPath = (b) => b.split('/').map(encodeURIComponent).join('/');
+    const contents = `/contents/${refPath(path)}`;
+
+    // Pressed again while its pull request is open: answer with that one.
+    const owner = repoRef(repo.github).owner;
+    const open = await client.get(`/pulls?state=open&per_page=1&head=${encodeURIComponent(`${owner}:${branch}`)}`);
+    if (Array.isArray(open) && open[0])
+      return {
+        status: 200,
+        body: { ...head, existing: true, pull: { number: open[0].number, url: open[0].html_url } },
+      };
+
+    // The file as it is at the default branch's head, so the branch starts where it was read.
+    const tip = (await client.get(`/git/ref/heads/${refPath(base)}`))?.object?.sha;
+    let file;
+    try {
+      file = await client.get(`${contents}?ref=${encodeURIComponent(tip ?? base)}`);
+    } catch (error) {
+      if (error instanceof GitHubError && error.status === 404)
+        return { status: 404, body: { ...head, error: `no spec at ${path} on ${base}` } };
+      throw error;
+    }
+    if (Array.isArray(file) || file?.type !== 'file')
+      return { status: 404, body: { ...head, error: `no spec at ${path} on ${base}` } };
+    if (Number(file.size ?? 0) > SPEC_MAX_BYTES || file.encoding === 'none')
+      return { status: 409, body: { ...head, error: `${name} is over 1 MB: change its status on GitHub instead.` } };
+    const text = fromBase64(file.content);
+    const now = readStatus(text);
+    if (!now)
+      return {
+        status: 409,
+        body: { ...head, error: `${name} has no Status: line under its title, so the board can’t mark it.` },
+      };
+    const next = nextStatus(now.status);
+    if (next !== to) {
+      const why =
+        now.status === to
+          ? `${name} is already ${to} on ${base}.`
+          : next
+            ? `${name} is ${now.status} on ${base}, so it’s marked ${next} first.`
+            : `${name} is ${now.status} on ${base}: only a draft or approved spec moves on.`;
+      return { status: 409, body: { ...head, from: now.status, error: why } };
+    }
+    const today = Date.now();
+    let detail;
+    if (to === 'approved') detail = `${specDate(today)}, by the owner`;
+    else {
+      const pulls = [];
+      for (const t of this.specTasks(repo).get(path) ?? [])
+        if (t.status === 'completed') pulls.push(Number(this.tasks.get(t.uuid)?.pr));
+      detail = builtDetail(pulls, now.status === 'approved' ? now.detail : null, today);
+    }
+    const changed = withStatus(text, to, detail);
+    const line =
+      changed
+        .split('\n')
+        .find((l, i) => l !== text.split('\n')[i])
+        ?.trim() ?? '';
+
+    // A branch a closed pull request left behind starts again from the head: it's the board's, for this alone.
+    try {
+      await client.send('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: tip });
+    } catch (error) {
+      if (!(error instanceof GitHubError) || error.status !== 422) throw error;
+      await client.send('PATCH', `/git/refs/heads/${refPath(branch)}`, { sha: tip, force: true });
+    }
+    const label = now.status === 'draft' ? 'Mark approved' : 'Mark built';
+    const { wid } = specMeta(name, null);
+    const title = `${wid ? `${wid}: Mark its spec` : `Mark ${name}`} ${to}`;
+    await client.send('PUT', contents, { message: title, content: base64(changed), sha: file.sha, branch });
+    const pull = await client.send('POST', '/pulls', {
+      title,
+      head: branch,
+      base,
+      body: [
+        `Marks \`${path}\` as ${to}. Its status line now reads:`,
+        '',
+        `> ${line}`,
+        '',
+        `Opened by the board when you pressed **${label}** on the Specs view. It changes only that line, and it finishes no task.`,
+      ].join('\n'),
+    });
+    return { status: 201, body: { ...head, from: now.status, pull: { number: pull.number, url: pull.html_url } } };
   },
 };
