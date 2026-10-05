@@ -13,9 +13,10 @@ import {
   bumpBody,
   deployPlan,
   deployTarget,
-  isHealthy,
   latestReleases,
+  newWorkerStop,
   parseState,
+  pingHealth,
   previousVersionId,
   shapeOf,
   updatePlan,
@@ -152,6 +153,15 @@ export async function runStep(step, opts, io) {
         `Couldn't list the Worker's deployments, so the deploy stopped before changing anything. Check that CLOUDFLARE_ACCOUNT_ID is your account's ID and that CLOUDFLARE_API_TOKEN can read Workers on it. Wrangler said:\n${output.trim()}`,
       );
     }
+    // A Worker that doesn't exist on an install that already has a board is a changed or mistyped name, not a first
+    // deploy (BRK-141): a dispatch has no earlier config for `check` to compare with.
+    const stop = newWorkerStop({
+      worker: configIn(join(dir, 'breakaway.config.json')).worker,
+      variable: opts.variable || null,
+      running: opts.running || null,
+      at: opts.at || null,
+    });
+    if (stop) throw new Stop(stop, 2);
     io.out('first=true');
     return 0;
   }
@@ -163,7 +173,12 @@ export async function runStep(step, opts, io) {
     } catch {
       ping = null;
     }
-    return isHealthy(ping, opts.version) ? 0 : 1;
+    // A first deploy answers before its secrets are on (the install puts them on the Worker it made), so there it
+    // passes and says so; any later deploy needs them (BRK-141).
+    const health = pingHealth(ping, opts.version);
+    const first = opts.first === true || opts.first === 'true';
+    io.out(`health=${health}`);
+    return health === 'healthy' || (first && health === 'secrets') ? 0 : 1;
   }
   if (step === 'update') {
     const state = stateIn(dir);
