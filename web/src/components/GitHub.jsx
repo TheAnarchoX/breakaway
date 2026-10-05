@@ -12,6 +12,7 @@ import {
   MessageSquare,
   MessageSquareWarning,
   ThumbsUp,
+  TriangleAlert,
 } from 'lucide-preact';
 import { hashFor, openPull, pullParam } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
@@ -64,9 +65,10 @@ export const VERDICT = {
 export function Verdict({ verdict, compact = false }) {
   const v = VERDICT[verdict];
   if (!v) return null;
-  const Icon = v.tone === 'ok' ? CircleCheck : v.tone === 'bad' ? CircleX : v.tone === 'warn' ? LoaderCircle : FileDiff;
+  const mark = CARD_VERDICT[verdict];
+  const Icon = mark?.icon ?? FileDiff;
   return (
-    <span class={`verdict verdict-${v.tone}`} title={v.hint}>
+    <span class={`verdict verdict-${v.tone}${mark?.spin ? ' verdict-spin' : ''}`} title={v.hint}>
       <Icon size={compact ? 14 : 16} aria-hidden="true" />
       <span>{v.label}</span>
     </span>
@@ -125,12 +127,14 @@ export function Review({ decision, compact = false }) {
 /**
  * The card's mark for each verdict: an icon, and a word when it's something to act on, so a pull request with
  * conflicts never reads as green because its checks passed. A draft has none: the PR icon already says it.
+ * Only running checks spin: a branch behind main waits on someone to update it, so it gets the warning triangle.
+ * The pull request page's verdict uses the same icons.
  */
 const CARD_VERDICT = {
   ready: { icon: CircleCheck },
   conflicts: { icon: CircleX, word: 'Conflicts' },
   failing: { icon: CircleX, word: 'Failing' },
-  behind: { icon: CircleAlert, word: 'Behind' },
+  behind: { icon: TriangleAlert, word: 'Behind' },
   running: { icon: LoaderCircle, spin: true },
   review: { icon: CircleAlert, word: 'Review' },
   unknown: { icon: CircleDashed, word: 'Checking' },
