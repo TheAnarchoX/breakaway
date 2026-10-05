@@ -28,6 +28,7 @@ import {
 import { ClaimChip, Dialog, RepoChip, widClass } from '../components/ui.jsx';
 import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
+import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 
@@ -37,62 +38,11 @@ import { RichText, Title } from '../lib/richtext.jsx';
  * are install-wide, so the repository switcher doesn't narrow them; their tasks carry repository chips.
  */
 
-/** A task's place in its feature, in the order the progress bar draws them, with the words for each. */
-const STANDINGS = [
-  { id: 'done', count: 'done', label: 'Done', words: 'done' },
-  { id: 'in-review', count: 'inReview', label: 'In review', words: 'in review' },
-  { id: 'running', count: 'running', label: 'Running', words: 'running' },
-  { id: 'ready', count: 'ready', label: 'Ready', words: 'ready' },
-  { id: 'needs-you', count: 'needsYou', label: 'Needs you', words: 'needs you', many: 'need you' },
-  { id: 'waiting', count: 'waiting', label: 'Waiting', words: 'waiting' },
-];
 const STANDING_LABEL = Object.fromEntries(STANDINGS.map((s) => [s.id, s.label]));
 
 /** The server's reason as a sentence; one that starts with an agent's name keeps its case. */
 const sentence = (why) => `${why.startsWith('it') ? `I${why.slice(1)}` : why}.`;
-const featureHref = (slug) => hashFor({ view: 'roadmap', feature: slug, task: null });
 const taskHref = (t) => hashFor({ task: t.wid ?? t.uuid });
-
-/** What holds a feature up, in words: the first thing waiting on you, else what its tasks are doing. */
-function nextUp(f) {
-  const p = f.progress;
-  if (!p.total) return `No tasks yet. Tag a task +${f.slug} to add it.`;
-  if (f.done) return 'Every task is done.';
-  const mine = f.needsYou[0];
-  if (mine) {
-    const label = mine.wid ?? 'a task';
-    return /decision/u.test(mine.why ?? '')
-      ? `Waits for ${label}, your decision.`
-      : `Waits for ${label}, a step for you.`;
-  }
-  if (p.running) return `${plural(p.running, 'task')} running.`;
-  if (p.ready) return `${plural(p.ready, 'task')} ready to start.`;
-  if (p.inReview && !p.waiting)
-    return `Waits for you to merge ${p.inReview === 1 ? 'its pull request' : 'its pull requests'}.`;
-  return `${plural(p.waiting, 'task')} waiting on other work.`;
-}
-
-/** The progress bar and its counts in words, so no state is told by color alone. */
-function Progress({ progress: p, compact = false }) {
-  const parts = STANDINGS.filter((s) => p[s.count] > 0);
-  const words = parts
-    .filter((s) => s.id !== 'done')
-    .map((s) => `${p[s.count]} ${p[s.count] > 1 && s.many ? s.many : s.words}`);
-  return (
-    <div class={`fr-progress ${compact ? 'is-compact' : ''}`}>
-      <div class="fr-bar" aria-hidden="true">
-        {p.total > 0 &&
-          parts.map((s) => <span key={s.id} class={`fr-seg fr-seg-${s.id}`} style={{ flexGrow: p[s.count] }} />)}
-      </div>
-      <p class="fr-counts">
-        <strong>
-          {p.done} of {p.total}
-        </strong>{' '}
-        done{words.length ? ` · ${words.join(' · ')}` : ''}
-      </p>
-    </div>
-  );
-}
 
 function FeatureCard({ f }) {
   return (
