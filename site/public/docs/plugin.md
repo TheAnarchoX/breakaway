@@ -12,6 +12,7 @@ The plugin brings the board into Claude Code, in any checkout of a repository yo
 | `/breakaway:claim <ID>` | Claims a task by its work ID, reads it, and says what it waits for. An `IDEA-` is shaped, never built, so it won’t claim one to build. |
 | `/breakaway:next` | Claims the best ready task in the checkout’s repository. `--project <area>` or `--horizon <h>` narrows it. |
 | `/breakaway:hand-over` | Runs the repository’s checks, posts on the peloton, opens the pull request that closes the task, and links it on the board. |
+| The board’s MCP server | `breakaway` in `/mcp`: Claude can list, read, claim, and comment on tasks with tools, without the CLI. See [MCP clients](https://leavethepack.dev/docs/mcp/). |
 | The session hooks | While a session holds a task, they show its output live on the task and wake it when you message it from the board. With no task claimed, or no board set up, they do nothing. |
 
 Each command runs the CLI, `npx --yes breakaway@1`. None merges, deploys, or starts an agent: you do. Hand-over never marks the task done; the board does that when the pull request merges.

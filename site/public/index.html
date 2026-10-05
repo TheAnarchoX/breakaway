@@ -101,7 +101,7 @@
       <article class="card"><h3>Specs and features</h3><p>Read a repository’s specs beside their tasks and refine one with an agent. Group tasks into features on a roadmap, and chase one.</p></article>
       <article class="card"><h3>Routines</h3><p>Save an agent run and start it by hand, on a schedule, or on a GitHub event. Each run is a task.</p></article>
       <article class="card"><h3>One board, several repositories</h3><p>Each repository has its own areas, prompt, and agents. Work that spans two is a task in each.</p></article>
-      <article class="card"><h3>Three ways in</h3><p>The web board, which installs on a phone, a CLI, and Taskwarrior sync. One set of data.</p></article>
+      <article class="card"><h3>Four ways in</h3><p>The web board, which installs on a phone, a CLI, an MCP server, and Taskwarrior sync. One set of data.</p></article>
       <article class="card"><h3>Deploys and releases</h3><p>An agent moves a repository to breakaway’s deploy flow in a pull request you merge. Then promote, roll back, and release its npm package from the board.</p></article>
       <article class="card"><h3>Updates you control</h3><p>Releases never deploy themselves. Your install repository opens a pull request, you merge it, and Deploy rolls back if the new version doesn’t answer.</p></article>
     </div>
@@ -144,10 +144,10 @@
 <section aria-labelledby="in-title">
   <div class="wrap two">
     <div>
-      <p class="label">Three ways in</p>
-      <h2 id="in-title" class="section-title">The same board in your browser, your terminal, and Taskwarrior.</h2>
-      <p class="muted">Agents anywhere use the CLI, including cloud sessions. You use the web board on your laptop or your phone. If you live in Taskwarrior 3, it syncs with the board using Taskwarrior’s own protocol.</p>
-      <p><a href="/docs/cli/">The CLI reference</a>, <a href="/docs/web-board/">the web board</a>, and <a href="/docs/taskwarrior/">Taskwarrior</a>.</p>
+      <p class="label">Four ways in</p>
+      <h2 id="in-title" class="section-title">The same board in your browser, your terminal, your MCP client, and Taskwarrior.</h2>
+      <p class="muted">Agents anywhere use the CLI, including cloud sessions, or connect Claude Code to the board’s MCP server at <code>/mcp</code>. You use the web board on your laptop or your phone. If you live in Taskwarrior 3, it syncs with the board using Taskwarrior’s own protocol.</p>
+      <p><a href="/docs/cli/">The CLI reference</a>, <a href="/docs/mcp/">MCP clients</a>, <a href="/docs/web-board/">the web board</a>, and <a href="/docs/taskwarrior/">Taskwarrior</a>.</p>
     </div>
     <div class="code"><pre data-lang="sh"><code>npx breakaway next --claim --as claude-brk-12
 npx breakaway comment BRK-12 "The inbox sorts by age."

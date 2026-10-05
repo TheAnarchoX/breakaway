@@ -105,20 +105,21 @@ const SCENES = {
 </div>`,
   },
   built: {
-    alt: 'How breakaway is built. Three ways in: the web board, the CLI, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI.',
+    alt: 'How breakaway is built. Four ways in: the web board, the CLI, the MCP server, and Taskwarrior. They reach one Worker and its Durable Object on your own Cloudflare account, which holds every task. The board talks to GitHub through its own GitHub App, and starts Claude Code cloud agents through your routine; agents work the board through the CLI or MCP.',
     html: (theme) => `
 <div class="stage">
   ${top(theme, 'How it’s built')}
   <div class="arch">
     <div class="col">
-      <span class="label">Three ways in</span>
+      <span class="label">Four ways in</span>
       <div class="box"><b>The web board</b><span>In your browser, installable, phone included</span></div>
       <div class="box"><b>The CLI</b><span>npx breakaway, for you and your agents</span></div>
+      <div class="box"><b>The MCP server</b><span>/mcp, for Claude Code and other MCP clients</span></div>
       <div class="box"><b>Taskwarrior 3</b><span>Its own sync protocol, one set of data</span></div>
     </div>
     <div class="cloud">
       <span class="label">Your Cloudflare account</span>
-      <div class="box lead"><b>One Worker</b><span>The API, the web app, and Taskwarrior sync</span></div>
+      <div class="box lead"><b>One Worker</b><span>The API, MCP, the web app, and Taskwarrior sync</span></div>
       <div class="box"><b>One Durable Object</b><span>Every task, claim, comment, and change, in your account and nowhere else</span></div>
       <div class="link">NO ANALYTICS · NO TELEMETRY</div>
     </div>
@@ -126,7 +127,7 @@ const SCENES = {
       <span class="label">What it talks to</span>
       <div class="box"><b>GitHub</b><span>Its own GitHub App: pull requests, checks, reviews, deploys</span></div>
       <div class="box"><b>Claude Code</b><span>Your routine starts cloud agents on tasks</span></div>
-      <div class="box"><b>Your agents</b><span>Claim, comment, and hand over through the CLI</span></div>
+      <div class="box"><b>Your agents</b><span>Claim, comment, and hand over through the CLI or MCP</span></div>
     </div>
   </div>
 </div>`,
