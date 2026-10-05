@@ -5680,7 +5680,8 @@ fieldset.field {
   color: var(--warn);
   background: var(--warn-bg);
 }
-.conn-state-off {
+.conn-state-off,
+.conn-state-unverified {
   color: var(--muted);
 }
 .conn-detail {

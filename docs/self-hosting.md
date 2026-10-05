@@ -117,7 +117,7 @@ The board starts agents through a routine you save on claude.ai.
 
 [Cloud agents](tasks.md#cloud-agents) has the environment settings in full.
 
-**Check:** **Agent routine** reads **Working**. Start an agent on a task: **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn't allow the board's host.
+**Check:** **Agent routine** reads **Not verified yet**. Start an agent on a task: once its session claims the task, the row reads **Verified by** that task, and **Live output from sessions** reads **Working** once a session sends something back. If it says a started session sends nothing back, the environment doesn't allow the board's host.
 
 **What Connections can't check.** It can't see claude.ai or Cloudflare's dashboard, so these are yours to check:
 
