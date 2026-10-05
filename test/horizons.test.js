@@ -64,4 +64,14 @@ describe('closing a horizon', () => {
     const res = await body(await api('tasks/OPS-4', { method: 'PATCH', body: { horizon: 'archive' } }));
     expect(res.task.horizon).toBe('archive');
   });
+
+  it('archives a finished task from its own horizon and keeps it finished', async () => {
+    await api('tasks', {
+      method: 'POST',
+      body: [{ description: 'Finished, then archived', project: 'ops', horizon: 'next' }],
+    });
+    await api('tasks/OPS-6/done', { method: 'POST', body: {} });
+    const res = await body(await api('tasks/OPS-6', { method: 'PATCH', body: { horizon: 'archive' } }));
+    expect(res.task).toMatchObject({ horizon: 'archive', status: 'completed' });
+  });
 });
