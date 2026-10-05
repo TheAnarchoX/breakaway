@@ -7399,3 +7399,116 @@ fieldset.field {
   flex-wrap: nowrap;
   align-items: flex-start;
 }
+/* Kickoff (WEB-35): the wizard's steps, with the pitch form, the routine guide's copy rows, and the plan. */
+.kickoff .view-intro h1 {
+  font-size: 28px;
+}
+.ko-start {
+  display: grid;
+  gap: 14px;
+  max-width: 680px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+.ko-start.attach-over {
+  border-color: var(--accent);
+}
+.ko-submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.ko-more summary,
+.ko-pitch summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 0;
+}
+.ko-more[open] summary {
+  margin-bottom: 8px;
+}
+.ko-pitch {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 4px 14px;
+  background: var(--surface);
+}
+.ko-pitch-text {
+  padding-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+.ko-noapp {
+  max-width: 680px;
+}
+.ko-where {
+  max-width: 520px;
+}
+.ko-guide {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 10px;
+}
+.ko-copy .meta {
+  margin: 0;
+}
+.ko-copy-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.ko-copy .wiz-cmd-row {
+  align-items: flex-start;
+}
+.ko-copy-button {
+  flex: none;
+}
+.kickoff .wiz-body > * {
+  min-width: 0;
+}
+/* A kickoff's two Send buttons wrap under the status on a narrow screen, here and in the task panel. */
+.decision .note-actions {
+  flex-wrap: wrap;
+}
+.decision .note-actions .row-gap {
+  flex-wrap: wrap;
+}
+.ko-plan {
+  display: grid;
+  gap: 10px;
+}
+.ko-inshort {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--tint);
+  border-radius: var(--radius-xs);
+}
+.ko-inshort .meta {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .ko-start {
+    padding: 12px;
+  }
+  .ko-copy .wiz-cmd-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ko-copy-button,
+  .kickoff .wiz-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

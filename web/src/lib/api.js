@@ -52,10 +52,15 @@ export async function api(path, { method = 'GET', body } = {}) {
 export const enc = encodeURIComponent;
 
 /** Uploads one image (the raw bytes) to a task; the name and caption travel URL-encoded in headers. */
-export async function uploadImage(taskRef, blob, { name, alt = '' }) {
+export const uploadImage = (taskRef, blob, options) => upload(`tasks/${enc(taskRef)}/attachments`, blob, options);
+
+/** Uploads one image to a kickoff (WEB-35), the owner's from the signed-in board, until its IDEA takes them. */
+export const uploadKickoffImage = (id, blob, options) => upload(`kickoffs/${enc(id)}/images`, blob, options);
+
+async function upload(path, blob, { name, alt = '' }) {
   let res;
   try {
-    res = await fetch(`/api/tasks/${enc(taskRef)}/attachments`, {
+    res = await fetch(`/api/${path}`, {
       method: 'POST',
       credentials: 'same-origin',
       headers: {

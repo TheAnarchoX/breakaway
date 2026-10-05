@@ -10,7 +10,7 @@
 import { appCredentials } from './github.js';
 import { InputError } from './model.js';
 import { AgentError } from './store-agents.js';
-import { checkRepo } from './repos.js';
+import { checkRepo, promptPathOf } from './repos.js';
 import {
   KICKOFF_AREA,
   checkName,
@@ -171,21 +171,25 @@ export const kickoffsMethods = {
     return { pitch, name, slug: row.slug, areas: row.areas, github };
   },
 
-  /** GET /api/kickoffs (anyone signed in): the kickoffs in progress, oldest first. A finished one leaves the list. */
+  /**
+   * GET /api/kickoffs (anyone signed in): the kickoffs in progress, oldest first, and whether the board's GitHub App
+   * is connected (`app`), which every kickoff needs past saving its pitch. A finished one leaves the list.
+   */
   kickoffsApi() {
-    return this.run(() =>
+    return this.run(async () =>
       ok({
         kickoffs: this.kickoffRows()
           .map((r) => this.kickoffView(r))
           .filter((k) => !k.finished),
+        app: Boolean(await appCredentials(this.env)),
       }),
     );
   },
 
   /**
    * GET /api/kickoffs/<id> (anyone signed in): one kickoff to pick up where it was, with the wizard's steps for its
-   * repository (`check` asks GitHub live, as the wizard does). A registered kickoff whose IDEA wasn't made yet gets
-   * it now.
+   * repository (`check` asks GitHub live, as the wizard does), the App's slug, the prompt's path, and whether its
+   * routine is connected (`{ connected, source }`). A registered kickoff whose IDEA wasn't made yet gets it now.
    */
   kickoffApi(id, { check = false } = {}) {
     return this.run(async () => {
@@ -200,7 +204,17 @@ export const kickoffsMethods = {
         this.sql.exec('UPDATE kickoffs SET step = ? WHERE id = ?', step, row.id);
         row = { ...row, step };
       }
-      return ok({ kickoff: this.kickoffView(row), checked: iso(facts.checkedAt), steps, now, done });
+      return ok({
+        kickoff: this.kickoffView(row),
+        checked: iso(facts.checkedAt),
+        // The wizard's own facts for the page's links and its routine guide, never the routine's URL or token.
+        app: facts.appInfo ?? null,
+        promptPath: promptPathOf(facts.registered ?? null),
+        routine: { connected: Boolean(facts.routine), source: facts.routineSource ?? null },
+        steps,
+        now,
+        done,
+      });
     });
   },
 

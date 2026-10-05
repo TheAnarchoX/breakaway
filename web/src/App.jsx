@@ -47,6 +47,7 @@ import { RoutinePanel, RoutinesView } from './views/RoutinesView.jsx';
 import { ConnectionsView, FirstRunNotice } from './views/ConnectionsView.jsx';
 import { AddRepoView } from './views/AddRepoView.jsx';
 import { RepoSettingsView } from './views/RepoSettingsView.jsx';
+import { KickoffView } from './views/KickoffView.jsx';
 import { SettingsView } from './views/SettingsView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
@@ -71,6 +72,7 @@ const VIEW_COMPONENTS = {
   'add-repo': AddRepoView,
   settings: SettingsView,
   'repo-settings': RepoSettingsView,
+  kickoff: KickoffView,
 };
 
 function typing(target) {
@@ -167,7 +169,7 @@ function Board() {
         <FilterBar />
         <div class={`workspace ${(open && wide && !modal) || (routine && wide) ? 'has-panel' : ''}`}>
           <main id="main" tabIndex={-1}>
-            {!['connections', 'add-repo', 'settings'].includes(view.value) && <FirstRunNotice />}
+            {!['connections', 'add-repo', 'settings', 'kickoff'].includes(view.value) && <FirstRunNotice />}
             <View />
           </main>
           {open && wide && !modal && <TaskPanel docked />}

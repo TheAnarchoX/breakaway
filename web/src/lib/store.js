@@ -409,6 +409,9 @@ export function routineConnected(slug) {
   return Boolean(agents.value.data?.repos?.find((r) => r.slug === want)?.connected);
 }
 
+/** A kickoff's IDEA (IDEA-26): an idea tagged as a kickoff's, whose decision keeps it open (src/kickoff.js). */
+export const isKickoffIdea = (t) => Boolean(t) && t.project === 'ideas' && (t.tags ?? []).includes('kickoff-project');
+
 /** Whether Refine from the answers applies to `t`: a structured decision the owner has answered. */
 export const isDecided = (t) =>
   Array.isArray(t.decision) && t.decision.length > 0 && t.status === 'completed' && Boolean(t.decisionAnswers);
@@ -749,10 +752,10 @@ export const VIEWS = [
 ];
 /**
  * Pages that aren't in the nav: the Add a repository wizard (CLD-194), reached from Connections and the switcher,
- * Settings (WEB-32), at #/settings from the sidebar's foot, and a repository's settings (WEB-30), at
- * #/settings/<slug>.
+ * Settings (WEB-32), at #/settings from the sidebar's foot, a repository's settings (WEB-30), at
+ * #/settings/<slug>, and Kickoff (WEB-35), at #/kickoff to start one and #/kickoff/<id> to carry one on.
  */
-const PAGE_IDS = ['add-repo', 'settings', 'repo-settings'];
+const PAGE_IDS = ['add-repo', 'settings', 'repo-settings', 'kickoff'];
 const VIEW_IDS = [...VIEWS.map((v) => v.id), ...PAGE_IDS];
 
 export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], roles: [], claim: 'any', done: 'recent' };
@@ -780,6 +783,8 @@ export const helpOpen = signal(false);
 export const addRepoTarget = signal(null);
 /** The repository whose settings page is open (#/settings/<slug>, WEB-30), as the address spells it, or null. */
 export const settingsSlug = signal(null);
+/** The kickoff open on #/kickoff/<id> (WEB-35), or null for #/kickoff: the list and the form to start one. */
+export const kickoffId = signal(null);
 /** Where the Settings page scrolls to once it opens (`'repos'` for its list of repositories), or null for the top. */
 export const settingsAt = signal(null);
 
@@ -806,7 +811,17 @@ function parseHash() {
     // Settings is #/settings, and a repository's are at #/settings/<slug>; the slug is kept as typed, so a misspelt
     // one can say so.
     const settings = /^settings(?:\/([^/]{0,64}))?$/u.exec(path);
-    view.value = settings ? (settings[1] ? 'repo-settings' : 'settings') : VIEW_IDS.includes(path) ? path : 'board';
+    const kickoff = /^kickoff(?:\/([0-9a-f-]{36}))?$/u.exec(path);
+    kickoffId.value = kickoff?.[1] ?? null;
+    view.value = settings
+      ? settings[1]
+        ? 'repo-settings'
+        : 'settings'
+      : kickoff
+        ? 'kickoff'
+        : VIEW_IDS.includes(path)
+          ? path
+          : 'board';
     settingsSlug.value = settings?.[1] ? safeDecode(settings[1]).toLowerCase() : null;
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
@@ -851,6 +866,7 @@ export function hashFor({
   ping = focusPing.value,
   settings = settingsSlug.value,
   spec = selectedSpec.value,
+  kickoff = kickoffId.value,
 } = {}) {
   const p = new URLSearchParams();
   if (repoScope.value) p.set('repo', repoScope.value);
@@ -876,7 +892,12 @@ export function hashFor({
     if (listGroup.value !== 'none') p.set('group', listGroup.value);
   }
   const qs = p.toString().replaceAll('%2C', ',').replaceAll('%2F', '/');
-  const path = v === 'repo-settings' ? `settings${settings ? `/${enc(settings)}` : ''}` : v;
+  const path =
+    v === 'repo-settings'
+      ? `settings${settings ? `/${enc(settings)}` : ''}`
+      : v === 'kickoff' && kickoff
+        ? `kickoff/${kickoff}`
+        : v;
   return `#/${path}${qs ? `?${qs}` : ''}`;
 }
 
@@ -912,6 +933,12 @@ export function go(v) {
 export function openAddRepo(target = null) {
   addRepoTarget.value = target;
   location.hash = hashFor({ view: 'add-repo', task: null, pr: null, ping: null });
+}
+
+/** Opens Kickoff (WEB-35): one kickoff's page by its id, or the list and the form to start one with none. */
+export function openKickoff(id = null) {
+  kickoffId.value = id;
+  location.hash = hashFor({ view: 'kickoff', kickoff: id, task: null, pr: null, ping: null });
 }
 
 /** A link to a repository's settings page (WEB-30), or to Settings (WEB-32) with none. */
@@ -1114,13 +1141,27 @@ export const actions = {
   remove: (t) => change(() => api(path(t), { method: 'PATCH', body: { status: 'deleted' } }), `${ref(t)} is deleted.`),
   update: (t, changes, message = 'Saved.') => change(() => api(path(t), { method: 'PATCH', body: changes }), message),
   comment: (t, text) => change(() => api(`${path(t)}/comments`, { method: 'POST', body: { text } }), 'Comment added.'),
-  /** Submits the owner's answers (the board finishes the task and unblocks what waited). Resolves to the result, or null after showing the error. */
-  async submitDecision(t, answers) {
+  /**
+   * Submits the owner's answers (the board finishes the task and unblocks what waited; a kickoff's IDEA stays open).
+   * With `carryOn` (a kickoff's Send answers and carry on, BRK-134), the board also starts the next run on it, or
+   * queues it for room. Resolves to the result, or null after showing the error.
+   */
+  async submitDecision(t, answers, { carryOn = false } = {}) {
     const result = await change(
-      () => api(`${path(t)}/decision/answers`, { method: 'POST', body: { answers } }),
-      `${ref(t)} is decided.`,
+      () => api(`${path(t)}/decision/answers`, { method: 'POST', body: carryOn ? { answers, carryOn } : { answers } }),
+      (r) =>
+        !carryOn
+          ? isKickoffIdea(t)
+            ? `Sent your answers on ${ref(t)}. Start the next run when you’re ready.`
+            : `${ref(t)} is decided.`
+          : r.waiting
+            ? `Sent your answers. The next run on ${ref(t)} starts when there’s room: ${r.waiting}`
+            : r.refusal
+              ? `Sent your answers, but the next run didn’t start: ${r.refusal}`
+              : `Sent your answers and started the next run on ${ref(t)}.`,
     );
     if (!result) loadTasks();
+    if (carryOn) loadAgents();
     return result;
   },
   reopenDecision: (t) =>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ArrowDown, ArrowUp, CircleCheck, RotateCcw } from 'lucide-preact';
-import { actions } from '../lib/store.js';
+import { actions, isKickoffIdea } from '../lib/store.js';
 import {
   clearDraft,
   describe,
@@ -279,13 +279,18 @@ function Form({ task: t }) {
   const set = (id) => (patch) =>
     setDraft((old) => ({ ...old, [id]: { value: undefined, other: '', comment: '', ...old[id], ...patch } }));
   const todo = missing(questions, draft);
-  const submit = async (e) => {
-    e.preventDefault();
+  // A kickoff's IDEA stays open once answered (BRK-134), and can start its next run in the same press.
+  const kickoff = isKickoffIdea(t);
+  const send = async (carryOn) => {
     if (todo.length || busy) return;
     setBusy(true);
-    const result = await actions.submitDecision(t, toAnswers(questions, draft));
+    const result = await actions.submitDecision(t, toAnswers(questions, draft), { carryOn });
     setBusy(false);
     if (result) clearDraft(t.uuid);
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    send(kickoff);
   };
   return (
     <form class="decision-form" onSubmit={submit}>
@@ -296,11 +301,29 @@ function Form({ task: t }) {
         <span class="meta" role="status">
           {todo.length
             ? `Still to answer: ${todo.map((q) => questions.indexOf(q) + 1).join(', ')}.`
-            : 'Everything is answered. Sending them finishes this task.'}
+            : kickoff
+              ? 'Everything is answered. Carry on starts the next run, which plans it or asks a little more.'
+              : 'Everything is answered. Sending them finishes this task.'}
         </span>
-        <button type="submit" class="btn btn-primary btn-sm" disabled={todo.length > 0 || busy}>
-          Send answers
-        </button>
+        {kickoff ? (
+          <span class="row-gap">
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              disabled={todo.length > 0 || busy}
+              onClick={() => send(false)}
+            >
+              Send answers
+            </button>
+            <button type="submit" class="btn btn-primary btn-sm" disabled={todo.length > 0 || busy} aria-busy={busy}>
+              Send answers and carry on
+            </button>
+          </span>
+        ) : (
+          <button type="submit" class="btn btn-primary btn-sm" disabled={todo.length > 0 || busy}>
+            Send answers
+          </button>
+        )}
       </div>
     </form>
   );
@@ -380,7 +403,11 @@ function Decide({ task: t }) {
  */
 export function DecisionSection({ task: t }) {
   const structured = Array.isArray(t.decision) && t.decision.length > 0;
-  const answered = structured && t.status === 'completed' && t.decisionAnswers;
+  // A kickoff's IDEA stays pending once answered: its answers stand while +decide is off it.
+  const answered =
+    structured &&
+    Boolean(t.decisionAnswers) &&
+    (t.status === 'completed' || (isKickoffIdea(t) && t.status === 'pending' && !t.tags.includes('decide')));
   const pending = t.status === 'pending';
   if (!structured && !(pending && t.tags.includes('decide'))) return null;
   if (structured && !answered && !pending) return null;
