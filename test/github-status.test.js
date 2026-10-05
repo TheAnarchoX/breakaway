@@ -207,6 +207,61 @@ describe('the board watching GitHub’s status page', () => {
     expect(own.body.held).toBeUndefined();
   });
 
+  it('lets the owner treat GitHub as working while an incident stays open, until the page reports something new', async () => {
+    const stuck = incident('Actions runs are delayed', { status: 'monitoring', components: [{ name: 'Actions' }] });
+    status.answer = summary({ components: { Actions: 'degraded_performance' }, incidents: [stuck] });
+    await check();
+    expect(await withPage((s) => s.githubHold())).toMatch(/^GitHub reports trouble/u);
+    const [held] = await withPage((s) => s.githubStatusConnection());
+    expect(held).toMatchObject({ state: 'attention', override: { on: false } });
+
+    await withPage((s) => s.githubStatusOverride({ on: true }));
+    expect(await withPage((s) => s.githubHold())).toBeNull();
+    const view = await withPage((s) => s.githubStatusView());
+    expect(view).toMatchObject({ held: false, overridden: { at: expect.any(String) } });
+    expect(view.summary).toMatch(/^Actions: degraded performance/u);
+    const [row] = await withPage((s) => s.githubStatusConnection());
+    expect(row).toMatchObject({ id: 'github.status', state: 'working', override: { on: true } });
+    expect(row.detail).toMatch(
+      /^Actions: degraded performance; incident “Actions runs are delayed”, but you marked it working/u,
+    );
+
+    // The same outage read again stays overridden.
+    await check();
+    expect(await withPage((s) => s.githubHold())).toBeNull();
+
+    // Something new on the page holds again: a component's status changes, or a new incident opens.
+    status.answer = summary({ components: { Actions: 'major_outage' }, incidents: [stuck] });
+    await check();
+    expect(await withPage((s) => s.githubHold())).toMatch(/Actions: major outage/u);
+    expect((await withPage((s) => s.githubStatusView())).overridden).toBeNull();
+
+    // The owner can undo it, and it's cleared once the page says it's working.
+    await withPage((s) => s.githubStatusOverride({ on: true }));
+    expect(await withPage((s) => s.githubHold())).toBeNull();
+    await withPage((s) => s.githubStatusOverride({ on: false }));
+    expect(await withPage((s) => s.githubHold())).toMatch(/Actions: major outage/u);
+    await withPage((s) => s.githubStatusOverride({ on: true }));
+    status.answer = summary();
+    await check();
+    expect(await withPage((s) => s.meta('gh_status_override'))).toBeNull();
+    status.answer = summary({ components: { Actions: 'major_outage' }, incidents: [stuck] });
+    await check();
+    expect(await withPage((s) => s.githubHold())).toMatch(/Actions: major outage/u);
+  });
+
+  it('refuses an override while nothing is held', async () => {
+    status.answer = summary();
+    await check();
+    await expect(withPage((s) => s.githubStatusOverride({ on: true }))).rejects.toThrow(/isn’t holding anything/u);
+  });
+
+  it('only takes an override from the signed-in web board', async () => {
+    const res = await api('connections/github-status/override', { method: 'POST', body: { on: true } });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/signed-in web board/u);
+  });
+
   it('starts nothing in a chase while GitHub is down, and carries on once it works again', async () => {
     status.answer = summary({ components: { 'Git Operations': 'major_outage' } });
     await check();

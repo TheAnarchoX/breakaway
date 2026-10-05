@@ -525,6 +525,24 @@ export async function checkConnections() {
   }
 }
 
+/**
+ * Treat GitHub as working while its status page still shows an incident that's over (`on`), or hold again (BRK-218).
+ * Shows the new report; returns whether it went through.
+ * @param {boolean} on
+ */
+export async function overrideGitHubStatus(on) {
+  try {
+    const data = await api('connections/github-status/override', { method: 'POST', body: { on } });
+    connections.value = { ...connections.peek(), loaded: true, data, error: null };
+    toast(on ? 'Treated as working.' : 'Holding again.', 'success');
+    loadPings();
+    return true;
+  } catch (error) {
+    toast(`Couldn’t change GitHub’s status: ${error.message}`, 'error');
+    return false;
+  }
+}
+
 export async function loadFeatures() {
   try {
     features.value = { loaded: true, data: await api('features'), error: null };
