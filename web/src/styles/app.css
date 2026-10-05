@@ -200,7 +200,7 @@ a code {
   margin-top: 8px;
 }
 
-/* The consent page of a sign-in from Claude's apps (BRK-157): the sign-in card, with the app's host and two answers. */
+/* The consent page of a sign-in from MCP apps (BRK-157): the sign-in card, with the app's host and two answers. */
 .authorize-host {
   font-size: 14px;
 }
@@ -3220,6 +3220,7 @@ fieldset.field {
 }
 .checks-pending svg,
 .card-verdict-spin svg,
+.verdict-spin svg,
 .spin {
   animation: spin 1.2s linear infinite;
 }
@@ -3736,12 +3737,14 @@ fieldset.field {
 @media (prefers-reduced-motion: reduce) {
   .checks-pending svg,
   .card-verdict-spin svg,
+  .verdict-spin svg,
   .spin,
   .run-pending .run-icon {
     animation: none;
   }
 }
-:root[data-motion="reduce"] :is(.checks-pending svg, .card-verdict-spin svg, .spin, .run-pending .run-icon) {
+:root[data-motion="reduce"]
+  :is(.checks-pending svg, .card-verdict-spin svg, .verdict-spin svg, .spin, .run-pending .run-icon) {
   animation: none;
 }
 
@@ -4513,9 +4516,6 @@ fieldset.field {
 }
 .verdict-muted {
   color: var(--muted);
-}
-.verdict-warn svg {
-  animation: spin 1.2s linear infinite;
 }
 .pr-page {
   display: grid;
@@ -5797,6 +5797,49 @@ fieldset.field {
 }
 .conn-group-intro {
   margin: 0;
+  font-size: 14px;
+}
+/* MCP (WEB-74): the board's address and configs to copy, the connected apps, and the plugin. */
+.mcp-view .gh-section > *,
+.mcp-copy {
+  min-width: 0;
+}
+.mcp-copy.is-multiline {
+  align-items: flex-start;
+}
+.mcp-copy pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  font: 12.5px / 1.5 var(--font-mono);
+}
+.mcp-copy pre code {
+  background: none;
+  padding: 0;
+}
+.mcp-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 4px;
+  font-size: 14.5px;
+}
+.mcp-view .gh-section > p {
+  margin: 0;
+}
+.mcp-view .gh-section a svg {
+  vertical-align: -2px;
+  margin-left: 3px;
+}
+.mcp-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+.mcp-empty {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-s);
   font-size: 14px;
 }
 .conn-signin {

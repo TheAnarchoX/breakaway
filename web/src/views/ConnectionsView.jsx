@@ -6,30 +6,31 @@ import {
   CircleOff,
   ExternalLink,
   FolderPlus,
+  CirclePause,
   Plug,
   RefreshCw,
   Settings,
   TriangleAlert,
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
-import { api, enc } from '../lib/api.js';
 import {
   checkConnections,
   confirmDialog,
   connections,
   go,
+  hashFor,
   inScope,
   loadConnections,
   navOrder,
   noRepos,
   openAddRepo,
   openKickoff,
+  overrideGitHubStatus,
   registerRepo,
   repoName,
   repoScope,
   repoSettingsHref,
   repos,
-  toast,
 } from '../lib/store.js';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { SelfUpdate } from '../components/SelfUpdate.jsx';
@@ -136,6 +137,36 @@ function Items({ c }) {
   );
 }
 
+/**
+ * Treat as working, or Hold again, on GitHub's status row (BRK-218): for when an incident is over but the status
+ * page still shows it open.
+ * @param {{ on: boolean }} props
+ */
+function StatusOverride({ on }) {
+  const [busy, setBusy] = useState(false);
+  const press = async () => {
+    if (!on) {
+      const ok = await confirmDialog({
+        title: 'Treat GitHub as working?',
+        body: 'Chases start agents again, and Keep branches up to date and Merge when green carry on. Do it once you’ve seen pushes go through and checks run. The board holds again if the status page reports something new.',
+        confirmLabel: 'Treat as working',
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    await overrideGitHubStatus(!on);
+    setBusy(false);
+  };
+  return (
+    <p class="conn-meta">
+      <button type="button" class="btn btn-outline btn-sm" disabled={busy} aria-busy={busy} onClick={press}>
+        {on ? <CirclePause size={15} aria-hidden="true" /> : <CircleCheck size={15} aria-hidden="true" />}
+        {on ? 'Hold again' : 'Treat as working'}
+      </button>
+    </p>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Row({ c }) {
   const reading = c.state === 'working' ? READING[c.reading] : null;
@@ -189,6 +220,7 @@ function Row({ c }) {
           )}
         </div>
       )}
+      {c.override && <StatusOverride on={c.override.on} />}
       {c.id === 'board.version' && <SelfUpdate />}
       {c.id === 'claude.routine' && c.repo && 'source' in c && (
         <RoutineConnect slug={c.repo} source={c.source} onDone={loadConnections} />
@@ -216,76 +248,6 @@ function RepoRows() {
         </li>
       ))}
     </ul>
-  );
-}
-
-/**
- * Sign-ins from Claude's apps (BRK-157): each connection's name, repository, and agent name, and Revoke. Nothing shows
- * until there's one; the owner approves them on the consent page the app opens.
- */
-function SignIns() {
-  const [list, setList] = useState(/** @type {any[] | null} */ (null));
-  const [revoking, setRevoking] = useState(/** @type {string | null} */ (null));
-  const load = () =>
-    api('oauth/connections')
-      .then((data) => setList(data.connections))
-      .catch(() => setList([]));
-  useEffect(() => {
-    load();
-  }, []);
-  const shownList = (list ?? []).filter((c) => inScope(c.repo));
-  if (!shownList.length) return null;
-  const revoke = async (/** @type {any} */ c) => {
-    const ok = await confirmDialog({
-      title: `Revoke ${c.name}?`,
-      body: `It stops working on the board at once. To connect it again, add the board in ${c.client} and approve it here.`,
-      confirmLabel: 'Revoke',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    setRevoking(c.id);
-    try {
-      await api(`oauth/connections/${enc(c.id)}`, { method: 'DELETE' });
-      toast(`Revoked ${c.name}.`, 'success');
-      await load();
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      setRevoking(null);
-    }
-  };
-  return (
-    <section class="conn-group" aria-labelledby="conn-signins">
-      <h2 id="conn-signins">Claude’s apps</h2>
-      <p class="muted conn-group-intro">
-        Apps you approved to work on the board through MCP, each as one agent in one repository.
-      </p>
-      <ul class="conn-repos">
-        {shownList.map((c) => (
-          <li key={c.id}>
-            <span class="conn-signin">
-              <span>
-                <strong>{c.name}</strong> <RepoChip slug={c.repo} />
-              </span>
-              <span class="meta">
-                {c.client} as <code>{c.agent}</code> · <When iso={c.created} prefix="approved" />
-                {' · '}
-                {c.used ? <When iso={c.used} prefix="last used" /> : 'not used yet'}
-              </span>
-            </span>
-            <button
-              type="button"
-              class="btn btn-outline btn-sm"
-              disabled={revoking === c.id}
-              aria-busy={revoking === c.id}
-              onClick={() => revoke(c)}
-            >
-              Revoke<span class="visually-hidden"> {c.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -530,7 +492,10 @@ export function ConnectionsView() {
           </section>
         );
       })}
-      <SignIns />
+      <p class="muted small">
+        Apps you connected through MCP, and how to connect another, are on{' '}
+        <a href={hashFor({ view: 'mcp', task: null, pr: null, ping: null })}>MCP</a>.
+      </p>
       {data?.cannotCheck?.length > 0 && (
         <section class="conn-group" aria-labelledby="conn-cannot">
           <h2 id="conn-cannot">What the board can’t check</h2>

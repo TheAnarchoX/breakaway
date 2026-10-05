@@ -525,6 +525,24 @@ export async function checkConnections() {
   }
 }
 
+/**
+ * Treat GitHub as working while its status page still shows an incident that's over (`on`), or hold again (BRK-218).
+ * Shows the new report; returns whether it went through.
+ * @param {boolean} on
+ */
+export async function overrideGitHubStatus(on) {
+  try {
+    const data = await api('connections/github-status/override', { method: 'POST', body: { on } });
+    connections.value = { ...connections.peek(), loaded: true, data, error: null };
+    toast(on ? 'Treated as working.' : 'Holding again.', 'success');
+    loadPings();
+    return true;
+  } catch (error) {
+    toast(`Couldn’t change GitHub’s status: ${error.message}`, 'error');
+    return false;
+  }
+}
+
 export async function loadFeatures() {
   try {
     features.value = { loaded: true, data: await api('features'), error: null };
@@ -775,6 +793,7 @@ export const VIEWS = [
   { id: 'specs', label: 'Specs', key: 'e' },
   { id: 'agents', label: 'Agents', key: 'x' },
   { id: 'routines', label: 'Routines', key: 'u' },
+  { id: 'mcp', label: 'MCP', key: 't' },
   { id: 'connections', label: 'Connections', key: 'w' },
 ];
 /**
@@ -812,7 +831,7 @@ export const addRepoTarget = signal(null);
 export const settingsSlug = signal(null);
 /** The kickoff open on #/kickoff/<id> (WEB-35), or null for #/kickoff: the list and the form to start one. */
 export const kickoffId = signal(null);
-/** The sign-in from Claude's apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
+/** The sign-in from MCP apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
 export const authorizeId = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
 export const addRepoAt = signal(null);

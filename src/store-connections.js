@@ -90,6 +90,7 @@ function entry(
     reading = undefined,
     verified = undefined,
     hold = undefined,
+    override = undefined,
   } = {},
 ) {
   return {
@@ -108,6 +109,7 @@ function entry(
     ...(reading && state === 'working' ? { reading } : {}),
     ...(verified && state === 'working' ? { verified } : {}),
     ...(hold ? { hold } : {}),
+    ...(override ? { override } : {}),
   };
 }
 
@@ -796,8 +798,19 @@ export const connectionsMethods = {
         entry('github.status', 'github', name, 'attention', {
           detail: `${v.summary}, since ${v.since}. Chases start nothing new, and Keep branches up to date and Merge when green wait`,
           at: v.at,
-          fix: `Nothing to fix on the board: chases and the pull request settings carry on by themselves once ${host} says it’s working again. Agents already running may fail to push or wait on checks.`,
+          fix: `Nothing to fix on the board: chases and the pull request settings carry on by themselves once ${host} says it’s working again. Agents already running may fail to push or wait on checks. If GitHub is working and the page hasn’t caught up, press Treat as working.`,
           link: v.incidents.find((i) => i.url)?.url ?? v.page,
+          override: { on: false },
+        }),
+      ];
+    // The owner said GitHub is working while the page still reports trouble (BRK-218).
+    if (v.overridden)
+      return [
+        entry('github.status', 'github', name, 'working', {
+          detail: `${v.summary}, but you marked it working. Chases and the pull request settings carry on; the board holds again if ${host} reports something new`,
+          at: v.at,
+          link: v.page,
+          override: { on: true, at: v.overridden.at },
         }),
       ];
     if (v.error)

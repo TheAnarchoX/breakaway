@@ -163,7 +163,7 @@ export const WORKER_FIRST = [
   '/v1/*',
   '/github/*',
   '/mcp',
-  // The sign-in Claude's apps use for /mcp (BRK-157).
+  // The sign-in MCP apps use for /mcp (BRK-157).
   '/oauth/*',
   '/.well-known/oauth-*',
   '/login',

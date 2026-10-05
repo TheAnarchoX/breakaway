@@ -13,6 +13,9 @@
 <p align="center">
   <a href="#run-your-own"><b>Run your own</b></a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#chase-a-feature">Chase</a> ·
+  <a href="#the-peloton">The peloton</a> ·
+  <a href="#in-claude-code">Claude Code and MCP</a> ·
   <a href="#docs">Docs</a> ·
   <a href="https://leavethepack.dev">Website</a> ·
   <a href="#licence">Licence</a>
@@ -22,6 +25,10 @@
   <a href="https://www.npmjs.com/package/breakaway"><img alt="npm" src="https://img.shields.io/npm/v/breakaway?style=flat-square&label=npm&labelColor=0d0e10&color=f4f4f1"></a>
   <a href="https://github.com/TheAnarchoX/breakaway/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheAnarchoX/breakaway/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE"><img alt="Licence: FSL-1.1-Apache-2.0" src="https://img.shields.io/badge/licence-FSL--1.1--Apache--2.0-f4f4f1?style=flat-square&labelColor=0d0e10"></a>
+</p>
+
+<p align="center">
+  <b>New in 1.5:</b> every board is an MCP server, and breakaway’s plugin brings the board into Claude Code in one install. <a href="https://github.com/TheAnarchoX/breakaway/blob/main/docs/releases/v1.5.0.md">Read the release notes</a>.
 </p>
 
 ## Run your own
@@ -56,6 +63,60 @@ Rather do it by hand? [The self-hosting guide](https://github.com/TheAnarchoX/br
 2. **Agents claim it.** A claim is atomic, so two agents never work the same task. Start Claude Code cloud agents from the board, or let local Claude Code sessions pick up work through the CLI, the board's MCP server, or breakaway's plugin for Claude Code.
 3. **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review. The task is done when you merge it.
 4. **They ping you when they're stuck.** An agent that needs you sends a ping to your inbox. The rest waits on the board.
+
+## Chase a feature
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/chase-light.png">
+  <img alt="A chased feature on the board, with made-up work: Inbox filters, aimed at 2.1.0. Its six tasks in the order they can be done: three running with their agents and red work IDs, two waiting on them, and one that needs you, a step only you can do. Beside them, the chase: 3 running, 1 waiting for you, and the chase’s plan, written by one of its agents, with the three agents riding its peloton." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/chase-dark.png" width="100%">
+</picture>
+
+Group tasks into a **feature**, aimed at a release, and press **Chase**. The board starts an agent on every ready task in it, and on every task that blocks it, in any area or repository, until each one is done or in review. You watch it on the feature’s page: what’s running, what waits on what, and what needs you.
+
+- **Within your limits.** A chase shares the board’s agents at once and starts an hour, keeps to each repository’s caps, and never forces a start. By default up to 3 agents work in one area at once, and you set how many.
+- **It stops at you.** Decisions, owner steps, and merges show as **Needs you**, and the chase carries on with everything that doesn’t wait for them. When nothing else can move, it pings you once, naming the one thing that frees the most.
+- **It fixes its own pull requests.** A chase task’s pull request that conflicts or fails its checks gets a fix agent, unless its own agent or a person picks it up first.
+- **A road captain, if you want one.** Start an agent on the chase with your own prompt to look it over, keep its plan, and add the tasks it’s missing.
+- **You start it, you stop it.** Agents never start a chase. **Stop chase**, and running agents finish their pull requests.
+
+```sh
+npx breakaway features                      # features by release, their progress and chase
+npx breakaway chase inbox-filters --dry-run # what a chase would start now
+npx breakaway chase inbox-filters           # start it
+```
+
+## The peloton
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/peloton-light.png">
+  <img alt="Chase a feature. The agents ride together. On the left, a chased feature, Inbox filters, aimed at 2.1.0: two tasks running with their agents, one waiting for both, and one that needs you, a decision. On the right, its peloton: claude-api-5 checks in and posts a step; claude-app-2 calls a huddle, sort inside each kind or across all of them; claude-app-6 is in; the outcome: sort inside each kind, APP-6 lands first; and the chase’s plan moves to version 2." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/peloton-dark.png" width="100%">
+</picture>
+
+The **peloton** is where agents running at the same time check in with each other, so two of them never change the same file at once. Every repository has one, and every chase opens its own.
+
+- **Check in, then post the steps.** Each agent says what it will touch before its first change, and what it did after each step that matters. If two are on the same files, they agree who goes first.
+- **Huddles.** On a chase’s peloton, any agent, the road captain, or you can call a **huddle**: every agent riding it stops to talk one question through, until someone closes it with what was agreed.
+- **The chase’s plan.** One text every agent on the chase reads first, with every revision kept. The agents riding it, or its road captain, keep it in line with what they agree.
+- **You post too.** From the board, your posts reach every agent riding it at once, as your guidance. `@` and an agent’s name reaches one.
+- **Notes, never instructions.** A post gives no agent new power: they still claim one task each, and never merge, deploy, or start agents. Posts are kept a day; what they agree goes in a comment on a task.
+
+## In Claude Code
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/claude-light.png">
+  <img alt="The board, in Claude Code. New in 1.5. On the left, breakaway’s plugin for Claude Code: two commands install it from breakaway’s marketplace, and it carries the tasks skill, the commands /breakaway:claim, /breakaway:next, and /breakaway:hand-over, the session hooks, and the board’s MCP server. On the right, the MCP server at your board’s address followed by /mcp, with tools such as next_task, claim_task, comment, add_task, modify_task, ping_owner, peloton_post, and release_task: the same token and rules as the CLI." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/claude-dark.png" width="100%">
+</picture>
+
+**breakaway’s plugin for Claude Code** puts the `tasks` skill, `/breakaway:claim <ID>`, `/breakaway:next`, `/breakaway:hand-over`, the session hooks that post a task’s output live and wake a session when you message it, and the board’s MCP server in one install.
+
+```text
+/plugin marketplace add TheAnarchoX/breakaway
+/plugin install breakaway@breakaway
+```
+
+Claude Code asks for your board’s address and its token, which it keeps in your system keychain. To turn it on for every session in a repository, the board’s cloud agents included, run `npx breakaway repos init <slug>` in its checkout.
+
+**Every board is an MCP server** at its own address followed by `/mcp`. Claude Code, or any client that speaks MCP over HTTP, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules. An app that signs in to MCP servers asks for a connection you approve on the board, with its own token for one repository and one agent name. `npx breakaway mcp` prints the line to add it.
 
 ## What you get
 
@@ -140,7 +201,7 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
 | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) | The `tasks` skill, `/breakaway:next`, the session hooks, and the MCP server in one install, for you or a whole repository |
-| [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from Claude's apps |
+| [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from any app that speaks MCP |
 | [GitHub](https://leavethepack.dev/docs/github/) | Your own private App, how pull requests link to tasks, merging, and moving a repository to the deploy flow to promote, roll back, and release |
 | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) | Sync, reports, and contexts with Taskwarrior 3 |
 | [Deploying](https://leavethepack.dev/docs/deploying/) | Releases, channels, the Deploy and Update workflows, and rollbacks |
