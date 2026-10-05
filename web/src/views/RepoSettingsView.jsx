@@ -34,6 +34,7 @@ import {
 
 /** Where a repository keeps its agent prompt when it doesn't say (src/repos.js, DEFAULT_PROMPT_PATH). */
 const DEFAULT_PROMPT_PATH = 'tools/tasks/routine-prompt.md';
+const ROUTINES_URL = 'https://claude.ai/code/routines';
 const SHARED = AREAS.filter((a) => ['ideas', 'routines'].includes(a.id));
 const CHANGED_ELSEWHERE = 'Changed somewhere else. Here’s what it is now.';
 /** The server's refusal of a specs directory, in the page's words rather than the setting's key. */
@@ -1193,6 +1194,13 @@ function TakeOff({ data }) {
         <p class="meta">No open tasks and no running agents.</p>
       )}
       <Command text={`npx breakaway repos remove ${repo.slug}`} />
+      <p class="muted small">
+        Then, by hand: delete its routine on claude.ai, with its API trigger, since the board can’t. Made it only for a
+        rehearsal? Delete {repo.github} on GitHub too, and your local clone.{' '}
+        <a href={ROUTINES_URL} target="_blank" rel="noopener noreferrer">
+          Open routines on claude.ai
+        </a>
+      </p>
     </section>
   );
 }

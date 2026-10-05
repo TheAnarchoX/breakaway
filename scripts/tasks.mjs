@@ -74,6 +74,7 @@ import {
   reviewRequest,
   staleCliWarning,
   releaseBehind,
+  removedRepoByHand,
   unknownSubcommand,
 } from './tasks/cli.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
@@ -2143,7 +2144,10 @@ async function promptAnswers() {
   return answers;
 }
 
-/** repos remove (CLD-191): the board takes it off, then its routine leaves the Secrets Store and this machine's copy. */
+/**
+ * repos remove (CLD-191): the board takes it off, then its routine leaves the Secrets Store and this machine's copy.
+ * It ends with what's left by hand on claude.ai and GitHub (CLI-4).
+ */
 async function removeRepo(slug, signer) {
   const { default: fallback } = await call('GET', 'repos');
   // Dropping a routine this machine connected rewrites the ROUTINES secret: check before anything changes.
@@ -2177,7 +2181,10 @@ async function removeRepo(slug, signer) {
       }
     }
   }
-  print(res, () => lines.join('\n'));
+  // Said whether or not the board had a routine connected: it can't delete one on claude.ai either way (CLI-4).
+  const byHand = removedRepoByHand(res.removed.github);
+  lines.push('', 'Left to do by hand:', ...byHand.map((step) => `  - ${step}`));
+  print({ ...res, byHand }, () => lines.join('\n'));
 }
 
 // ---- credentials -------------------------------------------------------------------------
