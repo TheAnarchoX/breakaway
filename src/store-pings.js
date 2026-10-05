@@ -46,6 +46,26 @@ export const pingsMethods = {
     `);
   },
 
+  /**
+   * A ping from the board itself (a chase that stalled, a silent session, repeated fixes): a comment on task `uuid`
+   * and an inbox row, pushed when its kind pushes. It skips the agents' caps. Returns the ping's id.
+   */
+  async boardPing(uuid, kind, message) {
+    this.change(uuid, { annotate: `Ping (${kind}): ${String(message).slice(0, 500)}`, by: 'board' });
+    const ping = this.sql
+      .exec(
+        "INSERT INTO pings (task, kind, message, agent, created) VALUES (?, ?, ?, 'board', ?) RETURNING id",
+        uuid,
+        kind,
+        String(message).slice(0, 500),
+        Date.now(),
+      )
+      .one();
+    // A push is a convenience: it never throws, and the ping and its comment are the record.
+    await this.pushPing(ping.id);
+    return ping.id;
+  },
+
   /** A task that's finished or gone resolves its pings by itself. */
   resolveFinishedPings() {
     const open = this.sql.exec('SELECT DISTINCT task FROM pings WHERE resolved IS NULL').toArray();

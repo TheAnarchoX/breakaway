@@ -1378,6 +1378,8 @@ export const githubMethods = {
           tasks,
           // Who's on its task right now: the page shows them instead of Fix with an agent (WEB-6).
           agent: state === 'open' ? this.prAgent({ ...linked, number: p.number, repo: repo.slug }) : null,
+          // Fix agents started on it since it was last green, and since when a third is Needs you (BRK-145).
+          fixes: state === 'open' ? this.prFixes(repo.slug, p.number) : null,
           // The latest agent's review, shown below the description (BRK-111).
           agentReview: this.agentReviewOf(repo.slug, p.number, p.head?.sha ?? null),
           workers,

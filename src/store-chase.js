@@ -665,19 +665,8 @@ export const chaseMethods = {
         0,
         500,
       );
-    const now = Date.now();
-    this.sql.exec('UPDATE features SET chase_stalled = ? WHERE slug = ?', now, row.slug);
+    this.sql.exec('UPDATE features SET chase_stalled = ? WHERE slug = ?', Date.now(), row.slug);
     this.chaseEvent(row.slug, 'chase_stalled', message);
-    this.change(item.uuid, { annotate: `Ping (blocked): ${message}`, by: 'board' });
-    const ping = this.sql
-      .exec(
-        "INSERT INTO pings (task, kind, message, agent, created) VALUES (?, 'blocked', ?, 'board', ?) RETURNING id",
-        item.uuid,
-        message,
-        now,
-      )
-      .one();
-    // A push is a convenience: it never throws, and the ping and its comment are the record.
-    await this.pushPing(ping.id);
+    await this.boardPing(item.uuid, 'blocked', message);
   },
 };
