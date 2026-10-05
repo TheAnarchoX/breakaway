@@ -88,6 +88,13 @@ function Describe({ change: c }) {
         {c.note && <span class="meta"> · “{c.note}”</span>}
       </>
     );
+  if (c.type === 'delete')
+    return (
+      <>
+        <strong>Delete</strong> {link(c.task)}
+        {c.note && <span class="meta"> · “{c.note}”</span>}
+      </>
+    );
   return (
     <>
       <strong>Release the claim on</strong> {link(c.task)}

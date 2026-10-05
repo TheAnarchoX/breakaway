@@ -748,10 +748,18 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         changes.addRelated = this.depRefs(arrayOf(input.related));
         changes.removeRelated = relatedOf(this.tasks.get(uuid)).filter((r) => !changes.addRelated.includes(r));
       }
-      // A general agent editing another task (IDEA-30 section 2) follows the cross-task rule instead.
-      const general = this.generalTaskOf(changes.by, uuid);
-      if (general) this.checkCrossTaskEdit(uuid, input, general);
-      else this.checkBriefEdit(uuid, changes);
+      // A general agent editing another task (IDEA-30 section 2), or a chase agent editing another of its chase's
+      // (IDEA-36 section 6), follows the cross-task rule instead.
+      const general = this.crossTaskRightsOf(changes.by, uuid);
+      if (general) {
+        this.checkCrossTaskEdit(uuid, input, general);
+        // The description stays the owner's when an agent rewrites it this way, so it never becomes one the agent made.
+        if ('brief' in changes && !AGENT_NAME.test(this.tasks.get(uuid).brief_by ?? ''))
+          Reflect.deleteProperty(changes, 'by');
+      } else {
+        this.checkBriefEdit(uuid, changes);
+        this.checkAgentDelete(uuid, changes);
+      }
       this.checkPrField(uuid, changes);
       if (input.addTags) changes.addTags = arrayOf(input.addTags);
       if (input.removeTags) changes.removeTags = arrayOf(input.removeTags);
@@ -770,9 +778,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       if (general) {
         const fields = CROSS_TASK_FIELDS.filter(([keys]) => keys.some((k) => k in input)).map(([, name]) => name);
         const its = general.wid ?? general.uuid.slice(0, 8);
-        return ok({
-          task: this.change(uuid, { annotate: `Changed by ${its}: ${fields.join(', ')}.`, by: 'board' }),
-        });
+        const note = changes.status === 'deleted' ? `Deleted by ${its}.` : `Changed by ${its}: ${fields.join(', ')}.`;
+        return ok({ task: this.change(uuid, { annotate: note, by: 'board' }) });
       }
       // Editing the questions keeps the answers that still fit; say which ones went.
       if (changes.decision && before.decisionAnswers) {
@@ -971,18 +978,42 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * The general task an agent holds (IDEA-30 section 1), when it edits another task: its open task tagged
-   * general, claimed by that name. Null for the owner, the board, another agent, or an edit of its own task.
+   * Whether an agent other than the task's holder may delete it: only under the chase rule (checkCrossTaskEdit).
+   * Every other agent proposes it to the owner in a ping. The owner, the board, and the task's holder are unchanged.
+   * @param {string} uuid
+   * @param {Record<string, any>} changes
+   */
+  checkAgentDelete(uuid, changes) {
+    if (changes.status !== 'deleted' || !AGENT_NAME.test(String(changes.by ?? ''))) return;
+    if (this.tasks.get(uuid).claim === String(changes.by)) return;
+    throw new Forbidden(
+      `an agent deletes another task only when it's in the agent's open chase and an agent added it after the chase started; propose deleting ${label(this.detail(uuid))} to the owner in a ping instead`,
+    );
+  }
+
+  /**
+   * The task that gives an agent rights over another task, when it edits one: its general task (IDEA-30 section 1),
+   * open, tagged general, and claimed by that name; or else a task it holds in an open chase that `uuid` is in too
+   * (IDEA-36 section 6), with that chase's start. Null for the owner, the board, another agent, or an edit of its own
+   * task.
    * @param {unknown} by
    * @param {string} uuid the task being edited
-   * @returns {{ uuid: string, wid: string | null } | null}
+   * @returns {{ uuid: string, wid: string | null, kind: 'general' | 'chase', chaseStarted?: number } | null}
    */
-  generalTaskOf(by, uuid) {
-    if (!by || !/^(claude|codex)-/u.test(String(by))) return null;
-    for (const [own, m] of this.tasks)
-      if (m.claim === String(by) && m.status === 'pending' && m.tag_general)
-        return own === uuid ? null : { uuid: own, wid: m.wid ?? null };
-    return null;
+  crossTaskRightsOf(by, uuid) {
+    if (!by || !AGENT_NAME.test(String(by))) return null;
+    const held = [...this.tasks].filter(([, m]) => m.claim === String(by) && m.status === 'pending');
+    if (held.some(([own]) => own === uuid)) return null;
+    for (const [own, m] of held) if (m.tag_general) return { uuid: own, wid: m.wid ?? null, kind: 'general' };
+    if (!held.length || !this.chasing()) return null;
+    // A chase the agent rides on (its own tasks and the blockers it pulled in) that holds the edited task too.
+    let found = null;
+    for (const { row, tasks } of this.openChases())
+      if (tasks.has(uuid))
+        for (const [own, m] of held)
+          if (tasks.has(own) && (!found || Number(row.chase_started) < found.chaseStarted))
+            found = { uuid: own, wid: m.wid ?? null, kind: 'chase', chaseStarted: Number(row.chase_started) };
+    return found;
   }
 
   /**
@@ -990,13 +1021,17 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * done when, area, horizon, tags, and dependencies of an unclaimed, open task in its own repository that
    * isn't an idea. Never a horizon-* tag, autostart, or a decision, and nothing else: that goes to the owner
    * as a ping proposal. The board notes each change on the edited task (update).
+   *
+   * A chase agent has the same rights over its chase's other tasks (IDEA-36 section 6), and one more: it may delete
+   * such a task, on its own, when an agent wrote it (`brief_by`) after the chase started. Never finishing one.
    * @param {string} uuid
    * @param {Record<string, any>} input the request's body
-   * @param {{ uuid: string }} own the agent's general task
+   * @param {{ uuid: string, kind: 'general' | 'chase', chaseStarted?: number }} own the agent's task that gives it the right
    */
   checkCrossTaskEdit(uuid, input, own) {
+    const who = own.kind === 'chase' ? 'a chase agent' : 'a general agent';
     const refuse = (why) => {
-      throw new Forbidden(`a general agent ${why}; propose it to the owner in a ping instead`);
+      throw new Forbidden(`${who} ${why}; propose it to the owner in a ping instead`);
     };
     const map = this.tasks.get(uuid);
     const name = label(this.detail(uuid));
@@ -1009,6 +1044,16 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     if (map.project in SHARED_AREAS) refuse(`doesn't change ${name}, which is an idea or a routine run`);
     if (repoSlugOf(map, fallback) !== repoSlugOf(ownMap, fallback))
       refuse(`changes only tasks in its own repository, and ${name} is ${repoSlugOf(map, fallback)}'s`);
+    if ('status' in input) {
+      if (own.kind !== 'chase' || input.status !== 'deleted') refuse(`doesn't finish, delete, or reopen ${name}`);
+      const other = Object.keys(input).filter((k) => k !== 'status' && k !== 'by');
+      if (other.length) refuse(`deletes ${name} on its own, without changing ${other.join(', ')}`);
+      // Entry is in seconds: a task added in the second the chase started counts as after it.
+      const added = Number(map.entry) >= Math.floor(Number(own.chaseStarted) / 1000);
+      if (!AGENT_NAME.test(map.brief_by ?? '') || !added)
+        refuse(`deletes only a task an agent added after the chase started, and ${name} isn't one`);
+      return;
+    }
     const tags = [...arrayOf(input.addTags ?? []), ...arrayOf(input.removeTags ?? [])].map(String);
     if (tags.some((t) => t.startsWith('horizon-'))) refuse("doesn't change a horizon-* tag: that's the owner's choice");
     if ('project' in input && input.project in SHARED_AREAS) refuse(`doesn't move ${name} into ${input.project}`);
@@ -1570,6 +1615,8 @@ Object.assign(TaskStore.prototype, apiActions);
 class NotFound extends Error {}
 class Forbidden extends Error {}
 
+/** An agent's name on the board, as the board starts them. */
+const AGENT_NAME = /^(claude|codex)-/u;
 /**
  * What a general agent may change on another task (IDEA-30 section 2): the request's keys, and their name in the board's note.
  * @type {[string[], string][]}
