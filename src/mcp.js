@@ -238,7 +238,11 @@ function rpcError(status, id, code, message, data) {
  * @param {(promise: Promise<any>) => void} [waitUntil]
  */
 function callContext(request, store, waitUntil = (_promise) => {}) {
-  const agent = (request.headers.get('X-Breakaway-Agent') ?? '').trim();
+  const header = (name) => (request.headers.get(name) ?? '').trim();
+  // The plugin sends its agent_name as a static X-Breakaway-Agent, empty when it isn't set, and its headersHelper sends
+  // claude-<branch> as X-Breakaway-Agent-Default for that case (CLI-16). An option Claude Code didn't fill is no name.
+  const named = header('X-Breakaway-Agent');
+  const agent = named && !named.startsWith('${') ? named : header('X-Breakaway-Agent-Default');
   const repo = (request.headers.get('X-Breakaway-Repo') ?? '').trim().toLowerCase();
   let registry;
   const ctx = {

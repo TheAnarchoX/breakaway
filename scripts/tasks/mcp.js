@@ -52,13 +52,23 @@ export function mcpConfig({ url, agent, repo = null, tokenVar }) {
  * docs/specs/IDEA-25-claude-plugin.md, section 4). Claude Code reads them as JSON from standard output, so the token is
  * its value here, and only there. Outside a repository the board tracks there's only Authorization, and the repository's
  * tools say what's missing; without a token there's none, so a session's proxy can add it.
- * @param {{ token?: string | null, agent: string, repo?: string | null }} options
+ *
+ * The agent's name is X-Breakaway-Agent only when the CLI has one of its own (`named`: --as, BREAKAWAY_AGENT, or
+ * tasks.env). Otherwise it's `agent`, claude-<branch>, as X-Breakaway-Agent-Default: the helper can't see the plugin's
+ * agent_name, which the plugin sends as a static X-Breakaway-Agent that this one would override, and /mcp takes the
+ * default only when that's empty (CLI-16).
+ * @param {{ token?: string | null, named?: string | null, agent: string, repo?: string | null }} options
  * @returns {Record<string, string>}
  */
-export function mcpHeaders({ token = null, agent, repo = null }) {
+export function mcpHeaders({ token = null, named = null, agent, repo = null }) {
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(repo ? { 'X-Breakaway-Agent': agent, 'X-Breakaway-Repo': repo } : {}),
+    ...(repo
+      ? {
+          ...(named ? { 'X-Breakaway-Agent': named } : { 'X-Breakaway-Agent-Default': agent }),
+          'X-Breakaway-Repo': repo,
+        }
+      : {}),
   };
 }
 

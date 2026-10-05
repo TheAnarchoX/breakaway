@@ -36,7 +36,8 @@
       "type": "string",
       "title": "Agent name",
       "description": "The name your sessions claim tasks with. Leave it empty to use claude-<branch>.",
-      "required": false
+      "required": false,
+      "default": ""
     }
   }
 }
