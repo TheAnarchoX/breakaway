@@ -3815,6 +3815,23 @@ fieldset.field {
   margin: 0;
   color: var(--muted);
 }
+/* A chase that's on with this task in it (WEB-77). */
+.tp-chase {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+}
+.tp-chase svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text);
+}
+.tp-chase a {
+  color: var(--text);
+  font-weight: 600;
+}
 .agent-line strong {
   color: var(--text);
   font-family: var(--font-mono);
@@ -6903,6 +6920,61 @@ fieldset.field {
 }
 .field-hint.is-full {
   color: var(--warn);
+}
+
+/* ---------- a task's feature (WEB-77) ---------- */
+
+.tp-feature h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tp-feature-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.tp-feature-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tp-feature-top .fr-kicker {
+  margin: 0;
+  min-width: 0;
+}
+.tp-feature-title {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.tp-feature-title:hover {
+  text-decoration: underline;
+}
+.tp-feature-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.tp-feature-pick .meta {
+  flex: none;
+  white-space: nowrap;
+}
+.tp-feature-pick .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tp-chase-pill {
+  margin-left: 0;
+  text-decoration: none;
 }
 
 /* ---------- chase (IDEA-28 section 3.9) ---------- */

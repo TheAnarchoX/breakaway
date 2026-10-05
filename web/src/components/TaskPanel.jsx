@@ -66,6 +66,7 @@ import { PrRow } from './GitHub.jsx';
 import { AgentSection } from './Agents.jsx';
 import { DecisionSection } from './Decision.jsx';
 import { AttachmentsSection } from './Attachments.jsx';
+import { FeatureSection } from './Feature.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
 
@@ -896,6 +897,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
       <Brief task={t} field="brief" label="Description" empty="No description yet." by={t.briefBy ?? ''} rows={8} />
       <Brief task={t} field="doneWhen" label="Done when" empty="Nothing written down yet." rows={3} />
       <AttachmentsSection task={t} />
+      <FeatureSection task={t} />
       <Details task={t} />
       <Shipping task={t} />
       <PullRequests task={t} />
@@ -1002,6 +1004,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
             <Comments task={t} />
           </div>
           <div class="modal-rail">
+            <FeatureSection task={t} />
             <Details task={t} />
             <Shipping task={t} />
             <PullRequests task={t} />
