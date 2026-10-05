@@ -290,7 +290,7 @@ strong {
   }
 }
 .hero h1 {
-  font-size: clamp(52px, 11vw, 132px);
+  font-size: clamp(52px, 7vw, 100px);
   margin: 18px 0 24px;
 }
 .hero .sub {
