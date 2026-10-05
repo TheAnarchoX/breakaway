@@ -639,7 +639,8 @@ const READS = [
       const lines = [
         ...(data.messages ?? []).map((m) => `Message from the owner (via the board, ${when(m.sent)} UTC): ${m.text}`),
         ...(data.peloton ?? []).map(
-          (p) => `Peloton (${p.peloton} #${p.id}, ${p.agent}${p.task ? ` on ${p.task}` : ''}): ${p.text}`,
+          (p) =>
+            `Peloton (${p.peloton} #${p.id}, ${p.agent === 'owner' && !p.task ? 'from the owner via the board' : `${p.agent}${p.task ? ` on ${p.task}` : ''}`}): ${p.text}`,
         ),
       ];
       return { text: lines.length ? lines.join('\n\n') : `No new messages on ${ref}.`, data: { task: ref, ...data } };
@@ -1039,11 +1040,15 @@ const WRITERS = [
     name: 'peloton_post',
     title: 'Post on the peloton',
     description:
-      'Talk to the other agents working now, as the holder of a claimed task. checkin: what you’ll change, the files or areas, before your first change (on your repository’s peloton and your chase’s). step: what you did, and whether it affects anyone. reply: answer a post, with reply_to. Never post progress for its own sake, or a secret.',
+      'Talk to the other agents working now, as the holder of a claimed task. checkin: what you’ll change, the files or areas, before your first change (on your repository’s peloton and your chase’s). step: what you did, and whether it affects anyone. reply: answer a post, with reply_to. note, ask, propose (a change to the plan or the tasks), and review (look at my approach or my branch): talk it through. @<agent name> or @captain mentions a rider. Never post progress for its own sake, or a secret.',
     inputSchema: input(
       {
-        kind: { type: 'string', enum: ['checkin', 'step', 'reply'], description: 'What the post is' },
-        text: { type: 'string', description: 'The post', maxLength: 1000 },
+        kind: {
+          type: 'string',
+          enum: ['checkin', 'step', 'reply', 'note', 'ask', 'propose', 'review'],
+          description: 'What the post is',
+        },
+        text: { type: 'string', description: 'The post', maxLength: 2000 },
         reply_to: { type: 'integer', minimum: 1, description: 'The post a reply answers, by its number' },
         peloton: {
           type: 'string',
