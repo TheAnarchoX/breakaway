@@ -9,7 +9,7 @@ export const SUBCOMMANDS = {
   agents: ['next', 'start', 'refine', 'new'],
   github: ['fix', 'review'],
   repos: ['add', 'init', 'modify', 'remove', 'setup'],
-  routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume'],
+  routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume', 'cap', 'new'],
   features: ['list', 'add', 'show', 'modify'],
   horizon: ['close'],
   hook: ['session', 'wait'],
@@ -196,6 +196,39 @@ export function reviewRequest(ref, verdict, note, { by, pr } = {}) {
  */
 export function forceFields(force, by) {
   return force ? { force: true, ...(by ? { by } : {}) } : {};
+}
+
+/**
+ * Who writes a routine (BRK-220 section 5): every routines write says who asks, like `features` does, so the board
+ * can tell an agent from the owner and let only a routine maker's agent through. Nothing when no name is set.
+ * @template {Record<string, unknown>} T
+ * @param {T} body
+ * @param {string | undefined} by
+ */
+export function routineWrite(body, by) {
+  return by ? { ...body, by } : body;
+}
+
+/**
+ * `routines new` (BRK-220 section 1, Make with an agent): the request that makes a routine maker's task from the
+ * owner's words and starts its agent, in the checkout's repository unless `--repo` names another. It says who asks,
+ * so the board refuses an agent's name: only the owner starts one.
+ * @param {string} prompt
+ * @param {{ repo?: string | null, force?: boolean, by?: string }} [options]
+ */
+export function routineMakerRequest(prompt, { repo = null, force = false, by } = {}) {
+  const text = String(prompt ?? '').trim();
+  if (!text)
+    return {
+      error:
+        'say what the routine should do, and when: npx breakaway routines new "Every Monday, update the changelog from what merged"',
+    };
+  const body = {
+    prompt: text,
+    ...(repo ? { repo } : {}),
+    ...(force ? { force: true } : {}),
+  };
+  return { request: ['POST', 'routines/agent', routineWrite(body, by)] };
 }
 
 /**
