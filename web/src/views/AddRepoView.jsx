@@ -8,11 +8,13 @@ import {
   Copy,
   ExternalLink,
   FolderGit2,
+  Play,
   RefreshCw,
   Terminal,
   TriangleAlert,
 } from 'lucide-preact';
-import { api, enc } from '../lib/api.js';
+import { api, enc, sentence } from '../lib/api.js';
+import { startFix } from '../../../src/wizard.js';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { DeployCard, deploySkipped, unskipDeploys } from '../components/DeployCard.jsx';
 import { ago } from '../lib/model.js';
@@ -23,9 +25,11 @@ import {
   githubRepoFacts,
   go,
   installDocs,
+  loadAgents,
   loadGitHub,
   loadConnections,
   loadRepos,
+  loadTasks,
   navOrder,
   openAddRepo,
   openKickoff,
@@ -374,7 +378,7 @@ function stepContent(id, d) {
       };
     case 'agent':
       return {
-        what: 'Start an agent on that task from the board (Start on the task), and follow it to a merged pull request.',
+        what: 'Start an agent on that task here, and follow it to a merged pull request.',
         why: 'The whole chain at once: the routine starts, the session reads the prompt, its output reaches the task, and its pull request finishes the task when it merges.',
         expect:
           'The checks below tick one by one. Its pull request’s title starts with the work ID and it says “Closes <ID>.”. Merging stays yours.',
@@ -382,6 +386,89 @@ function stepContent(id, d) {
     default:
       return { what: null };
   }
+}
+
+/** Opens wizard step `id` and scrolls to it, the way a link from another page does. */
+function goToStep(id) {
+  const details = /** @type {HTMLDetailsElement | null} */ (document.querySelector(`#wiz-${id} details`));
+  if (details) details.open = true;
+  addRepoAt.value = id;
+}
+
+/**
+ * The agent step's Start (WEB-40): an agent on the task the board found, from here. A start that fails says why
+ * in the step, what fixes it, and Try again; the last failed start is the board's, so it shows after a reload too.
+ * @param {Record<string, any>} props
+ */
+function AgentStart({ step, d, reload }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(null);
+  const task = step.start;
+  // What this page saw fail comes first; once there's nothing to start, only the board's own record is left.
+  const failure = (task && failed) || step.failure;
+  if (step.done || (!task && !failure)) return null;
+  const start = async () => {
+    setBusy(true);
+    try {
+      await api('agents/start', { method: 'POST', body: { ref: task.uuid } });
+      setFailed(null);
+      toast(`Started an agent on ${task.wid}. Its checks below tick as it goes.`, 'success');
+      loadTasks();
+      loadAgents();
+    } catch (error) {
+      setFailed({ wid: task.wid, error: error.message, ...startFix(error.message) });
+    } finally {
+      setBusy(false);
+      reload();
+    }
+  };
+  const fixStep = failure?.step ? d.steps.find((s) => s.id === failure.step) : null;
+  return (
+    <div class="wiz-start">
+      {failure && (
+        <div class="conn-fix" role="alert">
+          <p>
+            <TriangleAlert size={15} aria-hidden="true" class="wiz-warn" />{' '}
+            <strong>Couldn’t start an agent on {failure.wid}:</strong> {sentence(failure.error)}
+          </p>
+          <p>
+            <strong>To fix it:</strong> {failure.fix}
+          </p>
+          {(fixStep || failure.link) && (
+            <div class="wiz-actions">
+              {fixStep && (
+                <button type="button" class="btn btn-outline btn-sm" onClick={() => goToStep(fixStep.id)}>
+                  {fixStep.name}
+                </button>
+              )}
+              {failure.link === 'routines' && <ExtLink href={ROUTINES_URL}>Open routines on claude.ai</ExtLink>}
+            </div>
+          )}
+        </div>
+      )}
+      {task && (
+        <div class="wiz-actions wiz-skipped">
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            onClick={start}
+            disabled={busy || Boolean(task.blocker)}
+            aria-busy={busy}
+          >
+            {failure ? <RefreshCw size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+            {busy ? 'Starting…' : failure ? 'Try again' : `Start an agent on ${task.wid}`}
+          </button>
+          <p class="meta">
+            <button type="button" class="link-button" onClick={() => openTask(task.wid)}>
+              {task.wid}
+            </button>
+            : {task.description}
+            {task.blocker && <> · It can’t start yet: {task.blocker}.</>}
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** @param {Record<string, any>} props */
@@ -585,6 +672,7 @@ function Step({ step, index, d, reload }) {
           ))}
         </div>
       )}
+      {step.id === 'agent' && <AgentStart step={step} d={d} reload={reload} />}
       <Checks step={step} />
       <p class="wiz-expect">
         <strong>When it worked:</strong> {c.expect}
