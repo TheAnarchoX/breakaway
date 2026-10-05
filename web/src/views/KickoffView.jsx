@@ -43,7 +43,7 @@ import { ImagePicker, Thumbnails } from '../components/Attachments.jsx';
 import { DecisionSection } from '../components/Decision.jsx';
 import { LiveLog, TRIGGER_LABEL } from '../components/Agents.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
-import { useAutosize } from '../components/ui.jsx';
+import { useAutosize, Dictate } from '../components/ui.jsx';
 import { Markdown } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
 
@@ -339,20 +339,22 @@ function KickoffStart() {
         <h2 class="visually-hidden">Start a new one</h2>
         <label class="field">
           <span class="field-label">What do you want to make?</span>
-          <textarea
-            ref={area}
-            name="pitch"
-            class="textarea"
-            rows={6}
-            maxLength={MAX_PITCH}
-            value={pitch}
-            placeholder="A diary for my plants. I keep forgetting when I watered the fern."
-            onInput={(e) => {
-              setPitch(e.currentTarget.value);
-              setError(null);
-            }}
-            aria-describedby={error ? 'ko-pitch-error ko-pitch-hint' : 'ko-pitch-hint'}
-          />
+          <Dictate>
+            <textarea
+              ref={area}
+              name="pitch"
+              class="textarea"
+              rows={6}
+              maxLength={MAX_PITCH}
+              value={pitch}
+              placeholder="A diary for my plants. I keep forgetting when I watered the fern."
+              onInput={(e) => {
+                setPitch(e.currentTarget.value);
+                setError(null);
+              }}
+              aria-describedby={error ? 'ko-pitch-error ko-pitch-hint' : 'ko-pitch-hint'}
+            />
+          </Dictate>
           {error && (
             <span class="field-error" id="ko-pitch-error" role="alert">
               {error}

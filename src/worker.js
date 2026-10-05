@@ -296,9 +296,17 @@ async function handleImages(request, env, url, method, via) {
 
 // ---- JSON API ----------------------------------------------------------------------------
 
+/** When this isolate last told the store the API token was used, so a busy CLI costs it a call a minute at most. */
+let cliNotedAt = 0;
+
 async function handleApi(request, env, url, ctx) {
   const via = await authenticate(request, env);
   if (!via) return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
+  // A call with the token is the CLI (or a script with it), never the web board's cookie: Set up the board's CLI step (BRK-143).
+  if (via === 'token' && Date.now() - cliNotedAt > 60_000) {
+    cliNotedAt = Date.now();
+    ctx?.waitUntil(store(env).connectionsCliSeen());
+  }
   const method = request.method;
   if (via === 'cookie' && method !== 'GET' && !sameOrigin(request))
     return json(403, { error: 'cross-origin request refused' });

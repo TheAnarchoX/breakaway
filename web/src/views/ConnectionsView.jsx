@@ -34,7 +34,7 @@ import { RepoChip } from '../components/ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
-/** The groups the view shows, in order; Taskwarrior and push share one. */
+/** The groups the view shows, in order; the CLI, Taskwarrior, and push share one. */
 const GROUPS = [
   { id: 'repos', label: 'Repositories', of: ['repos'] },
   { id: 'board', label: 'Board', of: ['board'] },
@@ -42,7 +42,7 @@ const GROUPS = [
   { id: 'github', label: 'GitHub', of: ['github'] },
   { id: 'npm', label: 'npm', of: ['npm'] },
   { id: 'claude', label: 'Claude', of: ['claude'] },
-  { id: 'sync', label: 'Sync and push', of: ['taskwarrior', 'push'] },
+  { id: 'sync', label: 'CLI, sync, and push', of: ['cli', 'taskwarrior', 'push'] },
 ];
 
 export const STATE = {
@@ -305,12 +305,14 @@ function RegisterRepo() {
  */
 function Setup({ setup }) {
   if (!setup || setup.done) return null;
-  const next = setup.steps.find((s) => !s.done);
+  // An optional step (Taskwarrior) is never the one to do now.
+  const next = setup.steps.find((s) => !s.done && !s.optional);
   return (
     <section class="conn-group setup" aria-labelledby="setup-title">
       <h2 id="setup-title">Set up the board</h2>
       <p class="muted">
-        A new board needs a few things before agents can work on it. Each step’s connection below says how to finish it.
+        A new board needs a few things before agents can work on it, and it’s set up once a first task is closed by its
+        merged pull request. Each step’s connection below says how to finish it.
       </p>
       <ol class="setup-steps">
         {setup.steps.map((s) => (

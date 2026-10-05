@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { CircleAlert, CircleCheck, Info } from 'lucide-preact';
+import { CircleAlert, CircleCheck, Info, Mic, Square } from 'lucide-preact';
 import { confirmState, forceOffer, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
 import { STATE_LABEL, age, isStale, stateOf } from '../lib/model.js';
+import { canDictate, dictate } from '../lib/dictation.js';
 
 /**
  * A native <dialog>, shown modally while `open`. Escape and a click on the backdrop call
@@ -315,6 +316,67 @@ export function RepoChip({ slug }) {
 /** @param {Record<string, any>} props */
 export function Kbd({ children }) {
   return <kbd class="kbd">{children}</kbd>;
+}
+
+/**
+ * Wraps a text field (its one child) with a microphone button that dictates into it with the
+ * browser's speech recognition. Where the browser can't dictate, it renders the field alone.
+ * The field keeps its own ref, value, and handlers: the words go in as input events.
+ * @param {Record<string, any>} props
+ */
+export function Dictate({ children }) {
+  const root = useRef(/** @type {HTMLElement | null} */ (null));
+  const stop = useRef(/** @type {(() => void) | null} */ (null));
+  const [listening, setListening] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => () => stop.current?.(), []);
+  if (!canDictate) return children;
+
+  const field = () => /** @type {HTMLTextAreaElement | null} */ (root.current?.querySelector('textarea, input'));
+  const toggle = () => {
+    if (stop.current) {
+      stop.current();
+      return;
+    }
+    const el = field();
+    if (!el || el.disabled || el.readOnly) return;
+    setError('');
+    setListening(true);
+    el.focus();
+    stop.current = dictate(el, {
+      onEnd: () => {
+        stop.current = null;
+        setListening(false);
+      },
+      onError: setError,
+    });
+  };
+
+  return (
+    <span class={`dictate${listening ? ' is-listening' : ''}`} ref={root}>
+      {children}
+      <button
+        type="button"
+        class="btn btn-quiet btn-icon btn-sm dictate-btn"
+        aria-pressed={listening}
+        aria-label={listening ? 'Stop dictating' : 'Dictate'}
+        title={listening ? 'Stop dictating' : 'Dictate'}
+        // Keep the cursor in the field, so the words go where it is.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={toggle}
+      >
+        {listening ? <Square size={14} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
+      </button>
+      <span class="visually-hidden" aria-live="polite">
+        {listening ? 'Listening. Speak, then press Stop dictating.' : ''}
+      </span>
+      {error && (
+        <span class="field-error dictate-error" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** Keeps a textarea as tall as its text, also when its width changes (a sheet opening, a resize). */
