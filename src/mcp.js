@@ -8,7 +8,7 @@
  * transport mirrors it into headers, and the one before it, where a client opens with `initialize`.
  *
  * Each tool calls the same TaskStore method its CLI command's API route does, so the store's own guards stand behind
- * it. The resources and prompts (section 4) are in src/mcp-resources.js. The tools that write (BRK-155) come later.
+ * it. The resources and prompts (section 4) are in src/mcp-resources.js.
  */
 import { authenticate } from './auth.js';
 import { releaseOf } from './build.js';
