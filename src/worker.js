@@ -403,6 +403,11 @@ async function handleApi(request, env, url, ctx) {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can run Check now' });
       return send(await s.connectionsCheckApi(url.origin));
     }
+    // Treat GitHub as working while its status page lags behind (BRK-218): the owner's call, so the browser's only.
+    if (parts[1] === 'github-status' && parts[2] === 'override' && parts.length === 3 && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can override GitHub’s status' });
+      return send(await s.githubStatusOverrideApi(body));
+    }
     if (parts[1] === 'notices' && parts.length === 4 && parts[3] === 'dismiss' && method === 'POST') {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can dismiss a connection note' });
       return send(await s.connectionNoticeDismiss(parts[2]));
