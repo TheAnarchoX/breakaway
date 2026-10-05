@@ -788,6 +788,8 @@ export const addRepoTarget = signal(null);
 export const settingsSlug = signal(null);
 /** The kickoff open on #/kickoff/<id> (WEB-35), or null for #/kickoff: the list and the form to start one. */
 export const kickoffId = signal(null);
+/** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
+export const addRepoAt = signal(null);
 /** Where the Settings page scrolls to once it opens (`'repos'` for its list of repositories), or null for the top. */
 export const settingsAt = signal(null);
 
@@ -932,9 +934,13 @@ export function go(v) {
   location.hash = hashFor({ view: v, pr: null, ping: null });
 }
 
-/** Opens the Add a repository wizard: on a registered repository (`slug`), one not registered yet (`github`), or neither. */
-export function openAddRepo(target = null) {
+/**
+ * Opens the Add a repository wizard: on a registered repository (`slug`), one not registered yet (`github`), or
+ * neither; `at` names a step to open and scroll to (`'deploys'`).
+ */
+export function openAddRepo(target = null, at = null) {
   addRepoTarget.value = target;
+  addRepoAt.value = at;
   location.hash = hashFor({ view: 'add-repo', task: null, pr: null, ping: null });
 }
 
