@@ -1,7 +1,7 @@
 /**
  * The owner's messages from the board, as the session hook hands them to Claude
  * (docs/specs/IDEA-15-message-a-running-agent.md), and the peloton's posts with them
- * (docs/specs/IDEA-32-peloton.md). Pure, so it runs in the hook (Node) and in the Worker test runtime.
+ * (docs/specs/IDEA-32-peloton.md, IDEA-36-peloton-planning.md section 3). Pure, so it runs in the hook (Node) and in the Worker test runtime.
  */
 import { pelotonContext } from './peloton.js';
 
@@ -49,10 +49,10 @@ export function messageText(answer) {
 
 /**
  * The board's answer → everything waiting for the agent, as Claude reads it: the owner's messages first, then the
- * peloton's posts it hasn't seen. '' when there's nothing.
+ * peloton's posts it hasn't seen, in the board's order, and how many more it didn't send. '' when there's nothing.
  */
 export function waitingText(answer) {
-  return [messageText(answer), pelotonContext(answer?.peloton)].filter(Boolean).join('\n\n');
+  return [messageText(answer), pelotonContext(answer?.peloton, answer?.pelotonMore)].filter(Boolean).join('\n\n');
 }
 
 /** How long the idle wait hook listens after Claude stops (CLD-146: a cloud session keeps it alive up to 5 idle minutes). */
@@ -61,8 +61,9 @@ export const WAIT_WINDOW_MS = 240_000;
 export const WAIT_EVERY_MS = 20_000;
 
 /**
- * The idle wait hook's loop (scripts/tasks/message-wait.mjs): asks the board for waiting messages
- * (and replies to the agent's peloton posts: the board sends posts only when one is) every `every` ms until one comes, the window ends, or `listening()` says to stop (the claim
+ * The idle wait hook's loop (scripts/tasks/message-wait.mjs): asks the board for waiting messages (and the peloton's
+ * posts when one is urgent: the owner's, a huddle opening or closing, a mention of the agent, or a reply to it; IDEA-36
+ * section 3) every `every` ms until one comes, the window ends, or `listening()` says to stop (the claim
  * went, or a newer wait hook took over). Returns the text to wake Claude with, or '' to end
  * quietly. A failed ask counts as nothing waiting; the next one tries again.
  *
