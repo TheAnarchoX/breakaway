@@ -11,6 +11,7 @@
  * BREAKAWAY_SESSION_LOG=off, or on any error, it does nothing and exits 0. A post
  * that fails leaves its reason in the temp folder, which the CLI's next command here shows (BRK-86).
  */
+import { checkoutRunsHooks } from './plugin-hooks.js';
 import { boardConfig, claimedTask, dropClaim, projectRoot } from './hook-config.js';
 import { clearHookFailure, noteHookFailure, sessionRequest } from './proxy.js';
 import { entryFor } from './session-log.js';
@@ -18,6 +19,8 @@ import { CONTEXT_EVENTS, messageOutput, releasedOutput } from './session-message
 
 async function main() {
   const root = projectRoot();
+  // The plugin's copy of this hook steps aside when the checkout's settings run it too (BRK-159).
+  if (checkoutRunsHooks(root)) return;
   const claim = claimedTask(root);
   if (!claim) return;
 

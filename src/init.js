@@ -62,6 +62,101 @@ const TARGET_DIR = 'tools/tasks/';
  */
 export const MANIFEST = `${TARGET_DIR}copied.json`;
 const GITIGNORE = ['.task/', '.task-session', '.env'];
+
+/**
+ * breakaway's Claude Code plugin (docs/specs/IDEA-25-claude-plugin.md, section 3): repos init sets a repository up with
+ * it by default (BRK-158), so .claude/settings.json names breakaway's marketplace and turns the plugin on instead of
+ * running the session hooks, and the tasks skill comes with the plugin instead of a copy. The marketplace lives on
+ * breakaway's own repository, and gives out the plugin from its `plugin` branch, which moves at a stable release.
+ */
+export const PLUGIN_REPO = 'TheAnarchoX/breakaway';
+export const PLUGIN_MARKETPLACE = 'breakaway';
+export const PLUGIN = `breakaway@${PLUGIN_MARKETPLACE}`;
+export const PLUGIN_BRANCH = 'plugin';
+
+/** The two keys .claude/settings.json gets for the plugin: breakaway's marketplace, and the plugin turned on. */
+export function pluginSettings() {
+  return {
+    extraKnownMarketplaces: { [PLUGIN_MARKETPLACE]: { source: { source: 'github', repo: PLUGIN_REPO } } },
+    enabledPlugins: { [PLUGIN]: true },
+  };
+}
+
+/** Whether a hook command is one of the session hooks repos init wrote: through npx, any version, or an old copy's. */
+const BOARD_HOOK =
+  /\bbreakaway(?:@[^\s"]+)? hook (?:session|wait)\b|scripts\/tasks\/(?:session-hook|message-wait)\.mjs/u;
+
+/**
+ * settings.json moved to the plugin (repos init --update): the session hooks repos init wrote are gone, with any event
+ * left empty, and the plugin's two keys are there. A plugin the settings turn off stays off, and the rest is untouched.
+ * Null when it isn't JSON, so the caller says what to do instead.
+ */
+export function withPluginSettings(text) {
+  let settings;
+  try {
+    settings = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+  const hooks = settings.hooks;
+  if (hooks && typeof hooks === 'object') {
+    for (const [event, groups] of Object.entries(hooks)) {
+      if (!Array.isArray(groups)) continue;
+      const kept = groups
+        .map((group) =>
+          Array.isArray(group?.hooks)
+            ? { ...group, hooks: group.hooks.filter((h) => !BOARD_HOOK.test(String(h?.command ?? ''))) }
+            : group,
+        )
+        .filter((group, i) => !(Array.isArray(group?.hooks) && !group.hooks.length && groups[i].hooks.length));
+      if (kept.length) hooks[event] = kept;
+      else delete hooks[event];
+    }
+    if (!Object.keys(hooks).length) delete settings.hooks;
+  }
+  const want = pluginSettings();
+  settings.extraKnownMarketplaces = {
+    ...want.extraKnownMarketplaces,
+    ...settings.extraKnownMarketplaces,
+  };
+  if (typeof settings.enabledPlugins?.[PLUGIN] !== 'boolean')
+    settings.enabledPlugins = { ...settings.enabledPlugins, ...want.enabledPlugins };
+  return `${JSON.stringify(settings, null, 2)}\n`;
+}
+
+/** Whether two JSON texts hold the same value, whatever their layout. */
+const sameJson = (a, b) => {
+  try {
+    return JSON.stringify(JSON.parse(a)) === JSON.stringify(JSON.parse(b));
+  } catch {
+    return false;
+  }
+};
+
+/** Whether settings.json already has the plugin: breakaway's marketplace, and the plugin named in enabledPlugins. */
+function hasPlugin(text) {
+  try {
+    const settings = JSON.parse(text);
+    return (
+      Boolean(settings?.extraKnownMarketplaces?.[PLUGIN_MARKETPLACE]) && PLUGIN in (settings?.enabledPlugins ?? {})
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Why repos init copies the tasks skill and the session hooks when it was asked for the plugin: the plugin isn't out
+ * yet (its branch isn't there), or GitHub couldn't say (`released` null).
+ */
+export function pluginPendingNote(slug, released = false) {
+  const why =
+    released === null
+      ? `GitHub couldn't say whether breakaway's plugin is out yet (the ${PLUGIN_BRANCH} branch on ${PLUGIN_REPO})`
+      : `breakaway's plugin isn't out yet (${PLUGIN_REPO} has no ${PLUGIN_BRANCH} branch until a stable release moves it)`;
+  return `${why}, so this copies the tasks skill and the session hooks instead. Once it's out, npx breakaway repos init ${slug} --update moves the repository to the plugin.`;
+}
 /** Pinned to LF so the shell scripts run on a checkout with core.autocrlf=true (BRK-41). */
 const GITATTRIBUTES = ['scripts/task text eol=lf', '.envrc text eol=lf'];
 
@@ -75,10 +170,13 @@ export function boardSources(read) {
 }
 
 /** The first commit's message for a repository set up from scratch: its title and body, the CLI's and the board's alike. */
-export function initCommitMessage(slug, { by = `npx breakaway repos init ${slug}` } = {}) {
+export function initCommitMessage(slug, { by = `npx breakaway repos init ${slug}`, plugin = true } = {}) {
+  const agentParts = plugin
+    ? "breakaway's Claude Code plugin, turned on in .claude/settings.json (it brings the tasks skill and the session hooks)"
+    : 'the session hooks (they run the CLI through npx), the tasks skill';
   return {
     title: "Set up the task board's agent files",
-    body: `What a board-started agent needs to claim and work a task here: the agent prompt, the board's core, the session hooks (they run the CLI through npx), the tasks skill, AGENTS.md, and Taskwarrior with direnv. Added by ${by}.`,
+    body: `What a board-started agent needs to claim and work a task here: the agent prompt, the board's core, ${agentParts}, AGENTS.md, and Taskwarrior with direnv. Added by ${by}.`,
   };
 }
 
@@ -310,14 +408,20 @@ export function skillFor(text, board, repo = null) {
 }
 
 /** A starter AGENTS.md: how this repository works with the board. The owner adds how to build here. */
-export function agentsMd(repo, board, dir = DEFAULT_DIR) {
+export function agentsMd(repo, board, dir = DEFAULT_DIR, { plugin = true } = {}) {
+  const skill = plugin
+    ? `Use the \`tasks\` skill (from breakaway's Claude Code plugin, which \`.claude/settings.json\` turns on) and the CLI, \`npx breakaway\` (the \`breakaway\` package on npm), to claim, comment, and hand over. It works in this checkout's repository, so \`list\` and \`next\` show only this repository's tasks. The skill is the board's, written for any repository: this repository's areas are above, and its rules are here.`
+    : `Use the \`tasks\` skill (\`${SKILL}\`) and the CLI, \`npx breakaway\` (the \`breakaway\` package on npm), to claim, comment, and hand over. It works in this checkout's repository, so \`list\` and \`next\` show only this repository's tasks. The skill is breakaway's, written for this repository's areas and prompt: where it names breakaway's own files or rules, the board's part applies and the rest doesn't.`;
+  const copied = plugin
+    ? `\`tools/tasks/\`, the release helpers in \`scripts/\`, and \`${PIPELINE_SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`${MANIFEST}\` lists every file it copied, and \`repos init --update\` replaces only those: a file it doesn't list is this repository's own, even at a path breakaway copies to. \`.claude/settings.json\` turns on breakaway's plugin (\`${PLUGIN}\`), which brings the \`tasks\` skill, its commands, and the session hooks that show a cloud agent's output on its task, so this repository carries no copy of them.`
+    : `\`tools/tasks/\`, the release helpers in \`scripts/\`, \`${SKILL}\`, and \`${PIPELINE_SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`${MANIFEST}\` lists every file it copied, and \`repos init --update\` replaces only those: a file it doesn't list is this repository's own, even at a path breakaway copies to. \`.claude/settings.json\` holds the session hooks that show a cloud agent's output on its task, and they run through \`npx\`, so this repository carries no copy of the CLI.`;
   return `# Agent instructions
 
 <!-- Started by \`npx breakaway repos init\` (breakaway's task board). Add how to build here: setup, tests, style, and anything agents must never do. -->
 
-- **Work lives on the task board.** This repository's tasks are in the areas ${areaList(repo)}. Use the \`tasks\` skill (\`${SKILL}\`) and the CLI, \`npx breakaway\` (the \`breakaway\` package on npm), to claim, comment, and hand over. It works in this checkout's repository, so \`list\` and \`next\` show only this repository's tasks. The skill is breakaway's, written for this repository's areas and prompt: where it names breakaway's own files or rules, the board's part applies and the rest doesn't.
+- **Work lives on the task board.** This repository's tasks are in the areas ${areaList(repo)}. ${skill}
 - **Agents started by the board** follow [\`${promptPathOf(repo)}\`](${promptPathOf(repo)}), which starts with the board's core, \`tools/tasks/prompts/core.md\`.
-- **Copied files.** \`tools/tasks/\`, the release helpers in \`scripts/\`, \`${SKILL}\`, and \`${PIPELINE_SKILL}\` come from [${board}](https://github.com/${board}). Don't edit them here: change them there. \`${MANIFEST}\` lists every file it copied, and \`repos init --update\` replaces only those: a file it doesn't list is this repository's own, even at a path breakaway copies to. \`.claude/settings.json\` holds the session hooks that show a cloud agent's output on its task, and they run through \`npx\`, so this repository carries no copy of the CLI.
+- **Copied files.** ${copied}
 - **Taskwarrior** (optional): \`scripts/task\`, or plain \`task\` with direnv after \`direnv allow\`, uses the board with this checkout's own \`.task/\` database, in the \`${repo.slug}\` context. \`npx breakaway setup\` connects the machine once.
 - **Changes reach \`${repo.defaultBranch || 'main'}\` through pull requests**, which the owner merges. Never merge, force-push, or rewrite \`${repo.defaultBranch || 'main'}\`.
 - **Never put a secret or token** in a file, task, comment, or pull request. The board's token lives in \`${dir}/tasks.env\` (or \`$BREAKAWAY_HOME/tasks.env\`) or the cloud environment's credentials, never in this repository.
@@ -368,6 +472,8 @@ export function initPlan({
   url,
   configDir = DEFAULT_DIR,
   update = false,
+  plugin = true,
+  pluginReleased = true,
   sections = {},
   defaulted = [],
 }) {
@@ -376,6 +482,9 @@ export function initPlan({
   const current = [];
   const notes = [];
   const todo = [];
+  // The plugin unless the repository asked for copies (--copies), and copies while the plugin isn't out yet.
+  const usePlugin = plugin && pluginReleased === true;
+  if (plugin && !usePlugin) notes.push(pluginPendingNote(repo.slug, pluginReleased));
   const add = (path, content, extra = {}) => {
     if (readTarget(path) !== null) skipped.push(path);
     else files.push({ path, content, ...extra });
@@ -455,8 +564,22 @@ export function initPlan({
       `${leftover.join(', ')} came with the old copy of the CLI. Nothing here needs them now: delete the ones this repository doesn't use itself.`,
     );
 
-  add('.claude/settings.json', `${JSON.stringify({ hooks: sessionHooks() }, null, 2)}\n`);
-  if (skipped.includes('.claude/settings.json')) {
+  add(
+    '.claude/settings.json',
+    `${JSON.stringify(usePlugin ? pluginSettings() : { hooks: sessionHooks() }, null, 2)}\n`,
+  );
+  if (usePlugin && skipped.includes('.claude/settings.json')) {
+    // Moving to the plugin (BRK-159): --update takes out the hooks repos init wrote and adds the plugin's two keys.
+    const there = readTarget('.claude/settings.json');
+    const moved = withPluginSettings(there);
+    if (update && moved !== null && !sameJson(moved, there)) {
+      skipped.splice(skipped.indexOf('.claude/settings.json'), 1);
+      files.push({ path: '.claude/settings.json', content: moved, changed: true });
+    } else if (!hasPlugin(there))
+      notes.push(
+        `.claude/settings.json is already there${moved === null ? " and isn't JSON" : ''}: add breakaway's plugin to it (${JSON.stringify(pluginSettings())}), or a started agent won't have the tasks skill and its output won't show on its task.${update ? '' : ` npx breakaway repos init ${repo.slug} --update adds it.`}`,
+      );
+  } else if (skipped.includes('.claude/settings.json')) {
     const there = readTarget('.claude/settings.json');
     const rewired = update ? rewireHooks(there) : there;
     if (rewired !== there) {
@@ -471,9 +594,19 @@ export function initPlan({
       );
   }
   if (readTarget('.claude/skills') === null) files.push({ path: '.claude/skills', link: '../.agents/skills' });
-  copy(SKILL, skillFor(read(SKILL), board, repo));
+  if (!usePlugin) copy(SKILL, skillFor(read(SKILL), board, repo));
+  else if (update && readTarget(SKILL) !== null) {
+    // The plugin brings the tasks skill: the copy repos init wrote goes, and a skill of the repository's own stays.
+    if (owns(SKILL)) {
+      removals.push(SKILL);
+      if (String(readTarget('AGENTS.md') ?? '').includes(SKILL))
+        notes.push(
+          `AGENTS.md still names ${SKILL} and the session hooks in .claude/settings.json: the tasks skill and the hooks come from breakaway's plugin now (${PLUGIN}, turned on in .claude/settings.json), so say that there instead.`,
+        );
+    } else theirs.push(SKILL);
+  }
   copy(PIPELINE_SKILL, skillFor(read(PIPELINE_SKILL), board, repo));
-  add('AGENTS.md', agentsMd(repo, board, configDir));
+  add('AGENTS.md', agentsMd(repo, board, configDir, { plugin: usePlugin }));
   if (!skipped.includes('AGENTS.md')) todo.push('AGENTS.md: add how to build in this repository');
 
   const pkg = readTarget('package.json');
@@ -564,5 +697,5 @@ export function initPlan({
   else if (recordThere === record) current.push(MANIFEST);
   else if (update) files.push({ path: MANIFEST, content: record, changed: true });
   else skipped.push(MANIFEST);
-  return { files, removals, skipped, current, notes, todo };
+  return { files, removals, skipped, current, notes, todo, plugin: usePlugin };
 }

@@ -15,6 +15,10 @@ import {
   initCommitMessage,
   initPlan,
   machineTaskrc,
+  PLUGIN,
+  pluginPendingNote,
+  pluginSettings,
+  withPluginSettings,
   promptSections,
   rewireHooks,
   routinePrompt,
@@ -168,7 +172,7 @@ describe('repos init (CLD-191)', () => {
   });
 
   it('writes the tasks skill for this repository: its areas and its prompt, not breakaway’s (BRK-79)', () => {
-    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty });
+    const plan = initPlan({ plugin: false, url: BOARD_URL, repo, board, read, readTarget: empty });
     const skill = plan.files.find((f) => f.path === '.agents/skills/tasks/SKILL.md').content;
     expect(skill).not.toMatch(
       /breakaway’s areas|breakaway's areas|prompts\/breakaway\.md|breakaway's work is on the board/u,
@@ -177,7 +181,7 @@ describe('repos init (CLD-191)', () => {
     expect(skill).toContain('[`tools/tasks/routine-prompt.md`](../../../tools/tasks/routine-prompt.md)');
     const own = { ...repo, routine: { prompt: 'docs/agents.md' } };
     expect(
-      initPlan({ url: BOARD_URL, repo: own, board, read, readTarget: empty }).files.find(
+      initPlan({ plugin: false, url: BOARD_URL, repo: own, board, read, readTarget: empty }).files.find(
         (f) => f.path === '.agents/skills/tasks/SKILL.md',
       ).content,
     ).toContain('[`docs/agents.md`](../../../docs/agents.md)');
@@ -235,7 +239,7 @@ describe('repos init (CLD-191)', () => {
   });
 
   it('plans every file an empty repository needs', () => {
-    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty });
+    const plan = initPlan({ plugin: false, url: BOARD_URL, repo, board, read, readTarget: empty });
     const paths = plan.files.map((f) => f.path);
     expect(paths).toEqual(
       expect.arrayContaining([
@@ -360,18 +364,31 @@ describe('repos init (CLD-191)', () => {
       content: 'node_modules/\n.env\n.task/\n.task-session\n',
       append: true,
     });
-    expect(plan.notes.join('\n')).toMatch(/session hooks/u);
+    expect(plan.notes.join('\n')).toMatch(/add breakaway's plugin to it .+ --update adds it\./u);
     expect(plan.notes.join('\n')).toMatch(/"type": "module"/u);
     expect(plan.todo).toEqual([]);
-    // Settings that already run the board's hooks need nothing said.
+    // Settings that already have the plugin need nothing said, and with --copies, settings that run the board's hooks.
+    const settings = (text) => (p) => (p === '.claude/settings.json' ? text : null);
+    const plugged = initPlan({
+      url: BOARD_URL,
+      repo,
+      board,
+      read,
+      readTarget: settings(JSON.stringify(pluginSettings())),
+    });
+    expect(plugged.notes).toEqual([]);
     const hooked = initPlan({
       url: BOARD_URL,
       repo,
       board,
       read,
-      readTarget: (p) => (p === '.claude/settings.json' ? JSON.stringify({ hooks: sessionHooks() }) : null),
+      plugin: false,
+      readTarget: settings(JSON.stringify({ hooks: sessionHooks() })),
     });
     expect(hooked.notes).toEqual([]);
+    expect(
+      initPlan({ url: BOARD_URL, repo, board, read, plugin: false, readTarget: settings('{}\n') }).notes.join('\n'),
+    ).toMatch(/session hooks/u);
   });
 
   it('puts the prompt where the registry says, and names it in AGENTS.md', () => {
@@ -387,7 +404,7 @@ describe('repos init --update (CLD-193)', () => {
   // It still carries the CLI copy repos init wrote before BRK-7.
   const original = {
     ...Object.fromEntries(
-      initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty })
+      initPlan({ plugin: false, url: BOARD_URL, repo, board, read, readTarget: empty })
         .files.filter((f) => !f.link)
         .map((f) => [f.path, f.content]),
     ),
@@ -404,7 +421,15 @@ describe('repos init --update (CLD-193)', () => {
       '.taskrc': 'context=bwy-cld-130-test\n',
       '.claude/skills': '',
     };
-    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => target[p] ?? null, update: true });
+    const plan = initPlan({
+      plugin: false,
+      url: BOARD_URL,
+      repo,
+      board,
+      read,
+      readTarget: (p) => target[p] ?? null,
+      update: true,
+    });
     expect(plan.files.map((f) => f.path).sort()).toEqual(['scripts/lib/promote.js', 'tools/tasks/prompts/core.md']);
     expect(plan.files.every((f) => f.changed)).toBe(true);
     expect(plan.files.find((f) => f.path === 'scripts/lib/promote.js').content).toBe(read('scripts/lib/promote.js'));
@@ -424,7 +449,15 @@ describe('repos init --update (CLD-193)', () => {
       'scripts/lib/promote.js': '// ours too\n',
       '.claude/skills': '',
     };
-    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => target[p] ?? null, update: true });
+    const plan = initPlan({
+      plugin: false,
+      url: BOARD_URL,
+      repo,
+      board,
+      read,
+      readTarget: (p) => target[p] ?? null,
+      update: true,
+    });
     const paths = plan.files.map((f) => f.path);
     expect(paths).not.toContain('scripts/check-migrations.mjs');
     expect(paths).not.toContain('scripts/lib/promote.js');
@@ -440,7 +473,15 @@ describe('repos init --update (CLD-193)', () => {
     expect(record.files).not.toContain('scripts/lib/promote.js');
     // A file the record lists is replaced when it's older, as before.
     const recorded = { ...original, 'scripts/lib/promote.js': '// an old copy\n', '.claude/skills': '' };
-    const again = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => recorded[p] ?? null, update: true });
+    const again = initPlan({
+      plugin: false,
+      url: BOARD_URL,
+      repo,
+      board,
+      read,
+      readTarget: (p) => recorded[p] ?? null,
+      update: true,
+    });
     expect(again.files.map((f) => f.path)).toEqual(['scripts/lib/promote.js']);
     // Breakaway's promote.js imports src/promote.js: a repository that keeps its own promote.js doesn't get it.
     expect(paths).not.toContain('src/promote.js');
@@ -452,6 +493,7 @@ describe('repos init --update (CLD-193)', () => {
       '.agents/skills/tasks/SKILL.md': 'An old copy of the skill.\n',
     };
     const skill = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -463,12 +505,21 @@ describe('repos init --update (CLD-193)', () => {
     expect(skill.files.map((f) => f.path)).not.toContain('scripts/check-migrations.mjs');
     // So is one in a repository set up before the record, whose AGENTS.md (as repos init wrote it) says it's copied.
     const declared = { ...unrecorded, 'scripts/lib/promote.js': '// an old copy\n', '.claude/skills': '' };
-    const older = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => declared[p] ?? null, update: true });
+    const older = initPlan({
+      plugin: false,
+      url: BOARD_URL,
+      repo,
+      board,
+      read,
+      readTarget: (p) => declared[p] ?? null,
+      update: true,
+    });
     expect(older.files.map((f) => f.path).sort()).toEqual([MANIFEST, 'scripts/lib/promote.js'].sort());
   });
 
   it('has nothing to do when every copy is current, and adds a copied file that’s missing', () => {
     const current = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -479,6 +530,7 @@ describe('repos init --update (CLD-193)', () => {
     expect(current.files).toEqual([]);
     const { 'scripts/lib/promote.js': _, ...without } = original;
     const missing = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -492,6 +544,7 @@ describe('repos init --update (CLD-193)', () => {
 
   it('without --update leaves an older copy as it is, as before', () => {
     const plan = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -525,6 +578,7 @@ describe('repos init --update (CLD-193)', () => {
     const settings = (fromCopy) =>
       JSON.stringify({ model: 'x', hooks: { Stop: [{ hooks: [{ command: hookCommand('session', { fromCopy }) }] }] } });
     const plan = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -538,6 +592,7 @@ describe('repos init --update (CLD-193)', () => {
     expect(rewireHooks(settings(HOOKS_FROM_COPY))).toBe(settings(HOOKS_FROM_COPY));
     // Without update it is left alone.
     const kept = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -552,6 +607,7 @@ describe('repos init --update (CLD-193)', () => {
     'deletes the old copy of the CLI, and only names the src/ files that came with it (BRK-7)',
     () => {
       const plan = initPlan({
+        plugin: false,
         url: BOARD_URL,
         repo,
         board,
@@ -567,6 +623,7 @@ describe('repos init --update (CLD-193)', () => {
       expect(plan.notes.join('\n')).toMatch(/src\/install\.js.*came with the old copy of the CLI/u);
       // Their settings still run the old hook script, so the note says to switch it.
       const hooked = initPlan({
+        plugin: false,
         url: BOARD_URL,
         repo,
         board,
@@ -583,6 +640,7 @@ describe('repos init --update (CLD-193)', () => {
       expect(hooked.removals).toContain('scripts/tasks/session-hook.mjs');
       // A package.json that still runs the copy keeps it, and says how to move off it (BRK-79).
       const scripted = initPlan({
+        plugin: false,
         url: BOARD_URL,
         repo,
         board,
@@ -601,6 +659,7 @@ describe('repos init --update (CLD-193)', () => {
   it('keeps an old copy of the CLI while the hooks run from a copy (BRK-64)', () => {
     if (!HOOKS_FROM_COPY) return;
     const plan = initPlan({
+      plugin: false,
       url: BOARD_URL,
       repo,
       board,
@@ -613,6 +672,165 @@ describe('repos init --update (CLD-193)', () => {
     });
     expect(plan.removals).toEqual([]);
     expect(plan.notes.join('\n')).not.toMatch(/session hooks to/u);
+  });
+});
+
+describe('repos init with breakaway’s plugin (BRK-159)', () => {
+  const SKILL_PATH = '.agents/skills/tasks/SKILL.md';
+  const file = (plan, path) => plan.files.find((f) => f.path === path);
+
+  it('turns the plugin on in .claude/settings.json by default, and copies no tasks skill or hooks', () => {
+    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty });
+    expect(plan.plugin).toBe(true);
+    const settings = JSON.parse(file(plan, '.claude/settings.json').content);
+    expect(settings).toEqual({
+      extraKnownMarketplaces: { breakaway: { source: { source: 'github', repo: 'TheAnarchoX/breakaway' } } },
+      enabledPlugins: { [PLUGIN]: true },
+    });
+    expect(PLUGIN).toBe('breakaway@breakaway');
+    const paths = plan.files.map((f) => f.path);
+    expect(paths).not.toContain(SKILL_PATH);
+    // Still copied, plugin or not: the core and stub, Taskwarrior, the release helpers, and the pipeline skill.
+    for (const path of [
+      'tools/tasks/prompts/core.md',
+      'tools/tasks/prompts/stub.md',
+      'tools/tasks/taskrc',
+      'tools/tasks/routine-prompt.md',
+      'scripts/task',
+      'scripts/record-deployment.mjs',
+      '.agents/skills/pipeline/SKILL.md',
+      '.claude/skills',
+      'AGENTS.md',
+      '.taskrc',
+      '.envrc',
+    ])
+      expect(paths).toContain(path);
+    expect(JSON.parse(file(plan, MANIFEST).content).files).not.toContain(SKILL_PATH);
+    const agents = file(plan, 'AGENTS.md').content;
+    expect(agents).toContain(`turns on breakaway's plugin (\`${PLUGIN}\`)`);
+    expect(agents).not.toContain(SKILL_PATH);
+    expect(plan.notes).toEqual([]);
+  });
+
+  it('copies the skill and hooks with --copies, as before', () => {
+    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty, plugin: false });
+    expect(plan.plugin).toBe(false);
+    expect(Object.keys(JSON.parse(file(plan, '.claude/settings.json').content))).toEqual(['hooks']);
+    expect(file(plan, SKILL_PATH)).toBeDefined();
+    expect(file(plan, 'AGENTS.md').content).toContain(SKILL_PATH);
+    expect(plan.notes).toEqual([]);
+  });
+
+  it('copies, and says why, while the plugin isn’t out yet', () => {
+    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty, pluginReleased: false });
+    expect(plan.plugin).toBe(false);
+    expect(file(plan, SKILL_PATH)).toBeDefined();
+    expect(JSON.parse(file(plan, '.claude/settings.json').content).hooks).toEqual(sessionHooks());
+    expect(plan.notes).toEqual([pluginPendingNote(repo.slug)]);
+    expect(plan.notes[0]).toMatch(
+      /^breakaway's plugin isn't out yet .+ so this copies the tasks skill and the session hooks instead\. Once it's out, npx breakaway repos init bwy-cld-130-test --update moves the repository to the plugin\.$/u,
+    );
+    // Not knowing is said too, and --copies has nothing to say.
+    expect(initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty, pluginReleased: null }).notes[0]).toMatch(
+      /^GitHub couldn't say whether breakaway's plugin is out yet/u,
+    );
+    expect(
+      initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty, plugin: false, pluginReleased: false }).notes,
+    ).toEqual([]);
+  });
+
+  describe('--update', () => {
+    // A repository set up with copies, whose settings also hold a hook and a setting of its own.
+    const copied = Object.fromEntries(
+      initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty, plugin: false })
+        .files.filter((f) => !f.link)
+        .map((f) => [f.path, f.content]),
+    );
+    const settings = JSON.parse(copied['.claude/settings.json']);
+    settings.model = 'opus';
+    settings.hooks.Stop[0].hooks.push({ type: 'command', command: 'npm run lint' });
+    settings.hooks.PreToolUse = [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo ours' }] }];
+    const before = { ...copied, '.claude/settings.json': JSON.stringify(settings, null, 2), '.claude/skills': '' };
+
+    it('moves a repository from copies to the plugin: the copied skill and the hooks it wrote go, its own stay', () => {
+      const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => before[p] ?? null, update: true });
+      expect(plan.plugin).toBe(true);
+      expect(plan.removals).toEqual([SKILL_PATH]);
+      expect(plan.files.map((f) => f.path).sort()).toEqual(['.claude/settings.json', MANIFEST]);
+      expect(plan.files.every((f) => f.changed)).toBe(true);
+      expect(JSON.parse(file(plan, '.claude/settings.json').content)).toEqual({
+        model: 'opus',
+        hooks: {
+          Stop: [{ hooks: [{ type: 'command', command: 'npm run lint' }] }],
+          PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo ours' }] }],
+        },
+        ...pluginSettings(),
+      });
+      expect(JSON.parse(file(plan, MANIFEST).content).files).not.toContain(SKILL_PATH);
+      // AGENTS.md is the repository's own, so it's only named.
+      expect(plan.skipped).toContain('AGENTS.md');
+      expect(plan.notes.join('\n')).toMatch(/AGENTS\.md still names \.agents\/skills\/tasks\/SKILL\.md/u);
+
+      // Once that's merged, there's nothing left to do.
+      const after = { ...before, ...Object.fromEntries(plan.files.map((f) => [f.path, f.content])) };
+      for (const path of plan.removals) delete after[path];
+      const again = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => after[p] ?? null, update: true });
+      expect(again.files).toEqual([]);
+      expect(again.removals).toEqual([]);
+      expect(again.notes).toEqual([]);
+    });
+
+    it('drops events left empty, and adds the plugin to settings that never had the hooks', () => {
+      const bare = { ...before, '.claude/settings.json': copied['.claude/settings.json'] };
+      const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => bare[p] ?? null, update: true });
+      expect(JSON.parse(file(plan, '.claude/settings.json').content)).toEqual(pluginSettings());
+      const theirs = { ...before, '.claude/settings.json': '{\n\t"model": "opus"\n}\n' };
+      const added = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => theirs[p] ?? null, update: true });
+      expect(JSON.parse(file(added, '.claude/settings.json').content)).toEqual({ model: 'opus', ...pluginSettings() });
+    });
+
+    it('leaves a tasks skill that is the repository’s own, and settings it can’t read', () => {
+      // No record and an AGENTS.md of its own: the skill isn't breakaway's to remove.
+      const { [MANIFEST]: _, ...unrecorded } = before;
+      const own = {
+        ...unrecorded,
+        'AGENTS.md': '# Ours\n',
+        [SKILL_PATH]: '# Our own skill\n',
+        '.claude/settings.json': '{ not json',
+      };
+      const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => own[p] ?? null, update: true });
+      expect(plan.removals).toEqual([]);
+      expect(plan.files.map((f) => f.path)).not.toContain('.claude/settings.json');
+      const notes = plan.notes.join('\n');
+      expect(notes).toMatch(/\.claude\/settings\.json is already there and isn't JSON: add breakaway's plugin/u);
+      expect(notes).toMatch(/\.agents\/skills\/tasks\/SKILL\.md is at a path breakaway copies to/u);
+    });
+
+    it('keeps the copies with --update --copies', () => {
+      const plan = initPlan({
+        url: BOARD_URL,
+        repo,
+        board,
+        read,
+        readTarget: (p) => before[p] ?? null,
+        update: true,
+        plugin: false,
+      });
+      expect(plan.removals).toEqual([]);
+      expect(plan.files).toEqual([]);
+      expect(plan.current).toContain(SKILL_PATH);
+    });
+  });
+
+  it('keeps a plugin the settings turn off turned off', () => {
+    const off = JSON.stringify({ enabledPlugins: { [PLUGIN]: false } });
+    expect(JSON.parse(withPluginSettings(off)).enabledPlugins).toEqual({ [PLUGIN]: false });
+    expect(withPluginSettings('[]')).toBeNull();
+  });
+
+  it('says in the first commit which way the skill and hooks came', () => {
+    expect(initCommitMessage('widgets').body).toContain("breakaway's Claude Code plugin");
+    expect(initCommitMessage('widgets', { plugin: false }).body).toContain('the session hooks (they run the CLI');
   });
 });
 
