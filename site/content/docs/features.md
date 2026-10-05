@@ -27,7 +27,7 @@ Anyone signed in reads features, and an agent shaping an idea adds one for the t
 
 The **Roadmap** view (`m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
 
-Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. A board with none says “No features yet.” and offers the suggested tags.
+Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. Tick **Shape it with an agent, like an idea** to have an agent write its tasks from the brief, and use **Refine with an agent** on a feature to have one refine its tasks as you ask. A board with none says “No features yet.” and offers the suggested tags.
 
 **Pull into now** shows on the next release that still has open work outside now. It moves the release’s open tasks into now, and every open task they wait for, whatever its release or feature, so nothing in now waits on work outside it. It says what will move before it moves anything. Only the next such release has it, so now fills in version order. Pulling a release is yours.
 

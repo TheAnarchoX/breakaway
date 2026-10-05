@@ -1347,6 +1347,7 @@ const apiActions = {
         note: typeof body?.note === 'string' ? body.note : null,
         dryRun: Boolean(body?.dryRun),
         chase: body?.chase ?? null,
+        feature: body?.feature ?? null,
       });
       return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });
@@ -1388,7 +1389,7 @@ const apiActions = {
     return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
   },
   featuresCreateApi(body) {
-    return this.run(() => ok(this.createFeature(body ?? {}), 201));
+    return this.run(async () => ok(await this.createFeature(body ?? {}), 201));
   },
   featuresModifyApi(slug, body) {
     return this.run(() => ok({ feature: this.modifyFeature(slug, body ?? {}) }));

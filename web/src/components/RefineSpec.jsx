@@ -13,10 +13,12 @@ import { sentence } from './NewAgent.jsx';
  */
 
 /**
- * The dialog: a required "What should change?", the board's prompt under it, Force start, and Start agent.
- * @param {Record<string, any>} props
+ * The dialog: a required "What should change?", the board's prompt under it, Force start, and Start agent. `load`
+ * asks the board for its prompt (a dry run), and `start(note, force)` starts the agent; `what` names the thing it
+ * refines ("this spec"), and `lead` says what the agent does. Refine a feature (BRK-150) uses it too.
+ * @param {{ id: string, title: string, what: string, lead: string, load: () => Promise<any>, start: (note: string, force: boolean) => Promise<any>, open: boolean, onClose: () => void }} props
  */
-function RefineSpecDialog({ slug, path, title, open, onClose }) {
+export function RefineDialog({ id, title, what, lead, load, start, open, onClose }) {
   const [preview, setPreview] = useState(/** @type {any} */ (null));
   const [loadFailed, setLoadFailed] = useState(/** @type {string | null} */ (null));
   const [note, setNote] = useState('');
@@ -32,19 +34,18 @@ function RefineSpecDialog({ slug, path, title, open, onClose }) {
     setLoadFailed(null);
     setRefusal(null);
     setEmpty(false);
-    actions.previewSpec(slug, path).then(
+    load().then(
       (result) => live && setPreview(result),
       (failure) => live && setLoadFailed(failure.message),
     );
     return () => {
       live = false;
     };
-  }, [open, slug, path]);
+  }, [open, id]);
 
   const close = () => {
     if (!busy) onClose();
   };
-  const id = `refine-spec-${path.replace(/[^\w-]/gu, '-')}`;
   const already = preview?.task ?? null;
   const blocked = preview?.refusal ?? loadFailed;
 
@@ -65,7 +66,7 @@ function RefineSpecDialog({ slug, path, title, open, onClose }) {
     setRefusal(null);
     let result;
     try {
-      result = await actions.startGeneral({ repo: slug, spec: path, note: note.trim(), force });
+      result = await start(note.trim(), force);
     } catch (failure) {
       // Nothing was made: say why here, and keep the request.
       setBusy(false);
@@ -75,7 +76,7 @@ function RefineSpecDialog({ slug, path, title, open, onClose }) {
     setBusy(false);
     const task = result.task;
     if (result.run) toast(`Started an agent on ${ref(task)}.`, 'success');
-    else if (result.already) toast(`${ref(task)} is on this spec already: ${result.already}.`, 'info');
+    else if (result.already) toast(`${ref(task)} is on ${what} already: ${result.already}.`, 'info');
     else toast(`${ref(task)} waits to start. ${sentence(result.waiting ?? 'There’s no room yet')}`, 'info');
     setNote('');
     setForce(false);
@@ -99,13 +100,10 @@ function RefineSpecDialog({ slug, path, title, open, onClose }) {
         aria-busy={busy || (!preview && !loadFailed) ? 'true' : undefined}
       >
         <h2 id={`${id}-title`}>Refine {title} with an agent</h2>
-        <p class="muted small">
-          An agent changes the spec as you ask, brings the tasks that link it in line, and opens a pull request for you
-          to merge.
-        </p>
+        <p class="muted small">{lead}</p>
         {already ? (
           <p class="meta" role="status">
-            {ref(already)} is on this spec already: {preview.already}.
+            {ref(already)} is on {what} already: {preview.already}.
           </p>
         ) : (
           <>
@@ -245,7 +243,16 @@ export function RefineSpec({ slug, path, title }) {
         <Sparkles size={16} aria-hidden="true" />
         Refine with an agent
       </button>
-      <RefineSpecDialog slug={slug} path={path} title={title} open={open} onClose={() => setOpen(false)} />
+      <RefineDialog
+        id={`refine-spec-${path.replace(/[^\w-]/gu, '-')}`}
+        title={title}
+        what="this spec"
+        lead="An agent changes the spec as you ask, brings the tasks that link it in line, and opens a pull request for you to merge."
+        load={() => actions.previewSpec(slug, path)}
+        start={(note, force) => actions.startGeneral({ repo: slug, spec: path, note, force })}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 }

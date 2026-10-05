@@ -6,6 +6,7 @@ import {
   filters,
   multiRepo,
   newTask,
+  openKickoff,
   openTask,
   repoScope,
   repos,
@@ -203,6 +204,17 @@ function ModeSwitch({ mode }) {
       <button type="button" aria-pressed={mode === 'idea'} onClick={() => pick('idea')}>
         Idea
       </button>
+      <button
+        type="button"
+        aria-pressed="false"
+        title="Something new, with a repository of its own (Kickoff)"
+        onClick={() => {
+          newTask.value = null;
+          openKickoff(null);
+        }}
+      >
+        Project
+      </button>
     </div>
   );
 }
@@ -275,7 +287,10 @@ export function ideaTitle(text) {
   return line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line;
 }
 
-const IDEA_HORIZONS = [...HORIZONS, { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' }];
+export const IDEA_HORIZONS = [
+  ...HORIZONS,
+  { id: 'auto', label: 'Auto', hint: 'The agent chooses a horizon for each task' },
+];
 
 /**
  * The repository an idea (or a new agent) is for: preset to the one in scope, and with every repository in scope
