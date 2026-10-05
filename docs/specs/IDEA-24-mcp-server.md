@@ -23,6 +23,7 @@ The owner's idea: every install also serves the board as an MCP server. Its task
 
 - `POST /mcp` takes one JSON-RPC message and answers with one JSON response (`Content-Type: application/json`). No server-sent events stream, no `Mcp-Session-Id`: every request carries everything it needs, so the Worker keeps no MCP session state and the Durable Object doesn't change shape.
 - `GET /mcp` and `DELETE /mcp` answer `405`, which the transport allows for a server with no stream.
+- **On by default.** Every install answers at `/mcp` as soon as it updates, with no switch in Settings: it gives no new access, since the same token already reaches `/api/*` (decided on BRK-153).
 - Methods: `initialize` (server name `breakaway`, the release as its version, the capabilities `tools`, `resources`, `prompts`), `notifications/initialized` (`202`, no body), `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`, `prompts/list`, `prompts/get`. Anything else is JSON-RPC `-32601`.
 - The protocol version is the newest revision MCP has published when it's built, and `initialize` also accepts the one before it.
 - **Hand-written, not the SDK.** Stateless JSON-RPC over one route is a few hundred lines, tested like the rest of the Worker. The official SDK would bring its own dependencies and a transport built for long-lived sessions into a Worker that has no build step of its own. If a later MCP revision makes the hand-written server costly, swapping it is one task.
@@ -93,30 +94,37 @@ The manual (`docs/tasks.md`) and the site's docs get a section on connecting an 
 - **The owner rotates the token:** every MCP client stops with `401` until its config has the new one, as the CLI does.
 - **A request that's too large:** `413`, with the API's body limit.
 
+### 8. Sign-in from Claude's apps
+claude.ai and Claude Desktop connect to remote MCP servers through OAuth, not a header, so the board offers them a sign-in the owner approves (decided on BRK-153). It's built after the token version, as BRK-157, which writes its design into this section first. What's settled:
+
+- The consent step is the owner's press on the signed-in board: the owner names the connection and picks one repository and the agent name it claims as.
+- Each connection gets its own token, never the owner's: stored hashed in the Durable Object, good only on `/mcp` for that repository and agent name, refused on `/api/*`, and revocable on the board.
+- The token version (section 2) is unchanged: Claude Code keeps connecting with the board's token in a header.
+
 ## Privacy
-- Nothing new is stored: the server is stateless, and every write is one the API already makes and logs in the task's activity, signed with the agent's name.
+- Nothing new is stored: the server is stateless, and every write is one the API already makes and logs in the task's activity, signed with the agent's name. The sign-in (section 8) adds only its connections: each one's name, repository, agent name, and hashed token, kept until the owner revokes it.
 - Nothing new leaves the install: the server makes no outbound call that the API route it wraps doesn't already make (GitHub, for specs and pull requests).
 - A client sees what the CLI shows an agent in that repository. The token is the board's full token: the manual says so, and that it goes only into a client the owner runs.
 
 ## Out of scope
 - **Owner actions over MCP.** Merging, releasing, starting agents, answering decisions, and the rest in section 3's list stay on the signed-in board and the owner's CLI.
 - **The server-sent events stream and server-initiated notifications** (a ping answered, a message arriving). A client asks with `messages` and `peloton`; pushing them can follow if clients need it.
-- **Sign-in for clients that can't send a header** (claude.ai's and Claude Desktop's connectors use OAuth). It's a decision for the owner (Open questions) and its own task.
 - **Packaging the server as a plugin, and hooks:** IDEA-25.
 - **Images:** `attachments` stays in the CLI.
 
-## Open questions
-Asked as a decision on the board, in the task that waits for it:
+## Decided
+The owner answered BRK-153 on 5 Oct 2026, both as recommended:
 
-1. **Claude's apps.** claude.ai and Claude Desktop connect to remote MCP servers through OAuth, not a header. Should the board offer a sign-in that the owner approves on the signed-in board, giving that connection its own token (named, scoped to one repository and one agent name, never the owner's, revocable on the board)? Recommended: yes, after the token version ships.
-2. **On by default.** Should `/mcp` answer on every install as soon as it updates (recommended: it adds no new access, since the same token already reaches `/api/*`), or only once the owner turns it on in Settings?
+1. **Claude's apps:** yes, with a sign-in the owner approves on the board, giving each connection its own token for one repository and one agent name, revocable on the board. Built after the token version (section 8, BRK-157).
+2. **On by default:** yes. `/mcp` answers on every install once it updates, with no switch in Settings (section 1).
 
 ## Done when
 - `/mcp` on an install answers MCP's Streamable HTTP transport, statelessly, with the bearer token, and Claude Code connected with the documented line can list, show, claim, comment on, and release a task, and post on the peloton.
 - No tool reaches an owner action, `force`, `autostart`, or `done`, and tests prove the refusals.
 - `npx breakaway mcp` prints a working config for the checkout without the token's value.
 - The manual, site docs, README, and brand claims describe the fourth way in.
-- The owner has answered the decision, and the OAuth task is either built or set aside by that answer.
+- `/mcp` answers on an updated install with nothing to turn on.
+- claude.ai's custom connector adds the board through a sign-in the owner approves on the board, and that connection's token works only on `/mcp`, for its one repository and agent name, until the owner revokes it.
 
 The tasks, all in the `ai-native` feature, all waiting for IDEA-24: listed in the pull request that adds this spec.
 
@@ -127,3 +135,4 @@ The tasks, all in the `ai-native` feature, all waiting for IDEA-24: listed in th
 4. Ask Claude "what's the next task on the board?". It should answer from the board without running `npx breakaway`.
 5. Ask it to claim a small task and comment on it. On the web board, the task should show it as claimed by the name you set, with the comment.
 6. Ask it to merge a pull request or start an agent. It should say it can't: there's no tool for that.
+7. Once the sign-in is built, add your board's address followed by `/mcp` as a custom connector on claude.ai. The board should ask you to approve the connection and pick a repository; after you do, claude.ai can list that repository's tasks, and revoking the connection on the board stops it.
