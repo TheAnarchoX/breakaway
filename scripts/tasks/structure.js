@@ -98,6 +98,7 @@ export const PING_TEMPLATE = {
       done_when: 'The new done when.',
     },
     { type: 'done', task: 'CLD-113', note: 'Does not reproduce any more; it behaves as expected.' },
+    { type: 'delete', task: 'CLD-114', note: 'CLD-112 covers it now.' },
     { type: 'release', task: 'CLD-111' },
   ],
 };
@@ -138,6 +139,7 @@ function proposalLine(c) {
   if (c.type === 'modify')
     return `change ${c.task}: ${['horizon', 'addTags', 'removeTags', 'brief', 'done_when'].filter((k) => k in c).join(', ')}`;
   if (c.type === 'done') return `finish ${c.task}${c.note ? ` (${c.note})` : ''}`;
+  if (c.type === 'delete') return `delete ${c.task}${c.note ? ` (${c.note})` : ''}`;
   return `release ${c.task}`;
 }
 
