@@ -59,11 +59,12 @@ The hooks and commands see them as `CLAUDE_PLUGIN_OPTION_BOARD_URL`, `CLAUDE_PLU
 
 ### 3. Two ways to install it
 - **For one person:** `/plugin marketplace add TheAnarchoX/breakaway`, then `/plugin install breakaway@breakaway`; or from Anthropic's directory once it's listed (section 6). This repository's root carries `.claude-plugin/marketplace.json`, naming one plugin whose source is this repository's `plugin/` folder on the `plugin` branch (a `git-subdir` source with `ref: plugin`), so people get released versions, never `main`'s.
-- **For a repository and every agent in it:** `repos init <slug> --plugin` writes `.claude/settings.json` with `extraKnownMarketplaces` (breakaway's marketplace) and `enabledPlugins` (`breakaway@breakaway`) instead of the session hooks, and copies no skill. Cloud sessions read the repository's settings, so the board's agents get the plugin too. `repos init --update --plugin` moves a repository from copies to the plugin in one pull request: it removes the copied `tasks` skill and the hooks it wrote (only those `tools/tasks/copied.json` lists, as `--update` already does) and adds the two keys.
+- **For a repository and every agent in it, by default:** `repos init <slug>` writes `.claude/settings.json` with `extraKnownMarketplaces` (breakaway's marketplace) and `enabledPlugins` (`breakaway@breakaway`) instead of the session hooks, and copies no `tasks` skill. The board's first commit to an empty repository does the same (`src/init.js` serves both). Cloud sessions read the repository's settings, so the board's agents get the plugin too. `repos init --update` moves a repository from copies to the plugin in one pull request: it removes the copied `tasks` skill and the hooks it wrote (only those `tools/tasks/copied.json` lists, as `--update` already does) and adds the two keys.
+- **Copies, for a repository that asks:** `repos init --copies` (and `--update --copies`) keeps today's copied skill and hooks, for a repository whose agents aren't Claude Code and read `.agents/skills/` instead.
 
 What `repos init` still copies, plugin or not: the core and the stub (`tools/tasks/prompts/`), the repository's agent prompt and `AGENTS.md`, the shared `taskrc`, `.envrc`, `scripts/task`, and the release helpers. The board's agents read the core from the checkout, because it's reviewed like code there; the routine on claude.ai holds only the stub, which points at it. Moving the core into the plugin is out of scope (below).
 
-Whether `--plugin` becomes the default is the owner's choice (Open questions).
+The plugin is the default as soon as it ships (decided on BRK-158): few repositories depend on the copies yet, so there's no release of opt-in first.
 
 ### 4. The MCP server
 `.mcp.json` names one HTTP server, `breakaway`, at `${user_config.board_url}/mcp` (IDEA-24, section 1). Its headers depend on the checkout (the repository) and the session (the agent's name), which a static file can't know, so it uses Claude Code's `headersHelper`: `npx --yes breakaway@1 mcp --headers` prints the three headers IDEA-24 names (`Authorization`, `X-Breakaway-Agent`, `X-Breakaway-Repo`) as JSON, from the same settings as the CLI (section 2) and the checkout's `origin`. It writes nothing and prints the token only to Claude Code on standard output, never to a log. With no board configured, or outside a repository the board tracks, it prints only `Authorization`, and the server's repository tools refuse and say why, as IDEA-24's edge states describe.
@@ -100,7 +101,8 @@ Listing details (name `breakaway`, the description from the brand guide, the ico
 ### 7. Edge states
 - **Installed, not set up** (no board URL anywhere): the hooks do nothing, `/breakaway:claim` says to set the board's address in the plugin's settings or run `npx breakaway setup`, and the MCP server isn't connected.
 - **A checkout the board doesn't track:** the commands say so with the CLI's own message and point at `repos add` on the board; nothing is claimed.
-- **Both the plugin and old copies** (a repository from before `--plugin`, used by someone who installed the plugin): the hooks would run twice. The plugin's hooks run with `CLAUDE_PLUGIN_ROOT` set, so `hook session` and `hook wait` there do nothing when the checkout's `.claude/settings.json` already runs them, and output is never posted twice; `repos init --update --plugin` removes the copies.
+- **Both the plugin and old copies** (a repository set up before the plugin, or with `--copies`, used by someone who installed the plugin): the hooks would run twice. The plugin's hooks run with `CLAUDE_PLUGIN_ROOT` set, so `hook session` and `hook wait` there do nothing when the checkout's `.claude/settings.json` already runs them, and output is never posted twice; `repos init --update` removes the copies.
+- **The plugin isn't published yet** (no `plugin` branch, before the first stable release that moves it): `repos init` checks the branch exists, and until it does, copies the skill and hooks as today and says why, so a pre-release never points a repository at a plugin nobody can install.
 - **A cloud session:** no prompt for settings, so the environment's `BREAKAWAY_URL` and `BREAKAWAY_TOKEN` are what it uses, as now.
 - **A new major of the CLI:** the plugin pins `breakaway@1`, as `repos init` does, and moves with the release that changes the pin.
 
@@ -110,26 +112,26 @@ Listing details (name `breakaway`, the description from the brand guide, the ico
 - An agent sees what the CLI shows it today, for the checkout's repository.
 
 ## Out of scope
-- **Moving the core and the stub into the plugin.** The board's agents read the core from the checkout, where it's reviewed like code, and the routine's stub points there. Reading it from the plugin can follow once the plugin is the default.
+- **Moving the core and the stub into the plugin.** The board's agents read the core from the checkout, where it's reviewed like code, and the routine's stub points there. Reading it from the plugin can follow as its own idea, now that the plugin is the default.
 - **Taskwarrior and the release helpers in the plugin.** They're per checkout and per machine, so `repos init` keeps them.
 - **The `pipeline` skill in the plugin.** It stays with `repos init --pipeline`.
 - **Owner commands** (merge, start agents, decisions, routines): the plugin is for agents, like the MCP server.
 - **Anthropic's directory itself:** submitting is the owner's (a `+owner` task); this spec only makes sure the plugin passes it.
 
-## Open questions
-Asked as a decision on the board, in the task that waits for it:
+## Decided
+The owner answered BRK-158 on 5 Oct 2026:
 
-1. **The directory.** List breakaway in Anthropic's plugin directory, following the `plugin` branch (recommended), or offer it only through this repository's own marketplace?
-2. **`repos init`'s default.** Keep copying files by default and offer `--plugin` for one release first (recommended), or make the plugin the default as soon as it ships?
-3. **The plugin's settings.** Ask for the board's address and token when the plugin is enabled (recommended), or read them only from `npx breakaway setup`'s files and the environment, so the plugin has no settings of its own?
+1. **The directory:** list breakaway in Anthropic's plugin directory, following the `plugin` branch, as recommended (sections 5 and 6; the owner submits it, LCH-25).
+2. **`repos init`'s default:** the plugin, as soon as it ships, not the recommended release of opt-in first: few repositories rely on the copies yet. `repos init` sets a repository up with the plugin, `--update` moves existing ones over, and `--copies` keeps the old way for a repository that asks (section 3).
+3. **The plugin's settings:** asked when the plugin is enabled, as recommended (section 2).
 
 ## Done when
 - `plugin/` passes `claude plugin validate --strict`, and installing it from this repository's marketplace gives a local Claude Code session the `tasks` skill, `/breakaway:claim`, `/breakaway:next`, `/breakaway:hand-over`, and the session hooks.
 - The plugin's skill and hooks can't drift from the `tasks` skill and `sessionHooks()`: a test fails when they do.
-- `repos init --plugin` sets up a repository with the plugin instead of copies, and `--update --plugin` moves one over.
+- `repos init` sets up a repository with the plugin instead of copies, `--update` moves one over, and `--copies` keeps the copies.
 - The **Plugin** workflow moves the `plugin` branch at a stable release, and CI validates the plugin on every pull request that touches it.
 - With BRK-154 built, the plugin connects the board's MCP server with no config beyond its settings.
-- The plugin's README answers what the directory asks, and the owner has answered the decision.
+- The plugin's README answers what the directory asks.
 
 The tasks, all in the `ai-native` feature, all waiting for IDEA-25: listed in the pull request that adds this spec.
 
@@ -139,4 +141,4 @@ The tasks, all in the `ai-native` feature, all waiting for IDEA-25: listed in th
 3. Type `/breakaway:next`. Claude should claim the best ready task in that repository and tell you what it is; on the web board, the task shows as claimed.
 4. Ask it to finish the task and type `/breakaway:hand-over`. A pull request should open with the work ID in its title and `Closes <ID>.` in its description, and the task should move to In review on the board.
 5. Type `/mcp`. Once the MCP server is on your board, you should see `breakaway` connected.
-6. In a repository set up with `repos init --plugin`, start an agent from the board. Its output should show on the task while it works, as it does today.
+6. Run `npx breakaway repos init <slug> --update` for one of your repositories and merge its pull request. Its `.claude/settings.json` should name the breakaway plugin, and the copied `tasks` skill should be gone. Start an agent from the board on one of its tasks. Its output should show on the task while it works, as it does today.
