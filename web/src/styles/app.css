@@ -3220,6 +3220,7 @@ fieldset.field {
 }
 .checks-pending svg,
 .card-verdict-spin svg,
+.verdict-spin svg,
 .spin {
   animation: spin 1.2s linear infinite;
 }
@@ -3736,12 +3737,14 @@ fieldset.field {
 @media (prefers-reduced-motion: reduce) {
   .checks-pending svg,
   .card-verdict-spin svg,
+  .verdict-spin svg,
   .spin,
   .run-pending .run-icon {
     animation: none;
   }
 }
-:root[data-motion="reduce"] :is(.checks-pending svg, .card-verdict-spin svg, .spin, .run-pending .run-icon) {
+:root[data-motion="reduce"]
+  :is(.checks-pending svg, .card-verdict-spin svg, .verdict-spin svg, .spin, .run-pending .run-icon) {
   animation: none;
 }
 
@@ -4513,9 +4516,6 @@ fieldset.field {
 }
 .verdict-muted {
   color: var(--muted);
-}
-.verdict-warn svg {
-  animation: spin 1.2s linear infinite;
 }
 .pr-page {
   display: grid;
