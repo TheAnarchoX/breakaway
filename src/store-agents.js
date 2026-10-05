@@ -5,6 +5,7 @@
  * output for the board to show (for watching only: capped, pruned, never in a version).
  */
 import { secret } from './secrets.js';
+import { shortHash } from './session-report.js';
 import { refinePrompt } from './decision.js';
 import { isKickoffIdea } from './kickoff.js';
 import { prVerdict } from './github.js';
@@ -41,12 +42,16 @@ export class AgentError extends Error {
   /**
    * `forceable`: only the board's own limits refuse the start, so Force start (the owner's) could skip it.
    * `path`: the button that fits instead, for a pull request an agent can't review as it stands (`update` or `fix`).
+   * `hold`: how Claude's refusal holds the routine's next starts (BRK-144): `paused` (401, 403, 404), `limit` (429,
+   * until `until`), or `backoff` (anything else Claude or the network answered, for a few minutes).
    */
-  constructor(message, status = 409, { forceable = false, path = null } = {}) {
+  constructor(message, status = 409, { forceable = false, path = null, hold = null, until = null } = {}) {
     super(message);
     this.status = status;
     this.forceable = forceable;
     this.path = path;
+    this.hold = hold;
+    this.until = until;
   }
 }
 
@@ -105,6 +110,7 @@ export const connectCommand = (slug = null) => `npx breakaway agents-connect${sl
  * repository when it isn't the default, so a refused token says which routine to connect again.
  */
 export async function fireRoutine({ url, token }, text, slug = null) {
+  const routine = `the ${slug ? `${slug} ` : ''}routine`;
   let res;
   try {
     res = await fetch(url, {
@@ -118,28 +124,57 @@ export async function fireRoutine({ url, token }, text, slug = null) {
       body: JSON.stringify({ text }),
     });
   } catch {
-    throw new AgentError('couldn’t reach Claude to start the session; try again', 502);
+    throw new AgentError('couldn’t reach Claude to start the session; try again', 502, { hold: 'backoff' });
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = data?.error?.message ?? res.statusText;
-    if (res.status === 429)
+    if (res.status === 429) {
+      const until = retryAt(res.headers.get('Retry-After'));
       throw new AgentError(
-        `Claude’s hourly limit for starting sessions is reached (try again after ${res.headers.get('Retry-After') ?? 'a while'} seconds)`,
+        `Claude’s hourly limit for starting sessions is reached (try again after ${Math.round((until - Date.now()) / 1000)} seconds, at ${clock(until)})`,
         429,
+        { hold: 'limit', until },
       );
+    }
     if (res.status === 401)
+      throw new AgentError(`${routine}’s token was refused: connect the routine again (${connectCommand(slug)})`, 502, {
+        hold: 'paused',
+      });
+    if (res.status === 403)
       throw new AgentError(
-        `the ${slug ? `${slug} ` : ''}routine’s token was refused: connect the routine again (${connectCommand(slug)})`,
+        `${routine}’s token has no access to it: make a new token on the routine and connect it again (${connectCommand(slug)})`,
         502,
+        { hold: 'paused' },
+      );
+    if (res.status === 404)
+      throw new AgentError(
+        `${routine} is gone on claude.ai: make it again, or copy its API trigger’s URL, and connect it again (${connectCommand(slug)})`,
+        502,
+        { hold: 'paused' },
       );
     if (res.status === 400 && /paused/iu.test(message))
-      throw new AgentError(`the ${slug ? `${slug} ` : ''}routine is paused on claude.ai`, 409);
-    throw new AgentError(`Claude couldn’t start the session (${res.status}: ${message})`, 502);
+      throw new AgentError(`${routine} is paused on claude.ai`, 409, { hold: 'backoff' });
+    throw new AgentError(`Claude couldn’t start the session (${res.status}: ${message})`, 502, { hold: 'backoff' });
   }
   if (!data.claude_code_session_url) throw new AgentError('Claude started something but sent no session link', 502);
   return { id: data.claude_code_session_id ?? null, url: data.claude_code_session_url };
 }
+
+/** How long auto-start and chase wait after a 429 without a Retry-After, and after any other refused start. */
+const LIMIT_WAIT_MS = 15 * 60_000;
+export const BACKOFF_MS = 10 * 60_000;
+
+/** When a 429's `Retry-After` (seconds, or an HTTP date) says to try again; 15 minutes when it says nothing usable. */
+export function retryAt(header, now = Date.now()) {
+  const text = String(header ?? '').trim();
+  if (/^\d+$/u.test(text)) return now + Number(text) * 1000;
+  const date = text ? Date.parse(text) : Number.NaN;
+  return Number.isFinite(date) && date > now ? date : now + LIMIT_WAIT_MS;
+}
+
+/** A time as the board says it in a message: `14:05 UTC`. */
+const clock = (ms) => `${new Date(ms).toISOString().slice(11, 16)} UTC`;
 
 const TRIGGER_TEXT = {
   alert: 'for a GitHub security alert, from the board',
@@ -265,7 +300,60 @@ export const agentsMethods = {
         if (routine && !('broken' in routine)) connected.add(repo.slug);
       }
     }
+    for (const slug of connected) await this.dropStaleHold(slug);
     return connected;
+  },
+
+  /**
+   * What holds repository `slug`'s routine after Claude refused a start (BRK-144), or null: `paused` after a 401,
+   * 403, or 404, until the routine is connected again (its URL or token changes), a start through it works, or a
+   * session it started verifies it; `limit` after a 429, until its Retry-After; `backoff` after any other failure,
+   * for a few minutes. Auto-start and chase start nothing there while it holds; Claude's limit holds every start.
+   */
+  routineHold(slug) {
+    const hold = JSON.parse(this.meta(`routine_hold:${slug}`) ?? 'null');
+    if (!hold) return null;
+    if (hold.kind !== 'paused') return hold.until > Date.now() ? hold : null;
+    const verified = JSON.parse(this.meta(`routine_verified:${slug}`) ?? 'null');
+    return verified && verified.at > hold.at ? null : hold;
+  },
+
+  /** Why auto-start and chase wait on repository `slug`'s routine, from its hold. */
+  holdReason(slug, hold) {
+    if (hold.kind === 'paused')
+      return `${slug}’s agent routine is paused because Claude refused it (${hold.error}); auto-start and chase start nothing there until it’s connected again`;
+    if (hold.kind === 'limit')
+      return `Claude’s limit for starting sessions: starts in ${slug} wait until ${clock(hold.until)}`;
+    return `the last start in ${slug} failed (${hold.error}); auto-start and chase try again at ${clock(hold.until)}`;
+  },
+
+  /** Holds repository `slug`'s routine after `error`, a refused start, against the credentials it was fired with. */
+  async holdRoutine(slug, error, credentials) {
+    this.setMeta(
+      `routine_hold:${slug}`,
+      JSON.stringify({
+        kind: error.hold,
+        status: error.status,
+        error: error.message,
+        at: Date.now(),
+        until: error.hold === 'limit' ? error.until : error.hold === 'backoff' ? Date.now() + BACKOFF_MS : null,
+        routine: await shortHash(`${credentials.url}\n${credentials.token}`),
+      }),
+    );
+  },
+
+  /** Lets repository `slug`'s routine go once it's connected again: the hold was for other credentials. */
+  async dropStaleHold(slug) {
+    const key = `routine_hold:${slug}`;
+    const hold = JSON.parse(this.meta(key) ?? 'null');
+    if (!hold) return;
+    const credentials = await this.repoRoutine(slug);
+    if (
+      !credentials ||
+      'broken' in credentials ||
+      hold.routine !== (await shortHash(`${credentials.url}\n${credentials.token}`))
+    )
+      this.setMeta(key, null);
   },
 
   /**
@@ -1159,6 +1247,13 @@ export const agentsMethods = {
       throw new AgentError(
         `${task?.wid ?? 'This task'} can’t ${kind === 'refine' ? 'be refined' : onPr ? 'take an agent on its pull request' : 'start an agent'}: ${blocker}`,
       );
+    // Claude said when to try again after its 429 (BRK-144): no start fires before then, forced or not.
+    const hold = this.routineHold(repo.slug);
+    if (hold?.kind === 'limit')
+      throw new AgentError(
+        `Claude’s hourly limit for starting sessions is reached (try again after ${Math.max(1, Math.round((hold.until - Date.now()) / 1000))} seconds, at ${clock(hold.until)})`,
+        429,
+      );
     const { max, hourly } = this.agentSettings();
     const running = this.runningAgents(views);
     if (!force && running.length >= max)
@@ -1236,9 +1331,12 @@ export const agentsMethods = {
         runId,
       );
       if (this.tasks.get(uuid)?.claim === agent) this.change(uuid, { session: session.url }, new Date(), 'agents');
+      // Claude took it, so whatever held the routine is over.
+      if (hold) this.setMeta(`routine_hold:${repo.slug}`, null);
       return { run: this.agentRun(runId), task: this.detail(uuid) };
     } catch (error) {
       this.sql.exec("UPDATE agent_runs SET status = 'failed', error = ? WHERE id = ?", error.message, runId);
+      if (error instanceof AgentError && error.hold) await this.holdRoutine(repo.slug, error, credentials);
       if (this.tasks.get(uuid)?.claim === agent) this.change(uuid, { claim: null, start: false }, new Date(), 'agents');
       throw error instanceof AgentError ? error : new AgentError(error.message, 502);
     }
@@ -1360,6 +1458,9 @@ export const agentsMethods = {
         forceable = true;
       }
       if (!reason && connected && !connected.has(t.repo)) reason = `${t.repo}’s agent routine isn’t connected`;
+      // A routine Claude refused waits (BRK-144), so it doesn't fire every tick.
+      const hold = !reason && connected ? this.routineHold(t.repo) : null;
+      if (hold) reason = this.holdReason(t.repo, hold);
       // A security fix doesn't wait for its area to be free.
       if (!reason && busy.has(area(t)) && !t.alert && !general && !kickoff) {
         reason = `an agent is already working in ${this.areaName(t.repo, t.project)} (${busy.get(area(t))})`;
@@ -1402,6 +1503,8 @@ export const agentsMethods = {
     if (!connected.size) return [];
     const started = [];
     for (const item of this.autostartQueue(this.views(), connected).filter((q) => q.ready)) {
+      // An earlier start this tick may have been refused, holding its routine.
+      if (this.routineHold(item.repo)) continue;
       try {
         await this.startAgent(
           item.uuid,
@@ -1413,7 +1516,7 @@ export const agentsMethods = {
         );
         started.push(item.wid ?? item.uuid);
       } catch {
-        // It stays in the queue; the next tick tries again.
+        // It stays in the queue; the next tick tries again, unless Claude's refusal holds the routine.
       }
     }
     return started;

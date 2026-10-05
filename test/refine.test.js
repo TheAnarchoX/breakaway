@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SELF } from 'cloudflare:test';
-import { api } from './helpers.js';
+import { api, releaseRoutineHolds } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
@@ -134,6 +134,9 @@ describe('refining a task with an agent', () => {
     expect(res.status).toBe(429);
     expect((await task('CMP-1')).claim).toBeNull();
     failWith = null;
+    // Claude's limit holds every start until its Retry-After (BRK-144); then the refinement can start.
+    expect((await body(await refine('CMP-1', 'Try again.'))).status).toBe(429);
+    await releaseRoutineHolds();
     expect((await body(await refine('CMP-1', 'Try again.'))).status).toBe(200);
   });
 
