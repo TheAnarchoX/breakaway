@@ -74,7 +74,7 @@ describe('the README on npm (DOC-10)', () => {
 
   it('falls back to carbon, with chalk for light mode', () => {
     const pictures = [...readme.matchAll(/<picture>([\s\S]*?)<\/picture>/gu)].map((m) => m[1]);
-    expect(pictures).toHaveLength(7);
+    expect(pictures).toHaveLength(10);
     for (const picture of pictures) {
       expect(picture).toMatch(/<source media="\(prefers-color-scheme: light\)" srcset="[^"]+-light\.png">/u);
       expect(picture).toMatch(/<img [^>]*src="[^"]+-dark\.png"/u);
