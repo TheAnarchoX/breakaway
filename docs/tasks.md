@@ -233,6 +233,7 @@ npx breakaway features             # features by release, their progress and cha
 npx breakaway chase self-update --dry-run   # what a chase would start now; drop --dry-run to start it, `stop` to stop it (owner)
 npx breakaway connections          # is GitHub, Cloudflare, Claude, sync, and push wired up, and the fix for each that isn't
 npx breakaway mcp                  # the claude mcp add line and .mcp.json entry for this checkout (--check: does /mcp answer?)
+npx breakaway mcp --headers        # the headers for /mcp as JSON, token included: the plugin's headersHelper
 npx breakaway health
 npx breakaway export --out tasks-backup.json   # every task, checked against health's count (see Backups)
 ```
