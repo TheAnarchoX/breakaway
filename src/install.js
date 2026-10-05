@@ -158,7 +158,17 @@ export const secretName = (inst, key) => `${inst.secretsPrefix}${key}`;
 export const docsLink = (inst, anchor) => (inst.docs ? `${inst.docs}${anchor ? `#${anchor}` : ''}` : null);
 
 /** The routes `run_worker_first` sends to the Worker; everything else is the web app. */
-export const WORKER_FIRST = ['/api/*', '/v1/*', '/github/*', '/mcp', '/login', '/logout'];
+export const WORKER_FIRST = [
+  '/api/*',
+  '/v1/*',
+  '/github/*',
+  '/mcp',
+  // The sign-in Claude's apps use for /mcp (BRK-157).
+  '/oauth/*',
+  '/.well-known/oauth-*',
+  '/login',
+  '/logout',
+];
 
 /**
  * The Worker's wrangler config for an install. `local` is for `wrangler dev` (interop): no custom

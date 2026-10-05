@@ -69,17 +69,23 @@ export async function authenticate(request, env) {
   return (await sameSecret(signature ?? '', await sign(token, expiry))) ? 'cookie' : null;
 }
 
-/** POST /login with a form field `token`: sets the cookie and goes back to the board. */
+/** Where the board may go after signing in, besides itself: the consent page of a sign-in from Claude's apps (BRK-157). */
+const NEXT = /^#\/authorize\/[\w-]{20,64}$/u;
+
+/** POST /login with a form field `token` (and an optional `next`): sets the cookie and goes back to the board. */
 export async function login(request, env) {
   if (!sameOrigin(request)) return new Response('Forbidden', { status: 403 });
   const form = await request.formData().catch(() => null);
   const given = String(form?.get('token') ?? '').trim();
+  const next = String(form?.get('next') ?? '');
+  const back = NEXT.test(next) ? `/${next}` : '/';
   const token = await apiToken(env);
-  if (!given || !token || !(await sameSecret(given, token))) return redirect('/?signin=failed');
+  if (!given || !token || !(await sameSecret(given, token)))
+    return redirect(back === '/' ? '/?signin=failed' : `/?signin=failed${next}`);
   const expiry = String(Date.now() + SESSION_DAYS * 86_400_000);
   const value = `${expiry}.${await sign(token, expiry)}`;
   return redirect(
-    '/',
+    back,
     `${COOKIE}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}`,
   );
 }

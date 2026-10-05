@@ -53,6 +53,7 @@ import { kickoffsMethods } from './store-kickoffs.js';
 import { isKickoffIdea } from './kickoff.js';
 import { initMethods } from './store-init.js';
 import { routineKeepMethods } from './store-routine-keep.js';
+import { oauthMethods } from './store-oauth.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -107,6 +108,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initConnections();
     this.initKickoffs();
     this.initRoutineKeep();
+    this.initOAuth();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1323,6 +1325,7 @@ Object.assign(
   kickoffsMethods,
   initMethods,
   routineKeepMethods,
+  oauthMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------

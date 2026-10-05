@@ -9,10 +9,13 @@
  *
  * Each tool calls the same TaskStore method its CLI command's API route does, so the store's own guards stand behind
  * it. The tools that write (BRK-155) always write as the agent the X-Breakaway-Agent header names, never as the owner,
- * and have no force, no autostart, no done, and no horizon-* tag. The resources and prompts (BRK-156) come later.
+ * and have no force, no autostart, no done, and no horizon-* tag. The resources and prompts (section 4) are in
+ * src/mcp-resources.js.
  */
 import { authenticate } from './auth.js';
+import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
+import { McpFailure, PROMPTS, RESOURCE_TEMPLATES, getPrompt, listResources, readResource } from './mcp-resources.js';
 import { MAX_MESSAGE, PING_KINDS, looksLikeSecret } from './ping.js';
 
 /** The newest MCP revision: per-request metadata, no `initialize`. */
@@ -68,12 +71,24 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const origin = request.headers.get('Origin');
   if (origin !== null && origin !== url.origin)
     return rpcError(403, null, INVALID_REQUEST, 'requests to /mcp from another origin are refused');
-  // The bearer token only, never the web board's cookie: the browser has the web board (section 2).
-  if ((await authenticate(request, env)) !== 'token')
-    return new Response(JSON.stringify({ error: 'send the board’s token as "Authorization: Bearer <token>"' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' },
-    });
+  // The bearer token only, never the web board's cookie: the browser has the web board (section 2). A connection
+  // from Claude's apps has its own token, for its one repository and agent name (section 8).
+  let pinned = null;
+  if ((await authenticate(request, env)) !== 'token') {
+    const found = await connectionOf(request, store);
+    if (!found?.connection) {
+      const challenge = `Bearer ${found?.invalid ? 'error="invalid_token", ' : ''}resource_metadata="${metadataUrl(url.origin)}"`;
+      return new Response(
+        JSON.stringify({
+          error: found?.invalid
+            ? 'this sign-in has run out or was revoked: refresh it, or sign in again'
+            : 'send the board’s token as "Authorization: Bearer <token>", or sign in',
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': challenge } },
+      );
+    }
+    pinned = found.connection;
+  }
 
   const raw = await readBody(request, maxBody);
   if (raw === null) return rpcError(413, null, INVALID_REQUEST, `the request is over ${maxBody} bytes`);
@@ -102,7 +117,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const era = eraOf(request, method, params);
   if (era.error) return rpcError(era.status ?? 400, id, era.error.code, era.error.message, era.error.data);
 
-  const ctx = callContext(request, store, waitUntil);
+  const ctx = callContext(request, store, waitUntil, pinned);
   const answer = (result) =>
     rpcResult(id, era.modern ? { resultType: 'complete', ...result, _meta: serverMeta(env) } : result);
   const failed = (status, code, text, data) => rpcError(era.modern ? status : 200, id, code, text, data);
@@ -123,6 +138,20 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   if (method === 'ping') return answer({});
   if (method === 'tools/list')
     return answer({ tools: TOOLS.map(({ run: _run, ...tool }) => tool), ...(era.modern ? CACHE : {}) });
+  if (method === 'resources/list' || method === 'resources/read' || method === 'prompts/get') {
+    try {
+      if (method === 'resources/list') return answer(await listResources(ctx));
+      if (method === 'resources/read') return answer(await readResource(params.uri, ctx));
+      return answer(await getPrompt(params.name, params.arguments, ctx));
+    } catch (error) {
+      if (!(error instanceof McpFailure)) throw error;
+      return failed(error.status, error.code, error.message, error.data);
+    }
+  }
+  // The same for every caller, so the newest revision may keep them as it keeps the tool list.
+  if (method === 'resources/templates/list')
+    return answer({ resourceTemplates: RESOURCE_TEMPLATES, ...(era.modern ? CACHE : {}) });
+  if (method === 'prompts/list') return answer({ prompts: PROMPTS, ...(era.modern ? CACHE : {}) });
   if (method === 'tools/call') {
     const tool = TOOLS.find((t) => t.name === params.name);
     if (!tool) return failed(400, INVALID_PARAMS, `no tool "${String(params.name).slice(0, 64)}" on the board`);
@@ -139,7 +168,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
 
 // ---- The transport -----------------------------------------------------------------------
 
-const CAPABILITIES = { tools: {} };
+const CAPABILITIES = { tools: {}, resources: {}, prompts: {} };
 
 const serverInfo = (env) => ({ name: 'breakaway', title: 'breakaway', version: releaseOf(env) });
 const serverMeta = (env) => ({ [META_SERVER]: serverInfo(env) });
@@ -204,6 +233,12 @@ function eraOf(request, method, params) {
   if (request.headers.get('Mcp-Method') !== method) return mismatch(`the Mcp-Method header must be ${method}`);
   if (method === 'tools/call' && headerValue(request, 'Mcp-Name') !== params.name)
     return mismatch('the Mcp-Name header must be the tool’s name, as in params.name');
+  // A client that names the resource or prompt in the header names the one in the body.
+  const target = method === 'resources/read' ? params.uri : method === 'prompts/get' ? params.name : undefined;
+  if (target !== undefined && request.headers.has('Mcp-Name') && headerValue(request, 'Mcp-Name') !== target)
+    return mismatch(
+      `the Mcp-Name header must be the ${method === 'prompts/get' ? 'prompt’s name' : 'resource’s uri'}, as in params`,
+    );
   const capabilities = meta[META_CAPABILITIES];
   if (!capabilities || typeof capabilities !== 'object')
     return {
@@ -231,19 +266,21 @@ function rpcError(status, id, code, message, data) {
 // ---- Who's calling -----------------------------------------------------------------------
 
 /**
- * The agent's name and repository from the request's headers (section 2), and the board's registry, read once and
- * only when a tool needs it. `waitUntil` keeps work going after the answer (a ping's push).
+ * The agent's name and repository from the request's headers (section 2), or from the connection a sign-in from
+ * Claude's apps made (section 8), whatever the headers say; and the board's registry, read once and only when a tool
+ * needs it. `waitUntil` keeps work going after the answer (a ping's push).
  * @param {Request} request
  * @param {any} store
  * @param {(promise: Promise<any>) => void} [waitUntil]
+ * @param {{ agent: string, repo: string } | null} [pinned]
  */
-function callContext(request, store, waitUntil = (_promise) => {}) {
+function callContext(request, store, waitUntil = (_promise) => {}, pinned = null) {
   const header = (name) => (request.headers.get(name) ?? '').trim();
   // The plugin sends its agent_name as a static X-Breakaway-Agent, empty when it isn't set, and its headersHelper sends
   // claude-<branch> as X-Breakaway-Agent-Default for that case (CLI-16). An option Claude Code didn't fill is no name.
   const named = header('X-Breakaway-Agent');
-  const agent = named && !named.startsWith('${') ? named : header('X-Breakaway-Agent-Default');
-  const repo = (request.headers.get('X-Breakaway-Repo') ?? '').trim().toLowerCase();
+  const agent = pinned ? pinned.agent : named && !named.startsWith('${') ? named : header('X-Breakaway-Agent-Default');
+  const repo = pinned ? pinned.repo : header('X-Breakaway-Repo').toLowerCase();
   let registry;
   const ctx = {
     store,
@@ -261,6 +298,11 @@ function callContext(request, store, waitUntil = (_promise) => {}) {
       if (!slugs.length)
         return { error: 'the board has no repositories yet: the owner adds one on the board, under Repositories' };
       if (!repo) return { error: `name the repository: set the X-Breakaway-Repo header to one of ${slugs.join(', ')}` };
+      // A sign-in's repository is the owner's pick, not a header the client can fix (section 8).
+      if (pinned && !slugs.includes(repo))
+        return {
+          error: `this connection's repository, ${repo}, isn't on the board any more: the owner revokes it on Connections, and you sign in again`,
+        };
       // The plugin's headersHelper can't always ask the board for the slug, so it sends the checkout's owner/name
       // (CLI-9). One the board doesn't track is a checkout outside the board, not a config to fix: it still connects.
       if (repo.includes('/')) {
@@ -405,7 +447,7 @@ function taskLine(t) {
 }
 
 /** A task in full, as `npx breakaway show` prints it, in Markdown. */
-function taskDetail(t) {
+export function taskDetail(t) {
   const out = [`# ${idOf(t)} · ${t.description}`, ''];
   const row = (k, v) => v && out.push(`- **${k}:** ${v}`);
   const inReview = t.status === 'pending' && (t.github ?? []).some((p) => p.closes && p.state === 'open');

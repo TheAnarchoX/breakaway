@@ -200,6 +200,31 @@ a code {
   margin-top: 8px;
 }
 
+/* The consent page of a sign-in from Claude's apps (BRK-157): the sign-in card, with the app's host and two answers. */
+.authorize-host {
+  font-size: 14px;
+}
+.authorize-warning {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  font-size: 14px;
+}
+.authorize-warning svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.authorize-buttons {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* ---------- frame ---------- */
 
 /* The sidebar on the left, and the top bar, filters, and view beside it. */
@@ -5719,6 +5744,15 @@ fieldset.field {
 }
 .conn-group h2 {
   font-size: 18px;
+}
+.conn-group-intro {
+  margin: 0;
+  font-size: 14px;
+}
+.conn-signin {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 .conn-list {
   list-style: none;

@@ -272,6 +272,8 @@ describe('updating the Worker from the board', () => {
         '/logout',
         '/hooks/*',
         '/mcp',
+        '/oauth/*',
+        '/.well-known/oauth-*',
       ]);
       const bindings = Object.fromEntries(metadata.bindings.map((b) => [b.name, b]));
       expect(bindings.STORE.type).toBe('durable_object_namespace');
