@@ -87,6 +87,9 @@ export const pelotonMethods = {
         peloton TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, agent TEXT NOT NULL, task TEXT,
         at INTEGER NOT NULL, why TEXT NOT NULL, PRIMARY KEY (peloton, version)
       );
+      CREATE TABLE IF NOT EXISTS peloton_pr_seen (
+        agent TEXT NOT NULL, task TEXT NOT NULL, state TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, task)
+      );
     `);
     // The riders a post mentions, as JSON (IDEA-36 section 10). Posts from before mention nobody.
     const columns = this.sql
@@ -420,10 +423,11 @@ export const pelotonMethods = {
    * first, then huddles opening and closing, mentions of and replies to the agent, plan changes, then the rest in order; up to 10 when it rides a chase and 5
    * elsewhere. Every one is marked seen, and `more` says how many weren't handed over (`tasks peloton` shows them).
    * `urgent`: the wait hook's ask, which takes them only when one of them is urgent (any but the rest), so a busy
-   * peloton doesn't wake an idle agent.
+   * peloton doesn't wake an idle agent. `listen`: the listen route's ask, which takes every post on a chase's peloton
+   * and a repository's only when one of them there is urgent.
    * @returns {{ posts: any[], more: number }}
    */
-  takePeloton(agent, { urgent = false } = {}) {
+  takePeloton(agent, { urgent = false, listen = false } = {}) {
     const none = { posts: [], more: 0 };
     const name = String(agent ?? '').trim();
     if (!AGENT.test(name)) return none;
@@ -436,8 +440,6 @@ export const pelotonMethods = {
         .toArray()
         .map((r) => r.id),
     );
-    const rows = [];
-    for (const peloton of rides.keys()) rows.push(...this.unseenRows(peloton, name));
     const toYou = (row) => row.kind === 'reply' && mine.has(row.reply_to);
     const mentionsYou = (row) => mentionsOf(row).includes(name);
     // The spec's order: the owner's, huddles opening and closing, mentions and replies, plan changes, the rest.
@@ -451,6 +453,12 @@ export const pelotonMethods = {
             : row.kind === 'plan'
               ? 3
               : 4;
+    const rows = [];
+    for (const peloton of rides.keys()) {
+      const unseen = this.unseenRows(peloton, name);
+      if (listen && !peloton.startsWith(CHASE) && !unseen.some((row) => rank(row) < 4)) continue;
+      rows.push(...unseen);
+    }
     if (!rows.length || (urgent && !rows.some((row) => rank(row) < 4))) return none;
     for (const peloton of rides.keys()) {
       const last = rows.filter((r) => r.peloton === peloton).at(-1);
@@ -467,6 +475,153 @@ export const pelotonMethods = {
         urgent: rank(row) < 4,
       }));
     return { posts, more: rows.length - posts.length };
+  },
+
+  /**
+   * GET /api/peloton/listen?agent=<name>: what's waiting for `agent` now (IDEA-36 sections 3 and 10), answered at
+   * once; the CLI asks every few seconds while the agent waits. It hands over, and marks delivered, the posts in its
+   * pelotons (every one on its chase's, a repository's only with an urgent one, as `takePeloton` sorts them), the
+   * owner's messages for its task, and a change to its task's pull request since it last asked. `urgent` says
+   * whether to answer the agent now: an urgent post, a message, or the pull request. `stop` says why to stop
+   * listening: the claim is gone, the pull request merged, or the chase stopped. `task` picks one when the agent
+   * holds more than one.
+   */
+  listenPeloton(agent, task = null) {
+    const name = String(agent ?? '').trim();
+    if (!AGENT.test(name)) throw new InputError('say which agent is listening: ?agent=<name>');
+    const uuid = task !== null && task !== undefined && task !== '' ? this.resolve(task) : this.listenTask(name);
+    const quiet = { urgent: false, posts: [], more: 0, messages: [], pr: null };
+    if (!uuid || !this.holdsTask(name, uuid))
+      return { agent: name, task: uuid ? this.widOf(uuid) : null, ...quiet, stop: this.listenGone(name, uuid) };
+    const chases = this.chasing() ? this.openChases() : [];
+    const pull = this.pullOfTask(uuid);
+    const peloton = this.takePeloton(name, { listen: true });
+    const messages = this.takeMessages(uuid, name, { poll: true });
+    const pr = pull ? this.pullChange(name, uuid, pull) : null;
+    const id = this.widOf(uuid);
+    let stop = null;
+    if (pull?.state === 'merged') stop = `${id}’s pull request #${pull.number} merged`;
+    else if (!chases.some(({ tasks }) => tasks.has(uuid)))
+      stop = `${id} isn’t in an open chase: the chase stopped, or it was never in one`;
+    return {
+      agent: name,
+      task: id,
+      urgent: peloton.posts.some((p) => p.urgent) || messages.length > 0 || pr !== null,
+      posts: peloton.posts,
+      more: peloton.more,
+      messages,
+      pr,
+      stop,
+    };
+  },
+
+  widOf(uuid) {
+    return this.tasks.get(uuid)?.wid ?? uuid.slice(0, 8);
+  },
+
+  /** The task `agent` listens on: the one it holds in an open chase, else any it holds, else the last it held. */
+  listenTask(agent) {
+    const held = [...this.tasks].filter(([, map]) => map.status === 'pending' && map.claim === agent);
+    if (held.length > 1 && this.chasing()) {
+      const chases = this.openChases();
+      const inChase = held.find(([uuid]) => chases.some(({ tasks }) => tasks.has(uuid)));
+      if (inChase) return inChase[0];
+    }
+    if (held.length) return held[0][0];
+    const last = [...this.tasks]
+      .filter(([, map]) => map.claim === agent)
+      .sort(([, a], [, b]) => String(b.modified ?? '').localeCompare(String(a.modified ?? '')))[0];
+    return last?.[0] ?? null;
+  },
+
+  /** Why `agent` no longer listens on task `uuid`, which it doesn't hold: its pull request merged, or the claim is gone. */
+  listenGone(agent, uuid) {
+    const map = uuid ? this.tasks.get(uuid) : null;
+    if (!map) return `${agent} holds no claimed task: the claim is gone`;
+    const id = this.widOf(uuid);
+    if (map.status === 'completed') {
+      const pull = this.pullOfTask(uuid);
+      if (pull?.state === 'merged') return `${id}’s pull request #${pull.number} merged`;
+      return `${id} is done: the claim is gone`;
+    }
+    if (map.status !== 'pending') return `${id} is ${map.status}: the claim is gone`;
+    if (map.claim && map.claim !== agent) return `the claim on ${id} moved to ${map.claim}`;
+    return `the claim on ${id} is gone: it was released`;
+  },
+
+  /**
+   * Task `uuid`'s pull request as the board keeps it from GitHub: the one its `pr` names, else the newest that
+   * closes it, open ones first. Null when there's none.
+   * @returns {{ number: number, state: string, data: any } | null}
+   */
+  pullOfTask(uuid) {
+    const map = this.tasks.get(uuid);
+    if (!map) return null;
+    const repo = repoSlugOf(map, this.defaultRepoSlug());
+    const row = map.pr
+      ? this.sql
+          .exec('SELECT number, state, data FROM gh_pulls WHERE repo = ? AND number = ?', repo, Number(map.pr))
+          .toArray()[0]
+      : map.wid
+        ? this.sql
+            .exec(
+              `SELECT number, state, data FROM gh_pulls WHERE repo = ?
+                 AND EXISTS (SELECT 1 FROM json_each(data, '$.closes') WHERE value = ?)
+               ORDER BY state = 'open' DESC, updated DESC LIMIT 1`,
+              repo,
+              map.wid,
+            )
+            .toArray()[0]
+        : null;
+    return row ? { number: row.number, state: row.state, data: JSON.parse(row.data) } : null;
+  },
+
+  /**
+   * What changed on `agent`'s pull request since it last asked (IDEA-36 section 3): its checks finished (on a new
+   * head, or with a new result), a review came in, or it started to conflict. Null when nothing did. A first ask
+   * reports what's already there, so an agent that starts listening late still hears a failure or a review.
+   */
+  pullChange(agent, uuid, pull) {
+    const { data } = pull;
+    const now = {
+      number: pull.number,
+      head: data.headSha ?? null,
+      checks: data.checks?.state ?? 'none',
+      review: data.review?.decision ?? 'none',
+      reviews: (data.review?.reviewers?.length ?? 0) + (data.review?.comments ?? 0),
+      conflict: data.mergeable === false || data.mergeableState === 'dirty',
+    };
+    const row = this.sql
+      .exec('SELECT state FROM peloton_pr_seen WHERE agent = ? AND task = ?', agent, uuid)
+      .toArray()[0];
+    let last = row ? JSON.parse(row.state) : null;
+    if (last?.number !== now.number) last = null;
+    const changed = [];
+    if (
+      (now.checks === 'success' || now.checks === 'failure') &&
+      (!last || last.checks !== now.checks || last.head !== now.head)
+    )
+      changed.push('checks');
+    if (now.review && now.review !== 'none' && (!last || last.review !== now.review || now.reviews > last.reviews))
+      changed.push('review');
+    if (now.conflict && !last?.conflict) changed.push('conflict');
+    this.sql.exec(
+      `INSERT INTO peloton_pr_seen (agent, task, state, at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (agent, task) DO UPDATE SET state = excluded.state, at = excluded.at`,
+      agent,
+      uuid,
+      JSON.stringify(now),
+      Date.now(),
+    );
+    if (!changed.length) return null;
+    return {
+      number: now.number,
+      url: data.url ?? null,
+      checks: now.checks,
+      review: now.review,
+      conflict: now.conflict,
+      changed,
+    };
   },
 
   /**
@@ -843,6 +998,7 @@ export const pelotonMethods = {
       this.sql.exec('DELETE FROM peloton_posts WHERE peloton = ? AND at < ?', peloton, before);
     }
     this.sql.exec('DELETE FROM peloton_seen WHERE at < ?', now - 2 * DAY);
+    this.sql.exec('DELETE FROM peloton_pr_seen WHERE at < ?', now - 2 * DAY);
     // The plan and the huddles go with the chase's posts: once it's been closed a day, or its feature is gone.
     for (const { peloton } of this.sql
       .exec('SELECT peloton FROM peloton_plans UNION SELECT peloton FROM peloton_huddles')
