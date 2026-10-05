@@ -251,9 +251,7 @@ a code {
   min-height: var(--topbar-h);
   padding: 8px 16px;
   padding-top: max(8px, env(safe-area-inset-top));
-  background: var(--glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 .brand {

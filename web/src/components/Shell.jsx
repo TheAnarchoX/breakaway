@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   Activity,
   Bell,
+  BookOpen,
   Bot,
   ChevronsUpDown,
   FolderGit2,
@@ -54,6 +55,7 @@ import {
   healthFailed,
   helpOpen,
   lanes,
+  installDocs,
   installName,
   me,
   menuOpen,
@@ -339,6 +341,24 @@ export function Sidebar({ drawer = false }) {
       </nav>
       <div class="sidebar-foot">
         <ServerStatus />
+        {installDocs.value && (
+          <a
+            class="side-item"
+            href={installDocs.value}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={tip('Docs')}
+            onClick={close}
+          >
+            <span class="side-icon">
+              <BookOpen size={20} aria-hidden="true" />
+            </span>
+            <span class="side-label">
+              Docs
+              <span class="visually-hidden"> (opens in a new tab)</span>
+            </span>
+          </a>
+        )}
         <a
           class="side-item"
           href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
