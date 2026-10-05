@@ -15,6 +15,7 @@ import {
   actions,
   agents,
   confirmDialog,
+  diffWrap,
   github,
   hashFor,
   loadGitHub,
@@ -68,9 +69,9 @@ const SIGN = { added: '+', removed: '−', context: ' ' };
 const WORD = { added: 'added', removed: 'removed', context: 'unchanged' };
 
 /** @param {Record<string, any>} props */
-function Unified({ rows }) {
+function Unified({ rows, wrap }) {
   return (
-    <table class="diff" role="table">
+    <table class={wrap ? 'diff diff-wrap' : 'diff'} role="table">
       <tbody>
         {rows.map((r, i) =>
           r.kind === 'hunk' || r.kind === 'note' ? (
@@ -175,7 +176,7 @@ function Split({ rows }) {
 }
 
 /** @param {Record<string, any>} props */
-function FileDiffView({ file, split, url, open: startOpen }) {
+function FileDiffView({ file, split, wrap, url, open: startOpen }) {
   const [open, setOpen] = useState(startOpen);
   const id = `file-${file.name.replace(/[^\w-]/gu, '-')}`;
   const rows = open && file.patch ? parsePatch(file.patch) : null;
@@ -204,7 +205,7 @@ function FileDiffView({ file, split, url, open: startOpen }) {
           split ? (
             <Split rows={rows} />
           ) : (
-            <Unified rows={rows} />
+            <Unified rows={rows} wrap={wrap} />
           )
         ) : (
           <p class="muted small diff-none">
@@ -240,6 +241,19 @@ function Diff({ page }) {
               Only files that run in a Worker
             </label>
           )}
+          {/* Split view always wraps, each side in its own column. */}
+          {!(split && wide) && (
+            <label class="check-inline">
+              <input
+                type="checkbox"
+                checked={diffWrap.value}
+                onChange={(e) => {
+                  diffWrap.value = e.currentTarget.checked;
+                }}
+              />{' '}
+              Wrap long lines
+            </label>
+          )}
           {wide && (
             <button type="button" class="btn btn-outline btn-sm" aria-pressed={split} onClick={() => setSplit(!split)}>
               {split ? 'Unified view' : 'Split view'}
@@ -257,7 +271,9 @@ function Diff({ page }) {
         </p>
       )}
       {files.length ? (
-        files.map((f) => <FileDiffView key={f.name} file={f} split={split && wide} url={page.url} open={!many} />)
+        files.map((f) => (
+          <FileDiffView key={f.name} file={f} split={split && wide} wrap={diffWrap.value} url={page.url} open={!many} />
+        ))
       ) : (
         <p class="muted small">No files match.</p>
       )}

@@ -4777,6 +4777,11 @@ fieldset.field {
   color: var(--muted);
   font-style: italic;
 }
+/* Wrap long lines (WEB-45): a long line breaks inside the code column instead of the file scrolling sideways. */
+.diff-wrap code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* Split (WEB-7): narrow line numbers, the two sides share the rest evenly, and a long line wraps inside its own side. */
 .diff-split {
   table-layout: fixed;
