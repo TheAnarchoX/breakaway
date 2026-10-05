@@ -1058,10 +1058,12 @@ export const githubMethods = {
   async githubOverview(slug = null) {
     await this.ready();
     const connected = Boolean(await appCredentials(this.env));
-    if (slug === 'all') return { status: 200, body: this.githubOverviewAll(connected) };
+    // GitHub's status page (BRK-217): the GitHub view says when it holds the board's automatic work.
+    const githubStatus = connected ? this.githubStatusView() : null;
+    if (slug === 'all') return { status: 200, body: { ...this.githubOverviewAll(connected), githubStatus } };
     const { repo, error: missing } = this.githubRepoOr404(slug);
     if (missing) return missing;
-    return { status: 200, body: this.githubRepoView(repo, connected) };
+    return { status: 200, body: { ...this.githubRepoView(repo, connected), githubStatus } };
   },
 
   /**
@@ -1446,6 +1448,17 @@ export const githubMethods = {
       !['merge', 'squash'].includes(method)
     )
       return { status: 400, body: { error: 'method must be "merge" or "squash"' } };
+    // While GitHub is down (BRK-217), the settings wait: an update or a merge could land on checks that never ran.
+    // The owner's own presses still go through.
+    const held = setting === true ? this.githubHold() : null;
+    if (held)
+      return {
+        status: 503,
+        body: {
+          error: `${held}: Keep branches up to date and Merge when green wait until it’s working again.`,
+          held: true,
+        },
+      };
     const client = this.githubClient(credentials, repo);
     try {
       const p = await client.get(`/pulls/${number}`);

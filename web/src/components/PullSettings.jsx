@@ -72,6 +72,11 @@ export function RepoPullSettings({ data, slug = null, name = null }) {
         </span>
       </div>
       {blocked && <span class="field-hint">{blocked}</span>}
+      {data?.githubStatus?.held && (
+        <span class="field-hint">
+          On hold: GitHub reports trouble ({data.githubStatus.summary}). Both carry on once it’s working again.
+        </span>
+      )}
     </>
   );
 }

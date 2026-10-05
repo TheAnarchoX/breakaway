@@ -378,8 +378,10 @@ export const chaseMethods = {
 
   /** The feature's chase as its page shows it: the record, and with `plan`, who starts next and what holds the rest. */
   chaseView(row, plan = null) {
+    const held = row.chase === 'on' ? this.githubHold() : null;
     return {
       ...this.chaseState(row),
+      ...(held ? { held } : {}),
       ...(plan
         ? {
             line: plan.line,
@@ -494,6 +496,8 @@ export const chaseMethods = {
       .toArray()
       .filter((r) => !only || r.slug === only);
     if (!rows.length) return [];
+    // While GitHub is down (BRK-217), nothing starts: agents couldn't push, and checks wouldn't run on a fix.
+    if (this.githubOutage()) return [];
     const connected = await this.connectedRepos();
     const started = [];
     for (const row of rows) {
