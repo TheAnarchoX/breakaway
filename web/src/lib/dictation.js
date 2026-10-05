@@ -54,13 +54,22 @@ export function dictationLang() {
 
 /**
  * Everything heard so far in one go, from the browser's results: each result's best guess,
- * joined, with the spaces tidied.
+ * joined, with the spaces tidied. Chrome on Android sends each result as the whole phrase so
+ * far rather than the words after the last one, so a result that starts with the one before it
+ * takes its place instead of following it.
  * @param {Results} results
  */
 export function transcriptOf(results) {
-  let text = '';
-  for (let i = 0; i < results.length; i++) text += ` ${results[i][0]?.transcript ?? ''}`;
-  return text.replace(/\s+/g, ' ').trim();
+  /** @type {string[]} */
+  const phrases = [];
+  for (let i = 0; i < results.length; i++) {
+    const phrase = (results[i][0]?.transcript ?? '').replace(/\s+/g, ' ').trim();
+    if (!phrase) continue;
+    const last = phrases.at(-1);
+    if (last != null && (phrase === last || phrase.startsWith(`${last} `))) phrases[phrases.length - 1] = phrase;
+    else phrases.push(phrase);
+  }
+  return phrases.join(' ');
 }
 
 /**
