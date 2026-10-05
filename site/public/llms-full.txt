@@ -30,6 +30,7 @@ These docs cover all of it. Start where you are.
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
+| Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) |
 | Taskwarrior 3 sync | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](https://leavethepack.dev/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](https://leavethepack.dev/docs/operations/) |
@@ -220,7 +221,7 @@ The board is set up when one real task is closed by its merged pull request.
    ```
 
 2. **With a routine:** the last step of **Set up the board** opens the **Add a repository** wizard’s agent step. Press **Start an agent on <ID>**, or **Start an agent** on the task’s own page. The step ticks as it goes: started, live output, pull request. If the start fails, the step says why and the fix, with **Try again**. Once the agent claims the task, **Agent routine** reads **Verified by <ID>**.
-3. **Without one:** open Claude Code in the checkout and say “Work on <ID> from the board”. The board’s files tell it how to claim, report, and open the pull request.
+3. **Without one:** open Claude Code in the checkout and type `/breakaway:claim <ID>`, or say “Work on <ID> from the board”. [The Claude Code plugin](https://leavethepack.dev/docs/plugin/), which `repos init` turned on, tells it how to claim, report, and open the pull request.
 4. **Review and merge.** The pull request’s title starts with the work ID and its description says `Closes <ID>.`. Check it against the done when, and merge it on GitHub or on the board’s pull request page. Merging is yours; the agent never merges.
 
 **Check:** `npx breakaway show <ID>` says it’s completed, merged in its pull request. **A first agent’s pull request merged** (or **A first task closed**) is ticked, and **Set up the board** disappears: every step is done.
@@ -587,6 +588,8 @@ Each comes from the environment first, then from `tasks.env` in `$BREAKAWAY_HOME
 | `BREAKAWAY_SESSION_LOG=off` | Turns the live-output session hook off. |
 | `BREAKAWAY_HOME` | Another folder for this install’s settings. Use it when one machine works with two boards. |
 
+In a Claude Code session with [the plugin](https://leavethepack.dev/docs/plugin/), its settings (the board’s address, token, and agent name) come last: after the environment and `tasks.env`, and for the address after `.taskrc` and `breakaway.config.json` too. `health` says where each setting came from, never its value.
+
 ## The repository
 
 The CLI works in the repository the checkout’s `origin` names, matched against the board’s registry. `--repo <slug>` or `BREAKAWAY_REPO` picks another; `--all` shows every repository in `list` and `next`.
@@ -705,7 +708,7 @@ See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/).
 | --- | --- |
 | `repos` | The repositories the board runs, their areas and prefixes. |
 | `repos add <slug> <owner/name> --area <project:PREFIX>…` | Registers one. Also `--name`, `--branch`, `--prompt <path>`. |
-| `repos init <slug>` | Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, the session hooks, a starter `AGENTS.md`, the `tasks` skill, and Taskwarrior files. Pushes them to an empty repository or opens a pull request. Never overwrites. `--dry-run` lists what it would add; `--update` refreshes the copied files. `--pipeline` adds the deploy flow too (`.github/breakaway-pipeline.json`, what it renders, and a minimal CI when the repository has no workflow), and `--package` the release flow for the npm package `package.json` names, unless it’s private. Both add only new files. |
+| `repos init <slug>` | Adds the files the board’s agents need to a registered repository: its agent prompt, the core and stub, a starter `AGENTS.md`, Taskwarrior files, and [the Claude Code plugin](https://leavethepack.dev/docs/plugin/), turned on in `.claude/settings.json`. Pushes them to an empty repository or opens a pull request. Never overwrites. `--dry-run` lists what it would add; `--update` refreshes the copied files and moves a repository with the copied `tasks` skill and session hooks to the plugin; `--copies` copies the skill and hooks instead of the plugin. `--pipeline` adds the deploy flow too (`.github/breakaway-pipeline.json`, what it renders, and a minimal CI when the repository has no workflow), and `--package` the release flow for the npm package `package.json` names, unless it’s private. Both add only new files. |
 | `repos setup <slug\|owner/name>` | The Add a repository wizard’s steps for it. Read only. |
 | `repos modify <slug>` | `--area` adds an area, `--remove-area` drops one with no tasks, and `--name`, `--github`, `--branch`, `--specs`, `--agents-max`, `--agents-hourly`, `--prompt`, and `--pipeline <file.json\|none>` change its settings. A repository’s page in the web board’s [Settings](https://leavethepack.dev/docs/web-board/#settings) changes the same. |
 | `repos remove <slug>`, `repos release <slug>` | Take one off the board; give a removed repository’s slug and prefixes back. |
@@ -741,7 +744,7 @@ These need no board: they’re the files and steps that deploy a board from its 
 
 ## Hooks
 
-`npx breakaway hook session` and `hook wait` are what a repository’s `.claude/settings.json` runs so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
+`npx breakaway hook session` and `hook wait` are what [the Claude Code plugin](https://leavethepack.dev/docs/plugin/) runs (or, with `repos init --copies`, a repository’s `.claude/settings.json`) so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
 
 ---
 
@@ -755,7 +758,7 @@ An **agent** is a coding agent working on a task: Claude Code. Cloud agents star
 
 ## Local agents
 
-A local agent works in a checkout of the repository with the CLI. The `tasks` skill, which `repos init` copies into the repository, tells it the loop:
+A local agent works in a checkout of the repository with the CLI. The `tasks` skill tells it the loop. It comes with [the Claude Code plugin](https://leavethepack.dev/docs/plugin/), which `repos init` turns on for the repository, and whose `/breakaway:claim`, `/breakaway:next`, and `/breakaway:hand-over` run these steps for you:
 
 1. Name yourself: `export BREAKAWAY_AGENT=claude-brk-12`.
 2. `npx breakaway health` to check the board answers.
@@ -1358,6 +1361,80 @@ A webhook syncs the repository its delivery names; one that isn’t registered g
 ## Disconnecting, and a leaked key
 
 To disconnect, uninstall the App on GitHub. If the App’s key leaks, generate a new private key in the App’s settings, store it as the board’s `GITHUB_KEY` secret as one line of base64 PKCS#8, then delete the old key on GitHub. Because the App can merge, treat this as urgent.
+
+---
+
+Source: https://leavethepack.dev/docs/plugin/
+
+# The Claude Code plugin
+
+> breakaway’s plugin for Claude Code: the tasks skill, /breakaway:claim, /breakaway:next, /breakaway:hand-over, and the session hooks. How to install it for yourself or for a whole repository, its settings, and what it runs and sends.
+
+The plugin brings the board into Claude Code, in any checkout of a repository your board tracks. Claim a task, work it, and hand it over without leaving the session. It talks to your own board and nothing else.
+
+## What it adds
+
+| What | What it does |
+| --- | --- |
+| The `tasks` skill | How to work from the board: claim before you start, check in on the peloton, comment what you learn, hand over with a pull request that says `Closes <ID>.` |
+| `/breakaway:claim <ID>` | Claims a task by its work ID, reads it, and says what it waits for. An `IDEA-` is shaped, never built, so it won’t claim one to build. |
+| `/breakaway:next` | Claims the best ready task in the checkout’s repository. `--project <area>` or `--horizon <h>` narrows it. |
+| `/breakaway:hand-over` | Runs the repository’s checks, posts on the peloton, opens the pull request that closes the task, and links it on the board. |
+| The session hooks | While a session holds a task, they show its output live on the task and wake it when you message it from the board. With no task claimed, or no board set up, they do nothing. |
+
+Each command runs the CLI, `npx --yes breakaway@1`. None merges, deploys, or starts an agent: you do. Hand-over never marks the task done; the board does that when the pull request merges.
+
+## Install it for yourself
+
+You need a board ([Run your own board](https://leavethepack.dev/docs/quickstart/)) with the repository you work in registered on it. In Claude Code:
+
+```text
+/plugin marketplace add TheAnarchoX/breakaway
+/plugin install breakaway@breakaway
+```
+
+When the plugin is enabled, Claude Code asks for three settings. Change them later in `/plugin`.
+
+| Setting | What it is |
+| --- | --- |
+| Board address | Your board’s address, like `https://board.example.com`. |
+| Token | The board’s token. Claude Code keeps it in your system keychain. |
+| Agent name | The name your sessions claim tasks with. Leave it empty for `claude-<branch>`. |
+
+Then open a checkout of a repository the board tracks and type `/breakaway:next`.
+
+**Already set up?** The plugin’s settings come last. The environment (`BREAKAWAY_URL`, `BREAKAWAY_TOKEN`, `BREAKAWAY_AGENT`), `tasks.env` from `npx breakaway setup`, and the checkout’s `.taskrc` all come first ([The CLI](https://leavethepack.dev/docs/cli/#settings)), so a machine you already connected keeps working unchanged. `npx breakaway health` says where each setting came from, never its value.
+
+The marketplace takes the plugin from breakaway’s `plugin` branch, which a stable release moves, so you get released versions, never work in progress.
+
+## Install it for a repository
+
+`npx breakaway repos init <slug>` turns the plugin on in the repository’s `.claude/settings.json`, so every Claude Code session there gets it, the board’s cloud agents included. It adds two keys: `extraKnownMarketplaces`, naming breakaway’s marketplace, and `enabledPlugins`, turning on `breakaway@breakaway`.
+
+- **A cloud session** can’t answer the settings prompt. It uses the environment’s `BREAKAWAY_URL`, `BREAKAWAY_TOKEN` (or the API credential), and `BREAKAWAY_AGENT`, as [Connecting the routine](https://leavethepack.dev/docs/agents/#the-cloud-environment) sets up.
+- **A repository with copies.** Before the plugin, `repos init` copied the `tasks` skill into the repository and wrote the session hooks into `.claude/settings.json`. `npx breakaway repos init <slug> --update` moves it to the plugin in one pull request: it removes the copied skill and the hooks it wrote, and leaves the repository’s own settings alone.
+- **Keep the copies** with `--copies` (or `--update --copies`), for a repository whose agents aren’t Claude Code and read `.agents/skills/` instead.
+- **Both at once.** In a checkout that has the copied hooks and the plugin, the plugin’s hooks stand back, so a task’s output is never posted twice.
+
+`repos init` still copies what the plugin can’t carry: the core and the stub, the repository’s agent prompt and `AGENTS.md`, the release helpers, and Taskwarrior’s files. Before the first stable release that moves the `plugin` branch, it copies the skill and hooks as before, and says why.
+
+## What it runs, and where it sends what
+
+- **It runs** `npx --yes breakaway@1` from its commands and hooks. npx downloads the CLI from npm’s public registry.
+- **It sends to your board, and nowhere else:** the task you claim, your comments and peloton posts, the pull request you link, and, through the hooks, a short entry for each step of the session while you hold a task, with secrets taken out before it leaves.
+- **It fetches from your board:** the tasks, your messages to the session, and the peloton’s posts.
+- **It stores nothing of its own.** Claude Code keeps the address and agent name in its settings and the token in your keychain. While a session runs, the plugin passes them to the session’s commands through Claude Code’s file for that session’s environment.
+
+Nothing goes to breakaway’s author. The board runs on your own Cloudflare account, and you control what it keeps.
+
+## When it doesn’t work
+
+| You see | Do |
+| --- | --- |
+| The command says no board is set up | Set the board’s address and token in `/plugin`, or run `npx breakaway setup`. |
+| The checkout’s repository isn’t on the board | Register it: `npx breakaway repos add`, or **Add a repository** on the board. |
+| `409` on claim | Someone holds the task, or it waits on another. Pick another, or `/breakaway:next`. |
+| No live output on the task | Check `npx breakaway health` in the session, and that `BREAKAWAY_SESSION_LOG` isn’t `off`. |
 
 ---
 
