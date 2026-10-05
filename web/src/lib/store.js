@@ -415,6 +415,13 @@ export function routineConnected(slug) {
 /** A kickoff's IDEA (IDEA-26): an idea tagged as a kickoff's, whose decision keeps it open (src/kickoff.js). */
 export const isKickoffIdea = (t) => Boolean(t) && t.project === 'ideas' && (t.tags ?? []).includes('kickoff-project');
 
+/**
+ * A routine maker's task (BRK-220 section 2): a general task from Make with an agent, whose decision keeps it open
+ * for Send answers and carry on, as a kickoff's IDEA does.
+ */
+export const isRoutineMaker = (t) =>
+  Boolean(t) && (t.tags ?? []).includes('general') && (t.tags ?? []).includes('routine-maker');
+
 /** Whether Refine from the answers applies to `t`: a structured decision the owner has answered. */
 export const isDecided = (t) =>
   Array.isArray(t.decision) && t.decision.length > 0 && t.status === 'completed' && Boolean(t.decisionAnswers);
@@ -1208,7 +1215,7 @@ export const actions = {
       () => api(`${path(t)}/decision/answers`, { method: 'POST', body: carryOn ? { answers, carryOn } : { answers } }),
       (r) =>
         !carryOn
-          ? isKickoffIdea(t)
+          ? isKickoffIdea(t) || isRoutineMaker(t)
             ? `Sent your answers on ${ref(t)}. Start the next run when you’re ready.`
             : `${ref(t)} is decided.`
           : r.waiting
@@ -1266,6 +1273,22 @@ export const actions = {
     });
     if (next) loadGitHub({ quiet: true });
     if (feature) loadFeature(feature);
+    await loadTasks();
+    if (activity.value.loaded) loadActivity();
+    loadAgents();
+    loadHealth();
+    return result;
+  },
+  /**
+   * Make with an agent (BRK-220 section 1): a routine maker's task from the owner's prompt, and its agent started, or
+   * waiting for room. Throws the board's refusal (no task is made then), so the dialog can show it beside the prompt.
+   * @param {{ prompt: string, repo?: string, force?: boolean }} body
+   */
+  async startRoutineMaker({ prompt, repo, force = false }) {
+    const result = await api('routines/agent', {
+      method: 'POST',
+      body: { prompt, repo: repo || undefined, force: force || undefined },
+    });
     await loadTasks();
     if (activity.value.loaded) loadActivity();
     loadAgents();

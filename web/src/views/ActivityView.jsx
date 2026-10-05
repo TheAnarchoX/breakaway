@@ -100,6 +100,8 @@ const ICONS = {
   trigger_refused: CircleX,
   trigger_noted: MessageSquare,
   trigger_waiting: Repeat,
+  routine_made: Repeat,
+  routine_changed: Repeat,
   chase_started: Bot,
   chase_stopped: Bot,
   chase_stalled: CircleAlert,
@@ -110,7 +112,7 @@ const SOURCES = {
   taskwarrior: { icon: Terminal, text: 'From Taskwarrior (task sync)' },
   github: { icon: GitPullRequest, text: 'From GitHub' },
   agents: { icon: Bot, text: 'From the board’s agents' },
-  routines: { icon: Repeat, text: 'From a routine’s trigger' },
+  routines: { icon: Repeat, text: 'From the board’s routines' },
   api: { icon: Globe, text: 'From the board or the API' },
 };
 
@@ -156,6 +158,10 @@ function describe(change) {
       return `A trigger for ${change.routine} was noted on its open run`;
     case 'trigger_waiting':
       return `A trigger for ${change.routine} made a run that waits for your Start`;
+    case 'routine_made':
+      return `${change.by ?? 'An agent'} made the routine ${change.routine}`;
+    case 'routine_changed':
+      return `${change.by ?? 'An agent'} changed the routine ${change.routine}`;
     case 'chase_started':
       return `You started a chase on ${change.feature}`;
     case 'chase_stopped':
