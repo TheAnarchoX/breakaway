@@ -1,6 +1,7 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { api } from './helpers.js';
+import { PROTOCOL } from '../src/mcp.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
 // IDEA-36 section 6 (BRK-214): every agent holding a task in an open chase changes the chase's other tasks under the
@@ -166,6 +167,79 @@ describe('chase agents and the chase’s tasks', () => {
     expect(res.status).toBe(403);
     expect(res.error).toMatch(/own repository.*gadgets/);
     expect((await show(inChase.wid)).status).toBe('pending');
+  });
+});
+
+describe('a chase agent through MCP', () => {
+  let spy;
+  beforeAll(() => {
+    spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 404 }));
+  });
+  afterAll(() => spy.mockRestore());
+
+  /** MCP's modify_task, as `agent`: the tool's result. */
+  async function modify(agent, args) {
+    const res = await SELF.fetch(`${ORIGIN}/mcp`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TEST_API_TOKEN}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'X-Breakaway-Agent': agent,
+        'X-Breakaway-Repo': 'widgets',
+        'MCP-Protocol-Version': PROTOCOL,
+        'Mcp-Method': 'tools/call',
+        'Mcp-Name': 'modify_task',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'modify_task',
+          arguments: args,
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': PROTOCOL,
+            'io.modelcontextprotocol/clientInfo': { name: 'test', version: '1.0.0' },
+            'io.modelcontextprotocol/clientCapabilities': {},
+          },
+        },
+      }),
+    });
+    return (await res.json()).result;
+  }
+
+  it('changes an unclaimed task of its chase through modify_task, and an agent outside the chase is still refused', async () => {
+    const { own, name } = await chaseAgent('zeta');
+    const target = await make({ tags: ['agent', 'zeta'], brief: 'Owner wrote this.', by: 'owner' });
+    const changed = await modify(name, {
+      task: target.wid,
+      brief: 'Sharper.',
+      done_when: 'Tests pass.',
+      tag: ['docs'],
+    });
+    expect(changed.isError).toBeUndefined();
+    expect(changed.structuredContent.task).toMatchObject({ brief: 'Sharper.', doneWhen: 'Tests pass.' });
+    expect(changed.structuredContent.task.tags).toContain('docs');
+    expect((await show(target.wid)).comments.at(-1)).toMatchObject({
+      by: 'board',
+      text: `Changed by ${own.wid}: description, done when, tags.`,
+    });
+
+    // The store's rule still decides: never a field outside it, like the pull request.
+    const pr = await modify(name, { task: target.wid, pr: 12 });
+    expect(pr.isError).toBe(true);
+    expect(pr.content[0].text).toMatch(/a chase agent .*ping/);
+
+    // An agent with no task in the chase, or a task outside it, is refused as before.
+    const bystander = await modify('claude-bystander', { task: target.wid, brief: 'Mine now.' });
+    expect(bystander.isError).toBe(true);
+    expect(bystander.content[0].text).toMatch(/only on a task you made/);
+    const outside = await make({ brief: 'Owner wrote this.', by: 'owner' });
+    const out = await modify(name, { task: outside.wid, tag: ['docs'] });
+    expect(out.isError).toBe(true);
+    expect(out.content[0].text).toMatch(/unclaimed: claim it first/);
+    expect(await show(target.wid)).toMatchObject({ brief: 'Sharper.', pr: null });
   });
 });
 
