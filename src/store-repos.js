@@ -423,6 +423,7 @@ export const reposMethods = {
       this.dropKeptRoutine(current.slug);
       if (this.ghCache) delete this.ghCache[current.slug];
       if (this.promptCache) delete this.promptCache[current.slug];
+      if (this.coreCache) delete this.coreCache[current.slug];
       return ok({
         removed: this.removedRepos().find((r) => r.slug === current.slug),
         open,

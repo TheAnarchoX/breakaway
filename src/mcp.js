@@ -8,10 +8,11 @@
  * transport mirrors it into headers, and the one before it, where a client opens with `initialize`.
  *
  * Each tool calls the same TaskStore method its CLI command's API route does, so the store's own guards stand behind
- * it. The tools that write (BRK-155), and the resources and prompts (BRK-156), come later.
+ * it. The resources and prompts (section 4) are in src/mcp-resources.js. The tools that write (BRK-155) come later.
  */
 import { authenticate } from './auth.js';
 import { releaseOf } from './build.js';
+import { McpFailure, PROMPTS, RESOURCE_TEMPLATES, getPrompt, listResources, readResource } from './mcp-resources.js';
 
 /** The newest MCP revision: per-request metadata, no `initialize`. */
 export const PROTOCOL = '2026-07-28';
@@ -117,6 +118,20 @@ export async function handleMcp(request, env, store, { maxBody }) {
   if (method === 'ping') return answer({});
   if (method === 'tools/list')
     return answer({ tools: TOOLS.map(({ run: _run, ...tool }) => tool), ...(era.modern ? CACHE : {}) });
+  if (method === 'resources/list' || method === 'resources/read' || method === 'prompts/get') {
+    try {
+      if (method === 'resources/list') return answer(await listResources(ctx));
+      if (method === 'resources/read') return answer(await readResource(params.uri, ctx));
+      return answer(await getPrompt(params.name, params.arguments, ctx));
+    } catch (error) {
+      if (!(error instanceof McpFailure)) throw error;
+      return failed(error.status, error.code, error.message, error.data);
+    }
+  }
+  // The same for every caller, so the newest revision may keep them as it keeps the tool list.
+  if (method === 'resources/templates/list')
+    return answer({ resourceTemplates: RESOURCE_TEMPLATES, ...(era.modern ? CACHE : {}) });
+  if (method === 'prompts/list') return answer({ prompts: PROMPTS, ...(era.modern ? CACHE : {}) });
   if (method === 'tools/call') {
     const tool = TOOLS.find((t) => t.name === params.name);
     if (!tool) return failed(400, INVALID_PARAMS, `no tool "${String(params.name).slice(0, 64)}" on the board`);
@@ -133,7 +148,7 @@ export async function handleMcp(request, env, store, { maxBody }) {
 
 // ---- The transport -----------------------------------------------------------------------
 
-const CAPABILITIES = { tools: {} };
+const CAPABILITIES = { tools: {}, resources: {}, prompts: {} };
 
 const serverInfo = (env) => ({ name: 'breakaway', title: 'breakaway', version: releaseOf(env) });
 const serverMeta = (env) => ({ [META_SERVER]: serverInfo(env) });
@@ -198,6 +213,12 @@ function eraOf(request, method, params) {
   if (request.headers.get('Mcp-Method') !== method) return mismatch(`the Mcp-Method header must be ${method}`);
   if (method === 'tools/call' && headerValue(request, 'Mcp-Name') !== params.name)
     return mismatch('the Mcp-Name header must be the tool’s name, as in params.name');
+  // A client that names the resource or prompt in the header names the one in the body.
+  const target = method === 'resources/read' ? params.uri : method === 'prompts/get' ? params.name : undefined;
+  if (target !== undefined && request.headers.has('Mcp-Name') && headerValue(request, 'Mcp-Name') !== target)
+    return mismatch(
+      `the Mcp-Name header must be the ${method === 'prompts/get' ? 'prompt’s name' : 'resource’s uri'}, as in params`,
+    );
   const capabilities = meta[META_CAPABILITIES];
   if (!capabilities || typeof capabilities !== 'object')
     return {
@@ -361,7 +382,7 @@ function taskLine(t) {
 }
 
 /** A task in full, as `npx breakaway show` prints it, in Markdown. */
-function taskDetail(t) {
+export function taskDetail(t) {
   const out = [`# ${idOf(t)} · ${t.description}`, ''];
   const row = (k, v) => v && out.push(`- **${k}:** ${v}`);
   const inReview = t.status === 'pending' && (t.github ?? []).some((p) => p.closes && p.state === 'open');

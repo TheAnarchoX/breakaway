@@ -138,6 +138,7 @@ export const initMethods = {
     // The wizard's init and prompt steps tick from the next look, and the sync catches up with the new commit.
     this.setGhMeta('gh_empty', repo.slug, null);
     if (this.promptCache) delete this.promptCache[repo.slug];
+    if (this.coreCache) delete this.coreCache[repo.slug];
     if (this.setupLive) delete this.setupLive[repo.github.toLowerCase()];
     await this.githubWebhook('push', null, { slug: repo.slug });
     return {
