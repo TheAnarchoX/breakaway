@@ -9,7 +9,9 @@ import {
   deployTarget,
   isHealthy,
   latestReleases,
+  newWorkerStop,
   parseState,
+  pingHealth,
   previousVersionId,
   workerMissing,
   shapeChanges,
@@ -292,6 +294,28 @@ describe('rollback', () => {
       isHealthy({ ok: true, release: '0.2.0', secrets: { ok: false, unreadable: ['TASKS_SYNC_KEY'] } }, '0.2.0'),
     ).toBe(false);
     expect(isHealthy(null, '0.2.0')).toBe(false);
+  });
+
+  it('tells a release waiting for its secrets from one that is down (BRK-141)', () => {
+    const missing = { ok: false, unreadable: ['TASKS_SYNC_KEY'] };
+    expect(pingHealth({ ok: true, release: '0.2.0', secrets: { ok: true, unreadable: [] } }, '0.2.0')).toBe('healthy');
+    expect(pingHealth({ ok: true, release: '0.2.0', secrets: missing }, '0.2.0')).toBe('secrets');
+    expect(pingHealth({ ok: true, release: '0.1.0', secrets: missing }, '0.2.0')).toBe('down');
+    expect(pingHealth(null, '0.2.0')).toBe('down');
+  });
+
+  it('takes a Worker that does not exist for a first deploy only when the install has no board yet (BRK-141)', () => {
+    expect(newWorkerStop({ worker: 'acme-board' })).toBeNull();
+    expect(
+      newWorkerStop({ worker: 'acme-board', variable: '', running: '', at: 'https://board.example.com' }),
+    ).toBeNull();
+    const set = newWorkerStop({ worker: 'acme-bord', variable: 'https://board.example.com' });
+    expect(set).toMatch(/no Worker named acme-bord/u);
+    expect(set).toMatch(/BREAKAWAY_URL is set \(https:\/\/board\.example\.com\)/u);
+    expect(set).toMatch(/nothing was deployed/u);
+    const answered = newWorkerStop({ worker: 'acme-bord', running: '0.2.0', at: 'https://board.example.com' });
+    expect(answered).toMatch(/https:\/\/board\.example\.com answers as breakaway 0\.2\.0/u);
+    expect(answered).toMatch(/delete the repository variable BREAKAWAY_URL/u);
   });
 });
 

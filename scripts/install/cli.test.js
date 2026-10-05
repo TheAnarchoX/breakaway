@@ -206,11 +206,45 @@ describe('the deploy workflow’s steps', () => {
   });
 
   it('stops on a failed list unless the Worker does not exist', async () => {
+    put('breakaway.config.json', { name: 'board', worker: 'board' });
     await runStep('missing', {}, { ...io(), input: () => 'This Worker does not exist on your account. [code: 10007]' });
     expect(lines).toEqual(['first=true']);
     await expect(
       runStep('missing', {}, { ...io(), input: () => 'Invalid account identifier [code: 7003]' }),
     ).rejects.toThrow(/CLOUDFLARE_ACCOUNT_ID[\s\S]*7003/);
+  });
+
+  it('stops a new Worker on an install that already has a board, and makes nothing (BRK-141)', async () => {
+    put('breakaway.config.json', { name: 'board', worker: 'bord', url: 'https://board.example.com' });
+    const missing = { ...io(), input: () => 'This Worker does not exist on your account. [code: 10007]' };
+    // A dispatch on an install whose BREAKAWAY_URL is set: the name is mistyped, not new.
+    await expect(
+      runStep(
+        'missing',
+        { variable: 'https://board.example.com', running: '', at: 'https://board.example.com' },
+        missing,
+      ),
+    ).rejects.toMatchObject({ code: 2, message: expect.stringMatching(/no Worker named bord[\s\S]*empty board/u) });
+    // The address answered as a release, with no variable set: a board runs there.
+    await expect(
+      runStep('missing', { variable: '', running: '0.2.0', at: 'https://board.example.com' }, missing),
+    ).rejects.toMatchObject({ code: 2, message: expect.stringContaining('answers as breakaway 0.2.0') });
+    expect(lines).toEqual([]);
+    // Nothing set and nothing answering: the first deploy.
+    await runStep('missing', { variable: '', running: '', at: 'https://board.example.com' }, missing);
+    expect(lines).toEqual(['first=true']);
+  });
+
+  it('passes a first deploy that answers before its secrets are on, and no later one (BRK-141)', async () => {
+    const waiting = '{"ok":true,"release":"0.2.0","secrets":{"ok":false,"unreadable":["TASKS_SYNC_KEY"]}}';
+    const ping = { ...io(), input: () => waiting };
+    expect(await runStep('healthy', { version: '0.2.0', first: 'true' }, ping)).toBe(0);
+    expect(lines).toEqual(['health=secrets']);
+    expect(await runStep('healthy', { version: '0.2.0', first: 'false' }, ping)).toBe(1);
+    expect(await runStep('healthy', { version: '0.2.0' }, ping)).toBe(1);
+    // Down is down, first deploy or not.
+    expect(await runStep('healthy', { version: '0.2.0', first: 'true' }, { ...io(), input: () => '' })).toBe(1);
+    expect(lines).toEqual(['health=down']);
   });
 
   it('reads the previous version and the health of a ping from stdin', async () => {
