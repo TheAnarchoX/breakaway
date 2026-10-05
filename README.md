@@ -52,7 +52,7 @@ Rather do it by hand? [The self-hosting guide](https://github.com/TheAnarchoX/br
   <img alt="Agents claim the work. You merge it. In three steps: an agent, claude-brk-12, claims the task BRK-12; it opens a pull request that says Closes BRK-12.; you merge, and the task is done." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/how-dark.png" width="100%">
 </picture>
 
-1. **Write the work down.** Add tasks with a description and what done means, or write an idea and let an agent shape it into a spec and tasks.
+1. **Write the work down.** Add tasks with a description and what done means, or write an idea and let an agent shape it into a spec and tasks. Starting something with no repository yet? **Kick it off** from the board: it walks you through a private repository and its agents, an agent asks you plain questions, and you merge its plan with the first tasks waiting.
 2. **Agents claim it.** A claim is atomic, so two agents never work the same task. Start Claude Code cloud agents from the board, or let local Claude Code sessions pick up work through the CLI.
 3. **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review. The task is done when you merge it.
 4. **They ping you when they're stuck.** An agent that needs you sends a ping to your inbox. The rest waits on the board.
