@@ -191,6 +191,8 @@ function mock() {
     if (path.endsWith('/settings'))
       return reply({
         compatibility_date: '2026-09-26',
+        // An install from before /mcp, with a route of its own.
+        assets: { config: { run_worker_first: ['/api/*', '/v1/*', '/github/*', '/login', '/logout', '/hooks/*'] } },
         bindings: [
           { type: 'durable_object_namespace', name: 'STORE', class_name: 'TaskStore' },
           { type: 'json', name: 'TASKS_INSTALL', json: { name: 'acme' } },
@@ -261,6 +263,16 @@ describe('updating the Worker from the board', () => {
       expect(metadata.main_module).toBe('src/worker.js');
       expect(metadata.keep_bindings).toContain('secret_text');
       expect(metadata.assets.jwt).toBe('completion-jwt');
+      // It keeps the install's own routes and gains the ones a release adds (BRK-154).
+      expect(metadata.assets.config.run_worker_first).toEqual([
+        '/api/*',
+        '/v1/*',
+        '/github/*',
+        '/login',
+        '/logout',
+        '/hooks/*',
+        '/mcp',
+      ]);
       const bindings = Object.fromEntries(metadata.bindings.map((b) => [b.name, b]));
       expect(bindings.STORE.type).toBe('durable_object_namespace');
       expect(bindings.BREAKAWAY_VERSION.text).toBe(TARGET);

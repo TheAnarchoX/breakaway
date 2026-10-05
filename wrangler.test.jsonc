@@ -4,7 +4,7 @@
   "name": "breakaway-test",
   "main": "./src/worker.js",
   "compatibility_date": "2026-08-01",
-  "assets": { "directory": "./web/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/login", "/logout"] },
+  "assets": { "directory": "./web/public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/mcp", "/login", "/logout"] },
   "vars": {
     "TASKS_GITHUB_REPO": "acme/widgets",
     "TASKS_INSTALL": { "name": "widgets tasks", "worker": "widgets-tasks", "url": "https://tasks.acme.example", "secretsPrefix": "WIDGETS_TASKS_", "store": "widgets", "docs": "https://github.com/acme/widgets/blob/main/docs/tasks.md" }
