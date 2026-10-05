@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
+  Archive,
   ArrowRight,
   Bot,
   CircleCheck,
@@ -18,7 +19,18 @@ import {
   Undo2,
 } from 'lucide-preact';
 import { HORIZONS, canAgentReview, openPr, ref, stateOf } from '../lib/model.js';
-import { actions, agents, byUuid, focusComment, hashFor, me, openTask, releaseOther, taskMenu } from '../lib/store.js';
+import {
+  actions,
+  agents,
+  byUuid,
+  focusComment,
+  hashFor,
+  me,
+  openTask,
+  releaseOther,
+  taskMenu,
+  view,
+} from '../lib/store.js';
 import { copy } from '../lib/clipboard.js';
 import { RefineDialog, refineReason, setAutostart, startState } from './Agents.jsx';
 import { RefineFromAnswersDialog, refineFromAnswers } from './RefineFromAnswers.jsx';
@@ -246,6 +258,15 @@ function itemsFor(t, { selection, refine, refineAnswers }) {
           icon: icon(ArrowRight),
           run: () => actions.update(t, { horizon: h.id }, `Moved to ${h.label.toLowerCase()}.`),
         });
+  // Archive a finished task (WEB-44) on the board and the list. Not on the dependency graph: its finished tasks
+  // drop off by themselves once nothing still waits for them.
+  if (done && t.horizon !== 'archive' && (view.value === 'board' || view.value === 'list'))
+    work.push({
+      id: 'archive',
+      label: 'Archive',
+      icon: icon(Archive),
+      run: () => actions.update(t, { horizon: 'archive' }, 'Archived.'),
+    });
   if (done) work.push({ id: 'reopen', label: 'Open again', icon: icon(RotateCcw), run: () => actions.reopen(t) });
   else work.push({ id: 'done', label: 'Mark done', icon: icon(CircleCheck), run: () => actions.done(t) });
 
