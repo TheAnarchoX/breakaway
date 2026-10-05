@@ -1,7 +1,7 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BOARD_FILES from '../src/board-files.json';
-import { initPlan, promptSections } from '../src/init.js';
+import { PLUGIN, PLUGIN_BRANCH, PLUGIN_REPO, initPlan, pluginPendingNote, promptSections } from '../src/init.js';
 import { promptPlaceholders } from '../src/wizard.js';
 import { BREAKAWAY_REPO } from '../src/updates.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -26,7 +26,15 @@ const encode = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(te
 /** A pretend GitHub for acme/gadgets: empty until something is written, then the files of its branch's commit. */
 const gh = {};
 function mockGitHub() {
-  Object.assign(gh, { head: null, files: new Map(), commits: [], writes: [], trees: [], raceOnPut: false });
+  Object.assign(gh, {
+    head: null,
+    files: new Map(),
+    commits: [],
+    writes: [],
+    trees: [],
+    raceOnPut: false,
+    pluginOut: true,
+  });
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     const reply = (data, status = 200) => Response.json(data, { status });
@@ -40,6 +48,9 @@ function mockGitHub() {
     if (path === '/app/installations/92/access_tokens')
       return reply({ token: 'ghs_init', expires_at: new Date(Date.now() + 3_600_000).toISOString() });
     if (path === REPO) return reply({ full_name: 'acme/gadgets', allow_auto_merge: true });
+    // breakaway's plugin branch (BRK-159): there once a stable release moved it.
+    if (path === `/repos/${PLUGIN_REPO}/branches/${PLUGIN_BRANCH}`)
+      return gh.pluginOut ? reply({ name: PLUGIN_BRANCH }) : reply({ message: 'Branch not found' }, 404);
     if (path === '/rate_limit')
       return reply({ resources: { core: { limit: 5000, remaining: 4999, reset: 1_790_000_000 } } });
     const rest = path.slice(REPO.length);
@@ -177,6 +188,10 @@ describe('Add the board’s files', () => {
       expect(gh.files.get('tools/tasks/prompts/core.md').content).toBe(BOARD_FILES['prompts/core.md']);
       expect(gh.files.get('.taskrc').content).toContain(`sync.server.url=${ORIGIN}\n`);
       expect(gh.files.get('AGENTS.md').content).toContain("This repository's tasks are in the areas app (`GDG`)");
+      // breakaway's plugin, not copies of the tasks skill and the session hooks (BRK-159).
+      expect(res.body.plugin).toBe(true);
+      expect(JSON.parse(gh.files.get('.claude/settings.json').content).enabledPlugins).toEqual({ [PLUGIN]: true });
+      expect(gh.files.has('.agents/skills/tasks/SKILL.md')).toBe(false);
       // The prompt's sections took their defaults, so nothing is left for an agent to mistake for an instruction.
       expect(promptPlaceholders(gh.files.get(PROMPT).content)).toEqual([]);
 
@@ -189,6 +204,21 @@ describe('Add the board’s files', () => {
       const again = await s.boardFilesApi('gadgets', { origin: ORIGIN });
       expect(again).toMatchObject({ status: 409, body: { command: 'npx breakaway repos init gadgets' } });
       expect(gh.writes).toEqual([]);
+    });
+  });
+
+  it('copies the tasks skill and the hooks, and says why in the commit, while the plugin isn’t out (BRK-159)', async () => {
+    await withGadgets('init-no-plugin', async (s) => {
+      gh.pluginOut = false;
+      const res = await s.boardFilesApi('gadgets', { by: 'owner', origin: ORIGIN });
+      expect(res.status).toBe(201);
+      expect(res.body.plugin).toBe(false);
+      expect(res.body.notes).toEqual([pluginPendingNote('gadgets')]);
+      expect(gh.files.has('.agents/skills/tasks/SKILL.md')).toBe(true);
+      expect(Object.keys(JSON.parse(gh.files.get('.claude/settings.json').content))).toEqual(['hooks']);
+      expect(gh.made.message).toMatch(
+        /Added by the board, through its GitHub App\.\n\nbreakaway's plugin isn't out yet/u,
+      );
     });
   });
 

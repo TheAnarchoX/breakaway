@@ -13,6 +13,7 @@
  *
  * Run by the plugin at SessionStart, it first passes the plugin's settings on to the session's Bash commands (CLI-8).
  */
+import { checkoutRunsHooks } from './plugin-hooks.js';
 import { boardConfig, claimedTask, dropClaim, projectRoot } from './hook-config.js';
 import { passPluginEnv } from './plugin-env.js';
 import { clearHookFailure, noteHookFailure, sessionRequest } from './proxy.js';
@@ -22,6 +23,8 @@ import { CONTEXT_EVENTS, messageOutput, releasedOutput } from './session-message
 async function main() {
   passPluginEnv();
   const root = projectRoot();
+  // The plugin's copy of this hook steps aside when the checkout's settings run it too (BRK-159).
+  if (checkoutRunsHooks(root)) return;
   const claim = claimedTask(root);
   if (!claim) return;
 

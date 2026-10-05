@@ -49,6 +49,8 @@ import { checkInstall, confirmInstall, tokenTarget, unverifiedInstall } from './
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import {
   CLI_PACKAGE,
+  PLUGIN_BRANCH,
+  PLUGIN_REPO,
   PROMPT_SECTIONS,
   initCommitMessage,
   initPlan,
@@ -305,8 +307,12 @@ Working
                          In a terminal it asks for each section of the agent prompt (Enter takes the default), or
                          takes them from --building --checks --pull-requests --direction --dependency-updates
                          --never-share <text>; --defaults takes the default for the rest without asking
-    --update             refresh the copied files (the CLI, core, skill, Taskwarrior files) in a pull request when they're
-                         older than this checkout's; the repository's own (its prompt, AGENTS.md) are never touched
+                         The tasks skill and the session hooks come from breakaway's Claude Code plugin, which
+                         .claude/settings.json turns on; until the plugin is out, they're copied, and it says so
+    --update             refresh the copied files (core, Taskwarrior files, release helpers) in a pull request when
+                         they're older than this checkout's, and move a repository with copies to the plugin; the
+                         repository's own (its prompt, AGENTS.md) are never touched
+    --copies             copy the tasks skill and the session hooks instead of using the plugin (with or without --update)
     --pipeline           also add the deploy flow: .github/breakaway-pipeline.json for the Workers --staging <name> and
                          --production <name> (asked in a terminal; default <slug>-staging and <slug>), what it renders,
                          and a minimal CI when the repository has no workflow. Only new files: never one it already has
@@ -438,7 +444,7 @@ const FLAGS = new Set([
   'check',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
-const INIT_FLAGS = new Set(['pipeline']);
+const INIT_FLAGS = new Set(['pipeline', 'copies']);
 
 function parse(argv) {
   const positional = [];
@@ -2092,7 +2098,10 @@ async function initRepo(slug) {
     /* not a git checkout */
   }
   const answers = update || readTarget(promptPathOf(repo)) !== null ? {} : await promptAnswers();
+  const plugin = !opts.copies;
   const plan = initPlan({
+    plugin,
+    pluginReleased: plugin ? pluginReleased() : false,
     repo,
     board: board ?? 'TheAnarchoX/breakaway',
     url: BASE,
@@ -2144,7 +2153,7 @@ async function initRepo(slug) {
       : []),
     ...(plan.removals.length
       ? [
-          `${opts['dry-run'] ? 'Would remove' : 'Removing'} ${plan.removals.length} files of the old copy of the CLI (npx breakaway replaces it):`,
+          `${opts['dry-run'] ? 'Would remove' : 'Removing'} ${plan.removals.length} files the board no longer copies here (npx breakaway${plan.plugin ? " and breakaway's plugin replace" : ' replaces'} them):`,
           ...plan.removals.map((p) => `  ${p}`),
         ]
       : []),
@@ -2207,7 +2216,8 @@ async function initRepo(slug) {
     );
   }
   const first = initCommitMessage(repo.slug, {
-    by: `npx breakaway repos init ${repo.slug}${opts.pipeline ? ' --pipeline' : ''}${opts.package ? ' --package' : ''}`,
+    by: `npx breakaway repos init ${repo.slug}${opts.copies ? ' --copies' : ''}${opts.pipeline ? ' --pipeline' : ''}${opts.package ? ' --package' : ''}`,
+    plugin: plan.plugin,
   });
   const title = update ? "Update the task board's agent files" : first.title;
   git(
@@ -2216,7 +2226,7 @@ async function initRepo(slug) {
     title,
     '-m',
     update
-      ? `The board's core, skill, release helpers, and Taskwarrior files as they are in ${board ?? 'breakaway'} now, and the session hooks run through npx, so an old copy of the CLI is removed: run it as npx ${CLI_PACKAGE}. This repository's own files are unchanged. Updated by npx ${CLI_PACKAGE} repos init ${repo.slug} --update.`
+      ? `The board's core, ${plan.plugin ? '' : 'skill, '}release helpers, and Taskwarrior files as they are in ${board ?? 'breakaway'} now, ${plan.plugin ? "and breakaway's Claude Code plugin in .claude/settings.json instead of the copied tasks skill and session hooks" : 'and the session hooks run through npx'}, so an old copy of the CLI is removed: run it as npx ${CLI_PACKAGE}. This repository's own files are unchanged. Updated by npx ${CLI_PACKAGE} repos init ${repo.slug} --update${opts.copies ? ' --copies' : ''}.`
       : `${first.body}${starter.files.length ? ` It also adds the deploy and release flows, rendered from ${starter.files[0].path}.` : ''}`,
   );
   const pushed = spawnSync('git', ['-C', dir, 'push', '-u', 'origin', empty ? `HEAD:refs/heads/${branch}` : work], {
@@ -2242,7 +2252,7 @@ async function initRepo(slug) {
         title,
         '--body',
         update
-          ? `The task board's copied files (its CLI, the core and stub, the tasks skill, and the Taskwarrior files) as they are on the board's repository now, updated by \`npx breakaway repos init ${repo.slug} --update\`. This repository's own files (its agent prompt, AGENTS.md, .taskrc, .envrc, package.json, .claude/settings.json) are unchanged.`
+          ? `The task board's copied files (the core and stub, ${plan.plugin ? '' : 'the tasks skill, '}the release helpers, and the Taskwarrior files) as they are on the board's repository now, updated by \`npx breakaway repos init ${repo.slug} --update${opts.copies ? ' --copies' : ''}\`. ${plan.plugin ? "The tasks skill and the session hooks come from breakaway's Claude Code plugin, which .claude/settings.json turns on, so their copies are removed. " : ''}This repository's own files (its agent prompt, AGENTS.md, .taskrc, .envrc, package.json${plan.plugin ? '' : ', .claude/settings.json'}) are otherwise unchanged.${plan.notes.length ? `\n\nNotes:\n${plan.notes.map((n) => `- ${n}`).join('\n')}` : ''}`
           : `The files the task board's agents need to claim and work a task in this repository, added by \`npx breakaway repos init ${repo.slug}\`. Nothing that was there is changed. If this repository's linter reads plain JavaScript, exclude the copied scripts (tools/tasks/ and the release helpers) from it.${plan.todo.length ? `\n\nStill to do:\n${plan.todo.map((t) => `- ${t}`).join('\n')}` : ''}`,
       ],
       { encoding: 'utf8' },
@@ -2260,6 +2270,24 @@ async function initRepo(slug) {
     `Taskwarrior there: scripts/task, or plain task after direnv allow (direnv isn't needed: scripts/task works without it).`,
   );
   console.log(['', ...next].join('\n'));
+}
+
+/**
+ * Whether breakaway's plugin is out (BRK-159): its marketplace gives it out from the plugin branch, which a stable
+ * release moves, so until that branch is there, repos init copies the skill and hooks instead. Null when GitHub can't
+ * be reached, which repos init says, and copies too.
+ */
+function pluginReleased() {
+  try {
+    const heads = execFileSync(
+      'git',
+      ['ls-remote', '--heads', `https://github.com/${PLUGIN_REPO}.git`, `refs/heads/${PLUGIN_BRANCH}`],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20_000 },
+    );
+    return heads.trim() !== '';
+  } catch {
+    return null;
+  }
 }
 
 /**

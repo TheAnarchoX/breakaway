@@ -7,7 +7,7 @@
  */
 import BOARD_FILES from './board-files.json' with { type: 'json' };
 import { GitHubError, appCredentials, isEmptyRepo } from './github.js';
-import { initCommitMessage, initPlan, promptSections } from './init.js';
+import { PLUGIN_BRANCH, PLUGIN_REPO, initCommitMessage, initPlan, promptSections } from './init.js';
 import { BREAKAWAY_REPO } from './updates.js';
 
 /** @param {string} path */
@@ -16,6 +16,23 @@ const readBoardFile = (path) => {
   if (text === undefined) throw new Error(`the board's copy of ${path} is missing (src/board-files.json)`);
   return text;
 };
+
+/**
+ * Whether breakaway's plugin is out (BRK-159): its branch is there once a stable release moved it. Until then the first
+ * commit copies the tasks skill and the session hooks, and says why. Null when GitHub doesn't say either way.
+ * @returns {Promise<boolean | null>}
+ */
+async function pluginReleased() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${PLUGIN_REPO}/branches/${PLUGIN_BRANCH}`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'breakaway' },
+    });
+    if (res.status === 404) return false;
+    return res.ok ? true : null;
+  } catch {
+    return null;
+  }
+}
 
 /** UTF-8 text as base64, for the contents API. */
 const base64 = (text) => {
@@ -96,9 +113,13 @@ export const initMethods = {
       url: origin,
       read: readBoardFile,
       readTarget: () => null,
+      pluginReleased: await pluginReleased(),
       ...promptSections({}),
     });
-    const { title, body } = initCommitMessage(repo.slug, { by: 'the board, through its GitHub App' });
+    const { title, body } = initCommitMessage(repo.slug, {
+      by: 'the board, through its GitHub App',
+      plugin: plan.plugin,
+    });
     const first = plan.files.find((f) => f.path === '.gitignore') ?? plan.files.find((f) => !f.link);
 
     // The contents API is the only write GitHub takes on an empty repository. A file that's there already means it
@@ -125,8 +146,10 @@ export const initMethods = {
     if (started?.commit?.parents?.length) return raced;
 
     const tree = await client.send('POST', '/git/trees', { tree: plan.files.map(treeEntry) });
+    // What the plan says to the owner (why it copied instead of using the plugin) goes in the commit, where they see it.
+    const notes = plan.notes.map((n) => `\n\n${n}`).join('');
     const commit = await client.send('POST', '/git/commits', {
-      message: `${title}\n\n${body}`,
+      message: `${title}\n\n${body}${notes}`,
       tree: tree.sha,
       parents: [],
     });
@@ -148,6 +171,8 @@ export const initMethods = {
         branch,
         commit: { sha: commit.sha, url: commit.html_url ?? `https://github.com/${repo.github}/commit/${commit.sha}` },
         files: plan.files.map((f) => f.path),
+        plugin: plan.plugin,
+        notes: plan.notes,
         todo: plan.todo,
       },
     };
