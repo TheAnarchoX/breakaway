@@ -558,3 +558,17 @@ export function specLines(spec) {
   out.push('', `Refine it: npx breakaway agents new --spec ${spec.path} "<what should change>"`);
   return out;
 }
+
+/**
+ * What's left by hand once `repos remove` took a repository off the board (CLI-4): the board can't delete its routine
+ * on claude.ai, connected or not, nor the repository on GitHub. `repos remove` ends with these, and `--json` carries
+ * them as `byHand`.
+ * @param {string} github the repository, as owner/name
+ * @returns {string[]}
+ */
+export function removedRepoByHand(github) {
+  return [
+    `Delete its routine on claude.ai, with its API trigger: open claude.ai/code/routines, then the routine for ${github}. The board can't delete it, whether or not it was connected.`,
+    `Made ${github} only for a rehearsal? Delete it on GitHub too (Settings, then Danger zone; or gh auth refresh -h github.com -s delete_repo once, then gh repo delete ${github}), and your local clone.`,
+  ];
+}

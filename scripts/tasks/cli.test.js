@@ -25,6 +25,7 @@ import {
   SUBCOMMANDS,
   staleCliWarning,
   releaseBehind,
+  removedRepoByHand,
   unknownSubcommand,
 } from './cli.js';
 
@@ -638,5 +639,18 @@ describe('agents new --spec (BRK-121)', () => {
         { spec: true },
       ),
     ).toBe('a1b2c3d4 already refines this spec: claude-a1b2c3d4 is on it.');
+  });
+});
+
+describe('repos remove', () => {
+  it('ends with deleting the routine on claude.ai and, after a rehearsal, the repository on GitHub', () => {
+    const steps = removedRepoByHand('acme/widgets');
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toMatch(
+      /^Delete its routine on claude\.ai, with its API trigger: open claude\.ai\/code\/routines/u,
+    );
+    expect(steps[0]).toContain('acme/widgets');
+    expect(steps[1]).toContain('gh repo delete acme/widgets');
+    expect(steps[1]).toMatch(/rehearsal/u);
   });
 });
