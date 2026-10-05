@@ -10,14 +10,16 @@ import { TurnOnDeploys } from './TurnOnDeploys.jsx';
  * repository without a pipeline that follows the move from the press to Turn on deploys. Move to breakaway's deploy
  * flow adds the move's task and starts its agent; the card then shows the agent, its pull request and what's left for
  * you after merging, the merge, or why the agent stopped with Try again. Once the move's files are on the default
- * branch it is Turn on deploys (WEB-13). The GitHub page and a repository's settings page (WEB-33) both show it.
+ * branch it is Turn on deploys (WEB-13). The GitHub page, a repository's settings page (WEB-33), and the Add a
+ * repository wizard's Deploys step (WEB-14) show it.
  */
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
-/** Skip hides the card for one repository in this browser. */
+/** Skip hides the card for one repository in this browser, on the GitHub page and in the wizard alike. */
 const skipKey = (slug) => `tasks.deploySkip.${slug}`;
-function skipped(slug) {
+export function deploySkipped(slug) {
+  if (!slug) return false;
   try {
     return localStorage.getItem(skipKey(slug)) === '1';
   } catch {
@@ -29,6 +31,14 @@ function saveSkip(slug) {
     localStorage.setItem(skipKey(slug), '1');
   } catch {
     /* storage blocked: the card stays hidden until reload */
+  }
+}
+/** Offers the move again after a Skip (the wizard's Show it again). */
+export function unskipDeploys(slug) {
+  try {
+    localStorage.removeItem(skipKey(slug));
+  } catch {
+    /* storage blocked: nothing was kept */
   }
 }
 
@@ -75,13 +85,14 @@ function AfterMerging({ deploys, publishes, branch }) {
 /**
  * The card for one repository without a pipeline: Turn on deploys when the move's files are on its default branch,
  * else the move's stage. `label` names the repository when the view shows several, `heading` is its heading's level,
- * `skippable` offers Skip (the GitHub page; a repository's settings page doesn't), and `onDone` runs once it's on.
+ * `skippable` offers Skip (the GitHub page and the wizard; a repository's settings page doesn't), `onSkip` runs after
+ * it, and `onDone` runs once it's on.
  * @param {Record<string, any>} props
  */
-export function DeployCard({ view, label = null, heading = 'h2', skippable = true, onDone = null }) {
+export function DeployCard({ view, label = null, heading = 'h2', skippable = true, onSkip = null, onDone = null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(/** @type {string | null} */ (null));
-  const [hidden, setHidden] = useState(() => skippable && skipped(view?.slug));
+  const [hidden, setHidden] = useState(() => skippable && deploySkipped(view?.slug));
   if (!view || view.pipeline || view.empty) return null;
   if (view.pipelineFound) return <TurnOnDeploys view={view} label={label} heading={heading} onDone={onDone} />;
   const move = view.move;
@@ -116,6 +127,7 @@ export function DeployCard({ view, label = null, heading = 'h2', skippable = tru
   const skip = () => {
     saveSkip(view.slug);
     setHidden(true);
+    onSkip?.();
   };
   const sync = () => loadGitHub({ sync: true });
 

@@ -57,6 +57,7 @@ describe('the wizard, the pure parts', () => {
       'install',
       'register',
       'init',
+      'deploys',
       'prompt',
       'routine',
       'connect',
@@ -67,6 +68,32 @@ describe('the wizard, the pure parts', () => {
     expect(empty.steps.find((s) => s.id === 'install').problem.fix).toMatch(/Connect the GitHub App/);
     // Registered first, the GitHub steps still come first.
     expect(wizardSteps({ registered: { slug: 'x' }, app: true }).now).toBe('create');
+  });
+
+  it('offers Deploys after init as an optional step that never blocks the ones after it (WEB-14)', () => {
+    const facts = {
+      registered: { slug: 'x', pipeline: null },
+      app: true,
+      synced: 1,
+      prompt: { status: 'ok', placeholders: [] },
+      routine: true,
+      connections: ['github.install', 'github.permissions', 'github.automerge'].map((id) => ({ id, state: 'working' })),
+      work: { claimed: { wid: 'X-1' } },
+    };
+    const off = wizardSteps(facts);
+    expect(off.steps.find((s) => s.id === 'deploys')).toMatchObject({
+      name: 'Deploy with breakaway (optional)',
+      optional: true,
+      done: false,
+    });
+    // Init done, the step after Deploys is the one to do now; with the agent's checks done too, every step is.
+    expect(wizardSteps({ ...facts, work: {} }).now).toBe('task');
+    expect(off.now).toBe('agent');
+    const all = { started: { wid: 'X-1' }, output: { wid: 'X-1' }, pull: { wid: 'X-1' }, merged: { wid: 'X-1' } };
+    expect(wizardSteps({ ...facts, work: { ...facts.work, ...all } })).toMatchObject({ now: null, done: true });
+    // A pipeline ticks it.
+    const on = wizardSteps({ ...facts, registered: { slug: 'x', pipeline: { workers: {} } } });
+    expect(on.steps.find((s) => s.id === 'deploys').done).toBe(true);
   });
 });
 
@@ -212,6 +239,7 @@ describe('the wizard, on the board', () => {
       s.setGhMeta('gh_last_sync', 'breakaway', Date.now());
       body = await setup(s, { github: 'acme/breakaway' });
       expect(body).toMatchObject({ registered: true, slug: 'breakaway', now: 'init' });
+      expect(step(body, 'deploys')).toMatchObject({ optional: true, done: false });
       expect(step(body, 'init').detail).toBe('no commits yet');
       expect(step(body, 'init').problem).toBeNull();
 
@@ -257,7 +285,9 @@ describe('the wizard, on the board', () => {
       // The board finishes the task when its pull request merges.
       expect((await s.update(task.wid, { status: 'completed' })).status).toBe(200);
       body = await setup(s, { slug: 'breakaway' });
+      // Deploys is optional: every step is done without a pipeline.
       expect(body).toMatchObject({ now: null, done: true });
+      expect(step(body, 'deploys').done).toBe(false);
 
       // It only ever read GitHub.
       expect(gh.writes).toEqual([]);
