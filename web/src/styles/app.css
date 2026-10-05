@@ -6988,7 +6988,8 @@ fieldset.field {
 .ch-chase-title a:hover {
   text-decoration: underline;
 }
-/* The peloton (IDEA-32): who rides it and its posts, newest last. Read-only. */
+/* The peloton (IDEA-32, IDEA-36): the open huddle, the chase's plan, who rides it, its posts, newest last, and the
+   box you post from when signed in. */
 .pl-panel {
   display: grid;
   gap: 10px;
@@ -7101,6 +7102,123 @@ fieldset.field {
 }
 .pl-scroll.is-compact {
   max-height: min(300px, 45dvh);
+}
+/* Your posts: a bar on the left as well as "You", so they're yours by more than colour. */
+.pl-post.is-mine {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+}
+.pl-you {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.pl-kind-huddle,
+.pl-kind-outcome,
+.pl-kind-plan {
+  color: var(--text);
+  font-weight: 600;
+}
+.pl-mention {
+  font-family: var(--font-mono);
+  font-size: 0.93em;
+  font-weight: 600;
+}
+a.pl-mention {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* Reply sits in the post's corner, so it never takes a line of its own on a narrow screen. */
+.pl-post.has-reply {
+  position: relative;
+}
+.pl-post.has-reply > .pl-head {
+  padding-right: 28px;
+}
+.pl-reply {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+}
+/* The open huddle and the plan sit above the posts, framed so they read as pinned. */
+.pl-huddle,
+.pl-plan {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  min-width: 0;
+}
+.pl-huddle {
+  border-left: 3px solid var(--accent);
+}
+.pl-huddle .pl-sub,
+.pl-plan .pl-sub {
+  margin: 0;
+  flex-wrap: wrap;
+}
+.pl-huddle-who {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pl-in {
+  font-family: var(--font-mono);
+}
+.pl-plan > .pl-text {
+  max-height: min(240px, 40dvh);
+  overflow-y: auto;
+}
+.pl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pl-revisions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.pl-revisions summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.pl-revisions .pl-text {
+  margin-top: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.pl-version {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.pl-compose {
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.pl-compose .segmented {
+  justify-self: start;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.pl-replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+.pl-replying > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- a group on the Dependencies view as a feature (WEB-15) ---------- */
