@@ -27,6 +27,7 @@ const ALLOWED = {
   'docs/specs/': [0, HISTORY],
   // The licensor: the owner's account, which the repository lives under.
   LICENSE: [1, 'the licence’s notice names the licensor'],
+  'plugin/LICENSE': [1, 'the plugin’s copy of the licence (scripts/plugin.mjs), with the same notice'],
   // Tests that keep it out.
   'scripts/lib/release.test.js': [3, KEEPS_OUT],
   'test/agent-files.test.js': [2, KEEPS_OUT],
