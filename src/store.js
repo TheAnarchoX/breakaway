@@ -1549,6 +1549,17 @@ const apiActions = {
   pelotonOwnerPostApi(peloton, body) {
     return this.run(() => ok(this.postPeloton(peloton, body ?? {}, { owner: true }), 201));
   },
+  /** The chase's plan (IDEA-36 section 5): its revisions, and a revision by an agent or, from the board, the owner. */
+  pelotonPlanApi(peloton) {
+    return this.run(() => ok(this.planRevisions(peloton)));
+  },
+  pelotonPlanReviseApi(peloton, body) {
+    return this.run(() => ok(this.revisePlan(peloton, body ?? {})));
+  },
+  /** The owner's revision: the worker sends it here from the signed-in board only. */
+  pelotonOwnerPlanApi(peloton, body) {
+    return this.run(() => ok(this.revisePlan(peloton, body ?? {}, { owner: true })));
+  },
   sessionApi(ref, after) {
     return this.run(() => ok(this.sessionLog(this.resolve(ref), after)));
   },

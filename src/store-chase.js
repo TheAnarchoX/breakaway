@@ -627,6 +627,7 @@ export const chaseMethods = {
       ...plan.needsYou.map((x) => `- ${x.wid ?? x.description}: ${x.why}`),
     ];
     const first = (prompt.split('\n').find((line) => line.trim()) ?? prompt).trim();
+    const kept = this.planOf({ kind: 'chase', name: `chase:${row.slug}` });
     const brief = [
       prompt,
       '',
@@ -637,6 +638,12 @@ export const chaseMethods = {
       `When the owner pressed it: ${this.chaseLine(plan.line)} (state ${row.chase}).`,
       ...(pulls.length ? ['', 'Its open pull requests:', ...pulls] : []),
       ...(held.length ? ['', 'What holds the rest:', ...held] : []),
+      '',
+      kept ? `## The chase’s plan (version ${kept.version})` : '## The chase’s plan',
+      '',
+      kept ? kept.text : 'It has no plan yet: write one first, so the agents it starts line up.',
+      '',
+      'While you run, you keep the plan and run the room: only you and the owner revise the plan (the other agents propose changes on the peloton), and you call and close huddles.',
     ].join('\n');
     return {
       slug: row.slug,
