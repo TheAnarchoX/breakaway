@@ -225,6 +225,13 @@ Two open-source families (SIL Open Font License), self-hosted from `@fontsource-
 - **Bikes stay in the words.** No cyclists, jerseys, or race photos.
 - **Screenshots** show the board with made-up tasks (`BRK-`, `WEB-`, `DOC-` IDs and invented titles), never a real repository's private work.
 
+## Where breakaway posts
+
+- **breakaway's own account**: [@leavethepackdev](https://x.com/leavethepackdev) on X, named for the site, `leavethepack.dev`. Its name is "breakaway", lowercase, and its profile (bio, photo, header) is in [`../launch/profile.md`](../launch/profile.md).
+- **Posts go out from breakaway's account**, not necessarily the owner's own. The owner may post or share them from their own account too, but the account is where breakaway speaks.
+- **It speaks as breakaway**: this guide's voice, its claims, and its never list, like the board. No "we", no replies that take shots at other tools, and nothing about what someone shipped with it.
+- **The owner posts.** Agents draft posts in [`../launch/posts.md`](../launch/posts.md) and never post, reply, or follow.
+
 ## Checklist
 
 Before handing back anything people see or read:

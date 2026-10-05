@@ -744,7 +744,7 @@ export function startPolling() {
     if (view.value === 'roadmap') {
       loadFeatures();
       loadFeature(selectedFeature.value);
-    }
+    } else if (selected.value) loadFeatures(); // the open task shows its feature (WEB-77)
     loadGitHub(); // the nav counts what is ready to merge
     loadAgents();
     loadPings();

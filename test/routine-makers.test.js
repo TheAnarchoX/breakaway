@@ -1,5 +1,6 @@
 import { SELF } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { routineMakerRequest, routineWrite } from '../scripts/tasks/cli.js';
 import { firePayload } from '../src/store-agents.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { api } from './helpers.js';
@@ -252,5 +253,45 @@ describe('routine makers on the board', () => {
     const started = await body(await api('agents/start', { method: 'POST', body: { ref: res.task.uuid } }));
     expect(started.run).toMatchObject({ kind: 'routines', agent: name });
     expect((await task(res.task.uuid)).claim).toBe(name);
+  });
+
+  it('takes the CLI’s requests: routines new, and routines add signed with BREAKAWAY_AGENT (CLI-19)', async () => {
+    const send = ([method, path, payload]) => api(path, { method, body: payload });
+    // routines add as an agent with no routine maker's task: the name goes along, and the board refuses it.
+    const refused = await body(
+      await send([
+        'POST',
+        'routines',
+        routineWrite({ slug: 'cli-job', name: 'CLI job', prompt: 'Do it.' }, 'claude-nobody'),
+      ]),
+    );
+    expect(refused.status).toBe(403);
+    expect(refused.error).toMatch(/routine maker/);
+    // A pause signed with that name is refused too, where it once went through.
+    expect((await send(['PATCH', 'routines/settings', routineWrite({ paused: true }, 'claude-nobody')])).status).toBe(
+      403,
+    );
+
+    expect(
+      (await body(await send(routineMakerRequest('Tidy the docs weekly', { by: 'claude-nobody' }).request))).status,
+    ).toBe(403);
+    const started = await body(
+      await send(routineMakerRequest('Tidy the docs weekly', { repo: 'widgets', force: true }).request),
+    );
+    expect(started.status).toBe(201);
+    expect(started.task.tags).toContain('routine-maker');
+    const name = `claude-${started.task.short}`;
+    expect(started.run).toMatchObject({ kind: 'routines', agent: name });
+
+    // Its agent's routines add, signed the same way, goes through.
+    const made = await body(
+      await send([
+        'POST',
+        'routines',
+        routineWrite({ slug: 'cli-job', name: 'CLI job', prompt: 'Do it.', repo: 'widgets' }, name),
+      ]),
+    );
+    expect(made.status).toBe(201);
+    expect(made.routine.madeBy).toMatchObject({ uuid: started.task.uuid, agent: name });
   });
 });
