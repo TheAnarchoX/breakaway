@@ -29,6 +29,7 @@ import {
   shippedPrs,
   widsIn,
 } from './github.js';
+import BOARD_FILES from './board-files.json' with { type: 'json' };
 import { install } from './install.js';
 import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
@@ -47,6 +48,8 @@ const FILE_PAGES = 5;
 const DEBOUNCE_MS = 5000;
 /** How long a repository's agent prompt, read for the Agents view, is kept before reading it again. */
 const PROMPT_CACHE_MS = 60_000;
+/** Where a repository carries the board's core: where `repos init` copies it, then breakaway's own layout. */
+const CORE_PATHS = ['tools/tasks/prompts/core.md', 'prompts/core.md'];
 /** How long another repository's deploy paths (read from its default branch) are kept before reading them again. */
 const DEPLOY_PATHS_MS = 3_600_000;
 /** What a task's note says when a Deployment carries it: per environment (CLD-106), with its repository's Workers. */
@@ -1773,6 +1776,49 @@ export const githubMethods = {
     // The `<…>` still in it (CLD-196): the Agents view lists them, and agents don't start until they're filled in.
     /** @type {any} */ (body).placeholders = promptPlaceholders(body.text);
     this.promptCache[repo.slug] = { at: Date.now(), body };
+    return { status: 200, body };
+  },
+
+  /**
+   * The board's core (prompts/core.md) as repository `slug` carries it on its default branch, for MCP's
+   * `breakaway://prompt` (docs/specs/IDEA-24-mcp-server.md, section 4): where `repos init` copies it, else where
+   * breakaway's own checkout keeps it. Kept for a minute, as the prompt is. When the repository carries neither, or
+   * GitHub can't be read, it's the board's own copy, marked `source: 'board'` (with GitHub's reason when it failed,
+   * and then not kept), so a client always reads the rules it works under.
+   */
+  async agentCoreApi(slug = null) {
+    await this.ready();
+    const { repo, error: unknown } = this.githubRepoOr404(slug);
+    if (unknown) return unknown;
+    const board = (error = null) => ({
+      slug: repo.slug,
+      path: 'prompts/core.md',
+      source: 'board',
+      error,
+      text: /** @type {Record<string, string>} */ (BOARD_FILES)['prompts/core.md'],
+    });
+    const credentials = await appCredentials(this.env);
+    if (!credentials) return { status: 200, body: board('GitHub isn’t connected yet') };
+    this.coreCache ??= {};
+    const kept = this.coreCache[repo.slug];
+    if (kept && Date.now() - kept.at < PROMPT_CACHE_MS) return { status: 200, body: kept.body };
+    const client = this.githubClient(credentials, repo);
+    const branch = encodeURIComponent(repo.defaultBranch);
+    let body = null;
+    for (const path of CORE_PATHS) {
+      try {
+        const file = await client.get(`/contents/${path}?ref=${branch}`);
+        const bytes = Uint8Array.from(atob(String(file.content ?? '').replace(/\s+/gu, '')), (c) => c.charCodeAt(0));
+        body = { slug: repo.slug, path, source: 'repository', error: null, text: new TextDecoder().decode(bytes) };
+        break;
+      } catch (error) {
+        if (!(error instanceof GitHubError)) throw error;
+        if (error.status !== 404 && !isEmptyRepo(error))
+          return { status: 200, body: board(error.reason ?? error.message) };
+      }
+    }
+    body ??= board();
+    this.coreCache[repo.slug] = { at: Date.now(), body };
     return { status: 200, body };
   },
 
