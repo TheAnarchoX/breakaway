@@ -23,6 +23,7 @@ export const NO_ARGUMENTS = new Set([
   'next',
   'activity',
   'health',
+  'mcp',
   'connections',
   'export',
   'setup',
