@@ -3,6 +3,7 @@ import {
   Activity,
   Bell,
   Bot,
+  ChevronsUpDown,
   FolderGit2,
   FolderPlus,
   Inbox,
@@ -188,50 +189,64 @@ function Brand({ onClick }) {
 
 /**
  * The repository switcher (IDEA-14 section 6): one repository or all of them, for every view that lists
- * work. A select with the sidebar open, a button with a short list on the rail. Nothing while only one
- * repository is registered, so the board looks as it always did.
+ * work. With the sidebar open it's a button showing the repository, on the rail an icon; both open the same
+ * list (WEB-54). Nothing while only one repository is registered, so the board looks as it always did.
  */
-const ADD_REPO = '+add';
-const KICKOFF = '+kickoff';
-const REPO_SETTINGS = '+settings';
-
 /** @param {Record<string, any>} props */
 function RepoSwitcher({ rail = false }) {
   if (!multiRepo.value) return null;
   const value = repoScope.value ?? 'all';
+  const current = value === 'all' ? 'All repositories' : repoName(value);
   const options = [
     { id: 'all', label: 'All repositories' },
     ...repos.value.list.map((r) => ({ id: r.slug, label: r.name })),
   ];
-  if (rail) {
-    return (
-      <Popover
-        className="repo-switch-pop"
-        buttonClass="side-item repo-switch-button"
-        icon={
-          <span class="side-icon">
-            <FolderGit2 size={20} aria-hidden="true" />
-          </span>
-        }
-        label={<span class="visually-hidden">Repository: {value === 'all' ? 'all' : repoName(value)} (s)</span>}
-      >
-        {(close) => (
-          <fieldset class="check-list">
-            <legend class="kicker">Repository</legend>
-            {options.map((o) => (
-              <label key={o.id} class="check-row">
-                <input
-                  type="radio"
-                  name="repo-rail"
-                  checked={o.id === value}
-                  onChange={() => {
-                    setRepo(o.id);
-                    close();
-                  }}
-                />
+  return (
+    <Popover
+      className={`repo-switch-pop ${rail ? '' : 'is-open-sidebar'}`}
+      buttonClass={rail ? 'side-item repo-switch-button' : 'repo-switch-trigger'}
+      icon={
+        <span class="side-icon">
+          <FolderGit2 size={rail ? 20 : 18} aria-hidden="true" />
+        </span>
+      }
+      label={
+        rail ? (
+          <span class="visually-hidden">Repository: {value === 'all' ? 'all' : repoName(value)} (s)</span>
+        ) : (
+          <>
+            <span class="repo-switch-text">
+              <span class="repo-switch-kicker">Repository</span>
+              <span class="repo-switch-name" title={current}>
+                {current}
+              </span>
+            </span>
+            <ChevronsUpDown size={16} class="repo-switch-chevron" aria-hidden="true" />
+          </>
+        )
+      }
+    >
+      {(close) => (
+        <fieldset class="check-list">
+          {/* The open sidebar's button already says Repository, so its list's legend is for screen readers. */}
+          <legend class={rail ? 'kicker' : 'visually-hidden'}>Repository</legend>
+          {options.map((o) => (
+            <label key={o.id} class="check-row">
+              <input
+                type="radio"
+                name={rail ? 'repo-rail' : 'repo-open'}
+                checked={o.id === value}
+                onChange={() => {
+                  setRepo(o.id);
+                  close();
+                }}
+              />
+              <span class="repo-switch-option" title={o.label}>
                 {o.label}
-              </label>
-            ))}
+              </span>
+            </label>
+          ))}
+          <div class="repo-switch-actions">
             <button
               type="button"
               class="btn btn-quiet btn-sm repo-switch-add"
@@ -259,49 +274,17 @@ function RepoSwitcher({ rail = false }) {
               class="btn btn-quiet btn-sm repo-switch-add"
               onClick={() => {
                 close();
+                // Repository settings opens the page of the repository it shows (WEB-30), and Settings' list under All.
                 openRepoSettings(repoScope.value);
               }}
             >
               <Settings size={16} aria-hidden="true" />
               Repository settings
             </button>
-          </fieldset>
-        )}
-      </Popover>
-    );
-  }
-  return (
-    <label class="repo-switch" title="Switch repository (s)">
-      <FolderGit2 size={18} aria-hidden="true" />
-      <span class="visually-hidden">Repository</span>
-      <select
-        class="select select-sm"
-        value={value}
-        onChange={(e) => {
-          // The last option opens the Add a repository wizard (CLD-194) and leaves the switcher as it was.
-          if (e.currentTarget.value === ADD_REPO) {
-            e.currentTarget.value = value;
-            openAddRepo(null);
-          } else if (e.currentTarget.value === KICKOFF) {
-            e.currentTarget.value = value;
-            openKickoff(null);
-          } else if (e.currentTarget.value === REPO_SETTINGS) {
-            // Repository settings opens the page of the repository it shows (WEB-30), and Settings' list under All.
-            e.currentTarget.value = value;
-            openRepoSettings(repoScope.value);
-          } else setRepo(e.currentTarget.value);
-        }}
-      >
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-        <option value={ADD_REPO}>Add a repository…</option>
-        <option value={KICKOFF}>Kick off a project…</option>
-        <option value={REPO_SETTINGS}>Repository settings…</option>
-      </select>
-    </label>
+          </div>
+        </fieldset>
+      )}
+    </Popover>
   );
 }
 
