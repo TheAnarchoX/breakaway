@@ -1,0 +1,106 @@
+# The plugin (LCH-24, docs/specs/IDEA-25-claude-plugin.md section 5): Anthropic's plugin directory and this repository's
+# marketplace follow the `plugin` branch, never main, so people get released versions only. This workflow moves that
+# branch, the way the Site workflow moves `site`: the stable release calls it with the released tag, and the owner runs
+# it by hand to put a fix out before the next release. Agents never run it. It puts the tag's commit there with one
+# commit on top that sets plugin.json's version to the release's, so the directory sees a new version exactly when a
+# release moves the branch. A ruleset lets only deploy keys move `plugin`, and the key is in the plugin environment,
+# which only main can use. Only a commit already on main goes there: never a branch's unreviewed work.
+name: Plugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: A release tag of breakaway, like v1.6.0, or a commit on main a release was made from
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: plugin
+  cancel-in-progress: false
+
+jobs:
+  plugin:
+    name: plugin
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # PLUGIN_DEPLOY_KEY: a write deploy key, the only thing the ruleset lets move `plugin`.
+    environment: plugin
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Check the ref and set the version
+        id: tree
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          commit=$(git rev-parse --verify --quiet "$REF^{commit}" || true)
+          if [ -z "$commit" ]; then
+            echo "::error title=Not found::$REF isn't a tag or commit in this repository."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error title=Not on main::$REF ($commit) isn't on main. Only merged work goes in the plugin."
+            exit 1
+          fi
+          tree="$RUNNER_TEMP/plugin"
+          git worktree add --detach "$tree" "$commit"
+          if [ ! -f "$tree/plugin/.claude-plugin/plugin.json" ]; then
+            echo "::error title=No plugin::$REF ($commit) is from before the plugin: it has no plugin/.claude-plugin/plugin.json."
+            exit 1
+          fi
+          # main's helper, not the commit's, so an older release's commit gets its version too.
+          node scripts/release/plugin.mjs "$REF" "$tree/plugin/.claude-plugin/plugin.json" $(git tag --points-at "$commit" --list 'v*') >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "dir=$tree" >> "$GITHUB_OUTPUT"
+      # The same check, and the same Claude Code, as the Plugin check on pull requests, so the directory's own checks
+      # never fail first.
+      - name: Validate the plugin and the marketplace
+        working-directory: ${{ steps.tree.outputs.dir }}
+        run: |
+          npx --yes @anthropic-ai/claude-code@2.1.289 plugin validate --strict plugin
+          npx --yes @anthropic-ai/claude-code@2.1.289 plugin validate --strict .
+      - name: Move the plugin branch
+        working-directory: ${{ steps.tree.outputs.dir }}
+        env:
+          REF: ${{ inputs.ref }}
+          VERSION: ${{ steps.tree.outputs.version }}
+          COMMIT: ${{ steps.tree.outputs.commit }}
+          DEPLOY_KEY: ${{ secrets.PLUGIN_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::error title=No deploy key::Add PLUGIN_DEPLOY_KEY to the plugin environment: a write deploy key the plugin branch's ruleset lets through (the README's releases section)."
+            exit 1
+          fi
+          if ! git diff --quiet; then
+            git add plugin/.claude-plugin/plugin.json
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --quiet -m "The breakaway plugin, version $VERSION" -m "From $REF ($COMMIT)."
+          fi
+          key="$RUNNER_TEMP/plugin-deploy-key"
+          (umask 077 && printf '%s\n' "$DEPLOY_KEY" > "$key")
+          # GitHub's published SSH host key, so the push goes nowhere else.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts -o StrictHostKeyChecking=yes"
+          # Forced, so a fix that's newer than the release, or a step back to an older one, both land.
+          git push --force "git@github.com:$GITHUB_REPOSITORY.git" "HEAD:refs/heads/plugin"
+          rm -f "$key"
+          echo "::notice title=Plugin::The plugin branch is at $REF ($COMMIT), as version $VERSION."
