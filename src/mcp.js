@@ -272,6 +272,11 @@ function callContext(request, store, waitUntil = (_promise) => {}, pinned = null
       if (!slugs.length)
         return { error: 'the board has no repositories yet: the owner adds one on the board, under Repositories' };
       if (!repo) return { error: `name the repository: set the X-Breakaway-Repo header to one of ${slugs.join(', ')}` };
+      // A sign-in's repository is the owner's pick, not a header the client can fix (section 8).
+      if (pinned && !slugs.includes(repo))
+        return {
+          error: `this connection's repository, ${repo}, isn't on the board any more: the owner revokes it on Connections, and you sign in again`,
+        };
       // The plugin's headersHelper can't always ask the board for the slug, so it sends the checkout's owner/name
       // (CLI-9). One the board doesn't track is a checkout outside the board, not a config to fix: it still connects.
       if (repo.includes('/')) {

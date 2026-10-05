@@ -364,6 +364,18 @@ describe('sign-in from Claude’s apps (BRK-157)', () => {
       await api(`tasks/${widget.wid}/release`, { method: 'POST', body: { agent: 'claude-app' } });
     });
 
+    it('refuses its repository’s tools once that repository leaves the board, and says to revoke it', async () => {
+      expect(
+        (await api('repos', { method: 'POST', body: { slug: 'doohickeys', github: 'acme/doohickeys', areas: ['doo:DH'] } }))
+          .status,
+      ).toBe(201);
+      const { tokens } = await connect({ repo: 'doohickeys' });
+      expect((await api('repos/doohickeys', { method: 'DELETE', body: {} })).status).toBe(200);
+      const res = await json(await mcp('tools/call', { name: 'list_tasks', arguments: {} }, tokens.access_token));
+      expect(res.result.isError).toBe(true);
+      expect(res.result.content[0].text).toMatch(/doohickeys.*revoke/u);
+    });
+
     it('is refused on /api/*, on sync, and everywhere but /mcp', async () => {
       const { tokens } = await connect();
       expect((await api('tasks', { token: tokens.access_token })).status).toBe(401);
