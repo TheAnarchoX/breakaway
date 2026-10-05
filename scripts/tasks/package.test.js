@@ -36,6 +36,7 @@ describe('the npm package (BRK-7)', () => {
       'taskrc',
       'scripts/task',
       '.agents/skills/tasks/SKILL.md',
+      '.agents/skills/pipeline/SKILL.md',
       'scripts/install/cli.js',
       'template/README.md',
       'template/.dev.vars.example',

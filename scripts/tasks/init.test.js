@@ -41,6 +41,7 @@ const RAW = import.meta.glob(
     '../../taskrc',
     '../../.claude/settings.json',
     '../../.agents/skills/tasks/SKILL.md',
+    '../../.agents/skills/pipeline/SKILL.md',
   ],
   { query: '?raw', import: 'default', eager: true },
 );
@@ -182,6 +183,33 @@ describe('repos init (CLD-191)', () => {
     ).toContain('[`docs/agents.md`](../../../docs/agents.md)');
   });
 
+  it('writes the pipeline skill, linking the board’s spec and docs on GitHub, and --update refreshes it (BRK-92)', () => {
+    const plan = initPlan({ url: BOARD_URL, repo, board, read, readTarget: empty });
+    const skill = plan.files.find((f) => f.path === '.agents/skills/pipeline/SKILL.md').content;
+    expect(skill).toMatch(/^---\nname: pipeline\n/u);
+    expect(skill).toContain(
+      '(https://github.com/acme/board/blob/main/docs/specs/IDEA-27-move-ci-cd-to-the-deploy-flow.md)',
+    );
+    expect(skill).toContain(
+      '(https://github.com/acme/board/blob/main/docs/tasks.md#moving-a-repository-to-the-deploy-flow)',
+    );
+    expect(skill).not.toMatch(/\]\((?:\.\.\/)+docs\//u);
+    expect(plan.files.find((f) => f.path === 'AGENTS.md').content).toContain('`.agents/skills/pipeline/SKILL.md`');
+    const old = {
+      [MANIFEST]: JSON.stringify({ files: ['.agents/skills/pipeline/SKILL.md'] }),
+      '.agents/skills/pipeline/SKILL.md': 'An old copy of the skill.\n',
+    };
+    const update = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => old[p] ?? null, update: true });
+    expect(update.files.find((f) => f.path === '.agents/skills/pipeline/SKILL.md')).toMatchObject({
+      content: skill,
+      changed: true,
+    });
+    // A pipeline skill of the repository's own, not on the record, stays.
+    const theirs = { '.agents/skills/pipeline/SKILL.md': 'Our own.\n' };
+    const kept = initPlan({ url: BOARD_URL, repo, board, read, readTarget: (p) => theirs[p] ?? null, update: true });
+    expect(kept.files.map((f) => f.path)).not.toContain('.agents/skills/pipeline/SKILL.md');
+  });
+
   it('gives each repository a Taskwarrior report and context, once', () => {
     expect(taskrcLines('breakaway')).toEqual(
       expect.arrayContaining([
@@ -219,6 +247,7 @@ describe('repos init (CLD-191)', () => {
         '.claude/settings.json',
         '.claude/skills',
         '.agents/skills/tasks/SKILL.md',
+        '.agents/skills/pipeline/SKILL.md',
         'AGENTS.md',
         'package.json',
         '.envrc',

@@ -18,7 +18,7 @@ const ROOT = import.meta.glob(['../root/**/*.md', '../AGENTS.md', '../.agents/sk
 });
 // Every file in breakaway's tree, by its path there: the package's own, then root/ moved into place.
 const PACKAGE = Object.keys(
-  import.meta.glob(['../*', '../{brand,prompts,src,test,web}/**/*', '!../web/public/**'], {
+  import.meta.glob(['../*', '../{brand,docs,prompts,src,test,web}/**/*', '!../web/public/**'], {
     query: '?url',
     eager: false,
   }),
@@ -45,9 +45,10 @@ function normalize(path) {
 }
 
 describe("breakaway's agent files (CLD-137)", () => {
-  it('has AGENTS.md, the tasks and brand-guide skills, and the prompt', () => {
+  it('has AGENTS.md, the tasks, pipeline, and brand-guide skills, and the prompt', () => {
     expect(Object.keys(FILES).sort()).toEqual([
       '.agents/skills/brand-guide/SKILL.md',
+      '.agents/skills/pipeline/SKILL.md',
       '.agents/skills/tasks/SKILL.md',
       'AGENTS.md',
       'prompts/breakaway.md',
@@ -100,6 +101,39 @@ describe("breakaway's agent files (CLD-137)", () => {
     ])
       expect(headings).toContain(named[1]);
     expect(promptPlaceholders(PROMPT)).toEqual([]);
+  });
+
+  it('teaches the pipeline skill every rule of the move (BRK-92, IDEA-27 sections 2b and 3)', () => {
+    const skill = FILES['.agents/skills/pipeline/SKILL.md'];
+    for (const rule of [
+      // What it reads, and which setups move.
+      'wrangler.jsonc',
+      'package.json',
+      'Migrations',
+      'Deploys somewhere else',
+      'Publishes to another registry',
+      // The config and the renderer.
+      '.github/breakaway-pipeline.json',
+      '"package": { "name"',
+      'npx breakaway pipeline init',
+      'npx breakaway pipeline check',
+      // Nothing lost, nothing twice, and an old publish setup.
+      'Step by step',
+      'only deploys or only publishes',
+      'checks and publishes',
+      'stays exactly where it is',
+      'changesets, semantic-release, release-please',
+      'ask the owner with a decision',
+      // The owner's part.
+      '+owner',
+      'CLOUDFLARE_API_TOKEN',
+      'the GitHub environment `npm`',
+      'trusted publisher',
+      '`NPM_TOKEN`',
+      'npm stage approve <id>',
+      'Turn on deploys',
+    ])
+      expect(skill, rule).toContain(rule);
   });
 
   it('lists the areas the owner chose (CLD-134) in AGENTS.md and the prompt', () => {

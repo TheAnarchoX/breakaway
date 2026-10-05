@@ -35,6 +35,7 @@
     "prompts/*.md",
     "taskrc",
     ".agents/skills/tasks/SKILL.md",
+    ".agents/skills/pipeline/SKILL.md",
     "template"
   ],
   "engines": {
