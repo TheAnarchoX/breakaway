@@ -42,6 +42,7 @@ import { looksLikeSecret } from '../src/ping.js';
 import { promptPathOf } from '../src/repos.js';
 import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
+import { checkInstall } from './tasks/install-check.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import {
   CLI_PACKAGE,
@@ -126,6 +127,17 @@ function installConfig() {
   } catch (error) {
     fail(`${CONFIG_FILE}: ${error.message}`);
   }
+}
+
+/**
+ * Stops `command` before it writes a secret when this checkout's install config isn't the board's (BRK-95): its
+ * secrets would get the wrong names, or go to a Worker that isn't the board's. `health` saves a second request.
+ */
+async function ensureBoardInstall(command, health = null) {
+  const board = (health ?? (await call('GET', 'health'))).install;
+  const result = checkInstall(installConfig(), board, { command, configFile: tildePath(CONFIG_FILE, homedir()) });
+  if (!result.ok) fail(result.message);
+  if (result.warning) console.error(`tasks: ${result.warning}`);
 }
 
 /** A file in this checkout, or null when it isn't there. */
@@ -1609,6 +1621,7 @@ const commands = {
     if (!readSetting('SECRET', { file: env })) fail(`${ENV_FILE} has no sync secret; this is for the owner's machine.`);
     const health = await call('GET', 'health');
     if (!health.ok) fail(`the server can't read its history (${health.replicaError}); fix that first (docs/tasks.md).`);
+    await ensureBoardInstall('rotate-sync', health);
     const next = { ...env, ...newSyncCredentials() };
     writePrivate(`${ENV_FILE}.next`, envFile(next));
     const result = await call('POST', 'admin/rekey', {
@@ -1638,6 +1651,7 @@ const commands = {
   },
   /** Owner: a new API token. Every browser is signed out; cloud environments need the new one. */
   async 'rotate-token'() {
+    await ensureBoardInstall('rotate-token');
     const env = readEnvFile();
     const token = randomBytes(32).toString('base64url');
     writePrivate(`${ENV_FILE}.next`, envFile({ ...env, [envName('TOKEN')]: token }));
@@ -1672,6 +1686,7 @@ const commands = {
     const { repos, default: fallback } = await call('GET', 'repos');
     const slug = opts.repo ? String(opts.repo).toLowerCase() : fallback;
     if (!repos.some((r) => r.slug === slug)) fail(unknownRepo(slug, repos));
+    await ensureBoardInstall('agents-connect');
     if (!process.stdin.isTTY) fail(NO_TERMINAL);
     const others = slug !== fallback ? await heldRoutines(fallback, slug, 'storing this one') : null;
     const { createInterface } = await import('node:readline');
@@ -1709,6 +1724,8 @@ const commands = {
    */
   async 'github-connect'() {
     const code = need(args[0], 'code');
+    // Before the code is traded: it works once, and the keys it gives have to go into the board's own secrets.
+    await ensureBoardInstall('github-connect');
     const res = await fetch(`https://api.github.com/app-manifests/${enc(code)}/conversions`, {
       method: 'POST',
       headers: {
@@ -2129,6 +2146,9 @@ async function promptAnswers() {
 /** repos remove (CLD-191): the board takes it off, then its routine leaves the Secrets Store and this machine's copy. */
 async function removeRepo(slug, signer) {
   const { default: fallback } = await call('GET', 'repos');
+  // Dropping a routine this machine connected rewrites the ROUTINES secret: check before anything changes.
+  if (existsSync(ROUTINES_FILE) && JSON.parse(readFileSync(ROUTINES_FILE, 'utf8'))[slug])
+    await ensureBoardInstall('repos remove');
   const res = await call('DELETE', `repos/${enc(slug)}`, { by: signer, ...(opts.force ? { force: true } : {}) });
   const lines = [
     `Took ${res.removed.slug} (${res.removed.github}) off the board. Its tasks stay, readable, and its slug and prefixes (${res.removed.areas.map((a) => a.prefix).join(', ')}) stay its own.`,
