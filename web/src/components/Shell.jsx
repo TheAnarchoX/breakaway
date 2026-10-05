@@ -79,6 +79,7 @@ const VIEW_ICONS = {
   list: List,
   roadmap: Milestone,
   graph: Network,
+  inbox: Inbox,
   activity: Activity,
   github: GitPullRequest,
   specs: ScrollText,
@@ -86,8 +87,6 @@ const VIEW_ICONS = {
   routines: Repeat,
   connections: Plug,
 };
-/** The views in the sidebar. The inbox opens from the bell at the top right instead. */
-const NAV_VIEWS = VIEWS.filter((v) => v.id !== 'inbox');
 /** breakaway's docs, on its site: the sidebar links them on every install. */
 const DOCS_URL = 'https://leavethepack.dev/docs/';
 
@@ -105,11 +104,25 @@ function AttentionBadge() {
 }
 
 /**
- * A count on a view's item: pull requests ready to merge, agents working, connections needing attention.
+ * A count on a view's item: what's open in the inbox, pull requests ready to merge, agents working, connections
+ * needing attention.
  * @param {Record<string, any>} props
  */
 function NavBadge({ id }) {
   if (id === 'connections') return <AttentionBadge />;
+  if (id === 'inbox') {
+    // The bell's count: the switcher's pings, and the notes about connections and ended chases.
+    const n = openPingsHere.value;
+    if (!n) return null;
+    const split = countByRepo(scopedPings.value.map((p) => p.repo));
+    return (
+      <span class="side-badge" title={split ?? undefined}>
+        <span class="visually-hidden">, </span>
+        {n}
+        <span class="visually-hidden"> open{split ? `: ${split}` : ''}</span>
+      </span>
+    );
+  }
   if (id === 'github') {
     // The switcher's repository, or every one under All, split by repository.
     const ready = (githubView.value?.open ?? []).filter((p) => p.verdict === 'ready');
@@ -320,7 +333,7 @@ export function Sidebar({ drawer = false }) {
         </div>
       )}
       <nav class="side-nav" aria-label="Views">
-        {NAV_VIEWS.map((v) => {
+        {VIEWS.map((v) => {
           const Icon = VIEW_ICONS[v.id];
           return (
             <a
