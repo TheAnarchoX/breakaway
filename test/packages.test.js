@@ -228,3 +228,52 @@ describe('the Packages feed', () => {
     expect((await npmRow())[0].state).toBe('working');
   });
 });
+
+describe('the Packages feed’s active versions (BRK-152)', () => {
+  let spy;
+  beforeEach(() => {
+    spy = mockServices();
+    state.calls = [];
+  });
+  afterEach(() => spy.mockRestore());
+
+  it('keeps each package’s latest release and pre-release however many pre-releases come after them', async () => {
+    staging(6, ['widgets-lib', '1.0.0', 'latest']);
+    await sync();
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
+    // 120 pre-releases after it, more than the feed shows (50) and keeps (100).
+    await runInDurableObject(stub, async (store) => {
+      for (let n = 1; n <= 120; n++)
+        store.sql.exec(
+          `INSERT INTO gh_packages (repo, name, version, tag, state, run, data, staged)
+           VALUES ('widgets', 'widgets-lib', ?, 'next', 'published', 6, '{}', ?)`,
+          `1.0.1-main.${n}`,
+          new Date(Date.UTC(2026, 10, 1, 0, n)).toISOString(),
+        );
+      await store.readPackages(null, 'widgets', []);
+    });
+    const { versions } = await feed();
+    const lib = versions.filter((v) => v.name === 'widgets-lib');
+    expect(lib[0].version).toBe('1.0.1-main.120');
+    expect(lib.some((v) => v.version === '1.0.0')).toBe(true);
+    expect(lib.some((v) => v.version === '1.0.1-main.60')).toBe(false);
+    // The sync's own view carries it too, so the Packages tile still shows the release.
+    expect((await sync()).packages.some((v) => v.name === 'widgets-lib' && v.version === '1.0.0')).toBe(true);
+    const kept = await runInDurableObject(stub, (store) =>
+      store.sql.exec("SELECT version FROM gh_packages WHERE repo = 'widgets' AND name = 'widgets-lib'").toArray(),
+    );
+    expect(kept.some((r) => r.version === '1.0.0')).toBe(true);
+    expect(kept.some((r) => r.version === '1.0.1-main.1')).toBe(false);
+  });
+
+  it('moves the active release on when a newer one is staged', async () => {
+    staging(7, ['widgets-lib', '1.1.0', 'latest']);
+    state.runs.find((r) => r.id === 7).created_at = '2026-12-01T00:00:00Z';
+    await sync();
+    const lib = (await feed()).versions.filter((v) => v.name === 'widgets-lib');
+    expect(lib[0].version).toBe('1.1.0');
+    // 1.0.0 is no longer active, and is older than the 50 shown.
+    expect(lib.some((v) => v.version === '1.0.0')).toBe(false);
+    expect(lib.some((v) => v.version === '1.0.1-main.120')).toBe(true);
+  });
+});
