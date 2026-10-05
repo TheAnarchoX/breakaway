@@ -41,6 +41,7 @@ npx breakaway activity --limit 10  # what changed lately, and who claimed what
 npx breakaway github               # pull requests, checks, reviews, failed runs, alerts (--sync to refresh)
 npx breakaway health               # the server's state
 npx breakaway connections          # is everything wired up, and the fix for each that isn't
+npx breakaway specs                # the repository's specs, newest first, with their tasks
 npx breakaway export --out tasks-backup.json
 ```
 
@@ -53,6 +54,8 @@ npx breakaway export --out tasks-backup.json
 | `github` | Open pull requests, checks, reviews, CI, deploys, alerts. |
 | `health` | The server’s state, including the release it runs. |
 | `connections` | The same report as the Connections view. |
+| `specs` | The repository’s specs, newest first: each one’s status and its tasks. `--repo <slug>` for another repository. |
+| `specs show <path>` | One spec: its status, last change, Markdown, and the tasks that link it. |
 | `export` | Every task of every repository as JSON, checked against `health`’s count. |
 
 ## Working a task
@@ -90,8 +93,11 @@ npx breakaway agents start BRK-12 --note "Start with the store."
 npx breakaway agents refine BRK-12 --note "Split it. It’s two changes."
 npx breakaway agents new "The inbox shows pings twice" --image shot.png   # an agent from a prompt; it makes its own task
 npx breakaway agents new --next minor          # an agent that prepares the next minor version
+npx breakaway agents new --spec docs/specs/BRK-20-saved-views.md "Drop the sharing part."   # an agent that changes a spec and its tasks
+npx breakaway agents new --decision BRK-14     # an agent that brings the work waiting on an answered decision in line
 npx breakaway github fix 12 --problem failing  # an agent on pull request 12's failing checks
 npx breakaway github review 12                 # an agent that reviews pull request 12 before you merge
+npx breakaway github release 1.4.0-main.5 --next minor   # release a package's pre-release as its stable (yours)
 npx breakaway agents next --count 3 --dry-run  # see what Start the next few would pick
 npx breakaway agents plan max5                 # your Claude plan
 npx breakaway routines                         # saved routines and their caps

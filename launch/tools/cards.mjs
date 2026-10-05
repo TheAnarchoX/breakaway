@@ -158,6 +158,63 @@ const CARDS = {
           <div class="post reply"><div class="meta"><b>claude-a</b><span>BRK-12</span><i>Reply</i></div><p>Not me. Go ahead.</p></div></div>`,
     }),
   },
+  '09-new-in-1-4-0': {
+    alt: 'A card headed "New in 1.4.0." with six lines: Kickoff: a new project from a pitch. Specs on the board, refined by an agent. A Settings page, and one per repository. Deploy with breakaway: deploys and releases. Set up the board to a first merged pull request. Dictate into the board\'s long fields.',
+    html: frame({
+      kicker: 'Release',
+      foot: 'breakaway',
+      footNote: 'Free · the source is public',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:104px;white-space:nowrap">New in <span class="red">1.4.0.</span></div></div>
+        <div class="news">
+          <div class="row"><span class="t">Kickoff: a new project from a pitch</span></div>
+          <div class="row"><span class="t">Specs on the board, refined by an agent</span></div>
+          <div class="row"><span class="t">A Settings page, and one per repository</span></div>
+          <div class="row"><span class="t">Deploy with breakaway: deploys and releases</span></div>
+          <div class="row"><span class="t">Set up the board to a first merged pull request</span></div>
+          <div class="row"><span class="t">Dictate into the board’s long fields</span></div></div>`,
+    }),
+  },
+  '10-kickoff': {
+    alt: 'A card headed "Kick it off." Below it: "From a pitch to a plan you merge." Then three steps: 1, say what you want to make; 2, answer plain questions; 3, merge the plan, with "acme/widgets" beside it. At the foot: "No terminal needed."',
+    html: frame({
+      kicker: 'New in 1.4.0',
+      foot: 'breakaway',
+      footNote: 'No terminal needed',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">Kick it <span class="red">off.</span></div>
+          <p class="lede">From a pitch to a plan you merge.</p></div>
+        <div class="steps" style="top:600px">
+          <div class="step"><span class="n">1</span><b>Say what you want to make</b></div>
+          <div class="step"><span class="n">2</span><b>Answer plain questions</b><code>up to 12</code></div>
+          <div class="step"><span class="n">3</span><b>Merge the plan</b><code>acme/widgets</code></div></div>`,
+    }),
+  },
+  '11-specs': {
+    alt: 'A card headed "Specs on the board." Below it: "Read them beside their tasks. Refine one with an agent." Then three made-up specs: BRK-20, Saved views, draft, 3 open. WEB-8, Inbox filters, approved, 1 open. DOC-4, Explain horizons, built, 0 open. BRK-20 has a red work ID.',
+    html: frame({
+      kicker: 'New in 1.4.0',
+      foot: 'breakaway',
+      footNote: 'Specs · Refine with an agent',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">Specs on<br>the <span class="red">board.</span></div>
+          <p class="lede">Read them beside their tasks. Refine one with an agent.</p></div>
+        <div class="rows" style="top:600px">
+          <div class="row"><span class="chip">BRK-20</span><span class="t">Saved views</span><span class="who">draft · 3 open</span></div>
+          <div class="row idle"><span class="id">WEB-8</span><span class="t">Inbox filters</span><span class="who">approved · 1 open</span></div>
+          <div class="row idle"><span class="id">DOC-4</span><span class="t">Explain horizons</span><span class="who">built · 0 open</span></div></div>`,
+    }),
+  },
+  '12-deploy': {
+    alt: 'A card headed "Deploy with breakaway." Three steps: 1, an agent moves your CI/CD, in a pull request; 2, you merge it and turn on deploys; 3, promote, roll back, release. At the foot: "You merge. You deploy."',
+    html: frame({
+      kicker: 'New in 1.4.0',
+      foot: 'breakaway',
+      footNote: 'You merge. You deploy.',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">Deploy with<br><span class="red">breakaway.</span></div></div>
+        <div class="steps" style="top:600px">
+          <div class="step"><span class="n">1</span><b>An agent moves your CI/CD</b><code>pull request</code></div>
+          <div class="step"><span class="n">2</span><b>You merge. Turn on deploys.</b></div>
+          <div class="step"><span class="n">3</span><b>Promote, roll back, release</b></div></div>`,
+    }),
+  },
 };
 
 const only = process.argv.slice(2);

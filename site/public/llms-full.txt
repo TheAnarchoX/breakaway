@@ -464,7 +464,8 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Roadmap** | Releases in version order, then Unplanned, each with its feature cards: progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
 | **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
-| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
+| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
+| **Specs** | The repository’s specs, read from GitHub, each with its status and the tasks that link it. Open one to read it beside the list, and **Refine with an agent** to have an agent change it and bring its tasks in line, in one pull request. |
 | **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, every chase that’s on, each repository’s peloton, the Agents settings, and the agent prompts. |
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
@@ -504,7 +505,7 @@ A repository taken off the board shows its page read only, with **Release its sh
 
 Anything that holds a secret or changes the install itself has no button. Where the page needs one, it shows the command to copy:
 
-- `agents-connect [--repo <slug>]` connects a repository’s agent routine.
+- `agents-connect [--repo <slug>]` connects a repository’s agent routine. The form on Connections and in the Add a repository wizard does the same without a terminal, and keeps the routine encrypted on the board.
 - `github-connect` stores the GitHub App’s keys.
 - `rotate-sync` and `rotate-token` make new sync credentials or a new API token.
 - `init-secrets` writes a new board’s secrets.
@@ -520,11 +521,15 @@ The **Agent** section of a task starts an agent on it, with an optional note, an
 
 ### The task menu
 
-Right-click a task in the Board, List, or Dependencies view (a long press on a touch screen, or the Menu key or Shift+F10 on a focused task) to act on it where it is: open it, start an agent (or **Force start** one that waits on the board’s limits), review its pull request with an agent, refine it, refine from a decided decision’s answers, start by itself when ready, claim or release, add a comment, move it to another horizon, mark it done or open it again, and copy its work ID or link. It shows only what applies to that task. Shift with the right-click, or a right-click in a text field, still opens the browser’s own menu.
+Right-click a task in the Board, List, or Dependencies view (a long press on a touch screen, or the Menu key or Shift+F10 on a focused task) to act on it where it is: open it, start an agent (or **Force start** one that waits on the board’s limits), review its pull request with an agent, refine it, refine from a decided decision’s answers, start by itself when ready, claim or release, add a comment, move it to another horizon, mark it done or open it again, archive a finished one (Board and List), and copy its work ID or link. It shows only what applies to that task. Shift with the right-click, or a right-click in a text field, still opens the browser’s own menu.
 
 ### New agent
 
 **New agent** in the top bar (`p`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
+
+### Dictation
+
+The board’s long text fields (a task’s description and comments, New task, New idea, New agent, a decision’s answers, a message to a running agent, and the notes and prompts you give an agent) have a microphone button: press it and speak, and the words go into the field. It’s the browser’s own speech recognition. Chrome, Edge, and Safari have it; Firefox doesn’t, and Brave turns it off, so the button isn’t there. Where the browser can recognise your language on the device it does; otherwise it sends the audio to its own speech service while dictation is on. The board never sees the audio.
 
 Filters (area, horizon, who can move it, claimed, finished) and search live in the URL, so every view and every task has a link.
 
@@ -536,7 +541,7 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 | `n` | New task |
 | `i` | New idea |
 | `p` | New agent |
-| `b` `l` `m` `g` `o` `a` `h` `x` `u` | Switch views |
+| `b` `l` `m` `g` `o` `a` `h` `e` `x` `u` | Switch views |
 | `w` | Connections |
 | `[` | Collapse or expand the sidebar |
 | `s` | Switch repository (with several) |
@@ -602,6 +607,7 @@ npx breakaway activity --limit 10  # what changed lately, and who claimed what
 npx breakaway github               # pull requests, checks, reviews, failed runs, alerts (--sync to refresh)
 npx breakaway health               # the server's state
 npx breakaway connections          # is everything wired up, and the fix for each that isn't
+npx breakaway specs                # the repository's specs, newest first, with their tasks
 npx breakaway export --out tasks-backup.json
 ```
 
@@ -614,6 +620,8 @@ npx breakaway export --out tasks-backup.json
 | `github` | Open pull requests, checks, reviews, CI, deploys, alerts. |
 | `health` | The server’s state, including the release it runs. |
 | `connections` | The same report as the Connections view. |
+| `specs` | The repository’s specs, newest first: each one’s status and its tasks. `--repo <slug>` for another repository. |
+| `specs show <path>` | One spec: its status, last change, Markdown, and the tasks that link it. |
 | `export` | Every task of every repository as JSON, checked against `health`’s count. |
 
 ## Working a task
@@ -651,8 +659,11 @@ npx breakaway agents start BRK-12 --note "Start with the store."
 npx breakaway agents refine BRK-12 --note "Split it. It’s two changes."
 npx breakaway agents new "The inbox shows pings twice" --image shot.png   # an agent from a prompt; it makes its own task
 npx breakaway agents new --next minor          # an agent that prepares the next minor version
+npx breakaway agents new --spec docs/specs/BRK-20-saved-views.md "Drop the sharing part."   # an agent that changes a spec and its tasks
+npx breakaway agents new --decision BRK-14     # an agent that brings the work waiting on an answered decision in line
 npx breakaway github fix 12 --problem failing  # an agent on pull request 12's failing checks
 npx breakaway github review 12                 # an agent that reviews pull request 12 before you merge
+npx breakaway github release 1.4.0-main.5 --next minor   # release a package's pre-release as its stable (yours)
 npx breakaway agents next --count 3 --dry-run  # see what Start the next few would pick
 npx breakaway agents plan max5                 # your Claude plan
 npx breakaway routines                         # saved routines and their caps
@@ -968,6 +979,16 @@ A chase never answers a decision, does a `+owner` step or a task without `+agent
 
 A task refused twice (a start that failed, or an agent that let go without a pull request) is **Stuck**. It shows the last refusal and the agent’s last comment, and isn’t tried again.
 
+### It fixes its own pull requests
+
+When a chase task’s pull request conflicts with its base branch or its checks fail, the agent that opened it gets 3 minutes to pick it up. If it hasn’t, and no person holds the task, the chase starts a fix agent on it, the same one **Fix with an agent** starts. Two fixes that leave the same commit with the same problem make the task **Stuck**. A chase that ended by itself keeps doing this for its open pull requests for 30 days, and starts nothing else; a stopped chase doesn’t.
+
+### Its road captain
+
+**Start a road captain** on a chase that’s on or has run (on the feature’s page, or the chase in the Agents view) asks what it should do, and starts an agent with your prompt and the chase as it stands under it: the live line, each open pull request and what’s wrong with it, and what’s Stuck or needs you. It rides the chase’s peloton, follows the rules for an agent started from a prompt, and always starts past the board’s limits. Use it to look over the chase and add the tasks it’s missing.
+
+### When nothing can move
+
 If nothing can move (no agent runs, none can start, and only Needs you or Stuck holds the rest), the chase pings you once, with a push, naming the one thing that frees the most. It stays on, and carries on by itself once you act.
 
 ### How it ends
@@ -1237,6 +1258,10 @@ On the page of an open, non-draft pull request that has a merge conflict, failin
 
 breakaway can deploy a repository’s Cloudflare Worker and release its npm package: staging on every merge, **Promote** to production, **Roll back**, and **Release** for a package, with the board showing what shipped where. A repository gets there with one config file and the workflows `npx breakaway pipeline init` renders from it.
 
+### From the GitHub view
+
+A registered repository without a pipeline shows **Deploy with breakaway** on the GitHub view (**Release with breakaway** when it only publishes a package, **Deploy and release with breakaway** with both), and the same card in its settings page’s Deploys section and the Add a repository wizard’s Deploys step. **Move to breakaway’s deploy flow** adds one task and starts its agent, which follows the `pipeline` skill and does what the rest of this section describes, in a pull request you merge. The card follows it: the agent and its live output, the pull request and what’s left for you after merging, the merge, and [Turn on deploys](#turn-on-deploys). If the agent stops without a pull request, **Try again** starts a new one on the same task. **Skip** hides the offer in this browser. The steps below are the same by hand.
+
 ### What it moves, and what it leaves alone
 
 | The repository | What the move does |
@@ -1432,7 +1457,7 @@ Deploy -> checks -> wrangler deploy -> /api/ping -> keep it, or go back
 ## Releases
 
 - **Every merge to `main`**, once CI passes, publishes a GitHub pre-release `vX.Y.Z-main.N` on the **main** channel. It carries the bundle (`breakaway-bundle.tar.gz`: the Worker’s files and the web app’s `dist`), a `manifest.json`, and `SHA256SUMS`. The notes list the merged pull requests by title.
-- **A stable release** `vX.Y.Z` is the maintainer’s: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release’s, unchanged, and the notes cover everything since the last stable.
+- **A stable release** `vX.Y.Z` is the maintainer’s: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release’s, unchanged, and the notes cover everything since the last stable, under the release’s own words from [`docs/releases/vX.Y.Z.md`](https://github.com/TheAnarchoX/breakaway/tree/main/docs/releases) when it’s there.
 - **The next version.** After a stable, pre-releases count patches from it by themselves. When the maintainer runs the **Release** workflow they also pick **next**: patch, the default, changes nothing; minor or major opens a pull request, once the stable is out, that sets `package.json` to the next minor or major after it (1.3.0 becomes 1.4.0 or 2.0.0), so the next merge publishes `v1.4.0-main.1`.
 - **The CLI** is on npm as [`breakaway`](https://www.npmjs.com/package/breakaway), staged on npm by the same workflow, with provenance, and live once breakaway’s owner approves it there with 2FA. npm’s trusted publishing can’t yet read the OIDC identity of a repository as new as breakaway’s ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so until it can, a token that can stage but never publish by itself stands in, in an environment only `main` can use. Every pre-release goes out under the `next` dist-tag, and a stable release as `latest`.
 - **The version** is what `GET /api/ping` and `GET /api/health` report as `release`.

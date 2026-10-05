@@ -85,6 +85,8 @@ Rather do it by hand? [The self-hosting guide](https://github.com/TheAnarchoX/br
 
 **Agents ping you when they need you.** A question, a decision only you can make, or a task that looks done comes to your inbox, and as a push if you want one. The rest waits on the board.
 
+**From a pitch to a deploy.** Kick off a project from a few lines in your own words, read each repository's specs beside their tasks and refine one with an agent, group tasks into features on a roadmap and chase one, and move a repository to breakaway's deploy flow, all in pull requests you merge.
+
 <table>
   <tr>
     <td valign="top">
@@ -132,11 +134,15 @@ One Cloudflare Worker serves the API, the web app (Preact), and Taskwarrior sync
 | [Concepts](https://leavethepack.dev/docs/concepts/) | Tasks and work IDs, areas, horizons, claims, dependencies, and how a pull request closes a task |
 | [Playbook](https://leavethepack.dev/docs/playbook/) | Write tasks agents finish, run many agents without collisions, and keep the review load to one person |
 | [Agents](https://leavethepack.dev/docs/agents/) | Cloud agents from the board, local agents, limits, live output, and messaging a running agent |
+| [The web board](https://leavethepack.dev/docs/web-board/) | The views, a task's panel, Settings, and each repository's page |
+| [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) | A roadmap of features, a chase that starts agents on what's ready, and agents checking in with each other |
 | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
+| [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
-| [GitHub](https://leavethepack.dev/docs/github/) | Your own private App, how pull requests link to tasks, and merging, promoting, and rolling back |
+| [GitHub](https://leavethepack.dev/docs/github/) | Your own private App, how pull requests link to tasks, merging, and moving a repository to the deploy flow to promote, roll back, and release |
 | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) | Sync, reports, and contexts with Taskwarrior 3 |
 | [Deploying](https://leavethepack.dev/docs/deploying/) | Releases, channels, the Deploy and Update workflows, and rollbacks |
+| [Operating a board](https://leavethepack.dev/docs/operations/) | Secrets, what to keep and what to do when it's lost, backups, and what to do when something breaks |
 | [FAQ](https://leavethepack.dev/docs/faq/) | The licence, your data, what it works with, and what it won't do |
 
 <details>
@@ -172,7 +178,7 @@ pnpm interop    # checks sync against real Taskwarrior 3
 breakaway publishes releases and never deploys an install. Every install, the owner's included, deploys a release from its own repository, and this repository holds no Cloudflare credentials. Its website follows the latest stable release: the release moves the `site` branch, and Cloudflare deploys it ([`site/README.md`](https://github.com/TheAnarchoX/breakaway/blob/main/site/README.md#deploy-it)).
 
 - **Every merge to `main`**, once CI passes, publishes a GitHub pre-release `vX.Y.Z-main.N` on the `main` channel. It carries the bundle (`breakaway-bundle.tar.gz`: the Worker's files and the web app's `dist`), a `manifest.json` (version, channel, commit, `manual`, and the lowest version it updates from), its signature `manifest.json.sig` (Ed25519, made with a key only the release workflow holds; the public key is `src/release-key.js`), and `SHA256SUMS`. The notes list the merged pull requests by title.
-- **A stable release** `vX.Y.Z` is the owner's: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release's, unchanged, and the notes cover everything since the last stable.
+- **A stable release** `vX.Y.Z` is the owner's: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release's, unchanged, and the notes cover everything since the last stable, under the release's own words from [`docs/releases/vX.Y.Z.md`](https://github.com/TheAnarchoX/breakaway/tree/main/docs/releases) when it's there.
 - **The CLI** is on npm as [`breakaway`](https://www.npmjs.com/package/breakaway), staged on npm by the same workflow, with provenance, and live once the owner approves it there with 2FA. npm's trusted publishing can't yet read the OIDC identity of a repository as new as this one ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so until it can, a token that can stage but never publish by itself stands in, in an environment only `main` can use. Every pre-release goes out under the `next` dist-tag, and a stable release as `latest`. `npx breakaway <command>` is `node scripts/tasks.mjs <command>`.
 - **A major release** is one where an install has to do something by hand: a config or binding change, a Durable Object class or migration, a route or cron. Its notes have a **Manual steps** section and its manifest says `manual: true`, which an install's deploy stops on. A change that needs it sets `manual` and `manualSteps` in `release.json`, and the pull request that ships the steps clears them. When the only step is `wrangler deploy` (a new Durable Object class, a cron, a route), it also sets `wranglerDeploy: true`, and an install whose Deploy may run `wrangler deploy` does it itself (the install template's README says when). Data the Durable Object stores changes forward-only and additively, so an install can always go back one release, except across a new Durable Object class, which Cloudflare doesn't roll back.
 - **The version** is `package.json`'s; the release workflow sets it to the pre-release's before it builds. Patches count by themselves: once a stable is out, the pre-releases work toward its next patch. For the next minor or major, pick it as **next** when you run the **Release** workflow (patch, the default, opens nothing): once the stable is published, the workflow opens a pull request setting `package.json` to it, and after it merges the next pre-release is `vX.Y.0-main.1`. That needs **Allow GitHub Actions to create and approve pull requests** on in the repository's Actions settings (if it was off, turn it on and re-run the **next version** job: it opens the pull request from the branch it already made), and a pull request opened with the workflow's token starts no workflows, so close and reopen it, or push to it, for CI to run. At any other time, **Prepare** on the board's GitHub view starts an agent that opens the same pull request. `GET /api/ping` and `GET /api/health` report it as `release`. An install that deploys a stable passes it as the `BREAKAWAY_VERSION` variable, since the bundle was built as the pre-release.

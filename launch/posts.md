@@ -109,6 +109,55 @@ A thread of four posts. Post it when 1.3.0 is published (`BRK-114`). Each post r
 >
 > They still claim one task each. You still merge.
 
-"Peloton" is an insider word the guide leaves out of copy; here it's the feature's name, and the post says what it is in the same line. It's coming, not out: keep "Coming soon" until it ships.
+"Peloton" is an insider word the guide leaves out of copy; here it's the feature's name, and the post says what it is in the same line. It was coming when 1.3.0 went out and shipped in 1.3.1: if you post this thread again, drop "Coming soon" from the post and the card.
 
 **Alt text:** A card headed "The peloton." with "Coming soon" at the top. Below it: "Where running agents check in with each other." Then three made-up posts. claude-a on BRK-12 checks in: "Changing the inbox query and its test." claude-b on WEB-3 posts a step: "Moved the inbox empty state to its own file. Does this affect anyone?" claude-a replies: "Not me. Go ahead." At the foot: "You still merge."
+
+## 7. 1.4.0: what's new, Kickoff, specs, and deploys
+
+A thread of four posts. Post it when 1.4.0 is published. Each post replies to the one before it. The release's own notes are [`docs/releases/v1.4.0.md`](../docs/releases/v1.4.0.md).
+
+### 7a. What's new
+
+**Media:** [`media/09-new-in-1-4-0.png`](media/09-new-in-1-4-0.png)
+
+> breakaway 1.4.0 is out. New:
+>
+> - Kickoff: a new project from a pitch
+> - Specs on the board, refined by an agent
+> - A Settings page, and one per repository
+> - Deploy with breakaway: deploys and releases
+> - Set up the board to a first merged PR
+> - Dictate into the board’s long fields
+
+**Alt text:** A card headed "New in 1.4.0." with six lines: Kickoff: a new project from a pitch. Specs on the board, refined by an agent. A Settings page, and one per repository. Deploy with breakaway: deploys and releases. Set up the board to a first merged pull request. Dictate into the board's long fields.
+
+### 7b. Kickoff
+
+**Media:** [`media/10-kickoff.png`](media/10-kickoff.png)
+
+> Kick off a project from the board. Say what you want to make, in your own words.
+>
+> The board walks you through a private repository and its agents. An agent asks you plain questions, then opens one pull request with the plan and the first tasks. You merge it. No terminal needed.
+
+**Alt text:** A card headed "Kick it off." Below it: "From a pitch to a plan you merge." Then three steps: 1, say what you want to make; 2, answer plain questions, up to 12; 3, merge the plan, with acme/widgets beside it. At the foot: "No terminal needed."
+
+### 7c. Specs
+
+**Media:** [`media/11-specs.png`](media/11-specs.png)
+
+> Specs on the board. The Specs view reads a repository's specs from GitHub, each beside the tasks that link it.
+>
+> Say what should change, and an agent rewrites the spec and brings its tasks in line, in one pull request you merge.
+
+**Alt text:** A card headed "Specs on the board." Below it: "Read them beside their tasks. Refine one with an agent." Then three made-up specs: BRK-20, Saved views, draft, 3 open; WEB-8, Inbox filters, approved, 1 open; DOC-4, Explain horizons, built, 0 open. BRK-20's work ID is red.
+
+### 7d. Deploy with breakaway
+
+**Media:** [`media/12-deploy.png`](media/12-deploy.png)
+
+> Deploy with breakaway. One press starts an agent that moves a repository's CI/CD to breakaway's deploy flow, or an npm package to its release flow, in a pull request.
+>
+> You merge it and turn on deploys. Promote, roll back, and release from the board.
+
+**Alt text:** A card headed "Deploy with breakaway." Three steps: 1, an agent moves your CI/CD, in a pull request; 2, you merge and turn on deploys; 3, promote, roll back, release. At the foot: "You merge. You deploy."

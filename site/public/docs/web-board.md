@@ -21,7 +21,8 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Roadmap** | Releases in version order, then Unplanned, each with its feature cards: progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
 | **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
-| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones. |
+| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
+| **Specs** | The repository’s specs, read from GitHub, each with its status and the tasks that link it. Open one to read it beside the list, and **Refine with an agent** to have an agent change it and bring its tasks in line, in one pull request. |
 | **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, every chase that’s on, each repository’s peloton, the Agents settings, and the agent prompts. |
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
@@ -61,7 +62,7 @@ A repository taken off the board shows its page read only, with **Release its sh
 
 Anything that holds a secret or changes the install itself has no button. Where the page needs one, it shows the command to copy:
 
-- `agents-connect [--repo <slug>]` connects a repository’s agent routine.
+- `agents-connect [--repo <slug>]` connects a repository’s agent routine. The form on Connections and in the Add a repository wizard does the same without a terminal, and keeps the routine encrypted on the board.
 - `github-connect` stores the GitHub App’s keys.
 - `rotate-sync` and `rotate-token` make new sync credentials or a new API token.
 - `init-secrets` writes a new board’s secrets.
@@ -77,11 +78,15 @@ The **Agent** section of a task starts an agent on it, with an optional note, an
 
 ### The task menu
 
-Right-click a task in the Board, List, or Dependencies view (a long press on a touch screen, or the Menu key or Shift+F10 on a focused task) to act on it where it is: open it, start an agent (or **Force start** one that waits on the board’s limits), review its pull request with an agent, refine it, refine from a decided decision’s answers, start by itself when ready, claim or release, add a comment, move it to another horizon, mark it done or open it again, and copy its work ID or link. It shows only what applies to that task. Shift with the right-click, or a right-click in a text field, still opens the browser’s own menu.
+Right-click a task in the Board, List, or Dependencies view (a long press on a touch screen, or the Menu key or Shift+F10 on a focused task) to act on it where it is: open it, start an agent (or **Force start** one that waits on the board’s limits), review its pull request with an agent, refine it, refine from a decided decision’s answers, start by itself when ready, claim or release, add a comment, move it to another horizon, mark it done or open it again, archive a finished one (Board and List), and copy its work ID or link. It shows only what applies to that task. Shift with the right-click, or a right-click in a text field, still opens the browser’s own menu.
 
 ### New agent
 
 **New agent** in the top bar (`p`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
+
+### Dictation
+
+The board’s long text fields (a task’s description and comments, New task, New idea, New agent, a decision’s answers, a message to a running agent, and the notes and prompts you give an agent) have a microphone button: press it and speak, and the words go into the field. It’s the browser’s own speech recognition. Chrome, Edge, and Safari have it; Firefox doesn’t, and Brave turns it off, so the button isn’t there. Where the browser can recognise your language on the device it does; otherwise it sends the audio to its own speech service while dictation is on. The board never sees the audio.
 
 Filters (area, horizon, who can move it, claimed, finished) and search live in the URL, so every view and every task has a link.
 
@@ -93,7 +98,7 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 | `n` | New task |
 | `i` | New idea |
 | `p` | New agent |
-| `b` `l` `m` `g` `o` `a` `h` `x` `u` | Switch views |
+| `b` `l` `m` `g` `o` `a` `h` `e` `x` `u` | Switch views |
 | `w` | Connections |
 | `[` | Collapse or expand the sidebar |
 | `s` | Switch repository (with several) |
