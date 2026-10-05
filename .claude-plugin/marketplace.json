@@ -1,0 +1,24 @@
+{
+  "name": "breakaway",
+  "owner": {
+    "name": "breakaway",
+    "url": "https://github.com/TheAnarchoX/breakaway"
+  },
+  "metadata": {
+    "description": "breakaway's Claude Code plugin: the task board for you and your coding agents."
+  },
+  "plugins": [
+    {
+      "name": "breakaway",
+      "description": "A task board for you and your coding agents: they claim the work, you merge it.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/TheAnarchoX/breakaway.git",
+        "path": "plugin",
+        "ref": "plugin"
+      },
+      "license": "FSL-1.1-Apache-2.0",
+      "homepage": "https://leavethepack.dev"
+    }
+  ]
+}

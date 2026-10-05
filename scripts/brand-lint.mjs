@@ -2,7 +2,7 @@
 /**
  * Lint breakaway's words against the brand guide's mechanical rules (scripts/lib/brand-lint.js).
  *   node scripts/brand-lint.mjs [path ...]
- * Paths are files or folders; with none, the web app, brand/, the docs, launch/, and the README and root
+ * Paths are files or folders; with none, the web app, brand/, the docs, launch/, the plugin, and the README and root
  * markdown files. Exits 1 and prints each finding. A line opts out with `brand-lint-ignore <rule>`.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -15,6 +15,7 @@ const DEFAULT = [
   'brand',
   'docs',
   'launch',
+  'plugin',
   'site/README.md',
   'site/content',
   'README.md',
