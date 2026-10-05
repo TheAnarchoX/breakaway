@@ -64,7 +64,7 @@ describe('the peloton (IDEA-32)', () => {
     expect(res.error).toMatch(/holds no claimed task that rides/);
     res = await post(repo, { agent: 'claude-ops-1', kind: 'checkin', text: 'Hi', task: 'OPS-2' });
     expect(res.status).toBe(403);
-    // The signed-in board reads; it doesn't post.
+    // The signed-in board posts as the owner, never as an agent (IDEA-36).
     const login = await SELF.fetch(`${ORIGIN}/login`, {
       method: 'POST',
       redirect: 'manual',
@@ -77,7 +77,7 @@ describe('the peloton (IDEA-32)', () => {
       headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent: 'claude-ops-1', kind: 'checkin', text: 'Hi' }),
     });
-    expect(owner.status).toBe(403);
+    expect(owner.status).toBe(400);
     expect((await detail(repo)).posts).toEqual([]);
   });
 
@@ -85,7 +85,7 @@ describe('the peloton (IDEA-32)', () => {
     const as = { agent: 'claude-ops-1' };
     expect((await post(repo, { ...as, kind: 'shout', text: 'Hi' })).status).toBe(400);
     expect((await post(repo, { ...as, kind: 'step', text: '   ' })).status).toBe(400);
-    expect((await post(repo, { ...as, kind: 'step', text: 'x'.repeat(1001) })).status).toBe(400);
+    expect((await post(repo, { ...as, kind: 'step', text: 'x'.repeat(2001) })).status).toBe(400);
     const secret = await post(repo, { ...as, kind: 'step', text: 'I used ghp_abcdefghijklmnopqrstuvwxyz0123456789' });
     expect(secret.status).toBe(400);
     expect(secret.error).toMatch(/token or key/);
@@ -198,21 +198,21 @@ describe('the peloton (IDEA-32)', () => {
     });
   });
 
-  it('limits an agent to 30 posts an hour and keeps 200 a peloton', async () => {
+  it('limits an agent to 120 posts an hour and keeps 200 a peloton', async () => {
     await runInDurableObject(store(), (instance) => {
       const now = Date.now();
-      // Up to 29 from ops-3 in the last hour (it posted twice already).
-      for (let i = 0; i < 27; i += 1)
+      // Up to 119 from ops-3 in the last hour (it posted twice already).
+      for (let i = 0; i < 117; i += 1)
         instance.sql.exec(
           "INSERT INTO peloton_posts (peloton, at, agent, kind, text) VALUES (?, ?, 'claude-ops-3', 'step', 'x')",
           'elsewhere',
           now - 60_000,
         );
     });
-    expect((await post(repo, { agent: 'claude-ops-3', kind: 'step', text: 'Thirty' })).status).toBe(201);
-    const over = await post(repo, { agent: 'claude-ops-3', kind: 'step', text: 'Thirty-one' });
+    expect((await post(repo, { agent: 'claude-ops-3', kind: 'step', text: 'The 120th' })).status).toBe(201);
+    const over = await post(repo, { agent: 'claude-ops-3', kind: 'step', text: 'The 121st' });
     expect(over.status).toBe(429);
-    expect(over.error).toMatch(/30 posts in the last hour/);
+    expect(over.error).toMatch(/120 posts in the last hour/);
 
     await runInDurableObject(store(), (instance) => {
       instance.sql.exec("DELETE FROM peloton_posts WHERE peloton = 'elsewhere'");

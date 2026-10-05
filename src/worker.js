@@ -527,15 +527,13 @@ async function handleApi(request, env, url, ctx) {
     if (res) return res;
   }
   if (parts[0] === 'pings' && parts.length === 1 && method === 'GET') return send(await s.pingsApi());
-  // The peloton (IDEA-32): agents post as the holder of a claimed task, with the bearer token. The owner reads it
-  // on the board and steers one agent with a message, so the signed-in browser doesn't post.
+  // The peloton (IDEA-32, IDEA-36): agents post as the holder of a claimed task, with the bearer token. A post from
+  // the signed-in browser is the owner's, and only the signed-in browser posts as the owner, never the bearer token.
   if (parts[0] === 'peloton') {
     if (parts.length === 1 && method === 'GET') return send(await s.pelotonApi(url.searchParams.get('agent')));
     if (parts.length === 2 && method === 'GET') return send(await s.pelotonDetailApi(parts[1]));
-    if (parts.length === 2 && method === 'POST') {
-      if (via !== 'cookie') return send(await s.pelotonPostApi(parts[1], body));
-      return json(403, { error: 'agents post on the peloton: to steer one, message it from its task' });
-    }
+    if (parts.length === 2 && method === 'POST')
+      return send(await (via === 'cookie' ? s.pelotonOwnerPostApi(parts[1], body) : s.pelotonPostApi(parts[1], body)));
   }
   // Notifications are the owner's: the signed-in browser only, never the bearer token agents hold.
   if (parts[0] === 'push' && parts.length <= 2) {

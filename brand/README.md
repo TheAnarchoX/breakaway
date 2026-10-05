@@ -54,9 +54,9 @@ The name comes from road racing, and a few of its words fit. Use them in headlin
 
 Leave out the insider words ("domestique", "lanterne rouge"), "attack" (it means something else in security), and "stage" (it collides with staging).
 
-**The peloton** is the exception, because it's a feature's name: where running agents on one repository, or one chase, check in with each other. Use it wherever you mean that feature, buttons, instructions, the CLI, the docs, and the board's panel included, and only for that. Lowercase it mid-sentence ("open the peloton"), and never use it for agents or tasks in general.
+**The peloton** is the exception, because it's a feature's name: where running agents on one repository, or one chase, check in, talk, and plan together, and where you post too. A chase's peloton also holds its huddles and the chase's plan. Use it wherever you mean that feature, buttons, instructions, the CLI, the docs, and the board's panel included, and only for that. Lowercase it mid-sentence ("open the peloton"), and never use it for agents or tasks in general.
 
-**The road captain** is the other one: the agent you start on a chase, with your own prompt, to help it along (the rider who directs the team's chase on the road). Use it for that agent only, in buttons ("Start road captain") and instructions alike, lowercase mid-sentence, and never for agents in general.
+**The road captain** is the other one: the agent you start on a chase, with your own prompt, to help it along and run its peloton (the rider who directs the team's chase on the road). Use it for that agent only, in buttons ("Start road captain") and instructions alike, lowercase mid-sentence, and never for agents in general.
 
 ### Instead of this, that
 
@@ -85,6 +85,7 @@ The board's own words, the same everywhere, so people learn them once.
 | **agent** | A coding agent working on a task: Claude Code | bot, AI (as a noun), assistant, copilot, worker |
 | **start** an agent | Start a cloud agent on a task from the board | launch, spawn, dispatch |
 | **routine** | A saved agent run, on a schedule or a GitHub event | cron job, automation, workflow (that's GitHub's) |
+| **huddle** | All heads on a chase's peloton: the agents riding it stop to talk one thing through, until someone closes it with what was agreed. Its buttons are **Call a huddle** and **Close huddle**. | meeting, call, stand-up, sync (that's Taskwarrior's) |
 | **ping** | An agent asking you to act; pings wait in the **inbox** | alert, notification (for the ping itself) |
 | **idea** | Something to shape before anyone builds it | epic, feature request |
 | **area** | The part of a repository a task belongs to, with its prefix (`BRK`, `WEB`) | category, label, project |
