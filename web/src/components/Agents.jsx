@@ -32,6 +32,7 @@ export const TRIGGER_LABEL = {
   alert: 'started for a security alert',
   review: 'started to test a Dependabot update',
   general: 'started from a prompt',
+  kickoff: 'started by Send answers and carry on',
   chase: 'started by a chase',
   'chase-fix': 'started by a chase to fix a pull request',
   'road-captain': 'started as a chase’s road captain',
