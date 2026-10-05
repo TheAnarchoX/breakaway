@@ -2,14 +2,17 @@
  * TaskStore's routines (docs/specs/IDEA-4-routines.md): saved prompts the owner runs with a button.
  * A run is a normal task in area `routines` whose description is the routine's prompt, started through
  * the same atomic path as every agent (claim, slots, hourly budget), under the routine's own caps.
- * Routines live in this Durable Object's SQL, next to the tasks, and only the owner writes them.
+ * Routines live in this Durable Object's SQL, next to the tasks. The owner writes them, and so does a routine
+ * maker's agent while it holds its task (docs/specs/BRK-220-routines-with-an-agent.md, section 5): it may make a few
+ * in its task's repository and change those, and nothing else.
  */
-import { AgentError } from './store-agents.js';
+import { AgentError, isRoutineMaker } from './store-agents.js';
 import { InputError, HORIZONS, MAX_TEXT } from './model.js';
 import { latestSlot, nextSlot, parseCron } from './cron.js';
 import { sameSecret } from './auth.js';
 import { ROUTINE_GITHUB_EVENTS, routineEventOf } from './github.js';
 import { planOf } from './plans.js';
+import { repoSlugOf } from './repos.js';
 
 const MAX_TRIGGER_BODY = 16 * 1024;
 const MAX_NOTE = 1000;
@@ -17,6 +20,13 @@ const MAX_TRIGGER_TEXT = 2000;
 const NOTES_PER_DAY = 20; // triggers noted on an open run, per routine
 const MAX_TRIGGERS = 10;
 const START_MODES = ['auto', 'wait'];
+const MAKER_MOST = 5; // routines one routine maker's task may make
+
+/** A webhook or alert trigger is a secret the board shows once: an agent never makes or revokes one. */
+const TRIGGERS_WHAT = 'adds or revokes a routine’s webhook and alert triggers: they’re secrets agents never handle';
+
+/** The owner: a request with no `by`, or `owner`. */
+const isOwner = (by) => by === undefined || by === null || by === '' || by === 'owner';
 
 const encoder = new TextEncoder();
 const hex = (bytes) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -124,6 +134,15 @@ export const routinesMethods = {
       this.sql.exec("ALTER TABLE routines ADD COLUMN trigger_start TEXT NOT NULL DEFAULT 'wait'");
     // The repository a routine runs in (CLD-127): its runs are its tasks and start through its routine. Empty means the default.
     if (!columns.includes('repo')) this.sql.exec('ALTER TABLE routines ADD COLUMN repo TEXT');
+    // Who made it (BRK-221): the routine maker's task and its agent, or neither when the owner did.
+    if (!columns.includes('made_by')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by TEXT');
+    if (!columns.includes('made_by_agent')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by_agent TEXT');
+    const events = this.sql
+      .exec('PRAGMA table_info(routine_events)')
+      .toArray()
+      .map((c) => c.name);
+    // The agent behind a routine_made or routine_changed event, for Activity.
+    if (!events.includes('agent')) this.sql.exec('ALTER TABLE routine_events ADD COLUMN agent TEXT');
   },
 
   /** Paused or not, and the daily cap for all routines: what the owner set, else the Claude plan's default (CLD-198). */
@@ -185,6 +204,14 @@ export const routinesMethods = {
       gapMinutes: r.gap_minutes,
       dailyCap: r.daily_cap,
       editedBy: r.edited_by,
+      madeBy: r.made_by
+        ? {
+            uuid: r.made_by,
+            wid: this.tasks.get(r.made_by)?.wid ?? null,
+            short: r.made_by.slice(0, 8),
+            agent: r.made_by_agent,
+          }
+        : null,
       editedAt: new Date(r.edited_at).toISOString(),
       created: new Date(r.created).toISOString(),
       runsToday: this.sql
@@ -236,10 +263,39 @@ export const routinesMethods = {
       .one().n;
   },
 
-  /** Agents never write routines: only a request from the owner (no `by`, or `owner`) does. */
-  ownerOnlyRoutines(by) {
-    if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-      throw new AgentError('only the owner creates or changes routines', 403);
+  /** Only a request from the owner (no `by`, or `owner`) does `what`; an agent's name is refused. */
+  ownerOnlyRoutines(by, what = 'creates or changes routines') {
+    if (!isOwner(by)) throw new AgentError(`only the owner ${what}`, 403);
+  },
+
+  /**
+   * Who writes a routine (BRK-220 section 5): null for the owner, or the routine maker agent `by` is, with the task
+   * that lets it: open, claimed by that name, and tagged +routine-maker. Every other agent is refused.
+   * @returns {{ uuid: string, wid: string | null, agent: string, repo: string } | null}
+   */
+  routineWriter(by) {
+    if (isOwner(by)) return null;
+    const agent = String(by);
+    const held = [...this.tasks].find(
+      ([, map]) => map.claim === agent && map.status === 'pending' && isRoutineMaker(map),
+    );
+    if (!held)
+      throw new AgentError(
+        `only the owner creates or changes routines, and an agent while it holds a routine maker’s task (Make with an agent); ${agent.slice(0, 64)} holds none`,
+        403,
+      );
+    const [uuid, map] = held;
+    return { uuid, wid: map.wid ?? null, agent, repo: repoSlugOf(map, this.defaultRepoSlug()) };
+  },
+
+  /** A routine maker writes routines in its task's repository only: `repo` is the routine's, null for the default. */
+  checkMakerRepo(writer, repo) {
+    const slug = repo || this.defaultRepoSlug();
+    if (slug !== writer.repo)
+      throw new AgentError(
+        `${writer.agent}’s routine maker is ${writer.repo}’s: it makes and changes routines in ${writer.repo} only, not ${slug}`,
+        403,
+      );
   },
 
   routineFields(input, current = {}) {
@@ -292,7 +348,7 @@ export const routinesMethods = {
   },
 
   createRoutine(input) {
-    this.ownerOnlyRoutines(input.by);
+    const writer = this.routineWriter(input.by);
     const slug = String(input.slug ?? '').toLowerCase();
     if (!SLUG.test(slug))
       throw new InputError('the slug is lowercase letters, digits, and hyphens, starting with a letter (up to 40)');
@@ -307,11 +363,21 @@ export const routinesMethods = {
       schedule: null,
       trigger_start: 'wait',
       github_events: '',
-      repo: null,
+      // A routine maker's routine is in its task's repository unless it says otherwise.
+      repo: writer && writer.repo !== this.defaultRepoSlug() ? writer.repo : null,
     });
+    if (writer) {
+      this.checkMakerRepo(writer, f.repo);
+      const made = this.sql.exec('SELECT COUNT(*) AS n FROM routines WHERE made_by = ?', writer.uuid).one().n;
+      if (made >= MAKER_MOST)
+        throw new AgentError(
+          `a routine maker makes at most ${MAKER_MOST} routines per task, and ${writer.wid ?? writer.uuid.slice(0, 8)} has made ${made}`,
+          403,
+        );
+    }
     const now = Date.now();
     this.sql.exec(
-      'INSERT INTO routines (slug, name, prompt, done_when, horizon, enabled, gap_minutes, daily_cap, edited_by, edited_at, created, schedule, last_slot, trigger_start, github_events, repo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO routines (slug, name, prompt, done_when, horizon, enabled, gap_minutes, daily_cap, edited_by, edited_at, created, schedule, last_slot, trigger_start, github_events, repo, made_by, made_by_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       slug,
       f.name,
       f.prompt,
@@ -320,7 +386,7 @@ export const routinesMethods = {
       f.enabled,
       f.gap_minutes,
       f.daily_cap,
-      'owner',
+      writer?.agent ?? 'owner',
       now,
       now,
       f.schedule,
@@ -328,14 +394,23 @@ export const routinesMethods = {
       f.trigger_start,
       f.github_events,
       f.repo,
+      writer?.uuid ?? null,
+      writer?.agent ?? null,
     );
+    if (writer) this.routineEvent(slug, 'routine_made', { task: writer.uuid, agent: writer.agent });
     return this.routineView(this.routineRow(slug));
   },
 
   modifyRoutine(slug, input) {
-    this.ownerOnlyRoutines(input.by);
+    const writer = this.routineWriter(input.by);
     const row = this.routineRow(slug);
+    if (writer && row.made_by !== writer.uuid)
+      throw new AgentError(
+        `a routine maker changes only routines its task made, and “${row.name}” isn’t one of ${writer.wid ?? writer.uuid.slice(0, 8)}’s`,
+        403,
+      );
     const f = this.routineFields(input, row);
+    if (writer) this.checkMakerRepo(writer, f.repo);
     // Turning it back on clears the reason it switched itself off.
     this.sql.exec(
       'UPDATE routines SET name = ?, prompt = ?, done_when = ?, horizon = ?, enabled = ?, gap_minutes = ?, daily_cap = ?, edited_by = ?, edited_at = ?, disabled_reason = ?, schedule = ?, trigger_start = ?, github_events = ?, repo = ? WHERE slug = ?',
@@ -346,7 +421,7 @@ export const routinesMethods = {
       f.enabled,
       f.gap_minutes,
       f.daily_cap,
-      'owner',
+      writer?.agent ?? 'owner',
       Date.now(),
       f.enabled ? null : row.disabled_reason,
       f.schedule ?? null,
@@ -364,6 +439,7 @@ export const routinesMethods = {
       );
     if (f.enabled && !row.enabled)
       this.sql.exec('UPDATE routine_runs SET failed = 0 WHERE slug = ? AND failed = 1', row.slug);
+    if (writer) this.routineEvent(row.slug, 'routine_changed', { task: writer.uuid, agent: writer.agent });
     return this.routineView(this.routineRow(row.slug));
   },
 
@@ -507,7 +583,7 @@ export const routinesMethods = {
 
   /** Makes a trigger for a routine. The secret is returned once; only its SHA-256 is kept. Owner only. */
   async createTrigger(slug, input) {
-    this.ownerOnlyRoutines(input.by);
+    this.ownerOnlyRoutines(input.by, TRIGGERS_WHAT);
     const row = this.routineRow(slug);
     const label = text(input.label ?? 'webhook', 'the label', 80) || 'webhook';
     const live = this.sql
@@ -532,7 +608,7 @@ export const routinesMethods = {
 
   /** Revokes one; a rotation is a new trigger and then a revoke. */
   revokeTrigger(slug, id, by) {
-    this.ownerOnlyRoutines(by);
+    this.ownerOnlyRoutines(by, TRIGGERS_WHAT);
     const row = this.routineRow(slug);
     const found = this.sql
       .exec(
@@ -546,14 +622,15 @@ export const routinesMethods = {
     return { revoked: found[0].id };
   },
 
-  routineEvent(slug, kind, { task = null, detail = null } = {}) {
+  routineEvent(slug, kind, { task = null, detail = null, agent = null } = {}) {
     this.sql.exec(
-      'INSERT INTO routine_events (slug, at, kind, task, detail) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO routine_events (slug, at, kind, task, detail, agent) VALUES (?, ?, ?, ?, ?, ?)',
       slug,
       Date.now(),
       kind,
       task,
       detail ? String(detail).slice(0, 300) : null,
+      agent,
     );
   },
 
