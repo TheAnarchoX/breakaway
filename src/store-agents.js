@@ -22,6 +22,14 @@ const FAILED = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 
 const RUNNING_HOURS = 12; // after this, a claimed task no longer counts as a running agent
 const LIVE_MS = 120_000; // output within the last 2 minutes: the session is live
 const STARTING_MS = 600_000; // a session the board started and that hasn't said anything yet is still starting for 10 minutes
+const SILENT_MS = 30 * 60_000; // nothing from a started session for 30 minutes: it's Silent, and the owner hears once (BRK-145)
+const FIX_TRIES = 2; // fix agents on one pull request that didn't get it green before a third is Needs you (BRK-145)
+/** The problems Fix with an agent mends, in the words a ping uses. */
+const FIX_WORDS = {
+  conflicts: 'conflicts with its base branch',
+  failing: 'has failing checks',
+  review: 'has review comments to answer',
+};
 const LOG_KEEP = 1000; // entries per task
 const LOG_DAYS = 14;
 const KINDS = new Set(['tool', 'message', 'start', 'prompt']);
@@ -262,6 +270,16 @@ export const agentsMethods = {
     // Started with Force start (BRK-105). Runs from before weren't.
     if (!columns.includes('forced'))
       this.sql.exec('ALTER TABLE agent_runs ADD COLUMN forced INTEGER NOT NULL DEFAULT 0');
+    // Silent (BRK-145): since when a running session has said nothing, and the one ping the run sent about it.
+    if (!columns.includes('silent')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN silent INTEGER');
+    if (!columns.includes('silent_ping')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN silent_ping INTEGER');
+    // Fix agents started on each pull request since it was last green, and when a third became Needs you (BRK-145).
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS pr_fixes (
+        repo TEXT NOT NULL, number INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, needs_you INTEGER,
+        PRIMARY KEY (repo, number)
+      );
+    `);
     // An agent's review of a pull request (BRK-111): the latest one shows on its page; each is a task comment too.
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS agent_reviews (
@@ -1096,10 +1114,91 @@ export const agentsMethods = {
     ]
       .filter(Boolean)
       .join('\n');
-    return {
-      ...(await this.startAgent(uuid, { trigger, note: text, kind: 'fix-pr', pr: pr.number, force })),
-      already: null,
-    };
+    // Two fix agents that didn't get it green are enough (BRK-145): a third is the owner's call, not the board's.
+    // A chase counts its own fixes on each head and goes Stuck, so only Fix with an agent is refused here.
+    const fixes = this.prFixes(slug, pr.number);
+    if (!chase && !force && fixes.tries >= FIX_TRIES) {
+      await this.fixNeedsYou(slug, pr, uuid, FIX_WORDS[chosen], fixes.tries);
+      throw new AgentError(
+        `Needs you: ${fixes.tries} fix agents on #${pr.number} didn’t get it green, so the board won’t start another. Read what they tried on ${this.tasks.get(uuid)?.wid ?? 'its task'}, then fix it yourself or force start one more`,
+        409,
+        { forceable: true },
+      );
+    }
+    const started = await this.startAgent(uuid, { trigger, note: text, kind: 'fix-pr', pr: pr.number, force });
+    this.sql.exec(
+      'INSERT INTO pr_fixes (repo, number, tries) VALUES (?, ?, 1) ON CONFLICT (repo, number) DO UPDATE SET tries = tries + 1',
+      slug,
+      pr.number,
+    );
+    return { ...started, already: null };
+  },
+
+  /** Fix agents started on pull request `number` of repository `slug` since it was last green, and since when that's Needs you. */
+  prFixes(slug, number) {
+    const row = this.sql
+      .exec('SELECT tries, needs_you FROM pr_fixes WHERE repo = ? AND number = ?', slug, Number(number))
+      .toArray()[0];
+    return { tries: row?.tries ?? 0, needsYou: row?.needs_you ? new Date(row.needs_you).toISOString() : null };
+  },
+
+  /** Marks pull request `pr` Needs you, and pings the owner once about it on task `uuid`, until it's green again. */
+  async fixNeedsYou(slug, pr, uuid, words, tries) {
+    const marked = this.sql
+      .exec(
+        'UPDATE pr_fixes SET needs_you = ? WHERE repo = ? AND number = ? AND needs_you IS NULL RETURNING number',
+        Date.now(),
+        slug,
+        pr.number,
+      )
+      .toArray();
+    if (!marked.length) return;
+    const wid = this.tasks.get(uuid)?.wid ?? 'its task';
+    await this.boardPing(
+      uuid,
+      'blocked',
+      `#${pr.number} still ${words} after ${tries} fix agents tried, so the board won’t start another. Read what they tried on ${wid}, then fix it yourself or force start one more fix.`,
+    );
+  },
+
+  /**
+   * After a tick: a pull request that's green again, closed, or gone starts counting its fixes from nothing.
+   * Running checks, an unknown merge state, and requested changes aren't green.
+   */
+  fixesTick() {
+    for (const { repo, number } of this.sql.exec('SELECT repo, number FROM pr_fixes').toArray()) {
+      const row = this.sql
+        .exec('SELECT state, data FROM gh_pulls WHERE repo = ? AND number = ?', repo, number)
+        .toArray()[0];
+      const pr = row && JSON.parse(row.data);
+      const green =
+        pr &&
+        ['ready', 'review'].includes(prVerdict(pr)) &&
+        pr.checks?.state !== 'failure' &&
+        pr.review?.decision !== 'changes_requested';
+      if (row?.state !== 'open' || green)
+        this.sql.exec('DELETE FROM pr_fixes WHERE repo = ? AND number = ?', repo, number);
+    }
+  },
+
+  /** Pull requests whose fixes are Needs you, for the Agents view (BRK-145). */
+  fixesNeedingYou() {
+    return this.sql
+      .exec('SELECT repo, number, tries, needs_you FROM pr_fixes WHERE needs_you IS NOT NULL ORDER BY needs_you')
+      .toArray()
+      .map((r) => {
+        const row = this.sql
+          .exec('SELECT data FROM gh_pulls WHERE repo = ? AND number = ?', r.repo, r.number)
+          .toArray()[0];
+        const uuid = row ? this.prTask({ ...JSON.parse(row.data), repo: r.repo }) : null;
+        return {
+          repo: r.repo,
+          pr: r.number,
+          wid: (uuid && this.tasks.get(uuid)?.wid) ?? null,
+          tries: r.tries,
+          since: new Date(r.needs_you).toISOString(),
+        };
+      });
   },
 
   /** Why a task can't start an agent right now, or null if it can. */
@@ -1191,6 +1290,56 @@ export const agentsMethods = {
       running.push({ run, task: t });
     }
     return running;
+  },
+
+  /**
+   * After a tick (BRK-145): a running session that has said nothing for 30 minutes is Silent, and its run pings
+   * the owner once. It keeps its claim and its slot: the owner opens the session and decides. A run on a pull
+   * request whose checks are running is waiting for them, not silent. A run that stopped running isn't Silent.
+   */
+  async silentTick() {
+    const now = Date.now();
+    const running = this.runningAgents(this.views());
+    const ids = new Set(running.map(({ run }) => run.id));
+    for (const r of this.sql.exec('SELECT id FROM agent_runs WHERE silent IS NOT NULL').toArray())
+      if (!ids.has(r.id)) this.clearSilent(r.id, 'agent-stopped');
+    for (const { run, task } of running) {
+      const last = this.sql.exec('SELECT MAX(at) AS at FROM agent_logs WHERE task = ?', task.uuid).one().at;
+      const since = Math.max(run.started, last ?? 0);
+      if (run.silent || now - since < SILENT_MS) continue;
+      const pr = task.github?.find((p) => p.closes && p.state === 'open');
+      if (['review', 'fix-pr', 'pr-review'].includes(run.kind) && pr && this.pullChecksRunning(task.repo, pr.number))
+        continue;
+      this.sql.exec('UPDATE agent_runs SET silent = ? WHERE id = ?', since, run.id);
+      if (run.silent_ping) continue; // One ping a run: going Silent again after it spoke tells nobody.
+      const id = await this.boardPing(
+        task.uuid,
+        'blocked',
+        `${run.agent} has said nothing for over 30 minutes on ${task.wid ?? task.short}. It keeps its claim and its slot: open its session${run.url ? ` (${run.url})` : ''} and decide whether it carries on, or stop it and release the task.`,
+      );
+      this.sql.exec('UPDATE agent_runs SET silent_ping = ? WHERE id = ?', id, run.id);
+    }
+  },
+
+  /** Whether pull request `number`'s checks are running, as the board last saw them. */
+  pullChecksRunning(slug, number) {
+    const row = this.sql
+      .exec('SELECT data FROM gh_pulls WHERE repo = ? AND number = ?', slug, Number(number))
+      .toArray()[0];
+    return Boolean(row) && JSON.parse(row.data).checks?.state === 'pending';
+  },
+
+  /** Run `id` isn't Silent any more: its ping, if still open, resolves as `how` (agent-resumed or agent-stopped). */
+  clearSilent(id, how) {
+    const run = this.sql.exec('SELECT silent_ping FROM agent_runs WHERE id = ?', id).toArray()[0];
+    this.sql.exec('UPDATE agent_runs SET silent = NULL WHERE id = ?', id);
+    if (run?.silent_ping)
+      this.sql.exec(
+        'UPDATE pings SET resolved = ?, resolution = ? WHERE id = ? AND resolved IS NULL',
+        Date.now(),
+        how,
+        run.silent_ping,
+      );
   },
 
   /** Starts in the last hour: all of them (the shared budget), or one repository's. */
@@ -1357,6 +1506,8 @@ export const agentsMethods = {
           error: r.error,
           note: r.note,
           startedAt: new Date(r.started).toISOString(),
+          // Silent since (BRK-145): the session has said nothing from then; null while it's working or done.
+          silentSince: r.silent ? new Date(r.silent).toISOString() : null,
         }
       : null;
   },
@@ -1558,6 +1709,10 @@ export const agentsMethods = {
       this.sql.exec('INSERT INTO agent_logs (task, at, data) VALUES (?, ?, ?)', uuid, at, JSON.stringify(entry));
       added += 1;
     }
+    // Output clears Silent (BRK-145).
+    if (added)
+      for (const r of this.sql.exec('SELECT id FROM agent_runs WHERE task = ? AND silent IS NOT NULL', uuid).toArray())
+        this.clearSilent(r.id, 'agent-resumed');
     this.sql.exec(
       'DELETE FROM agent_logs WHERE task = ? AND id NOT IN (SELECT id FROM agent_logs WHERE task = ? ORDER BY id DESC LIMIT ?)',
       uuid,
@@ -1600,7 +1755,7 @@ export const agentsMethods = {
     const runs = new Map();
     for (const r of this.sql
       .exec(
-        'SELECT task, agent, url, started, trigger, status, error FROM agent_runs WHERE id IN (SELECT MAX(id) FROM agent_runs GROUP BY task)',
+        'SELECT task, agent, url, started, trigger, status, error, silent FROM agent_runs WHERE id IN (SELECT MAX(id) FROM agent_runs GROUP BY task)',
       )
       .toArray())
       runs.set(r.task, r);
@@ -1625,6 +1780,7 @@ export const agentsMethods = {
       status: run?.status ?? null,
       error: run?.error ?? null,
       startedAt: run ? new Date(run.started).toISOString() : null,
+      silentSince: run?.silent ? new Date(run.silent).toISOString() : null,
       lastAt: lastAt ? new Date(lastAt).toISOString() : null,
       live: Boolean(lastAt && Date.now() - lastAt < LIVE_MS),
     };
@@ -1656,6 +1812,7 @@ export const agentsMethods = {
         forced: Boolean(run.forced),
         url: run.url,
         startedAt: new Date(run.started).toISOString(),
+        silentSince: run.silent ? new Date(run.silent).toISOString() : null,
         lastAt: last ? new Date(last.at).toISOString() : null,
         live: Boolean(last && Date.now() - last.at < LIVE_MS),
         lastLine,
@@ -1700,6 +1857,8 @@ export const agentsMethods = {
         queue: this.autostartQueue(views, connected),
         // The chases that are on, with their live line, Needs you, Stuck, and queue (IDEA-28 section 3.9).
         chases: this.chasesOn(views, connected),
+        // Pull requests two fix agents didn't get green: no third starts without the owner (BRK-145).
+        needsYou: this.fixesNeedingYou(),
         recent,
       },
     };
@@ -1812,6 +1971,13 @@ export const agentsMethods = {
     // A chase starts after auto-start, so security fixes, general agents, and Start-when-ready tasks go first.
     try {
       await this.chaseTick();
+    } catch (error) {
+      errors.push(error.message); /* tries again next time */
+    }
+    // Silent sessions and pull requests green again (BRK-145), after the reconcile saw GitHub.
+    try {
+      this.fixesTick();
+      await this.silentTick();
     } catch (error) {
       errors.push(error.message); /* tries again next time */
     }
