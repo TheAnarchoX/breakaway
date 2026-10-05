@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { ref } from '../lib/model.js';
 import { MAX_IMAGES } from '../lib/images.js';
 import { actions, multiRepo, newAgent, openTask, repoScope, routineConnected, toast } from '../lib/store.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails } from './Attachments.jsx';
 import { RepoField, uploadDraftImages, useDraftImages } from './NewTask.jsx';
 
@@ -74,19 +74,21 @@ function NewAgentForm() {
       <h2 id="new-agent-title">New agent</h2>
       <label class="field">
         <span class="field-label">What should the agent do?</span>
-        <textarea
-          name="prompt"
-          class="textarea"
-          rows={7}
-          maxLength={4000}
-          autoFocus
-          aria-invalid={error ? 'true' : undefined}
-          aria-describedby={error ? 'new-agent-error new-agent-hint' : 'new-agent-hint'}
-          onInput={() => {
-            setError(null);
-            setRefusal(null);
-          }}
-        />
+        <Dictate>
+          <textarea
+            name="prompt"
+            class="textarea"
+            rows={7}
+            maxLength={4000}
+            autoFocus
+            aria-invalid={error ? 'true' : undefined}
+            aria-describedby={error ? 'new-agent-error new-agent-hint' : 'new-agent-hint'}
+            onInput={() => {
+              setError(null);
+              setRefusal(null);
+            }}
+          />
+        </Dictate>
         {error && (
           <span class="field-error" id="new-agent-error">
             {error}

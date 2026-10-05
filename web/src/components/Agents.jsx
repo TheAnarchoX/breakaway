@@ -20,7 +20,7 @@ import { api, enc } from '../lib/api.js';
 import { ago, openPr, ref, time } from '../lib/model.js';
 import { actions, agents, go } from '../lib/store.js';
 import { RichText } from '../lib/richtext.jsx';
-import { Dialog, useAutosize } from './ui.jsx';
+import { Dialog, useAutosize, Dictate } from './ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 /** A session that has sent nothing for this long after starting is shown as not sending. */
@@ -110,22 +110,24 @@ export function RefineDialog({ task: t, open, onClose }) {
         <h2 id="refine-title">Refine {ref(t)} with an agent</h2>
         <label class="field">
           <span class="field-label">What should it look at or change?</span>
-          <textarea
-            class="textarea"
-            rows={6}
-            maxLength={4000}
-            required
-            autoFocus
-            value={text}
-            aria-describedby={error ? 'refine-error refine-hint' : 'refine-hint'}
-            onInput={(e) => {
-              setText(e.currentTarget.value);
-              setError(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-            }}
-          />
+          <Dictate>
+            <textarea
+              class="textarea"
+              rows={6}
+              maxLength={4000}
+              required
+              autoFocus
+              value={text}
+              aria-describedby={error ? 'refine-error refine-hint' : 'refine-hint'}
+              onInput={(e) => {
+                setText(e.currentTarget.value);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+              }}
+            />
+          </Dictate>
           {error && (
             <span class="field-error" id="refine-error">
               {error}
@@ -468,24 +470,26 @@ export function MessageAgent({ task: t, url = null, autoFocus = false, onSent })
           <label class="field-label" for={id}>
             Message the agent
           </label>
-          <textarea
-            id={id}
-            ref={area}
-            class="textarea"
-            rows={2}
-            maxLength={MESSAGE_MAX}
-            autoFocus={autoFocus}
-            value={text}
-            aria-describedby={error ? `${id}-error ${id}-hint` : `${id}-hint`}
-            placeholder="Something to add or keep in mind"
-            onInput={(e) => {
-              setText(e.currentTarget.value);
-              setError(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-            }}
-          />
+          <Dictate>
+            <textarea
+              id={id}
+              ref={area}
+              class="textarea"
+              rows={2}
+              maxLength={MESSAGE_MAX}
+              autoFocus={autoFocus}
+              value={text}
+              aria-describedby={error ? `${id}-error ${id}-hint` : `${id}-hint`}
+              placeholder="Something to add or keep in mind"
+              onInput={(e) => {
+                setText(e.currentTarget.value);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+              }}
+            />
+          </Dictate>
           {error && (
             <span class="field-error" id={`${id}-error`} role="alert">
               {error}
@@ -607,13 +611,15 @@ export function AgentSection({ task: t }) {
           {canStart && writing && (
             <label class="field">
               <span class="field-label">Note for the agent (optional)</span>
-              <textarea
-                class="textarea"
-                rows={3}
-                value={note}
-                onInput={(e) => setNote(e.currentTarget.value)}
-                placeholder="Anything it should know or keep in mind"
-              />
+              <Dictate>
+                <textarea
+                  class="textarea"
+                  rows={3}
+                  value={note}
+                  onInput={(e) => setNote(e.currentTarget.value)}
+                  placeholder="Anything it should know or keep in mind"
+                />
+              </Dictate>
             </label>
           )}
           <div class="agent-actions">
