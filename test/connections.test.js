@@ -507,6 +507,13 @@ describe('Cloudflare, Claude, Taskwarrior, and push states', () => {
     await finish(taken, 'codex-x');
   });
 
+  it('notes when a call with the API token last reached the board, for the CLI (BRK-143)', async () => {
+    expect((await api('health')).status).toBe(200);
+    const c = find(await report(), 'cli');
+    expect(c).toMatchObject({ group: 'cli', name: 'Command line', state: 'working' });
+    expect(c.at).not.toBeNull();
+  });
+
   it('notes when a Taskwarrior replica last synced', async () => {
     await sync('snapshot');
     const c = find(await report(), 'taskwarrior');

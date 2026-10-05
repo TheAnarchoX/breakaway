@@ -97,6 +97,18 @@ export function slugFrom(github) {
   return slug || null;
 }
 
+/**
+ * The first real result in a repository, from `work` as store-wizard.js gathers it (BRK-143): with a routine, its
+ * agent step's four checks (an agent started, its live output, its pull request, the merge); without one, a task
+ * closed by its merged pull request. Set up the board's last step and the wizard's agent step both read this.
+ * Returns `{ done, wid, number }`, naming the merged task once there is one.
+ */
+export function firstResult(work, routine) {
+  const merged = work?.merged ?? null;
+  const done = routine ? Boolean(work?.started && work?.output && work?.pull && merged) : Boolean(merged);
+  return { done, wid: merged?.wid ?? null, number: merged?.number ?? null };
+}
+
 /** The rows of `connections` about this repository, by id; `null` for none. */
 const rowOf = (connections, id) => connections.find((c) => c.id === id) ?? null;
 
@@ -232,7 +244,7 @@ export function wizardSteps(facts) {
     // A failed start, or a session that sends nothing back, shows on Connections with its fix.
     {
       id: 'agent',
-      done: checks.agent.every((c) => c.done),
+      done: firstResult(work, true).done,
       checks: checks.agent,
       problem: connected ? (problemOf(routineRow) ?? problemOf(output)) : null,
     },
