@@ -19,7 +19,7 @@ const STUCK_AFTER = 2;
 const NOTES_KEPT_MS = 30 * 86_400_000;
 const STATES = ['off', 'on', 'stopped', 'done'];
 /** How long a chase's pull request that conflicts or fails waits for its own agent before the chase starts a fix. */
-const FIX_GRACE_MS = 10 * 60_000;
+const FIX_GRACE_MS = 3 * 60_000;
 /** The problems a chase fixes on its pull requests, in the words its view uses. */
 const PROBLEMS = { conflicts: 'conflicts with its base branch', failing: 'has failing checks' };
 
