@@ -39,6 +39,12 @@ const SETTLE_MS = 10 * 60_000; // a connection needs attention this long before 
 const NOTICES_KEPT_MS = 30 * 86_400_000;
 /** Connections whose "needs attention" fixes itself and isn't worth an inbox note: the hourly budget rolls over. */
 const QUIET = new Set(['claude.budget']);
+/**
+ * Connections whose trouble is someone else's and ends by itself (BRK-219): GitHub's own outages. The board
+ * already waits them out, so the inbox hears only when they end: a hidden `held` note marks the outage, and
+ * "working again" replaces it.
+ */
+const ENDS_BY_ITSELF = new Set(['github.status']);
 const ROUTINES_URL = 'https://claude.ai/code/routines';
 /** A link into the install's docs (none on an install without them). */
 const doc = (env, anchor) => docsLink(install(env), anchor);
@@ -527,7 +533,8 @@ export const connectionsMethods = {
   /**
    * The inbox's notes (an `fyi`, never a push: the owner's decision in CLD-119). A connection that has
    * needed attention for SETTLE_MS gets one note; when it works again that note is resolved and a
-   * "working again" one takes its place. One open note per connection at most.
+   * "working again" one takes its place. One open note per connection at most. A connection in
+   * ENDS_BY_ITSELF gets only the "working again" note.
    */
   connectionsNotify(connections, states) {
     const now = Date.now();
@@ -535,15 +542,19 @@ export const connectionsMethods = {
       if (QUIET.has(c.id)) continue;
       const key = keyOf(c);
       const open = this.sql
-        .exec("SELECT id FROM connection_notices WHERE conn = ? AND kind = 'broke' AND resolved IS NULL", key)
+        .exec(
+          "SELECT id FROM connection_notices WHERE conn = ? AND kind IN ('broke', 'held') AND resolved IS NULL",
+          key,
+        )
         .toArray()[0];
       if (c.state === 'attention') {
         const since = Number(states.get(key)?.since ?? now);
         if (!open && now - since >= SETTLE_MS) {
           this.replaceNotices(key, now);
           this.sql.exec(
-            "INSERT INTO connection_notices (conn, kind, name, detail, created) VALUES (?, 'broke', ?, ?, ?)",
+            'INSERT INTO connection_notices (conn, kind, name, detail, created) VALUES (?, ?, ?, ?, ?)',
             key,
+            ENDS_BY_ITSELF.has(c.id) ? 'held' : 'broke',
             c.name,
             clip(c.detail),
             now,
@@ -581,7 +592,7 @@ export const connectionsMethods = {
   /** The open notes, newest first, for the inbox. */
   connectionNotices() {
     return this.sql
-      .exec('SELECT * FROM connection_notices WHERE resolved IS NULL ORDER BY id DESC LIMIT 50')
+      .exec("SELECT * FROM connection_notices WHERE resolved IS NULL AND kind != 'held' ORDER BY id DESC LIMIT 50")
       .toArray()
       .map(noticeView);
   },
