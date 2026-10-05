@@ -55,7 +55,8 @@ const settle = async (wid) => {
   await api(`tasks/${wid}`, { method: 'PATCH', body: { autostart: '' } });
   await release(wid);
 };
-const release = (wid) => api(`tasks/${wid}/release`, { method: 'POST', body: { agent: `claude-${wid.toLowerCase()}` } });
+const release = (wid) =>
+  api(`tasks/${wid}/release`, { method: 'POST', body: { agent: `claude-${wid.toLowerCase()}` } });
 
 describe('a routine Claude refuses (BRK-144)', () => {
   let spy;
@@ -176,7 +177,9 @@ describe('a routine Claude refuses (BRK-144)', () => {
     expect(held.status).toBe(429);
     expect(held.error).toMatch(/hourly limit/);
     await api('tasks/CMP-1', { method: 'PATCH', body: { autostart: 'yes' } });
-    expect((await queued('CMP-1')).reason).toMatch(/Claude’s limit for starting sessions: starts in widgets wait until/);
+    expect((await queued('CMP-1')).reason).toMatch(
+      /Claude’s limit for starting sessions: starts in widgets wait until/,
+    );
     await tick();
     expect(claude.fires).toHaveLength(before);
     const row = await routineRow();

@@ -322,7 +322,8 @@ export const agentsMethods = {
   holdReason(slug, hold) {
     if (hold.kind === 'paused')
       return `${slug}’s agent routine is paused because Claude refused it (${hold.error}); auto-start and chase start nothing there until it’s connected again`;
-    if (hold.kind === 'limit') return `Claude’s limit for starting sessions: starts in ${slug} wait until ${clock(hold.until)}`;
+    if (hold.kind === 'limit')
+      return `Claude’s limit for starting sessions: starts in ${slug} wait until ${clock(hold.until)}`;
     return `the last start in ${slug} failed (${hold.error}); auto-start and chase try again at ${clock(hold.until)}`;
   },
 
