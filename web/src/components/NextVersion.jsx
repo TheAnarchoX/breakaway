@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { ArrowRight, Tag } from 'lucide-preact';
 import { ref } from '../lib/model.js';
 import { actions, agents, openTask, routineConnected, toast } from '../lib/store.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, Dictate } from './ui.jsx';
 import { sentence } from './NewAgent.jsx';
 
 /*
@@ -120,21 +120,23 @@ function NextVersionDialog({ view, choice, onClose }) {
             <>
               <label class="field">
                 <span class="field-label">Note for the agent (optional)</span>
-                <textarea
-                  class="textarea"
-                  rows={3}
-                  maxLength={4000}
-                  value={note}
-                  placeholder="Anything it should know or keep in mind"
-                  aria-describedby={`${id}-note-hint`}
-                  onInput={(e) => {
-                    setNote(e.currentTarget.value);
-                    setRefusal(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-                  }}
-                />
+                <Dictate>
+                  <textarea
+                    class="textarea"
+                    rows={3}
+                    maxLength={4000}
+                    value={note}
+                    placeholder="Anything it should know or keep in mind"
+                    aria-describedby={`${id}-note-hint`}
+                    onInput={(e) => {
+                      setNote(e.currentTarget.value);
+                      setRefusal(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+                    }}
+                  />
+                </Dictate>
                 <span class="field-hint" id={`${id}-note-hint`}>
                   It goes under the board’s prompt. Ctrl + Enter starts it.
                 </span>

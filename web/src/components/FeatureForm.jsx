@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { actions, multiRepo, repoScope } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
 import { IDEA_HORIZONS, RepoField } from './NewTask.jsx';
-import { RepoChip, widClass } from './ui.jsx';
+import { RepoChip, widClass, Dictate } from './ui.jsx';
 
 const SLUG = '[a-z][a-z0-9_\\-]{0,39}';
 const RELEASE = '\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}';
@@ -150,17 +150,19 @@ export function FeatureForm({ feature, pick, onDone }) {
       </label>
       <label class="field">
         <span class="field-label">Brief</span>
-        <textarea
-          class="textarea"
-          name="brief"
-          rows={pick ? 3 : 5}
-          maxLength={4000}
-          defaultValue={feature?.brief ?? ''}
-          aria-required={shape ? 'true' : undefined}
-          aria-invalid={briefError ? 'true' : undefined}
-          aria-describedby={briefError ? 'ff-brief-error' : undefined}
-          onInput={() => setBriefError(false)}
-        />
+        <Dictate>
+          <textarea
+            class="textarea"
+            name="brief"
+            rows={pick ? 3 : 5}
+            maxLength={4000}
+            defaultValue={feature?.brief ?? ''}
+            aria-required={shape ? 'true' : undefined}
+            aria-invalid={briefError ? 'true' : undefined}
+            aria-describedby={briefError ? 'ff-brief-error' : undefined}
+            onInput={() => setBriefError(false)}
+          />
+        </Dictate>
         {briefError ? (
           <span class="field-error" id="ff-brief-error" role="alert">
             Write the brief first: the agent shapes the feature from it.
