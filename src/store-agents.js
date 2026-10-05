@@ -8,7 +8,7 @@ import { secret } from './secrets.js';
 import { shortHash } from './session-report.js';
 import { refinePrompt } from './decision.js';
 import { isKickoffIdea } from './kickoff.js';
-import { prVerdict } from './github.js';
+import { FAILED_CHECK, prVerdict } from './github.js';
 import { holdsTask, runState } from './run-state.js';
 import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
@@ -17,8 +17,6 @@ import { specPrompt } from './spec-prompt.js';
 import { REFINE_FEATURE_TITLE, featurePrompt } from './feature-prompt.js';
 import { normalPath } from './specs.js';
 import { CLAUDE_LIMITS, DEFAULT_PLAN, hourlyCeiling, isPlan, planChoices, planLimits, planOf, PLANS } from './plans.js';
-
-const FAILED = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'error']);
 
 const RUNNING_HOURS = 12; // after this, a claimed task no longer counts as a running agent
 const LIVE_MS = 120_000; // output within the last 2 minutes: the session is live
@@ -1070,7 +1068,7 @@ export const agentsMethods = {
       );
     if (!applies[chosen]) throw new AgentError(`#${number} doesn’t have that problem now`);
 
-    const failing = (pr.checks?.runs ?? []).filter((r) => FAILED.has(r.state)).map((r) => r.name);
+    const failing = (pr.checks?.runs ?? []).filter((r) => FAILED_CHECK.has(r.state)).map((r) => r.name);
     const what = {
       conflicts: `It conflicts with ${this.repoBySlug(slug)?.defaultBranch ?? 'main'} (merge state: ${pr.mergeableState ?? 'unknown'}). Merge ${this.repoBySlug(slug)?.defaultBranch ?? 'main'} into the branch and resolve the conflicts.`,
       failing: `Checks are failing: ${failing.join(', ') || 'see the pull request'}. Find the cause, fix it, and push.`,
