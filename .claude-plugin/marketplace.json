@@ -1,8 +1,8 @@
 {
   "name": "breakaway",
   "owner": {
-    "name": "TheAnarchoX",
-    "url": "https://github.com/TheAnarchoX"
+    "name": "breakaway",
+    "url": "https://github.com/TheAnarchoX/breakaway"
   },
   "metadata": {
     "description": "breakaway's Claude Code plugin: the task board for you and your coding agents."
