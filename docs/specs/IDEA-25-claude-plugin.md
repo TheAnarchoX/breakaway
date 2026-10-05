@@ -71,6 +71,13 @@ The plugin is the default as soon as it ships (decided on BRK-158): few reposito
 
 The MCP server ships in a plugin release only once `/mcp` is on the installs (BRK-154). Until then the plugin has no `.mcp.json`, and the commands run the CLI.
 
+What Claude Code allows shaped how it's built (CLI-9). A plugin's `headersHelper` runs in the plugin's folder, through a shell, without the plugin's options and without environment variables named like a credential (so no `BREAKAWAY_TOKEN`), and it can't reference `${user_config.*}`. So:
+
+- The token reaches `/mcp` as a static header, `Authorization: Bearer ${user_config.token}`, which Claude Code fills in from the keychain. The helper's own `Authorization`, from the CLI's settings that it can read (`tasks.env`), overrides it, so a machine set up with `npx breakaway setup` comes first, as for the CLI.
+- The helper is `cd "${CLAUDE_PROJECT_DIR}" && npx --yes breakaway@1 mcp --headers`, so the checkout's `origin` and branch are the session's.
+- When the helper can ask the board (`GET /api/repos`, with a token), it sends the board's slug, or only `Authorization` outside a tracked repository. When it can't (only the plugin's token is set up), it sends the checkout's GitHub `owner/name`, and `/mcp` matches that against its repositories itself; one it doesn't track still connects, and the repository's tools say it isn't on the board.
+- The agent's name is `BREAKAWAY_AGENT` or `tasks.env`'s, else `claude-<branch>`: the plugin's `agent_name` can't reach the helper.
+
 ### 5. Publishing from a branch, like the site
 The directory follows a branch or a tag. Following `main` would publish every merged pull request, including pre-release changes, to everyone who installed the plugin. So it follows a `plugin` branch, moved the way the **Site** workflow moves `site` (`.github/workflows/site.yml`):
 

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "breakaway": {
+      "type": "http",
+      "url": "${user_config.board_url}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.token}"
+      },
+      "headersHelper": "cd \"${CLAUDE_PROJECT_DIR}\" && npx --yes breakaway@1 mcp --headers"
+    }
+  }
+}
