@@ -419,6 +419,8 @@ export const featuresMethods = {
       editedAt: new Date(row.edited_at).toISOString(),
       progress,
       done,
+      // The repositories its tasks are in, so the roadmap can follow the repository switcher (WEB-78).
+      repos: [...new Set(tasks.map((x) => x.t.repo))].sort(),
       // Shipped when the owner says so, or when every task is done and live.
       shipped: row.state === 'shipped' || (done && progress.shipped === progress.total),
       needsYou: ordered.filter((x) => x.state === 'needs-you').map(brief),
@@ -456,7 +458,7 @@ export const featuresMethods = {
       if (release)
         releases.set(release, [
           ...(releases.get(release) ?? []),
-          { uuid: t.uuid, wid: t.wid, description: t.description, status: t.status },
+          { uuid: t.uuid, wid: t.wid, description: t.description, repo: t.repo, status: t.status },
         ]);
     }
     const suggestions = [...tagged]
@@ -465,6 +467,7 @@ export const featuresMethods = {
         tasks: tasks.length,
         open: tasks.filter((t) => t.status === 'pending').length,
         release: sharedRelease(tasks),
+        repos: [...new Set(tasks.map((t) => t.repo))].sort(),
       }))
       .filter((s) => s.open > 0)
       .sort((a, b) => a.slug.localeCompare(b.slug));
