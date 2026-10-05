@@ -765,6 +765,10 @@ a code {
   border-radius: var(--radius);
   box-shadow: var(--shadow-pop);
 }
+/* The panel takes focus only from a press inside it (WEB-57), never from the keyboard, so it shows no ring. */
+.popover-panel:focus {
+  outline: none;
+}
 .popover-start {
   left: 0;
 }

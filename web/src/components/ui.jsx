@@ -124,7 +124,9 @@ export function Popover({
         {badge ? <span class="count-badge">{badge}</span> : null}
       </button>
       {open && (
-        <div ref={panel} class={`popover-panel popover-${align}`}>
+        // tabIndex -1: pressing on something inside that can't take focus (a row's text) focuses the panel, so
+        // focus stays inside and the panel doesn't close before the press becomes a click (WEB-57).
+        <div ref={panel} class={`popover-panel popover-${align}`} tabIndex={-1}>
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>
       )}
