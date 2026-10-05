@@ -51,8 +51,8 @@ describe('features', () => {
     expect(res.status).toBe(200);
     expect(res.features).toEqual([]);
     expect(res.suggestions).toEqual([
-      { slug: 'legacy-free', tasks: 2, open: 2, release: null },
-      { slug: 'self-update', tasks: 5, open: 5, release: '1.2.0' },
+      { slug: 'legacy-free', tasks: 2, open: 2, release: null, repos: ['widgets'] },
+      { slug: 'self-update', tasks: 5, open: 5, release: '1.2.0', repos: ['widgets'] },
     ]);
   });
 

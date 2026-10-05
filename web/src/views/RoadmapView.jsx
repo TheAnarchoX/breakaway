@@ -19,9 +19,12 @@ import {
   featureOpen,
   features,
   hashFor,
+  inScope,
   loadFeature,
   loadFeatures,
   navOrder,
+  repoName,
+  repoScope,
   selected,
   selectedFeature,
 } from '../lib/store.js';
@@ -35,7 +38,9 @@ import { RichText, Title } from '../lib/richtext.jsx';
 /**
  * The roadmap (docs/specs/IDEA-28-features-and-chase.md, section 2): releases in version order, then
  * Unplanned, each with its feature cards; a feature opens for its tasks in dependency order. Features
- * are install-wide, so the repository switcher doesn't narrow them; their tasks carry repository chips.
+ * are install-wide: with a repository picked in the switcher, the roadmap shows the features with tasks in it
+ * (and those with none yet), its loose release tasks, and its suggestions (WEB-78). A feature's progress and
+ * its page stay whole, and its tasks carry repository chips.
  */
 
 const STANDING_LABEL = Object.fromEntries(STANDINGS.map((s) => [s.id, s.label]));
@@ -339,6 +344,19 @@ function FeatureDetail({ slug }) {
   );
 }
 
+/** The roadmap's data narrowed to the repository the switcher shows; all of it under All. */
+function scoped(data) {
+  const scope = repoScope.value;
+  if (!data || !scope) return data;
+  const here = (repos) => !repos?.length || repos.includes(scope);
+  return {
+    ...data,
+    features: data.features.filter((f) => here(f.repos)),
+    suggestions: data.suggestions.filter((s) => here(s.repos)),
+    releaseTasks: data.releaseTasks.map((r) => ({ ...r, tasks: r.tasks.filter((t) => inScope(t.repo)) })),
+  };
+}
+
 /** Releases in the order the server sent the features (version order, then Unplanned), with their other tasks. */
 function releaseGroups(data) {
   const groups = new Map();
@@ -387,16 +405,23 @@ function PullInto({ release, tasks, into }) {
 function Overview() {
   const state = features.value;
   const [adding, setAdding] = useState(false);
-  const d = state.data;
+  const all = state.data;
+  const d = scoped(all);
+  const scope = repoScope.value;
   const released = d ? d.features.filter((f) => f.shipped) : [];
   const groups = d ? releaseGroups(d) : [];
-  const none = d && !d.features.length;
+  const none = all && !all.features.length;
+  // Features elsewhere on the board, and none in the repository the switcher shows.
+  const noneHere = !none && d && !d.features.length;
   return (
     <div class="roadmap-view">
       <div class="gh-intro">
         <div class="view-intro">
           <h1>Roadmap</h1>
-          <p class="muted">Features by the release they’re aimed at. A task joins a feature by carrying its tag.</p>
+          <p class="muted">
+            {scope ? `Features with tasks in ${repoName(scope)}, ` : 'Features '}by the release they’re aimed at. A task
+            joins a feature by carrying its tag.
+          </p>
         </div>
         <button type="button" class="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
           <Plus size={16} aria-hidden="true" />
@@ -422,6 +447,13 @@ function Overview() {
               ? 'Start from a tag your tasks already carry, below, or add a feature of your own.'
               : 'A feature is a tag on tasks, with a title, a release, and its progress. Add one, then tag its tasks.'}
           </p>
+        </div>
+      )}
+      {noneHere && (
+        <div class="empty fr-empty">
+          <Milestone size={28} aria-hidden="true" />
+          <h2>No features in {repoName(scope)}.</h2>
+          <p class="muted">Tag its tasks with a feature’s slug, add a feature, or switch to every repository.</p>
         </div>
       )}
       {d && (
