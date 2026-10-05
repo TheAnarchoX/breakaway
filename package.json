@@ -30,6 +30,7 @@
     "src/prompt.js",
     "src/redact.js",
     "src/repos.js",
+    "src/session-report.js",
     "src/specs.js",
     "src/versions.js",
     "prompts/*.md",
