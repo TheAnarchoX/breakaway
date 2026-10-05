@@ -42,7 +42,7 @@ import {
 import { useDraftImages } from '../components/NewTask.jsx';
 import { ImagePicker, Thumbnails } from '../components/Attachments.jsx';
 import { DecisionSection } from '../components/Decision.jsx';
-import { LiveLog, TRIGGER_LABEL } from '../components/Agents.jsx';
+import { LiveLog, MessageAgent, TRIGGER_LABEL } from '../components/Agents.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { useAutosize, Dictate } from '../components/ui.jsx';
 import { Markdown } from '../lib/richtext.jsx';
@@ -564,6 +564,7 @@ function InterviewRun({ idea, answered, busy, onStart }) {
           </p>
         )}
         {run && <LiveLog task={idea} />}
+        <SomethingToAdd idea={idea} />
       </div>
     );
   const why =
@@ -606,6 +607,22 @@ function InterviewRun({ idea, answered, busy, onStart }) {
         </details>
       )}
     </div>
+  );
+}
+
+/**
+ * The owner's message to the kickoff's running agent (WEB-73): the same box as a task's, collected on the agent's
+ * next step. It shows only while an agent holds the IDEA, and keeps what was sent.
+ * @param {Record<string, any>} props
+ */
+function SomethingToAdd({ idea }) {
+  return (
+    <MessageAgent
+      task={idea}
+      url={idea.agentRun?.url ?? idea.session ?? null}
+      label="Something to add?"
+      placeholder="A detail you forgot, or a change of mind"
+    />
   );
 }
 
@@ -1149,6 +1166,7 @@ function KickoffPage({ id }) {
         </p>
         {!planned && <p class="muted">It shows here once the agent opens it.</p>}
         {planned && idea && <Plan idea={idea} slug={k.slug} />}
+        {planned && idea?.claim && <SomethingToAdd idea={idea} />}
       </>
     ),
     build: (
