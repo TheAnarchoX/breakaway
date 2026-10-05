@@ -26,6 +26,7 @@ These docs cover all of it. Start where you are.
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](/docs/routines/) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](/docs/github/) |
+| Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](/docs/plugin/) |
 | Taskwarrior 3 sync | [Taskwarrior](/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](/docs/operations/) |

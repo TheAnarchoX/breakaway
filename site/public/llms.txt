@@ -27,6 +27,7 @@ breakaway is one Cloudflare Worker and one Durable Object that each person runs 
 ## Connect
 
 - [GitHub](https://leavethepack.dev/docs/github.md): How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
+- [The Claude Code plugin](https://leavethepack.dev/docs/plugin.md): breakaway’s plugin for Claude Code: the tasks skill, /breakaway:claim, /breakaway:next, /breakaway:hand-over, and the session hooks. How to install it for yourself or for a whole repository, its settings, and what it runs and sends.
 - [Taskwarrior](https://leavethepack.dev/docs/taskwarrior.md): Use Taskwarrior 3 with the board: sync, the reports and contexts breakaway adds, how a checkout is set up, and why the web board and the CLI are enough without it.
 
 ## Run it
