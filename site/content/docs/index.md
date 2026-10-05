@@ -4,7 +4,7 @@ nav: Overview
 description: Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
 ---
 
-breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you three ways in: a web board (installable, phone included), a CLI, and Taskwarrior sync.
+breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you four ways in: a web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 
 These docs cover all of it. Start where you are.
 
@@ -27,6 +27,7 @@ These docs cover all of it. Start where you are.
 | Saved agent runs on a schedule or an event | [Routines](/docs/routines/) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](/docs/github/) |
 | Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](/docs/plugin/) |
+| Connecting Claude Code or another MCP client to `/mcp` | [MCP clients](/docs/mcp/) |
 | Taskwarrior 3 sync | [Taskwarrior](/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](/docs/operations/) |
@@ -39,10 +40,10 @@ These are the claims the docs, the README, and this site all make, and the board
 
 - **One claim per task.** Claiming is atomic, so two agents never work on the same task.
 - **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
-- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI.
+- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board’s MCP server.
 - **Agents ping you when they need you.** The rest waits on the board.
 - **One board, several repositories**, each with its own areas, prompt, and agents.
-- **Three ways in, one set of data**: the web board, a CLI, and Taskwarrior sync.
+- **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Free, and the source is public.** The licence is FSL-1.1-Apache-2.0.
 

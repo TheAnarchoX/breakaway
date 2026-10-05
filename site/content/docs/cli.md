@@ -3,7 +3,7 @@ title: The CLI
 description: Every command of npx breakaway: reading, working a task, agents and routines, features, chase, and the peloton, repositories, setup, and the install repository. Plus the settings it reads.
 ---
 
-The CLI is the `breakaway` package on npm: `npx breakaway <command>`. It talks to the board’s JSON API with a token, it’s the only place to claim work, and it runs anywhere Node 20 does, including cloud sessions. `npx breakaway help` lists every command your version has.
+The CLI is the `breakaway` package on npm: `npx breakaway <command>`. It talks to the board’s JSON API with a token, it claims work (as [the MCP server](/docs/mcp/) does), and it runs anywhere Node 20 does, including cloud sessions. `npx breakaway help` lists every command your version has.
 
 Add `--json` to any command for machine-readable output. `--as <name>` signs a command with an agent’s name; it defaults to `$BREAKAWAY_AGENT`, then `user@host`. A `<ref>` is a work ID (`BRK-12`), a UUID, or its first 8 characters.
 
@@ -164,6 +164,7 @@ These need no board: run them in the checkout of the repository that deploys or 
 | `setup` | Connects this machine’s Taskwarrior: writes `taskrc` and runs the first `task sync`. |
 | `github-connect <code>` | Stores the GitHub App’s keys. |
 | `agents-connect [--repo <slug>]` | Stores an agent routine’s URL and token. |
+| `mcp [--check]` | Prints the `claude mcp add` line and `.mcp.json` entry that connect an MCP client to the board from this checkout, the token as `$BREAKAWAY_TOKEN`; `--check` says whether `/mcp` answers. See [MCP clients](/docs/mcp/). |
 | `rotate-sync`, `rotate-token` | New sync credentials, or a new API token. See [Operating a board](/docs/operations/#rotating-secrets). |
 
 ## The install repository

@@ -2,11 +2,12 @@
 
 breakaway is a task board for you and your coding agents: they claim the work, you merge it. This is its manual: how work is organised, the commands, setting up machines and cloud agents, GitHub, routines, the install, and what to do when something's wrong. An install is one board on its owner's Cloudflare account, and one board can run several repositories. The examples use breakaway's own board, which tracks this repository.
 
-There are three ways in, all on the same data:
+There are four ways in, all on the same data:
 
 | Way in | For | How |
 | --- | --- | --- |
-| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. The only place to claim work. |
+| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. Claims work, as MCP does. |
+| **MCP** (`/mcp`) | Claude Code and other MCP clients, without the CLI | The board's MCP server, with the same token ([MCP clients](#mcp-clients)). An agent's tools only: claim, comment, hand over. |
 | **Taskwarrior** (`task`, 3.x) | The owner and local agents who want filters, reports, and offline work | Syncs with the server's TaskChampion sync protocol. |
 | **The web board** | The owner in a browser or on a phone; anyone reviewing the work | The board's address, signed in with the same token. A board, a list, a dependency graph, and an activity feed. |
 
@@ -276,12 +277,45 @@ Copy `tasks.env` to `~/.config/breakaway/tasks.env` on that machine (chmod 600),
 
 ### Claude Code: the plugin
 
-breakaway's Claude Code plugin ([`plugin/`](../plugin/README.md), [IDEA-25](specs/IDEA-25-claude-plugin.md)) brings the board into any Claude Code session in a checkout of a repository the board tracks: the `tasks` skill, `/breakaway:claim <ID>`, `/breakaway:next` (with `--project` or `--horizon`), `/breakaway:hand-over`, and the session hooks that show a session's output on the task it holds and wake it for the owner's messages. Each command runs the CLI (`npx --yes breakaway@1`); none merges, deploys, or starts an agent, and hand-over ends the pull request with `Closes <ID>.` and never marks the task done. There are two ways to install it:
+breakaway's Claude Code plugin ([`plugin/`](../plugin/README.md), [IDEA-25](specs/IDEA-25-claude-plugin.md)) brings the board into any Claude Code session in a checkout of a repository the board tracks: the `tasks` skill, `/breakaway:claim <ID>`, `/breakaway:next` (with `--project` or `--horizon`), `/breakaway:hand-over`, the session hooks that show a session's output on the task it holds and wake it for the owner's messages, and the board's MCP server ([MCP clients](#mcp-clients)), whose headers `npx breakaway mcp --headers` prints for the checkout. Each command runs the CLI (`npx --yes breakaway@1`); none merges, deploys, or starts an agent, and hand-over ends the pull request with `Closes <ID>.` and never marks the task done. There are two ways to install it:
 
 - **For one person**, in Claude Code: `/plugin marketplace add TheAnarchoX/breakaway`, then `/plugin install breakaway@breakaway`. When it's enabled, Claude Code asks for the board's address, its token, and an agent name (optional; empty means `claude-<branch>`), and `/plugin` changes them later. They come last, after the environment, `tasks.env`, and the checkout's `.taskrc` ([the plugin's settings](#another-install)), so a machine already set up keeps working unchanged. The marketplace is [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json): it takes the plugin from the `plugin` branch, which a stable release moves (the README's **Releases**), so people get released versions, never `main`'s.
 - **For a repository and every agent in it**: `npx breakaway repos init <slug>` turns the plugin on in the repository's `.claude/settings.json` (`extraKnownMarketplaces` and `enabledPlugins`), so every Claude Code session there gets it, the board's cloud agents included ([Adding a repository](#adding-a-repository)). A cloud session can't answer the settings prompt, so it uses `BREAKAWAY_URL`, `BREAKAWAY_TOKEN` or the environment's API credential, and `BREAKAWAY_AGENT`, as [Cloud agents](#cloud-agents) says. `repos init <slug> --update` moves a repository that has the copied `tasks` skill and session hooks over to the plugin in one pull request; `--copies` (and `--update --copies`) keeps the copies, for a repository whose agents read `.agents/skills/` instead.
 
 What it sends and where: the plugin runs the CLI from npm's public registry, and talks to the board it's set up with and nowhere else (the task claimed, comments, peloton posts, the linked pull request, and the session's output, redacted, while it holds a task). It stores nothing of its own: the token is in the system keychain, and for a running session in Claude Code's file for that session's environment. Taskwarrior isn't in the plugin: it's per machine (`setup`) and per checkout (`.taskrc`), so `repos init` keeps copying it.
+
+### MCP clients
+
+Every install serves the board as an MCP server at `/mcp` ([IDEA-24](specs/IDEA-24-mcp-server.md)), on by default, with nothing to turn on: Claude Code, or any client that speaks MCP over HTTP, lists, claims, and comments on tasks with tools instead of the CLI. It's [`src/mcp.js`](../src/mcp.js) and [`src/mcp-resources.js`](../src/mcp-resources.js): MCP's Streamable HTTP transport, stateless (`POST /mcp`, one JSON-RPC message in, one JSON answer out; `GET` and `DELETE` answer `405`), and each tool calls the same store method as its CLI command, with the same guards. The plugin connects it by itself ([Claude Code: the plugin](#claude-code-the-plugin)); without the plugin, connect it in three steps:
+
+1. **Print the config** in a checkout of a repository the board tracks: `npx breakaway mcp`. It prints the `claude mcp add` line and an `.mcp.json` entry with the board's address, the checkout's repository, and `$BREAKAWAY_TOKEN` where the token goes, never its value. It writes nothing.
+2. **Add it**, in a terminal where `BREAKAWAY_TOKEN` is set:
+
+   ```sh
+   claude mcp add --transport http breakaway https://<your board>/mcp \
+     --header "Authorization: Bearer $BREAKAWAY_TOKEN" \
+     --header "X-Breakaway-Agent: claude-<branch>" \
+     --header "X-Breakaway-Repo: <slug>"
+   ```
+
+   Or put the printed entry in the checkout's `.mcp.json`, which Claude Code fills in from the environment when it starts.
+3. **Check it**: `npx breakaway mcp --check` says whether `/mcp` answers, and which tools it lists; in Claude Code, `/mcp` shows `breakaway` connected.
+
+The three headers are what the CLI reads from its settings and the checkout:
+
+| Header | What it is |
+| --- | --- |
+| `Authorization: Bearer <token>` | The board's API token, as `BREAKAWAY_TOKEN` is for the CLI. Without it, or with a wrong one, `/mcp` answers `401`. The web board's cookie isn't accepted. |
+| `X-Breakaway-Agent: <name>` | The name the client claims and comments as, as `BREAKAWAY_AGENT` is. Every tool that writes refuses without it, and it can't be `owner` or `board`. |
+| `X-Breakaway-Repo: <slug>` | The repository the client works in, as the checkout's `origin` is. It scopes `list_tasks`, `next_task`, `add_task`, and `list_specs`, and `claim_task` refuses another repository's task. A slug the board doesn't track is refused when the client connects. |
+
+**The tools** are an agent's: `health`, `list_tasks`, `show_task`, `next_task` (`claim: true` claims it too), `claim_task`, `release_task`, `comment`, `add_task`, `modify_task`, `ping_owner`, `review`, `peloton`, `peloton_post` (`checkin`, `step`, `reply`), `messages`, `list_specs`, `show_spec`, `features`, and `pull_request`. The read-only ones are marked so a client can run them without asking. A refused call (a `409` claim, a `403`) comes back as the tool's error with the board's own message. Beside them, **resources** (`breakaway://task/<ID>`, `breakaway://spec/<path>`, and `breakaway://prompt`, the repository's agent prompt with the core) and **prompts** (`work_on_task` for a work ID, `shape_idea` for an `IDEA-`) give a client that never read the `tasks` skill the same loop.
+
+**What's never a tool**, whatever a client asks: `done` (pull requests close tasks), `force` on anything, `autostart`, starting agents, chases, routines, repositories, merging, releasing, promoting, rolling back, answering a decision, resolving a ping, messaging an agent, settings, and updates. Those are yours, on the board or with your own CLI.
+
+**The token is the board's full token.** It reaches everything `/api/*` does, so give it only to a client you run, on a machine you trust, and keep it in the environment, never in a committed `.mcp.json`. Rotating it ([Secrets](#secrets)) stops every MCP client with `401` until its config has the new one.
+
+**Claude's apps sign in instead.** claude.ai and Claude Desktop connect through OAuth, not a header ([IDEA-24, section 8](specs/IDEA-24-mcp-server.md#8-sign-in-from-claudes-apps)). Add `https://<your board>/mcp` as a custom connector; the board's sign-in page asks you, signed in on the board, to name the connection and pick its repository and agent name, then **Approve** or **Deny**. Each connection gets its own token, good only on `/mcp` for that repository and agent name and refused on `/api/*`. Connections lists them under **Claude's apps**, with **Revoke**.
 
 ### Another install
 

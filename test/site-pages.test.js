@@ -190,6 +190,8 @@ describe('the site', () => {
   });
 
   it('never says the name wrong or leans on the words the guide rules out', () => {
-    for (const [path, html] of built) expect(visible(html), path).not.toMatch(/\b(Breakaway|BreakAway)\b/u);
+    // As the brand lint: not inside an identifier, like the X-Breakaway-Agent header the MCP page names.
+    for (const [path, html] of built)
+      expect(visible(html), path).not.toMatch(/(?<![\w./-])(Breakaway|BreakAway)(?![\w-])/u);
   });
 });
