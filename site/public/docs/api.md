@@ -147,4 +147,4 @@ Registering a kickoff’s repository, from here, the wizard, or `repos add`, mak
 
 `/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/).
 
-> **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. The board reports the CLI version it was built with in the `X-Tasks-Cli` header of every answer; a copy of the CLI that’s too old says how to update.
+> **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. Every answer carries the board’s release in the `X-Tasks-Release` header, and the CLI number an old copy of the CLI compares in `X-Tasks-Cli`; a copy that’s too old says how to update.

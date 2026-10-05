@@ -72,6 +72,7 @@ import {
   pullAgentSummary,
   reviewRequest,
   staleCliWarning,
+  releaseBehind,
   unknownSubcommand,
 } from './tasks/cli.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
@@ -423,7 +424,7 @@ async function call(method, path, body, { soft = false } = {}) {
       `can't reach ${BASE} (${reasonOf(error)}). Cloud sessions need ${new URL(BASE).host} allowed in their network settings.`,
     );
   }
-  warnIfStale(res.headers.get('X-Tasks-Cli'));
+  warnIfStale(res.headers.get('X-Tasks-Cli'), res.headers.get('X-Tasks-Release'));
   if (res.status === 401 && !token)
     fail(
       `no token. Set BREAKAWAY_TOKEN, put it in ${ENV_FILE}, or add it as an API credential in the cloud environment (see docs/tasks.md#cloud-agents).`,
@@ -444,8 +445,11 @@ async function call(method, path, body, { soft = false } = {}) {
 }
 
 let warnedStale = false;
-/** Once a run: say so when this copy of the CLI is older than the board's (CLD-193). On stderr, so --json stays clean. */
-function warnIfStale(board) {
+/**
+ * Once a run: say so when this copy of the CLI is older than the board's (CLD-193), or this checkout of the board's own
+ * repository is behind the release the board runs (BRK-148). On stderr, so --json stays clean.
+ */
+function warnIfStale(board, release = null) {
   // An old copy says how to switch on every run, even when the board doesn't say its version.
   if (warnedStale || (board === null && PACKAGED)) return;
   warnedStale = true;
@@ -459,7 +463,22 @@ function warnIfStale(board) {
       /* no .taskrc */
     }
   }
-  const warning = staleCliWarning({ own: CLI_VERSION, board, boardCheckout, slug, packaged: PACKAGED });
+  const git = (args) => spawnSync('git', ['-C', REPO, ...args], { encoding: 'utf8', timeout: 5000 });
+  const behind =
+    boardCheckout &&
+    Boolean(release) &&
+    releaseBehind(release, (args) => git(args).status, {
+      shallow: git(['rev-parse', '--is-shallow-repository']).stdout?.trim() === 'true',
+    });
+  const warning = staleCliWarning({
+    own: CLI_VERSION,
+    board,
+    boardCheckout,
+    slug,
+    packaged: PACKAGED,
+    release,
+    behind,
+  });
   if (warning) console.error(`tasks: ${warning}`);
 }
 
@@ -2013,7 +2032,7 @@ async function initRepo(slug) {
     title,
     '-m',
     update
-      ? `The board's core, skill, release helpers, and Taskwarrior files as they are in ${board ?? 'breakaway'} now, and the session hooks run through npx, so an old copy of the CLI is removed: run it as npx ${CLI_PACKAGE} (CLI version ${CLI_VERSION}). This repository's own files are unchanged. Updated by npx ${CLI_PACKAGE} repos init ${repo.slug} --update.`
+      ? `The board's core, skill, release helpers, and Taskwarrior files as they are in ${board ?? 'breakaway'} now, and the session hooks run through npx, so an old copy of the CLI is removed: run it as npx ${CLI_PACKAGE}. This repository's own files are unchanged. Updated by npx ${CLI_PACKAGE} repos init ${repo.slug} --update.`
       : `${first.body}${starter.files.length ? ` It also adds the deploy and release flows, rendered from ${starter.files[0].path}.` : ''}`,
   );
   const pushed = spawnSync('git', ['-C', dir, 'push', '-u', 'origin', empty ? `HEAD:refs/heads/${branch}` : work], {
@@ -2039,7 +2058,7 @@ async function initRepo(slug) {
         title,
         '--body',
         update
-          ? `The task board's copied files (its CLI, version ${CLI_VERSION}, the core and stub, the tasks skill, and the Taskwarrior files) as they are on the board's repository now, updated by \`npx breakaway repos init ${repo.slug} --update\`. This repository's own files (its agent prompt, AGENTS.md, .taskrc, .envrc, package.json, .claude/settings.json) are unchanged.`
+          ? `The task board's copied files (its CLI, the core and stub, the tasks skill, and the Taskwarrior files) as they are on the board's repository now, updated by \`npx breakaway repos init ${repo.slug} --update\`. This repository's own files (its agent prompt, AGENTS.md, .taskrc, .envrc, package.json, .claude/settings.json) are unchanged.`
           : `The files the task board's agents need to claim and work a task in this repository, added by \`npx breakaway repos init ${repo.slug}\`. Nothing that was there is changed. If this repository's linter reads plain JavaScript, exclude the copied scripts (tools/tasks/ and the release helpers) from it.${plan.todo.length ? `\n\nStill to do:\n${plan.todo.map((t) => `- ${t}`).join('\n')}` : ''}`,
       ],
       { encoding: 'utf8' },
