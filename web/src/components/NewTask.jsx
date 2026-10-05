@@ -6,6 +6,7 @@ import {
   filters,
   multiRepo,
   newTask,
+  openKickoff,
   openTask,
   repoScope,
   repos,
@@ -202,6 +203,17 @@ function ModeSwitch({ mode }) {
       </button>
       <button type="button" aria-pressed={mode === 'idea'} onClick={() => pick('idea')}>
         Idea
+      </button>
+      <button
+        type="button"
+        aria-pressed="false"
+        title="Something new, with a repository of its own (Kickoff)"
+        onClick={() => {
+          newTask.value = null;
+          openKickoff(null);
+        }}
+      >
+        Project
       </button>
     </div>
   );
