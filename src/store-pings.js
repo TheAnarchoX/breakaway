@@ -368,6 +368,10 @@ export const pingsMethods = {
           const target = at(c.task);
           edit(target, { status: 'completed', ...(c.note ? { annotate: c.note, by: 'owner' } : {}) });
           lines.push(`finished ${name(target)}`);
+        } else if (c.type === 'delete') {
+          const target = at(c.task);
+          edit(target, { status: 'deleted', ...(c.note ? { annotate: c.note, by: 'owner' } : {}) });
+          lines.push(`deleted ${name(target)}`);
         } else if (c.type === 'release') {
           const target = at(c.task);
           edit(target, { claim: null, start: false });

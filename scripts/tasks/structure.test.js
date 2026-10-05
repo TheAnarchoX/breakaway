@@ -146,10 +146,11 @@ describe('pings on the command line', () => {
       ],
     }).join('\n');
     expect(lines).toContain('blocked by claude-x (open)');
-    expect(lines).toContain('Proposes 5 changes');
+    expect(lines).toContain('Proposes 6 changes');
     expect(lines).toContain('add n1: Create the Sentry project (ops, now)');
     expect(lines).toContain('CLD-111 waits for n1');
     expect(lines).toContain('finish CLD-113');
+    expect(lines).toContain('delete CLD-114 (CLD-112 covers it now.)');
     expect(lines).toContain('Note: CLD-1 would no longer wait for anything');
     expect(pingLines({})).toEqual([]);
     expect(
