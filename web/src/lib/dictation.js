@@ -1,5 +1,7 @@
 // Dictation: the browser's speech recognition (the Web Speech API) typing into a text field.
 // Chrome, Edge, and Safari have it; Firefox doesn't, so the board shows no microphone there.
+// Brave has the API but turns off the speech service behind it, so every try ends in a
+// 'network' error: the board shows no microphone there either.
 // Where the browser can recognise speech on the device it does; otherwise the browser sends
 // the audio to its own speech service, and only while the person has dictation on.
 
@@ -13,8 +15,37 @@ function recognitionClass() {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
+/**
+ * Whether a browser with this navigator and recognition class can dictate: it has the API, and
+ * it isn't Brave, which has it but never reaches a speech service.
+ * @param {any} nav
+ * @param {unknown} Recognition
+ */
+export function dictationWorks(nav, Recognition) {
+  return Boolean(Recognition) && !nav?.brave;
+}
+
 /** Whether this browser can dictate at all. */
-export const canDictate = Boolean(recognitionClass());
+export const canDictate = dictationWorks(typeof navigator === 'undefined' ? undefined : navigator, recognitionClass());
+
+/** Per language, whether the browser can already recognise it on the device, once it's known. */
+const onDevice = /** @type {Map<string, boolean | undefined>} */ (new Map());
+
+/**
+ * Asks the browser, ahead of the click, whether it can recognise the person's language on the
+ * device (Chrome's on-device models), so `dictate` can choose without waiting: the browser only
+ * starts listening inside the click's user activation. It never downloads a model.
+ * @param {string} [lang]
+ */
+export function checkOnDevice(lang = dictationLang()) {
+  const Recognition = recognitionClass();
+  if (!canDictate || onDevice.has(lang) || typeof Recognition?.available !== 'function') return;
+  onDevice.set(lang, undefined);
+  Promise.resolve()
+    .then(() => Recognition.available({ langs: [lang], processLocally: true }))
+    .then((/** @type {string} */ status) => onDevice.set(lang, status === 'available'))
+    .catch(() => onDevice.set(lang, false));
+}
 
 /** The language to listen for: the person's own, as the browser reports it. */
 export function dictationLang() {
@@ -111,7 +142,6 @@ export function dictate(field, { onEnd, onError }) {
     if (message) onError(message);
   };
   let started = false;
-  let stopped = false;
   const finish = () => {
     if (ended) return;
     ended = true;
@@ -120,32 +150,19 @@ export function dictate(field, { onEnd, onError }) {
   };
   recognition.onend = finish;
 
-  const begin = () => {
-    if (stopped) return finish();
-    try {
-      recognition.start();
-      started = true;
-    } catch {
-      onError(dictationError('unknown', lang) ?? '');
-      finish();
-    }
-  };
-  // Prefer recognising on the device where the browser already can (Chrome's on-device models),
-  // so the audio stays on it; never download a model without asking.
-  if ('processLocally' in recognition && typeof Recognition.available === 'function') {
-    Recognition.available({ langs: [lang], processLocally: true })
-      .then((/** @type {string} */ status) => {
-        if (status === 'available') recognition.processLocally = true;
-      })
-      .catch(() => {})
-      .finally(begin);
-  } else {
-    begin();
+  // Start now, inside the click: the browser asks for the microphone only then. Recognise on the
+  // device where checkOnDevice found the browser already can, so the audio stays on it.
+  if ('processLocally' in recognition && onDevice.get(lang)) recognition.processLocally = true;
+  try {
+    recognition.start();
+    started = true;
+  } catch {
+    onError(dictationError('unknown', lang) ?? '');
+    finish();
   }
 
   // Stopping lets the browser finish the words it's still working out; they still go in.
   return () => {
-    stopped = true;
     if (started && !ended) recognition.stop();
   };
 }
