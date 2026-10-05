@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, the peloton, and how to message a running agent.
+description: How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, what each run state means and what to do, the peloton, and how to message a running agent.
 ---
 
 An **agent** is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.
@@ -106,7 +106,9 @@ You do this once per repository. The Agents view walks you through it.
 
 1. At [claude.ai/code/routines](https://claude.ai/code/routines), select **New routine**: name it after the repository, add the repository, pick the cloud environment, and paste the stub as its instructions. Choose the model there.
 2. Save it, and under **Select a trigger** add an **API** trigger; select **Generate token**. Copy the URL and the token. The token shows once.
-3. Run `npx breakaway agents-connect` and paste both. They’re stored as the board’s secrets and never go onto a command line. For another repository, add `--repo <slug>`.
+3. Paste both into the **Agent routine** row’s form on Connections, or run `npx breakaway agents-connect` and paste both when it asks. They’re kept as the board’s secrets and never go onto a command line. For another repository, add `--repo <slug>`.
+
+The routine then reads **Not verified yet** on Connections. The board can’t read claude.ai, so a routine is verified by the first agent it starts: once a session it started claims its task, the row reads **Verified by <task>**, with the time. The claim reports what the session can see about its own environment (whether `BREAKAWAY_AGENT` is set, whether the token came from the API credential or a variable, and whether its stub matches the board’s), never a value, and a problem it finds shows on the row with the fix. Nothing starts an agent just to verify one: start an agent on a real task.
 
 ### The cloud environment
 
@@ -123,7 +125,23 @@ If the CLI says “can’t reach https://…” or “HTTP 403 from the session�
 
 No API reads a session’s output, so the session sends it. A repository’s `.claude/settings.json` has `async` hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.
 
-A task shows **Quiet** when its session hasn’t sent anything for 2 minutes: it may be waiting on something, or done.
+## What a run is doing
+
+A task’s Agent section and the Agents view say, for every run, which state it’s in, what happens next, and what you do, if anything. The Agents view lists runs that need you under **Needs you**.
+
+| State | When | What happens next | What you do |
+| --- | --- | --- | --- |
+| **Starting** | Started, and its session hasn’t claimed the task yet | It shows output once the session says something; a first run can take several minutes | Nothing. After 10 minutes with nothing, open the session. |
+| **Working now** | Output in the last 2 minutes | It carries on | Nothing |
+| **Quiet** | Claimed, nothing for 2 minutes: agents go quiet while they think or wait on checks | It carries on | Nothing |
+| **Silent** | Claimed, nothing for 30 minutes | It keeps its claim and its slot, and you get one ping | Open the session and decide: let it carry on, or stop it and release the task |
+| **Waiting to start** | Queued: the board’s limits, a busy area, or the auto-start switch | It starts by itself when the reason clears | Nothing, or **Force start** |
+| **Retrying** | Claude refused the start with its limit (429) | It starts again by itself at the time Claude gave | Nothing. One you started by hand says when to start it again. |
+| **Paused** | Claude refused the routine: its token (401), no access to it (403), or no routine at that address (404) | Auto-start and chase start nothing in that repository | **Reconnect the routine**; starts resume once it works |
+| **Couldn’t start** | Any other failure | Auto-start and chase try again after 10 minutes | **Try again** |
+| **Needs you** | Two fix agents on one pull request didn’t get it green, or the agent pinged you | No third fix starts by itself | Read what was tried or the ping, then fix it yourself or force start one more |
+
+While a routine is Paused, auto-start and chase don’t fire it, so a refused token doesn’t spend the hourly budget. After Claude’s limit, no start fires before the time Claude gives (15 minutes when it gives none).
 
 ## Messaging a running agent
 
@@ -139,11 +157,14 @@ Agents running at the same time check in with each other on the **peloton**: one
 
 Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. One-per-area is per repository. `agents next --repo <slug>` picks from one repository only.
 
-## When something’s off
+## When a run goes wrong
+
+The run’s state says what to do ([above](#what-a-run-is-doing)). Beyond that:
 
 - An agent that stays “Starting” never claimed its task: open its session.
 - One that comments “Started in …, but … is …’s” was started by a routine saved with the wrong repository: fix the routine’s repository on claude.ai.
 - A task that never shows live output while its agent works means the hook can’t reach the board: look for `claim`’s warning in the session, and check the environment’s allowed hosts.
-- “The routine’s token was refused” means the token was regenerated on claude.ai: run `npx breakaway agents-connect` again.
-- A routine Claude refuses (its token, no access, or gone) reads **Paused** on Connections: auto-start and chase start nothing there until it’s connected again. After Claude’s hourly limit, starts wait until the time Claude gives.
+- “The routine’s token was refused” means the token was regenerated on claude.ai: connect it again with a new token, from its form on Connections or `npx breakaway agents-connect`.
+- A routine Claude refuses (its token, no access, or gone) reads **Paused** on Connections, and so does every run it couldn’t start: auto-start and chase start nothing there until it’s connected again. After Claude’s hourly limit, starts wait until the time Claude gives.
+- A routine that reads **Not verified yet** has never had a session claim a task. Start an agent on a real task to verify it.
 - No agent starts in a repository whose prompt still has a `<…>` placeholder. Fill it in and merge it.

@@ -8,10 +8,14 @@
 
 - **Cloudflare:** the Worker’s version, each secret binding as `set` or `unset` (by name only, never a value), the 5-minute cron’s last run and first error, and whether the sync server reads its history and the stored secrets match after a rotation.
 - **GitHub:** the App (GitHub refusing its key), whether it’s installed on each registered repository, its permissions against what the board needs, **Allow auto-merge**, the webhook (when it last got one, signatures it refused, and failures from GitHub’s delivery log), and the sync: last success, last error, and requests left.
-- **Claude:** the routine connected or not, the last start’s result, routines switched off after three failed starts, the shared budget, and whether a started session is sending live output.
+- **Claude:** the routine connected or not, the last start’s result, a routine **Paused** after Claude refused it, routines switched off after three failed starts, the shared budget, and whether a started session is sending live output.
 - **Per repository:** each registered repository gets its own rows: the App installed on it, its permissions, auto-merge, its sync, and its agent routine.
 - **Taskwarrior** (when a replica last synced) and **Push** (keys set, browsers subscribed, the last send).
 - **Version:** what the board runs and the latest release in its channel.
+
+A connected routine also reads **Verified** or **Not verified yet**. The board can’t read claude.ai, so a routine is verified by the first agent it starts: it reads **Not verified yet: start an agent on a task to verify it** until a session it started claims its task, then **Verified by <task>**, with the time. The claim reports what the session can see about its own environment (whether it has an agent name, where its token came from, and whether its stub matches the board’s), never a value; a report that finds a problem needs attention, with the fix. Nothing starts an agent just to verify one, and a routine connected again reads Not verified yet again.
+
+The install prompt and [the quickstart](https://leavethepack.dev/docs/quickstart/) read every check one of three ways: **Verified** (a row that reads Working or Verified), **Not verified yet**, and **Failed** (a row that reads Needs attention).
 
 A check only reads. It never writes to GitHub, never starts an agent, and never costs a Claude start. The GitHub checks run once an hour from the cron, and again when you press **Check now** (the signed-in browser only, once every 30 seconds). How many rows need attention shows as a count on Connections and on Settings, and as a dot on the phone’s menu button. When a connection has needed attention for 10 minutes, your inbox gets a note, and another when it works again.
 
@@ -126,5 +130,13 @@ What makes one board itself and not another is one file, `breakaway.config.json`
 | A merged pull request didn’t finish its task | The pull request has to close it: `Closes <ID>.` in its title or description, or its number in the task’s `pr` field. A branch name only mentions. |
 | The web board keeps asking for the token | The token was rotated, or the cookie expired after 180 days. Sign in again. |
 | An agent never shows live output | The session hook can’t reach the board. Check the environment’s allowed hosts and `claim`’s warning. |
+| An agent run reads **Starting** for over 10 minutes | Its session never claimed the task. Open the session from the task’s Agent section and see what it’s doing. |
+| An agent run reads **Silent since <time>** | Its session has said nothing for 30 minutes. It keeps its claim and its slot, and you get one ping. Open the session and decide: let it carry on, or stop it and release the task. |
+| An agent run reads **Retrying** | Claude’s limit for starting sessions. Nothing to do: it starts again by itself at the time it shows. One you started by hand says when you can start it again. |
+| An agent run reads **Paused** | Claude refused the routine: its token (401), no access to it (403), or no routine at that address (404). Auto-start and chase start nothing in that repository until it works. Press **Reconnect the routine**, which opens Connections, and connect it with a new token from its API trigger on claude.ai, from the routine’s form or with `npx breakaway agents-connect` (`--repo <slug>` for another repository). Starts resume once it works. |
+| An agent run reads **Couldn’t start** | Claude didn’t start the session, for the reason it shows. Press **Try again**. Auto-start and chase try again by themselves after 10 minutes. |
+| An agent run reads **Needs you** | Two fix agents on one pull request didn’t get it green, so no third starts by itself, or the agent pinged you. Read what they tried, or the ping in your inbox, then fix it yourself or force start one more. |
+| **Agent routine** reads **Not verified yet** | Nothing has used the routine. Start an agent on a task: once its session claims the task, the row reads **Verified by** it. |
+| `npx breakaway` says it “doesn’t run on Windows itself” | The commands that store secrets need macOS, Linux, or Windows through WSL. [Install WSL](https://learn.microsoft.com/windows/wsl/install) and run them in its terminal. |
 | Deploy stopped with a message | A release needs manual steps, or `breakaway.config.json` changed something Deploy can’t deploy. Do what the message says, then run Deploy again. |
 | Version says a release “isn’t running yet” | Open Actions on the install repository: the Deploy run says why it stopped. |
