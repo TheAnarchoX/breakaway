@@ -173,14 +173,18 @@ export const kickoffsMethods = {
 
   /**
    * GET /api/kickoffs (anyone signed in): the kickoffs in progress, oldest first, and whether the board's GitHub App
-   * is connected (`app`), which every kickoff needs past saving its pitch. A finished one leaves the list.
+   * is connected (`app`), which every kickoff needs past saving its pitch. A finished one leaves the list. With
+   * `idea` (a task's UUID), only the kickoff that made that IDEA, finished or not: the plan's pull request page
+   * leads back to it (WEB-48).
+   * @param {{ idea?: string | null }} [options]
    */
-  kickoffsApi() {
+  kickoffsApi({ idea = null } = {}) {
     return this.run(async () =>
       ok({
         kickoffs: this.kickoffRows()
+          .filter((r) => (idea ? r.idea === idea : true))
           .map((r) => this.kickoffView(r))
-          .filter((k) => !k.finished),
+          .filter((k) => idea || !k.finished),
         app: Boolean(await appCredentials(this.env)),
       }),
     );
