@@ -1497,7 +1497,7 @@ export const agentsMethods = {
     const runs = new Map();
     for (const r of this.sql
       .exec(
-        'SELECT task, agent, url, started, trigger FROM agent_runs WHERE id IN (SELECT MAX(id) FROM agent_runs GROUP BY task)',
+        'SELECT task, agent, url, started, trigger, status, error FROM agent_runs WHERE id IN (SELECT MAX(id) FROM agent_runs GROUP BY task)',
       )
       .toArray())
       runs.set(r.task, r);
@@ -1518,6 +1518,9 @@ export const agentsMethods = {
       agent: run?.agent ?? map.claim ?? null,
       url: run?.url ?? map.session ?? null,
       trigger: run?.trigger ?? null,
+      // starting, started, or failed (Claude wouldn't start the session, and `error` says why).
+      status: run?.status ?? null,
+      error: run?.error ?? null,
       startedAt: run ? new Date(run.started).toISOString() : null,
       lastAt: lastAt ? new Date(lastAt).toISOString() : null,
       live: Boolean(lastAt && Date.now() - lastAt < LIVE_MS),
