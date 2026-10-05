@@ -25,7 +25,7 @@ The title is the work ID and a plain sentence (`BRK-12: Sort the inbox by age`),
 
 ## Direction
 
-`AGENTS.md`'s "What breakaway is, and isn't" are settled: free and self-hosted, an install keeps its data, people merge and deploy, and the claims in `brand/README.md` stay true. An idea that breaks one needs the owner's decision first. Look at the board for the horizons (`tasks list --json`) and for tasks the work overlaps. For a technical change with real choices, settle it in a spec; for anything people will use, shape the flow and its empty, error, and first-run states in the spec too. Specs go in `docs/specs/<ID>-<slug>.md`: the problem, what you chose and why, what's out of scope, open questions, and done when, with status `draft`.
+`AGENTS.md`'s "What breakaway is, and isn't" are settled: free and self-hosted, an install keeps its data, people merge and deploy, and the claims in `brand/README.md` stay true. An idea that breaks one needs the owner's decision first. Look at the board for the horizons (`tasks list --json`) and for tasks the work overlaps. For a technical change with real choices, settle it in a spec; for anything people will use, shape the flow and its empty, error, and first-run states in the spec too. Specs go in `docs/specs/<ID>-<slug>.md`: the problem, what you chose and why, what's out of scope, open questions, done when, and how to check it, with status `draft`.
 
 ## Dependency updates
 

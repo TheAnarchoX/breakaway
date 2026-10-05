@@ -13,6 +13,8 @@ import { promptPathOf, repoSlugOf } from './repos.js';
 import { CLAUDE_LIMITS } from './plans.js';
 import { vapidKeys } from './push.js';
 import { docsLink, install, secretName } from './install.js';
+import { checkReport, judgeStub, reportProblems, shortHash, stubText } from './session-report.js';
+import BOARD_FILES from './board-files.json' with { type: 'json' };
 import {
   SECRET_BINDINGS,
   appSettingsUrl,
@@ -31,6 +33,7 @@ const SYNC_LATE_MS = 15 * 60_000;
 const QUIET_HOOK_MS = 10 * 60_000; // a started agent with no live output after this is the CLD-37 failure
 const SEEN_EVERY_MS = 60_000; // how often a replica's visit is written down
 const GONE_FOR_MS = 24 * 3_600_000; // a replica stuck on 410 Gone needs attention until a day without one
+const REPORT_WITHIN_MS = 24 * 3_600_000; // a session's report counts for a start this recent
 const SETTLE_MS = 10 * 60_000; // a connection needs attention this long before the inbox hears of it, so a blip stays quiet
 const NOTICES_KEPT_MS = 30 * 86_400_000;
 /** Connections whose "needs attention" fixes itself and isn't worth an inbox note: the hourly budget rolls over. */
@@ -77,6 +80,8 @@ function entry(
     items = undefined,
     update = undefined,
     source = undefined,
+    reading = undefined,
+    verified = undefined,
   } = {},
 ) {
   return {
@@ -92,6 +97,8 @@ function entry(
     ...(items ? { items } : {}),
     ...(update ? { update } : {}),
     ...(source !== undefined ? { source } : {}),
+    ...(reading && state === 'working' ? { reading } : {}),
+    ...(verified && state === 'working' ? { verified } : {}),
   };
 }
 
@@ -104,8 +111,9 @@ function unfilledPrompt(row, repo, prompt) {
   if (!left.length) return row;
   const n = left.length;
   const fix = `Fill in each <…> left in ${prompt.path} on ${repo.defaultBranch ?? 'main'} (${left.join(', ')}) and merge it: agents in ${repo.slug} wait until then.`;
+  const { reading: _reading, verified: _verified, ...rest } = row;
   return {
-    ...row,
+    ...rest,
     state: 'attention',
     detail: `${row.detail}; its agent prompt still has ${n === 1 ? 'a placeholder' : `${n} placeholders`}, so agents don’t start`,
     fix: row.fix ? `${fix} ${row.fix}` : fix,
@@ -889,7 +897,14 @@ export const connectionsMethods = {
           repo.slug,
         )
         .toArray()[0];
-      const row = this.routineConnection(repo, { isDefault, credentials, lastRun, off: isDefault ? off : [] });
+      const verified = await this.routineVerified(repo.slug, credentials);
+      const row = this.routineConnection(repo, {
+        isDefault,
+        credentials,
+        lastRun,
+        off: isDefault ? off : [],
+        verified,
+      });
       // An empty repository has no prompt yet; otherwise the one on its default branch, kept for a minute.
       out.push(
         this.ghMeta('gh_empty', repo.slug) ? row : unfilledPrompt(row, repo, await this.wizardPrompt(repo.slug)),
@@ -921,7 +936,7 @@ export const connectionsMethods = {
    * the name and fixes it always had; another repository's names itself, and a missing routine there
    * needs attention, since registering a repository means it should start agents (CLD-129).
    */
-  routineConnection(repo, { isDefault, credentials, lastRun, off }) {
+  routineConnection(repo, { isDefault, credentials, lastRun, off, verified = null }) {
     const name = isDefault ? 'Agent routine' : `Agent routine for ${repo.slug}`;
     const connect = connectCommand(isDefault ? null : repo.slug);
     if (!credentials) {
@@ -966,6 +981,9 @@ export const connectionsMethods = {
     let state = 'working';
     let fix = null;
     let detail = 'connected; no start recorded yet';
+    // Verified by the first claim of a session it started (BRK-142); a start alone, or none, isn't proof.
+    const problems = verified ? reportProblems(verified, { slug: repo.slug, host: hostOf(this.homeUrl()) }) : [];
+    const by = verified ? (this.tasks.get(verified.task)?.wid ?? String(verified.task).slice(0, 8)) : null;
     if (!goodUrl) {
       state = 'attention';
       fix = `The routine’s URL isn’t a Claude routine /fire URL: copy the API trigger’s URL from claude.ai/code/routines and run ${connect}.`;
@@ -974,8 +992,14 @@ export const connectionsMethods = {
       state = 'attention';
       detail = `the last start failed: ${clip(lastRun.error)}`;
       fix = routineFix(lastRun.error, connect);
-    } else if (lastRun) {
-      detail = 'connected; the last start worked';
+    } else if (problems.length) {
+      state = 'attention';
+      detail = `${by}’s session reported a problem: ${problems.map((p) => p.what).join('; ')}`;
+      fix = problems.map((p) => p.fix).join(' ');
+    } else if (verified) {
+      detail = `verified by ${by}’s session${lastRun ? '; the last start worked' : ''}`;
+    } else {
+      detail = `connected; ${lastRun ? 'the last start worked; ' : ''}not verified yet: start an agent on a task to verify it`;
     }
     if (off.length) {
       state = 'attention';
@@ -989,7 +1013,66 @@ export const connectionsMethods = {
       at: iso(lastRun?.started),
       fix,
       link: ROUTINES_URL,
+      reading: goodUrl && !problems.length && verified ? 'verified' : 'unverified',
+      verified: verified && !problems.length ? { task: by, at: iso(verified.at) } : undefined,
     });
+  },
+
+  /**
+   * Repository `slug`'s routine's kept session report (BRK-142), or null: none yet, or one made through a routine
+   * connected before this one (its URL's hash differs), which says nothing about this one.
+   */
+  async routineVerified(slug, credentials) {
+    if (!credentials || 'broken' in credentials) return null;
+    const kept = JSON.parse(this.meta(`routine_verified:${slug}`) ?? 'null');
+    if (!kept || kept.url !== (await shortHash(credentials.url))) return null;
+    return kept;
+  },
+
+  /**
+   * A cloud session's report on its own environment, sent with its claim (BRK-142): yes/no facts and the hash of its
+   * checkout's stub, never a value (src/session-report.js). It counts only for a task the board started an agent on in
+   * the last day, and only the first one from that start: the routine that started it then reads Verified, or needs
+   * attention with the fix. It's kept even when the claim is refused (no agent name means the claim's name is wrong).
+   * Anything else is ignored, so a claim never fails over it.
+   */
+  async sessionReport(ref, input) {
+    const report = checkReport(input);
+    if (!report) return;
+    await this.ready();
+    let uuid;
+    try {
+      uuid = this.resolve(ref);
+    } catch {
+      return;
+    }
+    const run = this.sql
+      .exec(
+        "SELECT id, repo FROM agent_runs WHERE task = ? AND status = 'started' AND started > ? ORDER BY id DESC LIMIT 1",
+        uuid,
+        Date.now() - REPORT_WITHIN_MS,
+      )
+      .toArray()[0];
+    if (!run) return;
+    const slug = run.repo ?? this.defaultRepoSlug();
+    const key = `routine_verified:${slug}`;
+    if (JSON.parse(this.meta(key) ?? 'null')?.run === run.id) return;
+    const credentials = await this.repoRoutine(slug);
+    if (!credentials || 'broken' in credentials) return;
+    const board = BOARD_FILES['prompts/stub.md'];
+    const stub = judgeStub(report.stub, board ? await shortHash(stubText(board)) : null);
+    this.setMeta(
+      key,
+      JSON.stringify({
+        run: run.id,
+        task: uuid,
+        at: Date.now(),
+        token: report.token,
+        agent: report.agent,
+        stub,
+        url: await shortHash(credentials.url),
+      }),
+    );
   },
 
   /**

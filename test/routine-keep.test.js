@@ -198,7 +198,9 @@ describe('connecting a routine from the board (BRK-133)', () => {
       connected: true,
       source: 'secrets',
     });
-    expect(kept.detail).toBe('connected; the last start worked');
+    expect(kept.detail).toBe(
+      'connected; the last start worked; not verified yet: start an agent on a task to verify it',
+    );
     const output = (await inStore((s) => s.claudeConnections())).find(
       (c) => c.id === 'claude.output' && c.repo === 'gadgets',
     );

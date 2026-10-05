@@ -39,6 +39,7 @@ import {
   textFields,
 } from './tasks/structure.js';
 import { looksLikeSecret } from '../src/ping.js';
+import { sessionReport, shortHash, stubText } from '../src/session-report.js';
 import { promptPathOf } from '../src/repos.js';
 import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
@@ -622,6 +623,18 @@ async function startSessionLog(t) {
     console.error(
       `tasks: this session's live output won't show on ${ref(t)} (${why}). In a cloud session, check its environment allows ${new URL(BASE).host} (docs/tasks.md#cloud-agents).`,
     );
+}
+
+/**
+ * In a cloud session, what its claim tells the board about its environment, so the routine that started it reads
+ * Verified on Connections (BRK-142): whether a name was set, where the token came from, and the hash of this
+ * checkout's copy of the stub. Never a value. Null outside a cloud session.
+ */
+async function environmentReport() {
+  if (process.env.CLAUDE_CODE_REMOTE !== 'true') return null;
+  const path = ['tools/tasks/prompts/stub.md', 'prompts/stub.md'].map((p) => join(REPO, p)).find((p) => existsSync(p));
+  const stub = path ? await shortHash(stubText(readFileSync(path, 'utf8'))) : null;
+  return sessionReport({ env: process.env, file: fileEnv, named: Boolean(opts.as), stub });
 }
 
 /** The session hook couldn't post this checkout's live output: say so where the agent and the owner see it (BRK-86). */
@@ -1251,10 +1264,12 @@ const commands = {
   async claim() {
     // The board refuses a task of another repository than the one sent (--all doesn't widen a claim).
     const { slug: repo } = await checkoutRepo();
+    const session = await environmentReport();
     const { task } = await call('POST', `tasks/${enc(need(args[0], 'task'))}/claim`, {
       agent: agent(),
       force: Boolean(opts.force),
       ...(repo ? { repo } : {}),
+      ...(session ? { session } : {}),
     });
     markSession(task);
     await startSessionLog(task);
@@ -1540,6 +1555,8 @@ const commands = {
   /** Every connection with its state and, for each that isn't working, the fix (IDEA-14). Read only. */
   async connections() {
     const STATE = { working: 'Working', attention: 'Needs attention', off: 'Not connected' };
+    // A routine's row says whether a session it started has reported back (BRK-142).
+    const READING = { verified: 'Verified', unverified: 'Not verified yet' };
     const GROUP = {
       repos: 'Repositories',
       cloudflare: 'Cloudflare',
@@ -1569,7 +1586,7 @@ const commands = {
           out.push('', GROUP[group] ?? group);
         }
         const when = c.at ? ` (${c.at.slice(0, 16).replace('T', ' ')})` : '';
-        out.push(`  ${STATE[c.state].padEnd(16)} ${c.name}: ${c.detail}${when}`);
+        out.push(`  ${(READING[c.reading] ?? STATE[c.state] ?? c.state).padEnd(16)} ${c.name}: ${c.detail}${when}`);
         if (c.fix) out.push(`  ${''.padEnd(16)} Fix: ${c.fix}`);
         if (c.fix && c.link) out.push(`  ${''.padEnd(16)} ${c.link}`);
       }
