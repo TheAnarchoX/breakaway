@@ -412,7 +412,8 @@ function Chases({ list }) {
 
 /**
  * Each repository's peloton under the switcher (docs/specs/IDEA-32-peloton.md, section 5): who rides it and what
- * they said, newest last. Read-only: to steer one agent, message it from Running.
+ * they said, newest last, and the box you post from (IDEA-36-peloton-planning.md, section 9). To steer one agent,
+ * message it from Running.
  */
 function Pelotons() {
   const scope = repoScope.value;
@@ -425,7 +426,9 @@ function Pelotons() {
         <Bike size={18} aria-hidden="true" />
         Peloton
       </h2>
-      <p class="muted small">Running agents check in here and say what they did. To steer one, message it.</p>
+      <p class="muted small">
+        Running agents check in, talk, and plan here. Post to all of them, or message one to steer it.
+      </p>
       {multiRepo.value && !scope ? (
         <ul class="ch-chases">
           {slugs.map((slug) => (
