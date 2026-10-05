@@ -84,7 +84,18 @@ import {
 } from './tasks/cli.js';
 import { keepLines } from './tasks/keep.js';
 import { checkMcp, headersRepo, mcpAgent, mcpConfig, mcpHeaders, mcpLines } from './tasks/mcp.js';
-import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
+import {
+  listenFor,
+  listenText,
+  listenWindow,
+  mergeViews,
+  pelotonLines,
+  pelotonPost,
+  pickPeloton,
+  pickPlanPeloton,
+  planRevision,
+  planText,
+} from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
 import {
@@ -275,13 +286,23 @@ Working
     --kind blocked|question|stale|done|fyi   blocked: needs the owner; question: a small question; stale: can't reproduce or already fine; done: looks finished; fyi: inbox only
     --proposal <file.json>   changes for the owner to apply in one press: tasks to add, dependencies, edits, finish, release (ping --template)
   ping --template        print an example proposal file to edit
-  peloton                who else is working (in your repository, and your chase's) and what they posted since you
-                         last read: new posts are starred  [--all] every post the board keeps
+  peloton                who else is working (in your repository, and your chase's), the chase's plan and open
+                         huddle, and what they posted since you last read: new posts are starred  [--all] every post
   peloton checkin <text> say you're here and what you'll change, the files or areas you'll touch, before your first
                          change (you must hold a task); posts on your repository's peloton and your chase's too
-  peloton step <text>    say what you did and ask if it affects anyone; posts on your chase's peloton if your task is
-                         in one, else your repository's  [--peloton <name>] picks one
+  peloton step|note|ask|propose|review <text>   say what you did, talk, ask, propose a change to the plan or the
+                         tasks, or ask for a look at your approach; posts on your chase's peloton if your task is in
+                         one, else your repository's  [--peloton <name>] picks one
   peloton reply <post> <text>   answer a post, on the peloton it's on
+  peloton huddle <question>     call a huddle on your chase's peloton: every agent stops to talk one thing through
+  peloton in <huddle> [<text>]  join the open huddle (or say why not now)
+  peloton outcome <huddle> <text>   close the huddle you called with what was agreed, and who does what
+  peloton plan           print your chase's plan  [--all] its earlier revisions too  [--peloton chase:<feature>]
+  peloton plan --file <path> --why <text>   revise the chase's plan (up to 4,000 characters; a line on what changed)
+  peloton listen         wait for what's for you, in the foreground, instead of stopping: returns at once on an urgent
+                         post, a message, or a change to your pull request, gathers other posts for 30 seconds, and
+                         returns after 9 minutes with nothing; then run it again, unless it says to stop
+                         [--for <minutes>] up to 9  [--task <ref>] the task you listen on, when you hold more than one
   idea <text>            write down an idea for an agent to shape into tasks and a spec (area Ideas, IDEA-n)
     --horizon now|next|later|auto   the horizon for the tasks it makes (default auto: the agent chooses)
     --auto               start its agent by itself when there's room (your choice; off by default here)
@@ -480,7 +501,11 @@ function fail(message) {
 
 // ---- HTTP --------------------------------------------------------------------------------
 
-async function call(method, path, body, { soft = false } = {}) {
+/**
+ * One request to the board's API. Fails the command on an error, unless `soft` (null instead) or `raw` (`{ ok, status,
+ * data }` for any answer, and status 0 when the board can't be reached, so a loop can ask again).
+ */
+async function call(method, path, body, { soft = false, raw = false } = {}) {
   // Without a token the request still goes out: in a Claude cloud environment with an API
   // credential for this host, the agent proxy adds the Authorization header on the way.
   const token = setting('TOKEN');
@@ -495,6 +520,7 @@ async function call(method, path, body, { soft = false } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (error) {
+    if (raw) return { ok: false, status: 0, data: { error: reasonOf(error) } };
     fail(
       `can't reach ${BASE} (${reasonOf(error)}). Cloud sessions need ${new URL(BASE).host} allowed in their network settings.`,
     );
@@ -511,6 +537,7 @@ async function call(method, path, body, { soft = false } = {}) {
         ? `HTTP 403 from the session's proxy, not the board. The cloud environment has to allow ${new URL(BASE).host}: see docs/tasks.md#cloud-agents.`
         : `HTTP ${res.status}`,
   }));
+  if (raw) return { ok: res.ok, status: res.status, data };
   if (!res.ok) {
     if (soft) return null;
     if (opts.json) console.log(JSON.stringify({ status: res.status, ...data }, null, 2));
@@ -793,6 +820,73 @@ function print(data, human) {
 }
 
 // ---- commands ----------------------------------------------------------------------------
+
+/** A board from before a route answers 404 with "no route for …", or reads `listen` as a peloton's name. */
+const noRoute = (res) => res.status === 404 && /^no route for|no peloton "listen"/u.test(String(res.data?.error ?? ''));
+
+/**
+ * `peloton listen`: waits for what's for the agent (IDEA-36 section 3), asking the board every 5 seconds, and prints
+ * it. Run in the foreground whenever the agent would otherwise stop and wait.
+ */
+async function pelotonListen(me) {
+  const window = listenWindow(opts.for);
+  if ('error' in window) return fail(window.error);
+  const path = `peloton/listen?agent=${enc(me)}${opts.task ? `&task=${enc(opts.task)}` : ''}`;
+  const ask = async () => {
+    const res = await call('GET', path, undefined, { raw: true });
+    if (noRoute(res)) return 'no-route';
+    // A wrong --task or agent name, or a token the board refuses, won't come right by asking again.
+    if ([400, 401, 403, 404].includes(res.status)) fail(res.data?.error ?? `HTTP ${res.status}`);
+    return res.ok ? res.data : null;
+  };
+  const heard = await listenFor({
+    ask,
+    sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+    now: Date.now,
+    window: window.ms,
+  });
+  print(heard, listenText);
+}
+
+/** `peloton plan` prints the chase's plan; with `--file <path> --why <text>`, it revises it (IDEA-36 section 5). */
+async function pelotonPlan(me) {
+  if (args.length > 1)
+    fail('peloton plan takes no text: write the plan in a file and pass --file <path> --why "<what changed>"');
+  if (opts.why !== undefined && opts.file === undefined)
+    fail('say where the plan is: --file <path> --why "<what changed>"');
+  // The board's list marks nothing seen, so reading the plan leaves the agent's new posts for its hooks.
+  const { pelotons: list = [] } = await call('GET', 'peloton');
+  let rosters = new Map();
+  if (!opts.peloton && list.filter((p) => p.kind === 'chase' && p.open).length > 1) {
+    const open = list.filter((p) => p.kind === 'chase' && p.open);
+    const details = await Promise.all(open.map((p) => call('GET', `peloton/${enc(p.peloton)}`)));
+    rosters = new Map(details.map((d) => [d.peloton, d.roster ?? []]));
+  }
+  const to = pickPlanPeloton(list, { chosen: opts.peloton, agent: me, rosters });
+  if ('error' in to) return fail(to.error);
+  const route = `peloton/${enc(to.peloton)}/plan`;
+  if (opts.file === undefined) {
+    const res = await call('GET', route, undefined, { raw: true });
+    if (noRoute(res)) fail('this board has no plan yet: it runs an older release');
+    if (!res.ok) fail(res.data?.error ?? `HTTP ${res.status}`);
+    return print(res.data, (d) => planText(d, { all: opts.all }));
+  }
+  let text;
+  try {
+    text = readFileSync(opts.file, 'utf8');
+  } catch (error) {
+    fail(`can't read ${opts.file}: ${reasonOf(error)}`);
+  }
+  const revision = planRevision(text, opts.why);
+  if ('error' in revision) return fail(revision.error);
+  const res = await call('PUT', route, { ...revision, agent: me }, { raw: true });
+  if (noRoute(res)) fail('this board has no plan yet: it runs an older release');
+  if (!res.ok) {
+    if (opts.json) console.log(JSON.stringify({ status: res.status, ...res.data }, null, 2));
+    fail(res.data?.error ?? `HTTP ${res.status}`);
+  }
+  print(res.data, (d) => `Revised the plan on ${to.peloton}: v${d.plan.version}, ${d.plan.why}`);
+}
 
 const agent = () => opts.as ?? setting('AGENT', `${userInfo().username}@${hostname()}`);
 const need = (value, what) => value ?? fail(`say which ${what}: npx breakaway ${command} <${what}>`);
@@ -1441,6 +1535,8 @@ const commands = {
       const views = await read();
       return print({ agent: me, pelotons: views }, () => pelotonLines(views, { agent: me, all: opts.all }));
     }
+    if (args[0] === 'listen') return pelotonListen(me);
+    if (args[0] === 'plan') return pelotonPlan(me);
     const post = pelotonPost(args[0], args.slice(1));
     if ('error' in post) return fail(post.error);
     // Read first: it says which peloton the post goes to, and which posts were new before it.
