@@ -6839,6 +6839,16 @@ fieldset.field {
 .pl-earlier {
   justify-self: start;
 }
+/* The posts scroll in a box of their own, so a busy peloton doesn't push the page down (WEB-51). */
+.pl-scroll {
+  max-height: min(420px, 55dvh);
+  overflow-y: auto;
+  min-width: 0;
+  border-radius: var(--radius-s);
+}
+.pl-scroll.is-compact {
+  max-height: min(300px, 45dvh);
+}
 
 /* ---------- a group on the Dependencies view as a feature (WEB-15) ---------- */
 
