@@ -4,6 +4,7 @@ import {
   Circle,
   CircleCheck,
   CircleDot,
+  CircleMinus,
   Copy,
   ExternalLink,
   FolderGit2,
@@ -13,11 +14,15 @@ import {
 } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
+import { DeployCard, deploySkipped, unskipDeploys } from '../components/DeployCard.jsx';
 import { ago } from '../lib/model.js';
 import {
   addRepoTarget,
+  github,
+  githubRepoFacts,
   go,
   installDocs,
+  loadGitHub,
   loadConnections,
   loadRepos,
   navOrder,
@@ -306,6 +311,14 @@ function stepContent(id, d) {
         expect:
           'On an empty repository it pushes the first commit; on one with commits it opens a pull request for you to merge. This ticks once the board syncs, within 5 minutes.',
       };
+    case 'deploys':
+      return {
+        what: 'If you want the board to deploy it, or release its npm package, move it to breakaway’s flow with the card below. Or skip it.',
+        why: 'The board shows what shipped where only for a repository with a pipeline. Agents claim and build tasks without one, so you can skip this and move it later from the GitHub page or the repository’s settings.',
+        deploys: true,
+        expect:
+          'The card follows the move: the agent, its pull request, the merge, then Turn on deploys. This ticks once deploys are on; skipped or not, the steps after it carry on.',
+      };
     case 'prompt':
       return {
         what: (
@@ -371,8 +384,9 @@ function stepContent(id, d) {
 }
 
 /** @param {Record<string, any>} props */
-function StepIcon({ step, now }) {
+function StepIcon({ step, now, skipped = false }) {
   if (step.done) return <CircleCheck size={20} aria-hidden="true" class="wiz-icon is-done" />;
+  if (skipped) return <CircleMinus size={20} aria-hidden="true" class="wiz-icon" />;
   if (now) return <CircleDot size={20} aria-hidden="true" class="wiz-icon is-now" />;
   return <Circle size={20} aria-hidden="true" class="wiz-icon" />;
 }
@@ -413,10 +427,114 @@ function Checks({ step }) {
   );
 }
 
+/** The repository's facts from the GitHub page's answer, or null while it doesn't have them (yet). */
+function factsFor(slug) {
+  if (!github.value.data?.connected) return null;
+  const facts = githubRepoFacts(slug);
+  return facts?.slug === slug ? facts : null;
+}
+
+/**
+ * The Deploys step's card (WEB-14, IDEA-27 section 6): the GitHub page's Deploy with breakaway card for this
+ * repository, which follows the move from the offer to Turn on deploys, once the board has its files. Skip is the
+ * card's own, kept in this browser like the GitHub page's, and Show it again offers it once more.
+ * @param {Record<string, any>} props
+ */
+function DeploysStep({ d, step, init, skipped, setSkipped, reload }) {
+  const slug = d.slug;
+  const gh = github.value;
+  const facts = d.registered ? factsFor(slug) : null;
+  const asked = useRef(false);
+  const wanted = d.registered && init && !step.done;
+  const live = wanted && !skipped;
+  // The GitHub page's answer: loaded once here (skipped or not, so a move under way still shows), again if it was
+  // loaded before this repository was on it, and every 20 seconds while the card shows so it follows the move.
+  useEffect(() => {
+    if (!wanted || gh.loading) return;
+    if (!gh.loaded || (gh.data?.connected && !facts && !asked.current)) {
+      asked.current = true;
+      loadGitHub({ quiet: gh.loaded });
+    }
+  }, [wanted, gh.loaded, Boolean(facts)]);
+  useEffect(() => {
+    if (!live) return undefined;
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') loadGitHub({ quiet: true });
+    }, POLL_MS);
+    return () => clearInterval(poll);
+  }, [live]);
+
+  if (step.done)
+    return (
+      <p class="small">
+        Deploys are on. Releases on the{' '}
+        <button type="button" class="link-button" onClick={() => go('github')}>
+          GitHub page
+        </button>{' '}
+        shows what shipped where.
+      </p>
+    );
+  if (!d.registered || !init)
+    return <p class="meta">The card shows here once the board has the repository’s files, after init.</p>;
+  if (skipped)
+    return (
+      <div class="wiz-actions wiz-skipped">
+        <p class="meta">
+          Nothing deploys from the board, and the steps after this one carry on. You can move it later here, on the
+          GitHub page, or in the repository’s settings.
+        </p>
+        <button
+          type="button"
+          class="btn btn-quiet btn-sm"
+          onClick={() => {
+            unskipDeploys(slug);
+            setSkipped(false);
+          }}
+        >
+          Show it again
+        </button>
+      </div>
+    );
+  if (!gh.data?.connected)
+    return (
+      <p class="meta" aria-busy={gh.loading}>
+        {gh.loading || !gh.loaded
+          ? 'Checking GitHub…'
+          : 'The card shows here once the board’s GitHub App is connected.'}
+      </p>
+    );
+  if (!facts)
+    return (
+      <p class="meta" aria-busy={gh.loading}>
+        {gh.loading ? 'Checking GitHub…' : 'The card shows here once the board has synced the repository.'}
+      </p>
+    );
+  return (
+    <DeployCard
+      view={facts}
+      heading="h3"
+      onSkip={() => setSkipped(true)}
+      onDone={() => {
+        reload();
+        loadGitHub({ quiet: true });
+      }}
+    />
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Step({ step, index, d, reload }) {
   const now = d.now === step.id;
   const c = stepContent(step.id, { ...d, promptUrl: step.url });
+  // Deploys (WEB-14): skipping is remembered in this browser, and shows on the step instead of a failure.
+  const [skipped, setSkipped] = useState(() => step.id === 'deploys' && deploySkipped(d.slug));
+  const init = Boolean(d.steps.find((s) => s.id === 'init')?.done);
+  // Skip hides only the offer, as on the GitHub page: a move under way still shows.
+  const facts = c.deploys && d.registered ? factsFor(d.slug) : null;
+  const moving = Boolean(facts?.pipelineFound || (facts?.move && facts.move.stage !== 'start'));
+  const isSkipped = Boolean(c.deploys && skipped && !moving && !step.done);
+  const open = now || (c.deploys && d.registered && init && !step.done && !isSkipped);
+  const detail = isSkipped ? 'Skipped' : step.detail;
   const body = (
     <div class="wiz-body">
       <p>{c.what}</p>
@@ -436,6 +554,9 @@ function Step({ step, index, d, reload }) {
         </div>
       )}
       {c.form && <RegisterForm github={d.github} suggested={d.suggestedSlug} />}
+      {c.deploys && (
+        <DeploysStep d={d} step={step} init={init} skipped={isSkipped} setSkipped={setSkipped} reload={reload} />
+      )}
       {c.routine && (
         <RoutineConnect slug={d.slug} source={d.routine?.source ?? null} open={!step.done} onDone={reload} />
       )}
@@ -477,14 +598,16 @@ function Step({ step, index, d, reload }) {
   );
   return (
     <li class={`wiz-step ${step.done ? 'is-done' : ''} ${now ? 'is-now' : ''}`} aria-current={now ? 'step' : undefined}>
-      <details open={now}>
+      <details open={open}>
         <summary>
-          <StepIcon step={step} now={now} />
+          <StepIcon step={step} now={now} skipped={isSkipped} />
           <span class="wiz-step-name">
             <span class="wiz-step-n">{index + 1}.</span> {step.name}
-            <span class="visually-hidden">{step.done ? ', done' : now ? ', to do now' : ', to do'}</span>
+            <span class="visually-hidden">
+              {step.done ? ', done' : isSkipped ? ', skipped' : now ? ', to do now' : ', to do'}
+            </span>
           </span>
-          {step.detail && <span class="meta wiz-step-detail">{step.detail}</span>}
+          {detail && <span class="meta wiz-step-detail">{detail}</span>}
         </summary>
         {body}
       </details>

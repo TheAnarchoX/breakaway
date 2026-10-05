@@ -232,6 +232,7 @@ describe('kickoffs on the board (IDEA-26)', () => {
       'install',
       'register',
       'init',
+      'deploys',
       'prompt',
       'routine',
       'connect',

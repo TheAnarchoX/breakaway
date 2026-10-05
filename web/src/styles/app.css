@@ -6059,6 +6059,14 @@ fieldset.field {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* The Deploys step, skipped (WEB-14): what it means, and Show it again beside it. */
+.wiz-skipped {
+  align-items: center;
+}
+.wiz-body .turn-on h3 {
+  margin: 0;
+  font-size: 15px;
+}
 .wiz-checks {
   list-style: none;
   margin: 0;
