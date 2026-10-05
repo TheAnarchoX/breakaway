@@ -32,7 +32,7 @@ breakaway is one Cloudflare Worker and one Durable Object that each person runs 
 ## Run it
 
 - [Deploying and updating](https://leavethepack.dev/docs/deploying.md): How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
-- [Operating a board](https://leavethepack.dev/docs/operations.md): Secrets and what each one does, rotating them, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
+- [Operating a board](https://leavethepack.dev/docs/operations.md): Secrets and what each one does, rotating them, what to keep and what to do when it’s lost, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
 - [Architecture](https://leavethepack.dev/docs/architecture.md): What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.
 - [The API](https://leavethepack.dev/docs/api.md): The board’s JSON API: how to sign in, the routes for tasks, agents, GitHub, repositories, and routines, which ones only the signed-in browser may call, and how to fire a routine from a webhook.
 
