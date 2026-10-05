@@ -32,6 +32,7 @@ Rather do it by hand? The steps follow.
 
 - macOS, Linux, or Windows through WSL. Every command here runs in a POSIX shell; Windows itself (PowerShell) isn't supported. On Windows, [install WSL](https://learn.microsoft.com/windows/wsl/install) first (`wsl --install` in PowerShell as administrator, restart, then open **Ubuntu**), and do everything inside it.
 - A Cloudflare account, and a token that can edit Workers on it.
+- Cloudflare's Workers Paid plan, if you'll chase features. The board runs on Workers Free, but in a chase every agent riding the peloton listens for the others, asking the board 12 times a minute: six agents listening make about 4,300 requests an hour, so a long chase uses a large share of Workers Free's 100,000 requests a day, and the board stops answering once they're gone. Workers Paid includes far more than a chase uses. breakaway itself stays free either way: the plan is between you and Cloudflare.
 - A GitHub account that can make a private repository, and one for the code the agents work on.
 - Node 20 or later, and [`wrangler`](https://developers.cloudflare.com/workers/wrangler/) signed in to your Cloudflare account. The commands that store secrets call it.
 - A Claude plan that has [routines](https://claude.ai/code/routines), to start agents from the board. The board works without one, but you give up starting agents from the board, live output on a task, starting by itself when ready, chase, and scheduled routines: you start agents yourself in Claude Code, and they use the CLI.
