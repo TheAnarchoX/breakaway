@@ -5882,16 +5882,81 @@ fieldset.field {
 .sidebar-repo {
   padding: 10px 10px 0;
 }
-.repo-switch {
+/* With the sidebar open: a button that names the repository, and the list drops below it at its width (WEB-54). */
+.repo-switch-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 0 0 10px;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.repo-switch-trigger:hover {
+  border-color: var(--faint);
+  background: var(--surface-2);
+}
+.repo-switch-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+.repo-switch-trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.repo-switch-trigger .side-icon {
   color: var(--muted);
 }
-.repo-switch .select {
+.repo-switch-text {
   flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.repo-switch-kicker {
+  font: 600 10.5px / 1 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.repo-switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.repo-switch-chevron {
+  flex: none;
+  color: var(--muted);
+}
+.repo-switch-pop.is-open-sidebar .popover-panel {
+  right: 0;
+  min-width: 0;
+}
+.repo-switch-pop .check-row {
+  min-width: 0;
+}
+.repo-switch-option {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-switch-actions {
+  display: grid;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
 }
 .is-rail .sidebar-repo {
   padding: 10px 10px 0;
@@ -6170,7 +6235,6 @@ fieldset.field {
   }
 }
 .repo-switch-pop .repo-switch-add {
-  margin-top: 4px;
   width: 100%;
   justify-content: flex-start;
 }
