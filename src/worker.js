@@ -651,7 +651,11 @@ async function handleApi(request, env, url, ctx) {
       if (method === 'POST') return send(await s.submitDecision(ref, body));
       if (method === 'DELETE') return send(await s.reopenDecision(ref, body));
     } else if (method === 'POST') {
-      if (action === 'claim') return send(await s.claim(ref, body.agent, Boolean(body.force), body.repo));
+      if (action === 'claim') {
+        // A cloud session's report on its environment verifies the routine that started it (BRK-142), claimed or not.
+        if (body.session) await s.sessionReport(ref, body.session);
+        return send(await s.claim(ref, body.agent, Boolean(body.force), body.repo));
+      }
       if (action === 'release') return send(await s.release(ref, body.agent, Boolean(body.force)));
       if (action === 'done') return send(await s.done(ref, body.note, body.by));
       if (action === 'comments' || action === 'annotate') return send(await s.comment(ref, body.text, body.by));
