@@ -758,29 +758,9 @@ The rest needs no copy: the board keeps it, and you replace it rather than get i
 
 Each recovery runs on your machine, with `wrangler` logged in to the install's Cloudflare account, and prints no value.
 
-<<<<<<< HEAD
 **The token.** Look for it first: your password manager, `tasks.env` on another machine, or `BREAKAWAY_TOKEN` in a cloud environment's variables (an API credential can't be read back). Found, it goes back in `tasks.env` as `BREAKAWAY_TOKEN=…`. If it leaked, someone should lose access, or it's gone everywhere, run `npx breakaway rotate-token`. Without a token the board accepts, it can't ask the board which install it is, so it says where the new token goes, as this checkout's `breakaway.config.json` names it, and asks for the Worker's name (or the Secrets Store's ID) before it writes anything; `--worker <name>` gives it ahead. Every browser is signed out; sign in with the new token, and update `BREAKAWAY_TOKEN` or the API credential in your cloud environments.
 
 **The sync secret.** The board holds only the client ID and the key derived from the secret, and can't give the secret back. Everything but Taskwarrior keeps working: the web board, the CLI, agents (they use the token), GitHub, and pushes. Replicas that already sync carry on. Look for it first: every machine that ran `npx breakaway setup` has it in `~/.config/breakaway/taskrc`, as `sync.encryption_secret` beside `sync.server.client_id`. Put both back in `tasks.env` as `BREAKAWAY_SECRET` and `BREAKAWAY_CLIENT_ID`, then run `npx breakaway setup` where you need it; if the machine that lost it might be in someone else's hands, run `npx breakaway rotate-sync` too. If no machine has it, run `npx breakaway rotate-sync`: it doesn't need the old secret, because the board re-encrypts its history with the key it holds. Then copy the new `tasks.env` to each machine and run `npx breakaway setup` there. Never set a new sync key by hand: the board's history is sealed with the old one, and it would stop reading it.
-=======
-**The token.** Look for it first: your password manager, `tasks.env` on another machine, or `BREAKAWAY_TOKEN` in a cloud environment's variables (an API credential can't be read back). Found, it goes back in `tasks.env` as `BREAKAWAY_TOKEN=…`. If it leaked, or someone should lose access, run `npx breakaway rotate-token`. If it's gone everywhere, `rotate-token` can't help: it asks the board which install it is, with the old token, before it writes anything. Set a new one by hand instead, after deleting any `BREAKAWAY_TOKEN` line left in `tasks.env`:
-
-```sh
-cd ~/.config/breakaway
-node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))" > token.new
-# Without a Secrets Store: the Worker's secret, under the install's worker name
-npx wrangler secret put TASKS_API_TOKEN --name <worker> < token.new
-# With one: find the API token's secret ID (BREAKAWAY_API_TOKEN with the default prefix), then update it
-npx wrangler secrets-store secret list <store ID> --remote
-npx wrangler secrets-store secret update <store ID> --secret-id <its ID> --remote < token.new
-printf 'BREAKAWAY_TOKEN=%s\n' "$(cat token.new)" >> tasks.env && rm token.new
-npx breakaway health    # works once the board has the new token, within a minute
-```
-
-Either way every browser is signed out; sign in with the new token, and update `BREAKAWAY_TOKEN` or the API credential in your cloud environments.
-
-**The sync secret.** The board holds only the client ID and the key derived from the secret, and can't give the secret back. Everything but Taskwarrior keeps working: the web board, the CLI, agents (they use the token), GitHub, and pushes. Replicas that already sync carry on. Look for it first: every machine that ran `npx breakaway setup` has it in `~/.config/breakaway/taskrc`, as `sync.encryption_secret` beside `sync.server.client_id`. Put both back in `tasks.env` as `BREAKAWAY_SECRET` and `BREAKAWAY_CLIENT_ID`, then run `npx breakaway setup` where you need it; if the machine that lost it might be in someone else's hands, run `npx breakaway rotate-sync` too. If no machine has it, `rotate-sync` refuses for now, because it checks `tasks.env` has a secret before it starts (`CLI-5` lets it start again without one: the board re-encrypts with the key it holds). Until then no new machine can sync with Taskwarrior; nothing on the board is lost. Never set a new sync key by hand: the board's history is sealed with the old one, and it would stop reading it.
->>>>>>> origin/main
 
 **A routine token.** The board holds it and keeps starting agents with it; you need a new one only to connect the routine again. Generate a token in the routine's API trigger on claude.ai, then connect it: from its form in Connections (**Replace the routine**) when it was connected there, with `npx breakaway agents-connect` for the default repository, or `npx breakaway agents-connect --repo <slug>` for any other.
 
