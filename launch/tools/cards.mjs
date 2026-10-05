@@ -215,6 +215,47 @@ const CARDS = {
           <div class="step"><span class="n">3</span><b>Promote, roll back, release</b></div></div>`,
     }),
   },
+  '13-new-in-1-5-0': {
+    alt: 'A card headed "New in 1.5.0." with five lines: Every board is an MCP server, at /mcp. A plugin for Claude Code. /breakaway:next and /breakaway:hand-over. Claude\'s apps sign in, and you approve it. Pull a release into next on the roadmap.',
+    html: frame({
+      kicker: 'Release',
+      foot: 'breakaway',
+      footNote: 'Free · the source is public',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:104px;white-space:nowrap">New in <span class="red">1.5.0.</span></div></div>
+        <div class="news">
+          <div class="row"><span class="t">Every board is an MCP server, at /mcp</span></div>
+          <div class="row"><span class="t">A plugin for Claude Code</span></div>
+          <div class="row"><span class="t">/breakaway:next and /breakaway:hand-over</span></div>
+          <div class="row"><span class="t">Claude’s apps sign in, and you approve it</span></div>
+          <div class="row"><span class="t">Pull a release into next on the roadmap</span></div></div>`,
+    }),
+  },
+  '14-plugin': {
+    alt: 'A card headed "In Claude Code." Below it: "One install: the skill, the commands, the hooks, and the MCP server." Then two lines to type: /plugin marketplace add TheAnarchoX/breakaway, and /plugin install breakaway@breakaway. Under them, /breakaway:next, with "claims BRK-12" beside it. At the foot: "You still merge."',
+    html: frame({
+      kicker: 'New in 1.5.0',
+      foot: 'breakaway',
+      footNote: 'You still merge',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">In Claude <span class="red">Code.</span></div>
+          <p class="lede">One install: the skill, the commands, the hooks, and the MCP server.</p></div>
+        <div class="prompt" style="top:590px"><div class="label">Claude Code</div><p style="font-size:30px">/plugin marketplace add TheAnarchoX/breakaway<br>/plugin install breakaway@breakaway</p></div>
+        <div class="steps" style="top:830px">
+          <div class="step"><span class="n">&gt;</span><b>/breakaway:next</b><code>claims BRK-12</code></div></div>`,
+    }),
+  },
+  '15-mcp': {
+    alt: 'A card headed "Every board is an MCP server." Three steps: 1, add your board\'s /mcp as a connector; 2, approve it on your board, for one repository; 3, revoke it under Connections. At the foot: "No tool merges."',
+    html: frame({
+      kicker: 'New in 1.5.0',
+      foot: 'breakaway',
+      footNote: 'No tool merges',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:104px">Every board<br>is an MCP <span class="red">server.</span></div></div>
+        <div class="steps" style="top:600px">
+          <div class="step"><span class="n">1</span><b>Add your board as a connector</b><code>/mcp</code></div>
+          <div class="step"><span class="n">2</span><b>Approve it on your board</b><code>one repository</code></div>
+          <div class="step"><span class="n">3</span><b>Revoke it under Connections</b></div></div>`,
+    }),
+  },
 };
 
 const only = process.argv.slice(2);

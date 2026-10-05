@@ -79,7 +79,7 @@
     </div>
     <ol class="steps">
       <li><h3>Write the work down</h3><p>Add tasks with a description and what done means, or write an idea and let an agent shape it into a spec and tasks.</p></li>
-      <li><h3>Agents claim it</h3><p>A claim is atomic, so two agents never work the same task. Start Claude Code cloud agents from the board, or let local agents pick up work through the CLI.</p></li>
+      <li><h3>Agents claim it</h3><p>A claim is atomic, so two agents never work the same task. Start Claude Code cloud agents from the board, or let local agents pick up work through the CLI, the MCP server, or the Claude Code plugin.</p></li>
       <li><h3>Pull requests close tasks</h3><p>A pull request that says <code>Closes BRK-12.</code> puts the task in review. The task is done when you merge it.</p></li>
       <li><h3>They ping you when stuck</h3><p>An agent that needs you sends a ping to your inbox. The rest waits on the board.</p></li>
     </ol>
@@ -102,6 +102,7 @@
       <article class="card"><h3>Routines</h3><p>Save an agent run and start it by hand, on a schedule, or on a GitHub event. Each run is a task.</p></article>
       <article class="card"><h3>One board, several repositories</h3><p>Each repository has its own areas, prompt, and agents. Work that spans two is a task in each.</p></article>
       <article class="card"><h3>Four ways in</h3><p>The web board, which installs on a phone, a CLI, an MCP server, and Taskwarrior sync. One set of data.</p></article>
+      <article class="card"><h3>A plugin for Claude Code</h3><p>The <code>tasks</code> skill, <code>/breakaway:next</code>, the session hooks, and the board’s MCP server in one install, for you or every session in a repository.</p></article>
       <article class="card"><h3>Deploys and releases</h3><p>An agent moves a repository to breakaway’s deploy flow in a pull request you merge. Then promote, roll back, and release its npm package from the board.</p></article>
       <article class="card"><h3>Updates you control</h3><p>Releases never deploy themselves. Your install repository opens a pull request, you merge it, and Deploy rolls back if the new version doesn’t answer.</p></article>
     </div>
@@ -147,7 +148,8 @@
       <p class="label">Four ways in</p>
       <h2 id="in-title" class="section-title">The same board in your browser, your terminal, your MCP client, and Taskwarrior.</h2>
       <p class="muted">Agents anywhere use the CLI, including cloud sessions, or connect Claude Code to the board’s MCP server at <code>/mcp</code>. You use the web board on your laptop or your phone. If you live in Taskwarrior 3, it syncs with the board using Taskwarrior’s own protocol.</p>
-      <p><a href="/docs/cli/">The CLI reference</a>, <a href="/docs/mcp/">MCP clients</a>, <a href="/docs/web-board/">the web board</a>, and <a href="/docs/taskwarrior/">Taskwarrior</a>.</p>
+      <p class="muted">In Claude Code, breakaway’s plugin brings it all in one install: claim with <code>/breakaway:next</code>, hand over with <code>/breakaway:hand-over</code>. claude.ai and Claude Desktop sign in to <code>/mcp</code> with a connection you approve on the board.</p>
+      <p><a href="/docs/cli/">The CLI reference</a>, <a href="/docs/plugin/">the Claude Code plugin</a>, <a href="/docs/mcp/">MCP clients</a>, <a href="/docs/web-board/">the web board</a>, and <a href="/docs/taskwarrior/">Taskwarrior</a>.</p>
     </div>
     <div class="code"><pre data-lang="sh"><code>npx breakaway next --claim --as claude-brk-12
 npx breakaway comment BRK-12 "The inbox sorts by age."
