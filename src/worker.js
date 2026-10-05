@@ -5,6 +5,7 @@
  *   /api/*        JSON API for `npx breakaway`, agents, and the web app (token or cookie)
  *   /github/*     GitHub App webhooks and the end of its setup (docs/specs/CLD-24-github.md)
  *   /mcp          the board as an MCP server, for agents' MCP clients (token only; docs/specs/IDEA-24-mcp-server.md)
+ *   /oauth/*, /.well-known/oauth-*  the sign-in Claude's apps use for /mcp, approved by the owner on the board (BRK-157)
  *   /login        exchanges the token for a cookie; /logout clears it
  *   everything else: the web app's static files (./public)
  *
@@ -15,6 +16,7 @@ import { isUuid } from './crypto.js';
 import { appCredentials, verifyWebhook } from './github.js';
 import { install } from './install.js';
 import { handleMcp } from './mcp.js';
+import { handleOAuth, oauthApi } from './oauth.js';
 import { CLI_VERSION } from './cli-version.js';
 import { releaseOf } from './build.js';
 import { unreadableSecrets } from './secrets.js';
@@ -69,6 +71,10 @@ export default {
       );
       res.headers.set('X-Tasks-Release', releaseOf(env));
       return res;
+    }
+    if (url.pathname.startsWith('/oauth/') || url.pathname.startsWith('/.well-known/oauth-')) {
+      const res = await handleOAuth(request, store(env));
+      if (res) return withHeaders(res);
     }
     if (url.pathname === '/github/webhook' && request.method === 'POST')
       return withHeaders(await githubWebhook(request, env));
@@ -504,6 +510,13 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'specs' && method === 'GET') {
     if (parts.length === 1) return send(await s.specsApi(url.searchParams.get('repo')));
     return send(await s.specApi(url.searchParams.get('repo'), parts.slice(1).join('/')));
+  }
+  // Sign-ins from Claude's apps (BRK-157): approving, denying, listing, and revoking are the owner's, from the
+  // signed-in browser only, never the bearer token agents and the CLI hold.
+  if (parts[0] === 'oauth') {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can approve or revoke a sign-in' });
+    const res = await oauthApi(parts, method, body, s, url.origin);
+    if (res) return res;
   }
   if (parts[0] === 'pings' && parts.length === 1 && method === 'GET') return send(await s.pingsApi());
   // The peloton (IDEA-32): agents post as the holder of a claimed task, with the bearer token. The owner reads it

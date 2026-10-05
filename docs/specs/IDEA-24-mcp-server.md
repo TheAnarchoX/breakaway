@@ -95,14 +95,29 @@ The manual (`docs/tasks.md`) and the site's docs get a section on connecting an 
 - **A request that's too large:** `413`, with the API's body limit.
 
 ### 8. Sign-in from Claude's apps
-claude.ai and Claude Desktop connect to remote MCP servers through OAuth, not a header, so the board offers them a sign-in the owner approves (decided on BRK-153). It's built after the token version, as BRK-157, which writes its design into this section first. What's settled:
+claude.ai and Claude Desktop connect to remote MCP servers through OAuth, not a header, so the board offers them a sign-in the owner approves (decided on BRK-153). The token version (section 2) is unchanged: Claude Code keeps connecting with the board's token in headers.
 
-- The consent step is the owner's press on the signed-in board: the owner names the connection and picks one repository and the agent name it claims as.
-- Each connection gets its own token, never the owner's: stored hashed in the Durable Object, good only on `/mcp` for that repository and agent name, refused on `/api/*`, and revocable on the board.
-- The token version (section 2) is unchanged: Claude Code keeps connecting with the board's token in a header.
+**What's settled.** The consent step is the owner's press on the signed-in board: the owner names the connection and picks one repository and the agent name it claims as. Each connection gets its own token, never the owner's: stored hashed in the Durable Object, good only on `/mcp` for that repository and agent name, refused on `/api/*`, and revocable on the board.
+
+**The flow.** MCP's authorization revision (OAuth 2.1 with PKCE, protected resource metadata, and dynamic client registration), with the board as both the resource and its own authorization server, on the install's own origin:
+
+1. A client calls `/mcp` without a token and gets `401` with `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`.
+2. `GET /.well-known/oauth-protected-resource[/mcp]` (RFC 9728) names the resource, `<origin>/mcp`, and the board as its authorization server. `GET /.well-known/oauth-authorization-server` (RFC 8414) names the endpoints below, `code` as the only response type, `S256` as the only PKCE method, `none` as the only client authentication (every client is public), and the scope `mcp`.
+3. `POST /oauth/register` (RFC 7591) registers a client: its name and up to 5 redirect addresses, each `https`, or `http` on the loopback (`localhost`, `127.0.0.1`, `[::1]`) for a desktop app. Anyone can register, so the board keeps at most 20 clients that no connection uses yet, and forgets one a day after it registered if nothing came of it.
+4. `GET /oauth/authorize` checks the client and the exact redirect address (a wrong one is a page that says so, never a redirect), then PKCE's `S256` challenge, `response_type=code`, and `resource`, when it's sent, against `<origin>/mcp`. It keeps the request for 10 minutes (at most 50 at once) and sends the browser to the board's consent page, `/#/authorize/<request>`.
+5. **The consent page** is the owner's, on the signed-in board; signed out, the board asks for the token first and comes back to it. It says which client is asking and the host it sends the browser back to, and asks for three things: a name for the connection (the client's own name to start with), the repository (the board's default to start with), and the agent name (`claude-app` to start with, checked as `X-Breakaway-Agent` is: never the owner's or the board's names). **Approve** and **Deny** each send the browser back to the client, with a code or with `access_denied`. Both are cookie-only routes (`/api/oauth/requests/<id>`), so an agent's token can't approve a sign-in.
+6. `POST /oauth/token` swaps the code (single use, good for 5 minutes, checked against the client, the redirect address, PKCE's verifier, and the resource) for an access token, good for an hour, and a refresh token. Refreshing rotates both: a connection has one live pair, and the old pair stops working.
+
+**The tokens.** Random, 256 bits, with a prefix (`bka_` for access, `bkr_` for refresh) so the Worker knows one from the board's token without asking the store. The Worker hashes them (SHA-256) before they reach the Durable Object, which keeps only the hash, the connection, and when it expires. Codes are kept the same way.
+
+**On `/mcp`.** A bearer that's the board's token works as in section 2. One that's a connection's access token makes the call that connection's: its repository and its agent name, whatever `X-Breakaway-Repo` and `X-Breakaway-Agent` say, so every tool, resource, and prompt follows them. An unknown or expired one is `401` with `error="invalid_token"`, which tells the client to refresh. On `/api/*`, `/v1/*`, and everywhere else, a connection's token is refused like any wrong token.
+
+**On the board.** Connections lists the sign-ins under **Claude's apps**: each one's name, repository, agent name, when it was made and last used, and **Revoke**, which deletes the connection and its tokens at once. Listing and revoking are cookie-only routes (`/api/oauth/connections`). A repository that's removed leaves its connections refusing, with the Worker's own error, until the owner revokes them.
+
+**Out of scope here.** Client ID metadata documents (the board would have to fetch a URL a client names), token revocation and introspection endpoints (the owner revokes on the board), scopes beyond `mcp`, and CORS for browser-based MCP clients (`/mcp` already refuses another origin).
 
 ## Privacy
-- Nothing new is stored: the server is stateless, and every write is one the API already makes and logs in the task's activity, signed with the agent's name. The sign-in (section 8) adds only its connections: each one's name, repository, agent name, and hashed token, kept until the owner revokes it.
+- Nothing new is stored: the server is stateless, and every write is one the API already makes and logs in the task's activity, signed with the agent's name. The sign-in (section 8) adds only its connections (each one's name, repository, agent name, and hashed tokens, kept until the owner revokes it) and what a sign-in needs on the way: the clients that registered (a name and redirect addresses, forgotten after a day if nothing came of them), and requests and codes that run out in minutes.
 - Nothing new leaves the install: the server makes no outbound call that the API route it wraps doesn't already make (GitHub, for specs and pull requests).
 - A client sees what the CLI shows an agent in that repository. The token is the board's full token: the manual says so, and that it goes only into a client the owner runs.
 

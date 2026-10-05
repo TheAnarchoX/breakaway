@@ -1,6 +1,7 @@
 import { useEffect } from 'preact/hooks';
 import {
   actions,
+  authorizeId,
   byUuid,
   checkSession,
   closeRoutine,
@@ -53,6 +54,7 @@ import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { NewAgentDialog } from './components/NewAgent.jsx';
 import { SignIn } from './components/SignIn.jsx';
+import { Authorize } from './components/Authorize.jsx';
 import { FilterBar, HelpContent, MenuDrawer, Sidebar, TopBar } from './components/Shell.jsx';
 import { ConfirmHost, Dialog, ForceStartHost, Toasts } from './components/ui.jsx';
 import { TaskMenuHost } from './components/TaskMenu.jsx';
@@ -222,7 +224,7 @@ export function App() {
         <span class="visually-hidden">Loading the board</span>
       </div>
     );
-  if (s === 'out') return <SignIn />;
+  if (s === 'out') return <SignIn next={authorizeId.value ? `#/authorize/${authorizeId.value}` : null} />;
   if (s === 'offline') {
     return (
       <main id="main" class="signin">
@@ -236,5 +238,7 @@ export function App() {
       </main>
     );
   }
+  // A sign-in from Claude's apps waits for the owner on its own page (BRK-157).
+  if (authorizeId.value) return <Authorize id={authorizeId.value} />;
   return <Board />;
 }
