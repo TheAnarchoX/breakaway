@@ -188,4 +188,18 @@ describe('the peloton’s posts in the hooks (IDEA-32)', () => {
     expect(text).toBe(waitingText({ peloton: [reply, step] }));
     expect(text).toMatch(/^Peloton \(widgets #15, claude-wid-2 on WID-2 replying to your post #9, /u);
   });
+
+  it('wakes an idle agent with the owner’s post, a huddle, or a mention, in the board’s order, and says how many more', async () => {
+    const owner = { ...step, id: 20, agent: 'owner', task: null, kind: 'note', text: 'Look at the store first.' };
+    const huddle = { ...step, id: 21, peloton: 'chase:gadgets', kind: 'huddle', text: 'Which table first?' };
+    const mention = { ...step, id: 22, kind: 'ask', mentionsYou: true, text: '@claude-wid-1 which file?' };
+    const { io } = harness({ answers: [{ messages: [], peloton: [owner, huddle, mention], pelotonMore: 3 }] });
+    const lines = (await waitForMessages(io)).split('\n\n');
+    expect(lines.slice(0, 4)).toEqual([
+      'Peloton (widgets #20, from the owner via the board, 4 Oct 2026, 14:02 UTC): Look at the store first.',
+      'Peloton (chase:gadgets #21, claude-wid-2 on WID-2 calling a huddle, 4 Oct 2026, 14:02 UTC): Which table first?',
+      'Peloton (widgets #22, claude-wid-2 on WID-2 asking, mentioning you, 4 Oct 2026, 14:02 UTC): @claude-wid-1 which file?',
+      'And 3 more: npx breakaway peloton --all shows them.',
+    ]);
+  });
 });

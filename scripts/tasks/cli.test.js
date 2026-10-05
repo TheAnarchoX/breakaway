@@ -28,6 +28,7 @@ import {
   removedRepoByHand,
   unknownSubcommand,
 } from './cli.js';
+import { TEXT_KINDS } from './peloton.js';
 
 describe('unknown subcommands (CLD-193)', () => {
   it('fails on one a command doesn’t have, naming the ones it has', () => {
@@ -44,6 +45,11 @@ describe('unknown subcommands (CLD-193)', () => {
       expect(unknownSubcommand(command, undefined)).toBeNull();
       for (const sub of subs) expect(unknownSubcommand(command, sub)).toBeNull();
     }
+  });
+
+  it('knows every peloton command: each kind of post, plan, and listen (IDEA-36)', () => {
+    for (const sub of [...TEXT_KINDS, 'reply', 'in', 'outcome', 'plan', 'listen'])
+      expect(unknownSubcommand('peloton', sub)).toBeNull();
   });
 
   it('fails on a word after a command that takes none, and leaves the others alone', () => {
