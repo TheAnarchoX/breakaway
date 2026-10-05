@@ -60,20 +60,36 @@ describe('a fresh install', () => {
         ['init', false],
         ['routine', false],
         ['cli', false],
+        ['taskwarrior', false],
+        ['first', false],
       ]);
+      expect(report.setup.steps.find((step) => step.id === 'taskwarrior').optional).toBe(true);
     });
   });
 
-  it('ends setup with connecting a machine’s CLI and Taskwarrior, done once a replica syncs (CLD-139)', async () => {
+  it('counts any call with the API token for the CLI step, and keeps Taskwarrior optional (BRK-143)', async () => {
     await fresh('fresh-cli', async (s) => {
       let report = await s.connectionsReport();
+      expect(byId(report, 'cli')).toMatchObject({ state: 'off', detail: 'no call with the API token yet' });
+      expect(byId(report, 'cli').fix).toMatch(/npx breakaway health/);
       expect(byId(report, 'taskwarrior')).toMatchObject({ state: 'off', detail: 'no replica has synced yet' });
-      expect(byId(report, 'taskwarrior').fix).toMatch(/npx breakaway setup/);
-      expect(report.setup.steps.at(-1)).toMatchObject({ id: 'cli', connection: 'taskwarrior', done: false });
+      expect(byId(report, 'taskwarrior').fix).toMatch(/^Optional: .*npx breakaway setup/);
+      const step = (id) => report.setup.steps.find((st) => st.id === id);
+      expect(step('cli')).toMatchObject({ name: 'Connect the CLI', connection: 'cli', done: false });
+      expect(step('taskwarrior')).toMatchObject({ connection: 'taskwarrior', optional: true, done: false });
+
+      s.connectionsCliSeen();
+      report = await s.connectionsReport();
+      expect(byId(report, 'cli').state).toBe('working');
+      expect(step('cli').done).toBe(true);
+      // No replica has synced: still not connected, and still not needing attention.
+      expect(byId(report, 'taskwarrior').state).toBe('off');
+      expect(step('taskwarrior').done).toBe(false);
+
       s.setMeta('conn_replica_seen', Date.now());
       report = await s.connectionsReport();
       expect(byId(report, 'taskwarrior').state).toBe('working');
-      expect(report.setup.steps.at(-1).done).toBe(true);
+      expect(step('taskwarrior').done).toBe(true);
     });
   });
 
@@ -161,6 +177,81 @@ describe('a fresh install', () => {
       },
       { vars },
     );
+  });
+});
+
+describe('the last setup step: a first closed task (BRK-143)', () => {
+  /** Every step but the last done, as Connections would show it: the GitHub ones from a live check. */
+  const readyBut = ({ routine }) => {
+    const working = (id, repo) => ({ id, repo, state: 'working' });
+    return [
+      working('github.app', null),
+      working('github.install', 'breakaway'),
+      working('github.sync', 'breakaway'),
+      ...(routine ? [working('claude.routine', 'breakaway')] : []),
+      working('cli', null),
+    ];
+  };
+  const last = (setup) => setup.steps.at(-1);
+
+  it('without a routine, ends with a first task closed by its merged pull request, and never needs Taskwarrior', async () => {
+    await fresh('fresh-first-closed', async (s) => {
+      await s.reposAddApi({ slug: 'breakaway', github: 'someone/breakaway', areas: ['product:BRK'] });
+      const connections = readyBut({ routine: false });
+      let setup = s.setupSteps(connections);
+      expect(last(setup)).toMatchObject({ id: 'first', name: 'A first task closed', done: false });
+      // Until then, connecting the routine is still a step to do.
+      expect(setup.steps.find((step) => step.id === 'routine').optional).toBeUndefined();
+      expect(setup.done).toBe(false);
+
+      // Claimed and finished from a local session, with its pull request in the task's pr field.
+      const task = (await s.create([{ description: 'Add a README', project: 'product' }])).body.tasks[0];
+      expect((await s.update(task.wid, { pr: '3' })).status).toBe(200);
+      expect(last(s.setupSteps(connections)).done).toBe(false);
+      expect((await s.update(task.wid, { status: 'completed' })).status).toBe(200);
+      setup = s.setupSteps(connections);
+      expect(last(setup)).toMatchObject({ done: true, wid: 'BRK-1', number: 3 });
+      // Every step done but Taskwarrior, which is optional, and the routine, which a closed task leaves optional.
+      expect(setup.steps.find((step) => step.id === 'taskwarrior').done).toBe(false);
+      expect(setup.steps.find((step) => step.id === 'routine')).toMatchObject({ done: false, optional: true });
+      expect(setup.done).toBe(true);
+    });
+  });
+
+  it('a task closed without a pull request doesn’t count', async () => {
+    await fresh('fresh-first-no-pr', async (s) => {
+      await s.reposAddApi({ slug: 'breakaway', github: 'someone/breakaway', areas: ['product:BRK'] });
+      const task = (await s.create([{ description: 'Add a README', project: 'product' }])).body.tasks[0];
+      expect((await s.update(task.wid, { status: 'completed' })).status).toBe(200);
+      const setup = s.setupSteps(readyBut({ routine: false }));
+      expect(last(setup).done).toBe(false);
+      expect(setup.done).toBe(false);
+    });
+  });
+
+  it('with a routine, ends with a first agent’s pull request merged, as the wizard’s agent step says', async () => {
+    await fresh('fresh-first-agent', async (s) => {
+      await s.reposAddApi({ slug: 'breakaway', github: 'someone/breakaway', areas: ['product:BRK'] });
+      const connections = readyBut({ routine: true });
+      expect(last(s.setupSteps(connections))).toMatchObject({ name: 'A first agent’s pull request merged' });
+
+      // A pull request merged by hand, with no agent run, isn't an agent's.
+      const task = (await s.create([{ description: 'Add a README', project: 'product' }])).body.tasks[0];
+      expect((await s.update(task.wid, { pr: '2', status: 'completed' })).status).toBe(200);
+      expect(last(s.setupSteps(connections)).done).toBe(false);
+      expect(s.wizardWork('breakaway').merged).toMatchObject({ wid: 'BRK-1' });
+
+      // Once an agent started on it and its live output reached the task, the wizard's checks all tick.
+      s.sql.exec(
+        "INSERT INTO agent_runs (task, agent, trigger, status, started, repo) VALUES (?, 'claude-brk-1', 'manual', 'started', ?, 'breakaway')",
+        task.uuid,
+        Date.now(),
+      );
+      s.sql.exec("INSERT INTO agent_logs (task, at, data) VALUES (?, ?, '{}')", task.uuid, Date.now());
+      const setup = s.setupSteps(connections);
+      expect(last(setup)).toMatchObject({ done: true, wid: 'BRK-1', number: 2 });
+      expect(setup.done).toBe(true);
+    });
   });
 });
 
