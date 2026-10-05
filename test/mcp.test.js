@@ -158,7 +158,7 @@ describe('the MCP endpoint (BRK-154)', () => {
       for (const token of [null, 'not-the-token']) {
         const res = await legacy('ping', undefined, { token });
         expect(res.status).toBe(401);
-        // It names where Claude's apps sign in instead (BRK-157).
+        // It names where MCP apps sign in instead (BRK-157).
         expect(res.headers.get('WWW-Authenticate')).toBe(
           `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp"`,
         );

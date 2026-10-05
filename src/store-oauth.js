@@ -1,5 +1,5 @@
 /**
- * TaskStore's sign-ins from Claude's apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the OAuth clients
+ * TaskStore's sign-ins from MCP apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the OAuth clients
  * that registered, the authorizations waiting for the owner on the board, the codes the owner's Approve gave out, and
  * the connections with their tokens.
  *
@@ -153,9 +153,9 @@ export const oauthMethods = {
         );
       const agent = String(body?.agent ?? '').trim();
       if (!AGENT.test(agent))
-        throw new InputError('the agent name is up to 64 letters, digits, and . @ : / - _, like claude-app');
+        throw new InputError('the agent name is up to 64 letters, digits, and . @ : / - _, like mcp-agent');
       if (RESERVED.test(agent))
-        throw new InputError(`"${agent}" is the board’s or the owner’s: pick the agent’s own name, like claude-app`);
+        throw new InputError(`"${agent}" is the board’s or the owner’s: pick the agent’s own name, like mcp-agent`);
       this.sql.exec('DELETE FROM oauth_requests WHERE id = ?', row.id);
       this.sql.exec(
         `INSERT INTO oauth_codes (hash, client, redirect, challenge, resource, name, repo, agent, created)

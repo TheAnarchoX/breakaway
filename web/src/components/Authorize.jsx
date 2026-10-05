@@ -3,11 +3,21 @@ import { TriangleAlert } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { Logo } from './Logo.jsx';
 
-/** Hosts that are Claude's own apps: anything else gets a plain warning before the owner approves. */
-const CLAUDE_HOSTS = new Set(['claude.ai', 'claude.com']);
+/** Hosts whose apps are well known: anything else gets a plain warning before the owner approves. */
+const KNOWN_HOSTS = new Set(['claude.ai', 'claude.com']);
+
+/** The agent name to start with: the app's own name, made into one (`Some App` is `some-app`), else `mcp-agent`. */
+export function agentFor(/** @type {string} */ client) {
+  const name = String(client ?? '')
+    .toLowerCase()
+    .replace(/[^\w.@:-]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 64);
+  return name && !/^(owner|board|routine:.*)$/u.test(name) ? name : 'mcp-agent';
+}
 
 /**
- * The consent page of a sign-in from Claude's apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the
+ * The consent page of a sign-in from an MCP app (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the
  * owner names the connection and picks its repository and agent name, then approves or denies it. Either way the
  * browser goes back to the app.
  * @param {{ id: string }} props
@@ -16,7 +26,7 @@ export function Authorize({ id }) {
   const [state, setState] = useState(
     /** @type {{ loading: boolean, data?: any, error?: string }} */ ({ loading: true }),
   );
-  const [form, setForm] = useState({ name: '', repo: '', agent: 'claude-app' });
+  const [form, setForm] = useState({ name: '', repo: '', agent: '' });
   const [busy, setBusy] = useState(/** @type {null | 'approve' | 'deny'} */ (null));
   const [problem, setProblem] = useState(/** @type {string | null} */ (null));
 
@@ -24,7 +34,12 @@ export function Authorize({ id }) {
     api(`oauth/requests/${enc(id)}`)
       .then((data) => {
         setState({ loading: false, data });
-        setForm((f) => ({ ...f, name: data.request.client, repo: data.default ?? data.repos[0]?.slug ?? '' }));
+        setForm((f) => ({
+          ...f,
+          name: data.request.client,
+          agent: agentFor(data.request.client),
+          repo: data.default ?? data.repos[0]?.slug ?? '',
+        }));
       })
       .catch((error) => setState({ loading: false, error: error.message }));
   }, [id]);
@@ -68,7 +83,7 @@ export function Authorize({ id }) {
             <p class="field-error" role="alert">
               {error}
             </p>
-            <a class="btn btn-outline btn-block" href="#/connections">
+            <a class="btn btn-outline btn-block" href="#/mcp">
               Go to the board
             </a>
           </>
@@ -85,15 +100,15 @@ export function Authorize({ id }) {
             <p class="muted">
               {request.client} wants to work on this board as an agent, through MCP. It can read the repository’s tasks,
               claim them, comment, and post on the peloton. It can’t merge, deploy, start agents, or answer decisions.
-              You can revoke it on Connections at any time.
+              You can revoke it on MCP at any time.
             </p>
             <p class="authorize-host">
               After you answer, the board sends you back to <strong>{request.redirectHost}</strong>.
             </p>
-            {!CLAUDE_HOSTS.has(request.redirectHost) && (
+            {!KNOWN_HOSTS.has(request.redirectHost) && (
               <p class="authorize-warning" role="note">
                 <TriangleAlert size={16} aria-hidden="true" />
-                <span>That isn’t claude.ai. Approve only if you started this sign-in yourself, from that app.</span>
+                <span>Approve only if you started this sign-in yourself, just now, from an app you trust.</span>
               </p>
             )}
             {data.repos.length === 0 ? (
@@ -105,7 +120,7 @@ export function Authorize({ id }) {
                 <label class="field">
                   <span class="field-label">Name</span>
                   <input class="input" required maxLength={80} {...field('name')} />
-                  <span class="field-hint">So you know it on Connections when you want to revoke it.</span>
+                  <span class="field-hint">So you know it on MCP when you want to revoke it.</span>
                 </label>
                 <label class="field">
                   <span class="field-label">Repository</span>
