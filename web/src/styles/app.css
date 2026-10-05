@@ -366,18 +366,44 @@ a code {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Each item: the link to it, and beside it a Dismiss that clears it without opening the inbox. */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+  transition: background var(--dur-fast) var(--ease);
+}
+.notif-item:hover,
+.notif-item:focus-within {
+  background: var(--surface-2);
+}
 .notif {
+  flex: 1;
+  min-width: 0;
   display: grid;
   gap: 4px;
   padding: 10px;
   border-radius: var(--radius-s);
   text-decoration: none;
   color: var(--text);
-  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
-  transition: background var(--dur-fast) var(--ease);
 }
-.notif:hover {
-  background: var(--surface-2);
+.notif-dismiss {
+  --btn-fg: var(--muted);
+  flex: none;
+  margin: 3px 3px 0 -6px;
+}
+.notif-dismiss:hover {
+  --btn-fg: var(--text);
+  background: var(--surface-3);
+}
+/* The list scrolls, so the focus ring sits inside the button, where the list can't clip it. */
+.notif-dismiss:focus-visible {
+  outline-offset: -2px;
+}
+.notif-dismiss[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: progress;
 }
 .notif-top {
   display: flex;
