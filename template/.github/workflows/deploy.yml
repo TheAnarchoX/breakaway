@@ -131,6 +131,10 @@ jobs:
           cat check.out
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           cat check.out >> "$GITHUB_OUTPUT"
+          # Where the running board was asked, and what it said: a Worker that doesn't exist is only a first deploy when
+          # no board answered there (BRK-141).
+          echo "running=$running" >> "$GITHUB_OUTPUT"
+          echo "address=$address" >> "$GITHUB_OUTPUT"
 
       - name: Make the Worker config
         env:
@@ -149,15 +153,38 @@ jobs:
           fi
           node "$CLI" install config --bundle bundle --out wrangler.generated.json
 
+      - name: Find the Worker
+        id: worker
+        env:
+          CLI: ${{ steps.release.outputs.cli }}
+          VARIABLE: ${{ vars.BREAKAWAY_URL }}
+          RUNNING: ${{ steps.check.outputs.running }}
+          CHECKED: ${{ steps.check.outputs.address }}
+        run: |
+          set -euo pipefail
+          # The version the deploy replaces. Only a Worker that doesn't exist is a first deploy: any other failure to list
+          # (a wrong account ID, a token that can't read Workers) stops here, because deploying over a live Worker with
+          # nothing to roll back to is not safe. And a Worker that doesn't exist on an install that already has a board
+          # (BREAKAWAY_URL set, or the address answered) is a changed or mistyped name: that stops too, before the dry run,
+          # since deploying it would make a second, empty board (BRK-141).
+          if npx --yes wrangler@4 deployments list --json -c wrangler.generated.json > deployments.json 2> list-error.txt; then
+            node "$CLI" install previous < deployments.json >> "$GITHUB_OUTPUT"
+          else
+            cat deployments.json list-error.txt | node "$CLI" install missing --variable "$VARIABLE" --running "$RUNNING" --at "$CHECKED"
+            echo "previous=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Dry run
         if: ${{ inputs.dry-run }}
         env:
           DEPLOY: ${{ steps.check.outputs.deploy }}
           CHANGES: ${{ steps.check.outputs.changes }}
+          PREVIOUS: ${{ steps.worker.outputs.previous }}
         run: |
           set -euo pipefail
           npx --yes wrangler@4 deploy --dry-run --outdir "$RUNNER_TEMP/dry" -c wrangler.generated.json
-          if [ "$DEPLOY" != wrangler ]; then echo "A deploy would upload a version."
+          if [ -z "$PREVIOUS" ]; then echo "This is the first deploy: it would make the Worker and its board."
+          elif [ "$DEPLOY" != wrangler ]; then echo "A deploy would upload a version."
           elif [ -n "$CHANGES" ]; then echo "A deploy would run wrangler deploy for $CHANGES."
           else echo "A deploy would run wrangler deploy, the release's manual step."; fi
 
@@ -170,19 +197,13 @@ jobs:
           DEPLOY: ${{ steps.check.outputs.deploy }}
           CHANGES: ${{ steps.check.outputs.changes }}
           ADDRESS_CHANGED: ${{ steps.check.outputs.address_changed }}
+          PREVIOUS: ${{ steps.worker.outputs.previous }}
         run: |
           set -euo pipefail
+          previous=$PREVIOUS
           wrangler() { npx --yes wrangler@4 "$@" -c wrangler.generated.json; }
-          # The Worker the new version replaces. A first run has none, and `wrangler deploy` makes the Worker and its
-          # Durable Object; every run after that uploads a version and deploys it, so it can be rolled back. Only a Worker
-          # that doesn't exist is a first run: any other failure to list (a wrong account ID, a token that can't read
-          # Workers) stops here, because deploying over a live Worker with nothing to roll back to is not safe.
-          if npx --yes wrangler@4 deployments list --json -c wrangler.generated.json > deployments.json 2> list-error.txt; then
-            previous=$(node "$CLI" install previous < deployments.json | sed 's/^previous=//')
-          else
-            cat deployments.json list-error.txt | node "$CLI" install missing > /dev/null
-            previous=""
-          fi
+          # The version the new one replaces (Find the Worker). A first run has none, and `wrangler deploy` makes the Worker
+          # and its Durable Object; every run after that uploads a version and deploys it, so it can be rolled back.
           if [ -z "$previous" ]; then
             wrangler deploy --var "BREAKAWAY_VERSION:$VERSION"
           elif [ "$DEPLOY" = wrangler ]; then
@@ -200,25 +221,36 @@ jobs:
           url=$(node -p "require('./breakaway.config.json').url || ''")
           address=${ADDRESS:-$url}
           tries=12
+          first=false
           if [ "$ADDRESS_CHANGED" = true ]; then
             # A new address: check it, not the old one, and give its custom domain five minutes for its certificate.
             address=${url:-$ADDRESS}
             tries=60
+          fi
+          if [ -z "$previous" ]; then
+            # A first deploy: its custom domain is new too, and its secrets go on the Worker it just made, so a release that
+            # answers without them passes, saying so (BRK-141).
+            first=true
+            if [ -n "$url" ]; then address=$url; tries=60; fi
           fi
           if [ -z "$address" ]; then
             echo "::warning title=Not checked::There is no address to check. Set the repository variable BREAKAWAY_URL to where the board answers (a workers.dev address, say) and the next deploy checks it."
             exit 0
           fi
           for attempt in $(seq 1 "$tries"); do
-            if curl -fsS --max-time 15 "$address/api/ping" | node "$CLI" install healthy --version "$VERSION"; then
-              echo "breakaway $VERSION is running at $address."
+            if health=$(curl -fsS --max-time 15 "$address/api/ping" | node "$CLI" install healthy --version "$VERSION" --first "$first"); then
+              if [ "$health" = health=secrets ]; then
+                echo "::notice title=Waiting for its secrets::breakaway $VERSION is running at $address, and is waiting for its secrets. Put them on the Worker (npx breakaway init-secrets, then .dev.vars.example says where each goes); the board works once they're on."
+              else
+                echo "breakaway $VERSION is running at $address."
+              fi
               exit 0
             fi
             sleep 5
           done
           waited=$([ "$tries" -gt 12 ] && echo "five minutes" || echo "a minute")
           if [ -z "$previous" ]; then
-            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping, with its secrets readable, within $waited, and this was the first deploy, so there is no version to go back to. Read the Worker's logs on Cloudflare."
+            echo "::error title=Failed its check::breakaway $VERSION didn't answer $address/api/ping within $waited, and this was the first deploy, so there is no version to go back to. A new custom domain can take longer for its certificate: once $address/api/ping answers, the board is up, and its secrets go on next. If it never answers, read the Worker's logs on Cloudflare."
           elif wrangler rollback "$previous" --message "breakaway $VERSION failed its check" --yes; then
             kept=""
             if [ "$DEPLOY" = wrangler ]; then kept=" Rolling back brings back the code only: what wrangler deploy changed${CHANGES:+ ($CHANGES)} stays as it left it."; fi
