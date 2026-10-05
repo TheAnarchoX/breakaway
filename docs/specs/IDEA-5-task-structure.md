@@ -1,6 +1,6 @@
 # IDEA-5 · A real structure for tasks: description, fields, and comments
 
-Task: IDEA-5 on the board · Status: draft
+Task: IDEA-5 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 A task is a title plus a stream of notes. The owner writes an idea as one line and an agent has nowhere to put a longer brief, so briefs pile up as notes (IDEA-4 needed a second note for its full text). To learn what a task is for, you read the whole stream, and nothing says which note is current. Notes also don't say who wrote them.

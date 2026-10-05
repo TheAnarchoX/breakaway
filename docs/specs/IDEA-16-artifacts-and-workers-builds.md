@@ -1,6 +1,6 @@
 # IDEA-16 · breakaway on Cloudflare: Artifacts and Workers Builds next to GitHub
 
-Task: IDEA-16 on the board · Status: draft (shaped 1 Oct 2026 from the brainstorm in `CLD-154` and the owner's answers on `CLD-155`)
+Task: IDEA-16 on the board · Status: approved (shaped 1 Oct 2026 from the brainstorm in `CLD-154` and the owner's answers on `CLD-155`; merged by the owner, and BRK-11 and BRK-35 are decided). Not built yet: its tasks, BRK-12 to BRK-36, are open.
 
 ## Problem
 

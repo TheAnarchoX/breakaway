@@ -1,6 +1,6 @@
 # IDEA-1 · Refine a task with an agent
 
-Task: IDEA-1 on the board · Status: draft
+Task: IDEA-1 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 

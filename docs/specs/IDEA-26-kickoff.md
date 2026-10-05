@@ -1,6 +1,6 @@
 # IDEA-26 · Kickoff: start a new project from the board
 
-Task: IDEA-26 on the board · Status: draft
+Task: IDEA-26 on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 

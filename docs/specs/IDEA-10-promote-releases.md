@@ -1,6 +1,6 @@
 # IDEA-10 · Promote releases instead of deploying everything on merge (the board's side)
 
-Task: `IDEA-10` on the board · Status: draft (30 Sep 2026). The owner's answers to the idea are settled ([below](#the-owners-answers-30-sep-2026)), three points went to the owner in one decision task ([questions](#questions-for-the-owner)), and the [decision log](../decisions.md) has what they decided.
+Task: `IDEA-10` on the board · Status: built (before the move to breakaway, under the first install's work IDs). The owner's answers to the idea are settled ([below](#the-owners-answers-30-sep-2026)), three points went to the owner in one decision task ([questions](#questions-for-the-owner)), and the [decision log](../decisions.md) has what they decided.
 
 This spec was written for samewave, the first install, whose app deploys through a staging Worker and a production Worker. This copy keeps the board's side: what a repository's pipeline has to do for the board to show it, and the board's Releases flow, Promote and Roll back, and shipped marks. In the examples, the repository's app runs as `app-staging` and `app`; on a real install they're the names in the repository's `pipeline` ([IDEA-14](IDEA-14-multi-repo.md#1-what-a-repository-is-on-the-board)).
 

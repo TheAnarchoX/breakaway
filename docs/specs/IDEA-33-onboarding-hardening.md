@@ -1,6 +1,6 @@
 # IDEA-33 · Onboarding someone can finish on their own
 
-Task: IDEA-33 on the board · Status: draft
+Task: IDEA-33 on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 

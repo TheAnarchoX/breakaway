@@ -1,6 +1,6 @@
 # IDEA-28 · Features and Chase mode
 
-Task: IDEA-28 on the board, refined in BRK-115 · Status: draft, with the owner's answers (BRK-82, 4 Oct 2026)
+Task: IDEA-28 on the board, refined in BRK-115 · Status: built (as of 5 Oct 2026, every task it planned is done), with the owner's answers (BRK-82, 4 Oct 2026)
 
 ## Problem
 The roadmap is two tags put on by hand: a release tag (`v1_2-0`) and a feature tag (`self-update`, `legacy-free`, `artifacts`) on every task. The board can filter by them, but it has no idea what a feature is: nothing says what it's called, which release it's aimed at, how far along it is, or what is stopping it. And when the owner wants a feature finished, they start agents one task at a time, watch the budget, and notice by hand when something upstream (a decision, a manual step, a pull request to merge) is holding the rest.

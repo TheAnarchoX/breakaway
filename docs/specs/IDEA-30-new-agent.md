@@ -1,6 +1,6 @@
 # IDEA-30 · New agent: start an agent from a prompt
 
-Task: IDEA-30 on the board, refined in BRK-108 · Status: draft, with the owner's answers (BRK-104, 4 Oct 2026)
+Task: IDEA-30 on the board, refined in BRK-108 · Status: built (as of 5 Oct 2026, every task it planned is done), with the owner's answers (BRK-104, 4 Oct 2026)
 
 The idea landed in another repository than the board's code, and its agent wrote this spec there. BRK-108 brought it here, where the tasks it makes live, with the answers to BRK-104 and the owner's follow-ups. Section 1 closes the gap that put it there: an idea always gets the repository it's for.
 

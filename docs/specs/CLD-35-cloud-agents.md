@@ -1,6 +1,6 @@
 # CLD-35 · Start Claude cloud agents from the board
 
-Task: `CLD-35` on the board · Status: approved (29 Sep 2026, by the owner: "build it, make it amazing, make it smart")
+Task: `CLD-35` on the board · Status: built (before the move to breakaway, under the first install's work IDs; approved 29 Sep 2026, by the owner: "build it, make it amazing, make it smart")
 
 ## Problem
 

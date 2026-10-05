@@ -1,6 +1,6 @@
 # IDEA-14 · Multi-repo support, and a Connections view
 
-Task: IDEA-14 on the board · Status: draft
+Task: IDEA-14 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 

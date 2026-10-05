@@ -1,6 +1,6 @@
 # IDEA-19 · Architect: breakaway runs the infrastructure too
 
-Task: IDEA-19 on the board, in the `architect` feature · Status: draft (shaped 5 Oct 2026). Three decisions wait for the owner (BRK-169, BRK-171, BRK-172); the tasks that build this wait for the idea's pull request to merge.
+Task: IDEA-19 on the board, in the `architect` feature · Status: approved (shaped 5 Oct 2026, merged by the owner). Not built yet: three decisions still wait for the owner (BRK-169, BRK-171, BRK-172), and the tasks that build it are open.
 
 ## Problem
 

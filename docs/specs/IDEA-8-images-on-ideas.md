@@ -1,6 +1,6 @@
 # IDEA-8 · Images on ideas
 
-Task: IDEA-8 on the board · Status: draft
+Task: IDEA-8 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 

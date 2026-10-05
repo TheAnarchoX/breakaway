@@ -1,6 +1,6 @@
 # IDEA-35 · Compliance Center: controls, SBOMs, risks, data, and processors on the board
 
-Task: IDEA-35 on the board · Status: draft
+Task: IDEA-35 on the board · Status: approved (shaped 5 Oct 2026, merged by the owner, and BRK-160 is decided). Not built yet: its tasks are open.
 
 ## Problem
 Someone building a product alone, or with agents, has to show it is built safely as well as build it: that changes are reviewed and checked, that dependencies are known and their licences allowed, that security alerts get fixed, which personal data the product holds and why, which vendors process it and whether a data processing agreement (DPA) is signed, and which risks they accept. Today that lives in spreadsheets, a vendor's dashboard, or nowhere, and it goes stale the day it's written. The board already sees most of the evidence (pull requests, checks on `main`, Dependabot alerts, the deploy pipeline, releases), but it shows none of it as compliance.

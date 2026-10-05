@@ -1,6 +1,6 @@
 # IDEA-20 · Self-updating installs
 
-Task: `IDEA-20` on the board · Status: draft (3 Oct 2026). Three choices wait for the owner in one decision task ([questions](#questions-for-the-owner)); the tasks that build this wait for the idea's pull request to merge.
+Task: `IDEA-20` on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 

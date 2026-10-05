@@ -1,6 +1,6 @@
 # IDEA-3 · Close a horizon, and drop the date estimates
 
-Task: IDEA-3 on the board · Status: draft
+Task: IDEA-3 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 The owner finished everything in `now` in under a day. Today there's no way to say "this horizon is done": tasks stay in `now`, and moving `next` and `later` up means editing each task by hand. The horizons in the repository's direction doc (samewave's `WORK.md`, on the install this was written for) also carry date ranges ("Until mid-November 2026", "November 2026 to March 2027") and named themes (H1, H2, H3). Agents finish work far faster than those dates guessed, so the dates are wrong, and names like H1 read like sprints or epics. The owner wants plain `now`, `next`, `later`, and no dates.

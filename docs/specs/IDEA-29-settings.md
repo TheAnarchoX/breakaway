@@ -1,6 +1,6 @@
 # IDEA-29 · Settings in the web app: a page per repository, and a home for the board's own
 
-Task: IDEA-29 on the board · Status: draft
+Task: IDEA-29 on the board · Status: built (as of 5 Oct 2026, every task it planned is done)
 
 ## Problem
 A repository's settings live only in the owner's CLI. `npx breakaway repos modify` changes its name, GitHub repository, default branch, and areas (add one with its prefix, rename one, remove one with no tasks), its agent caps under the board's shared limits, where its agent prompt is, and its deploy pipeline. The web app can register a repository (the Add a repository wizard) and cap its agents (Agents, Repositories), and nothing else. Changing a pipeline means writing a JSON file and running a command.

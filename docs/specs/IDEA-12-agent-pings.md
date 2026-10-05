@@ -1,6 +1,6 @@
 # IDEA-12 · Agents ping the owner, with suggestions to accept
 
-Task: IDEA-12 on the board · Status: draft
+Task: IDEA-12 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 An agent that can't finish a task today can only `comment` and `release`, and nobody sees it until the owner opens the board. Typical cases: the task waits for something only the owner can do (a dependency, an external change, a dashboard); a bug report was picked up elsewhere and no longer reproduces, so the behavior is as expected; the task turns out to be done already. The owner wants a ping, preferably in the installed PWA, and wants the agent to *propose* the follow-up: one or more fully filled-in tasks with their relations prepared, other dependencies adjusted, or "mark this done". The owner then only accepts, edits, or dismisses.

@@ -1,6 +1,6 @@
 # IDEA-13 · breakaway: the task board as a project of its own
 
-Task: IDEA-13 on the board · Status: draft
+Task: IDEA-13 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
 ## Problem
 
