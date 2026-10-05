@@ -501,6 +501,8 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'routines') {
     if (parts.length === 1 && method === 'GET') return send(await s.routinesApi());
     if (parts.length === 1 && method === 'POST') return send(await s.routinesCreateApi(body));
+    // Make with an agent (BRK-220 section 2): the owner's, from the board or the owner's own CLI (no agent's `by`).
+    if (parts[1] === 'agent' && parts.length === 2 && method === 'POST') return send(await s.routinesAgentApi(body));
     if (parts[1] === 'settings' && parts.length === 2 && (method === 'PATCH' || method === 'POST'))
       return send(await s.routinesSettingsApi(body));
     if (parts.length === 2 && method === 'PATCH') return send(await s.routinesModifyApi(parts[1], body));

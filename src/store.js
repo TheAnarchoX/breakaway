@@ -31,7 +31,7 @@ import { secret } from './secrets.js';
 import { githubMethods } from './store-github.js';
 import { packagesMethods } from './store-packages.js';
 import { DecisionError, summarize, validateAnswers } from './decision.js';
-import { AgentError, agentsMethods } from './store-agents.js';
+import { AgentError, agentsMethods, isRoutineMaker } from './store-agents.js';
 import { routinesMethods } from './store-routines.js';
 import { featuresMethods } from './store-features.js';
 import { chaseMethods } from './store-chase.js';
@@ -813,10 +813,12 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * the owner submits: a request with no `by`, or `owner`, is theirs; an agent's name is refused.
    *
    * A kickoff's IDEA asks its decision on itself (BRK-134), so answering it keeps the IDEA open: its plan's pull
-   * request closes it. `carryOn` is Send answers and carry on, a kickoff's only: the same answers, then the next
-   * kickoff run started on the IDEA, or queued for room like any start. worker.js takes it from the signed-in
-   * browser only. A routine that isn't connected refuses the press before anything is answered; a start refused
-   * after that (Claude said no) keeps the answers, and `refusal` says why, for a Start later.
+   * request closes it. A routine maker's task (BRK-220 section 3) asks on itself the same way and stays open too: its
+   * agent finishes it when it hands over. `carryOn` is Send answers and carry on, theirs only: the same answers, then
+   * the next run started on the task, or queued for room like any start. A plain Send answers on a routine maker
+   * leaves it for a Start. worker.js takes `carryOn` from the signed-in browser only. A routine that isn't connected
+   * refuses the press before anything is answered; a start refused after that (Claude said no) keeps the answers,
+   * and `refusal` says why, for a Start later.
    */
   submitDecision(ref, body) {
     return this.run(async () => {
@@ -825,16 +827,21 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const task = this.detail(uuid);
       if (!task.decision) throw new InputError(`${label(task)} has no decision to answer`);
       const kickoff = isKickoffIdea(task);
-      if (body?.carryOn && !kickoff)
-        throw new InputError(`${label(task)} isn't a kickoff's idea: send its answers, then start an agent`);
+      const maker = isRoutineMaker(task);
+      // Both ask on the task their agent holds, so answering keeps it open for the next run.
+      const keepOpen = kickoff || maker;
+      if (body?.carryOn && !keepOpen)
+        throw new InputError(
+          `${label(task)} isn't a kickoff's idea or a routine maker's task: send its answers, then start an agent`,
+        );
       if (task.status === 'completed' && task.decisionAnswers)
         throw new Conflict(`${label(task)} is already decided; reopen it to change an answer`, { task });
       if (task.status !== 'pending') throw new Conflict(`${label(task)} is ${task.status}`, { task });
-      if (kickoff && !task.tags.includes('decide'))
+      if (keepOpen && !task.tags.includes('decide'))
         throw new Conflict(`${label(task)}'s questions are already answered; reopen them to change an answer`, {
           task,
         });
-      if (kickoff && task.claim)
+      if (keepOpen && task.claim)
         throw new Conflict(`${label(task)} is claimed by ${task.claim}; answer once its agent has stopped`, { task });
       const answers = validateAnswers(task.decision, body?.answers);
       // The next run's own checks, before anything is answered: a routine that isn't connected refuses the press.
@@ -843,14 +850,19 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const answered = this.change(uuid, {
         decisionAnswers: { by: 'owner', at: new Date().toISOString(), answers },
         removeTags: ['decide'],
-        ...(kickoff ? {} : { status: 'completed' }),
+        ...(keepOpen ? {} : { status: 'completed' }),
+        // A routine maker's task was made to start by itself; once answered it waits for carry on or a Start.
+        ...(maker ? { autostart: null } : {}),
         claim: null,
         annotate: summarize(task.decision, answers),
         by: 'board',
       });
       if (!body?.carryOn) return ok({ task: answered });
       try {
-        const started = await this.startAgent(uuid, { trigger: 'kickoff', kind: 'kickoff' });
+        const started = await this.startAgent(
+          uuid,
+          maker ? { trigger: 'routines-carry-on', kind: 'routines' } : { trigger: 'kickoff', kind: 'kickoff' },
+        );
         return ok({ ...started, waiting: null });
       } catch (error) {
         // Over the board's limits, or Claude's hourly one: the run waits for room and starts on its own.
@@ -866,7 +878,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
 
   /**
    * Reopens a submitted decision: pending with +decide again, answers kept and editable. Owner only. A kickoff's
-   * IDEA stays open when it's answered, so reopening it only puts +decide back, while no agent holds it.
+   * IDEA and a routine maker's task stay open when they're answered, so reopening one only puts +decide back, while
+   * no agent holds it.
    */
   reopenDecision(ref, body) {
     return this.run(() => {
@@ -875,7 +888,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const task = this.detail(uuid);
       if (!task.decision || !task.decisionAnswers)
         throw new Conflict(`${label(task)} has no submitted decision`, { task });
-      if (isKickoffIdea(task) && task.status === 'pending') {
+      if ((isKickoffIdea(task) || isRoutineMaker(task)) && task.status === 'pending') {
         if (task.tags.includes('decide')) throw new Conflict(`${label(task)}'s questions are open already`, { task });
         if (task.claim) throw new Conflict(`${label(task)} is claimed by ${task.claim}`, { task });
         return ok({
@@ -934,8 +947,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const name = agent ? agentName(agent) : null;
       if (task.claim && name !== task.claim && !force)
         throw new Conflict(`${label(task)} is claimed by ${task.claim}, not ${name ?? 'you'}`, { task });
-      // A general agent that stops with no pull request has finished: its changes, if any, are on the board.
-      if (task.tags.includes('general') && task.status === 'pending' && !task.pr)
+      // A general agent that stops with no pull request has finished: its changes, if any, are on the board. A routine
+      // maker that stops with its questions open hasn't: the owner's answers start it again (BRK-220 section 3).
+      const asking = isRoutineMaker(task) && task.tags.includes('decide');
+      if (task.tags.includes('general') && task.status === 'pending' && !task.pr && !asking)
         return ok({
           task: this.change(uuid, {
             claim: null,
@@ -1213,7 +1228,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           at: new Date(e.at).toISOString(),
           source: 'routines',
           task: map ? brief(e.task, map) : null,
-          changes: [{ kind: e.kind, routine: e.slug, detail: e.detail }],
+          changes: [{ kind: e.kind, routine: e.slug, detail: e.detail, ...(e.agent ? { by: e.agent } : {}) }],
         });
       }
       // A chase started, stopped, stalled, or ended (IDEA-28 section 3.9); its starts are agent runs above.
@@ -1421,7 +1436,8 @@ const apiActions = {
       if (mode && !['build', 'refine', 'routine', 'general'].includes(mode))
         throw new AgentError('mode is build, refine, routine, or general', 400);
       const uuid = this.resolve(ref);
-      // A general agent's task waiting for room starts as a general agent, whatever button asked.
+      // A general agent's task waiting for room starts as a general agent, whatever button asked, and a routine
+      // maker's in the routines mode (startAgent).
       if (this.tasks.get(uuid)?.tag_general && (!mode || mode === 'build' || mode === 'general'))
         return ok(await this.startAgent(uuid, { trigger: 'general', kind: 'general', force: Boolean(force) }));
       // A run a trigger made and left waiting for the owner's Start: it starts as a routine run of its own routine.
@@ -1466,6 +1482,23 @@ const apiActions = {
   routinesApi() {
     return this.run(() => ok(this.listRoutines()));
   },
+  /**
+   * Make with an agent (docs/specs/BRK-220-routines-with-an-agent.md, section 2): the owner's prompt becomes a routine
+   * maker's task in repository `repo`, and an agent starts on it in the routines mode, or waits for room at the front
+   * of the queue. The owner's only.
+   */
+  routinesAgentApi(body) {
+    return this.run(async () => {
+      ownerOnly(body?.by, 'start an agent that makes routines');
+      const result = await this.startGeneral({
+        prompt: body?.prompt,
+        repo: body?.repo ?? null,
+        force: Boolean(body?.force),
+        maker: true,
+      });
+      return ok(result, result.run ? 201 : 202);
+    });
+  },
   routinesCreateApi(body) {
     return this.run(() => ok({ routine: this.createRoutine(body ?? {}) }, 201));
   },
@@ -1474,7 +1507,8 @@ const apiActions = {
   },
   routinesRunApi(slug, body) {
     return this.run(async () => {
-      if (body?.force) ownerOnly(body.by, 'force start an agent');
+      // Run now is the owner's: a routine maker's first run comes from its triggers (BRK-220 section 5).
+      this.ownerOnlyRoutines(body?.by, 'runs a routine');
       return ok(
         await this.runRoutine(slug, { note: body?.note ? String(body.note) : null, force: Boolean(body?.force) }),
       );
@@ -1499,7 +1533,10 @@ const apiActions = {
     }
   },
   routinesSettingsApi(body) {
-    return this.run(() => ok({ settings: this.updateRoutineSettings(body ?? {}) }));
+    return this.run(() => {
+      this.ownerOnlyRoutines(body?.by, 'pauses routines or sets their daily cap');
+      return ok({ settings: this.updateRoutineSettings(body ?? {}) });
+    });
   },
   fixAlertApi(number, note, repo = null, { force = false, by } = {}) {
     return this.run(async () => {
