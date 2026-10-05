@@ -96,3 +96,16 @@ export function refiningSpec(list, slug, path, fallback) {
 
 /** The longest request the board keeps for a spec's agent (src/spec-prompt.js clips it there). */
 export const SPEC_REQUEST_MAX = 4000;
+
+/** The step Mark approved and Mark built take (BRK-215), as the server's NEXT_STATUS does: draft to approved, approved to built. */
+const MARK_STEPS = { draft: 'approved', approved: 'built' };
+
+/**
+ * The button a spec with status `status` gets, `{ status, label }`, or null when its status has no next step.
+ * @param {string | null | undefined} status
+ */
+export function markStep(status) {
+  const key = String(status ?? '');
+  const next = Object.hasOwn(MARK_STEPS, key) ? MARK_STEPS[key] : null;
+  return next ? { status: next, label: `Mark ${next}` } : null;
+}

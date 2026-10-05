@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filterSpecs,
   inSpecsDir,
+  markStep,
   readSpecParam,
   refiningSpec,
   shortTitle,
@@ -121,5 +122,14 @@ describe('the agent on a spec', () => {
     expect(refiningSpec([t({ spec: 'docs/specs/OPS-4-y.md' })], 'widgets', path, 'widgets')).toBeNull();
     expect(refiningSpec([t({ tags: ['agent'] })], 'widgets', path, 'widgets')).toBeNull();
     expect(refiningSpec(null, 'widgets', path, 'widgets')).toBeNull();
+  });
+});
+
+describe('the step a spec’s button takes (BRK-215)', () => {
+  it('marks a draft approved and an approved spec built, and offers nothing for any other status', () => {
+    expect(markStep('draft')).toEqual({ status: 'approved', label: 'Mark approved' });
+    expect(markStep('approved')).toEqual({ status: 'built', label: 'Mark built' });
+    for (const other of ['built', 'superseded', 'constructor', null, undefined, ''])
+      expect(markStep(other), String(other)).toBeNull();
   });
 });
