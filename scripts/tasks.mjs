@@ -42,6 +42,7 @@ import { looksLikeSecret } from '../src/ping.js';
 import { promptPathOf } from '../src/repos.js';
 import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
+import { appInPlace } from './tasks/github-connect.js';
 import { checkInstall } from './tasks/install-check.js';
 import { NO_TERMINAL, ask as askIn } from './tasks/ask.js';
 import {
@@ -296,10 +297,11 @@ Setup (owner)
   setup                  connect this machine's Taskwarrior (writes taskrc in this machine's folder for the board, with every repository's report and context)
   rotate-sync            new client ID and sync secret; the server re-encrypts its history
   rotate-token           new API token; every browser is signed out
-  github-connect <code>  store the GitHub App's keys (the board's GitHub view gives the code)
+  github-connect <code>  store the GitHub App's keys (the board's GitHub view gives the code); refuses when the board
+                         already has an App, unless --replace
   agents-connect         store the agent routine's URL and token (docs/tasks.md#cloud-agents-from-the-board)
                          --repo <slug> connects another repository's routine; --replace drops ones this machine doesn't hold
-  init-secrets           once, for a brand-new board
+  init-secrets           once, for a brand-new board; --force starts again, keeping the old file as a .bak
 
 Install repository     (no board needed: the files and steps that deploy a board from its own repository)
   install init [dir]     write an install repository into <dir> (default: here): its config, breakaway.json, the Deploy and
@@ -1727,6 +1729,12 @@ const commands = {
     const code = need(args[0], 'code');
     // Before the code is traded: it works once, and the keys it gives have to go into the board's own secrets.
     await ensureBoardInstall('github-connect');
+    // Each code comes from a new App: on a board that has one, it would replace the working App's keys (CLI-2).
+    const inPlace = appInPlace(await call('GET', 'connections', undefined, { soft: true }), {
+      replace: Boolean(opts.replace),
+    });
+    if (!inPlace.ok) fail(inPlace.message);
+    if (inPlace.note) console.log(inPlace.note);
     const res = await fetch(`https://api.github.com/app-manifests/${enc(code)}/conversions`, {
       method: 'POST',
       headers: {
@@ -1775,6 +1783,9 @@ const commands = {
     const install = installConfig();
     // A new install has no address until it's deployed (CLD-139).
     const known = BOARD.from !== 'default' || install.url !== null;
+    // --force never loses the only copy of the sync secret: the old file is kept the way rotations keep it (CLI-2).
+    const kept = backupEnvFile();
+    if (kept) console.log(`Kept the old one as ${kept} (0600).`);
     writePrivate(
       ENV_FILE,
       envFile({
@@ -2226,9 +2237,18 @@ function writePrivate(path, content) {
   chmodSync(path, 0o600);
 }
 
+/** Moves tasks.env aside as tasks.env.<date>.bak (0600), and says where; null when there's none. */
+function backupEnvFile() {
+  if (!existsSync(ENV_FILE)) return null;
+  const backup = `${ENV_FILE}.${new Date().toISOString().replace(/[:.]/gu, '-')}.bak`;
+  renameSync(ENV_FILE, backup);
+  chmodSync(backup, 0o600);
+  return backup;
+}
+
 /** tasks.env.next becomes tasks.env; the old one is kept as tasks.env.<date>.bak. */
 function promoteEnvFile() {
-  if (existsSync(ENV_FILE)) renameSync(ENV_FILE, `${ENV_FILE}.${new Date().toISOString().replace(/[:.]/gu, '-')}.bak`);
+  backupEnvFile();
   renameSync(`${ENV_FILE}.next`, ENV_FILE);
 }
 

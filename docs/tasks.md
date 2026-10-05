@@ -258,7 +258,7 @@ Taskwarrior's numeric IDs belong to one replica; use the `wid` (or the UUID) whe
 
 ### This machine (the owner)
 
-`~/.config/breakaway/tasks.env` (mode 0600) holds the token, the sync client ID and secret, and the derived key. `npx breakaway init-secrets` makes it, once per install, and it's **the only copy of the sync secret**: keep it in your password manager too.
+`~/.config/breakaway/tasks.env` (mode 0600) holds the token, the sync client ID and secret, and the derived key. `npx breakaway init-secrets` makes it, once per install, and it's **the only copy of the sync secret**: keep it in your password manager too. Run again, it refuses; with `--force` it starts afresh and keeps the old file as `tasks.env.<time>.bak`, the way `rotate-sync` and `rotate-token` do.
 
 ```sh
 npx breakaway setup     # writes ~/.config/breakaway/taskrc (credentials, and each repository's report and context) and runs the first `task sync`
@@ -484,7 +484,7 @@ How they work:
 **Connecting it (the owner, once, `CLD-25`).**
 
 1. Open the board's **GitHub** view and select **Create the App on GitHub**. GitHub shows the App and its permissions (metadata, contents, pull requests, checks, actions, commit statuses, deployments, Dependabot alerts); create it. GitHub sends you back to the board.
-2. The view shows `npx breakaway github-connect <code>`. Run it in a checkout of the board's repository, with `wrangler` logged in, within the hour. It trades the code for the App's ID, private key, and webhook secret and stores them as the board's secrets ([Secrets](#secrets)); they never pass through the board or a command line.
+2. The view shows `npx breakaway github-connect <code>`. Run it in a checkout of the board's repository, with `wrangler` logged in, within the hour. It trades the code for the App's ID, private key, and webhook secret and stores them as the board's secrets ([Secrets](#secrets)); they never pass through the board or a command line. Each code comes from a new App, so on a board that already has one (working, or not checked yet) it refuses before trading the code, names the board's App, and changes nothing: delete the new App on GitHub if you made it by mistake, or run it again with `--replace` to switch the board to it and delete the old one. On a board whose App GitHub refused, it goes ahead.
 3. Open the install link it prints, choose **Only select repositories**, pick the repository, and install. The board fills in within seconds.
 
 **Deploys need one more permission.** An App made before `CLD-32` can't read Deployments, so the board shows none until you accept the new permission: on GitHub, Settings → Developer settings → GitHub Apps → your board's App → Permissions & events, set **Deployments** to read-only and subscribe to **Deployment**, **Deployment status**, and **Release**, save, then accept the request on the installation (the App's install page shows it). Without it the board carries on and just has no deploys. An App made from the board's manifest already has them.
