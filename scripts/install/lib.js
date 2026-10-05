@@ -253,9 +253,34 @@ export function workerMissing(output) {
   return /\[code: 10007\]|worker does not exist on your account/iu.test(String(output ?? ''));
 }
 
+/**
+ * The message that stops a deploy about to make a new Worker on an install that already has a board (BRK-141), or null
+ * when making one is a first deploy. A board is there when the repository variable BREAKAWAY_URL is set (`variable`: the
+ * install sets it once the board answers) or the address the deploy checked (`at`) answered /api/ping with a release
+ * (`running`). A new Worker then means the name changed or is mistyped, and deploying it would open a second, empty board.
+ * @param {{ worker: string, variable?: string | null, running?: string | null, at?: string | null }} options
+ */
+export function newWorkerStop({ worker, variable = null, running = null, at = null }) {
+  if (!variable && !running) return null;
+  const seen = running
+    ? `${at || variable || 'its address'} answers as breakaway ${running}`
+    : `the repository variable BREAKAWAY_URL is set (${variable})`;
+  return `There is no Worker named ${worker} on this Cloudflare account, but this install already has a board: ${seen}. Deploying would make a new Worker with an empty board, so nothing was deployed. Put "worker" in breakaway.config.json back to the name the board runs as (Workers & Pages on Cloudflare lists it), then run Deploy again. If that board is gone and you mean to start an empty one, delete the repository variable BREAKAWAY_URL, then run Deploy again.`;
+}
+
+/**
+ * What `/api/ping`'s answer says about the new release: `healthy` when it runs and its secrets load (BRK-96), `secrets`
+ * when it runs but a bound secret can't be read yet, and `down` for anything else.
+ * @returns {'healthy' | 'secrets' | 'down'}
+ */
+export function pingHealth(ping, version) {
+  if (ping?.ok !== true || ping.release !== version) return 'down';
+  return ping.secrets?.ok === true ? 'healthy' : 'secrets';
+}
+
 /** Whether `/api/ping`'s answer says the new release is running and its secrets load (BRK-96). */
 export function isHealthy(ping, version) {
-  return Boolean(ping) && ping.ok === true && ping.release === version && ping.secrets?.ok === true;
+  return pingHealth(ping, version) === 'healthy';
 }
 
 /**

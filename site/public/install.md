@@ -82,7 +82,7 @@ gh run list --repo <owner>/<name> --workflow deploy.yml --limit 1   # it takes a
 gh run watch <run ID> --repo <owner>/<name> --exit-status
 ```
 
-When the dry run passes, run it again without `-f dry-run=true` and watch it the same way. It stops with a message when something needs their hands: read the run's log (`gh run view <run ID> --repo <owner>/<name> --log-failed`) and say what it asks for.
+When the dry run passes, run it again without `-f dry-run=true` and watch it the same way. On an address on their own domain, this first deploy can wait up to five minutes for its certificate, and can end with a notice that the board is waiting for its secrets: that's expected, they go on next. It stops with a message when something needs their hands: read the run's log (`gh run view <run ID> --repo <owner>/<name> --log-failed`) and say what it asks for.
 
 Then put the three secrets on the Worker. Each command reads its value from `tasks.env` and pipes it to Wrangler, so it never shows:
 

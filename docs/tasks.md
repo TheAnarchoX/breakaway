@@ -258,7 +258,7 @@ Taskwarrior's numeric IDs belong to one replica; use the `wid` (or the UUID) whe
 
 ### This machine (the owner)
 
-`~/.config/breakaway/tasks.env` (mode 0600) holds the token, the sync client ID and secret, and the derived key. `npx breakaway init-secrets` makes it, once per install, and it's **the only copy of the sync secret**: keep it in your password manager too. Run again, it refuses; with `--force` it starts afresh and keeps the old file as `tasks.env.<time>.bak`, the way `rotate-sync` and `rotate-token` do.
+`~/.config/breakaway/tasks.env` (mode 0600) holds the token, the sync client ID and secret, and the derived key. `npx breakaway init-secrets` makes it, once per install, and it's **the only copy of the sync secret**: keep it in your password manager too, with the other files [What to keep](#what-to-keep) lists. Run again, it refuses; with `--force` it starts afresh and keeps the old file as `tasks.env.<time>.bak`, the way `rotate-sync` and `rotate-token` do.
 
 ```sh
 npx breakaway setup     # writes ~/.config/breakaway/taskrc (credentials, and each repository's report and context) and runs the first `task sync`
@@ -742,6 +742,46 @@ npx breakaway rotate-token
 
 It updates the stored secret, waits until the server accepts the new token, and saves it. Every browser is signed out; update `BREAKAWAY_TOKEN`, or the API credential, in cloud environments.
 
+### What to keep
+
+The Secrets Store, Worker secrets, and the board take values and never give them back. So a few files on your machine, in `~/.config/breakaway/` (`$BREAKAWAY_HOME` when it's set), hold the only copy of what you'd need again. Keep each one, whole, in your password manager, and never in Git. `init-secrets` prints the same list.
+
+| File | What it holds | If it's lost |
+| --- | --- | --- |
+| `tasks.env` | The token, the sync client ID and secret, the derived key, and the board's address | Without the token you can't use the CLI or sign in to a new browser. Without the sync secret no new machine can sync with Taskwarrior. Everything else keeps working. |
+| `tasks-routines.json`, when there is one | The URL and token of each routine `agents-connect --repo` connected: every repository's but the default one's | Agents keep starting. `agents-connect --repo` and `repos remove` stop instead of dropping the routines the file doesn't hold. |
+| `github-app.json`, only when `github-connect` couldn't store the App's keys | The App's ID, private key, and webhook secret | It matters only until the keys are stored; then delete it. Lost before then, the board has no key for the App. |
+
+The rest needs no copy: the board keeps it, and you replace it rather than get it back. That's the default repository's routine, a routine connected from the board's form, the push keys, and the App's keys once they're stored. A `tasks.env.<time>.bak` from a rotation holds values that stopped working; one from `init-secrets --force` holds the sync secret the board may still run on, so keep it until you know.
+
+### When something's lost
+
+Each recovery runs on your machine, with `wrangler` logged in to the install's Cloudflare account, and prints no value.
+
+**The token.** Look for it first: your password manager, `tasks.env` on another machine, or `BREAKAWAY_TOKEN` in a cloud environment's variables (an API credential can't be read back). Found, it goes back in `tasks.env` as `BREAKAWAY_TOKEN=…`. If it leaked, or someone should lose access, run `npx breakaway rotate-token`. If it's gone everywhere, `rotate-token` can't help: it asks the board which install it is, with the old token, before it writes anything. Set a new one by hand instead, after deleting any `BREAKAWAY_TOKEN` line left in `tasks.env`:
+
+```sh
+cd ~/.config/breakaway
+node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))" > token.new
+# Without a Secrets Store: the Worker's secret, under the install's worker name
+npx wrangler secret put TASKS_API_TOKEN --name <worker> < token.new
+# With one: find the API token's secret ID (BREAKAWAY_API_TOKEN with the default prefix), then update it
+npx wrangler secrets-store secret list <store ID> --remote
+npx wrangler secrets-store secret update <store ID> --secret-id <its ID> --remote < token.new
+printf 'BREAKAWAY_TOKEN=%s\n' "$(cat token.new)" >> tasks.env && rm token.new
+npx breakaway health    # works once the board has the new token, within a minute
+```
+
+Either way every browser is signed out; sign in with the new token, and update `BREAKAWAY_TOKEN` or the API credential in your cloud environments.
+
+**The sync secret.** The board holds only the client ID and the key derived from the secret, and can't give the secret back. Everything but Taskwarrior keeps working: the web board, the CLI, agents (they use the token), GitHub, and pushes. Replicas that already sync carry on. Look for it first: every machine that ran `npx breakaway setup` has it in `~/.config/breakaway/taskrc`, as `sync.encryption_secret` beside `sync.server.client_id`. Put both back in `tasks.env` as `BREAKAWAY_SECRET` and `BREAKAWAY_CLIENT_ID`, then run `npx breakaway setup` where you need it; if the machine that lost it might be in someone else's hands, run `npx breakaway rotate-sync` too. If no machine has it, `rotate-sync` refuses for now, because it checks `tasks.env` has a secret before it starts (`CLI-5` lets it start again without one: the board re-encrypts with the key it holds). Until then no new machine can sync with Taskwarrior; nothing on the board is lost. Never set a new sync key by hand: the board's history is sealed with the old one, and it would stop reading it.
+
+**A routine token.** The board holds it and keeps starting agents with it; you need a new one only to connect the routine again. Generate a token in the routine's API trigger on claude.ai, then connect it: from its form in Connections (**Replace the routine**) when it was connected there, with `npx breakaway agents-connect` for the default repository, or `npx breakaway agents-connect --repo <slug>` for any other.
+
+**`tasks-routines.json`.** `agents-connect --repo` and `repos remove` stop and name the routines it doesn't hold. Copy the file from the machine that connected them. If none has it, run `npx breakaway agents-connect --repo <slug> --replace`, which writes only that routine, then connect each of the others again with a new token, from its form in Connections or with `agents-connect --repo`; until then those repositories can't start agents.
+
+**The App's keys.** Once stored, the board holds them and you keep nothing; if the key leaked, generate a new one ([GitHub](#github) says how). If `github-app.json` was lost before the keys were stored, the App on GitHub has no key the board can use: delete that App on GitHub (Settings → Developer settings → GitHub Apps), and connect a new one from the board's GitHub view.
+
 ## Connections
 
 `npx breakaway connections` (or `GET /api/connections`, `CLD-120`, [spec](specs/IDEA-14-multi-repo.md#7-connections)) lists everything the board leans on, each **Working**, **Needs attention**, or **Not connected**, with what the board saw, when, and the exact fix for each failure it can tell apart:
@@ -752,7 +792,7 @@ It updates the stored secret, waits until the server accepts the new token, and 
 - **A routine is verified by its first real run** (`BRK-142`). A connected routine reads **Not verified yet: start an agent on a task to verify it** until a session it started claims its task: in a cloud session, `claim` sends what the session can see about its own environment (whether a name was set, whether the token came from the environment's API credential, a variable, or a `tasks.env` file, and a hash of the checkout's copy of the stub), never a value. The board keeps the first report from each start (one counts for a start made in the last day, even when the claim is refused for its name), and the row reads **Verified by <task>** with the time. A report with no agent name, the token in a variable, or a stub that's missing or differs from the board's needs attention, with the fix. Nothing starts an agent just to verify, and a routine connected anew reads Not verified yet again.
 - **Per repository** (`CLD-129`): each registered repository gets its own rows: the App installed on it (a repository other than the default without it needs attention), its permissions, **Allow auto-merge**, its sync, its routine ("Agent routine for <slug>", which needs attention with its form to connect it, or `npx breakaway agents-connect --repo <slug>`, when it's missing, or while its agent prompt still has a `<…>` placeholder, `CLD-196`) and its last start, and its live output once the routine is connected. With several repositories, the Webhook row lists the last delivery for each. The view follows the repository switcher, and shared rows always show.
 - **Taskwarrior** (when a replica last synced) and **Push** (keys set, browsers subscribed, the last send).
-- **A fresh install's setup** (`CLD-131`): on an install that started with no repository, a **Repositories** row says whether one is registered, and the report's `setup` lists the steps (register a repository, connect the App, install it, add the board's files, connect the routine, connect the CLI and Taskwarrior), each done or not, with the connection that shows it. Until a machine syncs, Taskwarrior shows as not connected with the steps to connect one. There the default repository's missing installation and routine need attention instead of showing as not connected. An install from before repositories gets neither, and `setup` is null.
+- **A fresh install's setup** (`CLD-131`): on an install that started with no repository, a **Repositories** row says whether one is registered, and the report's `setup` lists the steps (register a repository, connect the App, install it, add the board's files, connect the routine, connect the CLI, sync Taskwarrior, and the first result), each done or not, with the connection that shows it (`BRK-143`). The CLI step ticks on any call with the API token, which the **Command line** row shows. Taskwarrior is `optional`: until a machine syncs it shows as not connected with the steps to connect one, and setup finishes without it. The last step is **A first agent's pull request merged** when the repository's routine is connected, or **A first task closed** without one, ticking from the same facts as the **Add a repository** wizard's agent step: an agent's start, live output, pull request, and merge, or a task closed by its merged pull request. A task closed that way without a routine leaves the routine step `optional` too, and `setup.done` is true once every step that isn't optional is. There the default repository's missing installation and routine need attention instead of showing as not connected. An install from before repositories gets neither, and `setup` is null.
 
 It also lists what it can't check: the routine's cloud environment and prompt on claude.ai, and Cloudflare's own settings. The GitHub checks run once an hour from the cron, and again when the owner presses **Check now** on the board (`POST /api/connections/check`: the signed-in browser only, once every 30 seconds). A check only reads: it never writes to GitHub, never starts an agent, and never costs a Claude start. The board keeps states and timestamps in its Durable Object, and redacts a message from outside it the way the session hook does.
 
