@@ -57,5 +57,8 @@ What this doesn't do, so nobody builds it by accident.
 What the owner still has to decide, asked as a decision on the board.
 
 ## Done when
-Checkable outcomes, and the follow-up tasks it makes, with their work IDs.
+Checkable outcomes, and the follow-up tasks it makes, with their work IDs. Each task's done when can be checked in a few minutes.
+
+## How to check it
+A few steps someone who isn't technical can follow, once it's built, to see the result is what was asked for: what to open, what to do, and what they should see. The pull request's description repeats them.
 ```
