@@ -158,7 +158,10 @@ describe('the MCP endpoint (BRK-154)', () => {
       for (const token of [null, 'not-the-token']) {
         const res = await legacy('ping', undefined, { token });
         expect(res.status).toBe(401);
-        expect(res.headers.get('WWW-Authenticate')).toBe('Bearer');
+        // It names where Claude's apps sign in instead (BRK-157).
+        expect(res.headers.get('WWW-Authenticate')).toBe(
+          `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp"`,
+        );
       }
       const login = await SELF.fetch(`${ORIGIN}/login`, {
         method: 'POST',
@@ -581,6 +584,36 @@ describe('the MCP endpoint (BRK-154)', () => {
         by: WRITER,
         text: 'Stopped at the config.',
       });
+    });
+
+    it('claims as the plugin’s agent_name, else the name its headersHelper sends for the branch (CLI-16)', async () => {
+      // The plugin's .mcp.json sends agent_name as a static X-Breakaway-Agent, empty when it isn't set, and the
+      // helper's X-Breakaway-Agent-Default is claude-<branch>.
+      const plugin = (agentName) => ({
+        agent: null,
+        headers: { 'X-Breakaway-Agent': agentName, 'X-Breakaway-Agent-Default': 'claude-inbox-sort' },
+      });
+      for (const [agentName, name] of [
+        ['claude-wid-2', 'claude-wid-2'],
+        ['', 'claude-inbox-sort'],
+        ['${user_config.agent_name}', 'claude-inbox-sort'],
+      ]) {
+        const claimed = await call('claim_task', { task: fix.wid }, plugin(agentName));
+        expect(claimed.isError, agentName).toBeUndefined();
+        expect(claimed.structuredContent.task.claim).toBe(name);
+        expect((await call('release_task', { task: fix.wid }, plugin(agentName))).isError).toBeUndefined();
+      }
+      // The default is only a default: a name of the client's own comes first, and it's checked like one.
+      const own = await call('claim_task', { task: fix.wid }, { headers: { 'X-Breakaway-Agent-Default': 'claude-x' } });
+      expect(own.structuredContent.task.claim).toBe(AGENT);
+      expect((await call('release_task', { task: fix.wid })).isError).toBeUndefined();
+      const reserved = await call(
+        'claim_task',
+        { task: fix.wid },
+        { agent: null, headers: { 'X-Breakaway-Agent-Default': 'owner' } },
+      );
+      expect(reserved.isError).toBe(true);
+      expect(text(reserved)).toMatch(/your own name/u);
     });
 
     it('refuses a claim with no agent name, on another repository’s task, on a claimed task, and with force', async () => {

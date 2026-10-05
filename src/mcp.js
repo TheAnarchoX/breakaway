@@ -13,6 +13,7 @@
  * src/mcp-resources.js.
  */
 import { authenticate } from './auth.js';
+import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
 import { McpFailure, PROMPTS, RESOURCE_TEMPLATES, getPrompt, listResources, readResource } from './mcp-resources.js';
 import { MAX_MESSAGE, PING_KINDS, looksLikeSecret } from './ping.js';
@@ -70,12 +71,24 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const origin = request.headers.get('Origin');
   if (origin !== null && origin !== url.origin)
     return rpcError(403, null, INVALID_REQUEST, 'requests to /mcp from another origin are refused');
-  // The bearer token only, never the web board's cookie: the browser has the web board (section 2).
-  if ((await authenticate(request, env)) !== 'token')
-    return new Response(JSON.stringify({ error: 'send the board’s token as "Authorization: Bearer <token>"' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' },
-    });
+  // The bearer token only, never the web board's cookie: the browser has the web board (section 2). A connection
+  // from Claude's apps has its own token, for its one repository and agent name (section 8).
+  let pinned = null;
+  if ((await authenticate(request, env)) !== 'token') {
+    const found = await connectionOf(request, store);
+    if (!found?.connection) {
+      const challenge = `Bearer ${found?.invalid ? 'error="invalid_token", ' : ''}resource_metadata="${metadataUrl(url.origin)}"`;
+      return new Response(
+        JSON.stringify({
+          error: found?.invalid
+            ? 'this sign-in has run out or was revoked: refresh it, or sign in again'
+            : 'send the board’s token as "Authorization: Bearer <token>", or sign in',
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': challenge } },
+      );
+    }
+    pinned = found.connection;
+  }
 
   const raw = await readBody(request, maxBody);
   if (raw === null) return rpcError(413, null, INVALID_REQUEST, `the request is over ${maxBody} bytes`);
@@ -104,7 +117,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const era = eraOf(request, method, params);
   if (era.error) return rpcError(era.status ?? 400, id, era.error.code, era.error.message, era.error.data);
 
-  const ctx = callContext(request, store, waitUntil);
+  const ctx = callContext(request, store, waitUntil, pinned);
   const answer = (result) =>
     rpcResult(id, era.modern ? { resultType: 'complete', ...result, _meta: serverMeta(env) } : result);
   const failed = (status, code, text, data) => rpcError(era.modern ? status : 200, id, code, text, data);
@@ -253,15 +266,21 @@ function rpcError(status, id, code, message, data) {
 // ---- Who's calling -----------------------------------------------------------------------
 
 /**
- * The agent's name and repository from the request's headers (section 2), and the board's registry, read once and
- * only when a tool needs it. `waitUntil` keeps work going after the answer (a ping's push).
+ * The agent's name and repository from the request's headers (section 2), or from the connection a sign-in from
+ * Claude's apps made (section 8), whatever the headers say; and the board's registry, read once and only when a tool
+ * needs it. `waitUntil` keeps work going after the answer (a ping's push).
  * @param {Request} request
  * @param {any} store
  * @param {(promise: Promise<any>) => void} [waitUntil]
+ * @param {{ agent: string, repo: string } | null} [pinned]
  */
-function callContext(request, store, waitUntil = (_promise) => {}) {
-  const agent = (request.headers.get('X-Breakaway-Agent') ?? '').trim();
-  const repo = (request.headers.get('X-Breakaway-Repo') ?? '').trim().toLowerCase();
+function callContext(request, store, waitUntil = (_promise) => {}, pinned = null) {
+  const header = (name) => (request.headers.get(name) ?? '').trim();
+  // The plugin sends its agent_name as a static X-Breakaway-Agent, empty when it isn't set, and its headersHelper sends
+  // claude-<branch> as X-Breakaway-Agent-Default for that case (CLI-16). An option Claude Code didn't fill is no name.
+  const named = header('X-Breakaway-Agent');
+  const agent = pinned ? pinned.agent : named && !named.startsWith('${') ? named : header('X-Breakaway-Agent-Default');
+  const repo = pinned ? pinned.repo : header('X-Breakaway-Repo').toLowerCase();
   let registry;
   const ctx = {
     store,
@@ -279,6 +298,11 @@ function callContext(request, store, waitUntil = (_promise) => {}) {
       if (!slugs.length)
         return { error: 'the board has no repositories yet: the owner adds one on the board, under Repositories' };
       if (!repo) return { error: `name the repository: set the X-Breakaway-Repo header to one of ${slugs.join(', ')}` };
+      // A sign-in's repository is the owner's pick, not a header the client can fix (section 8).
+      if (pinned && !slugs.includes(repo))
+        return {
+          error: `this connection's repository, ${repo}, isn't on the board any more: the owner revokes it on Connections, and you sign in again`,
+        };
       // The plugin's headersHelper can't always ask the board for the slug, so it sends the checkout's owner/name
       // (CLI-9). One the board doesn't track is a checkout outside the board, not a config to fix: it still connects.
       if (repo.includes('/')) {

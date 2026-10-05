@@ -64,8 +64,13 @@ describe('the breakaway plugin (CLI-7)', () => {
     expect(server).toMatchObject({
       type: 'http',
       url: '${user_config.board_url}/mcp',
-      headers: { Authorization: 'Bearer ${user_config.token}' },
+      headers: {
+        Authorization: 'Bearer ${user_config.token}',
+        // The helper can't see agent_name, so it goes as a static header, empty when it isn't set (CLI-16).
+        'X-Breakaway-Agent': '${user_config.agent_name}',
+      },
     });
+    expect(json(`${PLUGIN_DIR}.claude-plugin/plugin.json`).userConfig.agent_name.default).toBe('');
     // The helper runs in the plugin's folder, through a shell: it moves to the checkout, and can't name an option.
     expect(server.headersHelper).toBe(`cd "\${CLAUDE_PROJECT_DIR}" && npx --yes ${CLI_PACKAGE} mcp --headers`);
     const { userConfig } = json(`${PLUGIN_DIR}.claude-plugin/plugin.json`);

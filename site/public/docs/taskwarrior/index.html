@@ -47,7 +47,7 @@
     <summary>Docs menu</summary>
     <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
 <div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
-<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/taskwarrior/" aria-current="page">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/" aria-current="page">Taskwarrior</a></li></ul></div>
 <div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
 <div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li></ul></div>
   </details>
@@ -86,7 +86,7 @@ task +BLOCKED        # anything Taskwarrior can filter</code></pre>
 <h2 id="if-sync-breaks"><a class="anchor" href="#if-sync-breaks" aria-label="Link to this section">#</a>If sync breaks</h2>
 <ul><li><code>task sync</code> fails with a 403: this replica has another client ID. Run <code>npx breakaway setup</code> again.</li><li><code>410 Gone</code> on <code>get-child-version</code>: this replica last synced with another server, so the board doesn’t have its version. Start the replica again: <code>mv .task .task-stale</code>, then <code>scripts/task sync</code>, which fetches every task from the board’s snapshot. If the old one had changes that never reached the board, look them up with <code>TASKDATA=.task-stale task export</code> and make them again.</li><li><code>Could not read include file '~/.config/breakaway/taskrc'</code>: run <code>npx breakaway setup</code>.</li></ul>
 <p>More in <a href="/docs/operations/#when-somethings-wrong">Operating a board</a>.</p>
-    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/plugin/"><span class="label">Previous</span><span>Claude Code plugin</span></a><a class="pager-next" href="/docs/deploying/"><span class="label">Next</span><span>Deploying and updating</span></a></nav>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/mcp/"><span class="label">Previous</span><span>MCP</span></a><a class="pager-next" href="/docs/deploying/"><span class="label">Next</span><span>Deploying and updating</span></a></nav>
   </main>
   <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#connect-a-machine">Connect a machine</a></li><li><a href="#reports-and-contexts">Reports and contexts</a></li><li><a href="#fields">Fields</a></li><li><a href="#if-sync-breaks">If sync breaks</a></li></ul></nav>
 </div>

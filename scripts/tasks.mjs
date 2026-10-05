@@ -1637,7 +1637,8 @@ const commands = {
     } catch {
       /* not a git checkout */
     }
-    const name = mcpAgent({ named: opts.as ?? setting('AGENT'), branch, fallback: agent() });
+    const named = opts.as ?? setting('AGENT');
+    const name = mcpAgent({ named, branch, fallback: agent() });
     if (opts.headers) {
       const token = setting('TOKEN');
       let remote = null;
@@ -1659,7 +1660,7 @@ const commands = {
         fetch,
       });
       // Standard output is Claude Code's, and only the headers go there: never --json's wrapping, never a line of text.
-      console.log(JSON.stringify(mcpHeaders({ token, agent: name, repo })));
+      console.log(JSON.stringify(mcpHeaders({ token, named, agent: name, repo })));
       return;
     }
     const tokenVar = envName('TOKEN');
@@ -2540,8 +2541,9 @@ if (opts.help || command === 'help') {
   process.exitCode = (await import('./tasks/pipeline.js')).run(args, opts);
 } else if (!commands[command]) {
   fail(`no command "${command}". npx breakaway help lists them.`);
-} else if (!BASE && command !== 'init-secrets' && command !== 'hook') {
+} else if (!BASE && command !== 'init-secrets' && command !== 'hook' && !(command === 'mcp' && opts.headers)) {
   // The hooks stay quiet without a board (a plugin installed but not set up, CLI-8): session-hook.mjs checks for itself.
+  // The plugin's headersHelper never fails, and Claude Code tells it the board's address when only the plugin knows it.
   fail(
     `no board address. Set BREAKAWAY_URL (in the environment or ${ENV_FILE}), sync.server.url in this checkout's .taskrc, or the board's address in the breakaway plugin's settings (or run npx breakaway setup): see docs/tasks.md#another-install.`,
   );
