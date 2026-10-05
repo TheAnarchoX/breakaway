@@ -1176,6 +1176,8 @@ export const githubMethods = {
       pipeline: pipeline && { staging: pipeline.staging, production: pipeline.production },
       // Merged, not on (WEB-13): the move's files on the default branch, and the pipeline one press would set.
       pipelineFound: this.pipelineFoundOf(repo),
+      // Deploy with breakaway (WEB-12): where the move to the deploy flow is, for a repository without a pipeline.
+      move: this.moveOf(repo),
       deploys: !pipeline
         ? []
         : deploys(20).map((d) => ({

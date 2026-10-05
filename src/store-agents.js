@@ -158,6 +158,7 @@ const TRIGGER_TEXT = {
   'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
   'road-captain': 'by the owner, as the road captain of a chase',
   kickoff: 'by “Send answers and carry on” on a kickoff’s decision, from the board',
+  move: 'by “Move to breakaway’s deploy flow” on the GitHub page, from the board',
 };
 
 /**

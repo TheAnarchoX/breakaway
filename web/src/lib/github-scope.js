@@ -19,6 +19,7 @@ export function scopeGitHub(data, scope = null) {
       empties: data.empty ? [data] : [],
       nextVersions: data.nextVersion ? [data] : [],
       pipelinesFound: data.pipelineFound ? [data] : [],
+      moves: isMoving(data) ? [data] : [],
     };
   const one = scope ? (data.repos.find((r) => r.slug === scope) ?? null) : null;
   const mine = (list, keep) => {
@@ -48,10 +49,15 @@ export function scopeGitHub(data, scope = null) {
     nextVersions: shown.filter((r) => r.nextVersion),
     // Repositories whose move to the deploy flow merged, not on yet (WEB-13): each offers Turn on deploys.
     pipelinesFound: shown.filter((r) => r.pipelineFound),
+    // Repositories without a pipeline (WEB-12): each shows Deploy with breakaway, or Turn on deploys once it merged.
+    moves: shown.filter(isMoving),
     pipeline: one ? one.pipeline : shown.some((r) => r.pipeline) ? {} : null,
     branch: branches.length === 1 ? branches[0] : null,
   };
 }
+
+/** Whether a repository's facts show the Deploy with breakaway card: no pipeline, some commits, and a move or its files. */
+const isMoving = (r) => !r.pipeline && !r.empty && Boolean(r.move || r.pipelineFound);
 
 /** One repository's own facts (access, pipeline, default or not) from the answer, by slug (null: the default). */
 export function repoFacts(data, slug = null) {

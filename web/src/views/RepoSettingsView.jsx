@@ -3,7 +3,7 @@ import { CircleCheck, CircleSlash, Copy, FolderGit2, PowerOff, RotateCcw, Trash2
 import { api, enc } from '../lib/api.js';
 import { AREAS, plural } from '../lib/model.js';
 import { RepoPullSettings } from '../components/PullSettings.jsx';
-import { TurnOnDeploys } from '../components/TurnOnDeploys.jsx';
+import { DeployCard } from '../components/DeployCard.jsx';
 import { WORKFLOWS, deployField, missingOf, pipelineForm, pipelineOf } from '../lib/pipeline-form.js';
 import {
   agents,
@@ -928,7 +928,10 @@ function Deploys({ data, onSaved, onReload, readOnly }) {
   }, []);
   // The GitHub page's facts for this repository; hidden while GitHub isn't connected, and the form still saves.
   const facts = gh.data?.connected ? githubRepoFacts(repo.slug) : null;
-  const card = !readOnly && !repo.pipeline && facts?.pipelineFound && (facts.slug ?? repo.slug) === repo.slug;
+  const mine = !readOnly && !repo.pipeline && (facts?.slug ?? repo.slug) === repo.slug;
+  const card = mine && facts?.pipelineFound;
+  // Before the move merged, the same card offers it and follows it (WEB-12).
+  const offer = mine && facts && !facts.empty && (facts.pipelineFound || facts.move);
   const [byHand, setByHand] = useState(false);
   const saved = pipelineForm(repo.pipeline);
   const [draft, setDraft] = useState(/** @type {Record<string, string>} */ ({}));
@@ -1082,7 +1085,7 @@ function Deploys({ data, onSaved, onReload, readOnly }) {
     <section class="rs-section" aria-labelledby="rs-deploys">
       <h2 id="rs-deploys">Deploys</h2>
       <p class="muted small">{deploysIntro(repo)}</p>
-      {card && <TurnOnDeploys view={facts} heading="h3" onDone={onReload} />}
+      {offer && <DeployCard view={facts} heading="h3" skippable={false} onDone={onReload} />}
       {card && !byHand && !dirty ? (
         <p class="rs-by-hand">
           <button type="button" class="btn btn-quiet btn-sm" onClick={() => setByHand(true)}>

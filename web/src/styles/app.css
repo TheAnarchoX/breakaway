@@ -4150,6 +4150,43 @@ fieldset.field {
   gap: 8px;
 }
 
+/* ---------- deploy with breakaway (WEB-12) ---------- */
+
+.deploy-card-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.deploy-card-state svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.deploy-card .gh-prs {
+  margin: 0 0 12px;
+}
+.deploy-card-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding-left: 20px;
+  font-size: 14px;
+}
+.deploy-card-steps code {
+  overflow-wrap: anywhere;
+}
+.deploy-card-reason {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--line-strong);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.deploy-card-reason p {
+  margin: 0 0 4px;
+  white-space: pre-line;
+}
+
 /* ---------- next version (BRK-100) ---------- */
 
 .next-version p {
