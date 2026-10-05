@@ -290,6 +290,8 @@ export const connectionsMethods = {
       }
     }
     this.setMeta('conn_live', JSON.stringify(live));
+    // GitHub's status page (BRK-217) is part of Check now too.
+    await this.githubStatusCheck({ force: true });
     return live;
   },
 
@@ -353,6 +355,7 @@ export const connectionsMethods = {
       this.updateConnection(entry),
       ...(await this.cloudflareConnections()),
       ...(await this.githubConnections(live)),
+      ...(await this.githubStatusConnection()),
       ...this.npmConnections(),
       ...(await this.claudeConnections()),
       this.cliConnection(),
@@ -758,6 +761,50 @@ export const connectionsMethods = {
       );
     }
     return [...out, ...this.githubSyncConnections(live)];
+  },
+
+  /**
+   * GitHub's status (BRK-217): what githubstatus.com says about the parts of GitHub the board leans on, and whether
+   * the board's automatic work is waiting on it. None without GitHub connected, or when the install reads no status page.
+   */
+  async githubStatusConnection() {
+    const v = this.githubStatusView();
+    if (!v || !(await appCredentials(this.env))) return [];
+    const host = new URL(v.page).host;
+    const name = 'GitHub’s status';
+    if (!v.checked)
+      return [
+        entry('github.status', 'github', name, 'attention', {
+          detail: 'not checked yet',
+          fix: `Press Check now; the cron reads ${host} every 5 minutes.`,
+          link: v.page,
+        }),
+      ];
+    if (v.held)
+      return [
+        entry('github.status', 'github', name, 'attention', {
+          detail: `${v.summary}, since ${v.since}. Chases start nothing new, and Keep branches up to date and Merge when green wait`,
+          at: v.at,
+          fix: `Nothing to fix on the board: chases and the pull request settings carry on by themselves once ${host} says it’s working again. Agents already running may fail to push or wait on checks.`,
+          link: v.incidents.find((i) => i.url)?.url ?? v.page,
+        }),
+      ];
+    if (v.error)
+      return [
+        entry('github.status', 'github', name, 'attention', {
+          detail: `couldn’t read ${host}: ${v.error}; nothing waits on it meanwhile`,
+          at: v.at,
+          fix: `Press Check now. If it keeps failing, look at ${host} yourself before you chase or merge.`,
+          link: v.page,
+        }),
+      ];
+    return [
+      entry('github.status', 'github', name, 'working', {
+        detail: `${v.components.map((c) => c.name).join(', ') || 'GitHub'} working, as ${host} says`,
+        at: v.at,
+        link: v.page,
+      }),
+    ];
   },
 
   /**

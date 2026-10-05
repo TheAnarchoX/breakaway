@@ -3659,6 +3659,37 @@ fieldset.field {
   margin: 0;
   font-size: 14px;
 }
+/* GitHub's status page reports trouble (BRK-217). */
+.gh-outage {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  max-width: 720px;
+  padding: 12px 14px;
+  border-radius: var(--radius-s);
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 60%, var(--line));
+}
+.gh-outage > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.gh-outage div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.gh-outage p {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.gh-outage a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .gh-steps {
   margin: 0;
   padding-left: 22px;
