@@ -67,6 +67,8 @@ import {
   forceFields,
   generalAgentRequest,
   generalAgentSummary,
+  routineMakerRequest,
+  routineWrite,
   githubRequest,
   specLines,
   specListLines,
@@ -237,6 +239,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
   agents next            start the next few ready tasks, one per area  [--count <n>] [--dry-run] [--repo <slug>]
   routines               saved prompts the owner runs with a button, and their caps
   routines run <slug>    run one now: makes a RUN task and starts an agent on it  [--note <text>] [--force]
+  routines new "<what you want>"   start an agent that asks how the routines should run, then makes them and turns
+                         them on  [--repo <slug>] [--force] (owner)
   features               features by release: each one's progress and chase, and tags that could be features
   features show <slug>   one feature: its release, progress, what waits for you, its chase, and its tasks in order
   chase <slug>           start a chase (owner): the board starts an agent on every ready task in the feature and on
@@ -358,9 +362,9 @@ Working
                          --from <ref> (owner): made from the group <ref> is in on the Dependencies view: its open tasks
                          join, and tasks already in another feature stay there
   features modify <slug> change one (owner): --title, --brief, --brief-file, --release <x.y.z|none>, --state open|shipped
-  routines add <slug>    new routine (owner)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
+  routines add <slug>    new routine (owner, or the agent of a routine maker's task)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
-  routines modify <slug> change one (owner): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed (or "") starts it on those GitHub events
+  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed (or "") starts it on those GitHub events
   routines trigger <slug> new webhook/API trigger (owner): prints its secret once  [--label <text>]
   routines revoke <slug> <id>  revoke a trigger
   routines pause|resume  stop or allow every routine  [--daily-all <n>] sets the cap for all routines a day
@@ -1272,10 +1276,23 @@ const commands = {
       };
     };
     const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+    // Who writes (BRK-220 section 5): the owner, or a routine maker's agent while it holds its task.
+    const by = opts.as ?? setting('AGENT');
+    if (sub === 'new') {
+      // Make with an agent (BRK-220 section 1): a routine maker's task in the checkout's repository unless --repo.
+      const built = routineMakerRequest(args.slice(1).join(' '), {
+        repo: opts.repo ?? (await checkoutRepo()).slug,
+        force: Boolean(opts.force),
+        by,
+      });
+      if (built.error || !built.request) fail(built.error ?? 'bad request');
+      print(await call(...built.request), (d) => generalAgentSummary(d));
+      return;
+    }
     if (sub === 'run') {
       const { task, run } = await call('POST', `routines/${enc(need(args[1], 'routine'))}/run`, {
         note: opts.note,
-        ...forceFields(opts.force, opts.as ?? setting('AGENT')),
+        ...forceFields(opts.force, by),
       });
       print({ task, run }, () => `Started ${task.wid}: ${run.url}`);
       return;
@@ -1283,7 +1300,11 @@ const commands = {
     if (sub === 'add') {
       // A routine runs in one repository (CLD-127): --repo, else the checkout's (none: the board's default).
       const repo = opts.repo ?? (await checkoutRepo()).slug ?? undefined;
-      const { routine } = await call('POST', 'routines', clean({ slug: need(args[1], 'slug'), ...fields(), repo }));
+      const { routine } = await call(
+        'POST',
+        'routines',
+        routineWrite(clean({ slug: need(args[1], 'slug'), ...fields(), repo }), by),
+      );
       print({ routine }, () => `Saved the routine ${routine.slug}. Run it: npx breakaway routines run ${routine.slug}`);
       return;
     }
@@ -1291,14 +1312,18 @@ const commands = {
       const { routine } = await call(
         'PATCH',
         `routines/${enc(need(args[1], 'routine'))}`,
-        clean({ ...fields(), repo: opts.repo }),
+        routineWrite(clean({ ...fields(), repo: opts.repo }), by),
       );
       print({ routine }, () => `Saved ${routine.slug}.`);
       return;
     }
     if (sub === 'trigger') {
       const slug = need(args[1], 'routine');
-      const { trigger, secret } = await call('POST', `routines/${enc(slug)}/triggers`, { label: opts.label });
+      const { trigger, secret } = await call(
+        'POST',
+        `routines/${enc(slug)}/triggers`,
+        routineWrite({ label: opts.label }, by),
+      );
       print({ trigger, secret }, () =>
         [
           `Made trigger ${trigger.id} (${trigger.label}) for ${slug}. The secret is shown once; the board keeps only its hash:`,
@@ -1314,14 +1339,18 @@ const commands = {
       await call(
         'DELETE',
         `routines/${enc(need(args[1], 'routine'))}/triggers/${enc(need(args[2], 'trigger id'))}`,
-        {},
+        routineWrite({}, by),
       );
       print({ ok: true }, () => 'Revoked.');
       return;
     }
     if (sub === 'cap') {
       // The cap for all routines a day (CLD-199), without pausing or resuming them.
-      const { settings } = await call('PATCH', 'routines/settings', { dailyCap: Number(need(args[1], 'runs a day')) });
+      const { settings } = await call(
+        'PATCH',
+        'routines/settings',
+        routineWrite({ dailyCap: Number(need(args[1], 'runs a day')) }, by),
+      );
       print({ settings }, (d) => `All routines can run ${d.settings.dailyCap} times a day.`);
       return;
     }
@@ -1329,10 +1358,13 @@ const commands = {
       const { settings } = await call(
         'PATCH',
         'routines/settings',
-        clean({
-          paused: sub === 'pause',
-          dailyCap: opts['daily-all'] === undefined ? undefined : Number(opts['daily-all']),
-        }),
+        routineWrite(
+          clean({
+            paused: sub === 'pause',
+            dailyCap: opts['daily-all'] === undefined ? undefined : Number(opts['daily-all']),
+          }),
+          by,
+        ),
       );
       print({ settings }, () => (settings.paused ? 'All routines are paused.' : 'Routines can run.'));
       return;

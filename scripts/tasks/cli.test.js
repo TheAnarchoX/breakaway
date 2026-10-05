@@ -26,6 +26,8 @@ import {
   staleCliWarning,
   releaseBehind,
   removedRepoByHand,
+  routineMakerRequest,
+  routineWrite,
   unknownSubcommand,
 } from './cli.js';
 import { TEXT_KINDS } from './peloton.js';
@@ -658,5 +660,40 @@ describe('repos remove', () => {
     expect(steps[0]).toContain('acme/widgets');
     expect(steps[1]).toContain('gh repo delete acme/widgets');
     expect(steps[1]).toMatch(/rehearsal/u);
+  });
+});
+
+describe('routines new, and who writes a routine (CLI-19)', () => {
+  it('posts the owner’s words to the routine maker’s route, in the checkout’s repository unless --repo says another', () => {
+    expect(routineMakerRequest('  Every Monday, update the changelog ', { repo: 'widgets' })).toEqual({
+      request: ['POST', 'routines/agent', { prompt: 'Every Monday, update the changelog', repo: 'widgets' }],
+    });
+    expect(routineMakerRequest('Watch the builds', { force: true, by: 'owner' })).toEqual({
+      request: ['POST', 'routines/agent', { prompt: 'Watch the builds', force: true, by: 'owner' }],
+    });
+  });
+
+  it('says who asks, so the board refuses an agent’s name', () => {
+    expect(routineMakerRequest('Watch the builds', { by: 'claude-a' }).request?.[2]).toHaveProperty('by', 'claude-a');
+  });
+
+  it('refuses an empty prompt', () => {
+    expect(routineMakerRequest('  ')).toHaveProperty('error');
+    expect(routineMakerRequest(undefined)).toHaveProperty('error');
+  });
+
+  it('signs every routines write with the agent’s name, and sends none without one', () => {
+    expect(routineWrite({ slug: 'changelog', name: 'Changelog' }, 'claude-1a2b3c4d')).toEqual({
+      slug: 'changelog',
+      name: 'Changelog',
+      by: 'claude-1a2b3c4d',
+    });
+    expect(routineWrite({}, 'claude-1a2b3c4d')).toEqual({ by: 'claude-1a2b3c4d' });
+    expect(routineWrite({ paused: true }, undefined)).toEqual({ paused: true });
+  });
+
+  it('knows new and cap as routines subcommands', () => {
+    expect(unknownSubcommand('routines', 'new')).toBeNull();
+    expect(unknownSubcommand('routines', 'cap')).toBeNull();
   });
 });
