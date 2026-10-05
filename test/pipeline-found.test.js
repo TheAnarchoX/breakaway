@@ -190,10 +190,11 @@ describe('Turn on deploys', () => {
   });
   afterEach(() => spy.mockRestore());
 
-  it('finds nothing for a repository that hasn’t moved, with one read', async () => {
+  it('finds nothing for a repository that hasn’t moved, and reads its root for the move’s card', async () => {
     const view = await sync();
     expect(view.pipelineFound).toBeNull();
-    expect(gh.calls).toEqual([`/contents/${CONFIG_PATH}`]);
+    // The root's listing says whether it has a package.json to read (WEB-12); this one has none.
+    expect(gh.calls).toEqual([`/contents/${CONFIG_PATH}`, '/contents/']);
   });
 
   it('shows what the default branch says once the move merged, and changes nothing until the press', async () => {
