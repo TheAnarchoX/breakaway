@@ -33,7 +33,7 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/login", "/logout"]
+    "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/mcp", "/login", "/logout"]
   },
   // No Secrets Store: the secrets in .dev.vars.example are set as Worker secrets.
   // Catch up with GitHub every 5 minutes, in case a webhook went missing.
