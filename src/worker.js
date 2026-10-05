@@ -382,7 +382,7 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'next' && parts.length === 1 && method === 'POST') return send(await s.next(body));
   if (parts[0] === 'backfill' && parts[1] === 'structure' && parts.length === 2 && method === 'POST')
     return send(await s.backfillStructureApi());
-  // Pulling a release into now (BRK-126) is the owner's: an agent's `by` is refused.
+  // Pulling a release into now (BRK-126) or next (BRK-209) is the owner's: an agent's `by` is refused.
   if (parts[0] === 'releases' && parts[2] === 'pull' && parts.length === 3 && method === 'POST')
     return send(await s.releasePullApi(parts[1], body));
   if (parts[0] === 'horizons' && parts[1] === 'close' && parts.length === 2 && method === 'POST')

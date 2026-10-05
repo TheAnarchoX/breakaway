@@ -30,6 +30,8 @@ Open a feature for its brief and its tasks in dependency order, each with its st
 
 **Pull into now** shows on the next release that still has open work outside now. It moves the release’s open tasks into now, and every open task they wait for, whatever its release or feature, so nothing in now waits on work outside it. It says what will move before it moves anything. Only the next such release has it, so now fills in version order. Pulling a release is yours.
 
+**Pull into next** stages a release before you start it. It shows on the next release that still has open work in later, and moves that work, and what it waits for, into next; what's already in now stays there. It says what will move first, and only the next such release has it, so next fills in version order too.
+
 ### From the Dependencies view
 
 The **Dependencies** view groups tasks into chains that wait for each other. Above each group it shows the group’s size and the features its tasks are in, and **Make a feature** makes one from it: a tag, a title, a release, and a brief, with the group’s open tasks to pick (all of them to start with). A task already in another feature stays there, and the dialog says so. Then it offers the new feature’s chase. A group whose open tasks are all in one feature offers **Chase** straight away.

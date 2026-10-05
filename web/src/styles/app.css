@@ -6389,6 +6389,11 @@ fieldset.field {
   justify-content: space-between;
   gap: 8px;
 }
+.fr-pulls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .fr-release h2 .mono {
   font: 700 18px / 1 var(--font-mono);
 }
