@@ -3777,7 +3777,7 @@ fieldset.field {
 }
 .live-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
@@ -3791,6 +3791,40 @@ fieldset.field {
 }
 .live-state.is-live {
   color: var(--text);
+}
+/* A run's state, what happens next, and your action (WEB-41). */
+.run-status {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.run-status.is-warn .run-label {
+  color: var(--warn);
+}
+.run-status.is-error .run-label {
+  color: var(--danger);
+}
+.run-line {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.run-status.is-compact .run-line {
+  font-size: 12.5px;
+}
+.live-session {
+  flex: none;
+}
+/* In a list row, the state takes its own line when the row is narrow. */
+.queue-list .run-status {
+  flex: 1 1 260px;
 }
 .log {
   list-style: none;

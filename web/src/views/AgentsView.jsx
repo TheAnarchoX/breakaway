@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Bike, Bot, CircleX, Copy, ExternalLink, FastForward, FileText, Rocket, Zap } from 'lucide-preact';
+import { Bike, Bot, CircleX, Copy, ExternalLink, FastForward, FileText, Hand, Rocket, Zap } from 'lucide-preact';
 import { api } from '../lib/api.js';
 import { ago, plural, ref } from '../lib/model.js';
 import {
@@ -8,6 +8,7 @@ import {
   areaLabel,
   hashFor,
   inScope,
+  openPull,
   loadAgents,
   multiRepo,
   navOrder,
@@ -19,7 +20,7 @@ import {
   toast,
 } from '../lib/store.js';
 import { RepoChip, Segmented } from '../components/ui.jsx';
-import { ForcedMark, MessageButton, SILENT_AFTER, TRIGGER_LABEL } from '../components/Agents.jsx';
+import { ForcedMark, MessageButton, RunStatus, TRIGGER_LABEL, runWords } from '../components/Agents.jsx';
 import { AgentSettings } from '../components/BoardSettings.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
 import { PelotonPanel } from '../components/Peloton.jsx';
@@ -443,6 +444,43 @@ function Pelotons() {
   );
 }
 
+/**
+ * Pull requests two fix agents didn't get green (BRK-145): the board starts no third one, so they wait on you.
+ * @param {Record<string, any>} props
+ */
+function NeedsYou({ list }) {
+  if (!list.length) return null;
+  return (
+    <section class="gh-section" aria-labelledby="needs-you">
+      <h2 id="needs-you">
+        <Hand size={18} aria-hidden="true" />
+        Needs you <span class="count">{list.length}</span>
+      </h2>
+      <ul class="queue-list">
+        {list.map((n) => (
+          <li key={`${n.repo}#${n.pr}`}>
+            <span>
+              {n.wid ? (
+                <a href={hashFor({ task: n.wid })}>
+                  <span class="wid">{n.wid}</span>
+                </a>
+              ) : null}{' '}
+              <RepoChip slug={n.repo} /> #{n.pr}
+            </span>
+            <span class="meta">
+              {n.tries} fix agents didn’t get it green, so no third starts by itself. Read what they tried, then fix it
+              yourself or force start one more.
+            </span>
+            <button type="button" class="btn btn-outline btn-sm" onClick={() => openPull(n.pr, n.repo)}>
+              Open #{n.pr}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Settings({ d }) {
   return (
@@ -594,6 +632,7 @@ export function AgentsView() {
         <div class="gh-grid">
           <div class="gh-col">
             <Chases list={all.chases} />
+            <NeedsYou list={(all.needsYou ?? []).filter((n) => inScope(n.repo))} />
             <section class="gh-section" aria-labelledby="running">
               <h2 id="running">
                 <Bot size={18} aria-hidden="true" />
@@ -618,21 +657,8 @@ export function AgentsView() {
                           </a>
                         )}
                       </div>
+                      <RunStatus state={r.state} run={r} repo={r.repo} compact />
                       <span class="agent-card-meta">
-                        <span class={`live-state ${r.live ? 'is-live' : ''}`}>
-                          {r.live ? (
-                            <>
-                              <span class="live-dot" aria-hidden="true" />
-                              Working
-                            </>
-                          ) : r.lastAt ? (
-                            `Quiet for ${ago(r.lastAt).replace(' ago', '')}`
-                          ) : Date.now() - Date.parse(r.startedAt) > SILENT_AFTER ? (
-                            'No live output'
-                          ) : (
-                            'Starting'
-                          )}
-                        </span>
                         <span class="meta">
                           {r.agent} · {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}
                         </span>
@@ -703,19 +729,29 @@ export function AgentsView() {
                         <RepoChip slug={r.repo} /> {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}{' '}
                         {r.forced && <ForcedMark />}
                       </span>
-                      <span class="meta">
-                        {r.status === 'failed' ? (
-                          r.error
-                        ) : r.taskStatus === 'completed' ? (
-                          'done'
-                        ) : r.url ? (
-                          <a href={r.url} {...ext}>
-                            session
-                          </a>
-                        ) : (
-                          r.status
-                        )}
-                      </span>
+                      {runWords(r.state) ? (
+                        <RunStatus
+                          state={r.state}
+                          run={r}
+                          repo={r.repo}
+                          compact
+                          onRetry={r.latest && r.taskStatus === 'pending' ? () => actions.startAgent(r, '') : null}
+                        />
+                      ) : (
+                        <span class="meta">
+                          {r.status === 'failed' ? (
+                            r.error
+                          ) : r.taskStatus === 'completed' ? (
+                            'done'
+                          ) : r.url ? (
+                            <a href={r.url} {...ext}>
+                              session
+                            </a>
+                          ) : (
+                            r.status
+                          )}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
