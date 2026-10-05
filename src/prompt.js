@@ -6,6 +6,8 @@
 
 /** Where the `tasks` skill sits in a repository the board runs. */
 export const SKILL = '.agents/skills/tasks/SKILL.md';
+/** Where the `pipeline` skill sits: how an agent moves a repository's CI/CD to the deploy flow (BRK-92). */
+export const PIPELINE_SKILL = '.agents/skills/pipeline/SKILL.md';
 
 /** The repository's areas for its prompt and AGENTS.md: "product (`BWYP`), cloud (`BWYC`)". */
 export const areaList = (repo) => repo.areas.map((a) => `${a.project} (\`${a.prefix}\`)`).join(', ');

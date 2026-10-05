@@ -16,7 +16,7 @@ The owner wants it opinionated: sensible defaults, few choices, short instructio
 ## Fit
 
 - **Free, self-hosted, an install keeps its data.** Nothing here adds a service, an account, or a hosted step. Every check reads what the install already connected (Cloudflare, GitHub through its App, Claude through its routine).
-- **The person who runs the board decides.** The install agent still waits for a yes before anything outside its folder, the owner still signs in, makes tokens, presses Start, and merges. The first real task is the owner's to approve and merge. No check fires a Claude start on its own (see decision 4).
+- **The person who runs the board decides.** The install agent still waits for a yes before anything outside its folder, the owner still signs in, makes tokens, presses Start, and merges. The first real task is the owner's to approve and merge. No check fires a Claude start on its own: a routine is verified by its first real agent run (decision 4).
 - **The architecture stays.** The Worker orchestrates; agents run on claude.ai and are started through each repository's authenticated API trigger. No new provider, no configuration framework.
 - **Kickoff ([IDEA-26](IDEA-26-kickoff.md)) is the other way in.** Kickoff starts from a working board and gets a new repository going from the board; this spec is the part before that (the install) and the parts both share (the first agent run, recovery). It reuses Kickoff's routine form (`WEB-38`) and kickoff mode (`BRK-134`) rather than repeating them, and assumes neither has shipped.
 
@@ -61,12 +61,12 @@ A task's Agent section and the Agents view say, for every run, which of these it
 | --- | --- | --- | --- |
 | Starting | Fired, not yet claimed | Starting | Nothing to do; over 10 minutes, open the session |
 | Working / Quiet | Claimed, output in the last 2 minutes / not | As today | Nothing to do |
-| Silent | Claimed, nothing for 30 minutes (decision 2) | Silent since <time> | Open the session; one `blocked` ping |
+| Silent | Claimed, nothing for 30 minutes (decision 2) | Silent since <time>; the claim and its slot are kept | Open the session and decide; one ping |
 | Waiting to start | Queued | The reason, as today | Starts by itself when the reason clears |
 | Retrying | A start refused with 429 | Claude's limit; tries again at <time> from `Retry-After` | Nothing to do |
 | Paused | A start refused with 401, 403, or 404 | The routine's token was refused / the routine is gone / no access | Reconnect the routine; starts resume once it's verified |
 | Couldn't start | Any other failure | The error, in plain words | **Try again** |
-| Needs you | Two fix agents on one pull request didn't get it green (decision 3), or a ping | What was tried | The owner's call; one ping |
+| Needs you | Two fix agents on one pull request didn't get it green (decision 3), or a ping | What was tried; no third fix starts | The owner's call; one ping |
 
 Auto-start and chase stop firing a repository's routine while it's Paused, so a refused token no longer spends the hourly budget, and wait for `Retry-After` after a 429. Claude's 403 and 404 get their own message and fix. Fix with an agent counts earlier fix runs on the same pull request, the way chase already does.
 
@@ -86,7 +86,7 @@ And what to do when one is lost, as steps, worked out from what the code allows 
 
 ### Platforms
 
-Decision 1 sets which systems the install supports. The prompt checks for them at step 0 and says so plainly when it's on another; the commands it documents work on each supported one, and the CLI's secret-writing commands work there too.
+The install supports macOS, Linux, and Windows through WSL (decision 1): one set of POSIX shell commands, nothing in PowerShell. The prompt checks the system at step 0; on native Windows it says so plainly, points to installing WSL, and carries on inside it. The CLI's secret-writing commands and `setup` stop up front on native Windows with the same advice, and on a supported system report the real error when wrangler can't run.
 
 ## Privacy
 
@@ -101,14 +101,14 @@ Nothing new leaves the install. A session's environment report holds yes/no fact
 - New agent providers.
 - Kickoff itself (IDEA-26).
 
-## Open questions
+## Decisions
 
-Asked as a decision on the board, `BRK-140`:
+The owner answered these on the board, as `BRK-140`, on 4 Oct 2026:
 
-1. Which systems the install supports: macOS, Linux, and Windows through WSL (recommended), native PowerShell as well, or macOS and Linux only.
-2. What happens to a silent session after 30 minutes: mark it Silent and ping once, keeping the claim (recommended), or also release the claim and its slot.
-3. Whether to stop after two unsuccessful fix agents on one pull request and ask the owner (recommended), the way chase does.
-4. How a routine is verified: by the first real task (recommended, costs nothing extra), or also a **Test the routine** button that spends one start on a run that only claims and releases.
+1. **Systems.** macOS, Linux, and Windows through WSL. Native PowerShell is not supported; Windows users install WSL first.
+2. **A silent session.** After 30 minutes with nothing, the board marks it Silent and pings the owner once. It keeps the claim and the slot; the owner opens the session and decides.
+3. **Repeated fixes.** Yes: after two fix agents on one pull request haven't got it green, the board marks it Needs you and pings once instead of starting a third, the way chase does.
+4. **Verifying a routine.** By the first real agent run. No **Test the routine** button: a routine reads Not verified yet until an agent claims a task, then Verified.
 
 ## Done when
 
@@ -119,7 +119,7 @@ Tasks, in the `onboarding-hardening` feature, all waiting for this spec (IDEA-33
 
 | Task | What | Waits for |
 | --- | --- | --- |
-| `BRK-140` | Decide the four questions above (owner) | IDEA-33 |
+| `BRK-140` | Decide the four questions above (owner; answered) | IDEA-33 |
 | `CLI-2` | Install commands never overwrite what's there: `init-secrets --force` keeps a backup, `github-connect` refuses a second App | IDEA-33, `BRK-95` |
 | `CLI-3` | Secret-writing commands work on the systems the install supports | IDEA-33, `BRK-140`, `CLI-2` |
 | `BRK-141` | Deploy never makes a second, empty board, and a first deploy on a custom domain passes its check | IDEA-33 |

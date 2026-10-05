@@ -24,6 +24,7 @@ import {
   specsRequest,
   SUBCOMMANDS,
   staleCliWarning,
+  releaseBehind,
   unknownSubcommand,
 } from './cli.js';
 
@@ -58,13 +59,35 @@ describe('a stale CLI (CLD-193, BRK-7)', () => {
     expect(staleCliWarning({ own: 3, board: '9', boardCheckout: false, slug: 'x', packaged: true })).toBeNull();
   });
 
-  it('in the board’s own checkout, says nothing unless it’s older than the board, then says to pull', () => {
-    expect(staleCliWarning({ own: 3, board: '3', boardCheckout: true })).toBeNull();
-    expect(staleCliWarning({ own: 3, board: null, boardCheckout: true })).toBeNull();
-    expect(staleCliWarning({ own: 3, board: 'nope', boardCheckout: true })).toBeNull();
-    expect(staleCliWarning({ own: 2, board: '5', boardCheckout: true, slug: 'widgets' })).toMatch(
-      /older than the board's \(5\).*pull the default branch/u,
-    );
+  it('in the board’s own checkout, says nothing unless the board’s release is ahead of it, then says to pull (BRK-148)', () => {
+    expect(staleCliWarning({ own: 72, board: '72', boardCheckout: true, release: '1.4.0-main.9' })).toBeNull();
+    expect(staleCliWarning({ own: 72, board: '72', boardCheckout: true, release: null, behind: true })).toBeNull();
+    expect(
+      staleCliWarning({ own: 72, board: '72', boardCheckout: true, release: '1.4.0-main.9', behind: true }),
+    ).toMatch(/behind the board's release \(v1\.4\.0-main\.9\).*pull the default branch/u);
+  });
+
+  it('knows a checkout is behind a release only when it has the release’s tag and the tag isn’t in its history', () => {
+    const git = (exits) => (args) => exits[args[0]];
+    expect(releaseBehind('1.4.0-main.9', git({ 'rev-parse': 0, 'merge-base': 0 }))).toBe(false);
+    expect(releaseBehind('1.4.0-main.9', git({ 'rev-parse': 0, 'merge-base': 1 }))).toBe(true);
+    // No tag here (a shallow clone, or not fetched yet): it can't tell, so it says nothing.
+    expect(releaseBehind('1.4.0-main.9', git({ 'rev-parse': 1, 'merge-base': 1 }))).toBe(false);
+    // git itself failing isn't "behind" either.
+    expect(releaseBehind('1.4.0', git({ 'rev-parse': 0, 'merge-base': 128 }))).toBe(false);
+    expect(releaseBehind('not a version', git({ 'rev-parse': 0, 'merge-base': 1 }))).toBe(false);
+    expect(releaseBehind(null, git({ 'rev-parse': 0, 'merge-base': 1 }))).toBe(false);
+    // A shallow clone's cut history can hide an ancestor, so it says nothing there either.
+    expect(releaseBehind('1.4.0-main.9', git({ 'rev-parse': 0, 'merge-base': 1 }), { shallow: true })).toBe(false);
+    const seen = [];
+    releaseBehind('1.4.0', (args) => {
+      seen.push(args);
+      return 0;
+    });
+    expect(seen).toEqual([
+      ['rev-parse', '-q', '--verify', 'refs/tags/v1.4.0^{commit}'],
+      ['merge-base', '--is-ancestor', 'refs/tags/v1.4.0', 'HEAD'],
+    ]);
   });
 
   it('in another repository, an old copy says how to switch on every run', () => {
