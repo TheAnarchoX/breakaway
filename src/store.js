@@ -1596,6 +1596,10 @@ const apiActions = {
   pelotonApi(agent) {
     return this.run(() => ok(agent === null ? this.pelotonList() : this.agentPelotons(agent)));
   },
+  /** What's waiting for an agent now (IDEA-36 section 3): the CLI asks every few seconds while the agent waits. */
+  pelotonListenApi(agent, task) {
+    return this.run(() => ok(this.listenPeloton(agent, task)));
+  },
   pelotonDetailApi(peloton) {
     return this.run(() => ok(this.pelotonDetail(peloton)));
   },

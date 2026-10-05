@@ -531,6 +531,9 @@ async function handleApi(request, env, url, ctx) {
   // the signed-in browser is the owner's, and only the signed-in browser posts as the owner, never the bearer token.
   if (parts[0] === 'peloton') {
     if (parts.length === 1 && method === 'GET') return send(await s.pelotonApi(url.searchParams.get('agent')));
+    // Listening always names the agent, so a repository whose slug is `listen` keeps its peloton's page.
+    if (parts.length === 2 && parts[1] === 'listen' && url.searchParams.has('agent') && method === 'GET')
+      return send(await s.pelotonListenApi(url.searchParams.get('agent'), url.searchParams.get('task')));
     if (parts.length === 2 && method === 'GET') return send(await s.pelotonDetailApi(parts[1]));
     if (parts.length === 2 && method === 'POST')
       return send(await (via === 'cookie' ? s.pelotonOwnerPostApi(parts[1], body) : s.pelotonPostApi(parts[1], body)));
