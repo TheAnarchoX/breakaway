@@ -12,8 +12,8 @@ breakaway is one Cloudflare Worker and one Durable Object that each person runs 
 
 - [breakaway docs](https://leavethepack.dev/docs/index.md): Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
 - [Run your own board](https://leavethepack.dev/docs/quickstart.md): Nine steps from nothing to a board whose first task an agent finished and you merged. Each step ends with a check that reads Verified, Not verified yet, or Failed.
-- [Concepts](https://leavethepack.dev/docs/concepts.md): The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, features and chase, the peloton, repositories, and how a pull request closes a task.
-- [The playbook](https://leavethepack.dev/docs/playbook.md): How to get the most out of a board: write tasks agents finish, shape work before you build it, run many agents without collisions, and keep the review load down to one person.
+- [Concepts](https://leavethepack.dev/docs/concepts.md): The few ideas the whole board is built on: tasks and work IDs, areas, horizons, claims, dependencies, ideas, features and chase, the peloton, repositories, and how a pull request closes a task.
+- [The playbook](https://leavethepack.dev/docs/playbook.md): How to get the most out of a board: write tasks agents finish, take an idea to a shipped feature with a chase and the peloton, run many agents without collisions, work from your own session, and keep the review load down to one person.
 
 ## Use it
 
