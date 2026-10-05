@@ -1559,7 +1559,7 @@ export const actions = {
     const more = chain.length > named.length ? `, and ${chain.length - named.length} more` : '';
     const ok = await confirmDialog({
       title: `Pull ${release} into ${into}?`,
-      body: `${plural(own, 'open task')} aimed at ${release} ${own === 1 ? 'moves' : 'move'} into ${into}${
+      body: `${multiRepo.value ? 'In every repository: ' : ''}${plural(own, 'open task')} aimed at ${release} ${own === 1 ? 'moves' : 'move'} into ${into}${
         into === 'next' ? ' (what’s in now stays there)' : ''
       }, and the whole dependency chain comes too${
         chain.length
