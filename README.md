@@ -140,7 +140,7 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
 | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) | The `tasks` skill, `/breakaway:next`, the session hooks, and the MCP server in one install, for you or a whole repository |
-| [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from Claude's apps |
+| [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from any app that speaks MCP |
 | [GitHub](https://leavethepack.dev/docs/github/) | Your own private App, how pull requests link to tasks, merging, and moving a repository to the deploy flow to promote, roll back, and release |
 | [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/) | Sync, reports, and contexts with Taskwarrior 3 |
 | [Deploying](https://leavethepack.dev/docs/deploying/) | Releases, channels, the Deploy and Update workflows, and rollbacks |

@@ -4,7 +4,7 @@ import { LEGACY } from '../src/mcp.js';
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
-// Sign-in from Claude's apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8).
+// Sign-in from MCP apps (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8).
 
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const RESOURCE = `${ORIGIN}/mcp`;
@@ -113,7 +113,7 @@ async function connect({ name = 'Claude on my phone', repo = 'widgets', agent = 
   return { client, tokens };
 }
 
-describe('sign-in from Claude’s apps (BRK-157)', () => {
+describe('sign-in from MCP apps (BRK-157)', () => {
   beforeAll(async () => {
     cookie = await signIn();
     expect(

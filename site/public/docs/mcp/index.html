@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCP clients · breakaway</title>
-<meta name="description" content="Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how Claude’s apps sign in instead.">
+<meta name="description" content="Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how apps sign in instead.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://leavethepack.dev/docs/mcp/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:site_name" content="breakaway">
 <meta property="og:title" content="MCP clients · breakaway">
-<meta property="og:description" content="Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how Claude’s apps sign in instead.">
+<meta property="og:description" content="Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how apps sign in instead.">
 <meta property="og:url" content="https://leavethepack.dev/docs/mcp/">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://leavethepack.dev/social.png">
@@ -55,9 +55,9 @@
   <main id="main" class="doc" tabindex="-1">
     <p class="label kicker">Connect</p>
     <h1>MCP clients</h1>
-    <p class="lede">Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how Claude’s apps sign in instead.</p>
-    <p>Every board is also an MCP server, at <code>/mcp</code> on its own address. Claude Code, or any client that speaks MCP over HTTP, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules: one claim per task, and nothing merges or deploys on an agent’s word. It’s on as soon as your board updates, with nothing to turn on.</p>
-<p><a href="/docs/plugin/">The Claude Code plugin</a> connects it for you. Without the plugin, it’s three steps.</p>
+    <p class="lede">Connect Claude Code, or any MCP client, to your board’s MCP server at /mcp: the line to add, the three headers, the tools it has and the ones it never will, why the token goes only into a client you run, and how apps sign in instead.</p>
+    <p>Every board is also an MCP server, at <code>/mcp</code> on its own address. Any agent or app that speaks MCP over HTTP, in a terminal, an editor, or a chat app, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules: one claim per task, and nothing merges or deploys on an agent’s word. It’s on as soon as your board updates, with nothing to turn on.</p>
+<p>The board’s <strong>MCP</strong> page has its address to copy, a config to paste with the agent name and repository you pick, and the apps you connected. <a href="/docs/plugin/">The Claude Code plugin</a> connects Claude Code for you. Without the plugin, it’s three steps.</p>
 <h2 id="connect-claude-code"><a class="anchor" href="#connect-claude-code" aria-label="Link to this section">#</a>Connect Claude Code</h2>
 <p><strong>1. Print the config.</strong> In a checkout of a repository your board tracks:</p>
 <pre data-lang="sh"><code>npx breakaway mcp</code></pre>
@@ -78,14 +78,14 @@
 <p>There’s no tool for <code>done</code> (pull requests close tasks), for <code>force</code>, or for <code>autostart</code>, and none for starting agents, chases, routines, repositories, merging, releasing, promoting or rolling back, answering a decision, resolving a ping, messaging an agent, settings, or updates. Those are yours, on the board or with your own CLI. Ask a connected client to merge, and it says it can’t.</p>
 <h2 id="the-token"><a class="anchor" href="#the-token" aria-label="Link to this section">#</a>The token</h2>
 <p>The token is your board’s full token: it reaches everything the API does. Give it only to a client you run, on a machine you trust, and keep it in the environment, never in a committed file. When you rotate it (<a href="/docs/operations/#rotating-secrets">Operating a board</a>), every MCP client stops with <code>401</code> until its config has the new one.</p>
-<h2 id="claudes-apps"><a class="anchor" href="#claudes-apps" aria-label="Link to this section">#</a>Claude’s apps</h2>
-<p>claude.ai and Claude Desktop sign in instead of sending the token. Add your board’s address followed by <code>/mcp</code>, like <code>https://board.example.com/mcp</code>, as a custom connector. The board opens its sign-in page: signed in on the board, name the connection, pick its repository and the agent name it claims as, and press <strong>Approve</strong>, or <strong>Deny</strong>.</p>
-<p>Each connection gets its own token, never the board’s: it works only on <code>/mcp</code>, for that one repository and agent name. Connections lists them under <strong>Claude’s apps</strong>, with <strong>Revoke</strong>, which stops a connection at once.</p>
+<h2 id="sign-in-from-an-app"><a class="anchor" href="#sign-in-from-an-app" aria-label="Link to this section">#</a>Sign in from an app</h2>
+<p>An app that can open a sign-in, like claude.ai or Claude Desktop, signs in instead of sending the token. Add your board’s address followed by <code>/mcp</code>, like <code>https://board.example.com/mcp</code>, as a remote MCP server (some apps call it a custom connector). The board opens its sign-in page: signed in on the board, name the connection, pick its repository and the agent name it claims as, and press <strong>Approve</strong>, or <strong>Deny</strong>.</p>
+<p>Each connection gets its own token, never the board’s: it works only on <code>/mcp</code>, for that one repository and agent name. The board’s <strong>MCP</strong> page lists them under <strong>Connected apps</strong>, with <strong>Revoke</strong>, which stops a connection at once.</p>
 <h2 id="when-it-doesnt-work"><a class="anchor" href="#when-it-doesnt-work" aria-label="Link to this section">#</a>When it doesn’t work</h2>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">You see</th><th scope="col">Do</th></tr></thead><tbody><tr><td><code>--check</code> says the install has no MCP server yet</td><td>Update and deploy your board (<a href="/docs/deploying/">Deploying and updating</a>).</td></tr><tr><td><code>401</code></td><td>Set <code>BREAKAWAY_TOKEN</code> to the board’s current token, and add the server again.</td></tr><tr><td>A tool asks for <code>X-Breakaway-Repo</code></td><td>Run <code>npx breakaway mcp</code> in a checkout of a repository the board tracks, or add the repository on the board.</td></tr><tr><td>A tool asks you to name yourself</td><td>Add the <code>X-Breakaway-Agent</code> header.</td></tr><tr><td><code>409</code> on claim</td><td>Someone holds the task, or it waits on another. Pick another, or call <code>next_task</code>.</td></tr></tbody></table></div>
     <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/plugin/"><span class="label">Previous</span><span>Claude Code plugin</span></a><a class="pager-next" href="/docs/taskwarrior/"><span class="label">Next</span><span>Taskwarrior</span></a></nav>
   </main>
-  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#connect-claude-code">Connect Claude Code</a></li><li><a href="#the-three-headers">The three headers</a></li><li><a href="#what-it-can-do">What it can do</a></li><li><a href="#what-it-never-does">What it never does</a></li><li><a href="#the-token">The token</a></li><li><a href="#claudes-apps">Claude’s apps</a></li><li><a href="#when-it-doesnt-work">When it doesn’t work</a></li></ul></nav>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#connect-claude-code">Connect Claude Code</a></li><li><a href="#the-three-headers">The three headers</a></li><li><a href="#what-it-can-do">What it can do</a></li><li><a href="#what-it-never-does">What it never does</a></li><li><a href="#the-token">The token</a></li><li><a href="#sign-in-from-an-app">Sign in from an app</a></li><li><a href="#when-it-doesnt-work">When it doesn’t work</a></li></ul></nav>
 </div>
 <footer class="site-footer">
   <div class="wrap">
