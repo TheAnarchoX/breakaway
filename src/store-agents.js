@@ -1301,9 +1301,12 @@ export const agentsMethods = {
    * After a tick (BRK-145): a running session that has said nothing for 30 minutes is Silent, and its run pings
    * the owner once. It keeps its claim and its slot: the owner opens the session and decides. A run on a pull
    * request whose checks are running is waiting for them, not silent. A run that stopped running isn't Silent.
+   * While GitHub reports trouble (BRK-217) nobody is Silent yet: a session waiting on a push or on checks would
+   * ping about GitHub's outage, not about itself (BRK-219). It's counted again once GitHub works.
    */
   async silentTick() {
     const now = Date.now();
+    const githubDown = Boolean(this.githubOutage());
     const running = this.runningAgents(this.views());
     const ids = new Set(running.map(({ run }) => run.id));
     for (const r of this.sql.exec('SELECT id FROM agent_runs WHERE silent IS NOT NULL').toArray())
@@ -1311,7 +1314,7 @@ export const agentsMethods = {
     for (const { run, task } of running) {
       const last = this.sql.exec('SELECT MAX(at) AS at FROM agent_logs WHERE task = ?', task.uuid).one().at;
       const since = Math.max(run.started, last ?? 0);
-      if (run.silent || now - since < SILENT_MS) continue;
+      if (run.silent || githubDown || now - since < SILENT_MS) continue;
       const pr = task.github?.find((p) => p.closes && p.state === 'open');
       if (['review', 'fix-pr', 'pr-review'].includes(run.kind) && pr && this.pullChecksRunning(task.repo, pr.number))
         continue;
