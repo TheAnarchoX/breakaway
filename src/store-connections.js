@@ -443,7 +443,8 @@ export const connectionsMethods = {
    * connect the GitHub App, install it on that repository, add the board's files to it (repos init), connect
    * its routine, connect a machine's CLI, sync Taskwarrior (optional), and the first result (BRK-143): a first
    * agent's pull request merged when the repository has a routine, else a first task closed by its pull request,
-   * from the Add a repository wizard's own facts so the two agree. `done` once every step not `optional` is.
+   * from the Add a repository wizard's own facts so the two agree. `repo` is that repository's slug, so the last
+   * step can open its wizard at the agent step (WEB-40). `done` once every step not `optional` is.
    * Null on an older install.
    */
   setupSteps(connections) {
@@ -497,7 +498,7 @@ export const connectionsMethods = {
         number: result.number,
       },
     ];
-    return { steps, done: steps.every((s) => s.done || s.optional) };
+    return { steps, repo: first?.slug ?? null, done: steps.every((s) => s.done || s.optional) };
   },
 
   /** Keeps when each connection last changed state, so the view can say "since". */

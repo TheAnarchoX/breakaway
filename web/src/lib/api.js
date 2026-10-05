@@ -13,7 +13,8 @@ export function whenSignedOut(fn) {
   onSignedOut = fn;
 }
 
-const sentence = (text) => {
+/** A refusal as a sentence: a capital first, a full stop last. */
+export const sentence = (text) => {
   const s = String(text).trim();
   const capital = s.charAt(0).toUpperCase() + s.slice(1);
   return /[.!?]$/u.test(capital) ? capital : `${capital}.`;
