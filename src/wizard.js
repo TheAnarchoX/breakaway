@@ -109,6 +109,57 @@ export function firstResult(work, routine) {
   return { done, wid: merged?.wid ?? null, number: merged?.number ?? null };
 }
 
+/**
+ * What to do about a start that failed (WEB-40), from the board's or Claude's refusal: `fix`, in words; `step`, a
+ * wizard step that fixes it (`connect`, `prompt`), or null; `link`, `routines` when the fix is on claude.ai's
+ * routines page, else null. The refusal itself says what failed; this only adds what to do, so the wizard's agent
+ * step can show both with Try again. Matches store-agents.js's own messages; anything else is checked on claude.ai.
+ * @param {string} message
+ * @returns {{ fix: string, step: 'connect' | 'prompt' | null, link: 'routines' | null }}
+ */
+export function startFix(message) {
+  const m = String(message ?? '');
+  const fix = (text, step = null, link = null) => ({ fix: text, step, link });
+  if (/token was refused/u.test(m))
+    return fix(
+      'Make a new token in the routine’s API trigger on claude.ai, then connect the routine again with it.',
+      'connect',
+      'routines',
+    );
+  // BRK-144's wordings for Claude's 403 and 404, and a routine it held after one.
+  if (/has no access to it|is gone on claude\.ai|paused because Claude refused/u.test(m))
+    return fix(
+      'Check you can still open the routine on claude.ai, make a new token in its API trigger (or the routine again, if it’s gone), then connect it again.',
+      'connect',
+      'routines',
+    );
+  if (/isn’t connected yet|can’t be read any more/u.test(m))
+    return fix('Connect the routine: its URL and token from its API trigger on claude.ai.', 'connect');
+  if (/paused on claude\.ai/u.test(m))
+    return fix('Turn the routine back on in your routines on claude.ai.', null, 'routines');
+  if (/placeholder/u.test(m))
+    return fix('Fill in what’s left of the agent prompt, merge it, then try again.', 'prompt');
+  if (/Claude’s (?:hourly )?limit/u.test(m)) return fix('Wait for Claude’s limit to clear, then try again.');
+  if (/already running|in the last hour|cap/u.test(m))
+    return fix('Wait for a running agent to finish, or raise the board’s limits in Settings, then try again.');
+  if (/can’t start an agent/u.test(m))
+    return fix(
+      'Do what it says on the task, or start one an agent can take: open, tagged +agent, and waiting for nothing.',
+    );
+  if (/couldn’t reach Claude/u.test(m)) return fix('Try again in a minute.');
+  if (/\((?:403|404)\b/u.test(m))
+    return fix(
+      'Check you can still open the routine on claude.ai. If it was deleted or made again, connect the new one.',
+      'connect',
+      'routines',
+    );
+  return fix(
+    'Check the routine on claude.ai: its repository, its environment, and its API trigger. Then try again.',
+    null,
+    'routines',
+  );
+}
+
 /** The rows of `connections` about this repository, by id; `null` for none. */
 const rowOf = (connections, id) => connections.find((c) => c.id === id) ?? null;
 
@@ -135,8 +186,12 @@ function problemOf(row) {
  * - `empty`: no commits yet; `synced`: when the board last synced it (ms);
  * - `prompt`: `{ status: 'ok' | 'missing' | 'empty' | 'unreadable', path, placeholders, url }`, or null;
  * - `routine`: whether its routine's URL and token are on the board;
- * - `work`: `{ tasks, claimed, started, output, pull, merged }`, each a `{ wid, … }` or null.
+ * - `work`: `{ tasks, claimed, started, output, pull, merged }`, each a `{ wid, … }` or null;
+ * - `candidate`: the task the agent step offers Start on, `{ uuid, wid, description, blocker }`, or null;
+ * - `failure`: the repository's last start, when it failed, `{ wid, error, at }`, or null.
  *
+ * The agent step carries `start` (the candidate, while the routine is connected and no agent has started, or the
+ * last start failed) and `failure` (with startFix's `fix`, `step`, and `link`), both null once the step is done.
  * Returns `{ steps, now, done }`: each step `{ id, done, detail, checks?, problem, optional? }`, and the first
  * not done that isn't optional; `done` once only optional steps are left.
  */
@@ -182,6 +237,8 @@ export function wizardSteps(facts) {
   const promptOk = prompt?.status === 'ok';
   const filled = promptOk && !prompt.placeholders?.length;
   const connected = Boolean(routine);
+  const agentDone = firstResult(work, true).done;
+  const failure = !agentDone && facts.failure ? { ...facts.failure, ...startFix(facts.failure.error) } : null;
 
   const steps = [
     // The App can only see a repository that exists, so being installed is how the board knows it was created.
@@ -241,11 +298,14 @@ export function wizardSteps(facts) {
       wid: work.claimed?.wid ?? null,
       problem: null,
     },
-    // A failed start, or a session that sends nothing back, shows on Connections with its fix.
+    // Start on the task it found, and a failed start with its fix (WEB-40). A session that sends nothing back
+    // shows on Connections with its fix.
     {
       id: 'agent',
-      done: firstResult(work, true).done,
+      done: agentDone,
       checks: checks.agent,
+      start: connected && !agentDone && (!work.started || failure) ? (facts.candidate ?? null) : null,
+      failure,
       problem: connected ? (problemOf(routineRow) ?? problemOf(output)) : null,
     },
   ];

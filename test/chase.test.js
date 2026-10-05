@@ -1,6 +1,6 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from './helpers.js';
+import { api, releaseRoutineHolds } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
@@ -321,6 +321,8 @@ describe('chase', () => {
     await done('OPS-1');
     routine.fail = 'session refused';
     await tick();
+    // A refused start holds the routine for a few minutes (BRK-144), so the next tick fires only once they've passed.
+    await releaseRoutineHolds();
     await tick();
     const f = await feature('speed');
     expect(f.chase.stuck).toEqual([
@@ -330,6 +332,7 @@ describe('chase', () => {
     const tries = fired('DEBT-2').length;
     expect(tries).toBe(2);
     routine.fail = null;
+    await releaseRoutineHolds();
     await tick();
     expect(fired('DEBT-2')).toHaveLength(tries);
     // The slot it would have had goes to the next in line.
