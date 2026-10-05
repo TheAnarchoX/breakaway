@@ -191,6 +191,7 @@ export function validateProposal(raw, ctx) {
 
   const changes = [];
   const finished = new Set();
+  const deleted = new Set();
   for (const [i, change] of list.entries()) {
     const where = `change ${i + 1} (${change?.type ?? '?'})`;
     if (!isObject(change)) throw new InputError(`${where}: each change is an object`);
@@ -291,10 +292,30 @@ export function validateProposal(raw, ctx) {
       const uuid = existing(change.task, where, { open: true });
       if (ctx.inReview(uuid))
         throw new InputError(`${where}: ${name(uuid)} has an open pull request that finishes it when it merges`);
-      if (finished.has(uuid)) throw new InputError(`${where}: ${name(uuid)} is finished twice`);
+      if (finished.has(uuid))
+        throw new InputError(
+          `${where}: ${name(uuid)} is ${deleted.has(uuid) ? 'deleted and finished' : 'finished twice'} in this proposal`,
+        );
       finished.add(uuid);
       const note = text(change.note, 'note', MAX_NOTE, where);
       changes.push({ type: 'done', task: ctx.tasks.get(uuid).wid ?? uuid, ...(note ? { note } : {}) });
+    } else if (change.type === 'delete') {
+      // For a task the agent may not delete itself (IDEA-36 section 6): the owner deletes it in one press.
+      only(change, ['type', 'task', 'note'], where);
+      const uuid = existing(change.task, where, { open: true });
+      const holder = ctx.tasks.get(uuid).claim;
+      if (holder === ctx.by) throw new InputError(`${where}: you hold ${name(uuid)}; release it instead`);
+      if (holder) throw new InputError(`${where}: ${holder} has ${name(uuid)}; ask them on the peloton`);
+      if (ctx.inReview(uuid))
+        throw new InputError(`${where}: ${name(uuid)} has an open pull request that finishes it when it merges`);
+      if (finished.has(uuid))
+        throw new InputError(
+          `${where}: ${name(uuid)} is ${deleted.has(uuid) ? 'deleted twice' : 'finished and deleted'} in this proposal`,
+        );
+      finished.add(uuid);
+      deleted.add(uuid);
+      const note = text(change.note, 'note', MAX_NOTE, where);
+      changes.push({ type: 'delete', task: ctx.tasks.get(uuid).wid ?? uuid, ...(note ? { note } : {}) });
     } else if (change.type === 'release') {
       only(change, ['type', 'task'], where);
       const uuid = existing(change.task, where, { open: true });
@@ -302,7 +323,7 @@ export function validateProposal(raw, ctx) {
       if (!ctx.tasks.get(uuid).claim) throw new InputError(`${where}: ${name(uuid)} holds no claim`);
       changes.push({ type: 'release', task: ctx.tasks.get(uuid).wid ?? uuid });
     } else {
-      throw new InputError(`${where}: type is one of add, depend, modify, done, release`);
+      throw new InputError(`${where}: type is one of add, depend, modify, done, delete, release`);
     }
   }
 
@@ -315,7 +336,8 @@ export function validateProposal(raw, ctx) {
     const waiting = [...graph]
       .filter(([node, set]) => set.has(uuid) && !finished.has(node))
       .map(([node]) => name(node));
-    if (waiting.length) warnings.push(`finishing ${name(uuid)} releases ${waiting.join(', ')}`);
+    if (waiting.length)
+      warnings.push(`${deleted.has(uuid) ? 'deleting' : 'finishing'} ${name(uuid)} releases ${waiting.join(', ')}`);
   }
   return { changes, warnings };
 }
@@ -328,6 +350,7 @@ export function summarizeProposal(changes) {
   if (count('depend')) parts.push(`change ${count('depend')} dependenc${count('depend') === 1 ? 'y' : 'ies'}`);
   if (count('modify')) parts.push(`edit ${count('modify')} task${count('modify') === 1 ? '' : 's'}`);
   if (count('done')) parts.push(`finish ${count('done')} task${count('done') === 1 ? '' : 's'}`);
+  if (count('delete')) parts.push(`delete ${count('delete')} task${count('delete') === 1 ? '' : 's'}`);
   if (count('release')) parts.push('release a claim');
   return parts.join(', ');
 }
