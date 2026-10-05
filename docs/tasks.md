@@ -315,7 +315,7 @@ The three headers are what the CLI reads from its settings and the checkout:
 
 **The token is the board's full token.** It reaches everything `/api/*` does, so give it only to a client you run, on a machine you trust, and keep it in the environment, never in a committed `.mcp.json`. Rotating it ([Secrets](#secrets)) stops every MCP client with `401` until its config has the new one.
 
-**Claude's apps sign in instead.** claude.ai and Claude Desktop connect through OAuth, not a header ([IDEA-24, section 8](specs/IDEA-24-mcp-server.md#8-sign-in-from-claudes-apps)). Add `https://<your board>/mcp` as a custom connector; the board's sign-in page asks you, signed in on the board, to name the connection and pick its repository and agent name, then **Approve** or **Deny**. Each connection gets its own token, good only on `/mcp` for that repository and agent name and refused on `/api/*`. Connections lists them under **Claude's apps**, with **Revoke**.
+**Apps sign in instead.** An app that can open a sign-in, like claude.ai or Claude Desktop, connects through OAuth, not a header ([IDEA-24, section 8](specs/IDEA-24-mcp-server.md#8-sign-in-from-claudes-apps)). Add `https://<your board>/mcp` as a remote MCP server (a custom connector); the board's sign-in page asks you, signed in on the board, to name the connection and pick its repository and agent name, then **Approve** or **Deny**. Each connection gets its own token, good only on `/mcp` for that repository and agent name and refused on `/api/*`. The board's **MCP** view (`WEB-74`) lists them under **Connected apps**, with **Revoke**, beside the board's address, a config to paste for a client that sends the token, and the Claude Code plugin's setup.
 
 ### Another install
 

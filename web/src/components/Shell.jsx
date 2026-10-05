@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  Cable,
   ChevronsUpDown,
   FolderGit2,
   FolderPlus,
@@ -85,6 +86,7 @@ const VIEW_ICONS = {
   specs: ScrollText,
   agents: Bot,
   routines: Repeat,
+  mcp: Cable,
   connections: Plug,
 };
 /** breakaway's docs, on its site: the sidebar links them on every install. */
@@ -789,6 +791,7 @@ export function FilterBar() {
       'agents',
       'routines',
       'roadmap',
+      'mcp',
       'connections',
       'add-repo',
       'kickoff',

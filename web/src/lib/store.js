@@ -793,6 +793,7 @@ export const VIEWS = [
   { id: 'specs', label: 'Specs', key: 'e' },
   { id: 'agents', label: 'Agents', key: 'x' },
   { id: 'routines', label: 'Routines', key: 'u' },
+  { id: 'mcp', label: 'MCP', key: 't' },
   { id: 'connections', label: 'Connections', key: 'w' },
 ];
 /**
@@ -830,7 +831,7 @@ export const addRepoTarget = signal(null);
 export const settingsSlug = signal(null);
 /** The kickoff open on #/kickoff/<id> (WEB-35), or null for #/kickoff: the list and the form to start one. */
 export const kickoffId = signal(null);
-/** The sign-in from Claude's apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
+/** The sign-in from MCP apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
 export const authorizeId = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
 export const addRepoAt = signal(null);

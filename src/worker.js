@@ -5,7 +5,7 @@
  *   /api/*        JSON API for `npx breakaway`, agents, and the web app (token or cookie)
  *   /github/*     GitHub App webhooks and the end of its setup (docs/specs/CLD-24-github.md)
  *   /mcp          the board as an MCP server, for agents' MCP clients (token only; docs/specs/IDEA-24-mcp-server.md)
- *   /oauth/*, /.well-known/oauth-*  the sign-in Claude's apps use for /mcp, approved by the owner on the board (BRK-157)
+ *   /oauth/*, /.well-known/oauth-*  the sign-in MCP apps use for /mcp, approved by the owner on the board (BRK-157)
  *   /login        exchanges the token for a cookie; /logout clears it
  *   everything else: the web app's static files (./public)
  *
@@ -524,7 +524,7 @@ async function handleApi(request, env, url, ctx) {
       await s.specStatusApi(url.searchParams.get('repo') ?? body?.repo ?? null, parts.slice(1).join('/'), body),
     );
   }
-  // Sign-ins from Claude's apps (BRK-157): approving, denying, listing, and revoking are the owner's, from the
+  // Sign-ins from MCP apps (BRK-157): approving, denying, listing, and revoking are the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'oauth') {
     if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can approve or revoke a sign-in' });
