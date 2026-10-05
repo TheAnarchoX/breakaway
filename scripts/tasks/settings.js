@@ -16,13 +16,42 @@ export const NAMES = Object.freeze({
 });
 
 /**
+ * The plugin's settings (CLI-8, docs/specs/IDEA-25-claude-plugin.md, section 2): Claude Code asks for them when the
+ * plugin is enabled and hands them to its hooks as CLAUDE_PLUGIN_OPTION_<option>. They come after the CLI's own, so a
+ * machine set up with `npx breakaway setup`, or a cloud session's environment, keeps working unchanged.
+ */
+export const PLUGIN_OPTIONS = Object.freeze({
+  URL: 'CLAUDE_PLUGIN_OPTION_BOARD_URL',
+  TOKEN: 'CLAUDE_PLUGIN_OPTION_TOKEN',
+  AGENT: 'CLAUDE_PLUGIN_OPTION_AGENT_NAME',
+});
+
+/**
  * A setting's value: from the environment first, then the env file, else `fallback`. The environment always wins,
- * so `BREAKAWAY_URL=… npx breakaway` points one command elsewhere.
+ * so `BREAKAWAY_URL=… npx breakaway` points one command elsewhere. The plugin's options aren't read here: see
+ * `settingFrom`.
  */
 export function readSetting(key, { env = {}, file = {} }, fallback) {
   const name = NAMES[key];
   if (!name) throw new Error(`no setting ${key}`);
   return env[name] || file[name] || fallback;
+}
+
+/**
+ * A setting's value and where it came from: the environment, then tasks.env, then the plugin's option for it, else
+ * `{ value: undefined, from: null }`. `from` names the source, never the value, so `health` can print it.
+ * @param {string} key
+ * @param {{ env?: Record<string, string | undefined>, file?: Record<string, string> }} sources
+ * @returns {{ value: string | undefined, from: 'environment' | 'tasks.env' | 'plugin' | null }}
+ */
+export function settingFrom(key, { env = {}, file = {} }) {
+  const name = NAMES[key];
+  if (!name) throw new Error(`no setting ${key}`);
+  if (env[name]) return { value: env[name], from: 'environment' };
+  if (file[name]) return { value: file[name], from: 'tasks.env' };
+  const option = PLUGIN_OPTIONS[key];
+  if (option && env[option]) return { value: env[option], from: 'plugin' };
+  return { value: undefined, from: null };
 }
 
 /**
@@ -45,16 +74,19 @@ export function taskrcUrl(text) {
 }
 
 /**
- * The board's base URL, and where it came from: the environment or env file (BREAKAWAY_URL), else the checkout's own .taskrc (`sync.server.url`, so the CLI and Taskwarrior agree),
- * else the install's breakaway.config.json (`url`), else null: nothing says which board.
+ * The board's base URL, and where it came from: the environment or tasks.env (BREAKAWAY_URL), else the checkout's own
+ * .taskrc (`sync.server.url`, so the CLI and Taskwarrior agree), else the install's breakaway.config.json (`url`), else
+ * the plugin's `board_url` (CLI-8: a setting of the person's, so anything the machine or checkout says comes first),
+ * else null: nothing says which board.
  */
 export function boardUrl({ env = {}, file = {}, taskrc = null, config = null }) {
   const pick = () => {
-    const set = readSetting('URL', { env, file });
-    if (set) return { url: set, from: 'setting' };
+    if (env[NAMES.URL]) return { url: env[NAMES.URL], from: 'environment' };
+    if (file[NAMES.URL]) return { url: file[NAMES.URL], from: 'tasks.env' };
     const rc = taskrcUrl(taskrc);
     if (rc) return { url: rc, from: '.taskrc' };
     if (config?.url) return { url: config.url, from: 'config' };
+    if (env[PLUGIN_OPTIONS.URL]) return { url: env[PLUGIN_OPTIONS.URL], from: 'plugin' };
     return { url: null, from: 'default' };
   };
   const { url, from } = pick();

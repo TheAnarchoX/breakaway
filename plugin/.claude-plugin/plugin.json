@@ -10,5 +10,33 @@
   "homepage": "https://leavethepack.dev",
   "repository": "https://github.com/TheAnarchoX/breakaway",
   "license": "FSL-1.1-Apache-2.0",
-  "keywords": ["tasks", "task board", "agents", "claims", "pull requests", "taskwarrior"]
+  "keywords": [
+    "tasks",
+    "task board",
+    "agents",
+    "claims",
+    "pull requests",
+    "taskwarrior"
+  ],
+  "userConfig": {
+    "board_url": {
+      "type": "string",
+      "title": "Board address",
+      "description": "Your board's address, like https://board.example.com. A BREAKAWAY_URL, npx breakaway setup, or a checkout's .taskrc still comes first.",
+      "required": true
+    },
+    "token": {
+      "type": "string",
+      "title": "Token",
+      "description": "Your board's token. Claude Code keeps it in your system keychain. A BREAKAWAY_TOKEN or npx breakaway setup still comes first.",
+      "sensitive": true,
+      "required": false
+    },
+    "agent_name": {
+      "type": "string",
+      "title": "Agent name",
+      "description": "The name your sessions claim tasks with. Leave it empty to use claude-<branch>.",
+      "required": false
+    }
+  }
 }
