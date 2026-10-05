@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import {
   ArrowLeft,
   ArrowUpToLine,
+  ChevronsUp,
   FastForward,
   Hand,
   Milestone,
@@ -404,25 +405,31 @@ function releaseGroups(data) {
   });
 }
 
-/** The button on the next release with work outside now (BRK-126); the store asks before it moves anything. */
-function PullIntoNow({ release, tasks }) {
+/**
+ * The button on the next release with work outside now (BRK-126), or, `into` next, on the next release with
+ * work still in later (BRK-209); the store asks before it moves anything.
+ */
+function PullInto({ release, tasks, into }) {
   const [busy, setBusy] = useState(false);
   const pull = async () => {
     setBusy(true);
-    await actions.pullRelease(release);
+    await actions.pullRelease(release, into);
     setBusy(false);
   };
+  const Icon = into === 'next' ? ChevronsUp : ArrowUpToLine;
   return (
     <button
       type="button"
       class="btn btn-sm fr-pull"
       disabled={busy}
       aria-busy={busy}
-      title={`${plural(tasks, 'task')} for ${release}, with what they wait for, aren’t in now yet`}
+      title={`${plural(tasks, 'task')} for ${release}, with what they wait for, ${
+        into === 'next' ? 'aren’t in now or next yet' : 'aren’t in now yet'
+      }`}
       onClick={pull}
     >
-      <ArrowUpToLine size={15} aria-hidden="true" />
-      Pull into now
+      <Icon size={15} aria-hidden="true" />
+      Pull into {into}
     </button>
   );
 }
@@ -476,8 +483,15 @@ function Overview() {
                   {g.release ? <span class="mono">{g.release}</span> : 'Unplanned'}
                   {g.features.length > 0 && <span class="count">{plural(g.features.length, 'feature')}</span>}
                 </h2>
-                {g.release && d.nextPull?.release === g.release && (
-                  <PullIntoNow release={g.release} tasks={d.nextPull.tasks} />
+                {g.release && (d.stagePull?.release === g.release || d.nextPull?.release === g.release) && (
+                  <div class="fr-pulls">
+                    {d.stagePull?.release === g.release && (
+                      <PullInto release={g.release} tasks={d.stagePull.tasks} into="next" />
+                    )}
+                    {d.nextPull?.release === g.release && (
+                      <PullInto release={g.release} tasks={d.nextPull.tasks} into="now" />
+                    )}
+                  </div>
                 )}
               </div>
               {g.features.length > 0 && (
