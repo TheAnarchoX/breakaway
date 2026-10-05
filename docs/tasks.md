@@ -286,7 +286,9 @@ The CLI and Taskwarrior work against any install of the board without changing t
 
 Each comes from the environment first, then from `tasks.env` in this machine's folder for the board: `$BREAKAWAY_HOME` when it's set, else `~/.config/breakaway`. The Taskwarrior credentials `setup` writes (`taskrc`) and the owner's routines copy live in the same folder.
 
-**Which board.** `BREAKAWAY_URL` when it's set; otherwise the checkout's `.taskrc` (its `sync.server.url`, so the CLI and Taskwarrior always agree); otherwise the install's `breakaway.config.json` (`url`); otherwise none, and the CLI says which setting to add. The session hooks find it the same way, so a started agent's live output goes to the board it claimed on.
+**The plugin's settings.** In a Claude Code session with the breakaway plugin, its settings come last: the board's address (`board_url`), token (`token`, kept in the system keychain), and agent name (`agent_name`), which Claude Code asks for when the plugin is enabled. The CLI reads them as `CLAUDE_PLUGIN_OPTION_BOARD_URL`, `CLAUDE_PLUGIN_OPTION_TOKEN`, and `CLAUDE_PLUGIN_OPTION_AGENT_NAME` only when the environment and `tasks.env` don't set the same thing, and the board's address only after the checkout's `.taskrc` and `breakaway.config.json`, so a machine set up with `setup`, or a cloud session's environment, keeps working unchanged. Claude Code gives them to the plugin's hooks only, so the plugin's hook at the start of a session passes them on to the session's commands (through `CLAUDE_ENV_FILE`, Claude Code's file for the session's environment). `npx breakaway health` says where the address, token, and agent name came from, never their values.
+
+**Which board.** `BREAKAWAY_URL` when it's set; otherwise the checkout's `.taskrc` (its `sync.server.url`, so the CLI and Taskwarrior always agree); otherwise the install's `breakaway.config.json` (`url`); otherwise the plugin's `board_url`; otherwise none, and the CLI says which setting to add. The session hooks find it the same way, so a started agent's live output goes to the board it claimed on.
 
 To connect a machine and a checkout to an install:
 

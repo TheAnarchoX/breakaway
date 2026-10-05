@@ -87,7 +87,16 @@ import { checkMcp, mcpAgent, mcpConfig, mcpLines } from './tasks/mcp.js';
 import { mergeViews, pelotonLines, pelotonPost, pickPeloton } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
 import { parseInstall, secretName } from '../src/install.js';
-import { NAMES, boardUrl, configDir, parseEnvFile, readSetting, taskrcFixes, tildePath } from './tasks/settings.js';
+import {
+  NAMES,
+  boardUrl,
+  configDir,
+  parseEnvFile,
+  readSetting,
+  settingFrom,
+  taskrcFixes,
+  tildePath,
+} from './tasks/settings.js';
 
 const CONFIG_DIR = configDir({ env: process.env, home: homedir() });
 const ENV_FILE = join(CONFIG_DIR, 'tasks.env');
@@ -371,7 +380,9 @@ Projects: ideas and routines are the board's; repos lists each repository's area
 
 Settings: BREAKAWAY_TOKEN, BREAKAWAY_URL, BREAKAWAY_AGENT, BREAKAWAY_REPO, from the environment or tasks.env in
   $BREAKAWAY_HOME (default ~/.config/breakaway).
-  Without BREAKAWAY_URL the board is this checkout's .taskrc sync.server.url. See docs/tasks.md#another-install.`;
+  Without BREAKAWAY_URL the board is this checkout's .taskrc sync.server.url. See docs/tasks.md#another-install.
+  Last come the breakaway plugin's settings for Claude Code (board_url, token, agent_name). health says which
+  source each setting came from.`;
 
 // ---- settings ----------------------------------------------------------------------------
 
@@ -380,8 +391,11 @@ function readEnvFile() {
 }
 
 const fileEnv = readEnvFile();
-/** A setting by its key in NAMES (scripts/tasks/settings.js): `TOKEN` reads BREAKAWAY_TOKEN. */
-const setting = (key, fallback) => readSetting(key, { env: process.env, file: fileEnv }, fallback);
+/**
+ * A setting by its key in NAMES (scripts/tasks/settings.js): `TOKEN` reads BREAKAWAY_TOKEN, then the plugin's `token`
+ * when the CLI runs in a Claude Code session with the breakaway plugin (CLI-8).
+ */
+const setting = (key, fallback) => settingFrom(key, { env: process.env, file: fileEnv }).value ?? fallback;
 const BOARD = boardUrl({
   env: process.env,
   file: fileEnv,
@@ -485,7 +499,7 @@ async function call(method, path, body, { soft = false } = {}) {
   warnIfStale(res.headers.get('X-Tasks-Cli'), res.headers.get('X-Tasks-Release'));
   if (res.status === 401 && !token)
     fail(
-      `no token. Set BREAKAWAY_TOKEN, put it in ${ENV_FILE}, or add it as an API credential in the cloud environment (see docs/tasks.md#cloud-agents).`,
+      `no token. Set BREAKAWAY_TOKEN, put it in ${ENV_FILE}, set it in the breakaway plugin's settings, or add it as an API credential in the cloud environment (see docs/tasks.md#cloud-agents).`,
     );
   const data = await res.json().catch(() => ({
     // The board always answers in JSON, so anything else came from something in between.
@@ -806,6 +820,29 @@ function changesFrom(o) {
   if (o.undepends) c.removeDepends = o.undepends;
   if ('autostart' in o) c.autostart = ['yes', 'on', 'true'].includes(String(o.autostart).toLowerCase()) ? 'yes' : null;
   return c;
+}
+
+/** Where the board's address, token, and agent name came from (CLI-8): the sources only, never a value. */
+function settingSources() {
+  const sources = { env: process.env, file: fileEnv };
+  return { url: BOARD.from, token: settingFrom('TOKEN', sources).from, agent: settingFrom('AGENT', sources).from };
+}
+
+const SOURCE = {
+  environment: 'the environment',
+  'tasks.env': ENV_FILE,
+  '.taskrc': "this checkout's .taskrc",
+  config: "the install's breakaway.config.json",
+  plugin: "the breakaway plugin's settings",
+};
+
+/** settingSources() in a line: `address from …, token from …, agent name from …`. */
+function describeSources({ url, token, agent: name }) {
+  return [
+    `address from ${SOURCE[url] ?? 'nowhere'}`,
+    `token ${token ? `from ${SOURCE[token]}` : "not set (a cloud session's proxy may add it)"}`,
+    `agent name ${name ? `from ${SOURCE[name]}` : 'not set'}`,
+  ].join(', ');
 }
 
 const commands = {
@@ -1614,11 +1651,13 @@ const commands = {
     if (!checked.ok) process.exitCode = 1;
   },
   async health() {
-    print(await call('GET', 'health'), (h) =>
+    const settings = settingSources();
+    print({ ...(await call('GET', 'health')), settings }, (h) =>
       [
         h.ok ? 'The task server is healthy.' : `The task server can't read its history: ${h.replicaError}`,
         `  ${h.tasks.pending} open of ${h.tasks.total} tasks, ${h.versions} versions`,
         `  snapshot: ${h.snapshot ? `${h.snapshot.created.slice(0, 16)}, ${h.snapshot.versionsSince} versions since` : 'none'}`,
+        `  settings: ${describeSources(settings)}`,
       ].join('\n'),
     );
   },
@@ -2473,9 +2512,10 @@ if (opts.help || command === 'help') {
   process.exitCode = (await import('./tasks/pipeline.js')).run(args, opts);
 } else if (!commands[command]) {
   fail(`no command "${command}". npx breakaway help lists them.`);
-} else if (!BASE && command !== 'init-secrets') {
+} else if (!BASE && command !== 'init-secrets' && command !== 'hook') {
+  // The hooks stay quiet without a board (a plugin installed but not set up, CLI-8): session-hook.mjs checks for itself.
   fail(
-    `no board address. Set BREAKAWAY_URL (in the environment or ${ENV_FILE}), or sync.server.url in this checkout's .taskrc: see docs/tasks.md#another-install.`,
+    `no board address. Set BREAKAWAY_URL (in the environment or ${ENV_FILE}), sync.server.url in this checkout's .taskrc, or the board's address in the breakaway plugin's settings (or run npx breakaway setup): see docs/tasks.md#another-install.`,
   );
 } else if (unknownSubcommand(command, args[0])) {
   fail(unknownSubcommand(command, args[0]));
