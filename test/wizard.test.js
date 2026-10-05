@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { promptPlaceholders, slugFrom, wizardSteps } from '../src/wizard.js';
+import { promptPlaceholders, slugFrom, startFix, wizardSteps } from '../src/wizard.js';
 import { routinePrompt } from '../src/prompt.js';
 import TEMPLATE from '../prompts/repository.md?raw';
 import BREAKAWAY_PROMPT from '../prompts/breakaway.md?raw';
@@ -94,6 +94,61 @@ describe('the wizard, the pure parts', () => {
     // A pipeline ticks it.
     const on = wizardSteps({ ...facts, registered: { slug: 'x', pipeline: { workers: {} } } });
     expect(on.steps.find((s) => s.id === 'deploys').done).toBe(true);
+  });
+
+  it('offers Start on the task it found, and keeps a failed start with its fix in the agent step (WEB-40)', () => {
+    const facts = {
+      registered: { slug: 'x', pipeline: null },
+      app: true,
+      synced: 1,
+      prompt: { status: 'ok', placeholders: [] },
+      routine: true,
+      connections: ['github.install', 'github.permissions', 'github.automerge'].map((id) => ({ id, state: 'working' })),
+      work: { claimed: { wid: 'X-1' } },
+      candidate: { uuid: 'u1', wid: 'X-1', description: 'Add a README', blocker: null },
+    };
+    const agent = (f) => wizardSteps(f).steps.find((s) => s.id === 'agent');
+    expect(agent(facts)).toMatchObject({ start: { wid: 'X-1', blocker: null }, failure: null });
+    // No routine yet: nothing to start with.
+    expect(agent({ ...facts, routine: false }).start).toBeNull();
+    // Started: no second Start, unless the last start failed.
+    const started = { ...facts, work: { ...facts.work, started: { wid: 'X-1' } } };
+    expect(agent(started).start).toBeNull();
+    const failed = {
+      ...facts,
+      failure: { wid: 'X-1', error: 'the routine’s token was refused: connect the routine again', at: 'then' },
+    };
+    expect(agent(failed)).toMatchObject({
+      start: { wid: 'X-1' },
+      failure: { wid: 'X-1', error: expect.stringMatching(/token was refused/), step: 'connect' },
+    });
+    expect(agent(failed).failure.fix).toMatch(/new token.*connect the routine again/);
+    // Once the step is done, an old failure is history.
+    const all = { started: { wid: 'X-1' }, output: { wid: 'X-1' }, pull: { wid: 'X-1' }, merged: { wid: 'X-1' } };
+    expect(agent({ ...failed, work: { ...facts.work, ...all } })).toMatchObject({ start: null, failure: null });
+  });
+
+  it('says what to do about each way a start fails (WEB-40)', () => {
+    expect(startFix('the routine’s token was refused: connect the routine again')).toMatchObject({ step: 'connect' });
+    expect(startFix('the agent routine isn’t connected yet (docs/tasks.md#cloud-agents-from-the-board)')).toMatchObject(
+      { step: 'connect' },
+    );
+    expect(startFix('the x routine is paused on claude.ai')).toMatchObject({ link: 'routines' });
+    expect(
+      startFix('x’s agent prompt (p on main) still has a placeholder, <A>, which an agent would take'),
+    ).toMatchObject({ step: 'prompt' });
+    expect(startFix('Claude’s hourly limit for starting sessions is reached (try again after 60 seconds)').fix).toMatch(
+      /Wait/,
+    );
+    expect(startFix('3 agents are already running (the limit is 3)').fix).toMatch(/Settings/);
+    expect(startFix('X-1 can’t start an agent: it isn’t tagged +agent').fix).toMatch(/\+agent/);
+    expect(startFix('Claude couldn’t start the session (404: Not Found)')).toMatchObject({ step: 'connect' });
+    expect(startFix('couldn’t reach Claude to start the session; try again').fix).toMatch(/try again/i);
+    // BRK-144's wordings.
+    expect(startFix('the x routine’s token has no access to it: make a new token')).toMatchObject({ step: 'connect' });
+    expect(startFix('the x routine is gone on claude.ai: make it again')).toMatchObject({ step: 'connect' });
+    expect(startFix('x’s agent routine is paused because Claude refused it (…)')).toMatchObject({ step: 'connect' });
+    expect(startFix('something new')).toMatchObject({ link: 'routines' });
   });
 });
 
@@ -265,6 +320,16 @@ describe('the wizard, on the board', () => {
       body = await setup(s, { slug: 'breakaway' });
       expect(step(body, 'task')).toMatchObject({ done: true, wid: 'BRK-1' });
       expect(body.now).toBe('agent');
+      // The agent step offers Start on that task, and keeps a start Claude refused, with its fix (WEB-40).
+      expect(step(body, 'agent').start).toMatchObject({ uuid: task.uuid, wid: 'BRK-1' });
+      s.sql.exec(
+        "INSERT INTO agent_runs (task, agent, trigger, status, error, started, repo) VALUES (?, 'claude-brk-1', 'manual', 'failed', 'the breakaway routine’s token was refused: connect the routine again', ?, 'breakaway')",
+        task.uuid,
+        Date.now(),
+      );
+      body = await setup(s, { slug: 'breakaway' });
+      expect(step(body, 'agent').failure).toMatchObject({ wid: 'BRK-1', step: 'connect' });
+      expect(step(body, 'agent').start).toMatchObject({ wid: 'BRK-1' });
 
       // The agent: started, live output, its pull request, and the merge.
       s.sql.exec(
@@ -282,6 +347,8 @@ describe('the wizard, on the board', () => {
         ['merged', false],
       ]);
       expect(step(body, 'agent').checks[2].url).toBe('https://github.com/acme/breakaway/pull/2');
+      // Started since: the failure and Start are gone.
+      expect(step(body, 'agent')).toMatchObject({ start: null, failure: null });
       // The board finishes the task when its pull request merges.
       expect((await s.update(task.wid, { status: 'completed' })).status).toBe(200);
       body = await setup(s, { slug: 'breakaway' });

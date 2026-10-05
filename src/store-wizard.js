@@ -104,6 +104,7 @@ export const wizardMethods = {
       );
       prompt = credentials ? await this.wizardPrompt(registered.slug) : null;
     }
+    const work = registered ? this.wizardWork(registered.slug) : {};
     return {
       github: repo.github,
       registered,
@@ -115,7 +116,9 @@ export const wizardMethods = {
       prompt,
       routine,
       routineSource,
-      work: registered ? this.wizardWork(registered.slug) : {},
+      work,
+      candidate: registered ? this.wizardCandidate(registered.slug, work) : null,
+      failure: registered ? this.wizardFailure(registered.slug) : null,
       checkedAt,
     };
   },
@@ -186,6 +189,43 @@ export const wizardMethods = {
     const n = prompt.placeholders.length;
     const branch = this.repoBySlug(slug)?.defaultBranch ?? 'main';
     return `${slug}’s agent prompt (${prompt.path} on ${branch}) still has ${n === 1 ? 'a placeholder' : `${n} placeholders`}, ${prompt.placeholders.join(', ')}, which an agent would take as instructions. Fill ${n === 1 ? 'it' : 'them'} in and merge, then start it again`;
+  },
+
+  /**
+   * The task the agent step offers Start on (WEB-40): the one claimed from the repository's checkout while it's
+   * open, else its first open task an agent could start now. `blocker` says why one can't start yet, or null.
+   */
+  wizardCandidate(slug, work) {
+    const fallback = this.defaultRepoSlug();
+    const own = this.views().filter(
+      (t) => (t.repo ?? fallback) === slug && t.status === 'pending' && !t.tags.includes('general'),
+    );
+    const task = own.find((t) => t.uuid === work.claimed?.uuid) ?? own.find((t) => !this.agentBlocker(t)) ?? null;
+    return task
+      ? {
+          uuid: task.uuid,
+          wid: task.wid ?? task.short,
+          description: task.description,
+          blocker: this.agentBlocker(task),
+        }
+      : null;
+  },
+
+  /** The repository's last agent start when it failed, `{ wid, error, at }`, or null (WEB-40). */
+  wizardFailure(slug) {
+    const last = this.sql
+      .exec(
+        'SELECT task, status, error, started FROM agent_runs WHERE COALESCE(repo, ?) = ? ORDER BY id DESC LIMIT 1',
+        this.defaultRepoSlug(),
+        slug,
+      )
+      .toArray()[0];
+    if (last?.status !== 'failed') return null;
+    return {
+      wid: this.tasks.get(last.task)?.wid ?? String(last.task).slice(0, 8),
+      error: last.error ?? '',
+      at: iso(last.started),
+    };
   },
 
   /**

@@ -180,7 +180,7 @@ export const byUuid = computed(() => new Map(tasks.value.map((t) => [t.uuid, t])
 // ---- repositories (docs/specs/IDEA-14-multi-repo.md, section 6) -----------------------------
 
 /** The registered repositories, the default first. */
-export const repos = signal({ loaded: false, list: [], default: null, removed: [] });
+export const repos = signal({ loaded: false, list: [], default: null, removed: [], firstRun: false });
 /** Whether there's more than one: until then the switcher and the chips stay hidden. */
 export const multiRepo = computed(() => repos.value.list.length > 1);
 /** What the switcher says: a repository's slug, or 'all'. Remembered in this browser and kept in the URL. */
@@ -204,8 +204,8 @@ export const repoOfUuid = (uuid) => byUuid.value.get(uuid)?.repo ?? null;
 
 export async function loadRepos() {
   try {
-    const { repos: list, default: fallback, removed = [] } = await api('repos');
-    repos.value = { loaded: true, list, default: fallback, removed };
+    const { repos: list, default: fallback, removed = [], firstRun = false } = await api('repos');
+    repos.value = { loaded: true, list, default: fallback, removed, firstRun };
     setRepoBase((list.find((r) => r.isDefault) ?? list[0])?.github);
   } catch {
     repos.value = { ...repos.value, loaded: true };
