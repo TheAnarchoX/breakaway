@@ -208,6 +208,11 @@ describe('task API', () => {
     expect(res.snapshot.version).toMatch(/[0-9a-f-]{36}/u);
   });
 
+  it('says which install it is, so the owner’s commands that write secrets can check (BRK-95)', async () => {
+    const { install } = await body(await api('health'));
+    expect(install).toEqual({ worker: 'widgets-tasks', secretsPrefix: 'WIDGETS_TASKS_', installRepository: null });
+  });
+
   it('says which CLI version it carries, so an older copy can warn (CLD-193), and which release it is (BRK-148)', async () => {
     const res = await api('health');
     expect(res.headers.get('X-Tasks-Cli')).toBe(String(CLI_VERSION));

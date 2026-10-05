@@ -25,6 +25,7 @@
       "worker": "breakaway",
       "url": null,
       "secretsPrefix": "BREAKAWAY_",
+      "secretsStore": null,
       "store": "breakaway",
       "docs": null
     }

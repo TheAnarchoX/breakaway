@@ -121,9 +121,10 @@ export function parseInstall(raw) {
  * The install a Worker runs as: its `TASKS_INSTALL` var, or a new install's defaults when it has none. An install
  * without a `url` (a new install's, on workers.dev) has a null `url`: the board
  * then goes by the address it was last opened at (the Durable Object's homeUrl()).
+ * `secretsStore` is undefined when the var doesn't say (a Worker deployed before BRK-95), not null: then nobody knows.
  *
  * @param {any} [env]
- * @returns {{ name: string, worker: string, url: string | null, secretsPrefix: string, store: string, docs: string | null, installRepository?: string | null, channel?: string }}
+ * @returns {{ name: string, worker: string, url: string | null, secretsPrefix: string, secretsStore?: string | null, store: string, docs: string | null, installRepository?: string | null, channel?: string }}
  */
 export function install(env) {
   const set = env?.TASKS_INSTALL;
@@ -134,6 +135,7 @@ export function install(env) {
     worker: String(raw.worker || DEFAULTS.worker),
     url: raw.url ? String(raw.url) : null,
     secretsPrefix: String(raw.secretsPrefix || DEFAULTS.secretsPrefix),
+    ...('secretsStore' in raw ? { secretsStore: raw.secretsStore ? String(raw.secretsStore) : null } : {}),
     store: String(raw.store || DEFAULTS.store),
     docs: raw.docs ? String(raw.docs) : null,
     installRepository: raw.installRepository ? String(raw.installRepository) : null,
@@ -174,6 +176,9 @@ export function wranglerConfig(config, { local = false, root = '.' } = {}) {
       worker: c.worker,
       url: c.url,
       secretsPrefix: c.secretsPrefix,
+      // Which Secrets Store its secrets are in, so the owner's commands that write them can check they're on this
+      // install's (BRK-95). Not a secret: the same ID is in secrets_store_secrets below.
+      secretsStore: local ? null : c.secretsStore,
       store: c.store,
       docs: c.docs,
     },

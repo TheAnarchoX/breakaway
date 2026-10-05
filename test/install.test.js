@@ -139,6 +139,16 @@ describe('the Worker’s install', () => {
       });
   });
 
+  it('says which Secrets Store it uses, so the owner’s commands can check they write to it (BRK-95)', () => {
+    const vars = wranglerConfig(ACME).vars;
+    expect(vars.TASKS_INSTALL.secretsStore).toBe(ACME.secretsStore);
+    expect(install(vars).secretsStore).toBe(ACME.secretsStore);
+    expect(install(wranglerConfig({}).vars).secretsStore).toBeNull(); // Worker secrets
+    expect(wranglerConfig(ACME, { local: true }).vars.TASKS_INSTALL.secretsStore).toBeNull();
+    // A Worker deployed before BRK-95 doesn't say: unknown, not "none".
+    expect(install({ TASKS_INSTALL: { name: 'acme' } })).not.toHaveProperty('secretsStore');
+  });
+
   it('reads TASKS_INSTALL as an object or as JSON text', () => {
     const vars = wranglerConfig(ACME).vars;
     expect(install(vars)).toMatchObject({ name: 'acme board', store: 'acme', secretsPrefix: 'BREAKAWAY_', docs: null });
