@@ -11,6 +11,7 @@ import {
   incidentTitle,
   pushes,
 } from '../src/infra-incidents.js';
+import { planDigest } from '../src/infra-runner.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
@@ -276,7 +277,11 @@ describe('incidents from the signals stream (BRK-197)', () => {
       ['applying', 'executor'],
       ['applied', 'executor'],
     ])
-      await inStore((store) => store.moveInfraPlan(id, to, { by }));
+      await inStore(async (store) => {
+        // A move to approved carries the plan's digest (BRK-182); the other moves ignore it.
+        const digest = await planDigest(JSON.parse(store.planRow(id).diff));
+        return store.moveInfraPlan(id, to, { by, digest });
+      });
     shown = (await body(await api(`infra/incidents/${wid}`))).incident;
     expect(shown.steps.find((s) => s.step === 'verify').state).toBe('now');
 
