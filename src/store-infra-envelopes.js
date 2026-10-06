@@ -210,9 +210,10 @@ export const infraEnvelopesMethods = {
    * by the envelope and the executor applies it; otherwise it's a plan that waits for the owner, with its push.
    * @param {string | number} ref the environment's ID or name
    * @param {{ repo?: string | null, resource: string, change: 'scale' | 'restart', value: number | null,
-   *   by: 'board' | 'agent', agent?: string | null, task?: { uuid: string, wid: string | null } | null }} input
+   *   by: 'board' | 'agent', agent?: string | null, task?: { uuid: string, wid: string | null } | null,
+   *   rule?: string | null }} input `rule` names the scaling rule (BRK-241) the board acts for
    */
-  async actInEnvelope(ref, { repo = null, resource, change, value, by, agent = null, task = null }) {
+  async actInEnvelope(ref, { repo = null, resource, change, value, by, agent = null, task = null, rule = null }) {
     const { env, provider } = this.envelopeEnvironment(ref, repo);
     if (env.frozen)
       throw new AgentError(
@@ -265,7 +266,7 @@ export const infraEnvelopesMethods = {
     const made = await this.makeInfraPlan(env.id, {
       repo: env.repo,
       source: 'envelope',
-      sourceRef: task?.wid ?? null,
+      sourceRef: task?.wid ?? (rule ? 'scaling.json' : null),
       ...asked,
       diff,
     });
@@ -308,7 +309,7 @@ export const infraEnvelopesMethods = {
         envelope: envelopeRef(env),
         ...asked,
         outcome: verdict.inside ? 'inside' : verdict.capUsed ? 'cap used' : 'outside',
-        summary: `${what}${task?.wid ? ` for ${task.wid}` : ''}: ${verdict.inside ? 'inside its envelope' : 'waits for the owner'}, ${verdict.why}`,
+        summary: `${what}${task?.wid ? ` for ${task.wid}` : rule ? ` for the scaling rule “${rule}”` : ''}: ${verdict.inside ? 'inside its envelope' : 'waits for the owner'}, ${verdict.why}`,
       });
     });
 

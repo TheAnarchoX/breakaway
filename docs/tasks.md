@@ -197,7 +197,7 @@ A board from before a read's route says so and names the update. The `--json` ou
 
 `CLI-14`, [spec](specs/IDEA-19-architect.md#desired-state). Before a pull request that changes `.github/breakaway-infra/`, an agent or the owner runs **`npx breakaway infra check`** (or `infra check <environment>` for one) in the checkout, the way `pipeline check` checks the deploy config.
 
-- It checks each environment's file and `policy.json` here, with the board's own checks (`src/infra-check.js`). A file that doesn't check is named with its line and field (`.github/breakaway-infra/staging.json:4: resources[0].kind: …`), nothing goes to the board, and it exits 1.
+- It checks each environment's file, `policy.json`, and `scaling.json` here, with the board's own checks (`src/infra-check.js`). A file that doesn't check is named with its line and field (`.github/breakaway-infra/staging.json:4: resources[0].kind: …`), nothing goes to the board, and it exits 1.
 - For each valid file it asks the board for the plan it would make from what runs now: what changes, the cost change, what else it touches, whether it can be undone, and the policy's answer under the checkout's `policy.json` (or the default, when there's none). The board checks the file again against the environment's provider and its kinds.
 - The board keeps none of it: the preview (`POST /api/infra/check`) has no ID and no state, writes no audit entry, and can't be approved or applied, so an agent's token may ask for it. Each preview asks the provider for a plan, so a repository gets 10 a minute.
 - A file for an environment the board doesn't have yet is one to add, as the board shows it; an observe-only environment is refused, and so is a board from before the route.
