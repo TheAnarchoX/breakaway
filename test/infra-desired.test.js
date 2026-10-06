@@ -8,7 +8,7 @@ import {
   parseWithLines,
 } from '../src/infra-desired.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
-import { api } from './helpers.js';
+import { api, boardApi } from './helpers.js';
 import { fakeProvider } from './fake-infra-provider.js';
 
 // Desired state (BRK-180, docs/specs/IDEA-19-architect.md, "Desired state").
@@ -167,7 +167,9 @@ const sync = async () => body(await api('github/sync', { method: 'POST' }));
 const desired = async (query = '') => body(await api(`infra/desired${query}`));
 const one = async (name) => body(await api(`infra/desired/${name}?repo=widgets`));
 const addEnvironment = async (fields) =>
-  body(await api('infra/environments', { method: 'POST', body: { repo: 'widgets', provider: 'fake', ...fields } }));
+  body(
+    await boardApi('infra/environments', { method: 'POST', body: { repo: 'widgets', provider: 'fake', ...fields } }),
+  );
 
 describe('reading the desired state from the default branch', () => {
   let spy;
