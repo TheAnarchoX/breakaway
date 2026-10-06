@@ -167,7 +167,7 @@ describe('connecting a provider on Connections (BRK-194)', () => {
       name: 'Fake platform',
       state: 'off',
       link: 'https://fake.example/tokens',
-      provider: { id: 'fake', connected: false, discovery: null, signal: null },
+      provider: { id: 'fake', connected: false, discovery: null, signal: null, alerts: false },
     });
     expect(rows[0].fix).toMatch(/Make a read-only token on Fake platform/u);
   });

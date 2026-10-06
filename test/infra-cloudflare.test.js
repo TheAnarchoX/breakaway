@@ -979,4 +979,17 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     expect((await api('infra/alerts?provider=nowhere')).status).toBe(404);
     expect((await api('infra/alerts?provider=cloudflare', { method: 'POST', body: {} })).status).toBe(405);
   });
+
+  it('marks Cloudflare’s row as one that sends alerts, and names the permission an alerts read is missing (WEB-91)', async () => {
+    const answers = cloudflareAnswers();
+    answers[`/accounts/${ACCOUNT}/alerting/v3/policies`] = 403;
+    await onCloudflare(answers);
+    const row = (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
+    expect(row.provider.alerts).toBe(true);
+    const res = await api('infra/alerts?provider=cloudflare');
+    expect(res.status).toBe(502);
+    const said = await res.json();
+    expect(said).toMatchObject({ error: /couldn’t say which alerts are set up/u, missing: ['Notifications Read'] });
+    expect(JSON.stringify(said)).not.toContain(TOKEN);
+  });
 });

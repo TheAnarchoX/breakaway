@@ -1115,6 +1115,8 @@ export const connectionsMethods = {
             since: kept?.connected ?? null,
             discovery: kept?.discovery ? { at: kept.discovery.at, ok: kept.discovery.ok } : null,
             signal: kept?.signal ? { at: kept.signal.at, ok: kept.signal.ok } : null,
+            // Whether GET /api/infra/alerts can say which of its alerts reach the board (WEB-91).
+            alerts: typeof provider.alerts === 'function',
           },
         }),
       );
