@@ -47,6 +47,7 @@ import { reposMethods } from './store-repos.js';
 import { repoSlugOf, SHARED_AREAS } from './repos.js';
 import { connectionsMethods } from './store-connections.js';
 import { infraSignalsMethods } from './store-infra-signals.js';
+import { infraRunbooksMethods } from './store-infra-runbooks.js';
 import { githubStatusMethods } from './store-github-status.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
@@ -114,6 +115,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initRepos();
     this.initConnections();
     this.initInfraSignals();
+    this.initInfraRunbooks();
     this.initKickoffs();
     this.initRoutineKeep();
     this.initOAuth();
@@ -1406,6 +1408,7 @@ Object.assign(
   reposMethods,
   connectionsMethods,
   infraSignalsMethods,
+  infraRunbooksMethods,
   githubStatusMethods,
   updatesMethods,
   selfUpdateMethods,
