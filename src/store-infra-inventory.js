@@ -40,6 +40,11 @@ export const infraInventoryMethods = {
       );
       CREATE INDEX IF NOT EXISTS infra_inventory_relations_provider ON infra_inventory_relations (provider);
     `);
+    const columns = this.sql
+      .exec('PRAGMA table_info(infra_inventory)')
+      .toArray()
+      .map((c) => c.name);
+    if (!columns.includes('cost_note')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN cost_note TEXT');
   },
 
   /**
@@ -90,8 +95,9 @@ export const infraInventoryMethods = {
           `${environment.name} has ${found.resources.length} resources in scope, more than ${MAX_RESOURCES}: point its target at what the repository runs`,
           409,
         );
-      const health = await tryCall(async () => checkHealth(provider, await provider.observe(ctx)));
-      const costs = await tryCall(async () => checkCosts(provider, await provider.cost(ctx)));
+      const seen = { ...ctx, resources: found.resources };
+      const health = await tryCall(async () => checkHealth(provider, await provider.observe(seen)));
+      const costs = await tryCall(async () => checkCosts(provider, await provider.cost(seen)));
       slices.push({ environment, found, health, costs });
     }
     const now = Date.now();
@@ -113,7 +119,7 @@ export const infraInventoryMethods = {
           const h = health ? healthOf.get(r.id) : null;
           const c = costs ? costOf.get(r.id) : null;
           this.sql.exec(
-            'INSERT INTO infra_inventory (environment, provider, rid, kind, name, attrs, health, health_at, health_text, cost, currency, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO infra_inventory (environment, provider, rid, kind, name, attrs, health, health_at, health_text, cost, currency, cost_note, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             environment.id,
             providerId,
             r.id,
@@ -125,6 +131,7 @@ export const infraInventoryMethods = {
             health ? (h?.text ? redact(h.text).slice(0, 200) : null) : (last?.health_text ?? null),
             costs ? (c?.amount ?? null) : (last?.cost ?? null),
             costs ? (c?.currency ?? null) : (last?.currency ?? null),
+            costs ? (c?.note ? redact(c.note).slice(0, 500) : null) : (last?.cost_note ?? null),
             now,
           );
           count++;

@@ -25,6 +25,8 @@ export const SIGNAL_LEVELS = ['info', 'warning', 'critical'];
 const ID = /^[a-z][a-z0-9-]{0,39}$/u;
 /** A signal's short text, at most this long. */
 export const SIGNAL_TEXT_MAX = 500;
+/** A cost's note, at most this long. */
+export const COST_NOTE_MAX = 500;
 
 /**
  * Something that exists on a platform. `id` is the provider's own stable ID for it, unique within the provider.
@@ -104,6 +106,8 @@ export const SIGNAL_TEXT_MAX = 500;
  * @property {number} amount
  * @property {string} currency ISO 4217, like USD
  * @property {true} estimate
+ * @property {string} [note] what the estimate leaves out, in a sentence or two (at most COST_NOTE_MAX characters), like
+ *   usage the platform includes across the whole account rather than per resource
  */
 
 /**
@@ -129,6 +133,8 @@ export const SIGNAL_TEXT_MAX = 500;
  * @property {boolean} [observeOnly]
  * @property {string} [token]
  * @property {typeof fetch} [fetch] the fetch to call the platform with; tests pass a mock
+ * @property {Resource[]} [resources] what `discover` just found in the environment's scope: the store passes it to
+ *   `observe` and `cost` so they needn't discover again
  */
 
 /**
@@ -419,6 +425,8 @@ export function checkCosts(provider, costs) {
       fail(what, `${c.resource} has no amount`);
     if (typeof c.currency !== 'string' || !/^[A-Z]{3}$/u.test(c.currency)) fail(what, `${c.resource} has no currency`);
     if (c.estimate !== true) fail(what, `${c.resource} isn't marked as an estimate`);
+    if (c.note !== undefined && (!text(c.note) || c.note.length > COST_NOTE_MAX))
+      fail(what, `${c.resource}'s note is empty or longer than ${COST_NOTE_MAX}`);
   }
   return costs;
 }
