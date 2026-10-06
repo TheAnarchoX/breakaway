@@ -522,6 +522,17 @@ describe('the release flow: Promote and Roll back', () => {
       expect(old.error).toMatch(/doesn’t take next yet: render it again with npx breakaway pipeline init/u);
     });
 
+    it('says which package a repository releases, so Packages can say how to turn Release on without one (WEB-81)', async () => {
+      await feed([['1.4.0-main.1', 'staged']]);
+      let view = await body(await api('github?repo=widgets'));
+      expect(view.releasePackage).toBeNull();
+      expect(view.packages.find((v) => v.version === '1.4.0-main.1').release).toBeUndefined();
+      await packagePipeline(PACKAGE_ONLY);
+      view = await body(await api('github?repo=widgets'));
+      expect(view.releasePackage).toBe('@acme/widgets');
+      expect(view.packages.find((v) => v.version === '1.4.0-main.1').release.allowed).toBe(true);
+    });
+
     it('refuses a repository that releases no package, and says so plainly when the App can’t start workflows', async () => {
       const post = await browser();
       const none = await body(await post('github/release', { version: '1.4.0-main.1' }));

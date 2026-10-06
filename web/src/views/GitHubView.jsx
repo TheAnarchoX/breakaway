@@ -43,7 +43,7 @@ import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
 import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
-import { PackageRelease } from '../components/PackageRelease.jsx';
+import { PackageRelease, ReleaseSetup } from '../components/PackageRelease.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -498,6 +498,7 @@ function PackagesTile({ view, several }) {
           {p.waiting > 0 && <ApproveHint url={p.url} />}
         </div>
       ))}
+      <ReleaseSetup view={view} />
     </section>
   );
 }
