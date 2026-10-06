@@ -172,19 +172,14 @@ function Runs({ runs, view }) {
     r.status !== 'completed' ? 0 : ['failure', 'timed_out', 'startup_failure'].includes(r.conclusion) ? 1 : 2;
   const sorted = [...runs].sort((a, b) => order(a) - order(b) || String(b.created).localeCompare(String(a.created)));
   const shown = all ? sorted : sorted.slice(0, 12);
-  // Run on a run whose workflow runs by hand (WEB-83) opens Run workflow… with that workflow picked.
-  const [ask, setAsk] = useState(/** @type {Record<string, any> | null} */ (null));
-  const slugOf = (r) => r.repo ?? (view.all || view.empty ? null : view.slug);
-  const runnable = useRunnable(shown, slugOf);
   return (
     <>
-      <RunWorkflow view={view} ask={ask} onAsked={() => setAsk(null)} />
+      <RunWorkflow view={view} />
       {runs.length ? (
         <ul class="gh-runs">
           {shown.map((r) => {
             const state = runState(r);
             const Icon = state === 'pending' ? LoaderCircle : (RUN_ICON[state] ?? CircleDashed);
-            const workflow = runnable(r);
             return (
               <li key={`${r.repo}-${r.id}`} class={`gh-run run-${state}`}>
                 <Icon size={17} aria-hidden="true" class="run-icon" />
@@ -204,17 +199,6 @@ function Runs({ runs, view }) {
                     {ago(r.created)}
                   </span>
                   {duration(r) && <span class="meta">{duration(r)}</span>}
-                  {workflow && (
-                    <button
-                      type="button"
-                      class="btn btn-outline btn-sm gh-run-again"
-                      aria-label={`Run ${workflow.name}`}
-                      onClick={(e) => setAsk({ slug: slugOf(r), run: r, from: e.currentTarget })}
-                    >
-                      <Play size={14} aria-hidden="true" />
-                      Run
-                    </button>
-                  )}
                 </span>
               </li>
             );
@@ -644,6 +628,10 @@ function LiveNow({ flows, several, onReleases }) {
  */
 function ChecksOnMain({ view }) {
   const checks = checksOnMain(view);
+  // Run on a check whose workflow runs by hand (WEB-85) opens Run workflow… with that workflow picked.
+  const [ask, setAsk] = useState(/** @type {Record<string, any> | null} */ (null));
+  const slugOf = (r) => r.repo ?? (view.all || view.empty ? null : view.slug);
+  const runnable = useRunnable(checks, slugOf);
   const sum = checksSummary(checks);
   const branch = view.branch ?? (view.all ? null : 'main');
   const words = [
@@ -668,11 +656,13 @@ function ChecksOnMain({ view }) {
           </span>
         )}
       </h2>
+      <RunWorkflow view={view} ask={ask} onAsked={() => setAsk(null)} bar={false} />
       {checks.length ? (
         <ul class="gh-runs gh-runs-main">
           {checks.map((r) => {
             const state = runState(r);
             const Icon = state === 'pending' ? LoaderCircle : (RUN_ICON[state] ?? CircleDashed);
+            const workflow = runnable(r);
             return (
               <li key={`${r.repo}-${r.id}`} class={`gh-run run-${state}`}>
                 <Icon size={17} aria-hidden="true" class="run-icon" />
@@ -685,6 +675,17 @@ function ChecksOnMain({ view }) {
                   <span class="meta" title={r.created}>
                     {ago(r.created)}
                   </span>
+                  {workflow && (
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm gh-run-again"
+                      aria-label={`Run ${workflow.name}`}
+                      onClick={(e) => setAsk({ slug: slugOf(r), run: r, from: e.currentTarget })}
+                    >
+                      <Play size={14} aria-hidden="true" />
+                      Run
+                    </button>
+                  )}
                 </span>
               </li>
             );
