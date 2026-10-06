@@ -294,6 +294,15 @@ describe('infra runner (CLI-12)', () => {
     ]);
   });
 
+  it('finds the registered providers when none are passed (CLI-22)', async () => {
+    answer = () => Response.json({ plan: plan({ diff: { ...plan().diff, provider: 'cloudflare' } }) });
+    const io = { env, fetch: mockFetch, log: (l) => lines.push(l), error: (l) => lines.push(`! ${l}`) };
+    expect(await run(['runner', 'check'], {}, io)).toBe(0);
+    expect(await run(['runner', 'apply'], {}, io)).toBe(1);
+    expect(posts()[1].error).not.toMatch(/no provider/u);
+    expect(posts()[1].error).toMatch(/^cloudflare /u);
+  });
+
   it('has check, apply, and end', async () => {
     expect(await step('deploy')).toBe(1);
     expect(lines.at(-1)).toMatch(/check, apply, and end/u);
