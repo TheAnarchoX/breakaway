@@ -563,6 +563,9 @@ async function handleApi(request, env, url, ctx) {
   // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
   if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
     return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
+  // Scaling rules (BRK-241): read only, from each repository's default branch; they change by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'scaling' && parts.length === 2 && method === 'GET')
+    return send(await s.scalingApi({ repo: url.searchParams.get('repo') }));
   // The board's currency (BRK-226): anyone signed in reads it; setting it and its rate is the owner's, from the
   // signed-in browser only.
   if (parts[0] === 'infra' && parts[1] === 'currency' && parts.length === 2) {
