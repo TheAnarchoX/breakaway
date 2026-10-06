@@ -3,7 +3,8 @@
 # branch, the way the Site workflow moves `site`: the stable release calls it with the released tag, and the owner runs
 # it by hand to put a fix out before the next release. Agents never run it. It puts the tag's commit there with one
 # commit on top that sets plugin.json's version to the release's, so the directory sees a new version exactly when a
-# release moves the branch. A ruleset lets only deploy keys move `plugin`, and the key is in the plugin environment,
+# release moves the branch. That commit also pins the CLI the plugin runs to the same version, and keeps only the plugin
+# and the marketplace, so nothing else in the repository (a package manager's settings) reaches the plugin (CLI-20). A ruleset lets only deploy keys move `plugin`, and the key is in the plugin environment,
 # which only main can use. Only a commit already on main goes there: never a branch's unreviewed work.
 name: Plugin
 
@@ -70,6 +71,17 @@ jobs:
           node scripts/release/plugin.mjs "$REF" "$tree/plugin/.claude-plugin/plugin.json" $(git tag --points-at "$commit" --list 'v*') >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "dir=$tree" >> "$GITHUB_OUTPUT"
+      # Only the plugin and the marketplace go on the branch: the directory reads the files above the plugin's folder
+      # too, and a package manager's settings there (pnpm-workspace.yaml) would say where npx installs from (CLI-20).
+      - name: Keep only the plugin
+        working-directory: ${{ steps.tree.outputs.dir }}
+        run: |
+          set -euo pipefail
+          git rm -r --quiet -- . ':(exclude)plugin' ':(exclude).claude-plugin'
+          if git ls-files | grep -v -e '^plugin/' -e '^\.claude-plugin/'; then
+            echo "::error title=Not only the plugin::The files above are outside plugin/ and .claude-plugin/."
+            exit 1
+          fi
       # The same check, and the same Claude Code, as the Plugin check on pull requests, so the directory's own checks
       # never fail first.
       - name: Validate the plugin and the marketplace
@@ -90,8 +102,8 @@ jobs:
             echo "::error title=No deploy key::Add PLUGIN_DEPLOY_KEY to the plugin environment: a write deploy key the plugin branch's ruleset lets through (the README's releases section)."
             exit 1
           fi
-          if ! git diff --quiet; then
-            git add plugin/.claude-plugin/plugin.json
+          git add -A .
+          if ! git diff --cached --quiet; then
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
               commit --quiet -m "The breakaway plugin, version $VERSION" -m "From $REF ($COMMIT)."
           fi

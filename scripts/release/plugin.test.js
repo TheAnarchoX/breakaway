@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { pluginVersion, withVersion } from './plugin.mjs';
+import { pluginVersion, withPins, withVersion } from './plugin.mjs';
 
 // LCH-24: the Plugin workflow moves the plugin branch, which the plugin directory and this repository's marketplace
 // follow, the way the Site workflow moves site: the stable release calls it with the released tag, and only the owner
@@ -41,6 +41,30 @@ describe('the plugin’s version (LCH-24)', () => {
   });
 });
 
+describe('the CLI the plugin runs (CLI-20)', () => {
+  it('is pinned to the release’s exact version, as the plugin directory asks', () => {
+    const hooks = read('plugin/hooks/hooks.json');
+    expect(hooks).toContain('npx --yes breakaway@1 hook session');
+    const pinned = withPins(hooks, '1.6.0');
+    expect(pinned).toContain('npx --yes breakaway@1.6.0 hook session');
+    expect(pinned).toContain('npx --yes breakaway@1.6.0 hook wait');
+    expect(pinned).not.toMatch(/breakaway@1 /u);
+    expect(withPins(read('plugin/.mcp.json'), '1.6.1-main.3')).toContain(
+      '"headersHelper": "npx --yes breakaway@1.6.1-main.3 mcp --headers"',
+    );
+    expect(withPins('`npx --yes breakaway@1 claim $ARGUMENTS`', '1.6.0')).toBe(
+      '`npx --yes breakaway@1.6.0 claim $ARGUMENTS`',
+    );
+  });
+
+  it('leaves everything else as it was', () => {
+    expect(withPins('npx breakaway setup, and npx --yes other@1 run', '1.6.0')).toBe(
+      'npx breakaway setup, and npx --yes other@1 run',
+    );
+    expect(() => withPins('', 'latest')).toThrow(/version/u);
+  });
+});
+
 describe('the Plugin workflow (LCH-24)', () => {
   it('runs when the stable release calls it with the tag, or by hand, and on nothing else', () => {
     expect(PLUGIN).toMatch(/workflow_dispatch:\n\s+inputs:\n\s+ref:/u);
@@ -63,6 +87,13 @@ describe('the Plugin workflow (LCH-24)', () => {
     expect(new Set([...claude(PLUGIN), ...claude(CHECK)]).size).toBe(1);
     expect(PLUGIN).toContain('plugin validate --strict plugin');
     expect(PLUGIN.indexOf('plugin validate --strict')).toBeLessThan(PLUGIN.indexOf('git push --force'));
+  });
+
+  it('keeps only the plugin and the marketplace on the branch, before it validates them (CLI-20)', () => {
+    expect(PLUGIN).toContain("git rm -r --quiet -- . ':(exclude)plugin' ':(exclude).claude-plugin'");
+    expect(PLUGIN.indexOf('git rm -r')).toBeGreaterThan(PLUGIN.indexOf('node scripts/release/plugin.mjs'));
+    expect(PLUGIN.indexOf('git rm -r')).toBeLessThan(PLUGIN.indexOf('plugin validate --strict'));
+    expect(PLUGIN).toContain('git add -A .');
   });
 
   it('pushes with the plugin environment’s deploy key, to GitHub’s own host key, and nothing else', () => {

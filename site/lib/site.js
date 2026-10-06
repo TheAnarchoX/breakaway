@@ -22,7 +22,7 @@ export const DOCS = [
   { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'features', 'ideas-decisions-pings', 'routines'] },
   { group: 'Connect', pages: ['github', 'plugin', 'mcp', 'taskwarrior'] },
   { group: 'Run it', pages: ['deploying', 'operations', 'architecture', 'api'] },
-  { group: 'More', pages: ['faq'] },
+  { group: 'More', pages: ['faq', 'privacy'] },
 ];
 
 const href = (name) => (name === 'index' ? '/docs/' : `/docs/${name}/`);

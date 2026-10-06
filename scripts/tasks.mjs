@@ -99,6 +99,7 @@ import {
   planText,
 } from './tasks/peloton.js';
 import { CLI_VERSION } from '../src/cli-version.js';
+import { cwdOf, parentOf, sessionDir } from './tasks/session-dir.js';
 import { parseInstall, secretName } from '../src/install.js';
 import {
   NAMES,
@@ -110,6 +111,17 @@ import {
   taskrcFixes,
   tildePath,
 } from './tasks/settings.js';
+
+// The plugin's headersHelper runs in the plugin's folder, and can't move itself to the session's checkout (CLI-20):
+// `mcp --headers` moves there before it reads the checkout's settings, origin, and branch. It never fails over it.
+if (process.argv[2] === 'mcp' && process.argv.includes('--headers')) {
+  const dir = sessionDir({ env: process.env, cwd: process.cwd(), pid: process.pid, parentOf, cwdOf });
+  try {
+    if (dir) process.chdir(dir);
+  } catch {
+    /* gone, or not a folder: stay */
+  }
+}
 
 const CONFIG_DIR = configDir({ env: process.env, home: homedir() });
 const ENV_FILE = join(CONFIG_DIR, 'tasks.env');

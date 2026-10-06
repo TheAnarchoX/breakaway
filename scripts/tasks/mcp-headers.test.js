@@ -109,16 +109,20 @@ function checkout(remote) {
   return dir;
 }
 
-/** Runs `mcp --headers` in `cwd` with only `settings` from the environment: nothing from this machine's own. */
-function headers(cwd, home, settings) {
+/**
+ * Runs `mcp --headers` in `cwd` with only `settings` from the environment: nothing from this machine's own. With `via`,
+ * it runs the way Claude Code runs the plugin's helper: from a process working in `via` (the session's checkout).
+ */
+function headers(cwd, home, settings, via = null) {
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
       ([key]) => !key.startsWith('BREAKAWAY_') && !key.startsWith('CLAUDE_PLUGIN_') && !/proxy/iu.test(key),
     ),
   );
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [CLI, 'mcp', '--headers'], {
-      cwd,
+    const parent = `const r = require('node:child_process').spawnSync(process.execPath, [process.argv[1], 'mcp', '--headers'], { cwd: process.argv[2], stdio: 'inherit' }); process.exit(r.status ?? 1);`;
+    const child = spawn(process.execPath, via ? ['-e', parent, CLI, cwd] : [CLI, 'mcp', '--headers'], {
+      cwd: via ?? cwd,
       env: {
         ...env,
         BREAKAWAY_HOME: home,
@@ -219,6 +223,23 @@ describe('npx breakaway mcp --headers (CLI-9)', () => {
       'X-Breakaway-Agent-Default': 'claude-inbox-sort',
       'X-Breakaway-Repo': 'acme/widgets',
     });
+  });
+
+  it('works in the session’s checkout when Claude Code runs it in the plugin’s folder (CLI-20)', async () => {
+    const plugin = temp(mkdtempSync(join(tmpdir(), 'plugin-')));
+    const expected = {
+      Authorization: `Bearer ${TOKEN}`,
+      'X-Breakaway-Agent-Default': 'claude-inbox-sort',
+      'X-Breakaway-Repo': 'widgets',
+    };
+    const settings = { BREAKAWAY_URL: board.url, BREAKAWAY_TOKEN: TOKEN, CLAUDE_PLUGIN_ROOT: plugin };
+    const home = temp(mkdtempSync(join(tmpdir(), 'h-')));
+    const widgets = temp(checkout('git@github.com:acme/widgets.git'));
+    const found = await headers(plugin, home, settings, widgets);
+    expect(found.status).toBe(0);
+    expect(JSON.parse(found.stdout)).toEqual(expected);
+    const named = await headers(plugin, home, { ...settings, CLAUDE_PROJECT_DIR: widgets });
+    expect(JSON.parse(named.stdout)).toEqual(expected);
   });
 
   it('prints only Authorization outside a git checkout', async () => {

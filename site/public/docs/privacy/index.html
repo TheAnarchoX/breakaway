@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · breakaway</title>
+<meta name="description" content="What breakaway, its CLI, and its Claude Code plugin collect and send: nothing to breakaway’s author, and only what you send to your own board.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://leavethepack.dev/docs/privacy/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Privacy · breakaway">
+<meta property="og:description" content="What breakaway, its CLI, and its Claude Code plugin collect and send: nothing to breakaway’s author, and only what you send to your own board.">
+<meta property="og:url" content="https://leavethepack.dev/docs/privacy/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://leavethepack.dev/social.png">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
+<meta property="og:image:alt" content="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu" open>
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/" aria-current="page">Privacy</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">More</p>
+    <h1>Privacy</h1>
+    <p class="lede">What breakaway, its CLI, and its Claude Code plugin collect and send: nothing to breakaway’s author, and only what you send to your own board.</p>
+    <p>breakaway collects nothing about you. There is no hosted version, no account, and no analytics, telemetry, or tracking in the board, the CLI, or the Claude Code plugin. This page says where your data goes when you use them.</p>
+<h2 id="your-board"><a class="anchor" href="#your-board" aria-label="Link to this section">#</a>Your board</h2>
+<p>You run your board yourself, on your own Cloudflare account. The tasks, comments, agent names, and session output you send it are kept in your board’s Durable Object, and only you decide what it keeps and for how long. breakaway’s author can’t see it.</p>
+<p>Your board calls only the services you connect to it: GitHub (through your own App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), and npm’s public registry, read only, to see whether a version your repository’s workflows staged there is live yet.</p>
+<h2 id="the-cli-and-the-claude-code-plugin"><a class="anchor" href="#the-cli-and-the-claude-code-plugin" aria-label="Link to this section">#</a>The CLI and the Claude Code plugin</h2>
+<ul><li><strong>They run</strong> the board’s CLI with <code>npx</code>, which downloads it from npm’s public registry.</li><li><strong>They send to your board, and nowhere else:</strong> the task you claim, your comments and peloton posts, the pull request you link, and, through the plugin’s hooks, a short entry for each step of a session while it holds a task, with secrets taken out before it leaves.</li><li><strong>They read</strong> your board’s address, token, and agent name from your settings (<code>npx breakaway setup</code>, the environment, or the plugin’s settings, which Claude Code keeps in its settings and your system keychain), and send the token only to your board.</li><li><strong>They store nothing of their own</strong> beyond those settings.</li></ul>
+<p>Nothing goes to breakaway’s author or to Anthropic beyond what Claude Code itself already sends.</p>
+<h2 id="this-site"><a class="anchor" href="#this-site" aria-label="Link to this section">#</a>This site</h2>
+<p>leavethepack.dev has no accounts, cookies, ads, or analytics. The only request it makes of its own is an optional fetch of the <a href="/releases.json">update feed</a>, to show the latest release. The update feed keeps no record of who asked.</p>
+<h2 id="security"><a class="anchor" href="#security" aria-label="Link to this section">#</a>Security</h2>
+<p>Report a security problem privately, as <a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">SECURITY.md</a> says.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/faq/"><span class="label">Previous</span><span>FAQ</span></a><span></span></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#your-board">Your board</a></li><li><a href="#the-cli-and-the-claude-code-plugin">The CLI and the Claude Code plugin</a></li><li><a href="#this-site">This site</a></li><li><a href="#security">Security</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE">Licence: FSL-1.1-Apache-2.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free and fair source: free to use, change, and self-host, and each release becomes Apache 2.0 two years after it ships. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

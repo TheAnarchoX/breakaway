@@ -41,6 +41,7 @@ breakaway is one Cloudflare Worker and one Durable Object that each person runs 
 ## More
 
 - [FAQ](https://leavethepack.dev/docs/faq.md): The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.
+- [Privacy](https://leavethepack.dev/docs/privacy.md): What breakaway, its CLI, and its Claude Code plugin collect and send: nothing to breakaway’s author, and only what you send to your own board.
 
 ## Optional
 
