@@ -1,8 +1,9 @@
 /**
  * Architect's drift, the pure part (docs/specs/IDEA-19-architect.md, "Drift"; BRK-184): the difference between what an
  * environment's desired state says and what its provider sees running. The board compares the two on the cron, shows
- * what differs on the environment, and makes one draft plan (source `drift`) the owner can put in front of themselves
- * or turn into a task. It never applies one by itself. The store (store-infra-drift.js) keeps the last comparison.
+ * what differs on the environment, and makes one plan from it: a draft (source `drift`) the owner can put in front of
+ * themselves or turn into a task, or, when the desired state itself moved since the drift was last settled (a merged
+ * change, BRK-246), one from the pull request that waits for the owner. It never applies one by itself. The store (store-infra-drift.js) keeps the last comparison.
  *
  * Pure and Node-safe, so the CLI can import it: no store and no network.
  */
@@ -15,6 +16,8 @@ export const DRIFT_EVERY_MS = 60 * 60 * 1000;
 export const DRIFT_PER_TICK = 5;
 /** A plan in one of these states still stands for what it would change, so drift it covers needs no other plan. */
 export const OPEN_PLAN_STATES = ['draft', 'waiting', 'approved', 'applying'];
+/** The sources of the plans a comparison makes: while one of them is open, a comparison makes no other. */
+export const DRIFT_PLAN_SOURCES = ['drift', 'pull-request'];
 
 /** JSON with every object's keys sorted, so two equal diffs read the same whatever order a provider sent. */
 function canonical(value) {
@@ -67,8 +70,39 @@ export function driftResources(diff) {
  * @returns {Promise<string>}
  */
 export async function driftFingerprint(diff) {
-  const lines = diff.changes.map(driftLine).sort();
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(lines.join('\n')));
+  return sha256(diff.changes.map(driftLine).sort().join('\n'));
+}
+
+/**
+ * A fingerprint of a desired state: the same file has the same one, whatever order its keys are in, so a comparison
+ * can tell the desired state moved (a merged change) from a commit that left this environment's file alone. Hex
+ * SHA-256, or null when there's no desired state.
+ * @param {unknown} desired
+ * @returns {Promise<string | null>}
+ */
+export async function desiredFingerprint(desired) {
+  return desired ? sha256(canonical(desired)) : null;
+}
+
+/**
+ * Whether drift comes from the desired state moving rather than a change by hand: the desired state differs from the
+ * one the drift was last settled against. On an environment's first comparison, it did when its file was added since
+ * the board started reading the repository (`added`); a file there from the start counts as by hand, as does a
+ * comparison kept before the board remembered the desired state (`desired_hash` null).
+ * @param {{ desired_hash?: string | null } | null | undefined} last
+ * @param {string | null} desiredHash
+ * @param {boolean} [added] whether the environment's file was added since the board started reading the repository
+ */
+export function desiredMoved(last, desiredHash, added = false) {
+  if (!desiredHash) return false;
+  if (!last) return added;
+  if (!last.desired_hash) return false;
+  return last.desired_hash !== desiredHash;
+}
+
+/** @param {string} text */
+async function sha256(text) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 

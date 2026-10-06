@@ -68,7 +68,7 @@ The exact difference an apply would make: the provider's diff, the cost change, 
 
 ### Change
 
-One flow for app and infrastructure: a pull request that changes a desired-state or policy file gets the plan and policy results as a check, and the board's pull request page shows them (BRK-185). Merging applies nothing: the plan made from `main` waits for approval.
+One flow for app and infrastructure: a pull request that changes a desired-state or policy file gets the plan and policy results as a check, and the board's pull request page shows them (BRK-185). Merging applies nothing: the plan made from `main` waits for approval. The comparison after the merge makes it (source `pull-request`, naming the merged pull request when the sync knows it) and puts it in front of the owner with one push, unless the repository's policy lets it through (BRK-246).
 
 ### Policy
 
@@ -116,9 +116,9 @@ An envelope is kept on the board, one per environment, never in the repository, 
 
 ### Drift
 
-On the cron, desired against actual for each environment with a desired state. Drift shows on the environment and becomes one draft plan; the board never forces it (BRK-184).
+On the cron, desired against actual for each environment with a desired state. Drift shows on the environment and becomes one plan; the board never forces it (BRK-184). Where it comes from decides what the plan does (BRK-246): drift from a change by hand is a draft, and drift from a merged change waits for the owner.
 
-The cron compares each environment with a provider and a desired state at most once an hour, or as soon as its desired state moves to a new commit, five environments a tick. What differs shows on the environment (`driftCount`, and `drift` with each resource and what the plan would do to it) and in `GET /api/infra/drift`. One drift makes one draft plan, by the board: a comparison that finds an open plan with the same changes (from drift, a pull request, or anything else) makes none, and while an earlier drift plan is open it makes no other and says that one no longer matches, so the owner rejects it and the next comparison makes a new one. A provider that fails keeps what differed last time, with why. A frozen environment's drift is shown but planned only once it's unfrozen. The owner can compare one now from the board. Observe-only environments are never compared: they take no desired state.
+The cron compares each environment with a provider and a desired state at most once an hour, or as soon as its desired state moves to a new commit, five environments a tick. What differs shows on the environment (`driftCount`, and `drift` with each resource and what the plan would do to it) and in `GET /api/infra/drift`. One drift makes one plan, by the board. When the environment's desired state is the one its drift was last settled against, what differs was changed by hand: the plan is a draft (source `drift`) the owner puts in front of themselves, rejects, or turns into a task, with no push. When the desired state moved since (a merged change; on an environment's first comparison, when its file was added after the board started reading the repository), the plan is the merge's (source `pull-request`, `#<number>` when the sync knows the merged pull request) and waits for the owner with one push, the same push as any waiting plan; a policy that lets it through approves it as usual. A comparison that finds an open plan with the same changes (from drift, a pull request, or anything else) makes none, and while an earlier plan from a comparison is open it makes no other and says that one no longer matches, so the owner rejects it and the next comparison makes a new one (from the merge, if one is still unplanned). A provider that fails keeps what differed last time, with why. A frozen environment's drift is shown but planned only once it's unfrozen. The owner can compare one now from the board. Observe-only environments are never compared: they take no desired state.
 
 ### Break-glass
 
@@ -556,6 +556,6 @@ The tasks, all in the `architect` feature, all on the `now` horizon, and all wai
 3. Open the staging environment. You should see what actually runs there (your Workers, databases, and the like), what each one uses, and which repository owns it.
 4. Ask an agent to make a small staging change (for example, a new setting). Its pull request should show a plan as a check, saying what will change, what it costs, and whether it can be undone.
 5. Merge it. Your phone should get a push; open it and press **Approve**. The plan should apply, check health, and show as applied in the environment's history.
-6. Change the same setting by hand on the platform. Within the hour the environment should show drift and a plan to put it back, waiting for you, and nothing should change by itself.
+6. Change the same setting by hand on the platform. Within the hour the environment should show drift and a draft plan to put it back, with no push, and nothing should change by itself.
 7. Trigger a test alert on the platform. An incident should appear in your inbox, as a task with its steps, and production ones should push.
 8. Press **Freeze** on staging, and try step 5 again: the plan should be refused until you unfreeze.
