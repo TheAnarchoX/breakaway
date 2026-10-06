@@ -10,11 +10,12 @@
  * Each tool calls the same TaskStore method its CLI command's API route does, so the store's own guards stand behind
  * it. The tools that write (BRK-155) always write as the agent the X-Breakaway-Agent header names, never as the owner,
  * and have no force, no autostart, no done, and no horizon-* tag. The resources and prompts (section 4) are in
- * src/mcp-resources.js.
+ * src/mcp-resources.js, and Architect's read-only tools (BRK-202) in src/mcp-infra.js.
  */
 import { authenticate } from './auth.js';
 import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
+import { INFRA_TOOL_NAMES, infraTools } from './mcp-infra.js';
 import { McpFailure, PROMPTS, RESOURCE_TEMPLATES, getPrompt, listResources, readResource } from './mcp-resources.js';
 import { MAX_MESSAGE, PING_KINDS, looksLikeSecret } from './ping.js';
 
@@ -1124,8 +1125,19 @@ const ORDER = [
   'show_spec',
   'features',
   'pull_request',
+  ...INFRA_TOOL_NAMES,
 ];
-const TOOLS = ORDER.map((name) => /** @type {Tool} */ ([...READS, ...WRITERS].find((t) => t.name === name)));
+/** Architect's reads (BRK-202): read only, with this file's helpers, so they refuse like every other tool. */
+const INFRA = infraTools({
+  input,
+  readOnly: READ_ONLY,
+  body,
+  scoped,
+  fail: (message) => {
+    throw new ToolError(message);
+  },
+});
+const TOOLS = ORDER.map((name) => /** @type {Tool} */ ([...READS, ...WRITERS, ...INFRA].find((t) => t.name === name)));
 
 /** The tools' names, for the tests and the docs. */
 export const TOOL_NAMES = TOOLS.map((t) => t.name);
