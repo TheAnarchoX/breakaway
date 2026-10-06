@@ -8,7 +8,7 @@ breakaway collects nothing about you. There is no hosted version, no account, an
 
 You run your board yourself, on your own Cloudflare account. The tasks, comments, agent names, and session output you send it are kept in your board’s Durable Object, and only you decide what it keeps and for how long. breakaway’s author can’t see it.
 
-Your board calls only the services you connect to it: GitHub (through your own App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), and npm’s public registry, read only, to see whether a version your repository’s workflows staged there is live yet.
+Your board calls only the services you connect to it: GitHub (through your own App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), npm’s public registry, read only, to see whether a version your repository’s workflows staged there is live yet, and [Frankfurter](https://frankfurter.dev)’s public exchange rates, only when you press **Fetch today’s rate** in Settings. That press sends only the two currencies, US dollars and yours, and the rate only fills the field until you save it.
 
 ## The CLI and the Claude Code plugin
 
