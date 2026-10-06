@@ -68,7 +68,7 @@ export const infraApprovalsMethods = {
    * Moves a plan to approved with the digest of its diff, refusing one that's out of date. The owner's press, or the
    * board's when the repository's policy lets the plan through.
    * @param {string} ref the plan's ID
-   * @param {{ by: 'owner' | 'board', summary?: string }} input
+   * @param {{ by: 'owner' | 'board' | 'envelope', summary?: string }} input
    */
   async approveInfraPlan(ref, { by, summary = '' }) {
     // A plan's diff never changes, so its digest comes first; from here on nothing awaits, so the checks hold.
@@ -100,14 +100,14 @@ export const infraApprovalsMethods = {
   /**
    * Moves a plan to waiting for the owner, then sends one push linking to it. The one path that puts a plan in front of
    * the owner: the owner's own press (PATCH /api/infra/plans/<id>), or the board's (a pull request's plan, an envelope
-   * outside its bounds).
+   * outside its bounds). `reason` is the push's second line, when the plan's policy isn't why it waits.
    * @param {string} ref the plan's ID
-   * @param {{ by: 'owner' | 'board', summary?: string, quiet?: boolean }} input `quiet` sends no push: the owner is
-   *   already reading the plan
+   * @param {{ by: 'owner' | 'board', summary?: string, reason?: string, quiet?: boolean }} input `quiet` sends no
+   *   push: the owner is already reading the plan
    */
-  async waitForOwner(ref, { by, summary = '', quiet = false }) {
+  async waitForOwner(ref, { by, summary = '', reason, quiet = false }) {
     const plan = this.moveInfraPlan(ref, 'waiting', { by, summary });
-    if (!quiet) await this.pushInfraPlan(plan);
+    if (!quiet) await this.pushInfraPlan(plan, reason);
     return plan;
   },
 
@@ -124,9 +124,9 @@ export const infraApprovalsMethods = {
   },
 
   /** Sends a waiting plan's push to every subscribed browser. Never throws: the plan and its audit entry are the record. */
-  async pushInfraPlan(plan) {
+  async pushInfraPlan(plan, why) {
     try {
-      const reason = plan.policy?.reasons?.[0] ?? `${plan.changes} change${plan.changes === 1 ? '' : 's'}`;
+      const reason = why ?? plan.policy?.reasons?.[0] ?? `${plan.changes} change${plan.changes === 1 ? '' : 's'}`;
       await this.pushToOwner(planMessage({ ...plan, reason }, install(this.env).name));
     } catch {
       /* push is a convenience */

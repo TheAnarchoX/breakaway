@@ -146,9 +146,11 @@ export const infraPlansMethods = {
    * shows it. Refused on an environment with no provider, or one whose provider isn't connected. With nothing to
    * change, the diff is empty and there's no cost or blast radius.
    * @param {Record<string, any>} env the environment's row
-   * @param {DesiredState} wanted
+   * @param {DesiredState | null} wanted
+   * @param {import('./infra-provider.js').PlanDiff | null} [built] a diff the board built itself (an envelope's scale or
+   *   restart, store-infra-envelopes.js), checked like the provider's; never one a caller sent
    */
-  async computeInfraPlan(env, wanted) {
+  async computeInfraPlan(env, wanted, built = null) {
     if (!env.provider) throw new AgentError(`${env.name} has no provider: the owner picks one on the board first`, 409);
     const registry = this.infraRegistry();
     if (!registry.has(env.provider))
@@ -162,7 +164,7 @@ export const infraPlansMethods = {
     };
     let diff;
     try {
-      diff = checkPlan(provider, await provider.plan(ctx, checkDesired(provider, wanted)), ctx);
+      diff = checkPlan(provider, built ?? (await provider.plan(ctx, checkDesired(provider, wanted))), ctx);
     } catch (error) {
       throw new AgentError(
         `${provider.name} couldn’t plan ${env.repo}’s ${env.name}: ${redact(error?.message ?? error)}. Nothing was kept; try again once the provider answers.`,
@@ -207,16 +209,17 @@ export const infraPlansMethods = {
 
   /**
    * Makes a draft plan for an environment: asks its provider for the diff from the environment's desired state (or
-   * `desired`, for the board's own callers, like an envelope's scale), prices it, measures its blast radius from the
-   * inventory, and keeps it with an audit entry. Refused on an observe-only environment, one with no provider or no
+   * `desired`, for the board's own callers), prices it, measures its blast radius from the inventory, and keeps it
+   * with an audit entry. `diff` is for the board's own callers too: an envelope's scale or restart, which the board
+   * builds from what the provider discovered. Refused on an observe-only environment, one with no provider or no
    * desired state, and when nothing would change.
    * @param {string | number} ref the environment's ID or name
    * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
-   *   agent?: string | null, desired?: DesiredState }} input
+   *   agent?: string | null, desired?: DesiredState, diff?: import('./infra-provider.js').PlanDiff }} input
    */
   async makeInfraPlan(
     ref,
-    { repo = null, source, sourceRef = null, by, agent = null, desired } = /** @type {any} */ ({}),
+    { repo = null, source, sourceRef = null, by, agent = null, desired, diff } = /** @type {any} */ ({}),
   ) {
     const from = checkSource(source, sourceRef);
     const env = this.environmentRow(ref, repo);
@@ -226,13 +229,13 @@ export const infraPlansMethods = {
     const kept = this.sql
       .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
       .toArray()[0];
-    const wanted = desired ?? this.desiredStateFor(env);
-    if (!wanted)
+    const wanted = diff ? null : (desired ?? this.desiredStateFor(env));
+    if (!wanted && !diff)
       throw new AgentError(
         `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
         409,
       );
-    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted);
+    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted, diff ?? null);
     if (stored.changes.length === 0)
       throw new AgentError(`${env.name} already matches its desired state: there’s nothing to plan`, 409);
     const text = JSON.stringify(stored);
@@ -249,7 +252,7 @@ export const infraPlansMethods = {
             env.repo,
             env.provider,
             env.target ?? null,
-            desired ? null : (kept?.valid_sha ?? null),
+            desired || diff ? null : (kept?.valid_sha ?? null),
             from.source,
             from.ref,
             text,
