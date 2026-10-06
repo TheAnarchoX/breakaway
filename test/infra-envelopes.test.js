@@ -384,6 +384,22 @@ describe('envelopes on the board (BRK-186)', () => {
     } finally {
       delete provider.refuses;
     }
+    // A resource outside the environment (the install's Worker, another environment's) is refused too (BRK-251), and
+    // the provider is asked with the environment's whole scope.
+    let scope = null;
+    provider.outside = (ctx, _found, r) => {
+      scope = ctx.scope;
+      return r.name === 'api' ? 'api is the Worker this board runs on' : null;
+    };
+    try {
+      expect(await act(staging, { resource: 'api', change: 'restart' })).toMatchObject({
+        status: 409,
+        error: 'api is the Worker this board runs on, so nothing was planned',
+      });
+      expect(scope).toMatchObject({ target: 'svc-api', board: expect.any(String), others: [] });
+    } finally {
+      delete provider.outside;
+    }
     expect((await act(staging, { resource: 'api', change: 'scale', value: 2 })).error).toMatch(/nothing to change/);
     expect((await act(staging, { resource: 'api', change: 'delete' })).status).toBe(400);
 

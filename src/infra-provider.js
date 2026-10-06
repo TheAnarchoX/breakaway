@@ -129,7 +129,9 @@ export const COST_NOTE_MAX = 500;
  * which only the apply runner holds. `observeOnly` environments (the board's own install, BRK-169) refuse apply.
  * @typedef {object} ProviderContext
  * @property {string} environment
- * @property {Record<string, unknown>} [scope] which of the platform's resources belong to the environment
+ * @property {Record<string, unknown>} [scope] which of the platform's resources belong to the environment: its
+ *   `target`, and for a plan or an act the install's own Worker (`board`) and the other environments' targets
+ *   (`others`), which are never its to change (BRK-251)
  * @property {boolean} [observeOnly]
  * @property {string} [token]
  * @property {string} [writeToken] the environment's write token: only the apply runner sets it (CLI-12, from its
@@ -192,6 +194,10 @@ export const COST_NOTE_MAX = 500;
  * @property {(resource: Resource, op: string) => string | null} [refuses] why the platform can't make an envelope's
  *   `scale` or `restart` to this one resource although its kind declares it (a setting of the resource rules it out),
  *   in words, or null when it can; an act asks it before it plans (BRK-227)
+ * @property {(ctx: ProviderContext, found: Discovery, resource: Resource) => string | null} [outside] why the
+ *   resource, though `discover` found it, isn't the environment's to change (it's only reached through the install's
+ *   Worker, `scope.board`, or another environment's target, `scope.others`), in words, or null when it is; an act asks
+ *   it before it plans (BRK-251)
  * @property {ReadToken} [readToken] the read-only token it needs, if any
  * @property {(ctx: ProviderContext) => Promise<Discovery>} discover
  * @property {(ctx: ProviderContext, desired: DesiredState) => Promise<PlanDiff>} plan
@@ -256,6 +262,7 @@ export function checkProvider(provider) {
   }
   if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
   if (provider.refuses !== undefined && typeof provider.refuses !== 'function') fail(what, 'refuses is not a function');
+  if (provider.outside !== undefined && typeof provider.outside !== 'function') fail(what, 'outside is not a function');
   if (provider.estimate !== undefined && typeof provider.estimate !== 'function')
     fail(what, 'estimate is not a function');
   return provider;

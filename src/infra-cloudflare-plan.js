@@ -12,7 +12,11 @@
  * Only Workers can be scoped one by one (Workers Editor, BRK-243); a database, namespace, bucket, or queue permission
  * reaches every one on the account. So the provider keeps every change inside the environment's scope itself: it
  * refuses to make a resource that already exists on the account outside the scope, a database, namespace, bucket, or
- * queue no Worker in the desired state binds, and a delete of something a remaining Worker still binds.
+ * queue no Worker in the desired state binds, and a delete of something a remaining Worker still binds. Discovery
+ * follows bindings to other Workers, so the plan also refuses a change to the install's own Worker (`scope.board`), to
+ * another environment's target (`scope.others`), or to anything reached only through one of them, never deletes them,
+ * and sends a route or custom domain only to the environment's own Workers, on a pattern or hostname nobody else has
+ * (BRK-251).
  *
  * `apply` runs only inside the apply runner (CLI-12), with the environment's write token. It discovers again first
  * and refuses a change whose resource moved since it was planned, then calls Cloudflare one change at a time, in the
@@ -33,6 +37,7 @@ import {
   cloudflare,
   cost,
   discover,
+  ownership,
   priceResource,
   reader,
   refuses,
@@ -263,7 +268,14 @@ export async function plan(ctx, desired) {
   const live = /** @type {LiveAccount} */ (found.live);
   if (!live.account || !live.scripts.includes(String(ctx.scope?.target ?? '')))
     refuse(`${ctx.scope?.target ?? 'the target'} isn’t a Worker on the account yet: deploy it first, then plan`);
+  if (ctx.scope?.board && ctx.scope.board === ctx.scope.target)
+    refuse(
+      `${ctx.scope.target} is the Worker this board runs on: Architect only observes it, so it never plans for it`,
+    );
   const have = viewOf(found);
+  const own = ownership(found, ctx.scope);
+  /** Why the environment can't change a resource it found, or null when it's its own (BRK-251). */
+  const notOurs = (h) => own.why(ctx.environment, h);
   const cf = reader(ctx);
 
   // Match each desired resource to what's there: by ID, else by kind and name.
@@ -318,6 +330,20 @@ export async function plan(ctx, desired) {
     return boundAfter[type].has(r.kind === 'r2' || r.kind === 'queue' ? r.name : cfId(r.id));
   };
 
+  /** Whether a route or custom domain may send to this Worker: one of the environment's, or one this plan makes. */
+  const mine = (worker) => own.workers.has(worker) || desiredWorkers.some((w) => w.name === worker && !match.has(w.id));
+  /** Refuses a route pattern or custom domain hostname another Worker already has: it's that Worker's traffic. */
+  const inUse = (r) => {
+    const held =
+      r.kind === 'route'
+        ? live.routes.find((x) => x.pattern === r.name)
+        : live.domains.find((x) => x.hostname === r.name);
+    if (held)
+      refuse(
+        `${r.name} already sends to ${held.worker}: a ${r.kind} can’t take a ${r.kind === 'route' ? 'pattern' : 'hostname'} that’s already in use, so remove it there first or pick another`,
+      );
+  };
+
   /** @type {Change[]} */
   const changes = [];
   for (const r of desired.resources) {
@@ -325,7 +351,7 @@ export async function plan(ctx, desired) {
     const managed = MANAGED[r.kind] ?? [];
     const wanted = isObject(r.attrs) ? r.attrs : {};
     if (!h) {
-      changes.push(await created(ctx, cf, live, r, wanted, boundAfter));
+      changes.push(await created(ctx, cf, live, r, wanted, boundAfter, { mine, inUse }));
       continue;
     }
     /** @type {Record<string, unknown>} */
@@ -363,8 +389,14 @@ export async function plan(ctx, desired) {
         changed = true;
       }
     }
-    if (r.kind === 'route' && changed && !live.scripts.includes(String(after.worker)))
-      refuse(`route ${r.name} would send to ${after.worker}, which isn’t a Worker on the account`);
+    if (changed && notOurs(h)) refuse(/** @type {string} */ (notOurs(h)));
+    if ((r.kind === 'route' || r.kind === 'custom-domain') && changed) {
+      if (!live.scripts.includes(String(after.worker)))
+        refuse(`${r.kind} ${r.name} would send to ${after.worker}, which isn’t a Worker on the account`);
+      if (!mine(String(after.worker)))
+        refuse(`${r.kind} ${r.name} would send to ${after.worker}, which isn’t one of ${ctx.environment}’s Workers`);
+      if (r.name !== h.name) inUse(r);
+    }
     if (changed)
       changes.push({
         op: 'update',
@@ -378,6 +410,8 @@ export async function plan(ctx, desired) {
   }
   for (const h of have.values()) {
     if (taken.has(h.id)) continue;
+    // What only the install's Worker or another environment reaches isn't this environment's to delete (BRK-251).
+    if (notOurs(h)) continue;
     if (h.kind === 'durable-object')
       refuse(
         `${h.name} isn’t in the desired state: a Durable Object class is deleted by a migration in its Worker’s code, so keep it listed and remove it in the code`,
@@ -388,6 +422,13 @@ export async function plan(ctx, desired) {
       refuse(`${h.name} is still bound by a Worker: remove the binding in the desired state before you delete it`);
     if (h.kind === 'worker' && boundAfter.service.has(h.name))
       refuse(`${h.name} is still called by a Worker’s service binding: remove the binding before you delete it`);
+    const outsider = found.relations.find(
+      (rel) => rel.to === h.id && rel.from.startsWith('worker:') && !own.workers.has(cfId(rel.from)),
+    );
+    if (outsider)
+      refuse(
+        `${h.name} is still used by ${cfId(outsider.from)}, which is outside ${ctx.environment}: Architect never deletes what another Worker relies on`,
+      );
     const reversible = !LOST[h.kind];
     changes.push({
       op: 'delete',
@@ -411,10 +452,11 @@ export async function plan(ctx, desired) {
 
 /**
  * A resource to make, checked against the scope: nothing of the same name already on the account, and every
- * database, namespace, bucket, and queue bound by a desired Worker, so the next discovery finds it.
+ * database, namespace, bucket, and queue bound by a desired Worker, so the next discovery finds it. A route or custom
+ * domain sends to one of the environment's Workers, on a pattern or hostname no other Worker has (BRK-251).
  * @returns {Promise<Change>}
  */
-async function created(ctx, cf, live, r, wanted, boundAfter) {
+async function created(ctx, cf, live, r, wanted, boundAfter, { mine, inUse }) {
   const a = encodeURIComponent(live.account);
   const outside = `${r.name} already exists on the account outside ${ctx.environment}’s scope: Architect never takes over a resource another environment may run on`;
   /** @type {Record<string, unknown>} */
@@ -435,6 +477,11 @@ async function created(ctx, cf, live, r, wanted, boundAfter) {
       refuse(
         `${r.kind} ${r.name} needs attrs.zone, one of the zones the token reaches (${Object.keys(live.zones).sort().join(', ') || 'none'})`,
       );
+    if (!mine(wanted.worker))
+      refuse(
+        `${r.kind} ${r.name} would send to ${wanted.worker}, which isn’t one of ${ctx.environment}’s Workers: send it to the target or a Worker it calls`,
+      );
+    inUse(r);
     after.zone = wanted.zone;
   } else {
     const type = Object.keys(BOUND_KIND).find((t) => BOUND_KIND[t][0] === r.kind);
