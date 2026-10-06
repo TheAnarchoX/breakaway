@@ -9,6 +9,7 @@ import {
   Hourglass,
   LoaderCircle,
   Package,
+  Play,
   RefreshCw,
   ShieldAlert,
   CircleDashed,
@@ -45,7 +46,7 @@ import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
 import { PackageRelease, ReleaseSetup } from '../components/PackageRelease.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
-import { RunWorkflow } from '../components/RunWorkflow.jsx';
+import { RunWorkflow, useRunnable } from '../components/RunWorkflow.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -171,14 +172,19 @@ function Runs({ runs, view }) {
     r.status !== 'completed' ? 0 : ['failure', 'timed_out', 'startup_failure'].includes(r.conclusion) ? 1 : 2;
   const sorted = [...runs].sort((a, b) => order(a) - order(b) || String(b.created).localeCompare(String(a.created)));
   const shown = all ? sorted : sorted.slice(0, 12);
+  // Run on a run whose workflow runs by hand (WEB-83) opens Run workflow… with that workflow picked.
+  const [ask, setAsk] = useState(/** @type {Record<string, any> | null} */ (null));
+  const slugOf = (r) => r.repo ?? (view.all || view.empty ? null : view.slug);
+  const runnable = useRunnable(shown, slugOf);
   return (
     <>
-      <RunWorkflow view={view} />
+      <RunWorkflow view={view} ask={ask} onAsked={() => setAsk(null)} />
       {runs.length ? (
         <ul class="gh-runs">
           {shown.map((r) => {
             const state = runState(r);
             const Icon = state === 'pending' ? LoaderCircle : (RUN_ICON[state] ?? CircleDashed);
+            const workflow = runnable(r);
             return (
               <li key={`${r.repo}-${r.id}`} class={`gh-run run-${state}`}>
                 <Icon size={17} aria-hidden="true" class="run-icon" />
@@ -198,6 +204,17 @@ function Runs({ runs, view }) {
                     {ago(r.created)}
                   </span>
                   {duration(r) && <span class="meta">{duration(r)}</span>}
+                  {workflow && (
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm gh-run-again"
+                      aria-label={`Run ${workflow.name}`}
+                      onClick={(e) => setAsk({ slug: slugOf(r), run: r, from: e.currentTarget })}
+                    >
+                      <Play size={14} aria-hidden="true" />
+                      Run
+                    </button>
+                  )}
                 </span>
               </li>
             );
