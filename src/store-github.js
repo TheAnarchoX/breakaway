@@ -649,6 +649,9 @@ export const githubMethods = {
           id: r.id,
           sha: r.head_sha ?? null,
           name: r.name,
+          // Its workflow, so the runs tab can offer Run on one that runs by hand (WEB-83).
+          workflow: r.workflow_id ?? null,
+          path: r.path ?? null,
           title: r.display_title,
           branch: r.head_branch,
           event: r.event,

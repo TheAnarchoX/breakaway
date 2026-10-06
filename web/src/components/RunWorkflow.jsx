@@ -5,8 +5,8 @@ import { githubRepoFacts, loadGitHub, repoName } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
 
 /*
- * Run workflow… on the GitHub view's runs tab (WEB-82, docs/specs/BRK-223-run-workflows.md): pick a repository's
- * workflow that runs by hand, where it runs, and its inputs, and the board starts it through
+ * Run workflow… on the GitHub view's runs tab (WEB-82, docs/specs/BRK-223-run-workflows.md), and Run on each of its
+ * runs (WEB-83): pick a repository's workflow that runs by hand, where it runs, and its inputs, and the board starts it through
  * POST /api/github/workflows/run. The Worker reads the workflows (GET /api/github/workflows) and checks everything again.
  */
 
@@ -16,6 +16,49 @@ const DISPATCH_DOCS =
 
 /** What Promote's App may do in `slug`: start workflows, or why not. Allowed while nothing's been checked. */
 const actionsIn = (slug) => githubRepoFacts(slug)?.access?.actions ?? { ok: true, reason: null };
+
+/** Whether `workflow` (one the Worker listed) is the one run `run` ran: by its id, its file, or (a run synced before
+ * the board kept those) its name. */
+const ranBy = (workflow, run) =>
+  run.workflow != null || run.path
+    ? String(workflow.id) === String(run.workflow) || workflow.path === run.path
+    : workflow.name === run.name;
+
+/** Each repository's workflows that run by hand, as GET /api/github/workflows answered, kept for 5 minutes. */
+const known = new Map();
+const KEEP_MS = 5 * 60 * 1000;
+
+/**
+ * Run on a run (WEB-83): for each run in `runs`, the workflow it ran when that one runs by hand and the App may start
+ * it, else null. It reads each repository's workflows once, when its runs show. `slugOf(run)` names a run's repository.
+ * @param {any[]} runs
+ * @param {(run: any) => string | null} slugOf
+ */
+export function useRunnable(runs, slugOf) {
+  const slugs = [...new Set(runs.map(slugOf).filter(Boolean))].sort();
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    for (const slug of slugs) {
+      const kept = known.get(slug);
+      if (kept && (kept.loading || Date.now() - kept.at < KEEP_MS)) continue;
+      known.set(slug, { loading: true, at: Date.now(), data: null });
+      api(`github/workflows?repo=${enc(slug)}`)
+        .then((data) => known.set(slug, { loading: false, at: Date.now(), data }))
+        // Not read (GitHub refused, or the App can't): no Run on its runs; Run workflow… still says why.
+        .catch(() => known.set(slug, { loading: false, at: Date.now(), data: null }))
+        .finally(() => live && setTick((n) => n + 1));
+    }
+    return () => {
+      live = false;
+    };
+  }, [slugs.join(' ')]);
+  return (run) => {
+    const data = known.get(slugOf(run) ?? '')?.data;
+    if (!data?.actions?.ok) return null;
+    return (data.workflows ?? []).find((w) => ranBy(w, run)) ?? null;
+  };
+}
 
 /** Each input's starting value: its default, a choice's first option, a switch off, else empty. */
 function startValues(workflow) {
@@ -119,10 +162,11 @@ function InputField({ input, value, onChange, idBase, environments }) {
 
 /**
  * The dialog: the repository (when the view shows all of them), the workflow, where it runs, and its inputs.
- * `repos` are the repositories it offers ({ slug, name }), `slug` the one picked first, `deploys` the view's.
+ * `repos` are the repositories it offers ({ slug, name }), `slug` the one picked first, `run` the run whose Run opened
+ * it (its workflow is picked first), and `deploys` the view's.
  * @param {Record<string, any>} props
  */
-function RunWorkflowDialog({ repos, slug: first, deploys, onClose, onStarted }) {
+function RunWorkflowDialog({ repos, slug: first, run, deploys, onClose, onStarted }) {
   const [slug, setSlug] = useState(first);
   const [load, setLoad] = useState(
     /** @type {{ loading: boolean, data: any, error: string | null }} */ ({ loading: true, data: null, error: null }),
@@ -145,7 +189,9 @@ function RunWorkflowDialog({ repos, slug: first, deploys, onClose, onStarted }) 
         if (!live) return;
         setLoad({ loading: false, data, error: null });
         setRef(data.branch ?? '');
-        const firstOne = data.workflows?.[0] ?? null;
+        // From a run's Run, its workflow is picked (in its own repository only); else the first.
+        const ran = run && slug === first ? data.workflows?.find((w) => ranBy(w, run)) : null;
+        const firstOne = ran ?? data.workflows?.[0] ?? null;
         setChosen(firstOne ? String(firstOne.id) : null);
         setValues(startValues(firstOne));
       })
@@ -340,13 +386,22 @@ function RunWorkflowDialog({ repos, slug: first, deploys, onClose, onStarted }) 
 
 /**
  * Run workflow… above the runs list, and the note that one started. `view` is the GitHub view's (scopeGitHub).
- * In the all-repositories view the dialog asks which; scoped to one, it's that one.
+ * In the all-repositories view the dialog asks which; scoped to one, it's that one. A run's Run sets `ask`
+ * ({ slug, run, from }: its repository, the run, and the button to focus again), and the dialog opens with them.
  * @param {Record<string, any>} props
  */
-export function RunWorkflow({ view }) {
-  const [open, setOpen] = useState(false);
+export function RunWorkflow({ view, ask = null, onAsked = () => {} }) {
+  const [open, setOpen] = useState(/** @type {false | { slug?: string, run?: any }} */ (false));
   const [started, setStarted] = useState(/** @type {Record<string, string> | null} */ (null));
   const button = useRef(/** @type {HTMLButtonElement | null} */ (null));
+  const back = useRef(/** @type {HTMLElement | null} */ (null));
+  useEffect(() => {
+    if (!ask) return;
+    back.current = ask.from ?? null;
+    setStarted(null);
+    setOpen({ slug: ask.slug, run: ask.run });
+    onAsked();
+  }, [ask]);
   const repos = view.all
     ? (view.repos ?? []).filter((r) => !r.empty).map((r) => ({ slug: r.slug, name: r.name }))
     : view.slug && !view.empty
@@ -360,7 +415,9 @@ export function RunWorkflow({ view }) {
   // Focus goes back on the button once the dialog is gone (while it's open, the page behind it is inert).
   const close = () => {
     setOpen(false);
-    requestAnimationFrame(() => button.current?.focus());
+    const to = back.current?.isConnected ? back.current : button.current;
+    back.current = null;
+    requestAnimationFrame(() => to?.focus());
   };
   const onStarted = (s) => {
     close();
@@ -379,7 +436,7 @@ export function RunWorkflow({ view }) {
           aria-describedby={actions.ok ? undefined : why}
           onClick={() => {
             setStarted(null);
-            setOpen(true);
+            setOpen({});
           }}
         >
           <Play size={16} aria-hidden="true" />
@@ -418,7 +475,8 @@ export function RunWorkflow({ view }) {
       {open && (
         <RunWorkflowDialog
           repos={repos}
-          slug={first.slug}
+          slug={open.slug && repos.some((r) => r.slug === open.slug) ? open.slug : first.slug}
+          run={open.run ?? null}
           deploys={view.deploys ?? []}
           onClose={close}
           onStarted={onStarted}
