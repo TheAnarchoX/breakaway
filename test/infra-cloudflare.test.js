@@ -15,7 +15,7 @@ import { checkCosts, checkDiscovery, checkProvider } from '../src/infra-provider
 import { providers } from '../src/infra-providers.js';
 import { scopeDiscovery } from '../src/infra-inventory.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
-import { api } from './helpers.js';
+import { api, boardApi } from './helpers.js';
 import { providerContract } from './infra-provider-contract.js';
 import {
   ACCOUNT,
@@ -501,7 +501,7 @@ describe('discovering into the inventory (BRK-189)', () => {
       body: JSON.stringify({ token: TOKEN }),
     });
     expect(put.status).toBe(201);
-    const made = await api('infra/environments', {
+    const made = await boardApi('infra/environments', {
       method: 'POST',
       body: { repo: 'widgets', name: 'production', kind: 'production', provider: 'cloudflare', target: 'acme-api' },
     });
