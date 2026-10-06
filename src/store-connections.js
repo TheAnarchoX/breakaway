@@ -7,6 +7,7 @@
  * Claude start. What's stored and returned is states, names, numbers, and timestamps; a message from outside
  * the board is redacted first (connections.js), and a secret is only ever "set" or "unset".
  */
+import { PAUSE_PERMISSION } from './infra-pause.js';
 import { GitHubClient, GitHubError, appCredentials, appGet } from './github.js';
 import { AgentError, connectCommand } from './store-agents.js';
 import { promptPathOf, repoSlugOf } from './repos.js';
@@ -925,6 +926,24 @@ export const connectionsMethods = {
         items,
       }),
     );
+    // Freeze and DEPLOYS_PAUSED as one switch (BRK-236): the last time the board couldn't read or set the variable.
+    const pause = repo.pipeline ? this.ghMeta('gh_pause_error', repo.slug) : null;
+    if (pause)
+      out.push(
+        entry('github.pause', 'github', `Deploy pause on ${repo.github}`, 'attention', {
+          repo: repo.slug,
+          detail: `the deploy pause can’t be synced: ${pause}`,
+          at: checked,
+          fix:
+            pause === PAUSE_PERMISSION
+              ? permissionsFix(
+                  comparePermissions({}, { pipeline: true }).filter((p) => p.name === 'variables'),
+                  app.name ?? install(this.env).name,
+                )
+              : `The next sync tries again. If it keeps failing, look at the variables on GitHub: ${repo.github} → Settings → Secrets and variables → Actions.`,
+          link: appSettingsUrl(app.slug),
+        }),
+      );
     out.push(
       entry('github.automerge', 'github', `Allow auto-merge on ${repo.github}`, r.autoMerge ? 'working' : 'attention', {
         repo: repo.slug,
