@@ -1212,6 +1212,8 @@ export const githubMethods = {
       }),
       // What the runs staged on npm, and whether each is published yet (BRK-101); empty without a package.
       packages: this.packagesOf(repo.slug).versions,
+      // The npm package Release offers on (BRK-103), or null: Packages then says how to turn it on (WEB-81).
+      releasePackage: packageOf(repo)?.name ?? null,
       releases: JSON.parse(this.ghMeta('gh_releases', repo.slug) ?? '[]'),
       tags: JSON.parse(this.ghMeta('gh_tags', repo.slug) ?? '[]'),
       // Prepare the next minor or major (BRK-100), where the pre-releases count from package.json's version.

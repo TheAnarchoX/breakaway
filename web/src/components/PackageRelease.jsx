@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
 import { TriangleAlert } from 'lucide-preact';
 import { api } from '../lib/api.js';
-import { githubRepoFacts, loadGitHub, toast } from '../lib/store.js';
+import { releaseSetups } from '../lib/github-scope.js';
+import { githubRepoFacts, loadGitHub, repoSettingsHref, toast } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
 
 /*
@@ -177,4 +178,28 @@ export function PackageRelease({ v, versions = [] }) {
       {open && <ReleaseDialog v={v} onClose={() => setOpen(false)} />}
     </span>
   );
+}
+
+/**
+ * Why pre-releases have no Release, and where to turn it on (WEB-81): one line for each repository in view whose
+ * pipeline names no npm package, linking to its settings, where the release flow takes one. `view` is the GitHub
+ * view's (scopeGitHub). Nothing when every repository in view has Release, or has no pre-release it would offer.
+ * @param {Record<string, any>} props
+ */
+export function ReleaseSetup({ view }) {
+  const setups = releaseSetups(view);
+  if (!setups.length) return null;
+  return setups.map((r) => (
+    <p key={r.slug} class="meta pkg-setup">
+      To release {r.packages.length === 1 ? 'a pre-release' : 'pre-releases'} of{' '}
+      {r.packages.map((name, i) => (
+        <span key={name}>
+          {i > 0 && (i === r.packages.length - 1 ? ' or ' : ', ')}
+          <code>{name}</code>
+        </span>
+      ))}{' '}
+      as stable from here, name the npm package in the release flow in{' '}
+      <a href={repoSettingsHref(r.slug)}>{r.name}’s settings</a>. Then each pre-release has Release.
+    </p>
+  ));
 }

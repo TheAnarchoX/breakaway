@@ -161,3 +161,31 @@ export function latestPackages(view) {
     (a, b) => String(a.repo ?? '').localeCompare(String(b.repo ?? '')) || a.name.localeCompare(b.name),
   );
 }
+
+/** A pre-release the release flow stages and Release offers, `X.Y.Z-main.N` (src/release.js stableOf). */
+const RELEASABLE = /^\d+\.\d+\.\d+-main\.\d+$/u;
+
+/**
+ * Where Release is missing because the release flow is off (WEB-81): each repository in view whose pipeline names no
+ * npm package (`releasePackage` null) but whose feed has pre-releases Release would offer, with those packages' names.
+ * An answer from before `releasePackage` says nothing, so it's left out. `view` is scopeGitHub's.
+ * @returns {{ slug: string, name: string, packages: string[] }[]}
+ */
+export function releaseSetups(view) {
+  if (!view) return [];
+  const shown = view.all ? (view.repos ?? []) : [view];
+  return shown
+    .filter((r) => r.releasePackage === null)
+    .map((r) => ({
+      slug: r.slug,
+      name: r.name,
+      packages: [
+        ...new Set(
+          (view.packages ?? [])
+            .filter((v) => (v.repo ?? r.slug) === r.slug && RELEASABLE.test(String(v.version)))
+            .map((v) => v.name),
+        ),
+      ].sort(),
+    }))
+    .filter((r) => r.packages.length > 0);
+}

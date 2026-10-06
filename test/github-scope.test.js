@@ -6,6 +6,7 @@ import {
   isPrerelease,
   latestPackages,
   pickTab,
+  releaseSetups,
   repoFacts,
   runState,
   scopeGitHub,
@@ -290,5 +291,32 @@ describe('packages on the GitHub view', () => {
       'runs',
       'commits',
     ]);
+  });
+
+  it('says where Release is missing because a repository’s pipeline names no package (WEB-81)', () => {
+    const packages = [
+      ver('widgets', 'widgets', '1.3.0-main.5', '2026-10-04T10:00:00Z', 'staged'),
+      ver('widgets', 'widgets', '1.3.0-main.4', '2026-10-03T10:00:00Z'),
+      ver('widgets', '@acme/kit', '0.2.0', '2026-10-04T09:00:00Z'),
+      ver('scratch', 'scratch', '0.1.0-main.2', '2026-10-04T08:00:00Z'),
+      ver('scratch', '@acme/odd', '0.1.0-rc.1', '2026-10-04T08:00:00Z'),
+    ];
+    const one = { slug: 'widgets', name: 'widgets', releasePackage: null, packages: packages.slice(0, 3) };
+    expect(releaseSetups(one)).toEqual([{ slug: 'widgets', name: 'widgets', packages: ['widgets'] }]);
+    // Release is on, or the answer is from before the board said: nothing to say.
+    expect(releaseSetups({ ...one, releasePackage: 'widgets' })).toEqual([]);
+    expect(releaseSetups({ ...one, releasePackage: undefined })).toEqual([]);
+    // Only pre-releases Release would offer count.
+    expect(releaseSetups({ ...one, packages: [packages[2]] })).toEqual([]);
+    const both = {
+      all: true,
+      packages,
+      repos: [
+        { slug: 'widgets', name: 'widgets', releasePackage: 'widgets' },
+        { slug: 'scratch', name: 'scratch', releasePackage: null },
+      ],
+    };
+    expect(releaseSetups(both)).toEqual([{ slug: 'scratch', name: 'scratch', packages: ['scratch'] }]);
+    expect(releaseSetups(null)).toEqual([]);
   });
 });
