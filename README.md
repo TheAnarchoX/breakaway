@@ -16,6 +16,7 @@
   <a href="#chase-a-feature">Chase</a> ·
   <a href="#the-peloton">The peloton</a> ·
   <a href="#in-claude-code">Claude Code and MCP</a> ·
+  <a href="#architect">Architect</a> ·
   <a href="#docs">Docs</a> ·
   <a href="https://leavethepack.dev">Website</a> ·
   <a href="#licence">Licence</a>
@@ -118,6 +119,17 @@ Claude Code asks for your board’s address and its token, which it keeps in you
 
 **Every board is an MCP server** at its own address followed by `/mcp`. Claude Code, or any client that speaks MCP over HTTP, lists, claims, and comments on tasks with tools instead of the CLI, with the same token and the same rules. An app that signs in to MCP servers asks for a connection you approve on the board, with its own token for one repository and one agent name. `npx breakaway mcp` prints the line to add it.
 
+## Architect
+
+**In the 2.0.0 pre-releases.** The board can run what your repositories run on too: environments, plans you approve, and incidents, in an **Infrastructure** view, pushes, and `npx breakaway infra`. Code still ships through the deploy flow; Architect looks after what exists around it.
+
+- **Changed by pull request.** What should exist is a file per environment in `.github/breakaway-infra/`, started from what already runs. A pull request that changes one shows its plan as a check: what changes, what it costs, what else it touches, and whether it can be undone.
+- **You approve, the board applies.** Every plan waits for you by default, and you approve it from your phone. A workflow in the repository applies it, with its write token in a GitHub environment: the board holds only a read-only token, and agents never apply anything. Bounds you approve once on an environment (an envelope) let it scale and restart inside them.
+- **It watches.** Health, the platform's alerts, and cost come in as signals. A critical one opens an incident, a task in the repository that owns what broke, and production's push to your phone. Drift and what nobody owns become plans; nothing changes by itself.
+- **Off until you connect a provider**, Cloudflare first. The board only watches its own install.
+
+[The manual's Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) has the rest.
+
 ## What you get
 
 <table>
@@ -199,6 +211,7 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) | A roadmap of features, a chase that starts agents on what's ready, and agents checking in with each other |
 | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
+| [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) | Environments, plans you approve, envelopes, signals, incidents, and cost, and what agents may and may not do |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
 | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) | The `tasks` skill, `/breakaway:next`, the session hooks, and the MCP server in one install, for you or a whole repository |
 | [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from any app that speaks MCP |
