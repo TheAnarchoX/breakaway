@@ -136,11 +136,39 @@ export const SIGNAL_TEXT_MAX = 500;
  */
 
 /**
+ * One permission a read-only token needs, by the name the platform's token page gives it, and what the board reads
+ * with it. Never a token's value.
+ * @typedef {object} TokenPermission
+ * @property {string} name like `Workers Scripts Read`
+ * @property {string} for what the board reads with it, in a few words
+ */
+
+/**
+ * What a provider's own check of a read-only token found (BRK-194): whether the platform took it and, when the
+ * platform says, every permission it carries, so the board can refuse one that can change things.
+ * @typedef {object} TokenCheck
+ * @property {boolean} ok
+ * @property {Array<{ name: string, level: 'read' | 'write' }>} [permissions]
+ * @property {string} [error] what the platform said, when it refused the token
+ */
+
+/**
+ * The read-only token the board holds for a provider (BRK-171): the owner makes it with exactly `permissions` and
+ * pastes it on Connections (BRK-194). Discover, observe, cost, and events get it; apply never does.
+ * @typedef {object} ReadToken
+ * @property {TokenPermission[]} permissions
+ * @property {string} url where the owner makes one, on the platform
+ * @property {(ctx: { token: string, fetch?: typeof fetch }) => Promise<TokenCheck>} [check] asks the platform about
+ *   a pasted token before the board keeps it
+ */
+
+/**
  * A provider: one platform's adapter.
  * @typedef {object} Provider
  * @property {string} id short and lowercase, like `fake`
  * @property {string} name what people see
  * @property {Record<string, KindSpec>} kinds the resource kinds it discovers and plans
+ * @property {ReadToken} [readToken] the read-only token it needs, if any
  * @property {(ctx: ProviderContext) => Promise<Discovery>} discover
  * @property {(ctx: ProviderContext, desired: DesiredState) => Promise<PlanDiff>} plan
  * @property {(ctx: ProviderContext, plan: PlanDiff) => Promise<ApplyResult>} apply
@@ -179,7 +207,37 @@ export function checkProvider(provider) {
     for (const c of BASE_CHANGES) if (!spec.changes.includes(c)) fail(what, `${kind} can't ${c}`);
     for (const c of spec.changes) if (!CHANGE_KINDS.includes(c)) fail(what, `${kind} has unknown change "${c}"`);
   }
+  if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
   return provider;
+}
+
+/** @param {string} what @param {ReadToken} token */
+function checkReadToken(what, token) {
+  if (!isObject(token)) fail(what, 'readToken is not an object');
+  if (!Array.isArray(token.permissions) || token.permissions.length === 0) fail(what, 'readToken names no permissions');
+  for (const p of token.permissions)
+    if (!isObject(p) || !text(p.name) || !text(p.for)) fail(what, 'a readToken permission has no name or no for');
+  if (typeof token.url !== 'string' || !token.url.startsWith('https://')) fail(what, 'readToken has no https url');
+  if (token.check !== undefined && typeof token.check !== 'function') fail(what, 'readToken check is not a function');
+}
+
+/**
+ * Checks what a provider's `readToken.check` returned, or throws saying what's wrong.
+ * @param {Provider} provider
+ * @param {TokenCheck} result
+ * @returns {TokenCheck}
+ */
+export function checkTokenCheck(provider, result) {
+  const what = `${provider.id} token check`;
+  if (!isObject(result) || typeof result.ok !== 'boolean') fail(what, "doesn't say whether the token works");
+  if (!result.ok && !text(result.error)) fail(what, 'refused the token without saying why');
+  if (result.permissions !== undefined) {
+    if (!Array.isArray(result.permissions)) fail(what, 'permissions is not a list');
+    for (const p of result.permissions)
+      if (!isObject(p) || !text(p.name) || !['read', 'write'].includes(p.level))
+        fail(what, 'a permission has no name, or a level that is neither read nor write');
+  }
+  return result;
 }
 
 /**
