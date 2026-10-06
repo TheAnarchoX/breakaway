@@ -8234,9 +8234,16 @@ a.pl-mention {
 .run-wf-started {
   align-items: flex-start;
 }
-/* Run on a run whose workflow runs by hand (WEB-83), at the end of its line. */
+/* Run on a check on main whose workflow runs by hand (WEB-85), at the end of its line. */
 .gh-run-again {
   margin-left: auto;
+}
+/* Checks on main holds only the dialog and the note that one started: nothing until then. */
+.run-wf-quiet {
+  margin-bottom: 0;
+}
+.run-wf-quiet:empty {
+  display: none;
 }
 .run-wf-started > span {
   flex: 1;

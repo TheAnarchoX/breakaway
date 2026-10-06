@@ -388,9 +388,10 @@ function RunWorkflowDialog({ repos, slug: first, run, deploys, onClose, onStarte
  * Run workflow… above the runs list, and the note that one started. `view` is the GitHub view's (scopeGitHub).
  * In the all-repositories view the dialog asks which; scoped to one, it's that one. A run's Run sets `ask`
  * ({ slug, run, from }: its repository, the run, and the button to focus again), and the dialog opens with them.
+ * Without `bar`, only that: no Run workflow… button, just the dialog and the note that one started (Checks on main).
  * @param {Record<string, any>} props
  */
-export function RunWorkflow({ view, ask = null, onAsked = () => {} }) {
+export function RunWorkflow({ view, ask = null, onAsked = () => {}, bar = true }) {
   const [open, setOpen] = useState(/** @type {false | { slug?: string, run?: any }} */ (false));
   const [started, setStarted] = useState(/** @type {Record<string, string> | null} */ (null));
   const button = useRef(/** @type {HTMLButtonElement | null} */ (null));
@@ -426,28 +427,30 @@ export function RunWorkflow({ view, ask = null, onAsked = () => {} }) {
     setTimeout(() => loadGitHub(), 7000);
   };
   return (
-    <div class="run-wf">
-      <div class="run-wf-bar">
-        <button
-          ref={button}
-          type="button"
-          class="btn btn-outline btn-sm"
-          disabled={!actions.ok}
-          aria-describedby={actions.ok ? undefined : why}
-          onClick={() => {
-            setStarted(null);
-            setOpen({});
-          }}
-        >
-          <Play size={16} aria-hidden="true" />
-          Run workflow…
-        </button>
-        {!actions.ok && (
-          <span id={why} class="meta">
-            {actions.reason}
-          </span>
-        )}
-      </div>
+    <div class={bar ? 'run-wf' : 'run-wf run-wf-quiet'}>
+      {bar && (
+        <div class="run-wf-bar">
+          <button
+            ref={button}
+            type="button"
+            class="btn btn-outline btn-sm"
+            disabled={!actions.ok}
+            aria-describedby={actions.ok ? undefined : why}
+            onClick={() => {
+              setStarted(null);
+              setOpen({});
+            }}
+          >
+            <Play size={16} aria-hidden="true" />
+            Run workflow…
+          </button>
+          {!actions.ok && (
+            <span id={why} class="meta">
+              {actions.reason}
+            </span>
+          )}
+        </div>
+      )}
       {started && (
         <div class="gh-ok run-wf-started" role="status">
           <CircleCheck size={16} aria-hidden="true" />
