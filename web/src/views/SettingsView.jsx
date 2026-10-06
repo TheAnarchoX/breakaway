@@ -1,5 +1,5 @@
 import { useEffect } from 'preact/hooks';
-import { FolderPlus, Keyboard, LogOut, Plug, RefreshCw } from 'lucide-preact';
+import { CircleArrowUp, FolderPlus, Keyboard, LogOut, Plug, RefreshCw } from 'lucide-preact';
 import { plural } from '../lib/model.js';
 import {
   agents,
@@ -28,6 +28,7 @@ import {
 import { notifications, turnOffNotifications, turnOnNotifications } from '../lib/push.js';
 import { AgentSettings, RoutinesDailyCap, RoutinesSwitch } from '../components/BoardSettings.jsx';
 import { SelfUpdateSwitch } from '../components/SelfUpdate.jsx';
+import { openWhatsNew, whatsNew } from '../components/WhatsNew.jsx';
 import { Segmented } from '../components/ui.jsx';
 import { Pick as PickRepo } from './AddRepoView.jsx';
 
@@ -295,7 +296,10 @@ function Repositories() {
   );
 }
 
-/** The server's health, the way to Connections, Refresh, Shortcuts, and Sign out, as the dialog's foot had them. */
+/**
+ * The server's health, the way to Connections, Refresh, Shortcuts, and Sign out, as the dialog's foot had them, and
+ * What's new when the board's files have notes for the release it runs (WEB-80).
+ */
 function Foot() {
   const h = health.value;
   const n = connectionsAttention.value;
@@ -327,6 +331,12 @@ function Foot() {
         </a>
       </div>
       <div class="settings-actions">
+        {whatsNew.value && (
+          <button type="button" class="btn btn-quiet btn-sm" onClick={openWhatsNew}>
+            <CircleArrowUp size={16} aria-hidden="true" />
+            See what’s new
+          </button>
+        )}
         <button
           type="button"
           class="btn btn-quiet btn-sm"

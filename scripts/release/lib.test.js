@@ -9,8 +9,52 @@ import {
   manualSection,
   nextPrerelease,
   nextVersion,
+  prsFromSubjects,
   stableOf,
+  whatsNewOf,
 } from './lib.js';
+
+describe('prsFromSubjects', () => {
+  it("reads squash merges' titles and numbers, and leaves other commits out", () => {
+    expect(
+      prsFromSubjects('WEB-12: Sort the inbox by age (#40)\nMerge branch main\nKeep claims (#31) \n\nFix (#x)'),
+    ).toEqual([
+      { number: 40, title: 'WEB-12: Sort the inbox by age' },
+      { number: 31, title: 'Keep claims' },
+    ]);
+  });
+});
+
+describe('whatsNewOf', () => {
+  const notes = '## breakaway v1.5.0-main.38\n\n### Web\n\n- Sort the inbox by age (WEB-12, #40)\n';
+  const since =
+    '## breakaway v1.5.0\n\n### Board\n\n- Keep claims (BRK-3, #31)\n\n### Web\n\n- Sort the inbox by age (WEB-12, #40)\n';
+  it("carries this pre-release's notes and the notes since the last stable, without their headings", () => {
+    expect(
+      whatsNewOf({ version: '1.5.0-main.38', notes, sinceStable: since, from: 'v1.4.0', repository: 'acme/widgets' }),
+    ).toEqual({
+      version: '1.5.0-main.38',
+      repository: 'acme/widgets',
+      main: { notes: '### Web\n\n- Sort the inbox by age (WEB-12, #40)', changes: 1 },
+      stable: {
+        version: '1.5.0',
+        from: '1.4.0',
+        notes: '### Board\n\n- Keep claims (BRK-3, #31)\n\n### Web\n\n- Sort the inbox by age (WEB-12, #40)',
+        changes: 2,
+      },
+    });
+  });
+  it('counts no changes when nothing merged, and leaves out a repository that is not owner/name', () => {
+    const empty = '## breakaway v1.5.0-main.39\n\nNo merged pull requests since the last release.\n';
+    const out = whatsNewOf({ version: '1.5.0-main.39', notes: empty, sinceStable: empty, repository: 'no good' });
+    expect(out.repository).toBeUndefined();
+    expect(out.main).toEqual({ notes: 'No merged pull requests since the last release.', changes: 0 });
+    expect(out.stable.from).toBeNull();
+  });
+  it('refuses a version that is not a pre-release', () => {
+    expect(() => whatsNewOf({ version: '1.5.0', notes, sinceStable: since })).toThrow(/pre-release/);
+  });
+});
 
 describe('nextPrerelease', () => {
   it("starts at main.1 of package.json's version", () => {

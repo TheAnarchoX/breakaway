@@ -105,3 +105,48 @@ export function importedPackages(texts) {
   }
   return [...names].sort();
 }
+
+/**
+ * The pull requests a range of squash-merged commits carries, from their subjects (`git log --format=%s`): a squash
+ * merge's subject is the pull request's title and ` (#31)`. The notes since the last stable read them so, without a
+ * request per pull request, which would spend the workflow token's rate limit on every merge. Other commits are left out.
+ * @param {string} text one subject per line
+ * @returns {{ number: number, title: string }[]}
+ */
+export function prsFromSubjects(text) {
+  const prs = [];
+  for (const subject of String(text ?? '').split('\n')) {
+    const m = /^(.+?)\s*\(#(\d+)\)\s*$/u.exec(subject);
+    if (m) prs.push({ number: Number(m[2]), title: m[1].trim() });
+  }
+  return prs;
+}
+
+/** Release notes without their `## breakaway v1.4.0` heading, and how many changes they list. */
+function notesBody(text) {
+  const body = String(text ?? '')
+    .replace(/\r\n?/gu, '\n')
+    .replace(/^\s*## [^\n]*\n?/u, '')
+    .trim();
+  return { notes: body, changes: body.split('\n').filter((line) => /^- /u.test(line)).length };
+}
+
+/**
+ * whats-new.json (WEB-80): what the board shows after it updates, written into the web app's files when a
+ * pre-release is built, so an install reads it from its own bundle and makes no call to learn it. A stable is the
+ * pre-release's bundle unchanged, so the file carries both: `main`, this pre-release's notes, and `stable`, the notes
+ * since the last stable, which is what the stable this pre-release becomes lists.
+ * @param {{ version: string, notes: string, sinceStable: string, from?: string | null, repository?: string | null }} o
+ */
+export function whatsNewOf({ version, notes, sinceStable, from = null, repository = null }) {
+  return {
+    version,
+    ...(repository && /^[\w.-]+\/[\w.-]+$/u.test(repository) ? { repository } : {}),
+    main: notesBody(notes),
+    stable: {
+      version: stableOf(`v${version}`),
+      from: from ? from.replace(/^v/u, '') : null,
+      ...notesBody(sinceStable),
+    },
+  };
+}
