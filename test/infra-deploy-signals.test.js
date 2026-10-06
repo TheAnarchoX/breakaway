@@ -58,7 +58,7 @@ const signals = async (query) => {
 
 describe('deploySignal', () => {
   const staging = { name: 'staging', id: 3, production: false };
-  const production = { name: 'production', id: null, production: true };
+  const production = { name: 'production', id: 4, production: true };
   const deploy = (over = {}) => ({
     env: 'widgets-staging',
     sha: 'a'.repeat(40),
@@ -88,7 +88,7 @@ describe('deploySignal', () => {
   it('makes a failed production deploy critical', () => {
     expect(deploySignal(deploy({ env: 'widgets' }), 'in_progress', production)).toMatchObject({
       environment: 'production',
-      environmentId: null,
+      environmentId: 4,
       kind: 'alert',
       level: 'critical',
     });
@@ -113,7 +113,7 @@ describe('deploySignal', () => {
       ),
     ).toMatchObject({
       environment: 'production',
-      environmentId: null,
+      environmentId: 4,
       kind: 'health',
       level: 'info',
       text: 'widgets rolled back to version 0a1b2c3d: rolled back: 500s',
@@ -137,19 +137,15 @@ describe('deploySignal', () => {
 describe("the deploy flow's signals", () => {
   let spy;
   let stagingId;
+  let productionId;
   beforeAll(async () => {
+    // The pipeline's staging and production environments come with it (BRK-195).
     await setPipeline();
-    const created = await inStore((store) =>
-      store.environmentsCreateApi({
-        repo: 'widgets',
-        name: 'staging',
-        kind: 'staging',
-        provider: 'cloudflare',
-        target: 'widgets-staging',
-      }),
-    );
-    expect(created.status).toBe(201);
-    stagingId = created.body.environment.id;
+    const environments = await inStore((store) => store.environmentsApi({ repo: 'widgets' }));
+    const byName = Object.fromEntries(environments.body.environments.map((e) => [e.name, e]));
+    expect(byName.staging).toMatchObject({ target: 'widgets-staging', pipeline: 'staging' });
+    stagingId = byName.staging.id;
+    productionId = byName.production.id;
   });
   beforeEach(() => {
     spy = mockGitHub();
@@ -186,12 +182,7 @@ describe("the deploy flow's signals", () => {
     expect(await signals('environment=staging')).toHaveLength(1);
   });
 
-  it("puts production's on production by name until an environment targets its Worker, and skips a Worker nothing names", async () => {
-    // An environment called production that targets no Worker isn't the pipeline's: its ID is never guessed from a name.
-    const named = await inStore((store) =>
-      store.environmentsCreateApi({ repo: 'widgets', name: 'production', kind: 'production', provider: 'cloudflare' }),
-    );
-    expect(named.status).toBe(201);
+  it("puts production's on the pipeline's production environment, and skips a Worker nothing names", async () => {
     record('widgets', 'd'.repeat(40), 'success', 'rolled back: 500s', 'rollback');
     record('widgets', 'e'.repeat(40), 'success', 'version 2a3b4c5d-1111-2222-3333-444455556666 · migrations none');
     record('widgets', '2'.repeat(40), 'failure', 'rolled back: version 3a4b5c6d failed its check');
@@ -199,8 +190,8 @@ describe("the deploy flow's signals", () => {
     await sync();
     const production = await signals('environment=production');
     expect(production.map((s) => [s.kind, s.level, s.environmentId, s.resource])).toEqual([
-      ['alert', 'critical', null, 'widgets'],
-      ['health', 'info', null, 'widgets'],
+      ['alert', 'critical', productionId, 'widgets'],
+      ['health', 'info', productionId, 'widgets'],
     ]);
     expect(await signals('resource=somewhere-else')).toEqual([]);
   });

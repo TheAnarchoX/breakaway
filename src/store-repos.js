@@ -368,6 +368,7 @@ export const reposMethods = {
         current.slug,
       );
       this.repoCache = null;
+      this.ensurePipelineEnvironments(current.slug); // a pipeline's staging and production (BRK-195)
       // A new area may give waiting tasks (made in Taskwarrior before it existed) their work IDs.
       this.assignMissingWids();
       return ok({ repo: this.repoBySlug(current.slug) });

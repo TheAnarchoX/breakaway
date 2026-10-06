@@ -226,6 +226,12 @@ describe('Turn on deploys', () => {
     const view = await overview();
     expect(view.pipeline).toEqual({ staging: 'widgets-staging', production: 'widgets' });
     expect(view.pipelineFound).toBeNull();
+    // Its staging and production come with it, as environments on its Workers (BRK-195).
+    const { environments } = await body(await api('infra/environments?repo=widgets'));
+    expect(environments.map((e) => [e.name, e.kind, e.provider, e.target, e.pipeline])).toEqual([
+      ['production', 'production', 'cloudflare', 'widgets', 'production'],
+      ['staging', 'staging', 'cloudflare', 'widgets-staging', 'staging'],
+    ]);
     // A second press changes nothing.
     expect(await press({ pipeline: PIPELINE })).toMatchObject({ code: 409, error: /has a pipeline already/u });
   });
