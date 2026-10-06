@@ -137,14 +137,33 @@ const signal = (id, fields = {}) => ({
   ...fields,
 });
 
-const task = (wid, fields = {}) => ({
-  uuid: `${wid.toLowerCase()}-0000-0000-0000-000000000000`,
-  wid,
-  description: `Task ${wid}`,
-  status: 'pending',
-  tags: [],
-  claim: null,
+/** An incident as GET /api/infra/incidents answers it (BRK-197), on its diagnose step. */
+const incident = (id, fields = {}) => ({
+  id,
+  task: null,
   repo: 'widgets',
+  environment: 'production',
+  environmentId: 1,
+  environmentKind: 'production',
+  resource: 'svc-api',
+  kind: 'health',
+  level: 'critical',
+  signal: 7,
+  signals: 1,
+  pushed: true,
+  opened: AT,
+  lastSignal: AT,
+  recovered: null,
+  closed: null,
+  steps: [
+    { step: 'diagnose', state: 'now' },
+    { step: 'propose', state: 'next' },
+    { step: 'approve', state: 'next' },
+    { step: 'apply', state: 'next' },
+    { step: 'verify', state: 'next' },
+    { step: 'write-up', state: 'next' },
+  ],
+  plans: [],
   ...fields,
 });
 
@@ -220,16 +239,25 @@ const ROUTES = {
       },
     ],
   },
-  'tasks?status=pending': {
-    tasks: [
-      task('WID-41', {
-        tags: ['incident'],
-        description: 'widgets-api failed its health check',
-        claim: 'claude-wid-41',
+  'infra/incidents?repo=widgets&open=true': {
+    incidents: [
+      incident(41, {
+        task: { uuid: 'wid-41', wid: 'WID-41', description: 'widgets-api failed its health check', status: 'pending' },
+        signals: 3,
       }),
-      task('WID-42'),
-      task('GAD-3', { tags: ['incident'], repo: 'gadgets' }),
     ],
+    more: true,
+  },
+  'infra/incidents?repo=widgets&open=false': { incidents: [], more: false },
+  'infra/incidents?open=true': {
+    incidents: [
+      incident(42, {
+        repo: 'gadgets',
+        environment: 'staging',
+        task: { uuid: 'gad-3', wid: 'GAD-3', description: 'A gadget is down', status: 'pending' },
+      }),
+    ],
+    more: false,
   },
 };
 
@@ -246,7 +274,7 @@ function board(routes = ROUTES) {
 
 const read = (args, { repo = 'widgets', opts = {}, routes } = {}) => {
   const b = board(routes);
-  return infraRead(args, { get: b.get, repo, opts, inRepo: (t) => t.repo === repo }).then((r) => ({ ...r, b }));
+  return infraRead(args, { get: b.get, repo, opts }).then((r) => ({ ...r, b }));
 };
 
 describe('infra: the environments (CLI-13)', () => {
@@ -419,17 +447,54 @@ describe('infra signals (CLI-13)', () => {
   });
 });
 
-describe('infra incidents (CLI-13)', () => {
-  it('lists the checkout’s open tasks tagged +incident', async () => {
-    const { text, data } = await read(['incidents']);
-    expect(data.incidents.map((t) => t.wid)).toEqual(['WID-41']);
-    expect(text).toContain('WID-41    widgets-api failed its health check  (claimed by claude-wid-41)');
+describe('infra incidents (CLI-13, BRK-203)', () => {
+  it('lists the checkout’s open incidents from the board’s incidents, with the step each is on', async () => {
+    const { text, data, b } = await read(['incidents']);
+    expect(b.asked).toEqual(['infra/incidents?repo=widgets&open=true']);
+    expect(data.incidents.map((i) => i.task.wid)).toEqual(['WID-41']);
+    expect(text).toContain(
+      'WID-41    widgets-api failed its health check  (critical health in production · svc-api; now: diagnose; 3 signals)',
+    );
+    expect(text).toContain('Older: npx breakaway infra incidents --before 41');
   });
 
-  it('says what an incident is when there are none', async () => {
-    const { text } = await read(['incidents'], { routes: { 'tasks?status=pending': { tasks: [task('WID-42')] } } });
+  it('names a failed step, health that’s back, and a closed one', async () => {
+    const steps = (state) => [
+      { step: 'diagnose', state: 'done' },
+      { step: 'apply', state },
+    ];
+    const routes = {
+      'infra/incidents?repo=widgets': {
+        incidents: [
+          incident(3, { steps: steps('failed') }),
+          incident(2, { recovered: AT, steps: steps('done') }),
+          incident(1, { closed: AT, steps: steps('skipped') }),
+        ],
+        more: false,
+      },
+    };
+    const { text } = await read(['incidents'], { opts: { status: 'all' }, routes });
+    expect(text.split('\n').slice(0, 3)).toEqual([
+      '#3          (critical health in production · svc-api; apply failed)',
+      '#2          (critical health in production · svc-api; health is back)',
+      '#1          (critical health in production · svc-api; closed)',
+    ]);
+  });
+
+  it('reads every repository’s with --all, and says what an incident is when there are none', async () => {
+    expect((await read(['incidents'], { opts: { all: true } })).text).toContain('GAD-3     A gadget is down');
+    const { text } = await read(['incidents'], { opts: { status: 'completed' } });
     expect(text).toBe(
-      'No open incidents in widgets. A signal that crosses a rule opens one, as a task tagged +incident.',
+      'No closed incidents in widgets. A signal that crosses a rule opens one, as a task tagged +incident.',
+    );
+    await expect(read(['incidents'], { opts: { status: 'waiting' } })).rejects.toThrow(
+      'infra incidents --status takes pending, completed, or all, not "waiting".',
+    );
+  });
+
+  it('says so on a board from before incidents', async () => {
+    await expect(read(['incidents'], { routes: {} })).rejects.toThrow(
+      'this board doesn’t have incidents yet: its owner updates it to a release that does, then try again.',
     );
   });
 });
