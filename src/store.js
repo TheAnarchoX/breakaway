@@ -63,6 +63,7 @@ import { infraEnvironmentsMethods } from './store-infra-environments.js';
 import { infraDesiredMethods } from './store-infra-desired.js';
 import { infraInventoryMethods } from './store-infra-inventory.js';
 import { infraLocksMethods } from './store-infra-locks.js';
+import { infraCheckMethods } from './store-infra-check.js';
 import { infraPlansMethods } from './store-infra-plans.js';
 import { infraPolicyMethods } from './store-infra-policy.js';
 import { infraDriftMethods } from './store-infra-drift.js';
@@ -1431,6 +1432,7 @@ Object.assign(
   infraLocksMethods,
   infraAuditMethods,
   infraPlansMethods,
+  infraCheckMethods,
   infraPolicyMethods,
   infraDriftMethods,
 );
