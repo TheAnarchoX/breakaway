@@ -6,7 +6,8 @@
  * waits for the owner and is still up to date: one whose desired state hasn't moved to a new commit since it was
  * planned, and, for a drift plan, one that still matches the drift. An out-of-date plan is refused with words saying
  * to reject it, so a fresh plan is drafted; the board never rejects a plan by itself. Approving keeps the plan's digest
- * (planDigest() in src/infra-runner.js), which the apply runner's reports must carry (BRK-183).
+ * (planDigest() in src/infra-runner.js), which the apply runner's reports must carry, and queues the plan for the
+ * executor (BRK-183, store-infra-runs.js); rejecting takes an approved plan that hasn't started applying off it.
  *
  * A plan that starts waiting for the owner sends one push, linking to it. A plan the repository's policy lets through
  * (BRK-181) is approved by the board when it's made, with the rule that let it through in the audit trail; the
@@ -14,7 +15,7 @@
  */
 import { AgentError } from './store-agents.js';
 import { planDigest } from './infra-runner.js';
-import { planId } from './infra-plans.js';
+import { planId, planView } from './infra-plans.js';
 import { planMessage } from './push.js';
 import { redact } from './redact.js';
 import { install } from './install.js';
@@ -85,11 +86,15 @@ export const infraApprovalsMethods = {
         `${id} is out of date: ${stale}. Reject it, and the next plan is drafted from what’s there now.`,
         409,
       );
-    return this.moveInfraPlan(id, 'approved', {
+    this.moveInfraPlan(id, 'approved', {
       by,
       summary: summary || `approved by the owner; digest ${digest.slice(0, 12)}`,
       digest,
     });
+    // The executor (BRK-183, store-infra-runs.js) applies it: queued now, started by the alarm in a moment.
+    this.queueInfraRun(id);
+    await this.soonInfraRuns();
+    return planView(this.planRow(id));
   },
 
   /**
@@ -148,6 +153,8 @@ export const infraApprovalsMethods = {
         by: 'owner',
         summary: reason ? `rejected by the owner: ${reason}` : 'rejected by the owner; nothing changes',
       });
+      // An approved plan that hasn't started applying leaves the executor's queue.
+      this.sql.exec("DELETE FROM infra_runs WHERE n = ? AND phase = 'queued'", Number(this.planRow(ref).n));
       return { status: 200, body: { plan } };
     });
   },
