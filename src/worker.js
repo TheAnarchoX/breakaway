@@ -563,6 +563,17 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.currencySetApi(body));
     }
   }
+  // Fetch today's rate (BRK-239): only on the owner's press in Settings, from the signed-in browser; it fills the field.
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'currency' &&
+    parts[2] === 'rate' &&
+    parts.length === 3 &&
+    method === 'POST'
+  ) {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can fetch a rate' });
+    return send(await s.currencyRateApi(body));
+  }
   // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
   if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
     return send(await s.infraCheckApi(body));
