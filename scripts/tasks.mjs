@@ -408,6 +408,11 @@ Deploy and release flows   (no board needed: run in the checkout of the reposito
                          example. Never overwrites a file  [--update] replaces what it rendered before  [--dry-run]
   pipeline check         say whether the config is sound and the workflows are what it renders now (exits 1 if not)
 
+Infrastructure   (no board needed: run in the checkout of the repository whose infrastructure the board applies)
+  infra init             render .github/workflows/breakaway-infra.yml, the workflow that applies one approved plan to one
+                         of the environments in .github/breakaway-infra/; the board starts it, agents never do
+                         [--update] replaces what it rendered before  [--dry-run]  [--branch <name>] (default: origin's)
+
 Repositories
   The checkout's repository is the one its origin remote names (git remote get-url origin), matched
   against repos. --repo <slug> or BREAKAWAY_REPO=<slug> picks another, --all shows every repository
@@ -2679,6 +2684,9 @@ if (opts.help || command === 'help') {
 } else if (command === 'pipeline') {
   // A repository's deploy and release workflows (BRK-90): rendered from its own config, so they need no board either.
   process.exitCode = (await import('./tasks/pipeline.js')).run(args, opts);
+} else if (command === 'infra' && (args[0] === 'init' || args[0] === 'runner')) {
+  // Architect's apply runner (CLI-12): init renders it from the checkout; runner is its steps, run only inside it.
+  process.exitCode = await (await import('./tasks/infra.js')).run(args, opts);
 } else if (!commands[command]) {
   fail(`no command "${command}". npx breakaway help lists them.`);
 } else if (!BASE && command !== 'init-secrets' && command !== 'hook' && !(command === 'mcp' && opts.headers)) {

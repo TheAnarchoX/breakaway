@@ -48,7 +48,7 @@
     <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
 <div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
 <div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
-<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/" aria-current="page">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/" aria-current="page">Deploying and updating</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/recovery/">Recovery</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
 <div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/">Privacy</a></li></ul></div>
   </details>
 </nav>
@@ -98,6 +98,7 @@ Deploy -&gt; checks -&gt; wrangler deploy -&gt; /api/ping -&gt; keep it, or go b
 <h2 id="rolling-back"><a class="anchor" href="#rolling-back" aria-label="Link to this section">#</a>Rolling back</h2>
 <p>Deploy checks that the new release answers and goes back by itself when it doesn’t. To go back by hand:</p>
 <ol><li><strong><code>stable</code>:</strong> revert the pull request that moved <code>breakaway.json</code>, and merge the revert. Deploy runs the old release.</li><li><strong>Either channel, right now:</strong> run <code>wrangler rollback &lt;version-id&gt;</code>. The Worker’s versions are on Cloudflare.</li></ol>
+<p>When Deploy can’t run at all, <a href="/docs/recovery/#redeploy-the-board-by-hand">Recover without the board</a> deploys a release by hand.</p>
 <p>The board’s data only changes forward, and only by adding, so an install can always go back one release.</p>
 <h2 id="the-update-feed"><a class="anchor" href="#the-update-feed" aria-label="Link to this section">#</a>The update feed</h2>
 <p>An install reads <strong>one public feed</strong> instead of GitHub’s API, which limits requests per address, and Workers share addresses. This site serves it at <a href="/releases.json"><code>/releases.json</code></a>:</p>
