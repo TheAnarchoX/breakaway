@@ -13,6 +13,7 @@ import { sameSecret } from './auth.js';
 import { ROUTINE_GITHUB_EVENTS, routineEventOf } from './github.js';
 import { planOf } from './plans.js';
 import { repoSlugOf } from './repos.js';
+import { alertFields, alertText, rid } from './infra-cloudflare.js';
 
 const MAX_TRIGGER_BODY = 16 * 1024;
 const MAX_NOTE = 1000;
@@ -53,22 +54,12 @@ export function triggerComment(label, body) {
 
 /**
  * A Cloudflare notification webhook body, cut down to three fields: the alert's name, when it fired, and
- * the Worker it names. Everything else (text, data, account and policy IDs) is dropped. Alert routines are
- * read-only, and the comment says so.
+ * the Worker it names (`alertFields`). Everything else (text, data, account and policy IDs) is dropped. Alert routines
+ * are read-only, and the comment says so.
  */
 export function alertData(body) {
-  const pick = (...values) => values.find((v) => typeof v === 'string' && v.trim()) ?? null;
-  const data = body?.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {};
-  const ts = Number(body?.ts);
-  const at =
-    Number.isFinite(ts) && ts > 0
-      ? new Date(ts < 1e11 ? ts * 1000 : ts)
-      : new Date(pick(body?.timestamp, body?.time) ?? NaN);
-  return {
-    alert: pick(body?.alert_name, body?.policy_name, body?.name, body?.alert_type) ?? 'unnamed alert',
-    time: Number.isNaN(at.getTime()) ? 'unknown' : at.toISOString(),
-    worker: pick(data.script_name, data.worker_name, data.worker, data.service, data.script) ?? 'unknown',
-  };
+  const { alert, at, worker } = alertFields(body);
+  return { alert: alert ?? 'unnamed alert', time: at ?? 'unknown', worker: worker ?? 'unknown' };
 }
 
 const SLUG = /^[a-z][a-z0-9-]{0,39}$/u;
@@ -674,6 +665,17 @@ export const routinesMethods = {
         throw new AgentError('the body must be a JSON object', 400);
     }
     if (source === 'cloudflare') {
+      // The alert joins Architect's signals too (BRK-191), whether or not the routine starts a run.
+      const fields = alertFields(body);
+      try {
+        await this.recordProviderAlert('cloudflare', routine.repo || this.defaultRepoSlug(), {
+          at: fields.at,
+          resource: fields.worker ? rid('worker', fields.worker) : null,
+          text: alertText(fields.alert, fields.worker),
+        });
+      } catch (error) {
+        console.error(`the alert for ${routine.slug} didn’t become a signal: ${error.message}`);
+      }
       const comment = triggerComment(trigger.label, { data: alertData(body) });
       return this.deliverTrigger(
         routine,

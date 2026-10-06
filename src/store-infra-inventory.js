@@ -9,10 +9,11 @@
 import { AgentError } from './store-agents.js';
 import { install } from './install.js';
 import { redact } from './redact.js';
-import { checkCosts, checkDiscovery, checkHealth } from './infra-provider.js';
+import { checkCosts, checkDiscovery, checkHealth, checkSignals } from './infra-provider.js';
 import { MAX_RESOURCES, redactAttrs, resourceView, scopeDiscovery } from './infra-inventory.js';
 import { costInCurrency } from './infra-currency.js';
 import { runsTheBoard } from './infra-environments.js';
+import { DAY, SIGNAL_RAW_DAYS, healthSignals } from './infra-signals.js';
 
 /** @typedef {import('./infra-provider.js').ProviderRegistry} ProviderRegistry */
 
@@ -53,6 +54,10 @@ export const infraInventoryMethods = {
    * in one transaction. Every environment is discovered before anything is written, so a discovery that fails leaves
    * the inventory as it was. Health and cost are best effort: when `observe` or `cost` fails, a resource keeps its
    * last values.
+   *
+   * Then the signals (BRK-191): a resource that's degraded or down, or healthy again, becomes a health signal, and the
+   * provider's `events` since the last refresh (its alerts) join the stream, one of each. Connections shows whether
+   * that worked, as the provider's last signal.
    * @param {string} providerId
    * @param {{ registry?: ProviderRegistry }} [options] tests pass a registry with the fake provider
    */
@@ -69,6 +74,33 @@ export const infraInventoryMethods = {
     const slices = [];
     /** @type {Set<string>} */
     const missing = new Set();
+    const now = Date.now();
+    /** @type {Map<number, Map<string, string | null>>} each environment's last health, by resource */
+    const lastHealth = new Map();
+    /** @type {Map<number, number>} when each environment was last refreshed */
+    const lastSeen = new Map();
+    for (const row of this.sql
+      .exec('SELECT environment, rid, health, seen FROM infra_inventory WHERE provider = ?', providerId)
+      .toArray()) {
+      const env = Number(row.environment);
+      if (!lastHealth.has(env)) lastHealth.set(env, new Map());
+      lastHealth.get(env)?.set(row.rid, row.health ?? null);
+      lastSeen.set(env, Math.max(lastSeen.get(env) ?? 0, Number(row.seen)));
+    }
+    /** @type {{ message: string, permission?: string } | null} the first thing about signals that failed */
+    let signalFailed = null;
+    /** A read for the signals that may fail without failing the refresh: Connections says what went wrong. */
+    const heard = async (what, environment, fn) => {
+      try {
+        return await fn();
+      } catch (error) {
+        signalFailed ??= {
+          message: `${provider.name} couldn’t ${what} ${environment.repo}’s ${environment.name}: ${redact(error?.message ?? error)}`,
+          ...(typeof error?.permission === 'string' ? { permission: error.permission } : {}),
+        };
+        return null;
+      }
+    };
     for (const environment of environments) {
       if (!environment.target) continue;
       const ctx = {
@@ -97,11 +129,17 @@ export const infraInventoryMethods = {
           409,
         );
       const seen = { ...ctx, resources: found.resources };
-      const health = await tryCall(async () => checkHealth(provider, await provider.observe(seen)));
+      const health = await heard('observe', environment, async () =>
+        checkHealth(provider, await provider.observe(seen)),
+      );
       const costs = await tryCall(async () => checkCosts(provider, await provider.cost(seen)));
-      slices.push({ environment, found, health, costs });
+      // Alerts since the last refresh, or as far back as the stream keeps them.
+      const since = new Date(Math.max(lastSeen.get(environment.id) ?? 0, now - SIGNAL_RAW_DAYS * DAY)).toISOString();
+      const alerts = await heard('read the alerts of', environment, async () =>
+        checkSignals(provider, seen, since, await provider.events(seen, since)),
+      );
+      slices.push({ environment, found, health, costs, alerts });
     }
-    const now = Date.now();
     let count = 0;
     this.ctx.storage.transactionSync(() => {
       const before = new Map(
@@ -149,6 +187,36 @@ export const infraInventoryMethods = {
       }
     });
     await this.infraConnectionSeen(providerId, 'discovery', { ok: true, missing: [...missing] });
+    for (const { environment, found, health, alerts } of slices) {
+      const where = { source: providerId, environment: environment.name, environmentId: environment.id };
+      const ids = new Set(found.resources.map((r) => r.id));
+      if (health)
+        await heard('record the health of', environment, () =>
+          this.recordSignals(
+            healthSignals(
+              where,
+              health.filter((h) => ids.has(h.resource)),
+              lastHealth.get(environment.id),
+            ),
+          ),
+        );
+      if (alerts?.length)
+        await heard('record the alerts of', environment, () =>
+          this.recordAlertSignals(alerts.map((a) => ({ ...a, environmentId: environment.id }))),
+        );
+    }
+    if (slices.length)
+      await this.infraConnectionSeen(
+        providerId,
+        'signal',
+        signalFailed
+          ? {
+              ok: false,
+              error: signalFailed.message,
+              missing: signalFailed.permission ? [signalFailed.permission] : [],
+            }
+          : { ok: true },
+      );
     return { provider: providerId, environments: slices.length, resources: count, at: new Date(now).toISOString() };
   },
 
