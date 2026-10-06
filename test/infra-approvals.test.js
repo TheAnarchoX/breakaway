@@ -141,6 +141,15 @@ describe('approving and rejecting a plan (BRK-182)', () => {
     // Approving it sends nothing more.
     await board(`infra/plans/${plan.id}/approve`, { method: 'POST', body: {} });
     expect(sent).toHaveLength(1);
+    // The owner approving a draft from its page puts it in front of themselves quietly: no push to the phone in hand.
+    const read = await draft(5);
+    const quiet = await body(
+      await board(`infra/plans/${read.id}`, { method: 'PATCH', body: { state: 'waiting', quiet: true } }),
+    );
+    expect(quiet.plan.state).toBe('waiting');
+    expect(sent).toHaveLength(1);
+    expect((await audit(read.id)).map((e) => e.kind)).toEqual(['plan', 'plan']);
+    await board(`infra/plans/${read.id}/reject`, { method: 'POST', body: {} });
   });
 
   it('words the push: the environment, that the plan waits, and why', () => {
@@ -200,7 +209,10 @@ describe('approving and rejecting a plan (BRK-182)', () => {
 
   it('refuses an out-of-date plan, saying to reject it: its desired state moved, or its drift no longer matches', async () => {
     const plan = await waiting(7, 'sha-old');
+    expect((await body(await api(`infra/plans/${plan.id}`))).outOfDate).toBeNull();
     await want(desired(provider, { 'svc-api': { attrs: { instances: 8, version: '1.0.0' } } }), 'sha-new');
+    // The plan page reads why before the owner presses anything.
+    expect((await body(await api(`infra/plans/${plan.id}`))).outOfDate).toMatch(/moved from sha-old to sha-new/u);
     const moved = await body(await board(`infra/plans/${plan.id}/approve`, { method: 'POST', body: {} }));
     expect(moved).toMatchObject({ status: 409, error: /out of date: .*moved from sha-old to sha-new.*Reject it/u });
     expect((await body(await board(`infra/plans/${plan.id}/reject`, { method: 'POST', body: {} }))).plan.state).toBe(

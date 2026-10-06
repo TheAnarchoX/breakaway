@@ -97,11 +97,12 @@ export const infraApprovalsMethods = {
    * the owner: the owner's own press (PATCH /api/infra/plans/<id>), or the board's (a pull request's plan, an envelope
    * outside its bounds).
    * @param {string} ref the plan's ID
-   * @param {{ by: 'owner' | 'board', summary?: string }} input
+   * @param {{ by: 'owner' | 'board', summary?: string, quiet?: boolean }} input `quiet` sends no push: the owner is
+   *   already reading the plan
    */
-  async waitForOwner(ref, { by, summary = '' }) {
+  async waitForOwner(ref, { by, summary = '', quiet = false }) {
     const plan = this.moveInfraPlan(ref, 'waiting', { by, summary });
-    await this.pushInfraPlan(plan);
+    if (!quiet) await this.pushInfraPlan(plan);
     return plan;
   },
 

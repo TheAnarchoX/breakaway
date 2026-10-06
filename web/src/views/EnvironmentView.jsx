@@ -3,6 +3,7 @@ import { ArrowLeft, Boxes, FileCode, History, RefreshCw, Server, Target } from '
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { environmentId, hashFor, navOrder, repoName } from '../lib/store.js';
+import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
 import {
   EnvironmentFlags,
   FreezeButton,
@@ -452,6 +453,8 @@ export function EnvironmentView() {
         <Health health={env.target ? health : null} />
         <EnvironmentFlags env={env} />
       </div>
+
+      <EnvironmentPlans env={env} />
 
       <section class="infra-section" aria-labelledby="infra-resources">
         <h2 id="infra-resources">
