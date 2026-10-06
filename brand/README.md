@@ -97,6 +97,48 @@ The board's own words, the same everywhere, so people learn them once.
 | **free**, **fair source** | The licence: free to use, change, and self-host, and Apache 2.0 two years after each release ([below](#free-and-fair-source)) | open source (until a release turns Apache 2.0) |
 | **you** | The person who runs the board | user, admin, the owner (in the board's own words) |
 
+### Infrastructure words
+
+Architect is the board running infrastructure too: environments, plans you approve, and incidents, in the **Infrastructure** view, pushes, and `npx breakaway infra`. Its words are plain and the same everywhere, like the rest of the list. Say "infrastructure" in the board and the docs; "infra" is fine in commands and code, like "repo".
+
+| Say | Meaning | Don't say |
+| --- | --- | --- |
+| **environment** | A named place a repository runs: **production**, **staging**, or **short-lived** (one task's own) | stack, stage (it collides with the cycling word), resource group, cluster, deployment target |
+| **provider** | A platform you connect so the board can see what runs there, like Cloudflare | vendor, cloud, integration, backend |
+| **plan** | The exact change the board would make to one environment: what changes, what it costs, what else it touches, and whether it can be undone | changeset, proposal, diff (on its own), deployment, blast radius (write "what else it touches") |
+| **approve** / **reject** | Your answer to a plan that waits for you. Only you can, and only from the board. | accept, sign off, LGTM, OK, apply (as your action) |
+| **apply** | What the board does to a plan you approved: a status, never a button | deploy (that's the deploy flow's), execute, run, push |
+| **envelope** | Bounds you approve once on one environment ("2 to 10 instances", "3 restarts a day"); the board scales and restarts inside them without asking you again | autopilot, guardrail, auto-approve, standing approval |
+| **signal** | One thing the board heard about an environment: its health, a platform's alert, or its cost | metric, telemetry, event, log, alert (on its own: that's the platform's word) |
+| **incident** | A task tagged `+incident`, opened when a signal crosses a rule, in the repository that owns what broke | outage (unless it is one), page, sev 1, P1, ticket |
+| **drift** | What runs no longer matches what the repository says should | out of sync (sync is Taskwarrior's), skew |
+| **break-glass** | A change you made by hand outside a plan. The board records it and adds a task to put it in code; it never undoes it. | override, hotfix, manual change, drift (on its own) |
+| **freeze** / **unfreeze** | Stop every change to one environment, envelopes included, until you unfreeze it | lock (that's the board's, inside an apply), pause (that's deploys'), change window, maintenance mode |
+| **observe only** | An environment the board watches and never changes. The board's own install is always observe only. | read-only (that's a token's), monitored, unmanaged |
+| **cost limit** | The most one plan may add to an environment's monthly cost before it waits for you | spend cap, threshold, quota |
+| **budget** | What one environment may cost a month; the board sends a signal near it and over it | spend, burn, bill, allowance |
+
+Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or "single pane of glass". Say what happens instead: "The board applies it." "Production is frozen."
+
+**Buttons.** **Approve**, **Reject**, **Freeze**, and **Unfreeze**, and **Mark as break-glass** on drift. Apply is never a button: you approve, the board applies. Approve is only yours, like Merge. Confirm dialogs ask and say what follows:
+
+- "Approve this plan for production? The board applies it next and rolls back if the health check fails."
+- "Reject this plan? Nothing changes."
+- "Freeze production? Nothing changes there until you unfreeze it."
+
+**A plan's status** reads **Draft**, **Waiting for you**, **Approved**, **Rejected**, **Applying**, **Applied**, **Failed**, or **Rolled back**. A plan says why it waits in words, one rule a line: "Production needs you." "Can't be undone: it deletes the `widgets` database." "Adds €6 a month, over your €5 limit."
+
+**Pushes** follow a ping's: the board's name as the title, then the work ID or environment and what happened, then one line of detail. No levels in capitals ("CRITICAL", "SEV1"), no emoji, no exclamation marks. Only a production incident and a plan that waits for you push; everything else waits quietly in the inbox.
+
+| What | Push |
+| --- | --- |
+| A production incident | **WGT-41: incident in production** · widgets-api failed its health check 3 times since 14:02 UTC. |
+| A plan waits for you | **A plan waits for you in production** · 2 changes to widgets-api, adds €4 a month. |
+| Inside an envelope (inbox only) | Scaled widgets-api to 6 instances, inside its envelope. |
+| A restart cap used up | **A restart waits for you in production** · widgets-api used its 3 restarts today. |
+
+**Amounts** are estimates, so they say so once per view ("Estimated cost"), in the currency you set in Settings, formatted the way your browser formats it: "€4.60 a month", never "4.6 EUR/mo". Write "a month", use tabular figures, and mark a fall with a minus sign: "−€1.20 a month". A converted amount names its rate and when you set it, next to the total, not on every number: "At 1 USD = 0.92 EUR, set 3 Oct." Until you set a currency, amounts are in the provider's, with no rate.
+
 ## Claims that must stay true
 
 Wherever breakaway describes itself, these are the claims, because they're what the board does. If the board changes, change the copy in the same pull request.
@@ -105,12 +147,13 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
 - **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board's MCP server.
 - **Agents ping you when they need you.** The rest waits on the board.
+- **You decide.** Agents claim, build, and open pull requests; you merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Free, and the source is public** ([below](#free-and-fair-source)).
 
-Say these only once they ship: self-hosting on your own Cloudflare account, and the setup guide.
+Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.
 
 **Works with, never "powered by".** breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made or endorse it. Never "official", "partner", "powered by", or a lockup with their logos.
 
@@ -250,6 +293,7 @@ Two open-source families (SIL Open Font License), self-hosted from `@fontsource-
 Before handing back anything people see or read:
 
 - [ ] "breakaway" is lowercase, and the terms match [the word list](#words-breakaway-uses).
+- [ ] Infrastructure copy uses [its words](#infrastructure-words): Approve, Reject, Freeze, and Unfreeze on buttons, never Apply; pushes only for a production incident or a plan that waits; amounts marked as estimates, with the rate when converted.
 - [ ] Headlines are short and end in a full stop; no exclamation marks, no words from the never list.
 - [ ] Every claim is one from [Claims that must stay true](#claims-that-must-stay-true), and nothing counts what someone shipped with it.
 - [ ] Buttons, statuses, and errors are plain; cycling words only in headlines, one per screen at most.

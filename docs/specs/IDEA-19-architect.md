@@ -146,7 +146,7 @@ An **Infrastructure** view next to Board and List (WEB-60): each repository's en
 
 ### Agents
 
-The core gets an incident mode, and the tasks skill learns `infra` and `infra check`: diagnose read only, propose by pull request, never apply, never hold write credentials (BRK-203). Agents on more providers than Claude are a spec of their own (BRK-176); its build is a later idea (BRK-169).
+The core gets an incident mode, and the tasks skill learns `infra` and `infra check`: diagnose read only, propose by pull request, never apply, never hold write credentials (BRK-203). Agents on more providers than Claude are a spec of their own ([BRK-176](BRK-176-agent-providers.md)); its build is a later idea (BRK-169).
 
 ### Recovery
 
