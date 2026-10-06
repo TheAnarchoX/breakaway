@@ -52,6 +52,8 @@ export const PING_KIND_LABEL = {
   stale: 'Stale',
   done: 'Looks done',
   fyi: 'For your information',
+  incident: 'Incident',
+  envelope: 'Inside an envelope',
 };
 /** The inbox's notes about connections (CLD-121). */
 export const NOTICE_LABEL = {
