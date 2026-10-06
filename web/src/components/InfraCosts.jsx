@@ -240,9 +240,10 @@ export function CostOverview({ costs }) {
 /**
  * An environment's cost on its page: this month against its budget, the trend, and the rate. One line in
  * EnvironmentView.
- * @param {{ env: any }} props
+ * A new `tick` reads again (the console's poll, WEB-94).
+ * @param {{ env: any, tick?: number }} props
  */
-export function CostSection({ env }) {
+export function CostSection({ env, tick = 0 }) {
   const [state, setState] = useState(
     /** @type {{ costs: any, error: string | null }} */ ({ costs: null, error: null }),
   );
@@ -255,7 +256,7 @@ export function CostSection({ env }) {
     return () => {
       live = false;
     };
-  }, [env.id]);
+  }, [env.id, tick]);
   const entry = state.costs?.environments.find((e) => e.environmentId === env.id) ?? null;
   const rate = rateLine(state.costs?.currency);
   return (
@@ -273,9 +274,7 @@ export function CostSection({ env }) {
           Adding up the cost…
         </p>
       ) : !entry || entry.cost.resources === 0 ? (
-        <p class="muted">
-          Nothing to add up yet. The board estimates each resource’s cost once it has seen what runs here.
-        </p>
+        <p class="console-quiet">Nothing to add up yet: the board estimates it once it sees what runs.</p>
       ) : (
         <>
           <p class="muted">

@@ -9816,3 +9816,508 @@ a.pl-mention {
     justify-content: center;
   }
 }
+/* The environment console (WEB-94; docs/specs/WEB-94-environment-console.md): a status band, the map and the stream
+   side by side, then a panel each. Flat, hard-edged, tokens only; motion only on arrival and for what's live. */
+.infra-page.console {
+  max-width: var(--maxw);
+  gap: 16px;
+}
+.console-quiet {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.console-band {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+}
+.band-tile {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-left: 1px solid var(--line);
+}
+.band-tile:first-child {
+  border-left: 0;
+}
+.band-tile dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px / 1.2 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.band-tile dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.band-tile .infra-health-line .meta {
+  flex-basis: 100%;
+}
+.band-value {
+  font-weight: 600;
+}
+.band-value.muted {
+  font-weight: 400;
+}
+.band-value .infra-budget {
+  margin-top: 4px;
+}
+.band-frozen {
+  background: var(--surface-2);
+}
+.band-waiting dd a {
+  color: var(--accent);
+}
+.band-agents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.band-agents li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+}
+.band-agents .wid {
+  text-decoration: none;
+}
+.band-agent {
+  font: 500 12.5px / 1.3 var(--font-mono);
+  color: var(--muted);
+}
+.console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 16px;
+  align-items: start;
+}
+.console-panel,
+.console-panels > .infra-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.console-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.console-panel-head h2,
+.console-panels > .infra-section > h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 600 12px / 1.3 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.console-panel-head h2 svg,
+.console-panels > .infra-section > h2 svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.console-panel-head h2 .count,
+.console-panels > .infra-section > h2 .count {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.console-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.console-panels .infra-res,
+.console-panels .infra-facts,
+.console .topo .infra-res {
+  background: var(--bg-2);
+}
+/* The map: a dot grid, three columns, a line per relation. */
+.topo-map-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--bg-2);
+}
+.topo-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  font-family: var(--font-body);
+}
+.topo-dot {
+  fill: var(--line-strong);
+}
+.topo-col-label {
+  font: 600 10px var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  fill: var(--muted);
+}
+.topo-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  transition:
+    opacity var(--dur) var(--ease),
+    stroke var(--dur) var(--ease);
+}
+.topo-edge-produces,
+.topo-edge-consumes {
+  stroke-dasharray: 5 4;
+}
+.topo-edge.is-on {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.topo-edge.is-dim {
+  opacity: 0.35;
+}
+.topo-node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity var(--dur) var(--ease);
+}
+.topo-node.is-dim {
+  opacity: 0.45;
+}
+.topo-node-box {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  transition: stroke var(--dur-fast) var(--ease);
+}
+.topo-node:hover .topo-node-box {
+  stroke: var(--muted);
+}
+.topo-node.is-target .topo-node-box {
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+.topo-node.is-selected .topo-node-box,
+.topo-node:focus-visible .topo-node-box {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.topo-node-bar {
+  fill: var(--faint);
+}
+.topo-health-healthy .topo-node-bar {
+  fill: var(--success);
+}
+.topo-health-degraded .topo-node-bar {
+  fill: var(--warn);
+}
+.topo-health-down .topo-node-bar {
+  fill: var(--danger);
+}
+.topo-health-down .topo-node-box {
+  fill: var(--danger-bg);
+}
+.topo-health-planned .topo-node-box,
+.topo-plan-removes .topo-node-box {
+  stroke-dasharray: 4 3;
+}
+.topo-health-planned .topo-node-box {
+  fill: var(--bg-2);
+}
+.topo-plan-removes .topo-node-name {
+  text-decoration: line-through;
+}
+.topo-node-name {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--text);
+}
+.topo-node-sub,
+.topo-node-cost,
+.topo-node-mark {
+  font: 500 10.5px var(--font-mono);
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.topo-node-cost {
+  fill: var(--text);
+}
+.topo-node-mark.is-adds {
+  fill: var(--success);
+}
+.topo-node-mark.is-changes,
+.topo-node-mark.is-drift {
+  fill: var(--warn);
+}
+.topo-node-mark.is-removes {
+  fill: var(--danger);
+}
+.topo-legend {
+  margin: 0;
+}
+.topo-detail {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  padding-right: 44px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-xs);
+}
+.topo-detail-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.topo-marks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+.topo-mark {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.topo-mark-drift,
+.topo-mark-changes {
+  color: var(--warn);
+}
+.topo-mark-adds {
+  color: var(--success);
+}
+.topo-mark-removes {
+  color: var(--danger);
+}
+.infra-res.is-selected {
+  border-color: var(--accent);
+}
+.infra-res.is-planned {
+  border-style: dashed;
+}
+.topo-signals h5 {
+  margin: 4px 0;
+}
+.topo-signals ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+}
+.topo-signal-level {
+  font: 600 11.5px var(--font-mono);
+}
+.topo-signal-warning .topo-signal-level {
+  color: var(--warn);
+}
+.topo-signal-critical .topo-signal-level {
+  color: var(--danger);
+}
+/* The stream: newest first, what's new slides in from the left. */
+.stream {
+  position: sticky;
+  top: calc(var(--topbar-h) + 12px);
+  max-height: calc(100vh - var(--topbar-h) - 24px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+.stream-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.live-dot.is-off {
+  background: var(--faint);
+}
+.stream-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+}
+.stream-entry {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.stream-entry:last-child {
+  border-bottom: 0;
+}
+.stream-icon {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+  margin-left: -1px;
+  color: var(--muted);
+}
+.stream-level-warning .stream-icon {
+  color: var(--warn);
+}
+.stream-level-critical .stream-icon {
+  color: var(--danger);
+}
+.stream-run .stream-icon,
+.stream-entry.is-live .stream-icon {
+  color: var(--accent);
+}
+.stream-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 4px;
+}
+.stream-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.stream-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 13.5px;
+}
+.stream-label {
+  font-weight: 600;
+}
+.stream-outcome {
+  font: 500 11.5px var(--font-mono);
+  color: var(--muted);
+}
+.stream-now {
+  color: var(--accent);
+}
+.stream-when {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.stream-text {
+  font-size: 13px;
+}
+.stream-from {
+  font-size: 12.5px;
+}
+.stream-more {
+  justify-self: start;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="reduce"]) .stream-entry.is-new {
+    animation: stream-in var(--dur-slow) var(--ease) both;
+  }
+  /* What's live breathes, once every two seconds: far under three flashes a second. */
+  :root:not([data-motion="reduce"]) .live-dot:not(.is-off),
+  :root:not([data-motion="reduce"]) .topo-health-down .topo-node-bar {
+    animation: live-pulse 2s var(--ease) infinite;
+  }
+  :root:not([data-motion="reduce"]) .topo-edge.is-on {
+    stroke-dasharray: 6 6;
+    animation: edge-flow 1.6s linear infinite;
+  }
+}
+@keyframes stream-in {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@media (max-width: 1100px) {
+  .console-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .band-tile:nth-child(4) {
+    border-left: 0;
+  }
+  .band-tile:nth-child(n + 4) {
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 900px) {
+  .console-grid,
+  .console-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stream {
+    position: static;
+    max-height: none;
+  }
+  .stream-list {
+    overflow: visible;
+  }
+}
+@media (max-width: 560px) {
+  .console-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .band-tile:nth-child(n) {
+    border-left: 1px solid var(--line);
+    border-top: 1px solid var(--line);
+  }
+  .band-tile:nth-child(odd) {
+    border-left: 0;
+  }
+  .band-tile:nth-child(-n + 2) {
+    border-top: 0;
+  }
+  .console-panel,
+  .console-panels > .infra-section {
+    padding: 12px;
+  }
+}
+/* Where the owner's actions go (WEB-95): under the band, and under a selected node's detail. */
+.console-band-actions,
+.topo-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.console-band-actions {
+  justify-content: flex-end;
+}
