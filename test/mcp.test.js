@@ -302,6 +302,12 @@ describe('the MCP endpoint (BRK-154)', () => {
         'show_spec',
         'features',
         'pull_request',
+        'infra_environments',
+        'infra_environment',
+        'infra_plans',
+        'infra_plan',
+        'infra_signals',
+        'infra_incidents',
       ]);
       const writes = [
         'next_task',

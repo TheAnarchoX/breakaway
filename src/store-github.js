@@ -226,6 +226,13 @@ export const githubMethods = {
     } else if (slug) {
       repo = this.githubRepo(slug);
     }
+    const answer = {
+      status: 'scheduled',
+      repo: repo?.slug ?? null,
+      isDefault: !repo || repo.slug === this.defaultRepoSlug(),
+    };
+    // Issues are only for routines (BRK-237): the board syncs nothing from them, so nothing to reconcile.
+    if (event === 'issues') return answer;
     if (workflowsChanged && repo) this.dropWorkflows(repo.slug);
     if (event === 'installation' && (action === 'deleted' || action === 'suspend')) this.ghCache = {};
     const dirty = new Set(JSON.parse(this.meta('gh_dirty') ?? '[]'));
@@ -233,7 +240,7 @@ export const githubMethods = {
     this.setMeta('gh_dirty', JSON.stringify([...dirty]));
     const pending = await this.ctx.storage.getAlarm();
     if (!pending) await this.ctx.storage.setAlarm(Date.now() + DEBOUNCE_MS);
-    return { status: 'scheduled', repo: repo?.slug ?? null, isDefault: !repo || repo.slug === this.defaultRepoSlug() };
+    return answer;
   },
 
   /** The repositories webhooks asked to reconcile since the last alarm (null: all of them), and forgets them. */

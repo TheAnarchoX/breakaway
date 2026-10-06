@@ -452,6 +452,7 @@ export function appManifest(origin, repo, name = /** @type {string} */ (DEFAULTS
       statuses: 'read',
       deployments: 'read',
       vulnerability_alerts: 'read',
+      issues: 'read', // routines that start on an opened or reopened issue
     },
     default_events: [
       'pull_request',
@@ -465,6 +466,7 @@ export function appManifest(origin, repo, name = /** @type {string} */ (DEFAULTS
       'deployment',
       'deployment_status',
       'release',
+      'issues',
     ],
   };
 }
@@ -476,6 +478,8 @@ export const ROUTINE_GITHUB_EVENTS = {
   pr_merged: 'a pull request is merged',
   release_published: 'a release is published',
   workflow_failed: 'a workflow run fails',
+  issue_opened: 'an issue is opened',
+  issue_reopened: 'an issue is reopened',
 };
 
 /**
@@ -518,6 +522,22 @@ export function routineEventOf(event, payload) {
         number: w.run_number,
         branch: short(w.head_branch),
         url: short(w.html_url),
+      },
+    };
+  }
+  // GitHub's `issues` events are for issues only; a pull request's own events start pr_merged.
+  if (event === 'issues' && (p.action === 'opened' || p.action === 'reopened') && p.issue && !p.issue.pull_request) {
+    const i = p.issue;
+    const opened = p.action === 'opened';
+    return {
+      event: opened ? 'issue_opened' : 'issue_reopened',
+      // Opened happens once per issue; each reopening is its own, told apart by when it happened.
+      key: opened ? `issue:${i.number}` : `issue:${i.number}:reopened:${short(i.updated_at)}`,
+      data: {
+        event: opened ? 'issue opened' : 'issue reopened',
+        title: short(i.title),
+        number: i.number,
+        url: short(i.html_url),
       },
     };
   }
