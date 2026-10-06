@@ -488,6 +488,22 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'DELETE') return send(await s.kickoffsDeleteApi(parts[1], body));
     if (parts[2] === 'register' && method === 'POST') return send(await s.kickoffsRegisterApi(parts[1], body));
   }
+  // Environments (BRK-174): anyone signed in reads them; adding, renaming, and removing one is the owner's (an agent's
+  // `by` is refused), and freeze, production gates, and observe only are the signed-in browser's alone.
+  if (parts[0] === 'infra' && parts[1] === 'environments' && parts.length <= 3) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET')
+      return send(await (parts.length === 2 ? s.environmentsApi({ repo }) : s.environmentApi(parts[2], { repo })));
+    if (via !== 'cookie' && ['frozen', 'gates', 'observeOnly'].some((field) => body?.[field] !== undefined))
+      return json(403, {
+        error: 'only the signed-in web board can freeze an environment or change its production gates or observe only',
+      });
+    if (parts.length === 2 && method === 'POST') return send(await s.environmentsCreateApi(body));
+    if (parts.length === 3 && method === 'PATCH')
+      return send(await s.environmentsModifyApi(parts[2], { repo, ...body }));
+    if (parts.length === 3 && method === 'DELETE')
+      return send(await s.environmentsDeleteApi(parts[2], { repo, ...body }));
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
