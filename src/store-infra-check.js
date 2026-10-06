@@ -64,35 +64,48 @@ export const infraCheckMethods = {
       if (policyFile && 'error' in policyFile) return unchecked(POLICY_PATH, policyFile.error);
 
       this.countInfraCheck(env.repo);
-      const { stored, cost, blast } = await this.computeInfraPlan(env, desired.desired);
-      const view = this.environmentOut(env);
-      const policy = stored.changes.length
-        ? evaluatePolicy(
-            policyFile && 'policy' in policyFile ? policyFile.policy : DEFAULT_POLICY,
-            { environment: { name: env.name, frozen: view.frozen, gates: view.gates }, diff: stored, cost, provider },
-            { policy: policyFile ? 'repository' : 'default', sha: null, error: null },
-          )
-        : null;
-      const undo = reversibility(stored);
-      return {
-        status: 200,
-        body: {
-          preview: {
-            repo: env.repo,
-            environment: { id: Number(env.id), name: env.name },
-            provider: env.provider,
-            target: env.target ?? null,
-            changes: stored.changes.length,
-            diff: stored,
-            cost,
-            blastRadius: blast,
-            reversible: undo.reversible,
-            irreversible: undo.irreversible,
-            policy,
-          },
-        },
-      };
+      const preview = await this.previewInfraPlan(
+        env,
+        desired.desired,
+        policyFile && 'policy' in policyFile ? { policy: policyFile.policy, from: 'repository' } : {},
+      );
+      return { status: 200, body: { preview } };
     });
+  },
+
+  /**
+   * The plan a desired state would make for an environment, kept nowhere: the one computation a preview and a pull
+   * request's check share (computeInfraPlan, then the policy). `policy` is the checkout's or the pull request's,
+   * or the default when it has none; `error` is a policy file's that doesn't check, so the default decides and says
+   * why. Throws AgentError when the provider can't plan.
+   * @param {Record<string, any>} env the environment's row
+   * @param {import('./infra-provider.js').DesiredState} wanted
+   * @param {{ policy?: import('./infra-policy.js').Policy, from?: 'default' | 'repository', sha?: string | null, error?: import('./infra-policy.js').PolicyError | null }} [policyOf]
+   */
+  async previewInfraPlan(env, wanted, { policy = DEFAULT_POLICY, from = 'default', sha = null, error = null } = {}) {
+    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted);
+    const view = this.environmentOut(env);
+    const result = stored.changes.length
+      ? evaluatePolicy(
+          policy,
+          { environment: { name: env.name, frozen: view.frozen, gates: view.gates }, diff: stored, cost, provider },
+          { policy: from, sha, error },
+        )
+      : null;
+    const undo = reversibility(stored);
+    return {
+      repo: env.repo,
+      environment: { id: Number(env.id), name: env.name },
+      provider: env.provider,
+      target: env.target ?? null,
+      changes: stored.changes.length,
+      diff: stored,
+      cost,
+      blastRadius: blast,
+      reversible: undo.reversible,
+      irreversible: undo.irreversible,
+      policy: result,
+    };
   },
 };
 

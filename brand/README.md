@@ -113,7 +113,7 @@ Architect is the board running infrastructure too: environments, plans you appro
 | **incident** | A task tagged `+incident`, opened when a signal crosses a rule, in the repository that owns what broke | outage (unless it is one), page, sev 1, P1, ticket |
 | **drift** | What runs no longer matches what the repository says should | out of sync (sync is Taskwarrior's), skew |
 | **break-glass** | A change you made by hand outside a plan. The board records it and adds a task to put it in code; it never undoes it. | override, hotfix, manual change, drift (on its own) |
-| **freeze** / **unfreeze** | Stop every change to one environment, envelopes included, until you unfreeze it | lock (that's the board's, inside an apply), pause (that's deploys'), change window, maintenance mode |
+| **freeze** / **unfreeze** | Stop every plan on one environment, envelopes included, until you unfreeze it. Freezing a pipeline's production pauses its deploys too (Roll back still works); merges keep deploying staging. | lock (that's the board's, inside an apply), pause (on its own: freezing production is what pauses deploys), change window, maintenance mode |
 | **observe only** | An environment the board watches and never changes. The board's own install is always observe only. | read-only (that's a token's), monitored, unmanaged |
 | **cost limit** | The most one plan may add to an environment's monthly cost before it waits for you | spend cap, threshold, quota |
 | **budget** | What one environment may cost a month; the board sends a signal near it and over it | spend, burn, bill, allowance |
@@ -124,7 +124,8 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 
 - "Approve this plan for production? The board applies it next and rolls back if the health check fails."
 - "Reject this plan? Nothing changes."
-- "Freeze production? Nothing changes there until you unfreeze it."
+- "Freeze production? Freezing production pauses deploys and plans; Roll back still works."
+- "Freeze staging? Freezing staging stops plans; merges still deploy here."
 
 **A plan's status** reads **Draft**, **Waiting for you**, **Approved**, **Rejected**, **Applying**, **Applied**, **Failed**, or **Rolled back**. A plan says why it waits in words, one rule a line: "Production needs you." "Can't be undone: it deletes the `widgets` database." "Adds €6 a month, over your €5 limit."
 
