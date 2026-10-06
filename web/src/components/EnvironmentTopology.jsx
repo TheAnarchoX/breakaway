@@ -347,9 +347,10 @@ function TopologyMap({ map, selected, onSelect, drift, ops }) {
 
 /**
  * The topology panel: the map (wide) or the list (phones, and anyone who picks it), and the selected node's detail.
- * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void }} props
+ * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any }} props
+ *   `nodeActions` renders the owner's actions for the selected resource in its detail (WEB-95 fills it in).
  */
-export function Topology({ env, resources, relations, plan, drift, signals, mode, onMode }) {
+export function Topology({ env, resources, relations, plan, drift, signals, mode, onMode, nodeActions }) {
   const [selected, setSelected] = useState(/** @type {string | null} */ (null));
   const { ops, adds } = planOverlay(plan?.diff);
   const driftOf = new Map((drift?.resources ?? []).map((/** @type {any} */ d) => [d.id, d.op]));
@@ -458,6 +459,7 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
                   headingId="topo-detail-name"
                 />
               )}
+              {!current.group && nodeActions && <div class="topo-detail-actions">{nodeActions(current)}</div>}
             </article>
           )}
         </>

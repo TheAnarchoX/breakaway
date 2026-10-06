@@ -10311,3 +10311,13 @@ a.pl-mention {
     padding: 12px;
   }
 }
+/* Where the owner's actions go (WEB-95): under the band, and under a selected node's detail. */
+.console-band-actions,
+.topo-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.console-band-actions {
+  justify-content: flex-end;
+}

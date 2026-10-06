@@ -37,95 +37,99 @@ function Tile({ label, Icon, tone = '', children }) {
 }
 
 /**
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[] }} props
+ * `actions` are the owner's actions on the whole environment, under the band (WEB-95 fills them in).
+ * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], actions?: any }} props
  */
-export function StatusBand({ env, health, cost, run, agents }) {
+export function StatusBand({ env, health, cost, run, agents, actions = null }) {
   const live = env.deploys?.live ?? null;
   const planLink = (/** @type {string} */ plan) =>
     hashFor({ view: 'infrastructure', environment: String(env.id), plan, task: null });
   const used = cost && cost.budget?.amount > 0 ? Math.round((cost.cost.amount / cost.budget.amount) * 100) : null;
   return (
-    <dl class="console-band">
-      <Tile label="Health" Icon={Activity}>
-        <Health health={env.target ? health : null} />
-      </Tile>
-      <Tile label="Freeze" Icon={env.observeOnly ? Eye : Snowflake} tone={env.frozen ? 'frozen' : ''}>
-        {env.frozen ? (
-          <span class="band-value">
-            Frozen{' '}
-            <span class="meta">
-              <When iso={env.frozenAt} />
+    <>
+      <dl class="console-band">
+        <Tile label="Health" Icon={Activity}>
+          <Health health={env.target ? health : null} />
+        </Tile>
+        <Tile label="Freeze" Icon={env.observeOnly ? Eye : Snowflake} tone={env.frozen ? 'frozen' : ''}>
+          {env.frozen ? (
+            <span class="band-value">
+              Frozen{' '}
+              <span class="meta">
+                <When iso={env.frozenAt} />
+              </span>
             </span>
-          </span>
-        ) : env.observeOnly ? (
-          <span class="band-value">{env.runsTheBoard ? 'Observe only: runs this board' : 'Observe only'}</span>
-        ) : (
-          <span class="band-value muted">Not frozen</span>
-        )}
-      </Tile>
-      <Tile label="Live" Icon={Rocket}>
-        {live ? (
-          <span class="band-value">
-            <code>{shortVersion(live)}</code>
-            {live.version && <span class="gh-sha"> {live.sha.slice(0, 7)}</span>}{' '}
-            <span class="meta">
-              <When iso={live.at} />
+          ) : env.observeOnly ? (
+            <span class="band-value">{env.runsTheBoard ? 'Observe only: runs this board' : 'Observe only'}</span>
+          ) : (
+            <span class="band-value muted">Not frozen</span>
+          )}
+        </Tile>
+        <Tile label="Live" Icon={Rocket}>
+          {live ? (
+            <span class="band-value">
+              <code>{shortVersion(live)}</code>
+              {live.version && <span class="gh-sha"> {live.sha.slice(0, 7)}</span>}{' '}
+              <span class="meta">
+                <When iso={live.at} />
+              </span>
             </span>
-          </span>
-        ) : env.pipeline ? (
-          <span class="band-value muted">Nothing deployed yet</span>
-        ) : env.target ? (
-          <span class="band-value">
-            <code>{env.target}</code>
-          </span>
-        ) : (
-          <span class="band-value muted">No target yet</span>
-        )}
-      </Tile>
-      <Tile label="Plan" Icon={FileDiff} tone={env.waitingPlan ? 'waiting' : ''}>
-        {run && run.phase !== 'done' ? (
-          <span class="band-value">
-            {runWords(run)} <a href={planLink(run.plan)}>{run.plan}</a>
-          </span>
-        ) : env.waitingPlan ? (
-          <a class="band-value band-plan" href={planLink(env.waitingPlan)}>
-            {env.waitingPlan} waits for you
-          </a>
-        ) : (
-          <span class="band-value muted">{env.observeOnly ? 'Never: observe only' : 'None waits'}</span>
-        )}
-      </Tile>
-      <Tile label="Budget" Icon={Wallet} tone={cost?.budget?.state === 'over' ? 'over' : ''}>
-        {cost && cost.cost.resources > 0 ? (
-          <span class="band-value">
-            {used !== null ? `${used}%` : costText(cost.cost)}
-            <span class="meta"> {used !== null ? `of the budget, ${costText(cost.cost)} a month` : 'a month'}</span>{' '}
-            <BudgetBadge state={cost.budget.state} />
-          </span>
-        ) : (
-          <span class="band-value muted">No estimate yet</span>
-        )}
-      </Tile>
-      <Tile label="Agents" Icon={Bot}>
-        {agents.length ? (
-          <ul class="band-agents">
-            {agents.map((a) => (
-              <li key={a.agent}>
-                {a.task ? (
-                  <a class={widClass(a.task)} href={hashFor({ task: a.task.wid ?? a.task.uuid })}>
-                    {a.task.wid ?? a.task.description}
-                  </a>
-                ) : (
-                  <a href={planLink(a.why)}>{a.why}</a>
-                )}{' '}
-                <span class="band-agent">{a.agent}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <span class="band-value muted">None at work here</span>
-        )}
-      </Tile>
-    </dl>
+          ) : env.pipeline ? (
+            <span class="band-value muted">Nothing deployed yet</span>
+          ) : env.target ? (
+            <span class="band-value">
+              <code>{env.target}</code>
+            </span>
+          ) : (
+            <span class="band-value muted">No target yet</span>
+          )}
+        </Tile>
+        <Tile label="Plan" Icon={FileDiff} tone={env.waitingPlan ? 'waiting' : ''}>
+          {run && run.phase !== 'done' ? (
+            <span class="band-value">
+              {runWords(run)} <a href={planLink(run.plan)}>{run.plan}</a>
+            </span>
+          ) : env.waitingPlan ? (
+            <a class="band-value band-plan" href={planLink(env.waitingPlan)}>
+              {env.waitingPlan} waits for you
+            </a>
+          ) : (
+            <span class="band-value muted">{env.observeOnly ? 'Never: observe only' : 'None waits'}</span>
+          )}
+        </Tile>
+        <Tile label="Budget" Icon={Wallet} tone={cost?.budget?.state === 'over' ? 'over' : ''}>
+          {cost && cost.cost.resources > 0 ? (
+            <span class="band-value">
+              {used !== null ? `${used}%` : costText(cost.cost)}
+              <span class="meta"> {used !== null ? `of the budget, ${costText(cost.cost)} a month` : 'a month'}</span>{' '}
+              <BudgetBadge state={cost.budget.state} />
+            </span>
+          ) : (
+            <span class="band-value muted">No estimate yet</span>
+          )}
+        </Tile>
+        <Tile label="Agents" Icon={Bot}>
+          {agents.length ? (
+            <ul class="band-agents">
+              {agents.map((a) => (
+                <li key={a.agent}>
+                  {a.task ? (
+                    <a class={widClass(a.task)} href={hashFor({ task: a.task.wid ?? a.task.uuid })}>
+                      {a.task.wid ?? a.task.description}
+                    </a>
+                  ) : (
+                    <a href={planLink(a.why)}>{a.why}</a>
+                  )}{' '}
+                  <span class="band-agent">{a.agent}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span class="band-value muted">None at work here</span>
+          )}
+        </Tile>
+      </dl>
+      {actions && <div class="console-band-actions">{actions}</div>}
+    </>
   );
 }
