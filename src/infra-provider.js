@@ -132,6 +132,8 @@ export const COST_NOTE_MAX = 500;
  * @property {Record<string, unknown>} [scope] which of the platform's resources belong to the environment
  * @property {boolean} [observeOnly]
  * @property {string} [token]
+ * @property {string} [writeToken] the environment's write token: only the apply runner sets it (CLI-12, from its
+ *   GitHub environment), so an apply that reaches a provider anywhere else stops before it calls the platform
  * @property {typeof fetch} [fetch] the fetch to call the platform with; tests pass a mock
  * @property {Resource[]} [resources] what `discover` just found in the environment's scope: the store passes it to
  *   `observe` and `cost` so they needn't discover again
