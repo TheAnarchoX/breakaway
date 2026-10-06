@@ -4718,6 +4718,32 @@ fieldset.field {
   box-shadow: inset 0 0 0 1px var(--warn);
   font-size: 13px;
 }
+.infra-pr-success {
+  color: var(--success);
+}
+.infra-pr-neutral {
+  color: var(--warn);
+}
+.infra-pr-failure {
+  color: var(--danger);
+}
+/* Plans from pull requests (BRK-185): each environment's plan, its changes, and the policy's reasons. */
+.infra-pr-env h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+.infra-pr-changes,
+.infra-pr-reasons {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.infra-pr-changes li {
+  overflow-wrap: anywhere;
+}
+.infra-pr-op {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
 .pr-checks {
   display: grid;
   gap: 4px;
@@ -5457,6 +5483,22 @@ fieldset.field {
 }
 .rt-cap {
   width: 7em;
+}
+/* The board's currency in Settings (BRK-226): a code and a rate, both short. */
+.st-currency-form {
+  display: grid;
+  gap: 12px;
+}
+.st-currency-form .meta {
+  margin: 0;
+}
+.st-currency {
+  width: 6em;
+  text-transform: uppercase;
+}
+.st-rate {
+  width: 9em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The routine panel: the task panel's shell (panel, panel-body, panel-top, facts, dep-list) with a few extras. */
@@ -8917,4 +8959,214 @@ a.pl-mention {
 }
 .conn-items .conn-alerts-policies li {
   display: list-item;
+}
+
+/* ---------- incidents (WEB-63) ---------- */
+
+/* An incident's steps on its task, its environment's list, and its line in the inbox. Red only on the siren and a critical signal's fill. */
+.incident-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-xs);
+  font: 600 12px / 1.4 var(--font-mono);
+  white-space: nowrap;
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.incident-status-recovered {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.incident-status-closed {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.incident h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.incident h3 svg,
+.incident-ping-line svg {
+  color: var(--danger);
+  flex: none;
+}
+.incident-line,
+.incident-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.incident-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+  border-left: 2px solid var(--line);
+  margin-left: 7px;
+}
+.incident-step {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 5px 0;
+  margin-left: -9px;
+}
+.incident-step-icon {
+  color: var(--muted);
+  background: var(--bg);
+  margin-top: 2px;
+}
+.incident-step-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.incident-step-label {
+  font-weight: 600;
+}
+.incident-step-state {
+  font-weight: 400;
+  color: var(--muted);
+}
+.incident-step-done .incident-step-icon {
+  color: var(--success);
+}
+.incident-step-now .incident-step-icon {
+  color: var(--accent);
+}
+.incident-step-now .incident-step-state {
+  color: var(--text);
+  font-weight: 600;
+}
+.incident-step-failed .incident-step-icon {
+  color: var(--danger);
+}
+.incident-step-skipped .incident-step-label,
+.incident-step-next .incident-step-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+.incident-plans,
+.incident-signals {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.incident-plans h4,
+.incident-signals h4 {
+  margin: 0;
+}
+.incident-plans p,
+.incident-signals p {
+  margin: 0;
+}
+.incident-plan-list,
+.incident-signal-list,
+.incident-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.incident-plan-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.incident-plan-state {
+  font-weight: 600;
+  font-size: 13px;
+}
+.incident-plan-waiting {
+  color: var(--accent);
+}
+.incident-plan-applied {
+  color: var(--success);
+}
+.incident-plan-failed,
+.incident-plan-rolled-back {
+  color: var(--warn);
+}
+.incident-signal {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: baseline;
+}
+.incident-signal .meta {
+  grid-column: 2;
+}
+.incident-signal-text {
+  overflow-wrap: anywhere;
+}
+.incident-signal.is-first .incident-signal-text {
+  font-weight: 600;
+}
+.incident-level {
+  font: 600 11px / 1.4 var(--font-mono);
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.incident-level-warning {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.incident-level-critical {
+  background: var(--danger-bg);
+  color: var(--text);
+}
+.incident-row {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  min-width: 0;
+}
+.incident-row p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.incident-row-closed {
+  border-style: dashed;
+}
+.incident-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.incident-row-task {
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.incident-row-task:hover {
+  text-decoration: underline;
+}
+.incident-ping-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 0;
+}
+.ping-incident {
+  color: var(--warn);
+}
+.incident-ping-line > span + span::before {
+  content: "· ";
 }
