@@ -32,6 +32,7 @@ import {
   repoSettingsHref,
   repos,
 } from '../lib/store.js';
+import { ProviderConnect } from '../components/ProviderConnect.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { SelfUpdate } from '../components/SelfUpdate.jsx';
 import { RepoChip } from '../components/ui.jsx';
@@ -46,6 +47,7 @@ const GROUPS = [
   { id: 'github', label: 'GitHub', of: ['github'] },
   { id: 'npm', label: 'npm', of: ['npm'] },
   { id: 'claude', label: 'Claude', of: ['claude'] },
+  { id: 'providers', label: 'Providers', of: ['providers'] },
   { id: 'sync', label: 'CLI, sync, and push', of: ['cli', 'taskwarrior', 'push'] },
 ];
 
@@ -191,7 +193,21 @@ function Row({ c }) {
           </a>
         </p>
       )}
-      {c.verified ? (
+      {c.provider ? (
+        (c.provider.discovery || c.provider.signal) && (
+          <p class="conn-meta meta">
+            <When
+              iso={c.provider.discovery?.at}
+              prefix={`Last discovery${c.provider.discovery?.ok ? '' : ' failed'}`}
+            />
+            {c.provider.discovery && c.provider.signal && ' · '}
+            <When
+              iso={c.provider.signal?.at}
+              prefix={`${c.provider.discovery ? 'l' : 'L'}ast signal${c.provider.signal?.ok ? '' : ' failed'}`}
+            />
+          </p>
+        )
+      ) : c.verified ? (
         <p class="conn-meta meta">
           <When iso={c.verified.at} prefix={`Verified by ${c.verified.task}`} />
           {c.at && ' · '}
@@ -224,6 +240,9 @@ function Row({ c }) {
       {c.id === 'board.version' && <SelfUpdate />}
       {c.id === 'claude.routine' && c.repo && 'source' in c && (
         <RoutineConnect slug={c.repo} source={c.source} onDone={loadConnections} />
+      )}
+      {c.provider && (
+        <ProviderConnect id={c.provider.id} name={c.name} connected={c.provider.connected} onDone={loadConnections} />
       )}
       <Items c={c} />
     </li>

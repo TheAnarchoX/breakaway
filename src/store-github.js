@@ -310,6 +310,13 @@ export const githubMethods = {
       if (!(error instanceof GitHubError)) throw error;
       automation.errors.push(error.message);
     }
+    // Architect's desired state (BRK-180): each environment's file on the default branch, once per new commit.
+    try {
+      await this.readDesiredStates(client, repo, fetched.commits[0]?.sha);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      automation.errors.push(error.message);
+    }
     try {
       await this.refreshFlowCompare(client, repo.slug);
     } catch (error) {
