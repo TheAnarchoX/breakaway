@@ -68,6 +68,8 @@ export const infraEnvironmentsMethods = {
       ...environmentView(row, { worker: install(this.env).worker, task }),
       waitingPlan: this.waitingInfraPlan(row.id),
       ...this.driftFor(row.id),
+      // What nobody owns there (BRK-201): flagged, and proposed for removal after the grace period.
+      ...this.unownedFor(row.id),
       // What the deploy flow runs there (BRK-195): the live commit and version, and the last deploy.
       deploys: this.environmentDeploys(row),
     };

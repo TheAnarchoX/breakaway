@@ -36,6 +36,21 @@ export function driftLine(c) {
   return canonical({ op: c.op, resource: c.resource, kind: c.kind, name: c.name, before: c.before, after: c.after });
 }
 
+/** Whether a change of the provider's plan is drift, not clean up's: every change but a delete. */
+export const isDrift = (/** @type {import('./infra-provider.js').Change} */ c) => c.op !== 'delete';
+
+/**
+ * The drift in a provider's plan: every change but its deletes. A delete is a resource that runs but isn't in the
+ * desired state, which nobody owns; clean up (BRK-201, infra-cleanup.js) flags it and proposes removing it after a
+ * grace period, so drift never plans it away at once.
+ * @param {PlanDiff} diff
+ * @returns {PlanDiff}
+ */
+export function driftChanges(diff) {
+  const changes = diff.changes.filter(isDrift);
+  return { ...diff, changes, reversible: changes.every((c) => c.reversible) };
+}
+
 /**
  * What differs, a line per resource: what the plan would do to it to bring it back to the desired state.
  * @param {PlanDiff} diff
