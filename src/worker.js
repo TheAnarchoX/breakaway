@@ -22,6 +22,7 @@ import { CLI_VERSION } from './cli-version.js';
 import { releaseOf } from './build.js';
 import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
+import { RUNNER_HEADER } from './infra-runner.js';
 
 export { TaskStore } from './store.js';
 
@@ -55,6 +56,9 @@ export default {
     if (url.pathname.startsWith('/v1/client/')) return withHeaders(await handleSync(request, env, url));
     const fire = /^\/api\/routines\/([a-z][a-z0-9-]{0,39})\/fire$/u.exec(url.pathname);
     if (fire && request.method === 'POST') return withHeaders(await fireRoutine(request, env, fire[1]));
+    // The apply runner (BRK-183): its GitHub OIDC token, not the board's sign-in, says which run asks.
+    const run = /^\/api\/infra\/runs\/([^/]+)$/u.exec(url.pathname);
+    if (run && request.headers.has(RUNNER_HEADER)) return withHeaders(await runnerCall(request, env, url, run[1]));
     if (url.pathname.startsWith('/api/')) {
       // The frozen CLI number, so an old copy of the CLI in another repository says how to switch (CLD-193), and the
       // release this build is, so a checkout of the board's own repository can say it's behind (BRK-148).
@@ -174,6 +178,35 @@ async function fireRoutine(request, env, slug) {
   const source = cloudflare && cloudflare === secret ? 'cloudflare' : 'api';
   const raw = await readSmallBody(request);
   const result = await store(env).routinesFire(slug, secret, raw, source);
+  return json(result.status, result.body);
+}
+
+/** GET and POST /api/infra/runs/<plan> from the apply runner: what it asks, checked by the store against its token. */
+async function runnerCall(request, env, url, plan) {
+  if (request.method !== 'GET' && request.method !== 'POST')
+    return json(405, { error: 'GET the plan, or POST a step' });
+  let body = {};
+  if (request.method === 'POST') {
+    const raw = await readBody(request);
+    if (!raw) return json(413, { error: 'a step’s report is too large' });
+    try {
+      body = JSON.parse(new TextDecoder().decode(raw));
+    } catch {
+      return json(400, { error: 'the body must be JSON' });
+    }
+  }
+  let ref;
+  try {
+    ref = decodeURIComponent(plan);
+  } catch {
+    return json(400, { error: 'that isn’t a plan’s ID' });
+  }
+  const result = await store(env).infraRunnerApi(ref, {
+    method: request.method,
+    token: request.headers.get(RUNNER_HEADER) ?? '',
+    origin: url.origin,
+    body,
+  });
   return json(result.status, result.body);
 }
 
@@ -530,6 +563,15 @@ async function handleApi(request, env, url, ctx) {
   // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
   if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
     return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
+  // The board's currency (BRK-226): anyone signed in reads it; setting it and its rate is the owner's, from the
+  // signed-in browser only.
+  if (parts[0] === 'infra' && parts[1] === 'currency' && parts.length === 2) {
+    if (method === 'GET') return send(await s.currencyApi());
+    if (method === 'PUT') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can set the board’s currency' });
+      return send(await s.currencySetApi(body));
+    }
+  }
   // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
   if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
     return send(await s.infraCheckApi(body));
@@ -564,6 +606,14 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.lockReleaseApi(parts[2], { repo }));
     }
   }
+  // The executor's runs (BRK-183): anyone signed in reads them. The runner's own calls come in with its OIDC token,
+  // above; nothing here changes a run.
+  if (parts[0] === 'infra' && parts[1] === 'runs' && parts.length <= 3 && method === 'GET')
+    return send(
+      await (parts.length === 2
+        ? s.runsApi({ repo: url.searchParams.get('repo'), environment: url.searchParams.get('environment') })
+        : s.runApi(parts[2])),
+    );
   // Approve and reject (BRK-182): the owner's alone, from the signed-in browser only, like Merge; never the bearer
   // token agents and the CLI hold. An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length === 4 && ['approve', 'reject'].includes(parts[3])) {

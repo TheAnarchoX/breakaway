@@ -72,6 +72,8 @@ import { infraPolicyMethods } from './store-infra-policy.js';
 import { infraDriftMethods } from './store-infra-drift.js';
 import { infraBreakGlassMethods } from './store-infra-break-glass.js';
 import { infraAdoptMethods } from './store-infra-adopt.js';
+import { infraRunsMethods } from './store-infra-runs.js';
+import { infraCurrencyMethods } from './store-infra-currency.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -141,6 +143,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraPolicy();
     this.initInfraDrift();
     this.initInfraBreakGlass();
+    this.initInfraRuns();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1450,6 +1453,8 @@ Object.assign(
   infraDriftMethods,
   infraBreakGlassMethods,
   infraAdoptMethods,
+  infraRunsMethods,
+  infraCurrencyMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
