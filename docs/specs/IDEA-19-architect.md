@@ -46,7 +46,7 @@ The brand guide gets the words before any view is built (ID-5): **environment**,
 
 Adapters call the platform's API directly; no infrastructure-as-code tool, state file, or second source of truth (BRK-169). A provider may declare **scale** and **restart** as change kinds per resource kind, for envelopes.
 
-The first provider is Cloudflare (BRK-169), where the board and the deploy flow already run. BRK-188 writes down its API surface and the narrowest tokens as a **First provider** section in this spec; BRK-189 discovers, BRK-191 observes, BRK-192 plans and applies for Workers and their bindings, BRK-193 prices, and BRK-227 scales and restarts inside an envelope, for the kinds that can.
+The first provider is Cloudflare (BRK-169), where the board and the deploy flow already run. BRK-188 wrote down its API surface and the narrowest tokens in [First provider: Cloudflare](#first-provider-cloudflare); BRK-189 discovers, BRK-191 observes, BRK-192 plans and applies for Workers and their bindings, BRK-193 prices, and BRK-227 scales and restarts inside an envelope, for the kinds that can.
 
 ### Environments
 
@@ -54,7 +54,7 @@ A named target in one of the board's repositories: kind (`production`, `staging`
 
 ### Inventory
 
-What actually exists, from each provider's `discover`, scoped to what the board's repositories run on (BRK-169: nothing outside an environment's scope is stored): a graph of resources with relations (this Worker uses that database, secret by name, and route), ownership (repository, task, environment), last health, and last cost. A refresh replaces one provider's slice atomically (BRK-177).
+What actually exists, from each provider's `discover`, scoped to what the board's repositories run on (BRK-169: nothing outside an environment's scope is stored): a graph of resources with relations (this Worker uses that database, secret by name, and route), ownership (repository, task, environment), last health, and last cost. An environment's scope is its target (the resource whose ID or name is the environment's `target`) and everything the target reaches by relations; the store applies it to whatever a provider returns, so an environment without a target stores nothing. A refresh replaces one provider's slice atomically, and a failed discovery changes nothing (BRK-177).
 
 ### Desired state
 
@@ -152,6 +152,179 @@ The core gets an incident mode, and the tasks skill learns `infra` and `infra ch
 
 breakaway keeps a way to recover that doesn't depend on itself: a manual page that rebuilds an install and its environments from the repository with `wrangler` and the desired-state files alone (DOC-30), rehearsed by the owner (BRK-208). Architect observes the board's own install and never applies to it (BRK-169), so the page also says how to redeploy the install itself by hand.
 
+## First provider: Cloudflare
+
+BRK-188 read Cloudflare's API documentation on 6 Oct 2026 and wrote down what the first provider calls for each step, and the narrowest tokens. Nothing here was called against a real account: BRK-189 to BRK-193 and BRK-227 check each call against recorded fixtures, and the owner's first read token (BRK-204) and staging plan (BRK-207) prove them for real. Where the documentation left something open, it says **verify** and names the task that settles it.
+
+Every path is under `https://api.cloudflare.com/client/v4`, with `{a}` for the account ID and `{z}` for a zone ID. Every call is a plain `fetch` with `Authorization: Bearer <token>`; the provider takes `ctx.fetch` so tests mock it (BRK-173).
+
+### What it found
+
+- **There is no plan endpoint.** Cloudflare has no dry run, so `plan` is the provider's own diff of the desired state against `discover`, made with the read token. Nothing is written to plan.
+- **A Worker change is a version, then a deployment.** Bindings and compatibility settings belong to a version; creating a version doesn't touch traffic, and a deployment sends traffic to it. So a Worker change is reversible: rolling back is a deployment of the version that was live before. A rollback across a secret change is refused unless it's forced (`?force=true`), and the provider asks for that only inside the executor's own rollback, never in a plan (BRK-192).
+- **Deleting is the irreversible part.** Deleting a D1 database, KV namespace, R2 bucket, queue, Durable Object namespace (by a delete migration), or container application destroys its data or its messages. Every delete is marked irreversible, with why. D1's Time Travel can restore a database's contents to a point in the last 30 days, but not a deleted database.
+- **Tokens can't be scoped to one Worker.** Account permissions cover every resource of that kind in the account; zone permissions can be scoped to chosen zones. So the provider itself keeps every call inside the environment's scope (`ctx.scope`: the Workers, databases, buckets, namespaces, queues, applications, and zones it names), and refuses a plan that touches anything outside it. Keeping staging and production apart by token takes **separate Cloudflare accounts**; on one account, a staging write token can technically write production, and the provider's scope check is what stops it. The same is true of the board's own install when it shares the account: it is observe only in the board, but the token can't enforce that (see Open questions).
+- **Read permissions can read data.** `Workers KV Storage Read` can read values, `Workers R2 Storage Read` can read objects, and `Workers Scripts Read` can download a Worker's code. The provider never calls the value, object, or content endpoints (`…/values/…`, object `GET`s, `…/content`, `…/versions/{id}?include=modules`), and the contract test fails a fixture that does. Secrets are listed by name only; the API never returns their values.
+- **Only containers and queue consumers scale.** Workers, Durable Objects, D1, KV, and R2 have no instance count to set and nothing to restart: the platform scales them. Containers on the default scheduling policy have `max_instances`, and a rollout replaces every instance (a restart). Queue consumers have `max_concurrency`. Containers on the Durable Object scheduling policy are started and stopped by the application's own code, so they have neither (BRK-227).
+- **Usage and prices come in US dollars.** The published prices are in USD. The Billable Usage API (`GET /accounts/{a}/billable-usage`, `Billing Read`) is alpha, for self-serve accounts only, updated daily, and per product rather than per resource, so the provider estimates each resource's cost from its usage in the analytics and a price table, and doesn't ask for `Billing Read` (BRK-193).
+- **Rate limits.** 1,200 requests per 5 minutes per token across the whole API (dashboard use by the same user counts too), and a 429 blocks every call for the next 5 minutes; GraphQL analytics allows 300 queries per 5 minutes on top of that. `discover` makes about 4 calls per Worker plus 1 per other resource and per page, so it stays well inside for the board's repositories; the provider stops on a 429 and reports the error rather than retrying in a loop, and asks for one GraphQL query per dataset for the whole environment, not one per resource.
+
+### Resource kinds
+
+The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-object`, `d1`, `kv`, `r2`, `queue`, `container`, `route`, `custom-domain`. A Worker's secrets are relations by name (`binds`), not resources. Each table gives the calls for one kind, and the permission each needs (read ones in the board's token, write ones in the runner's).
+
+**Workers** (`worker`). Changes: create, update, delete.
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/workers/scripts` (names, handlers, last modified); per Worker `GET …/scripts/{name}/settings` (bindings, compatibility, observability, which give the relations), `GET …/scripts/{name}/deployments` (the live versions), `GET …/scripts/{name}/secrets` (names only), `GET …/scripts/{name}/schedules` (cron triggers) | Workers Scripts Read |
+| Plan | Diff only: the desired bindings, compatibility date and flags, cron triggers, and routes against what discover found | none beyond discover |
+| Apply | `POST /accounts/{a}/workers/workers/{id}/versions` (a new version with the changed bindings, carrying the live version's modules), then `POST /accounts/{a}/workers/scripts/{name}/deployments` (`strategy: percentage`, the new version at 100); cron triggers `PUT …/scripts/{name}/schedules`; delete `DELETE …/scripts/{name}` (irreversible). The versions endpoint is beta: **verify** in BRK-192, and fall back to `PATCH …/scripts/{name}/settings` if it can't carry the modules over | Workers Scripts Write (the dashboard may call it Edit) |
+| Roll back | `POST …/scripts/{name}/deployments` with the previous version at 100 | Workers Scripts Write |
+| Observe | GraphQL `workersInvocationsAdaptive` by `scriptName`: requests and errors over the last 15 minutes give healthy, degraded, or down; a Worker with no deployment is down | Account Analytics Read |
+| Cost | The same dataset's requests and CPU time, times the price table | Account Analytics Read |
+| Scale or restart | Neither | |
+
+**Durable Objects** (`durable-object`). Changes: create, update (both through the Worker that defines the class, by a migration), delete (a delete migration, irreversible).
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/workers/durable_objects/namespaces` (class, script, SQLite or not); the Worker's settings give the binding | Workers Scripts Read |
+| Plan | Diff only; a new class or a deleted one is a migration on the Worker's next version | none beyond discover |
+| Apply | The Worker's version and deployment above, with the migration in the version | Workers Scripts Write |
+| Observe | GraphQL `durableObjectsInvocationsAdaptiveGroups` by namespace: requests and errors | Account Analytics Read |
+| Cost | `durableObjectsInvocationsAdaptiveGroups` (requests, duration), `durableObjectsStorageGroups` (stored bytes), times the price table | Account Analytics Read |
+| Scale or restart | Neither | |
+
+**D1** (`d1`). Changes: create, delete (irreversible). A database's schema is the repository's migrations, not Architect's.
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/d1/database`, `GET …/d1/database/{id}` (size, tables count, read replication) | D1 Read |
+| Plan | Diff only | none beyond discover |
+| Apply | `POST /accounts/{a}/d1/database`; `DELETE …/d1/database/{id}` | D1 Write |
+| Observe | GraphQL `d1AnalyticsAdaptiveGroups` by `databaseId`: queries and `queryBatchTimeMs` (slow is degraded; the dataset has no error count) | Account Analytics Read |
+| Cost | `d1AnalyticsAdaptiveGroups` (`rowsRead`, `rowsWritten`), `d1StorageAdaptiveGroups` (size), times the price table | Account Analytics Read |
+| Scale or restart | Neither | |
+
+**KV** (`kv`). Changes: create, update (the title), delete (irreversible).
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/storage/kv/namespaces` (never keys or values) | Workers KV Storage Read |
+| Plan | Diff only | none beyond discover |
+| Apply | `POST …/storage/kv/namespaces`; `PUT …/namespaces/{id}` (rename); `DELETE …/namespaces/{id}` | Workers KV Storage Write |
+| Observe | GraphQL `kvOperationsAdaptiveGroups` by `namespaceId`: operations and latency (the dataset has no error count, so KV is healthy or unknown) | Account Analytics Read |
+| Cost | `kvOperationsAdaptiveGroups` (`requests` by `actionType`: read, write, delete, list), `kvStorageAdaptiveGroups` (`byteCount`), times the price table | Account Analytics Read |
+| Scale or restart | Neither | |
+
+**R2** (`r2`). Changes: create, update (CORS, lifecycle, custom domain), delete (irreversible, and refused by Cloudflare unless the bucket is empty).
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/r2/buckets`; per bucket `GET …/buckets/{name}/cors`, `…/lifecycle`, `…/domains/custom` (never objects) | Workers R2 Storage Read |
+| Plan | Diff only | none beyond discover |
+| Apply | `POST …/r2/buckets`; `PUT …/buckets/{name}/cors`, `…/lifecycle`; `POST`/`DELETE …/domains/custom`; `DELETE …/buckets/{name}` | Workers R2 Storage Write |
+| Observe | GraphQL `r2OperationsAdaptiveGroups` by `bucketName`: operations by response status | Account Analytics Read |
+| Cost | `r2OperationsAdaptiveGroups` (class A and B operations), `r2StorageAdaptiveGroups` (stored bytes), times the price table; egress is free | Account Analytics Read |
+| Scale or restart | Neither | |
+
+**Queues** (`queue`). Changes: create, update (settings, consumers), delete (irreversible: its messages go), and **scale** (a consumer's `max_concurrency`).
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/queues`; per queue `GET …/queues/{id}/consumers` (the consuming Worker, batch size, retries, dead-letter queue, concurrency) | Queues Read |
+| Plan | Diff only | none beyond discover |
+| Apply | `POST …/queues`; `PATCH …/queues/{id}` (settings; `PUT` replaces them all); `POST`/`PUT`/`DELETE …/queues/{id}/consumers/{consumer}`; `DELETE …/queues/{id}` | Queues Write |
+| Observe | `GET …/queues/{id}/metrics` (the backlog now: `backlog_count`, `oldest_message_timestamp_ms`), and GraphQL `queuesBacklogAdaptiveGroups` and `queueMessageOperationsAdaptiveGroups` (`retryCount`, `lagTime`) for the trend; a backlog that keeps growing, or an old oldest message, is degraded | Queues Read, Account Analytics Read |
+| Cost | `queueMessageOperationsAdaptiveGroups` (operations), times the price table | Account Analytics Read |
+| Scale | `PUT …/queues/{id}/consumers/{consumer}` with `settings.max_concurrency` inside the envelope's bounds | Queues Write |
+| Restart | None | |
+
+**Containers** (`container`). Changes: update, delete (irreversible), and, on the default scheduling policy only, **scale** and **restart**. A container application is made by the Worker's deploy, not by Architect, so there is no create.
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/containers/applications` (scheduling policy, instance type, `max_instances`, the Durable Object it belongs to, instance counts); `GET …/applications/{id}/instances-v2` for each instance's state | Containers Read |
+| Plan | Diff only | none beyond discover |
+| Apply | `PATCH …/containers/applications/{id}` (`max_instances`, constraints, observability, rollout grace period); `DELETE …/applications/{id}` | Containers Write |
+| Observe | The application's instance counts (`active` against `assigned`) and each instance's state; none active when some are assigned is down | Containers Read |
+| Cost | Active instances, their instance type, and the time they ran, times the price table (vCPU, memory, and disk by the second). A rougher estimate than the others: **verify** against the dashboard in BRK-193 | Containers Read |
+| Scale | `PATCH …/applications/{id}` with `max_instances` inside the envelope's bounds | Containers Write |
+| Restart | `POST …/applications/{id}/rollouts` with the current configuration: every instance is replaced, step by step, after `SIGTERM` and up to 15 minutes to drain. The documentation shows the endpoint but not its body: **verify** in BRK-227 | Containers Write |
+
+**Routes** (`route`). Changes: create, update, delete (reversible: a route holds no data).
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /zones/{z}/workers/routes` for each zone in the environment's scope; `GET /zones?account.id={a}` once, to name the zones | Workers Routes Read (zone), Zone Read (zone) |
+| Plan | Diff only | none beyond discover |
+| Apply | `POST /zones/{z}/workers/routes`; `PUT …/routes/{id}`; `DELETE …/routes/{id}` | Workers Routes Write (zone) |
+| Observe | A route's health is its Worker's | |
+| Cost | None of its own | |
+| Scale or restart | Neither | |
+
+**Custom domains** (`custom-domain`). Changes: create, delete (reversible, but the hostname stops answering until it's attached again).
+
+| Step | Calls | Permission |
+| --- | --- | --- |
+| Discover | `GET /accounts/{a}/workers/domains` (hostname, zone, Worker) | Workers Scripts Read |
+| Plan | Diff only | none beyond discover |
+| Apply | `PUT /accounts/{a}/workers/domains`; `DELETE …/workers/domains/{id}`. The API reference asks only for Workers Scripts Write, though attaching makes a DNS record and a certificate on the zone: **verify** in BRK-192 that no zone permission is needed | Workers Scripts Write |
+| Observe | Its Worker's health | |
+| Cost | None of its own | |
+| Scale or restart | Neither | |
+
+### Alerts
+
+The board already takes Cloudflare's notification webhooks at `/api/routines/<slug>/fire`, with the secret in `cf-webhook-auth`, and keeps only the alert's name, time, and Worker (`alertData` in `src/store-routines.js`). BRK-191 sends the same cut-down alert into the signal stream as well as to its routines, as an `alert` signal on the Worker it names (or the whole environment when it names none), with nothing else from the body.
+
+To show which alerts reach the board, the provider reads the account's alert setup with `GET /accounts/{a}/alerting/v3/available_alerts` (the kinds the account can have), `GET …/alerting/v3/policies` (which are on, and where they go), and `GET …/alerting/v3/destinations/webhooks` (whether one points at the board). `GET …/alerting/v3/history` (the last 30 days) fills in alerts that fired while the webhook wasn't set up. All need **Notifications Read**. The alert types themselves come from `available_alerts`, not a list in the code, since Cloudflare adds them. Setting up a policy or a webhook is the owner's, in the dashboard: the token never has Notifications Write.
+
+### Tokens
+
+**The board's read token** (BRK-194 stores it; the owner makes it in BRK-204). A custom **account API token** (Manage Account › Account API Tokens), so it doesn't stop working if a person leaves the account; a user token with the same permissions works too. No permission ends in Edit or Write.
+
+| Scope | Permission | For |
+| --- | --- | --- |
+| Account | Workers Scripts Read | Workers, their settings, deployments, secret names, cron triggers, Durable Object namespaces, custom domains |
+| Account | Workers KV Storage Read | KV namespaces (never values) |
+| Account | Workers R2 Storage Read | R2 buckets and their settings (never objects) |
+| Account | D1 Read | D1 databases |
+| Account | Queues Read | Queues and their consumers |
+| Account | Containers Read | Container applications and instances |
+| Account | Account Analytics Read | Health and usage, through GraphQL |
+| Account | Notifications Read | Which alerts are set up, and alert history |
+| Zone (only the zones the environments use) | Zone Read | Naming the zones |
+| Zone (only the zones the environments use) | Workers Routes Read | Routes |
+
+Account resources: the one account the environments run on. Not asked for, on purpose: Billing Read (it shows invoices and the billing address, and its usage is per product, not per resource), Workers Tail Read and anything for logs (BRK-172 left logs out), DNS Read, and any Edit or Write. A repository that uses no containers or queues can leave those two out; the provider then reports the kind as not readable instead of failing discovery. BRK-194 checks a pasted token with `GET /accounts/{a}/tokens/verify` (an account token) or `GET /user/tokens/verify` (a user token), which says it's active but not its permissions, so the Connections row lists the permissions the owner was asked for, and marks one missing when a call returns 403. That also means the board can't see a permission the token has but shouldn't: a token made with an Edit or Write permission by mistake still works, so the form and BRK-204 tell the owner to make it from this list, read only, by hand, and the row says it can't check for extra permissions.
+
+**The runner's write token, one per environment** (in that environment's GitHub environment as a secret, BRK-171; the owner makes the staging one in BRK-206). A custom account API token with the read token's permissions, plus only the Write permissions for the kinds that environment's desired state declares:
+
+| Scope | Permission | When |
+| --- | --- | --- |
+| Account | Workers Scripts Write | Always: Workers, Durable Objects, custom domains |
+| Zone (only that environment's zones) | Workers Routes Write | When it declares routes |
+| Account | D1 Write | When it declares D1 databases |
+| Account | Workers KV Storage Write | When it declares KV namespaces |
+| Account | Workers R2 Storage Write | When it declares R2 buckets |
+| Account | Queues Write | When it declares queues |
+| Account | Containers Write | When it declares containers |
+
+Give it an expiry date and rotate it, never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for another environment. The dashboard may name a write permission Edit rather than Write; it's the same permission. Because account permissions reach every resource of their kind, a production write token belongs on a separate Cloudflare account from staging when the owner can arrange it (see "What it found").
+
+### Scale and restart, for envelopes
+
+| Kind | Scale | Restart |
+| --- | --- | --- |
+| `container` (default scheduling policy) | `max_instances` | A rollout of the current configuration |
+| `container` (Durable Object scheduling policy) | No | No |
+| `queue` | The consumer's `max_concurrency` | No |
+| `worker`, `durable-object`, `d1`, `kv`, `r2`, `route`, `custom-domain` | No: the platform scales them | No |
+
+So the kinds BRK-227 declares are `container` (scale and restart) and `queue` (scale). The envelope form offers nothing else (BRK-186).
+
 ## How a chase runs it
 
 The owner's note asks for this to make sense as a chase. The graph is shaped for that:
@@ -193,6 +366,7 @@ Answered by the owner on 6 Oct 2026; DOC-29 records them in the decision log and
 
 - Whether short-lived environments are made on claim, on a tag, or only on a press. BRK-200 starts with a tag or a press.
 - Whether the plan check needs a new GitHub App permission (checks: write). BRK-185 adds an owner task if it does.
+- Whether the board's own install, staging, and production should be on separate Cloudflare accounts. Cloudflare tokens can't be scoped to one Worker, so on one account only the provider's scope check keeps a staging write token off production and off the board (First provider). Separate accounts make the token the boundary; the owner chooses when making the tokens (BRK-204, BRK-206).
 
 ## Done when
 

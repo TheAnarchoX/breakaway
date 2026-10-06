@@ -56,6 +56,7 @@ import { initMethods } from './store-init.js';
 import { routineKeepMethods } from './store-routine-keep.js';
 import { oauthMethods } from './store-oauth.js';
 import { infraEnvironmentsMethods } from './store-infra-environments.js';
+import { infraInventoryMethods } from './store-infra-inventory.js';
 import { infraLocksMethods } from './store-infra-locks.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
@@ -113,6 +114,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initRoutineKeep();
     this.initOAuth();
     this.initInfraEnvironments();
+    this.initInfraInventory();
     this.initInfraLocks();
   }
 
@@ -1403,6 +1405,7 @@ Object.assign(
   routineKeepMethods,
   oauthMethods,
   infraEnvironmentsMethods,
+  infraInventoryMethods,
   infraLocksMethods,
 );
 
