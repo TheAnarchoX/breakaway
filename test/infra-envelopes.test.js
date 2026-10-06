@@ -350,6 +350,17 @@ describe('envelopes on the board (BRK-186)', () => {
       error: `a database can’t restart on Fake platform, so nothing was planned`,
     });
     expect((await act(staging, { resource: 'nothing-here', change: 'restart' })).status).toBe(404);
+    // A provider may refuse one resource its kind allows (BRK-227), and its words are the act's.
+    provider.refuses = (r, op) => (r.name === 'api' && op === 'restart' ? 'api restarts by itself' : null);
+    try {
+      expect(await act(staging, { resource: 'api', change: 'restart' })).toMatchObject({
+        status: 409,
+        error: 'api restarts by itself, so nothing was planned',
+      });
+      expect((await act(staging, { resource: 'main', change: 'restart' })).error).toMatch(/a database can’t restart/);
+    } finally {
+      delete provider.refuses;
+    }
     expect((await act(staging, { resource: 'api', change: 'scale', value: 2 })).error).toMatch(/nothing to change/);
     expect((await act(staging, { resource: 'api', change: 'delete' })).status).toBe(400);
 
