@@ -8,6 +8,11 @@ import { InputError, MAX_TEXT, PROJECTS, dependsOf } from './model.js';
 export const PING_KINDS = ['blocked', 'question', 'stale', 'done', 'fyi'];
 /** The kinds that send a push; `fyi` only shows in the inbox. */
 export const PUSH_KINDS = ['blocked', 'question', 'stale', 'done'];
+/**
+ * Kinds only the board itself writes, never an agent (BRK-197): an incident pushes for production and is quiet in
+ * the inbox otherwise, so its row says which.
+ */
+export const BOARD_PING_KINDS = ['incident'];
 export const MAX_MESSAGE = 500;
 export const MAX_CHANGES = 10;
 export const MAX_PROPOSAL_BYTES = 20 * 1024;
