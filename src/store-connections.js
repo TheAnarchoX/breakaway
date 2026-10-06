@@ -16,12 +16,17 @@ import { vapidKeys } from './push.js';
 import { docsLink, install, secretName } from './install.js';
 import { checkReport, judgeStub, reportProblems, shortHash, stubText } from './session-report.js';
 import BOARD_FILES from './board-files.json' with { type: 'json' };
+import { checkTokenCheck, providers } from './infra-provider.js';
+import { openJson, sealJson, sealingKey } from './routine-keep.js';
 import {
   SECRET_BINDINGS,
   appSettingsUrl,
   clip,
   comparePermissions,
+  keptPermissions,
   permissionsFix,
+  providerRow,
+  readTokenProblem,
   routineFix,
   summarizeDeliveries,
   worst,
@@ -46,6 +51,10 @@ const QUIET = new Set(['claude.budget']);
  */
 const ENDS_BY_ITSELF = new Set(['github.status']);
 const ROUTINES_URL = 'https://claude.ai/code/routines';
+/** Providers' read-only tokens get their own key from the sync key (BRK-194), and each is bound to its provider. */
+const PROVIDER_TOKENS = new TextEncoder().encode('breakaway provider tokens v1');
+const providerBound = (id) => `provider:${id}`;
+const TOKEN_MAX = 4096;
 /** A link into the install's docs (none on an install without them). */
 const doc = (env, anchor) => docsLink(install(env), anchor);
 /** A URL's host, or words that stand in for it before the board knows where it answers. */
@@ -91,6 +100,7 @@ function entry(
     verified = undefined,
     hold = undefined,
     override = undefined,
+    provider = undefined,
   } = {},
 ) {
   return {
@@ -110,6 +120,7 @@ function entry(
     ...(verified && state === 'working' ? { verified } : {}),
     ...(hold ? { hold } : {}),
     ...(override ? { override } : {}),
+    ...(provider ? { provider } : {}),
   };
 }
 
@@ -158,6 +169,15 @@ export const connectionsMethods = {
         created INTEGER NOT NULL, resolved INTEGER, resolution TEXT
       );
       CREATE INDEX IF NOT EXISTS connection_notices_open ON connection_notices (resolved, id);
+    `);
+    // Providers' read-only tokens (BRK-194): sealed, with their permissions by name and what the board last saw.
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS infra_connections (
+        provider TEXT PRIMARY KEY, sealed TEXT NOT NULL, permissions TEXT NOT NULL, checked INTEGER NOT NULL,
+        created INTEGER NOT NULL, edited INTEGER NOT NULL,
+        discovery_at INTEGER, discovery_ok INTEGER, discovery_error TEXT,
+        signal_at INTEGER, signal_ok INTEGER, signal_error TEXT
+      );
     `);
   },
 
@@ -366,6 +386,7 @@ export const connectionsMethods = {
       ...(await this.githubStatusConnection()),
       ...this.npmConnections(),
       ...(await this.claudeConnections()),
+      ...(await this.providerConnections()),
       this.cliConnection(),
       this.taskwarriorConnection(),
       await this.pushConnection(),
@@ -974,6 +995,230 @@ export const connectionsMethods = {
         link: doc(this.env, 'github'),
       });
     });
+  },
+
+  // ---- providers (BRK-194) ----------------------------------------------------------------
+
+  /** The providers the board knows: the Worker's registry, or a test's. */
+  infraRegistry() {
+    return this.infraProviders ?? providers;
+  },
+
+  /** The registered provider `id` that takes a read-only token, or a 404. */
+  tokenProvider(id) {
+    const name = String(id ?? '').toLowerCase();
+    const registry = this.infraRegistry();
+    const provider = registry.has(name) ? registry.get(name) : null;
+    if (!provider?.readToken)
+      throw new AgentError(`no provider "${name.slice(0, 40)}" that takes a read-only token`, 404);
+    return provider;
+  },
+
+  /** The key providers' tokens are sealed with, from the sync key in use (a rotation re-seals them). */
+  async providerTokenKey(syncKey = null) {
+    const key = syncKey ?? (await this.credentials()).key;
+    if (this.providerKeyCache?.syncKey !== key)
+      this.providerKeyCache = { syncKey: key, key: await sealingKey(key, PROVIDER_TOKENS) };
+    return this.providerKeyCache.key;
+  },
+
+  /**
+   * Provider `id`'s read-only token, for discovery and signals (BRK-189, BRK-190) to send to that provider only, or
+   * null when there's none or it can't be opened. Never for an API answer.
+   * @param {string} id
+   * @returns {Promise<string | null>}
+   */
+  async providerReadToken(id) {
+    const row = this.sql.exec('SELECT sealed FROM infra_connections WHERE provider = ?', id).toArray()[0];
+    if (!row) return null;
+    try {
+      const { token } = await openJson(await this.providerTokenKey(), providerBound(id), row.sealed, 'token');
+      return typeof token === 'string' ? token : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * What discovery or signals saw with provider `id`'s token, for its Connections row: when, whether it worked, and
+   * what the platform said when it didn't, redacted, with the token itself taken out in case the platform echoed it.
+   * `missing` names permissions the platform refused (a 403 on what one reads): the row says each by name until a new
+   * token is pasted. A platform that can't list a token's permissions shows a missing one only this way.
+   * @param {string} id
+   * @param {'discovery' | 'signal'} what
+   * @param {{ ok: boolean, error?: string | null, missing?: string[] }} outcome
+   */
+  async infraConnectionSeen(id, what, { ok, error = null, missing = [] }) {
+    if (what !== 'discovery' && what !== 'signal') throw new Error(`infraConnectionSeen: unknown ${what}`);
+    if (missing.length) {
+      const row = this.sql.exec('SELECT permissions FROM infra_connections WHERE provider = ?', id).toArray()[0];
+      const gone = new Set(missing.map(String));
+      if (row)
+        this.sql.exec(
+          'UPDATE infra_connections SET permissions = ? WHERE provider = ?',
+          JSON.stringify(JSON.parse(row.permissions).filter((p) => !gone.has(p))),
+          id,
+        );
+    }
+    let said = null;
+    if (!ok) {
+      const token = await this.providerReadToken(id);
+      const text = String(error ?? '').trim() || 'no reason given';
+      said = clip(token ? text.replaceAll(token, '[token]') : text);
+    }
+    this.sql.exec(
+      `UPDATE infra_connections SET ${what}_at = ?, ${what}_ok = ?, ${what}_error = ? WHERE provider = ?`,
+      Date.now(),
+      ok ? 1 : 0,
+      said,
+      id,
+    );
+  },
+
+  /** Provider `id`'s token as Connections knows it: never its value. */
+  async providerRecord(id) {
+    const row = this.sql.exec('SELECT * FROM infra_connections WHERE provider = ?', id).toArray()[0];
+    if (!row) return null;
+    if ((await this.providerReadToken(id)) === null) return { broken: true };
+    const seen = (what) =>
+      row[`${what}_at`]
+        ? { at: iso(row[`${what}_at`]), ok: Boolean(row[`${what}_ok`]), error: row[`${what}_error`] ?? null }
+        : null;
+    return {
+      permissions: JSON.parse(row.permissions),
+      checked: Boolean(row.checked),
+      connected: iso(row.edited),
+      discovery: seen('discovery'),
+      signal: seen('signal'),
+    };
+  },
+
+  /** A row on Connections for each registered provider that takes a read-only token. */
+  async providerConnections() {
+    const out = [];
+    for (const provider of this.infraRegistry().list()) {
+      if (!provider.readToken) continue;
+      const record = await this.providerRecord(provider.id);
+      const row = providerRow(provider, record);
+      const kept = record && !('broken' in record) ? record : null;
+      out.push(
+        entry(`provider.${provider.id}`, 'providers', provider.name, row.state, {
+          detail: row.detail,
+          at: row.at,
+          fix: row.fix,
+          link: provider.readToken.url,
+          items: row.items,
+          provider: {
+            id: provider.id,
+            connected: Boolean(record),
+            since: kept?.connected ?? null,
+            discovery: kept?.discovery ? { at: kept.discovery.at, ok: kept.discovery.ok } : null,
+            signal: kept?.signal ? { at: kept.signal.at, ok: kept.signal.ok } : null,
+          },
+        }),
+      );
+    }
+    return out;
+  },
+
+  /**
+   * PUT /api/infra/connections/<provider> (the signed-in owner; the Worker refuses the bearer token): keeps a
+   * provider's read-only token. The provider checks it with its platform first, when it can, and a token that can
+   * change anything, is missing a permission, or the platform refused, is refused with what to do. Kept sealed, with
+   * its permissions by name; the answer never holds the token.
+   */
+  infraConnectApi(id, body) {
+    return this.run(async () => {
+      this.ownerOnlyRoutineKeep(body?.by, 'connects a provider');
+      const provider = this.tokenProvider(id);
+      const token = String(body?.token ?? '').trim();
+      if (!token) throw new AgentError(`paste ${provider.name}’s read-only token. Nothing was stored.`, 400);
+      if (token.length > TOKEN_MAX || /\s/u.test(token))
+        throw new AgentError(
+          `that isn’t a token: paste it as ${provider.name} shows it, on one line. Nothing was stored.`,
+          400,
+        );
+      let check = null;
+      if (provider.readToken.check) {
+        try {
+          check = checkTokenCheck(provider, await provider.readToken.check({ token }));
+        } catch (error) {
+          throw new AgentError(
+            `the board couldn’t check the token with ${provider.name} (${clip(error?.message, 200)}); try again in a moment. Nothing was stored.`,
+            502,
+          );
+        }
+      }
+      const problem = readTokenProblem(provider, check);
+      if (problem) throw new AgentError(`${problem}. Nothing was stored.`, 400);
+      const sealed = await sealJson(await this.providerTokenKey(), providerBound(provider.id), { token });
+      const now = Date.now();
+      const replaced =
+        this.sql.exec('SELECT 1 FROM infra_connections WHERE provider = ?', provider.id).toArray().length > 0;
+      // A new token starts with nothing seen: the next discovery and signal say whether it works.
+      this.sql.exec(
+        `INSERT INTO infra_connections (provider, sealed, permissions, checked, created, edited) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (provider) DO UPDATE SET sealed = excluded.sealed, permissions = excluded.permissions,
+           checked = excluded.checked, edited = excluded.edited, discovery_at = NULL, discovery_ok = NULL,
+           discovery_error = NULL, signal_at = NULL, signal_ok = NULL, signal_error = NULL`,
+        provider.id,
+        sealed,
+        JSON.stringify(keptPermissions(provider, check)),
+        check ? 1 : 0,
+        now,
+        now,
+      );
+      return {
+        status: replaced ? 200 : 201,
+        body: { ok: true, ...(await this.providerState(provider)), ...(replaced ? { replaced: true } : {}) },
+      };
+    });
+  },
+
+  /** DELETE /api/infra/connections/<provider> (the signed-in owner): forgets a provider's read-only token. */
+  infraForgetApi(id, body) {
+    return this.run(async () => {
+      this.ownerOnlyRoutineKeep(body?.by, 'forgets a provider’s token');
+      const provider = this.tokenProvider(id);
+      const had = this.sql
+        .exec('DELETE FROM infra_connections WHERE provider = ? RETURNING provider', provider.id)
+        .toArray().length;
+      if (!had) throw new AgentError(`the board has no token for ${provider.name}`, 404);
+      return { status: 200, body: { ok: true, ...(await this.providerState(provider)) } };
+    });
+  },
+
+  /** What the form may know about a provider's token: never its value. */
+  async providerState(provider) {
+    const record = await this.providerRecord(provider.id);
+    const row = providerRow(provider, record);
+    return {
+      provider: provider.id,
+      connected: Boolean(record && !('broken' in record)),
+      state: row.state,
+      permissions: record && !('broken' in record) ? record.permissions : [],
+    };
+  },
+
+  /**
+   * The providers' tokens sealed again under `newSyncKey`, for a rotation to write in its transaction. One that
+   * can't be opened stays as it is: Connections already says to paste it again.
+   * @returns {Promise<{ provider: string, sealed: string }[]>}
+   */
+  async resealedProviderTokens(newSyncKey) {
+    const rows = this.sql.exec('SELECT provider, sealed FROM infra_connections').toArray();
+    if (!rows.length) return [];
+    const [from, to] = await Promise.all([this.providerTokenKey(), sealingKey(newSyncKey, PROVIDER_TOKENS)]);
+    const out = [];
+    for (const row of rows) {
+      try {
+        const value = await openJson(from, providerBound(row.provider), row.sealed, 'token');
+        out.push({ provider: row.provider, sealed: await sealJson(to, providerBound(row.provider), value) });
+      } catch {
+        // Broken already.
+      }
+    }
+    return out;
   },
 
   // ---- Claude ----------------------------------------------------------------------------
