@@ -2107,6 +2107,12 @@ export const agentsMethods = {
     await this.selfUpdateTick();
     // The executor (BRK-183): runs that stopped reporting, then approved plans waiting to apply.
     await this.infraRunsTick();
+    // Short-lived environments (BRK-200): tasks that ask get one through a plan; closed ones get the plan that removes it.
+    try {
+      await this.shortLivedTick();
+    } catch (error) {
+      errors.push(error.message); /* the next tick tries again */
+    }
     // Before the prune: agent runs and GitHub's rows live on in the dashboard's log (store-stats.js).
     this.archiveStats();
     this.pruneAgentLogs();
