@@ -16,7 +16,8 @@ import { vapidKeys } from './push.js';
 import { docsLink, install, secretName } from './install.js';
 import { checkReport, judgeStub, reportProblems, shortHash, stubText } from './session-report.js';
 import BOARD_FILES from './board-files.json' with { type: 'json' };
-import { checkTokenCheck, providers } from './infra-provider.js';
+import { checkTokenCheck } from './infra-provider.js';
+import { providers } from './infra-providers.js';
 import { openJson, sealJson, sealingKey } from './routine-keep.js';
 import {
   SECRET_BINDINGS,

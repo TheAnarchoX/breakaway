@@ -46,10 +46,10 @@ export const infraDesiredMethods = {
     `);
   },
 
-  /** The connected provider an environment names, once providers are registered (BRK-189), else null. */
+  /** The registered provider an environment names, else null. */
   infraProviderFor(id) {
-    const registry = this.infraProviders;
-    return id && registry?.has(id) ? registry.get(id) : null;
+    const registry = this.infraRegistry();
+    return id && registry.has(id) ? registry.get(id) : null;
   },
 
   /**
