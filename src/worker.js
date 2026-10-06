@@ -515,6 +515,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && method === 'DELETE')
       return send(await s.environmentsDeleteApi(parts[2], { repo, ...body }));
   }
+  // Desired state (BRK-180): read only, from each repository's default branch; it changes by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'desired' && parts.length <= 3 && method === 'GET') {
+    const repo = url.searchParams.get('repo');
+    return send(await (parts.length === 2 ? s.desiredApi({ repo }) : s.desiredOneApi(parts[2], { repo })));
+  }
   // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
   if (parts[0] === 'infra' && parts[1] === 'inventory') {
     const q = (name) => url.searchParams.get(name);
@@ -533,6 +538,18 @@ async function handleApi(request, env, url, ctx) {
       return send(
         await s.inventoryResourceApi(parts.slice(2).join('/'), { repo: q('repo'), environment: q('environment') }),
       );
+  }
+  // Environment locks (BRK-179): anyone signed in reads them; the executor takes and releases them inside the board
+  // (BRK-183), and releasing one by force is the owner's, from the signed-in browser only.
+  if (parts[0] === 'infra' && parts[1] === 'locks' && parts.length <= 3) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET')
+      return send(await (parts.length === 2 ? s.locksApi({ repo }) : s.lockApi(parts[2], { repo })));
+    if (parts.length === 3 && method === 'DELETE') {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can release an environment’s lock' });
+      return send(await s.lockReleaseApi(parts[2], { repo }));
+    }
   }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).

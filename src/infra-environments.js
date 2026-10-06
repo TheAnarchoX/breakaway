@@ -3,6 +3,7 @@
  * board's repositories that plans apply to. Pure, so the rules are tested without the Durable Object; the table and
  * the API are in store-infra-environments.js.
  */
+import { RESERVED_FILES } from './infra-desired.js';
 import { InputError } from './model.js';
 
 /** What an environment is for; production gates apply to `production` unless the owner says otherwise. */
@@ -23,6 +24,10 @@ export function checkEnvironmentName(value) {
   if (!NAME.test(name))
     throw new InputError(
       'name the environment with lowercase letters, digits, and - (up to 40), like staging or preview-12: it’s also its desired-state file’s name',
+    );
+  if (RESERVED_FILES.includes(name))
+    throw new InputError(
+      `${name} is the name of Architect’s ${name} file, so an environment can’t have it: pick another`,
     );
   return name;
 }
