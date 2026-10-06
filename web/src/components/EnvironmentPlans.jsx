@@ -14,10 +14,10 @@ export const planHref = (/** @type {{ id: string, environment: { id: number } }}
 
 /**
  * An environment's plans (WEB-62), on its page: the ones still open first, then the newest, each linking to its page,
- * where the owner approves or rejects it.
- * @param {{ env: { id: number, name: string, observeOnly?: boolean } }} props
+ * where the owner approves or rejects it. A new `tick` reads them again (the console's poll, WEB-94).
+ * @param {{ env: { id: number, name: string, observeOnly?: boolean }, tick?: number }} props
  */
-export function EnvironmentPlans({ env }) {
+export function EnvironmentPlans({ env, tick = 0 }) {
   const [state, setState] = useState(
     /** @type {{ plans: any[], more: boolean, error: string | null, loading: boolean }} */ ({
       plans: [],
@@ -35,14 +35,14 @@ export function EnvironmentPlans({ env }) {
     return () => {
       live = false;
     };
-  }, [env.id]);
+  }, [env.id, tick]);
   if (env.observeOnly && !state.plans.length) return null;
   const open = (/** @type {any} */ p) => p.state === 'waiting' || p.state === 'draft' || p.state === 'applying';
   const plans = [...state.plans.filter(open), ...state.plans.filter((p) => !open(p))];
   return (
     <section class="infra-section" aria-labelledby="infra-plans">
       <h2 id="infra-plans">
-        <FileDiff size={18} aria-hidden="true" />
+        <FileDiff size={16} aria-hidden="true" />
         Plans
       </h2>
       {state.error ? (
@@ -76,9 +76,8 @@ export function EnvironmentPlans({ env }) {
           ))}
         </ul>
       ) : (
-        <p class="muted">
-          None yet. A pull request that changes <code>.github/breakaway-infra/{env.name}.json</code>, or drift, makes
-          one, and it waits here for you.
+        <p class="console-quiet">
+          None yet: a pull request to <code>.github/breakaway-infra/{env.name}.json</code>, or drift, makes one.
         </p>
       )}
     </section>
