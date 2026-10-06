@@ -731,7 +731,7 @@ const notYet = (step, task) => async () => {
 export async function checkToken({ token, fetch: doFetch = fetch }) {
   const ask = async (path) => {
     const res = await doFetch(`${API}${path}`, { headers: { authorization: `Bearer ${token}` } });
-    return { status: res.status, json: await res.json().catch(() => null) };
+    return { status: res.status, json: /** @type {any} */ (await res.json().catch(() => null)) };
   };
   try {
     const user = await ask('/user/tokens/verify');
