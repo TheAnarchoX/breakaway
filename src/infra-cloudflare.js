@@ -606,13 +606,15 @@ const round = (n) => Math.round(n * 10_000) / 10_000;
 export const COST_NOTE = `Estimated from the last ${COST_WINDOW_DAYS} days of use at Cloudflare’s list prices, before what your plan includes: Cloudflare counts that across the whole account, not by resource, so the bill can be lower.`;
 
 /**
- * Prices one resource from its usage over the window: the amount a month, and what its note adds.
+ * Prices one resource from its usage over the window: the amount a month in PRICES.currency, unrounded, and what its
+ * note adds. With no usage, a container still costs its active instances' memory and disk; everything else is 0.
  * @param {Resource} r
- * @param {Record<string, number>} u its usage, by field (and `field:by` for a dataset grouped by `by`)
- * @param {number} scale turns the window's usage into a month's
+ * @param {Record<string, number>} [u] its usage, by field (and `field:by` for a dataset grouped by `by`), as
+ *   readDataset adds it up
+ * @param {number} [scale] turns the window's usage into a month's
  * @returns {{ amount: number, notes: string[] }}
  */
-function price(r, u, scale) {
+export function priceResource(r, u = {}, scale = MONTH_DAYS / COST_WINDOW_DAYS) {
   const n = (k) => u[k] ?? 0;
   switch (r.kind) {
     case 'worker': {
@@ -715,7 +717,7 @@ export async function cost(ctx) {
   }
 
   return resources.map((r) => {
-    const { amount, notes } = price(r, /** @type {Record<string, number>} */ (usage.get(r.id)), scale);
+    const { amount, notes } = priceResource(r, /** @type {Record<string, number>} */ (usage.get(r.id)), scale);
     const missed = left.get(r.id);
     if (missed) notes.push(`Not counted, since Cloudflare’s analytics didn’t return it: ${missed.join(', ')}.`);
     return {
