@@ -140,37 +140,19 @@ export const infraPlansMethods = {
   },
 
   /**
-   * Makes a draft plan for an environment: asks its provider for the diff from the environment's desired state (or
-   * `desired`, for the board's own callers, like an envelope's scale), prices it, measures its blast radius from the
-   * inventory, and keeps it with an audit entry. Refused on an observe-only environment, one with no provider or no
-   * desired state, and when nothing would change.
-   * @param {string | number} ref the environment's ID or name
-   * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
-   *   agent?: string | null, desired?: DesiredState }} input
+   * What a plan for an environment would hold, kept nowhere: its provider's diff from `wanted`, its cost change, and
+   * its blast radius from the inventory. makeInfraPlan keeps it; `infra check`'s preview (store-infra-check.js) only
+   * shows it. Refused on an environment with no provider, or one whose provider isn't connected. With nothing to
+   * change, the diff is empty and there's no cost or blast radius.
+   * @param {Record<string, any>} env the environment's row
+   * @param {DesiredState} wanted
    */
-  async makeInfraPlan(
-    ref,
-    { repo = null, source, sourceRef = null, by, agent = null, desired } = /** @type {any} */ ({}),
-  ) {
-    const from = checkSource(source, sourceRef);
-    const env = this.environmentRow(ref, repo);
-    if (env.observe_only || runsTheBoard(env, install(this.env).worker))
-      throw new AgentError(`${env.name} is observe only: Architect watches it and never plans changes to it`, 409);
-    if (env.frozen) throw new AgentError(frozen(env), 409);
+  async computeInfraPlan(env, wanted) {
     if (!env.provider) throw new AgentError(`${env.name} has no provider: the owner picks one on the board first`, 409);
     const registry = this.infraRegistry();
     if (!registry.has(env.provider))
       throw new AgentError(`${env.provider} isn’t connected, so ${env.name} can’t be planned`, 409);
     const provider = registry.get(env.provider);
-    const kept = this.sql
-      .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
-      .toArray()[0];
-    const wanted = desired ?? this.desiredStateFor(env);
-    if (!wanted)
-      throw new AgentError(
-        `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
-        409,
-      );
     const ctx = {
       environment: env.name,
       scope: { target: env.target },
@@ -186,8 +168,7 @@ export const infraPlansMethods = {
         502,
       );
     }
-    if (diff.changes.length === 0)
-      throw new AgentError(`${env.name} already matches its desired state: there’s nothing to plan`, 409);
+    if (diff.changes.length === 0) return { provider, stored: keptDiff(diff), cost: null, blast: null };
     if (diff.changes.length > MAX_PLAN_CHANGES)
       throw new AgentError(
         `the plan for ${env.name} has ${diff.changes.length} changes, more than ${MAX_PLAN_CHANGES}: split the desired state`,
@@ -219,6 +200,40 @@ export const infraPlansMethods = {
       }
     const cost = costChange(stored, costs, estimates);
     const blast = blastRadius(stored, inventory);
+    return { provider, stored, cost, blast };
+  },
+
+  /**
+   * Makes a draft plan for an environment: asks its provider for the diff from the environment's desired state (or
+   * `desired`, for the board's own callers, like an envelope's scale), prices it, measures its blast radius from the
+   * inventory, and keeps it with an audit entry. Refused on an observe-only environment, one with no provider or no
+   * desired state, and when nothing would change.
+   * @param {string | number} ref the environment's ID or name
+   * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
+   *   agent?: string | null, desired?: DesiredState }} input
+   */
+  async makeInfraPlan(
+    ref,
+    { repo = null, source, sourceRef = null, by, agent = null, desired } = /** @type {any} */ ({}),
+  ) {
+    const from = checkSource(source, sourceRef);
+    const env = this.environmentRow(ref, repo);
+    if (env.observe_only || runsTheBoard(env, install(this.env).worker))
+      throw new AgentError(`${env.name} is observe only: Architect watches it and never plans changes to it`, 409);
+    if (env.frozen) throw new AgentError(frozen(env), 409);
+    const kept = this.sql
+      .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
+      .toArray()[0];
+    const wanted = desired ?? this.desiredStateFor(env);
+    if (!wanted)
+      throw new AgentError(
+        `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
+        409,
+      );
+    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted);
+    if (stored.changes.length === 0)
+      throw new AgentError(`${env.name} already matches its desired state: there’s nothing to plan`, 409);
+    const text = JSON.stringify(stored);
     const policy = this.checkInfraPolicy(env, { diff: stored, cost, provider });
     const now = Date.now();
     let n;
