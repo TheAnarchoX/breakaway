@@ -208,7 +208,7 @@ export const infraIncidentsMethods = {
     await this.boardPing(
       uuid,
       'incident',
-      `${signal.kind}, ${signal.level}, in ${env.name}${production ? ' (production)' : ''}: ${signal.text}. ${wid} has the steps: diagnose, propose a plan, approve, apply, verify.`,
+      `${signal.kind}, ${signal.level}, in ${env.name}${production ? ' (production)' : ''}: ${String(signal.text).replace(/[.!?]+$/u, '')}. ${wid} has the steps: diagnose, propose a plan, approve, apply, verify.`,
       { quiet: !production },
     );
     return Number(id);

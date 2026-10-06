@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { ArrowLeft, Boxes, FileCode, History, RefreshCw, Server, Target } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
+import { auditActor, auditWords } from '../lib/infra-audit.js';
 import { environmentId, hashFor, navOrder, repoName } from '../lib/store.js';
 import { DeploysSection } from '../components/EnvironmentDeploys.jsx';
 import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
@@ -28,29 +29,6 @@ import { DescribeAsCode } from '../components/InfraDescribe.jsx';
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
 const AUDIT_PAGE = 20;
-
-/** What each kind of audit entry says happened, in the brand's Infrastructure words. */
-const AUDIT_LABEL = {
-  plan: 'Plan',
-  approve: 'Approved',
-  reject: 'Rejected',
-  apply: 'Applied',
-  rollback: 'Rolled back',
-  envelope: 'Inside an envelope',
-  'lock-release': 'Lock released',
-  'break-glass': 'Break-glass',
-  freeze: 'Frozen',
-  environment: 'Target changed',
-  cleanup: 'Clean up',
-};
-
-/** Who acted, as the trail records it: the owner is never named. */
-const ACTOR = {
-  owner: 'you',
-  executor: 'the executor',
-  envelope: 'an envelope',
-  board: 'the board',
-};
 
 /** A desired-state file's state (BRK-180), in words. */
 const DESIRED = {
@@ -281,32 +259,11 @@ function Drift({ env, desired, error }) {
   );
 }
 
-/**
- * What the deploy flow recorded (BRK-195), from its summary's first words: it deploys, never applies, so its entries
- * read in the release flow's words.
- */
-const DEPLOY_LABEL = { Deploy: 'Deployed', Promote: 'Promoted', 'Roll back': 'Rolled back' };
-
-/**
- * An entry's label and outcome in words.
- * @param {any} e
- */
-function auditWords(e) {
-  if (e.kind === 'freeze') return { label: e.outcome === 'off' ? 'Unfrozen' : AUDIT_LABEL.freeze, outcome: '' };
-  const flow = /^(Deploy|Promote|Roll back) of /u.exec(e.summary ?? '')?.[1];
-  if (!flow || (e.kind !== 'apply' && e.kind !== 'rollback'))
-    return { label: AUDIT_LABEL[e.kind] ?? e.kind, outcome: e.outcome };
-  if (e.outcome === 'failed') return { label: `${flow} failed`, outcome: '' };
-  // A deploy whose health check failed, and the version before came back by itself.
-  if (e.outcome === 'rolled back') return { label: 'Rolled back', outcome: `${flow.toLowerCase()} failed its check` };
-  return { label: DEPLOY_LABEL[flow], outcome: '' };
-}
-
 /** @param {{ e: any }} props */
 function AuditEntry({ e }) {
   const iso = new Date(e.at).toISOString();
   const { label, outcome } = auditWords(e);
-  const who = e.by === 'agent' ? (e.agent ?? 'an agent') : (ACTOR[e.by] ?? e.by);
+  const who = auditActor(e);
   return (
     <li class={`infra-audit-entry infra-audit-${e.kind}`}>
       <div class="infra-audit-head">
@@ -419,9 +376,23 @@ export function EnvironmentView() {
             <p class="muted">It may have been removed. Go back to Infrastructure to see the ones there are.</p>
           </div>
         ) : state.error ? (
-          <p class="field-error" role="alert">
-            {state.error}
-          </p>
+          <>
+            <p class="field-error" role="alert">
+              Couldn’t load the environment. {state.error}
+            </p>
+            <div class="conn-buttons">
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                onClick={load}
+                disabled={state.loading}
+                aria-busy={state.loading}
+              >
+                <RefreshCw size={16} aria-hidden="true" class={state.loading ? 'spin' : ''} />
+                Try again
+              </button>
+            </div>
+          </>
         ) : (
           <p class="muted" aria-busy="true">
             Loading the environment…

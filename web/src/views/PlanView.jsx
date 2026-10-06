@@ -15,6 +15,7 @@ import {
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
+import { auditActor, auditWords } from '../lib/infra-audit.js';
 import { confirmDialog, environmentId, hashFor, navOrder, planRef, repoName, toast } from '../lib/store.js';
 import { rateWords } from '../../../src/infra-currency.js';
 
@@ -53,8 +54,6 @@ const SOURCE = {
 };
 
 /** What the audit trail says each of the plan's moves was. */
-const AUDIT_LABEL = { plan: 'Plan', approve: 'Approved', reject: 'Rejected', apply: 'Apply', rollback: 'Roll back' };
-const ACTOR = { owner: 'you', executor: 'the executor', envelope: 'an envelope', board: 'the board' };
 
 /** A run's outcome (BRK-183), in words. */
 const OUTCOME = {
@@ -373,19 +372,22 @@ function Steps({ run, audit, names }) {
       ))}
       {audit.length ? (
         <ol class="infra-audit">
-          {audit.map((e) => (
-            <li key={e.id} class={`infra-audit-entry infra-audit-${e.kind}`}>
-              <div class="infra-audit-head">
-                <span class="infra-audit-kind">{AUDIT_LABEL[e.kind] ?? e.kind}</span>
-                {e.outcome && <span class="meta">{e.outcome}</span>}
-                <span class="meta infra-audit-when">
-                  <When iso={new Date(e.at).toISOString()} />
-                </span>
-              </div>
-              {e.summary && <p class="infra-audit-summary">{e.summary}</p>}
-              <p class="meta">By {e.by === 'agent' ? (e.agent ?? 'an agent') : (ACTOR[e.by] ?? e.by)}</p>
-            </li>
-          ))}
+          {audit.map((e) => {
+            const { label, outcome } = auditWords(e);
+            return (
+              <li key={e.id} class={`infra-audit-entry infra-audit-${e.kind}`}>
+                <div class="infra-audit-head">
+                  <span class="infra-audit-kind">{label}</span>
+                  {outcome && <span class="meta">{outcome}</span>}
+                  <span class="meta infra-audit-when">
+                    <When iso={new Date(e.at).toISOString()} />
+                  </span>
+                </div>
+                {e.summary && <p class="infra-audit-summary">{e.summary}</p>}
+                <p class="meta">By {auditActor(e)}</p>
+              </li>
+            );
+          })}
         </ol>
       ) : (
         <p class="muted">Nothing recorded yet.</p>
@@ -570,9 +572,23 @@ export function PlanView() {
             <p class="muted">The link may be wrong. Go back to the environment to see its plans.</p>
           </div>
         ) : state.error ? (
-          <p class="field-error" role="alert">
-            {state.error}
-          </p>
+          <>
+            <p class="field-error" role="alert">
+              Couldn’t load the plan. {state.error}
+            </p>
+            <div class="conn-buttons">
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                onClick={load}
+                disabled={state.loading}
+                aria-busy={state.loading}
+              >
+                <RefreshCw size={16} aria-hidden="true" class={state.loading ? 'spin' : ''} />
+                Try again
+              </button>
+            </div>
+          </>
         ) : (
           <p class="muted" aria-busy="true">
             Loading the plan…
@@ -605,7 +621,7 @@ export function PlanView() {
               </>
             )}
             {' · made by '}
-            {plan.by === 'agent' ? (plan.agent ?? 'an agent') : (ACTOR[plan.by] ?? plan.by)} <When iso={plan.created} />
+            {auditActor(plan)} <When iso={plan.created} />
           </p>
         </div>
         <div class="conn-buttons">
