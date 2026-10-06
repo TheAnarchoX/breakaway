@@ -13,6 +13,7 @@ import {
   environmentHealth,
 } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
+import { UnownedSection } from '../components/Unowned.jsx';
 import { CostSection } from '../components/InfraCosts.jsx';
 
 /**
@@ -515,6 +516,8 @@ export function EnvironmentView() {
           </p>
         )}
       </section>
+
+      <UnownedSection env={env} />
 
       <CostSection env={env} />
 
