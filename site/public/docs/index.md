@@ -2,7 +2,7 @@
 
 > Everything you need to run a breakaway board: the concepts, the CLI and the API, how agents work, how deploys and updates go, and what to do when something breaks.
 
-breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, and gives you four ways in: a web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
+breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, tracks one repository or several, can run the infrastructure they run on too (Architect: nothing changes without your approval or inside bounds you approved once, and agents never apply a change), and gives you four ways in: a web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 
 These docs cover all of it. Start where you are.
 
@@ -23,6 +23,7 @@ These docs cover all of it. Start where you are.
 | Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
+| Environments, plans you approve, envelopes, signals, incidents, and cost: Architect | [The manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
 | Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) |
 | Connecting Claude Code or another MCP client to `/mcp` | [MCP clients](https://leavethepack.dev/docs/mcp/) |
