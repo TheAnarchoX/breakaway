@@ -38,7 +38,10 @@ export const FAKE_TOKENS = {
 /** Attributes that scale a service: a change to only these is a `scale`. */
 const SCALE_ATTRS = new Set(['instances']);
 
-/** A small platform: a service that uses a database and serves a route. */
+/** A time `hours` before now, to the second: the fake's events stay inside the signal stream's window whenever the tests run. */
+const hoursAgo = (hours) => new Date(Math.floor(Date.now() / 1000 - hours * 3600) * 1000).toISOString();
+
+/** A small platform: a service that uses a database and serves a route. Its events happened in the last few hours. */
 export function fakeState() {
   return {
     resources: [
@@ -63,7 +66,7 @@ export function fakeState() {
         kind: 'health',
         level: 'info',
         value: null,
-        at: '2026-10-01T10:00:00Z',
+        at: hoursAgo(3),
         text: 'api is up',
       },
       {
@@ -71,7 +74,7 @@ export function fakeState() {
         kind: 'alert',
         level: 'warning',
         value: 81,
-        at: '2026-10-02T10:00:00Z',
+        at: hoursAgo(2),
         text: 'main is 81% full',
       },
       {
@@ -79,7 +82,7 @@ export function fakeState() {
         kind: 'cost',
         level: 'info',
         value: 6.5,
-        at: '2026-10-03T10:00:00Z',
+        at: hoursAgo(1),
         text: 'this month so far',
       },
     ],

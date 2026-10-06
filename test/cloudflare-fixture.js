@@ -8,6 +8,9 @@
  *
  * `cloudflareApi()` returns a `fetch` that answers from the fixture and records each call; a test changes `answers`
  * to make one fail.
+ *
+ * Alerts (BRK-191): the history has an alert on `acme-api`, one on `acme-other` (another environment's), and one for
+ * the whole account; one policy sends to a webhook that fires a routine on the board, another only emails.
  */
 
 export const ACCOUNT = '0000000000000000000000000000a001';
@@ -27,6 +30,57 @@ export const CONTAINER_OTHER = '0000000000000000000000000000e102';
 
 /** Values a Worker's settings or deployments carry that the inventory must never keep. */
 export const NEVER_KEPT = ['hello-from-acme-vars', 'acme-json-config-value', 'deployer@example.com'];
+
+/** What an alert's body and the account's alert setup carry that a signal or the setup must never keep. */
+export const ALERT_NEVER_KEPT = ['oncall@example.com', 'chat.example', 'acme-alert-details', 'pol-board'];
+
+/** The board's routine that the account's webhook fires, and when each alert in the history was sent. */
+export const ALERT_ROUTINE = 'cf-alerts';
+export const ALERT_TIMES = [5, 4, 2].map((hours) =>
+  new Date(Math.floor(Date.now() / 1000 - hours * 3600) * 1000).toISOString(),
+);
+
+/** The account's alert history, as `GET …/alerting/v3/history` answers it. */
+export function alertHistory() {
+  const body = (name, sent, worker) =>
+    JSON.stringify({
+      alert_name: name,
+      alert_type: 'workers_alert',
+      ts: Date.parse(sent) / 1000,
+      text: 'acme-alert-details: write to oncall@example.com',
+      data: worker ? { script_name: worker, account_id: ACCOUNT } : { account_id: ACCOUNT },
+    });
+  const [first, second, third] = ALERT_TIMES;
+  return [
+    {
+      id: 'h1',
+      name: 'Errors',
+      alert_type: 'workers_alert',
+      sent: first,
+      mechanism: 'oncall@example.com',
+      mechanism_type: 'email',
+      alert_body: body('Worker error rate', first, 'acme-api'),
+    },
+    {
+      id: 'h2',
+      name: 'Errors',
+      alert_type: 'workers_alert',
+      sent: second,
+      mechanism: 'oncall@example.com',
+      mechanism_type: 'email',
+      alert_body: body('Worker error rate', second, 'acme-other'),
+    },
+    {
+      id: 'h3',
+      name: 'Usage',
+      alert_type: 'billing_usage_alert',
+      sent: third,
+      mechanism: 'oncall@example.com',
+      mechanism_type: 'email',
+      alert_body: body('Usage based billing', third, null),
+    },
+  ];
+}
 
 const ok = (result, extra = {}) => ({ success: true, errors: [], messages: [], result, ...extra });
 const page = (result, n, of) => ok(result, { result_info: { page: n, per_page: 100, total_pages: of } });
@@ -209,6 +263,53 @@ export function cloudflareAnswers() {
       },
     ]),
     '/user/tokens/verify': ok({ id: 'token-id', status: 'active' }),
+    [`${a}/queues/${QUEUE_JOBS}/metrics`]: () =>
+      ok({ backlog_count: 12, backlog_bytes: 2048, oldest_message_timestamp_ms: Date.now() - 60_000 }),
+    [`${a}/alerting/v3/history?*`]: (_body, url) => {
+      const since = Date.parse(url.searchParams.get('since') ?? '');
+      const before = Date.parse(url.searchParams.get('before') ?? '');
+      const sent = alertHistory().filter((h) => Date.parse(h.sent) >= since && Date.parse(h.sent) <= before);
+      return page(sent, 1, 1);
+    },
+    [`${a}/alerting/v3/available_alerts`]: ok({
+      Workers: [{ type: 'workers_alert', display_name: 'Worker error rate', description: 'Errors over a threshold' }],
+      Billing: [
+        { type: 'billing_usage_alert', display_name: 'Usage based billing', description: 'Usage over a limit' },
+      ],
+      'Origin Monitoring': [{ type: 'real_origin_monitoring', display_name: 'Origin error rate' }],
+    }),
+    [`${a}/alerting/v3/policies`]: ok([
+      {
+        id: 'pol-board',
+        name: 'Errors to the board',
+        alert_type: 'workers_alert',
+        enabled: true,
+        mechanisms: { webhooks: [{ id: 'wh-board' }], email: [{ id: 'oncall@example.com' }] },
+      },
+      {
+        id: 'pol-email',
+        name: 'Billing by email',
+        alert_type: 'billing_usage_alert',
+        enabled: true,
+        mechanisms: { email: [{ id: 'oncall@example.com' }], webhooks: [{ id: 'wh-chat' }] },
+      },
+      {
+        id: 'pol-off',
+        name: 'Origin errors (off)',
+        alert_type: 'real_origin_monitoring',
+        enabled: false,
+        mechanisms: { webhooks: [{ id: 'wh-board' }] },
+      },
+    ]),
+    [`${a}/alerting/v3/destinations/webhooks`]: ok([
+      {
+        id: 'wh-board',
+        name: 'the board',
+        type: 'generic',
+        url: `https://tasks.acme.example/api/routines/${ALERT_ROUTINE}/fire`,
+      },
+      { id: 'wh-chat', name: 'chat', type: 'generic', url: 'https://chat.example/hooks/acme-secret-path' },
+    ]),
     '/graphql': cloudflareUsage(),
   };
 }
@@ -294,7 +395,8 @@ export function cloudflareUsage(rows = cloudflareUsageRows()) {
 
 /**
  * A `fetch` that answers from `answers` by path and records each call. An answer that is a number is that status, with
- * Cloudflare's error shape; a path it doesn't know answers 404.
+ * Cloudflare's error shape; a path it doesn't know answers 404. A key ending in `?*` answers its path with any query,
+ * and an answer that is a function is called with the request's body and URL.
  * @param {Record<string, unknown>} [answers]
  */
 export function cloudflareApi(answers = cloudflareAnswers()) {
@@ -312,8 +414,10 @@ export function cloudflareApi(answers = cloudflareAnswers()) {
         auth: headers.get('authorization'),
         ...(init.body ? { body: JSON.parse(String(init.body)) } : {}),
       });
-      const answer = answers[path];
-      if (typeof answer === 'function') return Response.json(answer(JSON.parse(String(init.body))));
+      const answer =
+        answers[path] ?? (url.search ? answers[`${url.pathname.replace(/^\/client\/v4/u, '')}?*`] : undefined);
+      if (typeof answer === 'function')
+        return Response.json(answer(init.body ? JSON.parse(String(init.body)) : null, url));
       if (answer === undefined || typeof answer === 'number') {
         const status = typeof answer === 'number' ? answer : 404;
         return Response.json(

@@ -300,6 +300,8 @@ export function planView(row, { full = true } = {}) {
     reversible: undo.reversible,
     irreversible: undo.irreversible,
     policy: row.policy ? JSON.parse(row.policy) : null,
+    digest: row.digest ?? null,
+    approved: at(row.approved),
     by: row.by,
     agent: row.agent ?? null,
     created: at(row.created),

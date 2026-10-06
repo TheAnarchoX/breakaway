@@ -555,6 +555,13 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.lockReleaseApi(parts[2], { repo }));
     }
   }
+  // Approve and reject (BRK-182): the owner's alone, from the signed-in browser only, like Merge; never the bearer
+  // token agents and the CLI hold. An agent's `by` is refused too.
+  if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length === 4 && ['approve', 'reject'].includes(parts[3])) {
+    if (method !== 'POST') return json(405, { error: `${parts[3]} a plan with POST` });
+    if (via !== 'cookie') return json(403, { error: `only the signed-in web board can ${parts[3]} a plan` });
+    return send(await (parts[3] === 'approve' ? s.planApproveApi(parts[2], body) : s.planRejectApi(parts[2], body)));
+  }
   // Plans (BRK-178): anyone signed in reads them; the owner and agents make drafts, which the board computes from the
   // environment's desired state; only the owner puts one in front of the owner, from the signed-in browser only.
   if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length <= 3) {
@@ -641,6 +648,20 @@ async function handleApi(request, env, url, ctx) {
       return send(await (method === 'PUT' ? s.runbookSetApi(parts[2], body) : s.runbookRemoveApi(parts[2], body)));
     }
   }
+  // Incidents (BRK-197): read only; the board opens them from the signals stream, and each one is a +incident task.
+  if (parts[0] === 'infra' && parts[1] === 'incidents' && parts.length <= 3 && method === 'GET') {
+    const q = url.searchParams;
+    if (parts.length === 3) return send(await s.incidentApi(parts[2]));
+    return send(
+      await s.incidentsApi({
+        repo: q.get('repo') ?? undefined,
+        environment: q.get('environment') ?? undefined,
+        open: q.get('open') ?? undefined,
+        before: q.get('before') ?? undefined,
+        limit: q.get('limit') ?? undefined,
+      }),
+    );
+  }
   // Architect's signals (BRK-190): read only, for the token and the cookie alike; providers and the deploy flow write
   // inside the store. /days is the daily summaries the cron folds older signals into.
   if (
@@ -666,6 +687,12 @@ async function handleApi(request, env, url, ctx) {
         limit: q.get('limit') ?? undefined,
       }),
     );
+  }
+  // Which of a provider's alerts reach the board (BRK-191): a live read with its read-only token, for the token and the
+  // cookie alike. The alerts themselves are signals (kind=alert).
+  if (parts[0] === 'infra' && parts[1] === 'alerts' && parts.length === 2) {
+    if (method !== 'GET') return json(405, { error: 'alerts are set up in the provider’s dashboard, not here' });
+    return send(await s.infraAlertsApi({ provider: url.searchParams.get('provider') ?? undefined }));
   }
   // Mark approved and Mark built on a spec (BRK-215) open a pull request: the owner's press, from the signed-in
   // browser only, never the bearer token agents and the CLI hold.

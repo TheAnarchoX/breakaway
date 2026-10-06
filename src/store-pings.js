@@ -8,6 +8,7 @@ import { AgentError } from './store-agents.js';
 import { InputError, diffOps, nextWid, resolveRef, withChanges } from './model.js';
 import { areasOf, prefixFor, repoSlugOf } from './repos.js';
 import {
+  BOARD_PING_KINDS,
   PINGS_PER_AGENT_PER_DAY,
   PINGS_PER_TASK_PER_DAY,
   PUSH_KINDS,
@@ -29,7 +30,7 @@ const view = (row, wid) => ({
   warnings: row.warnings ? JSON.parse(row.warnings) : [],
   by: row.agent,
   at: new Date(row.created).toISOString(),
-  push: PUSH_KINDS.includes(row.kind),
+  push: !row.quiet && (PUSH_KINDS.includes(row.kind) || BOARD_PING_KINDS.includes(row.kind)),
   resolved: row.resolved ? { at: new Date(row.resolved).toISOString(), how: row.resolution } : null,
 });
 
@@ -44,25 +45,33 @@ export const pingsMethods = {
       CREATE INDEX IF NOT EXISTS pings_task ON pings (task, id);
       CREATE INDEX IF NOT EXISTS pings_open ON pings (resolved, id);
     `);
+    // A board ping that only shows in the inbox (BRK-197: an incident outside production). Older pings pushed.
+    const columns = this.sql
+      .exec('PRAGMA table_info(pings)')
+      .toArray()
+      .map((c) => c.name);
+    if (!columns.includes('quiet')) this.sql.exec('ALTER TABLE pings ADD COLUMN quiet INTEGER NOT NULL DEFAULT 0');
   },
 
   /**
    * A ping from the board itself (a chase that stalled, a silent session, repeated fixes): a comment on task `uuid`
-   * and an inbox row, pushed when its kind pushes. It skips the agents' caps. Returns the ping's id.
+   * and an inbox row, pushed unless it's `quiet` (an incident outside production). It skips the agents' caps.
+   * Returns the ping's id.
    */
-  async boardPing(uuid, kind, message) {
+  async boardPing(uuid, kind, message, { quiet = false } = {}) {
     this.change(uuid, { annotate: `Ping (${kind}): ${String(message).slice(0, 500)}`, by: 'board' });
     const ping = this.sql
       .exec(
-        "INSERT INTO pings (task, kind, message, agent, created) VALUES (?, ?, ?, 'board', ?) RETURNING id",
+        "INSERT INTO pings (task, kind, message, agent, created, quiet) VALUES (?, ?, ?, 'board', ?, ?) RETURNING id",
         uuid,
         kind,
         String(message).slice(0, 500),
         Date.now(),
+        quiet ? 1 : 0,
       )
       .one();
     // A push is a convenience: it never throws, and the ping and its comment are the record.
-    await this.pushPing(ping.id);
+    if (!quiet) await this.pushPing(ping.id);
     return ping.id;
   },
 

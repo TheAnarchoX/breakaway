@@ -80,3 +80,19 @@ export function pingMessage(ping, title = /** @type {string} */ (DEFAULTS.name))
     url: `/?inbox=${ping.id}`,
   };
 }
+
+/**
+ * What a waiting plan's notification says (BRK-182): the install's name, the environment and that the plan waits for
+ * the owner, then one line of why. It opens the plan on its environment's page.
+ * @param {{ id: string, repo: string, environment: { id: number, name: string }, reason: string }} plan
+ */
+export function planMessage(plan, title = /** @type {string} */ (DEFAULTS.name)) {
+  const first = String(plan.reason).split('\n')[0].trim();
+  const line = first.length > 80 ? `${first.slice(0, 79).trimEnd()}…` : first;
+  return {
+    title,
+    body: `${plan.repo}’s ${plan.environment.name}: ${plan.id} waits for you${line ? `\n${line}` : ''}`,
+    tag: plan.id,
+    url: `/#/infrastructure/${plan.environment.id}?plan=${plan.id}`,
+  };
+}
