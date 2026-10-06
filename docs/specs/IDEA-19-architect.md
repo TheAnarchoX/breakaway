@@ -282,7 +282,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Observe | The application's instance counts (`active` against `assigned`) and each instance's state; none active when some are assigned is down | Containers Read |
 | Cost | Active instances, their instance type, and the time they ran, times the price table (vCPU, memory, and disk by the second). A rougher estimate than the others: **verify** against the dashboard in BRK-193 | Containers Read |
 | Scale | `PATCH …/applications/{id}` with `max_instances` inside the envelope's bounds | Containers Write |
-| Restart | `POST …/applications/{id}/rollouts` with the current configuration: every instance is replaced, step by step, after `SIGTERM` and up to 15 minutes to drain. The documentation shows the endpoint but not its body: **verify** in BRK-227 | Containers Write |
+| Restart | `POST …/applications/{id}/rollouts` with the current configuration: every instance is replaced, step by step, after `SIGTERM` and up to 15 minutes to drain. The documentation shows the endpoint but not its body; BRK-227 sends the body Wrangler sends for a deploy's rollout (`description`, `strategy: rolling`, `kind: full_auto`, `step_percentage`, `target_configuration` from `GET …/applications/{id}`), which the docs don't confirm: **verify** in BRK-207's staging run | Containers Write |
 
 **Routes** (`route`). Changes: create, update, delete (reversible: a route holds no data).
 
@@ -388,7 +388,7 @@ Give it an expiry date and rotate it, never Account Settings, API Tokens, Billin
 | `queue` | The consumer's `max_concurrency` | No |
 | `worker`, `durable-object`, `d1`, `kv`, `r2`, `route`, `custom-domain` | No: the platform scales them | No |
 
-So the kinds BRK-227 declares are `container` (scale and restart) and `queue` (scale). The envelope form offers nothing else (BRK-186).
+So the kinds BRK-227 declares are `container` (scale and restart, `scales: maxInstances`) and `queue` (scale, `scales: maxConcurrency`, its Worker consumer's, which discover adds to the queue's settings). The envelope form offers nothing else (BRK-186). A resource whose kind scales but which can't (a container application on another scheduling policy, a queue with no Worker consumer) is refused by the provider's `refuses(resource, op)`, in words, before an act plans and again at apply. Apply reads each scale back, and the executor checks health after it as after any apply; a container application's instance counts don't make a plan out of date, since Cloudflare moves them by itself.
 
 ## How a chase runs it
 

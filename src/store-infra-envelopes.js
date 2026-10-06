@@ -30,8 +30,12 @@ const owners = (by) => by === undefined || by === null || by === '' || by === 'o
 /** What the audit trail calls an environment's envelope. */
 const envelopeRef = (env) => `envelope-${env.id}`;
 
-/** A whole number's unit from the setting it is: `instances` stays, `max_instances` reads "max instances". */
-const unit = (setting) => String(setting ?? '').replace(/_/gu, ' ');
+/** A whole number's unit from the setting it is: `instances` stays, `max_instances` and `maxInstances` read "max instances". */
+const unit = (setting) =>
+  String(setting ?? '')
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .replace(/_/gu, ' ')
+    .toLowerCase();
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraEnvelopesMethods = {
@@ -252,8 +256,10 @@ export const infraEnvelopesMethods = {
       throw new AgentError(`${matches.length} resources in ${env.name} are called ${resource}: name it by its ID`, 409);
     const r = exact ?? matches[0];
     if (!r) throw new AgentError(`${env.name} has no resource ${resource}`, 404);
-    if (!declares(provider, r.kind, change))
-      throw new AgentError(`a ${r.kind} can’t ${change} on ${provider.name}, so nothing was planned`, 409);
+    const refused =
+      provider.refuses?.(r, change) ??
+      (declares(provider, r.kind, change) ? null : `a ${r.kind} can’t ${change} on ${provider.name}`);
+    if (refused) throw new AgentError(`${refused}, so nothing was planned`, 409);
     const attrs = structuredClone(r.attrs ?? {});
     const scales = provider.kinds[r.kind]?.scales;
     if (change === 'scale' && attrs[scales] === value)
