@@ -27,13 +27,14 @@ export const PLAN_SOURCES = ['pull-request', 'drift', 'envelope', 'incident', 'd
 
 /**
  * Which states a plan may move to from each. A draft waits for the owner or is dropped; only an approved plan is
- * applied; an apply ends applied or failed, and either can be rolled back. Rejected and rolled back are the end.
+ * applied, and one that hasn't started applying can still be rejected; an apply ends applied or failed, and either can
+ * be rolled back. Rejected and rolled back are the end.
  * @type {Record<string, string[]>}
  */
 export const PLAN_MOVES = {
   draft: ['waiting', 'rejected'],
   waiting: ['approved', 'rejected'],
-  approved: ['applying'],
+  approved: ['applying', 'rejected'],
   rejected: [],
   applying: ['applied', 'failed'],
   applied: ['rolled back'],
