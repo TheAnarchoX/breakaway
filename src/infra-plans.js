@@ -3,7 +3,8 @@
  * would make, reviewed like a pull request. A plan holds the provider's diff, what it changes the environment's monthly
  * cost by, its blast radius (what leans on what it changes, from the inventory's relations), whether it can be undone
  * or why not, and a state. The store (store-infra-plans.js) makes and keeps them and writes the audit trail on every
- * state change; policy (BRK-181), approval (BRK-182), and the executor (BRK-183) build on them.
+ * state change. Policy (BRK-181, infra-policy.js) is checked when a plan is made and kept on it; approval (BRK-182)
+ * and the executor (BRK-183) build on them.
  *
  * Pure and Node-safe, so the CLI can import it: no store and no network.
  */
@@ -298,6 +299,7 @@ export function planView(row, { full = true } = {}) {
     blastRadius: full ? blast : { changed: blast.changed, affected: blast.affected, deletesInUse: blast.deletesInUse },
     reversible: undo.reversible,
     irreversible: undo.irreversible,
+    policy: row.policy ? JSON.parse(row.policy) : null,
     by: row.by,
     agent: row.agent ?? null,
     created: at(row.created),

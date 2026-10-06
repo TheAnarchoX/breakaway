@@ -72,6 +72,21 @@ One flow for app and infrastructure: a pull request that changes a desired-state
 
 Rules as code beside the desired state, checked at plan time: what needs the owner, budgets, and a frozen environment refusing everything. A repository with no policy file gets the default, which BRK-171 set to **every plan, in every environment**; it still names each rule that applies (production, destructive or irreversible, access and exposure, a cost change over the limit) so the plan says why. The cost limit starts at 5 a month and the budget at 20 a month per environment (BRK-172), both changeable in the policy file. Each rule's result is on the plan in words (BRK-181). A repository's own policy can let some plans through; envelopes are the only standing exception to the default.
 
+The file is `.github/breakaway-infra/policy.json` on the default branch, read with the desired state (BRK-181):
+
+```json
+{
+  "version": 1,
+  "costLimit": 5,
+  "budget": 20,
+  "environments": { "production": { "budget": 200 } },
+  "access": { "kinds": ["route"], "settings": ["public"] },
+  "allow": [{ "name": "small staging changes", "environments": ["staging"], "changes": ["update", "scale"], "maxChanges": 3 }]
+}
+```
+
+Every key but `version` is optional. The guards are checked first, in order: **frozen** refuses the plan; **production** (an environment with production gates), **destructive** (a delete, or a change that can't be undone), **access** (a resource kind or setting the provider marks as deciding who or what can reach something, plus the ones `access` names), **cost** (a change over the cost limit, or one whose cost isn't known), and **budget** (a plan that takes the environment over its budget) each make it wait for the owner. A file sets the limits and adds access kinds and settings, but can't turn a guard off. A plan no guard caught waits too, unless an `allow` rule covers every one of its changes; then it's let through with the rule's name. A file that doesn't check fails closed: the default decides until it's fixed, and the plan says so. The result is on the plan as `policy`: which policy decided, the outcome (`refused`, `needs-owner`, or `allowed`), the rule that decided, and each rule's reason in words.
+
 ### Approvals
 
 Approve and Reject are owner-only and cookie-only (BRK-182). A plan that waits sends one push linking to the plan page, so the owner approves from the phone (WEB-62). A plan a repository's policy lets through is approved with the rule that allowed it recorded; the default lets nothing through.
@@ -91,6 +106,8 @@ Bounds the owner approves once on one environment, in any environment, productio
 ### Drift
 
 On the cron, desired against actual for each environment with a desired state. Drift shows on the environment and becomes one draft plan; the board never forces it (BRK-184).
+
+The cron compares each environment with a provider and a desired state at most once an hour, or as soon as its desired state moves to a new commit, five environments a tick. What differs shows on the environment (`driftCount`, and `drift` with each resource and what the plan would do to it) and in `GET /api/infra/drift`. One drift makes one draft plan, by the board: a comparison that finds an open plan with the same changes (from drift, a pull request, or anything else) makes none, and while an earlier drift plan is open it makes no other and says that one no longer matches, so the owner rejects it and the next comparison makes a new one. A provider that fails keeps what differed last time, with why. A frozen environment's drift is shown but planned only once it's unfrozen. The owner can compare one now from the board. Observe-only environments are never compared: they take no desired state.
 
 ### Break-glass
 
