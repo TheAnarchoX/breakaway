@@ -39,10 +39,10 @@ const KINDS = [
   ['staging', 'Staging'],
   ['short-lived', 'Short-lived'],
 ];
-const KIND_LABEL = Object.fromEntries(KINDS);
+export const KIND_LABEL = Object.fromEntries(KINDS);
 
 /** Worst first: an environment's health is its worst resource's. */
-const HEALTH = {
+export const HEALTH = {
   down: { label: 'Down', Icon: CircleX },
   degraded: { label: 'Degraded', Icon: TriangleAlert },
   unknown: { label: 'Unknown', Icon: CircleDashed },
@@ -70,7 +70,7 @@ export function environmentHealth(resources) {
 const providerRows = () => (connections.value.data?.connections ?? []).filter((c) => c.group === 'providers');
 
 /** @param {{ health: ReturnType<typeof environmentHealth> }} props */
-function Health({ health }) {
+export function Health({ health }) {
   if (!health)
     return (
       <span class="infra-health infra-health-none">
@@ -104,10 +104,12 @@ function Health({ health }) {
   );
 }
 
-/** @param {{ env: any, resources: any[], onChange: (env: any) => void }} props */
-function EnvironmentCard({ env, resources, onChange }) {
+/**
+ * Freeze or Unfreeze one environment, after the owner confirms: the signed-in browser's alone (BRK-174).
+ * @param {{ env: any, onChange: (env: any) => void }} props
+ */
+export function FreezeButton({ env, onChange }) {
   const [busy, setBusy] = useState(false);
-  const health = environmentHealth(resources);
   const toggleFreeze = async () => {
     const freezing = !env.frozen;
     const ok = await confirmDialog({
@@ -133,9 +135,58 @@ function EnvironmentCard({ env, resources, onChange }) {
     }
   };
   return (
+    <button
+      type="button"
+      class="btn btn-outline btn-sm"
+      onClick={toggleFreeze}
+      disabled={busy}
+      aria-busy={busy}
+      aria-label={`${env.frozen ? 'Unfreeze' : 'Freeze'} ${env.name}`}
+    >
+      <Snowflake size={16} aria-hidden="true" />
+      {env.frozen ? 'Unfreeze' : 'Freeze'}
+    </button>
+  );
+}
+
+/** @param {{ env: any }} props */
+export function EnvironmentFlags({ env }) {
+  if (!env.frozen && !env.observeOnly) return null;
+  return (
+    <ul class="infra-flags">
+      {env.frozen && (
+        <li class="infra-flag infra-flag-frozen">
+          <Snowflake size={14} aria-hidden="true" />
+          Frozen
+          {env.frozenAt && (
+            <>
+              {' '}
+              <time dateTime={env.frozenAt} title={new Date(env.frozenAt).toLocaleString()}>
+                {ago(env.frozenAt)}
+              </time>
+            </>
+          )}
+        </li>
+      )}
+      {env.observeOnly && (
+        <li class="infra-flag" title={env.runsTheBoard ? 'It runs this board: the board never changes it.' : ''}>
+          <Eye size={14} aria-hidden="true" />
+          {env.runsTheBoard ? 'Observe only: runs this board' : 'Observe only'}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+/** @param {{ env: any, resources: any[], onChange: (env: any) => void }} props */
+function EnvironmentCard({ env, resources, onChange }) {
+  const health = environmentHealth(resources);
+  return (
     <li class={`infra-env ${env.frozen ? 'is-frozen' : ''}`}>
       <div class="infra-env-head">
-        <h3 class="infra-env-name">{env.name}</h3>
+        <h3 class="infra-env-name">
+          <a href={hashFor({ view: 'infrastructure', environment: String(env.id), task: null })}>{env.name}</a>
+        </h3>
         <span class="infra-kind">{KIND_LABEL[env.kind] ?? env.kind}</span>
       </div>
       <p class="meta infra-env-where">
@@ -156,42 +207,9 @@ function EnvironmentCard({ env, resources, onChange }) {
         )}
       </p>
       <Health health={env.target ? health : null} />
-      {(env.frozen || env.observeOnly) && (
-        <ul class="infra-flags">
-          {env.frozen && (
-            <li class="infra-flag infra-flag-frozen">
-              <Snowflake size={14} aria-hidden="true" />
-              Frozen
-              {env.frozenAt && (
-                <>
-                  {' '}
-                  <time dateTime={env.frozenAt} title={new Date(env.frozenAt).toLocaleString()}>
-                    {ago(env.frozenAt)}
-                  </time>
-                </>
-              )}
-            </li>
-          )}
-          {env.observeOnly && (
-            <li class="infra-flag" title={env.runsTheBoard ? 'It runs this board: the board never changes it.' : ''}>
-              <Eye size={14} aria-hidden="true" />
-              {env.runsTheBoard ? 'Observe only: runs this board' : 'Observe only'}
-            </li>
-          )}
-        </ul>
-      )}
+      <EnvironmentFlags env={env} />
       <div class="infra-env-foot">
-        <button
-          type="button"
-          class="btn btn-outline btn-sm"
-          onClick={toggleFreeze}
-          disabled={busy}
-          aria-busy={busy}
-          aria-label={`${env.frozen ? 'Unfreeze' : 'Freeze'} ${env.name}`}
-        >
-          <Snowflake size={16} aria-hidden="true" />
-          {env.frozen ? 'Unfreeze' : 'Freeze'}
-        </button>
+        <FreezeButton env={env} onChange={onChange} />
       </div>
     </li>
   );
