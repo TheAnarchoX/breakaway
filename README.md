@@ -173,7 +173,7 @@ npx breakaway list --ready
 ## What it is, and isn't
 
 - **Self-hosted.** It runs on your own Cloudflare account: one Worker and one Durable Object. There's no hosted breakaway, and no accounts, teams, or pricing.
-- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, and npm's public registry for the packages your repositories publish there).
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, npm's public registry for the packages your repositories publish there, and Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings).
 - **You decide.** Agents claim, build, and open pull requests. You merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **Taskwarrior is a first-class way in.** The sync protocol is Taskwarrior's.
 - **Free and fair source.** The source is public, and each release becomes Apache 2.0 two years after it ships.
