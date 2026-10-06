@@ -41,6 +41,19 @@ const SOURCE_WORDS = {
   deploy: 'the deploy flow',
 };
 
+/** One incident: its task, what broke and where, and the step it's on (src/infra-incidents.js). */
+function incidentLine(incident) {
+  const where = [incident.environment, incident.resource].filter(Boolean).join(' · ');
+  const step =
+    (incident.steps ?? []).find((s) => s.state === 'failed') ?? (incident.steps ?? []).find((s) => s.state === 'now');
+  const notes = [`${incident.level} ${incident.kind} in ${where}`];
+  if (incident.closed) notes.push('closed');
+  else if (step) notes.push(step.state === 'failed' ? `${step.step} failed` : `now: ${step.step}`);
+  if (incident.recovered && !incident.closed) notes.push('health is back');
+  const t = incident.task;
+  return `${t?.wid ?? `#${incident.id}`}  ${t?.description ?? ''}  (${notes.join('; ')})`;
+}
+
 /** At most this many plans or signals in one answer (the store's own most). */
 const SHOWN_MAX = 200;
 
@@ -346,26 +359,32 @@ export function infraTools({ input, readOnly, body, scoped, fail }) {
       name: 'infra_incidents',
       title: 'Incidents',
       description:
-        'This repository’s incidents: tasks tagged +incident, the open ones, or the finished ones with closed. show_task reads one in full. Read only.',
+        'This repository’s incidents, the open ones or the finished ones with closed: each is a task tagged +incident, with the signal, the step it’s on (diagnose, propose, approve, apply, verify, write-up), and its linked plans. show_task reads one’s task in full. Read only: diagnose, then propose a fix by pull request.',
       inputSchema: input({
         closed: { type: 'boolean', description: 'The finished incidents instead of the open ones' },
+        environment: ENVIRONMENT,
+        before: { type: 'integer', minimum: 1, description: 'Only incidents older than this incident ID' },
+        limit: { type: 'integer', minimum: 1, maximum: SHOWN_MAX, description: 'At most this many (50 by default)' },
       }),
       annotations: readOnly,
       async run(args, ctx) {
-        const { slug, registry } = await scoped(ctx);
-        const { tasks } = body(await ctx.store.list(args.closed ? 'completed' : 'pending'));
-        const incidents = tasks.filter(
-          (t) => (t.repo || registry.default) === slug && (t.tags ?? []).includes('incident'),
+        const { slug } = await scoped(ctx);
+        const data = body(
+          await ctx.store.incidentsApi({
+            repo: slug,
+            environment: args.environment,
+            open: args.closed ? 'false' : 'true',
+            before: args.before === undefined ? undefined : String(args.before),
+            limit: args.limit === undefined ? undefined : String(args.limit),
+          }),
         );
-        const text = incidents.length
-          ? incidents
-              .map(
-                (t) =>
-                  `${t.wid ?? String(t.uuid).slice(0, 8)}  ${t.description}${t.claim ? `  (claimed by ${t.claim})` : ''}`,
-              )
-              .join('\n')
-          : `No ${args.closed ? 'finished' : 'open'} incidents in ${slug}.`;
-        return { text, data: { repo: slug, closed: Boolean(args.closed), incidents } };
+        const text = data.incidents.length
+          ? [
+              ...data.incidents.map(incidentLine),
+              ...(data.more ? [`Older: call again with before ${data.incidents[data.incidents.length - 1].id}.`] : []),
+            ].join('\n')
+          : `No ${args.closed ? 'finished' : 'open'} incidents in ${slug}${args.environment ? ` for ${args.environment}` : ''}.`;
+        return { text, data: { repo: slug, closed: Boolean(args.closed), ...data } };
       },
     },
   ];
