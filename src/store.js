@@ -46,6 +46,7 @@ import { statsMethods } from './store-stats.js';
 import { reposMethods } from './store-repos.js';
 import { repoSlugOf, SHARED_AREAS } from './repos.js';
 import { connectionsMethods } from './store-connections.js';
+import { infraSignalsMethods } from './store-infra-signals.js';
 import { githubStatusMethods } from './store-github-status.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
@@ -58,7 +59,7 @@ import { oauthMethods } from './store-oauth.js';
 import { infraEnvironmentsMethods } from './store-infra-environments.js';
 import { infraDesiredMethods } from './store-infra-desired.js';
 import { infraInventoryMethods } from './store-infra-inventory.js';
-import { infraSignalsMethods } from './store-infra-signals.js';
+import { infraLocksMethods } from './store-infra-locks.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -111,13 +112,14 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initStats();
     this.initRepos();
     this.initConnections();
+    this.initInfraSignals();
     this.initKickoffs();
     this.initRoutineKeep();
     this.initOAuth();
     this.initInfraEnvironments();
     this.initInfraDesired();
     this.initInfraInventory();
-    this.initInfraSignals();
+    this.initInfraLocks();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1401,6 +1403,7 @@ Object.assign(
   statsMethods,
   reposMethods,
   connectionsMethods,
+  infraSignalsMethods,
   githubStatusMethods,
   updatesMethods,
   selfUpdateMethods,
@@ -1412,7 +1415,7 @@ Object.assign(
   infraEnvironmentsMethods,
   infraDesiredMethods,
   infraInventoryMethods,
-  infraSignalsMethods,
+  infraLocksMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
