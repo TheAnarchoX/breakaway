@@ -434,6 +434,10 @@ Infrastructure   (init and add need no board: run them in the checkout of the re
                          run it holds (--task <ID>, else the one routine run it has claimed here); it says whether
                          the owner's envelope covers it or it waits for the owner, and names the plan. Only a
                          runbook's run may; it's the one change a run may ask for, and it never applies anything
+  infra adopt <environment>   write the board's draft of the environment's desired state, drafted from what runs
+                         there, to .github/breakaway-infra/<environment>.json, then check it like infra check and say
+                         what to commit; it never plans or applies, and writes nothing for an observe-only environment
+                         [--force] replaces a file that's there  [--dry-run] prints the draft instead
   infra add [<template>] [<environment>] [<input>=<value> …]   a golden path: write the change one of the owner's
                          templates makes (.github/breakaway-infra/templates/<name>/, else breakaway's example of that
                          name) into the environment's file and the code it needs, for a pull request; it never
@@ -1435,6 +1439,22 @@ const commands = {
       const result = await infraCheck(args.slice(1), {
         files: readInfraFolder(topOf(process.cwd())),
         repo: slug,
+        post: (path, body) => call('POST', path, body, { raw: true }),
+      });
+      print(result.data, () => result.text);
+      process.exitCode = result.code;
+      return;
+    }
+    if (args[0] === 'adopt') {
+      // infra adopt (CLI-23): the board's draft of an environment's desired state, written into the checkout and checked.
+      const { infraAdopt } = await import('./tasks/infra-adopt.js');
+      const { topOf } = await import('./tasks/pipeline.js');
+      const result = await infraAdopt(args.slice(1), {
+        root: topOf(process.cwd()),
+        repo: slug,
+        force: Boolean(opts.force),
+        dryRun: Boolean(opts['dry-run']),
+        get: (path) => call('GET', path, undefined, { raw: true }),
         post: (path, body) => call('POST', path, body, { raw: true }),
       });
       print(result.data, () => result.text);

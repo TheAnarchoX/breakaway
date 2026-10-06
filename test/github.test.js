@@ -1134,7 +1134,7 @@ describe('GitHub on the board', () => {
         .filter(([, v]) => v !== 'read')
         .map(([k]) => k)
         .sort(),
-    ).toEqual(['actions', 'checks', 'contents', 'pull_requests', 'variables']);
+    ).toEqual(['actions', 'actions_variables', 'checks', 'contents', 'pull_requests']);
     const bad = await SELF.fetch(`${ORIGIN}/github/connected?code=abcdef123456&state=nope`, { redirect: 'manual' });
     expect(bad.headers.get('Location')).toBe('/#/github?connect=failed');
     const good = await SELF.fetch(`${ORIGIN}/github/connected?code=abcdef123456&state=${setup.state}`, {
