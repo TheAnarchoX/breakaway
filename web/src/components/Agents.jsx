@@ -42,6 +42,7 @@ export const TRIGGER_LABEL = {
   'chase-fix': 'started by a chase to fix a pull request',
   'road-captain': 'started as a chase’s road captain',
   move: 'started to move a repository to the deploy flow',
+  signal: 'started by a signal, through a runbook',
 };
 
 /** The same rules the server uses, to decide which controls to show. */

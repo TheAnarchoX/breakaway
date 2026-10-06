@@ -549,6 +549,28 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.lockReleaseApi(parts[2], { repo }));
     }
   }
+  // Plans (BRK-178): anyone signed in reads them; the owner and agents make drafts, which the board computes from the
+  // environment's desired state; only the owner puts one in front of the owner, from the signed-in browser only.
+  if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length <= 3) {
+    const q = (name) => url.searchParams.get(name) ?? undefined;
+    if (method === 'GET')
+      return send(
+        await (parts.length === 2
+          ? s.plansApi({
+              repo: q('repo'),
+              environment: q('environment'),
+              state: q('state'),
+              before: q('before'),
+              limit: q('limit'),
+            })
+          : s.planApi(parts[2])),
+      );
+    if (parts.length === 2 && method === 'POST') return send(await s.plansCreateApi(body));
+    if (parts.length === 3 && method === 'PATCH') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can put a plan in front of you' });
+      return send(await s.planModifyApi(parts[2], body));
+    }
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
@@ -580,6 +602,16 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'specs' && method === 'GET') {
     if (parts.length === 1) return send(await s.specsApi(url.searchParams.get('repo')));
     return send(await s.specApi(url.searchParams.get('repo'), parts.slice(1).join('/')));
+  }
+  // Runbooks (BRK-196): anyone signed in reads them; a routine's signal trigger is the owner's, from the signed-in
+  // browser only, since it lets a signal start an agent.
+  if (parts[0] === 'infra' && parts[1] === 'runbooks' && parts.length <= 3) {
+    if (parts.length === 2 && method === 'GET') return send(await s.runbooksApi());
+    if (parts.length === 3 && (method === 'PUT' || method === 'DELETE')) {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can change a routine’s signal trigger' });
+      return send(await (method === 'PUT' ? s.runbookSetApi(parts[2], body) : s.runbookRemoveApi(parts[2], body)));
+    }
   }
   // Architect's signals (BRK-190): read only, for the token and the cookie alike; providers and the deploy flow write
   // inside the store. /days is the daily summaries the cron folds older signals into.
