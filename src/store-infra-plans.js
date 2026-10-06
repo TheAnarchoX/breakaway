@@ -18,6 +18,7 @@ import { install } from './install.js';
 import { redact } from './redact.js';
 import { runsTheBoard } from './infra-environments.js';
 import { checkCosts, checkDesired, checkPlan } from './infra-provider.js';
+import { costChangeInCurrency } from './infra-currency.js';
 import {
   MAX_PLAN_BYTES,
   MAX_PLAN_CHANGES,
@@ -198,7 +199,8 @@ export const infraPlansMethods = {
         });
         if (e) estimates.set(c.resource, { amount: e.amount, currency: e.currency });
       }
-    const cost = costChange(stored, costs, estimates);
+    // In the board's currency, with its rate (BRK-226): the policy's limits are in it, and the plan keeps what it was checked with.
+    const cost = costChangeInCurrency(costChange(stored, costs, estimates), this.infraCurrency());
     const blast = blastRadius(stored, inventory);
     return { provider, stored, cost, blast };
   },

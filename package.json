@@ -22,6 +22,7 @@
     "src/cli-version.js",
     "src/decision.js",
     "src/infra-check.js",
+    "src/infra-currency.js",
     "src/infra-desired.js",
     "src/infra-inventory.js",
     "src/infra-cloudflare.js",

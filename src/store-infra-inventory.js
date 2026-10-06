@@ -11,6 +11,7 @@ import { install } from './install.js';
 import { redact } from './redact.js';
 import { checkCosts, checkDiscovery, checkHealth } from './infra-provider.js';
 import { MAX_RESOURCES, redactAttrs, resourceView, scopeDiscovery } from './infra-inventory.js';
+import { costInCurrency } from './infra-currency.js';
 import { runsTheBoard } from './infra-environments.js';
 
 /** @typedef {import('./infra-provider.js').ProviderRegistry} ProviderRegistry */
@@ -167,12 +168,14 @@ export const infraInventoryMethods = {
       .toArray();
   },
 
+  /** A resource as the API shows it, its cost in the board's currency (BRK-226): kept in the provider's, converted here. */
   inventoryOut(row) {
-    return resourceView(
+    const view = resourceView(
       row,
       { id: row.environment, repo: row.env_repo, name: row.env_name },
       this.inventoryTask(row.env_task),
     );
+    return { ...view, cost: costInCurrency(view.cost, this.infraCurrency()) };
   },
 
   /** GET /api/infra/inventory[?repo=&environment=&provider=&kind=]: resources and the relations between them. */

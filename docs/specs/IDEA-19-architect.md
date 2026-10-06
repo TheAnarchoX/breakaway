@@ -133,7 +133,9 @@ A signal that crosses a rule opens an incident: a task in the repository that ow
 
 Each resource's estimate from the provider, summed by environment, repository, and owning task, with budgets in the policy and a signal near or over one (BRK-199, WEB-65). Every amount is marked as an estimate.
 
-The owner works in euros, or any currency (BRK-171, BRK-172), while platforms price in US dollars. BRK-225 asks how the board converts (recommended: a rate the owner sets in Settings, because fetching rates would be a call to a service the owner didn't connect), which currencies, and where the choice lives; BRK-226 builds it. Until then limits and budgets are in the provider's currency.
+The owner works in euros, or any currency (BRK-171, BRK-172), while platforms price in US dollars. BRK-225 settled it: any currency, once for the whole board in Settings, at a rate the owner sets and changes when they like; the board fetches no rate.
+
+**As built (BRK-226).** `src/infra-currency.js` holds the conversion, in one place: `checkCurrency` (an ISO 4217 code, and a rate above 0 for anything but US dollars), `convert`, `costInCurrency` for a resource's cost, `costChangeInCurrency` for a plan's, and `rateWords` ("at 1 USD = 0.92 EUR, set 3 Oct"). The setting is `GET /api/infra/currency` for anyone signed in and `PUT /api/infra/currency` (`{ currency, rate }`) from the signed-in board only, with an agent's `by` refused; it's kept in the store's `meta` with when it was set. Estimates stay stored in the provider's currency: the inventory converts on read, so switching back to US dollars rewrites nothing. A plan converts its cost change when it's made and keeps it with its `rate`, because the policy checked it then: the cost limit and budgets are in the board's currency, the cost rule's reason names the rate, and `policy.limits` carries the currency and rate. A cost in a currency no rate covers is unknown, so the cost and budget guards ask the owner rather than compare across currencies. Settings has a Currency section; `npx breakaway infra show` and `infra plan` print the rate once beside the amounts.
 
 ### Short-lived environments
 
@@ -403,7 +405,7 @@ Answered by the owner on 6 Oct 2026; DOC-29 records them in the decision log and
 - **BRK-169, what Architect manages first:** what the board's repositories run on, not whole accounts; Cloudflare first; adapters call the API directly; desired state in `.github/breakaway-infra/<environment>.json`; the board's own install observed, never applied to; pluggable agents a spec now (BRK-176), built as their own idea.
 - **BRK-171, keys and approvals:** the runner is a workflow in the repository with credentials in GitHub environments; a read-only token per provider on the board; every plan asks the owner by default; a cost limit of 5 a month, configurable, in the owner's currency; envelopes for scaling and capped restarts (a push when the cap is used up), in every environment, production included; automatic rollback; no change windows, a freeze switch; break-glass is recorded and brought into code by pull request.
 - **BRK-172, signals and incidents:** health, alerts, and cost; raw signals 7 days, daily summaries 90; an incident is a `+incident` task in the owning repository; production incidents push, others go to the inbox quietly; a diagnosis agent starts only from runbooks the owner turns on; a budget of 20 a month per environment, configurable, in the owner's currency.
-- **BRK-225, cost in the owner's currency (open):** how to convert, which currencies, and where it's chosen. Only BRK-226 waits for it.
+- **BRK-225, cost in the owner's currency:** a rate the owner sets in Settings, any currency, once for the whole board (BRK-226 builds it). The owner's note asks to fetch a rate once to prefill the field; that's BRK-239, since it changes what the install calls.
 
 ## Open questions
 

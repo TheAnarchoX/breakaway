@@ -82,7 +82,7 @@ describe('policy, the pure part (BRK-181)', () => {
     expect(small).toMatchObject({ policy: 'default', outcome: 'needs-owner', rule: 'every' });
     expect(small.reasons).toEqual(['Every plan needs you: the default policy lets nothing through.']);
     expect(small.rules.map((r) => r.rule)).toEqual([...GUARDS, 'every']);
-    expect(small.limits).toEqual({ costLimit: 5, budget: 20, currency: 'USD' });
+    expect(small.limits).toEqual({ costLimit: 5, budget: 20, currency: 'USD', rate: null });
   });
 
   it('names production, a destructive change, access, a cost over the limit, and the budget', () => {
