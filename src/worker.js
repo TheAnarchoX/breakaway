@@ -561,6 +561,7 @@ async function handleApi(request, env, url, ctx) {
     return send(
       await s.infraAuditApi({
         environment: q.get('environment') ?? undefined,
+        environmentId: q.get('environmentId') ?? undefined,
         repo: q.get('repo') ?? undefined,
         kind: q.get('kind') ?? undefined,
         before: q.get('before') ?? undefined,

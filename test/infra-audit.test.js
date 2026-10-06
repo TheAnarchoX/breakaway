@@ -29,6 +29,7 @@ describe('the infrastructure audit trail', () => {
       kind: 'plan',
       repo: 'widgets',
       environment: 'audit-staging',
+      environmentId: null,
       plan: 'plan-1',
       by: 'agent',
       agent: 'claude-brk-1',
@@ -53,6 +54,16 @@ describe('the infrastructure audit trail', () => {
       'plan-1',
     ]);
     expect((await read('?environment=audit-staging&kind=apply')).entries.map((e) => e.repo)).toEqual(['gadgets']);
+  });
+
+  it('keeps an environment’s ID beside its name, so a rename doesn’t split its history', async () => {
+    const base = { kind: 'apply', repo: 'widgets', by: 'executor' };
+    const before = await append({ ...base, environment: 'audit-old-name', environmentId: 9001 });
+    const after = await append({ ...base, environment: 'audit-new-name', environmentId: 9001 });
+    expect(after.environmentId).toBe(9001);
+    expect((await read('?environmentId=9001')).entries.map((e) => e.id)).toEqual([after.id, before.id]);
+    await expect(append({ ...base, environment: 'audit-x', environmentId: 'seven' })).rejects.toThrow();
+    expect((await api('infra/audit?environmentId=-1')).status).toBe(400);
   });
 
   it('pages with before and limit', async () => {

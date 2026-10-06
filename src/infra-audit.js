@@ -41,7 +41,8 @@ const SUMMARY_MAX = 500;
 
 /**
  * What the control plane appends: `at` is always the board's clock, never the caller's.
- * @typedef {{ kind: string, repo: string, environment: string, by: string, plan?: string | null,
+ * @typedef {{ kind: string, repo: string, environment: string, environmentId?: number | null, by: string,
+ *   plan?: string | null,
  *   agent?: string | null, envelope?: string | null, outcome?: string, summary?: string }} AuditInput
  */
 
@@ -75,6 +76,11 @@ export function auditEntry(input) {
   if (!SLUG.test(repo)) throw new AgentError('repo must be a repository’s slug', 400);
   const environment = String(input?.environment ?? '').toLowerCase();
   if (!ENVIRONMENT.test(environment)) throw new AgentError('environment must be an environment’s name', 400);
+  // Its ID too, when it has a record (BRK-174): the name can be renamed, the ID can't, and entries are never edited.
+  const rawId = /** @type {unknown} */ (input?.environmentId);
+  const environmentId = rawId === undefined || rawId === null || rawId === '' ? null : Number(rawId);
+  if (environmentId !== null && !(Number.isSafeInteger(environmentId) && environmentId > 0))
+    throw new AgentError('environmentId must be an environment’s ID', 400);
   const agent = input?.agent ? String(input.agent) : null;
   if (agent !== null && !AGENT.test(agent)) throw new AgentError('agent must be an agent’s name on the board', 400);
   if (by === 'agent' && !agent) throw new AgentError('an entry by an agent names the agent', 400);
@@ -82,6 +88,7 @@ export function auditEntry(input) {
     kind,
     repo,
     environment,
+    environmentId,
     plan: ref(input?.plan, 'plan'),
     by,
     agent: agent === null ? null : scrub(agent, 64),

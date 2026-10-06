@@ -225,6 +225,7 @@ export const infraEnvironmentsMethods = {
           kind: 'freeze',
           repo: updated.repo,
           environment: updated.name,
+          environmentId: updated.id,
           by: 'owner',
           outcome: updated.frozen ? 'on' : 'off',
         });

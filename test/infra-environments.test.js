@@ -141,10 +141,12 @@ describe('environments (BRK-174)', () => {
 
     // Each freeze and thaw is in the audit trail once, by the owner (BRK-175); the refused ones aren't.
     const audit = await body(await api(`infra/audit?environment=staging&repo=widgets&kind=freeze`));
-    expect(audit.entries.map(({ by, outcome, repo }) => ({ by, outcome, repo }))).toEqual([
-      { by: 'owner', outcome: 'off', repo: 'widgets' },
-      { by: 'owner', outcome: 'on', repo: 'widgets' },
-    ]);
+    expect(audit.entries.map(({ by, outcome, repo, environmentId }) => ({ by, outcome, repo, environmentId }))).toEqual(
+      [
+        { by: 'owner', outcome: 'off', repo: 'widgets', environmentId: id },
+        { by: 'owner', outcome: 'on', repo: 'widgets', environmentId: id },
+      ],
+    );
   });
 
   it('production gates and observe only are the signed-in board’s to change', async () => {

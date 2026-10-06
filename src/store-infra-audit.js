@@ -18,7 +18,8 @@ const SHOWN_MAX = 200;
 
 /**
  * An entry as stored and shown.
- * @typedef {{ id: number, at: number, kind: string, repo: string, environment: string, plan: string | null,
+ * @typedef {{ id: number, at: number, kind: string, repo: string, environment: string, environmentId: number | null,
+ *   plan: string | null,
  *   by: string, agent: string | null, envelope: string | null, outcome: string, summary: string }} AuditEntry
  */
 
@@ -32,6 +33,7 @@ function shown(row) {
     kind: row.kind,
     repo: row.repo,
     environment: row.environment,
+    environmentId: row.environment_id === null || row.environment_id === undefined ? null : Number(row.environment_id),
     plan: row.plan ?? null,
     by: row.by,
     agent: row.agent ?? null,
@@ -60,6 +62,7 @@ export const infraAuditMethods = {
         kind TEXT NOT NULL,
         repo TEXT NOT NULL,
         environment TEXT NOT NULL,
+        environment_id INTEGER,
         plan TEXT,
         by TEXT NOT NULL,
         agent TEXT,
@@ -68,6 +71,7 @@ export const infraAuditMethods = {
         summary TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS infra_audit_by_environment ON infra_audit (environment, id);
+      CREATE INDEX IF NOT EXISTS infra_audit_by_environment_id ON infra_audit (environment_id, id);
       CREATE INDEX IF NOT EXISTS infra_audit_by_repo ON infra_audit (repo, id);
       CREATE INDEX IF NOT EXISTS infra_audit_by_age ON infra_audit (at);
       CREATE TRIGGER IF NOT EXISTS infra_audit_no_update BEFORE UPDATE ON infra_audit
@@ -92,11 +96,12 @@ export const infraAuditMethods = {
     const entry = auditEntry(input);
     const row = this.sql
       .exec(
-        'INSERT INTO infra_audit (at, kind, repo, environment, plan, by, agent, envelope, outcome, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+        'INSERT INTO infra_audit (at, kind, repo, environment, environment_id, plan, by, agent, envelope, outcome, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
         Date.now(),
         entry.kind,
         entry.repo,
         entry.environment,
+        entry.environmentId,
         entry.plan,
         entry.by,
         entry.agent,
@@ -109,8 +114,8 @@ export const infraAuditMethods = {
   },
 
   /**
-   * Entries newest first, filtered by environment, repository, and kind, paged with `before` (an entry's id).
-   * @param {{ environment?: string, repo?: string, kind?: string, before?: string | number, limit?: string | number }} query
+   * Entries newest first, filtered by environment (its name or ID), repository, and kind, paged with `before` (an entry's id).
+   * @param {{ environment?: string, environmentId?: string | number, repo?: string, kind?: string, before?: string | number, limit?: string | number }} query
    * @returns {{ entries: AuditEntry[], more: boolean }}
    */
   infraAudit(query = {}) {
@@ -119,6 +124,11 @@ export const infraAuditMethods = {
     if (query.environment) {
       where.push('environment = ?');
       args.push(String(query.environment).toLowerCase());
+    }
+    const environmentId = whole(query.environmentId, 'environmentId', 1, Number.MAX_SAFE_INTEGER);
+    if (environmentId !== null) {
+      where.push('environment_id = ?');
+      args.push(environmentId);
     }
     if (query.repo) {
       where.push('repo = ?');
