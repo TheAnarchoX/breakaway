@@ -822,6 +822,7 @@ async function handleApi(request, env, url, ctx) {
         environmentId: q.get('environmentId') ?? undefined,
         repo: q.get('repo') ?? undefined,
         kind: q.get('kind') ?? undefined,
+        plan: q.get('plan') ?? undefined,
         before: q.get('before') ?? undefined,
         limit: q.get('limit') ?? undefined,
       }),

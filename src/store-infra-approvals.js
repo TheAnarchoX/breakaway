@@ -102,11 +102,12 @@ export const infraApprovalsMethods = {
    * the owner: the owner's own press (PATCH /api/infra/plans/<id>), or the board's (a pull request's plan, an envelope
    * outside its bounds). `reason` is the push's second line, when the plan's policy isn't why it waits.
    * @param {string} ref the plan's ID
-   * @param {{ by: 'owner' | 'board', summary?: string, reason?: string }} input
+   * @param {{ by: 'owner' | 'board', summary?: string, reason?: string, quiet?: boolean }} input `quiet` sends no
+   *   push: the owner is already reading the plan
    */
-  async waitForOwner(ref, { by, summary = '', reason }) {
+  async waitForOwner(ref, { by, summary = '', reason, quiet = false }) {
     const plan = this.moveInfraPlan(ref, 'waiting', { by, summary });
-    await this.pushInfraPlan(plan, reason);
+    if (!quiet) await this.pushInfraPlan(plan, reason);
     return plan;
   },
 

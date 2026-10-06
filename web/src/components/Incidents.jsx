@@ -3,6 +3,7 @@ import { Circle, CircleCheck, CircleDot, CircleMinus, CircleX, Siren } from 'luc
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { hashFor } from '../lib/store.js';
+import { planHref } from './EnvironmentPlans.jsx';
 
 /**
  * Incidents on the board (WEB-63; docs/specs/IDEA-19-architect.md, "Incidents" and "Views"): an incident is a task
@@ -230,7 +231,9 @@ function IncidentPlans({ plans }) {
         <ul class="incident-plan-list">
           {plans.map((p) => (
             <li key={p.id}>
-              <code>{p.id}</code>
+              <a href={planHref(p)}>
+                <code>{p.id}</code>
+              </a>
               <span class={`incident-plan-state incident-plan-${p.state.replace(' ', '-')}`}>
                 {PLAN_STATE[p.state] ?? p.state}
               </span>
