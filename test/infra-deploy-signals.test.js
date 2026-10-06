@@ -57,7 +57,8 @@ const signals = async (query) => {
 };
 
 describe('deploySignal', () => {
-  const staging = { name: 'staging', id: 3 };
+  const staging = { name: 'staging', id: 3, production: false };
+  const production = { name: 'production', id: null, production: true };
   const deploy = (over = {}) => ({
     env: 'widgets-staging',
     sha: 'a'.repeat(40),
@@ -70,13 +71,13 @@ describe('deploySignal', () => {
     ...over,
   });
 
-  it('turns a deploy that failed its check and rolled back into a health warning on the environment', () => {
+  it('turns a staging deploy that failed its check and went back into one alert, a warning', () => {
     expect(deploySignal(deploy(), 'in_progress', staging)).toEqual({
       source: DEPLOY_SOURCE,
       environment: 'staging',
       environmentId: 3,
       resource: 'widgets-staging',
-      kind: 'health',
+      kind: 'alert',
       level: 'warning',
       value: null,
       at: '2026-10-06T10:05:00Z',
@@ -84,17 +85,26 @@ describe('deploySignal', () => {
     });
   });
 
+  it('makes a failed production deploy critical', () => {
+    expect(deploySignal(deploy({ env: 'widgets' }), 'in_progress', production)).toMatchObject({
+      environment: 'production',
+      environmentId: null,
+      kind: 'alert',
+      level: 'critical',
+    });
+  });
+
   it('says a failed deploy failed, and an error counts as failed', () => {
     const s = deploySignal(deploy({ state: 'error', description: 'failed: the run says why' }), null, staging);
     expect(s).toMatchObject({
+      kind: 'alert',
       level: 'warning',
       text: 'widgets-staging deploy of aaaaaaa failed: failed: the run says why',
     });
   });
 
-  it('marks a roll back as info, and a failed roll back as critical', () => {
+  it('marks a roll back that landed as health info, and a failed one as a critical alert', () => {
     const rollback = { task: 'rollback', env: 'widgets', version: '0a1b2c3d-1111-2222-3333-444455556666' };
-    const production = { name: 'production', id: null };
     expect(
       deploySignal(
         deploy({ ...rollback, state: 'success', description: 'rolled back: 500s' }),
@@ -104,10 +114,12 @@ describe('deploySignal', () => {
     ).toMatchObject({
       environment: 'production',
       environmentId: null,
+      kind: 'health',
       level: 'info',
       text: 'widgets rolled back to version 0a1b2c3d: rolled back: 500s',
     });
     expect(deploySignal(deploy({ ...rollback, description: null }), 'in_progress', production)).toMatchObject({
+      kind: 'alert',
       level: 'critical',
       text: 'widgets roll back to version 0a1b2c3d failed',
     });
@@ -128,7 +140,13 @@ describe("the deploy flow's signals", () => {
   beforeAll(async () => {
     await setPipeline();
     const created = await inStore((store) =>
-      store.environmentsCreateApi({ repo: 'widgets', name: 'staging', kind: 'staging', provider: 'cloudflare' }),
+      store.environmentsCreateApi({
+        repo: 'widgets',
+        name: 'staging',
+        kind: 'staging',
+        provider: 'cloudflare',
+        target: 'widgets-staging',
+      }),
     );
     expect(created.status).toBe(201);
     stagingId = created.body.environment.id;
@@ -157,7 +175,7 @@ describe("the deploy flow's signals", () => {
       environment: 'staging',
       environmentId: stagingId,
       resource: 'widgets-staging',
-      kind: 'health',
+      kind: 'alert',
       level: 'warning',
       value: null,
       text: 'widgets-staging deploy of ccccccc failed its check and went back: rolled back: version 1a2b3c4d failed its check',
@@ -168,14 +186,22 @@ describe("the deploy flow's signals", () => {
     expect(await signals('environment=staging')).toHaveLength(1);
   });
 
-  it("puts production's roll backs on production, and skips a Worker no environment or pipeline names", async () => {
-    const back = record('widgets', 'd'.repeat(40), 'success', 'rolled back: 500s', 'rollback');
+  it("puts production's on production by name until an environment targets its Worker, and skips a Worker nothing names", async () => {
+    // An environment called production that targets no Worker isn't the pipeline's: its ID is never guessed from a name.
+    const named = await inStore((store) =>
+      store.environmentsCreateApi({ repo: 'widgets', name: 'production', kind: 'production', provider: 'cloudflare' }),
+    );
+    expect(named.status).toBe(201);
+    record('widgets', 'd'.repeat(40), 'success', 'rolled back: 500s', 'rollback');
     record('widgets', 'e'.repeat(40), 'success', 'version 2a3b4c5d-1111-2222-3333-444455556666 · migrations none');
+    record('widgets', '2'.repeat(40), 'failure', 'rolled back: version 3a4b5c6d failed its check');
     record('somewhere-else', 'f'.repeat(40), 'failure', 'failed: the run says why');
     await sync();
     const production = await signals('environment=production');
-    expect(production.map((s) => [s.level, s.environmentId, s.resource])).toEqual([['info', null, 'widgets']]);
-    expect(gh.statuses[back][0].state).toBe('success');
+    expect(production.map((s) => [s.kind, s.level, s.environmentId, s.resource])).toEqual([
+      ['alert', 'critical', null, 'widgets'],
+      ['health', 'info', null, 'widgets'],
+    ]);
     expect(await signals('resource=somewhere-else')).toEqual([]);
   });
 
