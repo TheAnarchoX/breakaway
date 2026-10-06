@@ -294,7 +294,14 @@ export const githubMethods = {
       return { connected: true, error: error.message };
     }
     this.setGhMeta('gh_empty', repo.slug, null);
-    const automation = this.applyGitHub(fetched, repo);
+    const { deploySignals, ...automation } = this.applyGitHub(fetched, repo);
+    // Failed deploys and roll backs become signals on their environment (BRK-198), once the rows are stored.
+    if (deploySignals.length)
+      try {
+        await this.recordSignals(deploySignals);
+      } catch (error) {
+        automation.errors.push(`signals: ${error.message}`);
+      }
     // The Packages feed (BRK-101): what the runs say they staged on npm, then whether npm has published it yet.
     try {
       await this.readPackages(client, repo.slug, fetched.runs);
@@ -550,7 +557,7 @@ export const githubMethods = {
     }
   },
 
-  /** Stores what was fetched, records events, and moves linked tasks. Synchronous. */
+  /** Stores what was fetched, records events, and moves linked tasks. Synchronous: the deploy flow's signals come back to record. */
   applyGitHub(
     { pulls, runs, commits, alerts, details, stored, deploys, releases, tags, workers = new Map(), patterns },
     repo,
@@ -571,6 +578,7 @@ export const githubMethods = {
     const newAlerts = [];
     const closedAlerts = [];
     let shipped = [];
+    let deploySignals = [];
 
     this.ctx.storage.transactionSync(() => {
       for (const p of pulls) {
@@ -775,7 +783,9 @@ export const githubMethods = {
         }
       }
 
-      shipped = this.applyDeploys(deploys, event, slug);
+      const changed = [];
+      shipped = this.applyDeploys(deploys, event, slug, changed);
+      if (initialized) deploySignals = this.deploySignals(changed, slug);
       if (isDefault) this.applyBackfill();
       if (releases)
         this.setGhMeta(
@@ -844,11 +854,14 @@ export const githubMethods = {
         errors.push(`${wid}: ${error.message}`);
       }
     }
-    return { events: events.length, errors, newAlerts };
+    return { events: events.length, errors, newAlerts, deploySignals };
   },
 
-  /** Stores deployments, records their events, and marks the tasks a successful one shipped. */
-  applyDeploys({ list, compares }, event, slug) {
+  /**
+   * Stores deployments, records their events, and marks the tasks a successful one shipped. Each Deployment whose
+   * state changed goes in `changed`, with the state before, for the deploy flow's signals.
+   */
+  applyDeploys({ list, compares }, event, slug, changed = []) {
     const shipped = [];
     const prs = this.sql
       .exec('SELECT data FROM gh_pulls WHERE repo = ?', slug)
@@ -900,6 +913,7 @@ export const githubMethods = {
           sha: d.sha,
           env: d.env,
         });
+      if (prev?.state !== d.state) changed.push({ deploy: d, prev: prev?.state ?? null });
       this.sql.exec(
         'INSERT OR REPLACE INTO gh_deploys (id, env, state, applied, data, repo) VALUES (?, ?, ?, ?, ?, ?)',
         d.id,
