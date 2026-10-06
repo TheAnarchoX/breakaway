@@ -2,14 +2,19 @@
  * TaskStore's drift (docs/specs/IDEA-19-architect.md, "Drift"; BRK-184). On the cron, for each environment with a
  * provider and a desired state (BRK-180), the board asks the provider what it would change to bring what runs back to
  * the desired state. Anything it would change is drift: the board keeps what differs, shows it on the environment
- * (`driftCount`, `drift`), and makes one draft plan from it (source `drift`, by the board) through `makeInfraPlan`, so
- * the plan and its audit entry are BRK-178's. It never applies, and never moves a plan: the owner puts the draft in
- * front of themselves, rejects it, or turns it into a task.
+ * (`driftCount`, `drift`), and makes one plan from it (by the board) through `makeInfraPlan`, so the plan and its audit
+ * entry are BRK-178's. It never applies. Where the drift comes from decides what happens to the plan (BRK-246):
+ * - a change by hand (what runs moved): a draft, source `drift`, that the owner puts in front of themselves, rejects,
+ *   or turns into a task;
+ * - a merged change (the desired state moved since the drift was last settled, or its file was added since the board
+ *   started reading the repository and this is its first comparison): source `pull-request`, naming the merged pull
+ *   request when the sync knows it, put in front of the owner with one push, unless the repository's policy lets it
+ *   through.
  *
  * One drift, one plan: a comparison that finds an open plan covering the same changes (from drift, a pull request, or
- * anything else) makes none, and while an earlier drift plan is still open it makes no other, saying instead that the
- * open one no longer matches. A frozen environment's drift is kept but not planned until it's unfrozen. Observe-only
- * environments (BRK-169) are never compared: they take no desired state.
+ * anything else) makes none, and while an earlier plan from a comparison is still open it makes no other, saying
+ * instead that the open one no longer matches. A frozen environment's drift is kept but not planned until it's
+ * unfrozen. Observe-only environments (BRK-169) are never compared: they take no desired state.
  *
  * A delete isn't drift: it's a resource that runs but isn't in the desired state, which nobody owns. Each comparison
  * hands those to clean up (BRK-201, store-infra-cleanup.js), which flags them and proposes removing them after a grace
@@ -23,7 +28,10 @@ import { checkDesired, checkPlan } from './infra-provider.js';
 import { keptDiff, planNumber } from './infra-plans.js';
 import {
   DRIFT_PER_TICK,
+  DRIFT_PLAN_SOURCES,
   OPEN_PLAN_STATES,
+  desiredFingerprint,
+  desiredMoved,
   driftChanges,
   driftDue,
   driftFingerprint,
@@ -33,6 +41,8 @@ import {
 } from './infra-drift.js';
 
 const OPEN = OPEN_PLAN_STATES.map(() => '?').join(', ');
+/** Kept as `desired_hash` while an added file's first drift is unplanned: it matches no desired state, so it's a merge. */
+const UNSETTLED_ADDED = 'added';
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraDriftMethods = {
@@ -44,6 +54,14 @@ export const infraDriftMethods = {
         error TEXT
       );
     `);
+    // The desired state the drift was last settled against (BRK-246): a fingerprint, so a merged change is told apart.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_drift)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('desired_hash')) this.sql.exec('ALTER TABLE infra_drift ADD COLUMN desired_hash TEXT');
   },
 
   /** An environment's drift for its view: `driftCount` (null until compared) and the last comparison, or null. */
@@ -69,9 +87,9 @@ export const infraDriftMethods = {
   },
 
   /**
-   * Compares one environment's desired state with what runs, keeps the result, and makes a draft plan when there's
-   * drift no open plan covers. A provider that fails is kept as the comparison's error, not thrown, so the cron
-   * carries on and the environment shows it. Refused (409) on an environment that can't be compared.
+   * Compares one environment's desired state with what runs, keeps the result, and makes a plan when there's drift no
+   * open plan covers: a draft for a change by hand, one that waits for the owner for a merged change. A provider that
+   * fails is kept as the comparison's error, not thrown, so the cron carries on and the environment shows it. Refused (409) on an environment that can't be compared.
    * @param {string | number} ref the environment's ID or name
    * @param {{ repo?: string | null }} [options]
    */
@@ -114,6 +132,14 @@ export const infraDriftMethods = {
         .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
         .toArray()[0]?.valid_sha ?? null;
     const last = this.sql.exec('SELECT * FROM infra_drift WHERE environment = ?', env.id).toArray()[0];
+    const desiredHash = await desiredFingerprint(this.desiredStateFor(env));
+    const added = this.sql
+      .exec('SELECT added FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
+      .toArray()[0]?.added;
+    // Drift is settled when there's none, an open plan covers it, or a plan was made for it. Until then the desired
+    // state it's settled against stays the last one, so a merged change that couldn't be planned yet still counts; an
+    // added file's first comparison keeps a marker no desired state matches.
+    const unsettled = last ? (last.desired_hash ?? null) : added ? UNSETTLED_ADDED : null;
     let diff;
     try {
       diff = await this.driftDiff(env);
@@ -126,6 +152,7 @@ export const infraDriftMethods = {
         fingerprint: last?.fingerprint ?? null,
         plan: last?.plan ?? null,
         planMatches: Boolean(last?.plan_matches),
+        desiredHash: unsettled,
         error: `${provider.name} couldn’t compare ${env.repo}’s ${env.name}: ${redact(error?.message ?? error)}. The board tries again on the next check.`,
       });
     }
@@ -137,7 +164,15 @@ export const infraDriftMethods = {
     const fingerprint = await driftFingerprint(diff);
     const resources = JSON.stringify(driftResources(diff));
     if (diff.changes.length === 0)
-      return this.keepDrift(env, { desiredSha, count: 0, resources, fingerprint, plan: null, planMatches: false });
+      return this.keepDrift(env, {
+        desiredSha,
+        count: 0,
+        resources,
+        fingerprint,
+        plan: null,
+        planMatches: false,
+        desiredHash,
+      });
 
     const open = this.sql
       .exec(
@@ -155,8 +190,9 @@ export const infraDriftMethods = {
           fingerprint,
           plan: p.n,
           planMatches: true,
+          desiredHash,
         });
-    const stale = open.find((p) => p.source === 'drift');
+    const stale = open.find((p) => DRIFT_PLAN_SOURCES.includes(p.source));
     if (stale)
       return this.keepDrift(env, {
         desiredSha,
@@ -165,6 +201,7 @@ export const infraDriftMethods = {
         fingerprint,
         plan: stale.n,
         planMatches: false,
+        desiredHash: unsettled,
       });
 
     // A frozen environment's drift is kept and shown, but planned only once it's unfrozen. Drift with a change marked
@@ -177,14 +214,32 @@ export const infraDriftMethods = {
         fingerprint,
         plan: null,
         planMatches: false,
+        desiredHash: unsettled,
       });
+    const merged = desiredMoved(last, desiredHash, Boolean(added));
+    const pull = merged ? this.mergedPullAt(env.repo, desiredSha) : null;
     let plan = null;
     let planMatches = false;
+    let settled = unsettled;
     let error = null;
     try {
-      const made = await this.makeInfraPlan(env.id, { source: 'drift', by: 'board', only: isDrift });
+      let made = await this.makeInfraPlan(env.id, {
+        source: merged ? 'pull-request' : 'drift',
+        sourceRef: pull ? `#${pull}` : null,
+        by: 'board',
+        only: isDrift,
+      });
       plan = planNumber(made.id);
       planMatches = (await driftFingerprint(made.diff)) === fingerprint;
+      settled = desiredHash;
+      // A merged change waits for the owner, with one push, unless the policy let it through (approved already).
+      if (merged && made.state === 'draft' && made.policy?.outcome !== 'refused')
+        made = await this.waitForOwner(made.id, {
+          by: 'board',
+          summary: pull
+            ? `pull request #${pull} merged a change to ${env.name}’s desired state`
+            : `${env.name}’s desired state changed on the default branch`,
+        });
     } catch (e) {
       error = `the drift couldn’t become a plan: ${redact(e?.message ?? e)}`;
     }
@@ -195,19 +250,34 @@ export const infraDriftMethods = {
       fingerprint,
       plan,
       planMatches,
+      desiredHash: settled,
       error,
     });
   },
 
+  /** The pull request whose merge made `sha` the head of the repository's default branch, as the sync keeps it. */
+  mergedPullAt(repo, sha) {
+    if (!sha) return null;
+    const row = this.sql
+      .exec(
+        `SELECT number FROM gh_pulls WHERE repo = ? AND state = 'merged' AND json_extract(data, '$.mergeSha') = ?
+         LIMIT 1`,
+        repo,
+        sha,
+      )
+      .toArray()[0];
+    return row ? Number(row.number) : null;
+  },
+
   /** Keeps one environment's comparison, replacing the last, and returns it as the API shows it. */
-  keepDrift(env, { desiredSha, count, resources, fingerprint, plan, planMatches, error = null }) {
+  keepDrift(env, { desiredSha, count, resources, fingerprint, plan, planMatches, desiredHash, error = null }) {
     this.sql.exec(
-      `INSERT INTO infra_drift (environment, repo, checked, desired_sha, count, resources, fingerprint, plan, plan_matches, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO infra_drift (environment, repo, checked, desired_sha, count, resources, fingerprint, plan, plan_matches, error, desired_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (environment) DO UPDATE SET repo = excluded.repo, checked = excluded.checked,
          desired_sha = excluded.desired_sha, count = excluded.count, resources = excluded.resources,
          fingerprint = excluded.fingerprint, plan = excluded.plan, plan_matches = excluded.plan_matches,
-         error = excluded.error`,
+         error = excluded.error, desired_hash = excluded.desired_hash`,
       env.id,
       env.repo,
       Date.now(),
@@ -218,6 +288,7 @@ export const infraDriftMethods = {
       plan,
       planMatches ? 1 : 0,
       error,
+      desiredHash ?? null,
     );
     return this.driftOut(env);
   },
@@ -303,7 +374,7 @@ export const infraDriftMethods = {
 
   /**
    * POST /api/infra/drift/<environment>: compare it now. The owner's, from the signed-in browser only (the worker
-   * refuses the bearer token); an agent's `by` is refused too. A plan it makes is a draft, like the cron's.
+   * refuses the bearer token); an agent's `by` is refused too. A plan it makes is the one the cron would make.
    */
   driftCheckApi(ref, body = {}) {
     return this.run(async () => {
