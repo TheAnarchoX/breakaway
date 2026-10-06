@@ -38,6 +38,7 @@ import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
 import { pullAccess } from './github-access.js';
 import { buildFlow, compareFacts, NEXT_STEPS, packageOf, pipelineOf, stableOf } from './release.js';
 import { candidate, productionSha } from './promote.js';
+import { checkInputs, dispatchOf, validRef } from './workflows.js';
 
 const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 100 };
 const MAX_COMPARES = 10;
@@ -50,6 +51,10 @@ const DEBOUNCE_MS = 5000;
 const PROMPT_CACHE_MS = 60_000;
 /** Where a repository carries the board's core: where `repos init` copies it, then breakaway's own layout. */
 const CORE_PATHS = ['tools/tasks/prompts/core.md', 'prompts/core.md'];
+/** How long a repository's workflows that run by hand (BRK-224) are kept before reading them again. */
+const WORKFLOWS_MS = 300_000;
+/** At most this many workflow files are read per listing: a Worker's subrequests are counted. */
+const MAX_WORKFLOW_FILES = 40;
 /** How long another repository's deploy paths (read from its default branch) are kept before reading them again. */
 const DEPLOY_PATHS_MS = 3_600_000;
 /** What a task's note says when a Deployment carries it: per environment (CLD-106), with its repository's Workers. */
@@ -200,7 +205,7 @@ export const githubMethods = {
    * is ignored. A delivery without a repository (the App's installation events) reconciles them all.
    * `slug` names the repository directly, for the board's own writes.
    */
-  async githubWebhook(event, action, { full = null, slug = null } = {}) {
+  async githubWebhook(event, action, { full = null, slug = null, workflowsChanged = false } = {}) {
     let repo = null;
     if (full) {
       repo = this.repos().find((r) => r.github.toLowerCase() === String(full).toLowerCase());
@@ -208,6 +213,7 @@ export const githubMethods = {
     } else if (slug) {
       repo = this.githubRepo(slug);
     }
+    if (workflowsChanged && repo) this.dropWorkflows(repo.slug);
     if (event === 'installation' && (action === 'deleted' || action === 'suspend')) this.ghCache = {};
     const dirty = new Set(JSON.parse(this.meta('gh_dirty') ?? '[]'));
     dirty.add(repo ? repo.slug : '*');
@@ -1732,6 +1738,166 @@ export const githubMethods = {
     );
     await this.githubWebhook('workflow_run', null, { slug: repo.slug }); // sync 5 seconds from now
     return { status: 200, body: { ok: true, action: event.kind, workflow } };
+  },
+
+  /**
+   * A repository's workflows that run by hand (BRK-224, docs/specs/BRK-223-run-workflows.md): its active workflows
+   * under .github/workflows/, each read on the default branch for a `workflow_dispatch` trigger and its inputs. Kept
+   * for 5 minutes, and dropped when a push to the default branch changes a workflow. `{ list }`, or `{ error }`, a
+   * response with what to do.
+   */
+  async workflowList(repo, credentials) {
+    this.workflowCache ??= {};
+    const kept = this.workflowCache[repo.slug];
+    if (kept && kept.branch === repo.defaultBranch && Date.now() - kept.at < WORKFLOWS_MS) return { list: kept.list };
+    const client = this.githubClient(credentials, repo);
+    const branch = encodeURIComponent(repo.defaultBranch || 'main');
+    let all;
+    try {
+      all = await client.get('/actions/workflows?per_page=100');
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      if (isEmptyRepo(error)) return { list: [] };
+      if (error.status === 404)
+        return {
+          error: {
+            status: 409,
+            body: {
+              error: `The board’s GitHub App isn’t installed on ${repo.github}, or can’t read it. Install it there; Connections shows how.`,
+            },
+          },
+        };
+      return { error: { status: 502, body: { error: error.reason ?? error.message, github: error.status } } };
+    }
+    const files = (all?.workflows ?? [])
+      .filter((w) => w.state === 'active' && /^\.github\/workflows\/[^/]+\.ya?ml$/u.test(String(w.path ?? '')))
+      .slice(0, MAX_WORKFLOW_FILES);
+    const read = await Promise.allSettled(
+      files.map((w) => client.get(`/contents/${w.path.split('/').map(encodeURIComponent).join('/')}?ref=${branch}`)),
+    );
+    const list = [];
+    files.forEach((w, i) => {
+      const got = read[i];
+      if (got.status === 'rejected' && !(got.reason instanceof GitHubError)) throw got.reason;
+      // Not on the default branch (a workflow only a branch has): GitHub can't run it from there either.
+      if (got.status === 'rejected' && got.reason.status === 404) return;
+      const base = {
+        id: w.id,
+        name: String(w.name ?? w.path),
+        path: w.path,
+        url: `https://github.com/${repo.github}/actions/workflows/${w.path.split('/').pop()}`,
+      };
+      if (got.status === 'rejected') {
+        list.push({ ...base, readable: false, inputs: [], reason: got.reason.reason ?? got.reason.message });
+        return;
+      }
+      const bytes = Uint8Array.from(atob(String(got.value?.content ?? '').replace(/\s+/gu, '')), (c) =>
+        c.charCodeAt(0),
+      );
+      const found = dispatchOf(new TextDecoder().decode(bytes));
+      if (!found) return;
+      list.push(
+        'reason' in found
+          ? { ...base, readable: false, inputs: [], reason: found.reason }
+          : { ...base, readable: true, inputs: found.inputs },
+      );
+    });
+    list.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    this.workflowCache[repo.slug] = { at: Date.now(), branch: repo.defaultBranch, list };
+    return { list };
+  },
+
+  /** A push changed a workflow on `slug`'s default branch: read its workflows again next time. */
+  dropWorkflows(slug) {
+    if (this.workflowCache) delete this.workflowCache[slug];
+  },
+
+  /**
+   * GET /api/github/workflows (BRK-224): repository `slug`'s workflows that run by hand (the default's when empty),
+   * with the branches a run may start on (the default and its open pull requests' heads) and whether the App may start
+   * workflows there. Anyone signed in reads it.
+   */
+  async workflowsApi(slug = null) {
+    await this.ready();
+    const { repo, error: missing } = this.githubRepoOr404(slug);
+    if (missing) return missing;
+    const credentials = await appCredentials(this.env);
+    if (!credentials)
+      return {
+        status: 409,
+        body: { error: 'GitHub isn’t connected yet: connect it from the GitHub view, then run a workflow from here.' },
+      };
+    const { list, error } = await this.workflowList(repo, credentials);
+    if (error) return error;
+    const branch = repo.defaultBranch || 'main';
+    const heads = this.sql
+      .exec("SELECT data FROM gh_pulls WHERE repo = ? AND state = 'open'", repo.slug)
+      .toArray()
+      .map((r) => JSON.parse(r.data).branch)
+      .filter((b) => typeof b === 'string' && validRef(b));
+    const live = JSON.parse(this.meta('conn_live') ?? 'null');
+    const access = pullAccess(live?.repos?.[repo.slug] ?? null, { github: repo.github, at: live?.at ?? null });
+    return {
+      status: 200,
+      body: {
+        repo: repo.slug,
+        github: repo.github,
+        workflows: list,
+        branch,
+        branches: [branch, ...[...new Set(heads)].filter((b) => b !== branch).sort()],
+        actions: access.actions,
+      },
+    };
+  },
+
+  /**
+   * POST /api/github/workflows/run (BRK-224): starts one of the repository's workflows that run by hand on `ref`, with
+   * `inputs` checked against the ones the board read. The owner's, from the signed-in browser only (the Worker refuses
+   * anything else). Activity records the workflow, the ref, and the inputs' names, never their values.
+   */
+  async runWorkflowApi({ repo: slug = null, workflow, ref, inputs } = {}) {
+    await this.ready();
+    const { repo, error: missing } = this.githubRepoOr404(slug);
+    if (missing) return missing;
+    const credentials = await appCredentials(this.env);
+    if (!credentials) return { status: 409, body: { error: 'GitHub isn’t connected yet' } };
+    const wanted = String(workflow ?? '');
+    if (!wanted) return { status: 400, body: { error: 'send the workflow to run, its id or its path, as "workflow"' } };
+    const { list, error } = await this.workflowList(repo, credentials);
+    if (error) return error;
+    const found = list.find((w) => String(w.id) === wanted || w.path === wanted);
+    if (!found)
+      return {
+        status: 404,
+        body: {
+          error: `${repo.name} has no workflow ${wanted.slice(0, 80)} that runs by hand on ${repo.defaultBranch}.`,
+        },
+      };
+    if (!found.readable)
+      return {
+        status: 409,
+        body: { error: `The board can’t read ${found.name}’s inputs: run it on GitHub.`, url: found.url },
+      };
+    const on = ref === undefined || ref === null || ref === '' ? repo.defaultBranch || 'main' : ref;
+    if (!validRef(on)) return { status: 400, body: { error: 'run on a branch or tag name, like main or v1.6.0' } };
+    const checked = checkInputs(found.inputs, inputs);
+    if ('error' in checked) return { status: 400, body: { error: checked.error } };
+    const event = {
+      kind: 'workflow_started',
+      workflow: found.name,
+      path: found.path,
+      ref: on,
+      inputs: Object.keys(checked.inputs),
+      url: found.url,
+    };
+    const answer = await this.dispatchRelease(repo, credentials, {
+      workflow: String(found.id),
+      ref: on,
+      inputs: checked.inputs,
+      event,
+    });
+    if (answer.status !== 200) return answer;
+    return { status: 200, body: { ...answer.body, name: found.name, ref: on, url: found.url } };
   },
 
   /**

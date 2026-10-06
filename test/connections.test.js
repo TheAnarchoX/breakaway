@@ -149,8 +149,13 @@ describe('connections, the pure parts', () => {
       .filter((p) => !p.ok)
       .map((p) => p.name);
     expect(missing).toEqual(['contents', 'actions']);
-    // Actions and Deployments matter only where there's a deploy pipeline.
-    expect(comparePermissions({ ...ALL, actions: undefined, deployments: undefined }).every((p) => p.ok)).toBe(true);
+    // Deployments matter only where there's a deploy pipeline; Actions everywhere, for Run workflow (BRK-224).
+    expect(comparePermissions({ ...ALL, deployments: undefined }).every((p) => p.ok)).toBe(true);
+    expect(
+      comparePermissions({ ...ALL, actions: undefined })
+        .filter((p) => !p.ok)
+        .map((p) => [p.name, p.for]),
+    ).toEqual([['actions', 'Run workflow, Promote, and Roll back']]);
     expect(comparePermissions({ ...ALL, contents: 'admin' }).every((p) => p.ok)).toBe(true);
   });
 

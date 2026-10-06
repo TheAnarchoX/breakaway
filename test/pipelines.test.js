@@ -126,10 +126,10 @@ describe('what the owner’s buttons can do', () => {
       pullAccess({ installed: true, permissions: all, autoMerge: false, autoMergeError: 'x' }, { github: 'o/r' })
         .autoMerge.ok,
     ).toBe(true);
-    // Actions matter only where there's a pipeline.
+    // Actions matter on every repository: Run workflow (BRK-224) needs them too.
     const noActions = { installed: true, permissions: { ...all, actions: 'read' }, autoMerge: true };
     expect(pullAccess(noActions, { github: 'o/r', pipeline: true }).actions.reason).toMatch(/start workflows/u);
-    expect(pullAccess(noActions, { github: 'o/r', pipeline: false }).actions.ok).toBe(true);
+    expect(pullAccess(noActions, { github: 'o/r', pipeline: false }).actions.reason).toMatch(/start workflows/u);
     expect(pullAccess({ installed: true, suspended: true }, { github: 'o/r' }).write.reason).toMatch(/suspended/u);
   });
 });

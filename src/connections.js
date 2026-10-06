@@ -34,7 +34,7 @@ export const NEEDED_PERMISSIONS = [
   { name: 'contents', level: 'write', for: 'Update branch and Merge' },
   { name: 'checks', level: 'read', for: 'checks on pull requests' },
   { name: 'statuses', level: 'read', for: 'commit statuses on pull requests' },
-  { name: 'actions', level: 'write', for: 'Promote and Roll back', pipeline: true },
+  { name: 'actions', level: 'write', for: 'Run workflow, Promote, and Roll back' },
   { name: 'deployments', level: 'read', for: 'deploys and what shipped', pipeline: true },
   { name: 'vulnerability_alerts', level: 'read', for: 'Dependabot alerts' },
 ];
