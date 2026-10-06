@@ -29,6 +29,8 @@ export const DESIRED_MAX_BYTES = 256 * 1024;
 export const DESIRED_MAX_RESOURCES = 500;
 /** How many files one read takes from the folder: an environment per file, and a repository has at most 50. */
 export const DESIRED_MAX_FILES = 60;
+/** How deep a file may nest: far more than any real one, and well inside the stack. */
+export const MAX_DEPTH = 64;
 
 const TOP = ['version', 'provider', 'resources'];
 const RESOURCE = ['id', 'kind', 'name', 'attrs'];
@@ -115,8 +117,10 @@ export function parseWithLines(text) {
     i += match[0].length;
     return JSON.parse(match[0]);
   };
-  /** @param {string} path */
-  const value = (path) => {
+  /** @param {string} path @param {number} depth */
+  const value = (path, depth = 0) => {
+    // A file nested deeper than any real one would overflow the stack: it's refused with its line (BRK-229).
+    if (depth > MAX_DEPTH) fail(`it’s nested more than ${MAX_DEPTH} deep`);
     space();
     lines.set(path, line);
     const c = src[i];
@@ -137,7 +141,13 @@ export function parseWithLines(text) {
         space();
         if (src[i] !== ':') fail(`expected : after “${key}”, and found ${shown()}`);
         i += 1;
-        out[key] = value(path ? `${path}.${key}` : key);
+        // Defined, never assigned, so a key like __proto__ is a plain key and never the object's prototype.
+        Object.defineProperty(out, key, {
+          value: value(path ? `${path}.${key}` : key, depth + 1),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
         space();
         if (src[i] === ',') {
           i += 1;
@@ -159,7 +169,7 @@ export function parseWithLines(text) {
         return out;
       }
       for (;;) {
-        out.push(value(`${path}[${out.length}]`));
+        out.push(value(`${path}[${out.length}]`, depth + 1));
         space();
         if (src[i] === ',') {
           i += 1;

@@ -157,6 +157,28 @@ describe('environments (BRK-174)', () => {
     );
   });
 
+  it('adding, changing, and removing one is in the audit trail, by the owner (BRK-229)', async () => {
+    const made = await body(await add({ name: 'audited', kind: 'staging', target: 'widgets-audited' }));
+    const id = made.environment.id;
+    // A change that moves nothing appends nothing.
+    await board(`infra/environments/${id}`, { method: 'PATCH', body: { target: 'widgets-audited' } });
+    await board(`infra/environments/${id}`, {
+      method: 'PATCH',
+      body: { target: 'widgets-elsewhere', observeOnly: true },
+    });
+    expect((await board(`infra/environments/${id}`, { method: 'DELETE' })).status).toBe(200);
+    const audit = await body(await api(`infra/audit?environmentId=${id}&kind=environment`));
+    expect(audit.entries.map(({ by, outcome, summary }) => ({ by, outcome, summary })).reverse()).toEqual([
+      { by: 'owner', outcome: 'added', summary: 'added by the owner: staging, fake widgets-audited' },
+      {
+        by: 'owner',
+        outcome: 'changed',
+        summary: 'changed by the owner: target widgets-audited → widgets-elsewhere; observe only off → on',
+      },
+      { by: 'owner', outcome: 'removed', summary: 'removed by the owner' },
+    ]);
+  });
+
   it('production gates and observe only are the signed-in board’s to change', async () => {
     const id = (await list()).environments.find((e) => e.name === 'production').id;
     for (const change of [{ gates: false }, { observeOnly: true }]) {

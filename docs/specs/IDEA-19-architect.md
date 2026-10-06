@@ -100,7 +100,7 @@ Approve and Reject are owner-only and cookie-only (BRK-182). A plan that waits s
 
 The only path that changes infrastructure (BRK-183): take the environment's lock (BRK-179), start the apply runner for exactly one approved plan, record each step, verify health through the provider, roll back by itself if verification fails (BRK-171), release the lock, and write the outcome. One environment at a time; production last and only on approval.
 
-The runner is **a workflow in the repository, started by the board on approval, with a write token per environment in a GitHub environment** (BRK-171), which is the trust Promote has today, so the board itself still holds no write credentials. CLI-12 renders it with `npx breakaway infra init`, like `pipeline init`. An observe-only environment is refused.
+The runner is **a workflow in the repository, started by the board on approval, with a write token per environment in a GitHub environment** (BRK-171), which is the trust Promote has today, so the board itself still holds no write credentials. CLI-12 renders it with `npx breakaway infra init`, like `pipeline init`. An observe-only environment is refused. Each GitHub environment that holds a write token has a deployment branch rule of the default branch only, as CLD-27's do: the workflow's own `if:` is read from whichever branch runs it, so the rule is what keeps the token from a run of an edited copy on another branch (BRK-229).
 
 Each run records the GitHub environment it applies in (BRK-242): the environment's own name, or `short-lived` for every short-lived environment, since each of those is named for its task and no GitHub environment could hold a token for a name that's new each time. The board starts the workflow with it (`github_environment`, sent only when it isn't the environment's own name, so a workflow rendered earlier still starts for staging and production) and checks the run's OIDC `environment` claim against what it recorded, never against the inputs, which anyone who can run workflows can set: a short-lived plan's run in staging's or production's GitHub environment gets nothing, and so does a staging plan's run in `short-lived`. The provider's scope still keeps each apply inside its own environment's resources. A repository with `short-lived.json` renders the workflow with the environment as any name rather than a list; after that file is added, or after upgrading past BRK-242, the owner runs `npx breakaway infra init --update` and merges it.
 
@@ -140,7 +140,7 @@ A runbook is a routine with a signal trigger: by environment, resource kind, and
 
 ### Incidents
 
-A signal that crosses a rule opens an incident: a task in the repository that owns the resource, tagged `+incident` (BRK-172), with a push for a production incident and a quiet inbox entry for any other, and steps on the task: **diagnose** (read only), **propose** (a plan, by pull request), **approve**, **apply**, **verify**, then a write-up and follow-up tasks. A repeat signal comments on the open incident (BRK-197, WEB-63). An incident never starts an agent by itself: a diagnosis agent starts only from a runbook the owner turned on, one by one (BRK-172, BRK-196).
+A signal that crosses a rule opens an incident: a task in the repository that owns the resource, tagged `+incident` (BRK-172), with a push for a production incident and a quiet inbox entry for any other, and steps on the task: **diagnose** (read only), **propose** (a plan, by pull request), **approve**, **apply**, **verify**, then a write-up and follow-up tasks. A repeat signal comments on the open incident (BRK-197, WEB-63). An incident never starts an agent by itself: a diagnosis agent starts only from a runbook the owner turned on, one by one (BRK-172, BRK-196). The incident's title is the signal's kind, level, environment, and resource; the signal's own words go only in its brief and its comments, quoted and labelled untrusted, since they come from the system being watched (BRK-229).
 
 ### Cost
 
@@ -195,7 +195,7 @@ A repository with a pipeline gets its staging and production environments by its
 
 ### Views
 
-An **Infrastructure** view next to Board and List (WEB-60): each repository's environments with health, drift, cost, freeze, and the plan waiting. An environment's page (WEB-61), the plan page with Approve and Reject (WEB-62), incidents (WEB-63), policy and envelopes in Settings (WEB-64), and cost (WEB-65). Empty states: no provider connected says what to connect and where; no environments yet says how to add one. Both themes, one column on a phone, reduced motion respected.
+An **Infrastructure** view next to Board and List (WEB-60): each repository's environments with health, drift, cost, freeze, and the plan waiting. An environment's page (WEB-61), a console since WEB-94 ([spec](WEB-94-environment-console.md)): a status band, its resources as a map or a list with a waiting plan's changes on them, and a live stream of what happens there; the plan page with Approve and Reject (WEB-62), incidents (WEB-63), policy and envelopes in Settings (WEB-64), and cost (WEB-65). Empty states: no provider connected says what to connect and where; no environments yet says how to add one. Both themes, one column on a phone, reduced motion respected.
 
 ### Agents
 

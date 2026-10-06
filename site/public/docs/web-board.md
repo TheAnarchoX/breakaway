@@ -19,12 +19,13 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Board** | A column per state (needs a decision, ready, in progress, in review, blocked or waiting, done in the last 30 days) and a row per horizon or area. Cards show their pull request’s number, checks, and review. On a phone you pick the column at the top. **Close now** is here. |
 | **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
 | **Roadmap** | Releases in version order, then Unplanned, each with its feature cards: progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
+| **Infrastructure** | Architect: each repository’s environments with their health, drift, estimated cost, freeze, and the plan waiting for you, and **Add an environment**. Open one for what runs there and what each resource uses, its plans, signals, incidents, cost, and audit trail; open a plan to read what it changes and **Approve** or **Reject** it. A waiting plan’s push opens its page. With no provider connected, it says what to connect. See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect). |
 | **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
-| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
+| **Inbox** | Pings from agents and notes from the board, including a chase that ended. Incidents come first, production’s before the rest. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
 | **Specs** | The repository’s specs, read from GitHub, each with its status and the tasks that link it. Open one to read it beside the list, and **Refine with an agent** to have an agent change it and bring its tasks in line, in one pull request. |
 | **Agents** | The cloud agents the board started, what’s waiting to start and why, **Start the next few**, every chase that’s on, each repository’s peloton, the Agents settings, and the agent prompts. |
-| **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. |
+| **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. A routine’s **Signal trigger** makes it a runbook, started by what the board hears about an environment. |
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
 | **MCP** | How to connect any MCP client to the board: its address, a config with the board’s token, the apps you approved (with **Revoke**), and the Claude Code plugin. See [MCP clients](https://leavethepack.dev/docs/mcp/). |
 | **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
@@ -37,7 +38,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | Section | What’s in it | Where it’s kept |
 | --- | --- | --- |
 | **This browser** | Claim as (the name on claims you make here, `owner` by default), theme, open tasks in (sidebar or modal), notifications, and the merge method that Merge starts with and Merge when green uses | This browser only |
-| **The board** | Agents: your Claude plan, agents at once, starts an hour, start by itself, and new security alerts. Routines: whether routines can run, and all routines a day. Updates: self-updates on or off, with a link to Connections for the rest | The board, for everyone who uses it |
+| **The board** | Agents: your Claude plan, agents at once, starts an hour, start by itself, and new security alerts. Routines: whether routines can run, and all routines a day. Updates: self-updates on or off, with a link to Connections for the rest. Currency: the currency Architect shows costs in, and the rate you set (**Fetch today’s rate** fills it in only when you press it) | The board, for everyone who uses it |
 | **Repositories** | Each repository with its GitHub repository and areas, and a link to its page; **Add a repository**; and the ones taken off the board, collapsed. On a board with no repository yet, the wizard’s first step | The board |
 
 The server’s state, the link to Connections, **Refresh**, **Shortcuts**, and **Sign out** are at the foot of the page.
@@ -55,6 +56,7 @@ Each repository has a page of its own (`#/settings/<slug>`). Open it from its ro
 | **Agents** | Its caps under the board’s limits (at once and starts an hour), and its agent prompt’s path. It shows whether its routine is connected and how many saved routines run in it | `repos modify <slug> --agents-max`, `--agents-hourly`, `--prompt` |
 | **Deploys** | Its pipeline: the staging and production Workers, its npm package, or both, the deploy paths file, and the workflow files (deploy, promote, roll back, and release). Without a pipeline, once the move’s config and workflows are on the default branch, it shows the [Turn on deploys](https://leavethepack.dev/docs/github/#turn-on-deploys) card, with **Set it by hand** under it to fill in the form yourself. **Copy as JSON** copies what `--pipeline` takes, and **Turn off deploys** clears it | `repos modify <slug> --pipeline <file.json\|none>` |
 | **Pull requests** | Keep branches up to date and Merge when green for this repository. They stay this browser’s, and work while the board is open in it | none |
+| **Infrastructure** | The policy in force for its environments, in words (it’s read from the repository’s `.github/breakaway-infra/policy.json`, so it changes by pull request), and each environment’s **Freeze** and envelope: **Add an envelope**, **Change**, and **Revoke**. Only you can, from the board | none: an agent’s token can read them and nothing else |
 | **Take it off the board** | What removing it does, its open tasks and running agents, and the command to copy. The default repository stays | `repos remove <slug>` |
 
 A repository taken off the board shows its page read only, with **Release its short name and prefixes** when nothing holds them.
@@ -124,6 +126,7 @@ Go to a view with `g`, then:
 | `l` | List |
 | `m` | Roadmap |
 | `d` | Dependencies |
+| `n` | Infrastructure |
 | `i` | Inbox |
 | `t` | Activity |
 | `h` | GitHub |

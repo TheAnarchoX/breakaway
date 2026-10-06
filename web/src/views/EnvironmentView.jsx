@@ -1,34 +1,35 @@
-import { useEffect, useState } from 'preact/hooks';
-import { ArrowLeft, Boxes, FileCode, History, RefreshCw, Server, Target } from 'lucide-preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { ArrowLeft, FileCode, RefreshCw, Server } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
-import { auditActor, auditWords } from '../lib/infra-audit.js';
-import { environmentId, hashFor, navOrder, repoName } from '../lib/store.js';
+import { environmentId, hashFor, navOrder, repoName, tasks } from '../lib/store.js';
+import { STREAM_MAX, agentsAtWork, arrived, streamItems } from '../lib/env-stream.js';
 import { DeploysSection } from '../components/EnvironmentDeploys.jsx';
 import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
-import {
-  EnvironmentFlags,
-  FreezeButton,
-  HEALTH,
-  Health,
-  KIND_LABEL,
-  environmentHealth,
-} from './InfrastructureView.jsx';
+import { FreezeButton, KIND_LABEL, environmentHealth } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
 import { UnownedSection } from '../components/Unowned.jsx';
 import { CostSection } from '../components/InfraCosts.jsx';
 import { DescribeAsCode } from '../components/InfraDescribe.jsx';
+import { StatusBand } from '../components/EnvironmentStatus.jsx';
+import { Topology } from '../components/EnvironmentTopology.jsx';
+import { StreamRail } from '../components/EnvironmentStream.jsx';
 
 /**
- * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>: its resources
- * grouped by kind, each with what it uses and what uses it, its owner, and its health (BRK-177's inventory); its
- * desired state and drift (BRK-180, BRK-184); and its audit trail, newest first (BRK-175). Its cost is WEB-65's. A
- * pipeline's staging and production (BRK-195) show what's live, their recent deploys, and on production Promote and
- * Roll back, the release flow's own buttons (WEB-88).
+ * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>, as a console
+ * (WEB-94; docs/specs/WEB-94-environment-console.md): a status band (health, freeze, what's live, the plan waiting, the
+ * budget, the agents at work), its resources as a map or a list (BRK-177's inventory, with drift from BRK-184 and a
+ * waiting plan's changes on the nodes), and a stream of what happens there (signals, runs, incidents, and the audit
+ * trail, BRK-175), all kept live by polling the routes it reads. Under them, a panel each: deploys (WEB-88), plans
+ * (WEB-62), incidents (WEB-63), nobody owns, cost (WEB-65), and the desired state with Describe it as code (WEB-92).
  */
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
 const AUDIT_PAGE = 20;
+/** Signals the stream reads each time. */
+const SIGNALS_READ = 30;
+/** How often the console reads again while the page is open and shown, in milliseconds. */
+export const POLL_MS = 15_000;
 
 /** A desired-state file's state (BRK-180), in words. */
 const DESIRED = {
@@ -48,135 +49,6 @@ function When({ iso }) {
   );
 }
 
-/**
- * The resources, grouped by kind with the target's kind first, and for each what it uses and what uses it, built from
- * the inventory's relations.
- * @param {any[]} resources
- * @param {{ from: string, to: string, kind: string }[]} relations
- * @param {string | null} target the environment's target: its ID or name
- */
-export function resourceGroups(resources, relations, target = null) {
-  const byId = new Map(resources.map((r) => [r.id, r]));
-  const name = (/** @type {string} */ id) => byId.get(id)?.name ?? id;
-  const groups = new Map();
-  for (const r of [...resources].sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))) {
-    const uses = relations
-      .filter((rel) => rel.from === r.id)
-      .map((rel) => ({ id: rel.to, name: name(rel.to), kind: rel.kind }));
-    const usedBy = relations
-      .filter((rel) => rel.to === r.id)
-      .map((rel) => ({ id: rel.from, name: name(rel.from), kind: rel.kind }));
-    groups.set(r.kind, [...(groups.get(r.kind) ?? []), { ...r, uses, usedBy }]);
-  }
-  const first = resources.find((r) => target && (r.id === target || r.name === target))?.kind;
-  return [...groups]
-    .sort(([a], [b]) => Number(b === first) - Number(a === first))
-    .map(([kind, items]) => ({ kind, items }));
-}
-
-/** Moves focus to a resource on the page, so its relations read like links. */
-function goTo(/** @type {string} */ id) {
-  const el = document.getElementById(`infra-res-${id}`);
-  if (!el) return;
-  const reduce =
-    document.documentElement.dataset.motion === 'reduce' || matchMedia('(prefers-reduced-motion: reduce)').matches;
-  el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
-  el.focus({ preventScroll: true });
-}
-
-/** @param {{ label: string, links: { id: string, name: string, kind: string }[] }} props */
-function Relations({ label, links }) {
-  if (!links.length) return null;
-  return (
-    <div class="infra-rel">
-      <dt>{label}</dt>
-      <dd>
-        <ul class="infra-rel-list">
-          {links.map((l) => (
-            <li key={`${l.id} ${l.kind}`}>
-              <button type="button" class="infra-rel-link" onClick={() => goTo(l.id)}>
-                {l.name}
-              </button>
-              <span class="meta"> {l.kind}</span>
-            </li>
-          ))}
-        </ul>
-      </dd>
-    </div>
-  );
-}
-
-/** A resource's settings, as names and short values: the inventory keeps settings, never secrets' values. */
-function Settings({ attrs }) {
-  const entries = Object.entries(attrs ?? {});
-  if (!entries.length) return null;
-  return (
-    <details class="infra-settings">
-      <summary>
-        Settings <span class="count">{entries.length}</span>
-      </summary>
-      <dl>
-        {entries.map(([k, v]) => (
-          <div key={k}>
-            <dt>
-              <code>{k}</code>
-            </dt>
-            <dd>
-              <code>{typeof v === 'string' ? v : JSON.stringify(v)}</code>
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </details>
-  );
-}
-
-/** @param {{ r: any, env: any }} props */
-function Resource({ r, env }) {
-  const isTarget = env.target && (r.id === env.target || r.name === env.target);
-  const state = HEALTH[r.health?.state] ? r.health.state : 'unknown';
-  const { label, Icon } = HEALTH[state];
-  const task = r.owner?.task;
-  return (
-    <li class="infra-res" id={`infra-res-${r.id}`} tabIndex={-1}>
-      <div class="infra-res-head">
-        <h4 class="infra-res-name">{r.name}</h4>
-        {isTarget && (
-          <span class="infra-res-target">
-            <Target size={13} aria-hidden="true" />
-            Target
-          </span>
-        )}
-        <span class={`infra-health infra-health-${state}`}>
-          <Icon size={14} aria-hidden="true" />
-          {label}
-        </span>
-      </div>
-      {r.health?.text && <p class="infra-res-text">{r.health.text}</p>}
-      <p class="meta infra-res-id">
-        <code>{r.id}</code>
-        {' · '}
-        {repoName(r.owner.repo)}
-        {task && (
-          <>
-            {' · for '}
-            <a href={hashFor({ task: task.wid ?? task.uuid })}>{task.wid ?? task.description}</a>
-          </>
-        )}
-        {r.health?.at ? ' · checked ' : ' · seen '}
-        <When iso={r.health?.at ?? r.seen} />
-      </p>
-      {(r.uses.length > 0 || r.usedBy.length > 0) && (
-        <dl class="infra-rels">
-          <Relations label="Uses" links={r.uses} />
-          <Relations label="Used by" links={r.usedBy} />
-        </dl>
-      )}
-      <Settings attrs={r.attrs} />
-    </li>
-  );
-}
-
 /** @param {{ env: any, desired: any, error: string | null }} props */
 function Drift({ env, desired, error }) {
   const file = `.github/breakaway-infra/${env.name}.json`;
@@ -184,7 +56,7 @@ function Drift({ env, desired, error }) {
   return (
     <section class="infra-section" aria-labelledby="infra-drift">
       <h2 id="infra-drift">
-        <FileCode size={18} aria-hidden="true" />
+        <FileCode size={16} aria-hidden="true" />
         Desired state and drift
       </h2>
       {error ? (
@@ -193,14 +65,12 @@ function Drift({ env, desired, error }) {
         </p>
       ) : !desired ? (
         <>
-          <p class="muted">
-            {env.observeOnly
-              ? 'It’s observe only: the board watches it and never changes it, so it takes no desired state.'
-              : 'No desired state yet. Add '}
-            {!env.observeOnly && (
+          <p class="console-quiet">
+            {env.observeOnly ? (
+              'Observe only: the board never changes it, so it takes no desired state.'
+            ) : (
               <>
-                <code>{file}</code> to the repository’s default branch by pull request, and the board compares it with
-                what runs.
+                No desired state yet: add <code>{file}</code> by pull request.
               </>
             )}
           </p>
@@ -259,104 +129,160 @@ function Drift({ env, desired, error }) {
   );
 }
 
-/** @param {{ e: any }} props */
-function AuditEntry({ e }) {
-  const iso = new Date(e.at).toISOString();
-  const { label, outcome } = auditWords(e);
-  const who = auditActor(e);
-  return (
-    <li class={`infra-audit-entry infra-audit-${e.kind}`}>
-      <div class="infra-audit-head">
-        <span class="infra-audit-kind">{label}</span>
-        {outcome && <span class="meta">{outcome}</span>}
-        <span class="meta infra-audit-when">
-          <When iso={iso} />
-        </span>
-      </div>
-      {e.summary && <p class="infra-audit-summary">{e.summary}</p>}
-      <p class="meta">
-        By {who}
-        {e.plan && (
-          <>
-            {' · '}
-            <code>{e.plan}</code>
-          </>
-        )}
-        {e.envelope && (
-          <>
-            {' · envelope '}
-            <code>{e.envelope}</code>
-          </>
-        )}
-      </p>
-    </li>
-  );
-}
+/** A read the console can do without: a 404 or a failure leaves its part empty, never the page. */
+const optional = (/** @type {Promise<any>} */ p, /** @type {any} */ fallback) => p.catch(() => fallback);
+
+/** Whether this screen starts on the list: a phone does, with Map a press away. */
+const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches;
+
+/**
+ * @typedef {{ env: any, resources: any[], relations: any[], desired: any, desiredError: string | null, drift: any,
+ *   audit: any[], more: boolean, signals: any[], runs: any[], incidents: any[], plans: any[], plan: any, cost: any,
+ *   error: string | null, notFound: boolean, loading: boolean, updated: number | null, tick: number }} ConsoleState
+ */
 
 export function EnvironmentView() {
   const id = environmentId.value;
   const [state, setState] = useState(
-    /** @type {{ env: any, resources: any[], relations: any[], desired: any, desiredError: string | null, audit: any[], more: boolean, error: string | null, notFound: boolean, loading: boolean }} */ ({
+    /** @type {ConsoleState} */ ({
       env: null,
       resources: [],
       relations: [],
       desired: null,
       desiredError: null,
+      drift: null,
       audit: [],
       more: false,
+      signals: [],
+      runs: [],
+      incidents: [],
+      plans: [],
+      plan: null,
+      cost: null,
       error: null,
       notFound: false,
       loading: true,
+      updated: null,
+      tick: 0,
     }),
   );
-  const [older, setOlder] = useState(false);
-  const load = async () => {
-    setState((s) => ({ ...s, loading: true }));
+  const [older, setOlder] = useState(/** @type {any[]} */ ([]));
+  const [olderMore, setOlderMore] = useState(/** @type {boolean | null} */ (null));
+  const [olderBusy, setOlderBusy] = useState(false);
+  const [mode, setMode] = useState(/** @type {'map' | 'list'} */ (narrow() ? 'list' : 'map'));
+  const [fresh, setFresh] = useState(/** @type {Set<string>} */ (new Set()));
+  const shownKeys = useRef(/** @type {Set<string> | null} */ (null));
+  const busy = useRef(false);
+
+  const load = async (/** @type {{ quiet?: boolean }} */ { quiet = false } = {}) => {
+    if (busy.current) return;
+    busy.current = true;
+    if (!quiet) setState((s) => ({ ...s, loading: true }));
     try {
       const { environment } = await api(`infra/environments/${enc(id)}`);
-      const [inventory, audit, desired] = await Promise.all([
+      const [inventory, audit, desired, drift, signals, runs, incidents, plans, costs] = await Promise.all([
         api(`infra/inventory?environment=${enc(id)}`),
         api(`infra/audit?environmentId=${enc(id)}&limit=${AUDIT_PAGE}`),
         api(`infra/desired/${enc(id)}`).then(
           (d) => ({ desired: d.desired, error: null }),
           (err) => (err.status === 404 ? { desired: null, error: null } : { desired: null, error: err.message }),
         ),
+        optional(
+          api(`infra/drift/${enc(id)}`).then((d) => d.drift),
+          null,
+        ),
+        optional(api(`infra/signals?environmentId=${enc(id)}&limit=${SIGNALS_READ}`), { signals: [] }),
+        optional(api(`infra/runs?environment=${enc(id)}`), { runs: [] }),
+        optional(api(`infra/incidents?environment=${enc(id)}&limit=10`), { incidents: [] }),
+        optional(api(`infra/plans?environment=${enc(id)}&limit=10`), { plans: [] }),
+        optional(api(`infra/costs?environment=${enc(id)}`), null),
       ]);
-      setState({
+      // The plan whose changes the map shows: one applying now, else the one waiting for you.
+      const live = runs.runs.find((/** @type {any} */ r) => r.phase !== 'done');
+      const showing = live?.plan ?? environment.waitingPlan ?? null;
+      const plan = showing
+        ? await optional(
+            api(`infra/plans/${enc(showing)}`).then((p) => p.plan),
+            null,
+          )
+        : null;
+      setState((s) => ({
         env: environment,
         resources: inventory.resources,
         relations: inventory.relations,
         desired: desired.desired,
         desiredError: desired.error,
+        drift,
         audit: audit.entries,
         more: audit.more,
+        signals: signals.signals,
+        runs: runs.runs,
+        incidents: incidents.incidents,
+        plans: plans.plans,
+        plan,
+        cost: costs?.environments?.find((/** @type {any} */ e) => e.environmentId === environment.id) ?? null,
         error: null,
         notFound: false,
         loading: false,
-      });
+        updated: Date.now(),
+        tick: s.tick + 1,
+      }));
     } catch (error) {
       setState((s) => ({ ...s, error: error.message, notFound: error.status === 404, loading: false }));
+    } finally {
+      busy.current = false;
     }
   };
+
   const loadOlder = async () => {
-    const last = state.audit.at(-1);
+    const last = (older.length ? older : state.audit).at(-1);
     if (!last) return;
-    setOlder(true);
+    setOlderBusy(true);
     try {
       const { entries, more } = await api(
         `infra/audit?environmentId=${enc(id)}&limit=${AUDIT_PAGE}&before=${enc(last.id)}`,
       );
-      setState((s) => ({ ...s, audit: [...s.audit, ...entries], more }));
+      setOlder((o) => [...o, ...entries]);
+      setOlderMore(more);
     } catch (error) {
       setState((s) => ({ ...s, error: error.message }));
     } finally {
-      setOlder(false);
+      setOlderBusy(false);
     }
   };
+
   useEffect(() => {
     navOrder.value = [];
+    shownKeys.current = null;
+    setOlder([]);
+    setOlderMore(null);
     load();
+    // Live: read again every POLL_MS while the page is shown, and at once when it's shown again.
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') load({ quiet: true });
+    }, POLL_MS);
+    const shown = () => {
+      if (document.visibilityState === 'visible') load({ quiet: true });
+    };
+    document.addEventListener('visibilitychange', shown);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', shown);
+    };
   }, [id]);
+
+  // Everything the stream shows, older audit pages included, so every entry stays reachable.
+  const seen = new Set(state.audit.map((e) => e.id));
+  const audit = [...state.audit, ...older.filter((e) => !seen.has(e.id))];
+  const items = streamItems(
+    { signals: state.signals, audit, runs: state.runs, incidents: state.incidents },
+    STREAM_MAX + older.length,
+  );
+  useEffect(() => {
+    if (!state.updated) return;
+    setFresh(arrived(shownKeys.current, items));
+    shownKeys.current = new Set(items.map((i) => i.key));
+  }, [state.updated]);
 
   const back = (
     <a class="fr-back" href={hashFor({ view: 'infrastructure', environment: null, task: null })}>
@@ -384,7 +310,7 @@ export function EnvironmentView() {
               <button
                 type="button"
                 class="btn btn-quiet btn-sm"
-                onClick={load}
+                onClick={() => load()}
                 disabled={state.loading}
                 aria-busy={state.loading}
               >
@@ -401,10 +327,20 @@ export function EnvironmentView() {
       </div>
     );
 
-  const groups = resourceGroups(state.resources, state.relations, env.target);
   const health = environmentHealth(state.resources);
+  const run = state.runs.find((r) => r.phase !== 'done') ?? null;
+  const agents = agentsAtWork(tasks.value, { env, incidents: state.incidents, plans: state.plans });
+  const names = new Map(state.resources.map((r) => [r.id, r.name]));
+  const showResource = (/** @type {string} */ rid) => {
+    setMode('list');
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`infra-res-${rid}`);
+      el?.scrollIntoView({ block: 'center' });
+      el?.focus({ preventScroll: true });
+    });
+  };
   return (
-    <div class="infra-view infra-page">
+    <div class="infra-view infra-page console">
       {back}
       <div class="conn-top">
         <div class="view-intro">
@@ -436,7 +372,7 @@ export function EnvironmentView() {
           <button
             type="button"
             class="btn btn-quiet btn-sm"
-            onClick={load}
+            onClick={() => load()}
             disabled={state.loading}
             aria-busy={state.loading}
           >
@@ -446,92 +382,42 @@ export function EnvironmentView() {
           <FreezeButton env={env} onChange={(updated) => setState((s) => ({ ...s, env: updated }))} />
         </div>
       </div>
-      {state.error && (
-        <p class="field-error" role="alert">
-          {state.error}
-        </p>
-      )}
-      <div class="infra-page-status">
-        <Health health={env.target ? health : null} />
-        <EnvironmentFlags env={env} />
+
+      <StatusBand env={env} health={health} cost={state.cost} run={run} agents={agents} />
+
+      <div class="console-grid">
+        <Topology
+          env={env}
+          resources={state.resources}
+          relations={state.relations}
+          plan={state.plan}
+          drift={state.drift}
+          signals={state.signals}
+          mode={mode}
+          onMode={setMode}
+        />
+        <StreamRail
+          items={items}
+          fresh={fresh}
+          env={env}
+          nameOf={(rid) => names.get(rid) ?? rid}
+          onResource={showResource}
+          more={olderMore ?? state.more}
+          older={olderBusy}
+          onOlder={loadOlder}
+          updated={state.updated}
+          error={state.error}
+        />
       </div>
 
-      <DeploysSection env={env} />
-
-      <EnvironmentPlans env={env} />
-
-      <IncidentsSection env={env} />
-
-      <section class="infra-section" aria-labelledby="infra-resources">
-        <h2 id="infra-resources">
-          <Boxes size={18} aria-hidden="true" />
-          Resources {state.resources.length > 0 && <span class="count">{state.resources.length}</span>}
-        </h2>
-        {groups.length ? (
-          groups.map((g) => (
-            <section key={g.kind} class="infra-kind-group" aria-labelledby={`infra-kind-${g.kind}`}>
-              <h3 id={`infra-kind-${g.kind}`}>
-                {g.kind} <span class="count">{g.items.length}</span>
-              </h3>
-              <ul class="infra-res-list">
-                {g.items.map((r) => (
-                  <Resource key={r.id} r={r} env={env} />
-                ))}
-              </ul>
-            </section>
-          ))
-        ) : (
-          <p class="muted">
-            {env.target ? (
-              <>
-                Nothing seen yet. The board lists what runs here once its provider is connected on{' '}
-                <a href={hashFor({ view: 'connections', environment: null, task: null })}>Connections</a> and it has
-                looked: give it a minute, then reload.
-              </>
-            ) : (
-              'No target yet, so the board sees nothing here. Give the environment a target, like a Worker’s name, and the board lists it and everything it uses.'
-            )}
-          </p>
-        )}
-      </section>
-
-      <UnownedSection env={env} />
-
-      <CostSection env={env} />
-
-      <Drift env={env} desired={state.desired} error={state.desiredError} />
-
-      <section class="infra-section" aria-labelledby="infra-audit">
-        <h2 id="infra-audit">
-          <History size={18} aria-hidden="true" />
-          Recent changes
-        </h2>
-        {state.audit.length ? (
-          <>
-            <ol class="infra-audit">
-              {state.audit.map((e) => (
-                <AuditEntry key={e.id} e={e} />
-              ))}
-            </ol>
-            {state.more && (
-              <button
-                type="button"
-                class="btn btn-quiet btn-sm infra-audit-more"
-                onClick={loadOlder}
-                disabled={older}
-                aria-busy={older}
-              >
-                {older ? 'Loading…' : 'Show older'}
-              </button>
-            )}
-          </>
-        ) : (
-          <p class="muted">
-            Nothing yet. Every plan, approval, apply, freeze, and change inside an envelope shows here, and stays for at
-            least a year.
-          </p>
-        )}
-      </section>
+      <div class="console-panels">
+        <DeploysSection env={env} />
+        <EnvironmentPlans env={env} tick={state.tick} />
+        <IncidentsSection env={env} tick={state.tick} />
+        <UnownedSection env={env} />
+        <CostSection env={env} tick={state.tick} />
+        <Drift env={env} desired={state.desired} error={state.desiredError} />
+      </div>
     </div>
   );
 }

@@ -156,6 +156,25 @@ These need no board: run them in the checkout of the repository that deploys or 
 | `pipeline init` | Renders `.github/breakaway-pipeline.json` into Deploy, Promote, and Roll back, `.github/deploy-paths.json`, and Release for its npm package. Never overwrites; `--update` replaces what it rendered before, and `--dry-run` lists what it would write. Without the config it prints an example. |
 | `pipeline check` | Says whether the config is sound and the workflows are what it renders now. Exits 1 if not. |
 
+## Infrastructure
+
+Architect’s reads work in the checkout of a repository the board tracks, each with `--json`, and change nothing: approving, rejecting, freezing, and envelopes are yours, on the board. The board’s MCP server has the same reads as tools ([MCP clients](/docs/mcp/)). See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect).
+
+| Command | What it does |
+| --- | --- |
+| `infra` | This repository’s environments: kind, provider, target, frozen, observe only, drift, and the plan waiting. |
+| `infra show <environment>` | Its desired state, drift with the plan that puts it back, and its inventory: each resource with its health, estimated cost, and what it uses. |
+| `infra plans`, `infra plan <id>` | Plans, newest first (`--environment`, `--state`), and one plan: what changes, the cost change, the policy’s answer, what else it touches, and whether it can be undone. |
+| `infra signals` | What the board heard: health, alerts, and cost (`--environment`, `--resource`, `--kind`, `--level`); `--days` for the daily summaries. |
+| `infra incidents` | Open incidents, each a task tagged `+incident`, with the step it’s on. |
+| `infra check [<environment>]` | Before a pull request: checks `.github/breakaway-infra/` here, naming the file, line, and field that’s wrong, then shows the plan each file would make. Exits 1 if one doesn’t check. |
+| `infra adopt <environment>` | Writes the board’s draft of an environment that already runs to `.github/breakaway-infra/<environment>.json`, then checks it. Never overwrites without `--force`; `--dry-run` prints it. |
+| `infra add <template> [<environment>] [<input>=<value>…]` | A golden path: writes the change one of your templates makes (a queue, a database) into the environment’s file and the code. With no template, lists them. |
+| `infra init` | Renders `.github/workflows/breakaway-infra.yml`, the workflow that applies one plan you approved. The board starts it; agents never do. `--update` replaces what it rendered before. |
+| `infra act <environment> <resource> scale <n>\|restart` | Only for a runbook’s run whose description says to: asks for one scale or restart. Inside your envelope it applies; otherwise a plan waits for you. |
+
+None of them applies anything.
+
 ## Setup and secrets
 
 | Command | What it does |

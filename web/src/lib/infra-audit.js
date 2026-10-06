@@ -40,6 +40,13 @@ const ENVELOPE_WORDS = {
   revoked: { label: 'Envelope revoked', outcome: '' },
 };
 
+/** The owner adding, changing, or removing an environment (BRK-229), and a short-lived one coming and going. */
+const ENVIRONMENT_WORDS = {
+  added: { label: 'Environment added', outcome: '' },
+  changed: { label: 'Environment changed', outcome: '' },
+  removed: { label: 'Environment removed', outcome: '' },
+};
+
 /** A plan's state as an outcome, where its word differs from the stored one. */
 const PLAN_OUTCOME = { waiting: 'waiting for you' };
 
@@ -66,6 +73,7 @@ export function auditWords(e) {
   const outcome = e.outcome ?? '';
   if (e.kind === 'freeze') return { label: outcome === 'off' ? 'Unfrozen' : AUDIT_LABEL.freeze, outcome: '' };
   if (e.kind === 'envelope') return ENVELOPE_WORDS[outcome] ?? { label: AUDIT_LABEL.envelope, outcome };
+  if (e.kind === 'environment' && ENVIRONMENT_WORDS[outcome]) return ENVIRONMENT_WORDS[outcome];
   const flow = /^(Deploy|Promote|Roll back) of /u.exec(e.summary ?? '')?.[1];
   if (flow && (e.kind === 'apply' || e.kind === 'rollback')) {
     if (outcome === 'failed') return { label: `${flow} failed`, outcome: '' };
