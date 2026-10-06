@@ -606,6 +606,16 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 1) return send(await s.specsApi(url.searchParams.get('repo')));
     return send(await s.specApi(url.searchParams.get('repo'), parts.slice(1).join('/')));
   }
+  // Runbooks (BRK-196): anyone signed in reads them; a routine's signal trigger is the owner's, from the signed-in
+  // browser only, since it lets a signal start an agent.
+  if (parts[0] === 'infra' && parts[1] === 'runbooks' && parts.length <= 3) {
+    if (parts.length === 2 && method === 'GET') return send(await s.runbooksApi());
+    if (parts.length === 3 && (method === 'PUT' || method === 'DELETE')) {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can change a routine’s signal trigger' });
+      return send(await (method === 'PUT' ? s.runbookSetApi(parts[2], body) : s.runbookRemoveApi(parts[2], body)));
+    }
+  }
   // Architect's signals (BRK-190): read only, for the token and the cookie alike; providers and the deploy flow write
   // inside the store. /days is the daily summaries the cron folds older signals into.
   if (
