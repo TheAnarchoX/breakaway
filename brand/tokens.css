@@ -70,6 +70,16 @@
   --shadow-pop: 0 20px 60px -16px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--line-strong);
   /* No film grain: breakaway is flat and hard-edged. */
   --grain-opacity: 0;
+
+  /* Code (WEB-86): highlight.js's scopes in breakaway's colors. Code colors in Settings swaps them (code-colors.css). */
+  --code-keyword: #ff7a5c;
+  --code-string: #7fd49a;
+  --code-number: #ffc26b;
+  --code-comment: #9da0a9;
+  --code-title: #8fb8ff;
+  --code-type: #d7a6ff;
+  --code-attr: #6fd4d4;
+  --code-meta: #ff9bb5;
 }
 
 @media (prefers-color-scheme: light) {
@@ -98,6 +108,14 @@
     --warn-bg: rgba(255, 190, 40, 0.2);
     --shadow: 0 24px 48px -28px rgba(13, 14, 16, 0.28), 0 0 0 1px var(--line);
     --shadow-pop: 0 20px 56px -20px rgba(13, 14, 16, 0.3), 0 0 0 1px var(--line-strong);
+    --code-keyword: #b3260f;
+    --code-string: #196b33;
+    --code-number: #865100;
+    --code-comment: #595c64;
+    --code-title: #1f55b8;
+    --code-type: #7a3bb0;
+    --code-attr: #0d6868;
+    --code-meta: #a3214f;
   }
 }
 
@@ -126,4 +144,12 @@
   --warn-bg: rgba(255, 190, 40, 0.2);
   --shadow: 0 24px 48px -28px rgba(13, 14, 16, 0.28), 0 0 0 1px var(--line);
   --shadow-pop: 0 20px 56px -20px rgba(13, 14, 16, 0.3), 0 0 0 1px var(--line-strong);
+  --code-keyword: #b3260f;
+  --code-string: #196b33;
+  --code-number: #865100;
+  --code-comment: #595c64;
+  --code-title: #1f55b8;
+  --code-type: #7a3bb0;
+  --code-attr: #0d6868;
+  --code-meta: #a3214f;
 }

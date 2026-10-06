@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import GUIDE from '../brand/README.md?raw';
 import TOKENS from '../brand/tokens.css?raw';
+import CODE_COLORS from '../brand/code-colors.css?raw';
 import APP_CSS from '../web/src/styles/app.css?raw';
 import BASE_CSS from '../web/src/styles/base.css?raw';
 import MAIN from '../web/src/main.jsx?raw';
@@ -108,6 +109,50 @@ describe('breakaway tokens', () => {
           expect(contrast(tokens['--red'], tokens[ground]), `--red on ${ground}`).toBeGreaterThanOrEqual(3);
         }
       });
+    });
+  }
+});
+
+describe('code colors (WEB-86)', () => {
+  const CODE = ['keyword', 'string', 'number', 'comment', 'title', 'type', 'attr', 'meta'].map((n) => `--code-${n}`);
+  /** Each palette's dark and light sides: breakaway's from tokens.css, the rest from code-colors.css. */
+  const palettes = { board: { carbon: THEMES.carbon, chalk: THEMES.chalk } };
+  for (const [, key, body] of CODE_COLORS.matchAll(/^:root\[data-code="(\w+)"\]\s*\{([^}]*)\}/gmu))
+    palettes[key] = { ...palettes[key], carbon: declarations(body) };
+  for (const [, key, body] of CODE_COLORS.matchAll(
+    /^:root\[data-code="(\w+)"\]\[data-theme="light"\]\s*\{([^}]*)\}/gmu,
+  ))
+    palettes[key] = { ...palettes[key], chalk: declarations(body) };
+  const system = Object.fromEntries(
+    [...CODE_COLORS.matchAll(/:root\[data-code="(\w+)"\]:not\(\[data-theme="dark"\]\)\s*\{([^}]*)\}/gu)].map(
+      ([, key, body]) => [key, declarations(body)],
+    ),
+  );
+
+  it('has every palette, each with both sides and the light one the same from the system and the switch', () => {
+    expect(Object.keys(palettes)).toEqual(['board', 'github', 'one', 'gruvbox']);
+    for (const [key, sides] of Object.entries(palettes)) {
+      for (const side of ['carbon', 'chalk'])
+        for (const name of CODE) expect(sides[side][name], `${key} ${side} ${name}`).toMatch(/^#[0-9a-f]{6}$/u);
+      if (key !== 'board') expect(system[key], key).toEqual(sides.chalk);
+    }
+  });
+
+  for (const [theme, tokens] of Object.entries(THEMES)) {
+    it(`passes 4.5:1 in ${theme} on the surfaces code sits on and on a diff's added and removed rows`, () => {
+      const grounds = ['--bg', '--surface', '--surface-2', '--surface-3'].map((g) => [g, rgba(tokens[g])]);
+      for (const g of ['--bg', '--surface', '--surface-2'])
+        for (const status of ['--success', '--danger']) {
+          const tint = [...rgba(tokens[status]).slice(0, 3), 0.14];
+          grounds.push([
+            `${status} row on ${g}`,
+            over(`rgba(${tint.map((c, i) => (i < 3 ? c * 255 : c)).join(', ')})`, tokens[g]),
+          ]);
+        }
+      for (const [key, sides] of Object.entries(palettes))
+        for (const name of CODE)
+          for (const [ground, color] of grounds)
+            expect(contrast(sides[theme][name], color), `${key} ${name} on ${ground}`).toBeGreaterThanOrEqual(4.5);
     });
   }
 });
