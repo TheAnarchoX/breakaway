@@ -104,6 +104,7 @@ const ICONS = {
   trigger_waiting: Repeat,
   routine_made: Repeat,
   routine_changed: Repeat,
+  runbook_changed: Repeat,
   chase_started: Bot,
   chase_stopped: Bot,
   chase_stalled: CircleAlert,
@@ -164,6 +165,10 @@ function describe(change) {
       return `${change.by ?? 'An agent'} made the routine ${change.routine}`;
     case 'routine_changed':
       return `${change.by ?? 'An agent'} changed the routine ${change.routine}`;
+    case 'runbook_changed':
+      return change.detail === 'removed'
+        ? `You removed the signal trigger on ${change.routine}`
+        : `You set the signal trigger on ${change.routine}: ${change.detail ?? 'changed'}`;
     case 'chase_started':
       return `You started a chase on ${change.feature}`;
     case 'chase_stopped':

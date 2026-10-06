@@ -210,6 +210,7 @@ const TRIGGER_TEXT = {
   github: 'by a routine’s GitHub event, from the board',
   webhook: 'by a routine’s webhook or API trigger, from the board',
   cloudflare: 'by a Cloudflare alert, from the board',
+  signal: 'by a routine’s signal trigger (a runbook), for a signal from Architect',
   general: 'by a prompt from the owner, from the board',
   chase: 'by the owner’s chase of a feature, because the task became ready',
   'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
