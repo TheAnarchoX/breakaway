@@ -518,6 +518,12 @@ async function handleApi(request, env, url, ctx) {
     const repo = url.searchParams.get('repo');
     return send(await (parts.length === 2 ? s.desiredApi({ repo }) : s.desiredOneApi(parts[2], { repo })));
   }
+  // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
+    return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
+  // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
+  if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
+    return send(await s.infraCheckApi(body));
   // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
   if (parts[0] === 'infra' && parts[1] === 'inventory') {
     const q = (name) => url.searchParams.get(name);
