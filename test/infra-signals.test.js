@@ -254,11 +254,11 @@ describe('signals', () => {
       signalSubscribers.subscribe('broken', () => {
         throw new Error('runbook down');
       }),
-      signalSubscribers.subscribe('incidents', (_store, signals) => {
+      signalSubscribers.subscribe('listener', (_store, signals) => {
         heard.push(...signals.map((s) => `${s.environment} ${s.kind} ${s.level}`));
       }),
     );
-    expect(() => signalSubscribers.subscribe('incidents', () => {})).toThrow(/already registered/u);
+    expect(() => signalSubscribers.subscribe('listener', () => {})).toThrow(/already registered/u);
     await inStore((store) =>
       store.recordSignals([signal({ environment: 'sig-subs', kind: 'alert', level: 'critical', text: 'api is down' })]),
     );
