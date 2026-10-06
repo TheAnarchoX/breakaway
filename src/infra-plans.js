@@ -146,7 +146,7 @@ export function reversibility(diff) {
 /**
  * @typedef {{ amount: number, currency: string }} Amount
  * @typedef {object} CostChange
- * @property {string | null} currency the provider's, until BRK-226 converts to the owner's
+ * @property {string | null} currency the provider's; the board converts it to its own (infra-currency.js, BRK-226)
  * @property {number | null} now the environment's estimated monthly cost before the plan
  * @property {number | null} delta what the plan changes it by, over the changes whose cost is known
  * @property {number | null} after `now` plus `delta`

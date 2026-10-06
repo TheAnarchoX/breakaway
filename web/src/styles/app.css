@@ -5458,6 +5458,22 @@ fieldset.field {
 .rt-cap {
   width: 7em;
 }
+/* The board's currency in Settings (BRK-226): a code and a rate, both short. */
+.st-currency-form {
+  display: grid;
+  gap: 12px;
+}
+.st-currency-form .meta {
+  margin: 0;
+}
+.st-currency {
+  width: 6em;
+  text-transform: uppercase;
+}
+.st-rate {
+  width: 9em;
+  font-variant-numeric: tabular-nums;
+}
 
 /* The routine panel: the task panel's shell (panel, panel-body, panel-top, facts, dep-list) with a few extras. */
 .rt-slug {
