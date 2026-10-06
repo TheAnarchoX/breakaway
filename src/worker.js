@@ -613,6 +613,20 @@ async function handleApi(request, env, url, ctx) {
       return send(await (method === 'PUT' ? s.runbookSetApi(parts[2], body) : s.runbookRemoveApi(parts[2], body)));
     }
   }
+  // Incidents (BRK-197): read only; the board opens them from the signals stream, and each one is a +incident task.
+  if (parts[0] === 'infra' && parts[1] === 'incidents' && parts.length <= 3 && method === 'GET') {
+    const q = url.searchParams;
+    if (parts.length === 3) return send(await s.incidentApi(parts[2]));
+    return send(
+      await s.incidentsApi({
+        repo: q.get('repo') ?? undefined,
+        environment: q.get('environment') ?? undefined,
+        open: q.get('open') ?? undefined,
+        before: q.get('before') ?? undefined,
+        limit: q.get('limit') ?? undefined,
+      }),
+    );
+  }
   // Architect's signals (BRK-190): read only, for the token and the cookie alike; providers and the deploy flow write
   // inside the store. /days is the daily summaries the cron folds older signals into.
   if (
