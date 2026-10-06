@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api } from '../lib/api.js';
 import { toast } from '../lib/store.js';
-import { PROVIDER_CURRENCY, checkCurrency, rateWords, rateOf } from '../../../src/infra-currency.js';
+import { PROVIDER_CURRENCY, RATE_SOURCE, checkCurrency, rateWords, rateOf } from '../../../src/infra-currency.js';
 
 const COMMON = ['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'INR', 'BRL'];
 
@@ -14,10 +14,15 @@ function nameOf(code) {
   }
 }
 
+/** A source's day, as the brand writes it: "5 Oct". */
+function dayOf(/** @type {string} */ date) {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
 /**
  * The board's currency (BRK-226): one for the whole board, with a rate the owner sets. Platforms price in US dollars,
- * so every estimate, the cost limit, and each budget read in this currency at this rate. The board never fetches a
- * rate.
+ * so every estimate, the cost limit, and each budget read in this currency at this rate. Fetch today's rate (BRK-239)
+ * asks the source in RATE_SOURCE, only on the owner's press, and only fills the field: the owner still saves it.
  */
 export function CurrencySettings() {
   const [saved, setSaved] = useState(/** @type {any} */ (null));
@@ -25,9 +30,13 @@ export function CurrencySettings() {
   const [draft, setDraft] = useState({ currency: '', rate: '' });
   const [problem, setProblem] = useState(/** @type {string | null} */ (null));
   const [busy, setBusy] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  /** The rate the last press fetched, while it's still what the field holds. */
+  const [fetched, setFetched] = useState(/** @type {any} */ (null));
 
   const take = (c) => {
     setSaved(c);
+    setFetched(null);
     setDraft({ currency: c.currency, rate: c.currency === PROVIDER_CURRENCY ? '' : String(c.rate) });
   };
   useEffect(() => {
@@ -53,6 +62,22 @@ export function CurrencySettings() {
   const dollars = code === PROVIDER_CURRENCY;
   const dirty = code !== saved.currency || (!dollars && draft.rate.trim() !== String(saved.rate));
   const current = rateOf(saved);
+  const fresh = fetched && fetched.currency === code && draft.rate.trim() === String(fetched.rate) ? fetched : null;
+  const known = /^[A-Z]{3}$/u.test(code);
+
+  const fetchRate = async () => {
+    setProblem(null);
+    setFetching(true);
+    try {
+      const d = await api('infra/currency/rate', { method: 'POST', body: { currency: code } });
+      setDraft((dr) => ({ ...dr, rate: String(d.rate.rate) }));
+      setFetched(d.rate);
+    } catch (err) {
+      setProblem(err.message);
+    } finally {
+      setFetching(false);
+    }
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -107,28 +132,55 @@ export function CurrencySettings() {
           </span>
         </label>
         {!dollars && (
-          <label class="field">
-            <span class="field-label">Rate: 1 USD buys</span>
-            <input
-              class="input input-sm st-rate"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="0.92"
-              value={draft.rate}
-              onInput={(e) => setDraft((d) => ({ ...d, rate: e.currentTarget.value }))}
-              aria-describedby="st-rate-hint"
-              aria-invalid={problem ? 'true' : undefined}
-            />
+          <div class="field">
+            <label class="field-label" for="st-rate">
+              Rate: 1 USD buys
+            </label>
+            <div class="st-rate-row">
+              <input
+                id="st-rate"
+                class="input input-sm st-rate"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="0.92"
+                value={draft.rate}
+                onInput={(e) => setDraft((d) => ({ ...d, rate: e.currentTarget.value }))}
+                aria-describedby="st-rate-hint st-fetch-hint"
+                aria-invalid={problem ? 'true' : undefined}
+              />
+              <button
+                type="button"
+                class="btn btn-sm"
+                onClick={fetchRate}
+                disabled={!known || fetching || busy}
+                aria-busy={fetching}
+              >
+                {fetching ? 'Fetching…' : 'Fetch today’s rate'}
+              </button>
+            </div>
             <span class="field-hint" id="st-rate-hint">
-              Platforms price in US dollars. The board converts at your rate and never fetches one; change it when you
-              like.
+              Platforms price in US dollars. The board converts at your rate; change it when you like.
             </span>
-          </label>
+            <span class="field-hint" id="st-fetch-hint">
+              Fetch today’s rate asks{' '}
+              <a href={RATE_SOURCE.site} target="_blank" rel="noopener noreferrer">
+                {RATE_SOURCE.name}
+              </a>{' '}
+              ({RATE_SOURCE.about}), only when you press it, and sends only USD and {known ? code : 'your currency'}. It
+              fills the field; you save it.
+            </span>
+          </div>
         )}
       </div>
       {problem && (
         <p class="field-error" role="alert">
           {problem}
+        </p>
+      )}
+      {fresh && (
+        <p class="meta" role="status">
+          {fresh.source}’s rate{fresh.date ? ` for ${dayOf(fresh.date)}` : ''}: 1 USD = {fresh.rate} {fresh.currency}.
+          Save to use it.
         </p>
       )}
       <p class="meta">
