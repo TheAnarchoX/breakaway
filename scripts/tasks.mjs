@@ -425,6 +425,10 @@ Infrastructure   (init needs no board: run it in the checkout of the repository 
                          [--resource <id>] [--kind health|alert|cost] [--level info|warning|critical] [--source <id>]
                          [--before <id>] [--limit <n>]  [--days] the daily summaries  [--all] every repository's
   infra incidents        open incidents: tasks tagged +incident  [--status completed|all] [--all] every repository's
+  infra check [<environment>]   before a pull request: check .github/breakaway-infra/ here (each environment's file
+                         and policy.json, naming the file, line, and field that's wrong), then show the plan each valid
+                         file would make from what runs now and the policy's answer; the board keeps none of it
+                         (exits 1 if a file doesn't check or the board refuses one)
 
 Repositories
   The checkout's repository is the one its origin remote names (git remote get-url origin), matched
@@ -1414,8 +1418,21 @@ const commands = {
     );
   },
   async infra() {
-    // Architect's reads (CLI-13): every request is a GET, so an agent's token reads and never writes.
     const { slug } = await checkoutRepo();
+    if (args[0] === 'check') {
+      // infra check (CLI-14): the checkout's files, checked here, then the board's preview, which keeps nothing.
+      const { infraCheck, readInfraFolder } = await import('./tasks/infra-check.js');
+      const { topOf } = await import('./tasks/pipeline.js');
+      const result = await infraCheck(args.slice(1), {
+        files: readInfraFolder(topOf(process.cwd())),
+        repo: slug,
+        post: (path, body) => call('POST', path, body, { raw: true }),
+      });
+      print(result.data, () => result.text);
+      process.exitCode = result.code;
+      return;
+    }
+    // Architect's reads (CLI-13): every request is a GET, so an agent's token reads and never writes.
     let result;
     try {
       result = await infraRead(args, {
