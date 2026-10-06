@@ -193,7 +193,7 @@ describe('the provider registry', () => {
     expect(() => registry.get('nope')).toThrow(/no provider nope \(registered: fake-a, fake-b\)/u);
   });
 
-  it('starts empty in the Worker: the core names no vendor', () => {
+  it('starts empty in the core, which names no vendor: src/infra-providers.js registers them', () => {
     expect(providers.list()).toEqual([]);
     expect(() => providers.get('fake')).toThrow(/registered: none/u);
   });
