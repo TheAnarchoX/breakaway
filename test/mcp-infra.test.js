@@ -129,17 +129,33 @@ describe('Architect on the MCP server (BRK-202)', () => {
     );
     expect(res.status).toBe(201);
     plan = res.plan;
+    // A +incident task the board didn't open is only a task: the tool reads the board's incidents (BRK-197, BRK-203).
     const tasks = await json(
       await api('tasks', {
         method: 'POST',
-        body: [
-          { description: 'The api is down', project: 'ops', tags: ['incident'], horizon: 'now' },
-          { description: 'A gadget is down', repo: 'gadgets', project: 'gear', tags: ['incident'], horizon: 'now' },
-        ],
+        body: [{ description: 'Not an incident the board opened', project: 'ops', tags: ['incident'], horizon: 'now' }],
       }),
     );
     expect(tasks.status).toBe(201);
-    incident = tasks.tasks[0];
+    // Opened straight from a signal, so the signals stream the tests above read stays as it is.
+    await runInDurableObject(store(), async (instance) => {
+      const opened = await instance.incidentSignals([
+        {
+          id: 999_001,
+          source: PROVIDER,
+          environment: 'mcp-staging',
+          environmentId: staging.id,
+          resource: 'svc-api',
+          kind: 'health',
+          level: 'critical',
+          value: null,
+          at: new Date(Date.now() - 30_000).toISOString(),
+          text: 'the api is down',
+        },
+      ]);
+      expect(opened.opened).toHaveLength(1);
+    });
+    incident = (await json(await api('infra/incidents?repo=widgets&open=true'))).incidents[0];
   });
 
   it('lists the Architect tools, read only, with no tool that writes to infrastructure', async () => {
@@ -252,12 +268,21 @@ describe('Architect on the MCP server (BRK-202)', () => {
     expect(await call('infra_signals', { kind: 'metric' })).toMatchObject({ isError: true });
   });
 
-  it('reads this repository’s open incidents', async () => {
+  it('reads this repository’s open incidents from the board’s incidents, with their steps', async () => {
     const result = await call('infra_incidents');
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent.incidents.map((t) => t.wid)).toEqual([incident.wid]);
-    expect(text(result)).toMatch(/The api is down/u);
+    const { incidents } = result.structuredContent;
+    expect(incidents.map((i) => i.id)).toEqual([incident.id]);
+    expect(incidents[0]).toMatchObject({ repo: 'widgets', environment: 'mcp-staging', resource: 'svc-api' });
+    expect(incidents[0].steps[0]).toEqual({ step: 'diagnose', state: 'now' });
+    expect(text(result)).toContain(
+      `${incident.task.wid}  ${incident.task.description}  (critical health in mcp-staging · svc-api; now: diagnose)`,
+    );
+    expect(text(result)).not.toMatch(/Not an incident the board opened|a gadget is down/u);
+    expect((await call('infra_incidents', { environment: 'mcp-staging' })).structuredContent.incidents).toHaveLength(1);
     expect((await call('infra_incidents', { closed: true })).structuredContent.incidents).toEqual([]);
+    const gadgets = await call('infra_incidents', {}, { repo: 'gadgets' });
+    expect(gadgets.structuredContent.incidents.map((i) => i.repo)).toEqual(['gadgets']);
   });
 
   it('changes nothing: every Architect tool is a read', async () => {
