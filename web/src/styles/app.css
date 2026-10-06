@@ -4718,6 +4718,32 @@ fieldset.field {
   box-shadow: inset 0 0 0 1px var(--warn);
   font-size: 13px;
 }
+.infra-pr-success {
+  color: var(--success);
+}
+.infra-pr-neutral {
+  color: var(--warn);
+}
+.infra-pr-failure {
+  color: var(--danger);
+}
+/* Plans from pull requests (BRK-185): each environment's plan, its changes, and the policy's reasons. */
+.infra-pr-env h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+.infra-pr-changes,
+.infra-pr-reasons {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.infra-pr-changes li {
+  overflow-wrap: anywhere;
+}
+.infra-pr-op {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
 .pr-checks {
   display: grid;
   gap: 4px;
