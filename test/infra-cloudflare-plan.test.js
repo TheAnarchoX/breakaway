@@ -169,15 +169,11 @@ async function changed(fetch) {
   return desired;
 }
 
-providerContract(
-  'cloudflare plan and apply',
-  async () => {
-    const fetch = account();
-    const desired = await changed(fetch);
-    return { provider: cloudflare, ctx: runner(fetch), desired, since: '2026-10-01T00:00:00Z' };
-  },
-  { notYet: { observe: 'BRK-191', events: 'BRK-191' } },
-);
+providerContract('cloudflare plan and apply', async () => {
+  const fetch = account();
+  const desired = await changed(fetch);
+  return { provider: cloudflare, ctx: runner(fetch), desired, since: '2026-10-01T00:00:00Z' };
+});
 
 describe('the Cloudflare provider’s plan (BRK-192)', () => {
   it('plans nothing when the desired state is what runs, and writes nothing to plan', async () => {

@@ -6,7 +6,8 @@
  * retrying, since Cloudflare then refuses every call for five minutes.
  *
  * `analyticsQuery` sends one query; `readDataset` reads one dataset's rows for some resources over a window and adds
- * them up per resource; COST_DATASETS are the datasets cost reads. Pure apart from `fetch`, so the CLI can import it.
+ * them up per resource; COST_DATASETS and HEALTH_DATASETS are the datasets cost and health read. Pure apart from
+ * `fetch`, so the CLI can import it.
  */
 
 /** @typedef {import('./infra-provider.js').ProviderContext} ProviderContext */
@@ -75,14 +76,16 @@ export async function analyticsQuery(ctx, query, variables) {
 
 /**
  * One analytics dataset: its GraphQL name, the dimension that names a resource in it, the time field it filters on,
- * the fields it sums or takes the most of over the window, and an optional second dimension (`by`) its sums are split
- * by. `kind` and `label` are for whoever reads it: the resource kind it's about, and what it measures, in words.
+ * the fields it sums, takes the most of, or averages over the window, and an optional second dimension (`by`) its sums
+ * are split by. `kind` and `label` are for whoever reads it: the resource kind it's about, and what it measures, in
+ * words.
  * @typedef {object} Dataset
  * @property {string} dataset
  * @property {string} key
  * @property {'date' | 'datetime'} time
  * @property {string[]} [sum]
  * @property {string[]} [max]
+ * @property {string[]} [avg] averaged by Cloudflare per row; read at the worst row's (the highest)
  * @property {string} [by]
  * @property {string} kind
  * @property {string} label
@@ -95,7 +98,11 @@ export async function analyticsQuery(ctx, query, variables) {
  */
 export function datasetQuery(d) {
   const type = d.time === 'date' ? 'Date' : 'Time';
-  const fields = [d.sum ? `sum { ${d.sum.join(' ')} }` : '', d.max ? `max { ${d.max.join(' ')} }` : '']
+  const fields = [
+    d.sum ? `sum { ${d.sum.join(' ')} }` : '',
+    d.max ? `max { ${d.max.join(' ')} }` : '',
+    d.avg ? `avg { ${d.avg.join(' ')} }` : '',
+  ]
     .filter(Boolean)
     .join(' ');
   const dims = [d.key, d.by].filter(Boolean).join(' ');
@@ -105,7 +112,7 @@ export function datasetQuery(d) {
 /**
  * Reads one dataset for the resources named `keys` (each as the dataset's `key` dimension names it) over `from` to
  * `to`, and adds it up per resource: each `sum` field summed (as `field:<by>` when the dataset has a `by`), each `max`
- * field at its most. A row for any other resource is ignored. Throws what `analyticsQuery` throws.
+ * field at its most, and each `avg` field at its worst row's. A row for any other resource is ignored. Throws what `analyticsQuery` throws.
  * @param {ProviderContext} ctx
  * @param {{ account: string, dataset: Dataset, keys: string[], from: Date, to: Date }} what
  * @returns {Promise<Map<string, Record<string, number>>>} usage by key; a key with no rows has no entry
@@ -125,6 +132,7 @@ export async function readDataset(ctx, { account, dataset: d, keys, from, to }) 
     const suffix = d.by ? `:${row.dimensions[d.by]}` : '';
     for (const f of d.sum ?? []) u[f + suffix] = (u[f + suffix] ?? 0) + (Number(row.sum?.[f]) || 0);
     for (const f of d.max ?? []) u[f] = Math.max(u[f] ?? 0, Number(row.max?.[f]) || 0);
+    for (const f of d.avg ?? []) u[f] = Math.max(u[f] ?? 0, Number(row.avg?.[f]) || 0);
   }
   return usage;
 }
@@ -224,5 +232,67 @@ export const COST_DATASETS = {
     time: 'datetime',
     sum: ['billableOperations'],
     label: 'operations',
+  },
+};
+
+/** How far back health looks: errors and slowness in the last this many minutes (BRK-188's "Observe" rows). */
+export const HEALTH_WINDOW_MINUTES = 15;
+
+/**
+ * The datasets health reads (BRK-188's "Observe" rows), one query each for the whole environment, over the last
+ * HEALTH_WINDOW_MINUTES. Which fields each dataset serves at minute resolution is checked against a real account when
+ * the owner first tries Architect (BRK-205); a dataset Cloudflare won't answer leaves its resources' health unknown.
+ * @type {Record<string, Dataset>}
+ */
+export const HEALTH_DATASETS = {
+  workers: {
+    dataset: 'workersInvocationsAdaptive',
+    kind: 'worker',
+    key: 'scriptName',
+    time: 'datetime',
+    sum: ['requests', 'errors'],
+    label: 'requests and errors',
+  },
+  durableObjects: {
+    dataset: 'durableObjectsInvocationsAdaptiveGroups',
+    kind: 'durable-object',
+    key: 'namespaceId',
+    time: 'datetime',
+    sum: ['requests', 'errors'],
+    label: 'requests and errors',
+  },
+  d1: {
+    dataset: 'd1AnalyticsAdaptiveGroups',
+    kind: 'd1',
+    key: 'databaseId',
+    time: 'datetime',
+    sum: ['readQueries', 'writeQueries'],
+    avg: ['queryBatchTimeMs'],
+    label: 'queries and their time',
+  },
+  kv: {
+    dataset: 'kvOperationsAdaptiveGroups',
+    kind: 'kv',
+    key: 'namespaceId',
+    time: 'datetime',
+    sum: ['requests'],
+    label: 'operations',
+  },
+  r2: {
+    dataset: 'r2OperationsAdaptiveGroups',
+    kind: 'r2',
+    key: 'bucketName',
+    time: 'datetime',
+    sum: ['requests'],
+    by: 'responseStatusCode',
+    label: 'operations by response status',
+  },
+  queues: {
+    dataset: 'queuesBacklogAdaptiveGroups',
+    kind: 'queue',
+    key: 'queueId',
+    time: 'datetime',
+    avg: ['messages'],
+    label: 'backlog',
   },
 };
