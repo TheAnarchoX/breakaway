@@ -816,7 +816,10 @@ const INFRA_WORDS = { success: 'Passes', neutral: 'Couldn’t plan it all', fail
 const INFRA_CHANGES = 10;
 
 /** A policy reason's words, with its `names` as code. */
-const withCode = (text) => String(text).split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
+const withCode = (text) =>
+  String(text)
+    .split('`')
+    .map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
 
 /** One environment's part of the infrastructure check. */
 function InfraEnvironment({ e }) {
