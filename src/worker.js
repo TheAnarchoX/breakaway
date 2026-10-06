@@ -499,16 +499,14 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'DELETE') return send(await s.kickoffsDeleteApi(parts[1], body));
     if (parts[2] === 'register' && method === 'POST') return send(await s.kickoffsRegisterApi(parts[1], body));
   }
-  // Environments (BRK-174): anyone signed in reads them; adding, renaming, and removing one is the owner's (an agent's
-  // `by` is refused), and freeze, production gates, and observe only are the signed-in browser's alone.
+  // Environments (BRK-174): anyone signed in reads them; adding, changing, and removing one is the owner's, from the
+  // signed-in browser only, never the bearer token agents and the CLI hold (BRK-233). An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'environments' && parts.length <= 3) {
     const repo = url.searchParams.get('repo');
     if (method === 'GET')
       return send(await (parts.length === 2 ? s.environmentsApi({ repo }) : s.environmentApi(parts[2], { repo })));
-    if (via !== 'cookie' && ['frozen', 'gates', 'observeOnly'].some((field) => body?.[field] !== undefined))
-      return json(403, {
-        error: 'only the signed-in web board can freeze an environment or change its production gates or observe only',
-      });
+    if (via !== 'cookie' && ['POST', 'PATCH', 'DELETE'].includes(method))
+      return json(403, { error: 'only the signed-in web board can add, change, or remove an environment' });
     if (parts.length === 2 && method === 'POST') return send(await s.environmentsCreateApi(body));
     if (parts.length === 3 && method === 'PATCH')
       return send(await s.environmentsModifyApi(parts[2], { repo, ...body }));

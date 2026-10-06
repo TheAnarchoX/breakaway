@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { api } from './helpers.js';
+import { api, boardApi } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { LOCK_TTL_MAX_MINUTES, LOCK_TTL_MINUTES, lockTtl, MINUTE } from '../src/infra-locks.js';
 
@@ -34,7 +34,7 @@ describe('environment locks (BRK-179)', () => {
     });
     cookie = res.headers.get('Set-Cookie').split(';')[0];
     const made = await body(
-      await api('infra/environments', {
+      await boardApi('infra/environments', {
         method: 'POST',
         body: { repo: 'widgets', provider: 'fake', name: 'staging', kind: 'staging', target: 'widgets-staging' },
       }),
@@ -216,7 +216,7 @@ describe('environment locks (BRK-179)', () => {
     });
 
     const own = await body(
-      await api('infra/environments', {
+      await boardApi('infra/environments', {
         method: 'POST',
         body: { repo: 'widgets', provider: 'fake', name: 'board', kind: 'production', target: 'widgets-tasks' },
       }),
