@@ -1,4 +1,5 @@
 import { CLI_PACKAGE } from './init.js';
+import { INFRA_READS } from './infra-read.js';
 
 /**
  * Checks the CLI makes before and after it runs a command (CLD-193), kept pure so they're tested without a board.
@@ -28,6 +29,7 @@ export const SUBCOMMANDS = {
     'listen',
   ],
   specs: ['list', 'show'],
+  infra: ['init', 'runner', ...INFRA_READS],
 };
 
 /** Commands that take nothing after their name, so a word there is a mistake (an old copy's missing subcommand, say). */
