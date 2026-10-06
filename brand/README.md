@@ -147,12 +147,13 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
 - **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board's MCP server.
 - **Agents ping you when they need you.** The rest waits on the board.
+- **You decide.** Agents claim, build, and open pull requests; you merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Free, and the source is public** ([below](#free-and-fair-source)).
 
-Say these only once they ship: self-hosting on your own Cloudflare account, and the setup guide.
+Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.
 
 **Works with, never "powered by".** breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made or endorse it. Never "official", "partner", "powered by", or a lockup with their logos.
 

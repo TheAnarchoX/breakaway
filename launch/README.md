@@ -4,6 +4,7 @@ Drafts for the launch post and thread, the X profile, and the small kit that mak
 
 | File | What |
 | --- | --- |
+| [`2.0.0.md`](2.0.0.md) | The plan for 2.0.0's launch, Architect: the story, the claims, each piece and what it says, the order, and what's held back |
 | [`posts.md`](posts.md) | The post and thread, in posting order, with the media and alt text for each |
 | [`profile.md`](profile.md) | The profile of [@leavethepackdev](https://x.com/leavethepackdev), breakaway's account on X: its name, bio, website, and images |
 | `media/` | The images (PNG, 2160 px, square) and the video (MP4, 1080 px, 16 s) the posts use, and the profile's images in `media/profile/` |
