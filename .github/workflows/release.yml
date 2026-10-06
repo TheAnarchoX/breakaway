@@ -79,6 +79,14 @@ jobs:
           node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.VERSION;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
           pnpm build
           mkdir -p out/bundle/worker
+          from=$(cat "$RUNNER_TEMP/previous"); from=${from:-$(git rev-list --max-parents=0 "$SHA" | tail -1)}
+          node scripts/release-notes.mjs --title breakaway --version "v$VERSION" --from "$from" --to "$SHA" --areas "$AREAS" > out/notes.md
+          # What the board shows after it updates (WEB-80), in the web app's files: this pre-release's notes, and the notes
+          # since the last stable, since a stable is this bundle unchanged. Those are read from the squash merges' subjects,
+          # so a long range costs no request per pull request.
+          stable=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+          git log --format=%s "${stable:-$(git rev-list --max-parents=0 "$SHA" | tail -1)}..$SHA" > "$RUNNER_TEMP/since-stable.txt"
+          node scripts/release/plan.mjs whats-new "$VERSION" out/notes.md "$RUNNER_TEMP/since-stable.txt" "$stable" > dist/whats-new.json
           cp -r src package.json release.json out/bundle/worker/
           cp -r dist out/bundle/dist
           # The packages the Worker imports, as the lockfile pins them, so a Deploy runs no npm install (BRK-56).
@@ -90,8 +98,6 @@ jobs:
         run: |
           node scripts/release/plan.mjs manifest main "$VERSION" "$SHA" --bundle out/breakaway-bundle.tar.gz > out/manifest.json
           (cd out && sha256sum breakaway-bundle.tar.gz manifest.json > SHA256SUMS)
-          from=$(cat "$RUNNER_TEMP/previous"); from=${from:-$(git rev-list --max-parents=0 "$SHA" | tail -1)}
-          node scripts/release-notes.mjs --title breakaway --version "v$VERSION" --from "$from" --to "$SHA" --areas "$AREAS" > out/notes.md
           node scripts/release/plan.mjs manual >> out/notes.md
       # BRK-51: the manifest holds the bundle's checksum (bundleSha256, BRK-52), so one signature covers the bundle. RELEASE_SIGNING_KEY is
       # a secret of the npm environment (only main can use it), never a repository secret: the site job passes those on.

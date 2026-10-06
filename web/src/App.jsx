@@ -59,6 +59,7 @@ import { Authorize } from './components/Authorize.jsx';
 import { FilterBar, HelpContent, MenuDrawer, Sidebar, TopBar } from './components/Shell.jsx';
 import { ConfirmHost, Dialog, ForceStartHost, Toasts } from './components/ui.jsx';
 import { TaskMenuHost } from './components/TaskMenu.jsx';
+import { WhatsNew } from './components/WhatsNew.jsx';
 
 const VIEW_COMPONENTS = {
   board: BoardView,
@@ -212,6 +213,7 @@ function Board() {
       <ConfirmHost />
       <ForceStartHost />
       <TaskMenuHost />
+      <WhatsNew />
       <Toasts />
     </div>
   );
