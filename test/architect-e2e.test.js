@@ -665,6 +665,7 @@ describe('Architect’s whole loop (BRK-228)', () => {
   });
 
   let runbookRun;
+  let actKey;
   it('a critical signal opens an incident, and a runbook that’s on starts one run for it, under its cap', async () => {
     expect(
       (
@@ -713,6 +714,10 @@ describe('Architect’s whole loop (BRK-228)', () => {
     runbookRun = (await body(await api(`tasks/${routine.recentRuns[0].wid}`))).task;
     expect(sent.fires[0]).toContain(`Task: ${runbookRun.wid}`);
     expect(sent.fires[0]).not.toContain('api is down');
+    // Its own act key is in the payload and nowhere on the board (BRK-252).
+    actKey = sent.fires[0].match(/^Act key: (act_[0-9a-f]{64})$/mu)?.[1];
+    expect(actKey).toBeTruthy();
+    expect(JSON.stringify(runbookRun)).not.toContain(actKey);
 
     // Another one while the run is open is noted on it, not a second run.
     await inStore((s) => s.recordSignals([signal({ resource: 'route-api', text: 'the route is down' })]));
@@ -727,7 +732,7 @@ describe('Architect’s whole loop (BRK-228)', () => {
     const act = (fields) =>
       api(`infra/envelopes/${envs.production.id}/act`, {
         method: 'POST',
-        body: { by: agent, task: runbookRun.wid, ...fields },
+        body: { by: agent, task: runbookRun.wid, key: actKey, ...fields },
       }).then(body);
     // The envelope is the owner's, from the board.
     const envelope = { scale: [{ kind: 'service', min: 2, max: 6 }] };
@@ -761,12 +766,21 @@ describe('Architect’s whole loop (BRK-228)', () => {
     expect(outside).toMatchObject({ status: 200, act: { inside: false, plan: { state: 'waiting' } } });
     expect(sent.pushes.length).toBe(pushed + 1);
     expect(await run(outside.act.plan.id)).toBeUndefined();
+    // Without the run's key, even its holder is refused.
+    expect((await act({ resource: 'api', change: 'scale', value: 3, key: undefined })).status).toBe(403);
     // Anyone but the run's agent is refused.
     expect(
       (
         await api(`infra/envelopes/${envs.production.id}/act`, {
           method: 'POST',
-          body: { by: 'claude-someone-else', task: runbookRun.wid, resource: 'api', change: 'scale', value: 3 },
+          body: {
+            by: 'claude-someone-else',
+            task: runbookRun.wid,
+            key: actKey,
+            resource: 'api',
+            change: 'scale',
+            value: 3,
+          },
         })
       ).status,
     ).toBe(403);

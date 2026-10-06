@@ -3,8 +3,10 @@
  * "Envelopes"): a runbook's agent asks for one scale or restart, for the run it holds. It's the one change a run may
  * ask for, and it's the CLI's only: Architect's MCP tools stay read only.
  *
- * The request is POST /api/infra/envelopes/<environment>/act (BRK-186) with { resource, change, value, task, by }: the
- * board checks the agent holds the runbook's run, builds the plan itself, and answers whether the envelope the owner
+ * The request is POST /api/infra/envelopes/<environment>/act (BRK-186) with { resource, change, value, task, by, key }:
+ * `key` is the run's own act key (BRK-252), from BREAKAWAY_ACT_KEY, set from the `Act key:` line of the run's payload
+ * and never a flag, so it stays out of the command line. The board checks the agent holds the runbook's run and has
+ * its key, builds the plan itself, and answers whether the envelope the owner
  * approved covers it (the executor applies it) or it waits for the owner. The board's words go through unchanged when
  * it refuses. The requests go through `get` and `post`, which the CLI gives (and the tests mock), and which answer
  * `{ ok, status, data }` for any answer.
@@ -19,6 +21,8 @@ const bad = (message) => {
 
 const enc = encodeURIComponent;
 const USAGE = 'infra act <environment> <resource> scale <n>|restart';
+/** Where the run's act key comes from. */
+export const ACT_KEY_VARIABLE = 'BREAKAWAY_ACT_KEY';
 
 /**
  * What follows `infra act`, as the act route's body.
@@ -85,11 +89,18 @@ export function actText({ act }, asked) {
  * @param {string[]} args what follows `infra act`
  * @param {{ get: (path: string) => Promise<{ ok: boolean, status: number, data: any }>,
  *   post: (path: string, body: any) => Promise<{ ok: boolean, status: number, data: any }>,
- *   repo: string | null, agent: string, opts?: Record<string, any>, inRepo?: (task: any) => boolean }} ctx
+ *   repo: string | null, agent: string, opts?: Record<string, any>, inRepo?: (task: any) => boolean,
+ *   key?: string | null }} ctx `key` is the run's act key, from BREAKAWAY_ACT_KEY
  * @returns {Promise<{ data: any, text: string, code: number }>}
  */
-export async function infraAct(args, { get, post, repo, agent, opts = {}, inRepo = () => true }) {
+export async function infraAct(args, { get, post, repo, agent, opts = {}, inRepo = () => true, key = null }) {
   const asked = parseAct(args);
+  if (opts.key !== undefined)
+    bad(`the act key never goes on the command line: set ${ACT_KEY_VARIABLE} to the Act key in your payload.`);
+  if (!key?.trim())
+    bad(
+      `set ${ACT_KEY_VARIABLE} to the Act key in your payload first: only the agent the board started on a runbook’s run has one.`,
+    );
   const task = await heldRun({ task: opts.task, get, agent, inRepo });
   const res = await post(`infra/envelopes/${enc(asked.environment)}/act`, {
     resource: asked.resource,
@@ -97,6 +108,7 @@ export async function infraAct(args, { get, post, repo, agent, opts = {}, inRepo
     value: asked.value,
     task,
     by: agent,
+    key: key.trim(),
     ...(repo ? { repo } : {}),
   });
   if (res.ok) return { data: res.data, text: actText(res.data, asked), code: 0 };
