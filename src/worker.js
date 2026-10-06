@@ -415,6 +415,17 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.connectionNoticeDismiss(parts[2]));
     }
   }
+  // A provider's read-only token (BRK-194): the owner's form on Connections, the signed-in browser only, never the
+  // bearer token agents hold. Reading it is Connections' GET; nothing ever answers with the token.
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'connections' &&
+    parts.length === 3 &&
+    (method === 'PUT' || method === 'DELETE')
+  ) {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can connect a provider' });
+    return send(method === 'PUT' ? await s.infraConnectApi(parts[2], body) : await s.infraForgetApi(parts[2], body));
+  }
   // Self-update (BRK-53): an install with no repository of its own updates its Worker from the board. Every change is
   // the owner's, from the signed-in browser only: never the bearer token agents and the CLI hold.
   if (parts[0] === 'self-update') {
