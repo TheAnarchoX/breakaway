@@ -61,7 +61,7 @@ export class SignalSubscribers {
   }
 }
 
-/** The Worker's subscribers. None yet: runbooks (BRK-196) and incidents (BRK-197) add theirs. */
+/** The Worker's subscribers: runbooks (BRK-196, src/store-infra-runbooks.js) and incidents (BRK-197) add theirs. */
 export const signalSubscribers = new SignalSubscribers();
 
 /** @returns {StoredSignal} */
