@@ -9,7 +9,7 @@
 import { AgentError } from './store-agents.js';
 import { install } from './install.js';
 import { redact } from './redact.js';
-import { checkCosts, checkDiscovery, checkHealth, providers } from './infra-provider.js';
+import { checkCosts, checkDiscovery, checkHealth } from './infra-provider.js';
 import { MAX_RESOURCES, redactAttrs, resourceView, scopeDiscovery } from './infra-inventory.js';
 import { runsTheBoard } from './infra-environments.js';
 
@@ -50,17 +50,19 @@ export const infraInventoryMethods = {
    * @param {string} providerId
    * @param {{ registry?: ProviderRegistry }} [options] tests pass a registry with the fake provider
    */
-  async refreshInventory(providerId, { registry = providers } = {}) {
+  async refreshInventory(providerId, options = {}) {
+    const registry = options.registry ?? this.infraRegistry();
     if (!registry.has(providerId))
       throw new AgentError(`no provider ${String(providerId).slice(0, 40)} is connected`, 404);
     const provider = registry.get(providerId);
-    // BRK-194's read-only token, once connections hold one per provider.
-    const token = (await this.providerReadToken?.(providerId)) ?? undefined;
+    const token = (await this.providerReadToken(providerId)) ?? undefined;
     const worker = install(this.env).worker;
     const environments = this.sql
       .exec('SELECT * FROM infra_environments WHERE provider = ? ORDER BY id', providerId)
       .toArray();
     const slices = [];
+    /** @type {Set<string>} */
+    const missing = new Set();
     for (const environment of environments) {
       if (!environment.target) continue;
       const ctx = {
@@ -71,10 +73,16 @@ export const infraInventoryMethods = {
       };
       let found;
       try {
-        found = scopeDiscovery(checkDiscovery(provider, await provider.discover(ctx)), environment.target);
+        const discovered = checkDiscovery(provider, await provider.discover(ctx));
+        for (const name of discovered.missing ?? []) missing.add(name);
+        found = scopeDiscovery(discovered, environment.target);
       } catch (error) {
         const message = `${provider.name} couldn’t discover ${environment.repo}’s ${environment.name}: ${redact(error?.message ?? error)}`;
-        await this.infraConnectionSeen?.(providerId, 'discovery', { ok: false, error: message });
+        await this.infraConnectionSeen(providerId, 'discovery', {
+          ok: false,
+          error: message,
+          missing: typeof error?.permission === 'string' ? [error.permission] : [],
+        });
         throw new AgentError(`${message}. Nothing changed; try again once the provider answers.`, 502);
       }
       if (found.resources.length > MAX_RESOURCES)
@@ -132,7 +140,7 @@ export const infraInventoryMethods = {
           );
       }
     });
-    await this.infraConnectionSeen?.(providerId, 'discovery', { ok: true });
+    await this.infraConnectionSeen(providerId, 'discovery', { ok: true, missing: [...missing] });
     return { provider: providerId, environments: slices.length, resources: count, at: new Date(now).toISOString() };
   },
 
