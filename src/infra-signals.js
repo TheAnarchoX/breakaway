@@ -100,6 +100,44 @@ export function signalEntry(input, now = Date.now()) {
   };
 }
 
+/** How a resource's health reads as a signal's level: nothing to say when it's healthy or unknown. */
+const HEALTH_LEVEL = { degraded: 'warning', down: 'critical' };
+
+/**
+ * What one environment's health, just observed, adds to the stream: a signal for each resource that's degraded
+ * (warning) or down (critical), and one (info) for each that's healthy again after it wasn't. A resource that stays
+ * healthy, or whose health is unknown, adds nothing: the inventory keeps its last health either way.
+ * @param {{ source: string, environment: string, environmentId?: number | null }} where
+ * @param {import('./infra-provider.js').Health[]} health
+ * @param {Map<string, string | null>} [before] each resource's last health, by its ID
+ * @returns {SignalInput[]}
+ */
+export function healthSignals({ source, environment, environmentId = null }, health, before = new Map()) {
+  /** @type {SignalInput[]} */
+  const signals = [];
+  for (const h of health) {
+    const level = HEALTH_LEVEL[h.state];
+    const was = before.get(h.resource) ?? null;
+    if (!level && !(h.state === 'healthy' && was && HEALTH_LEVEL[was])) continue;
+    const said = h.text ? `: ${h.text}` : '';
+    signals.push({
+      source,
+      environment,
+      environmentId,
+      resource: h.resource,
+      kind: 'health',
+      level: level ?? 'info',
+      value: null,
+      at: h.at,
+      text: level ? `${h.resource} is ${h.state}${said}` : `${h.resource} is healthy again${said}`,
+    });
+  }
+  return signals;
+}
+
+/** Two reports of one alert are this close in time, or less: the platform's webhook and its history disagree a little. */
+export const ALERT_SAME_MS = 2 * 60_000;
+
 /** The UTC day a time falls on, as YYYY-MM-DD. */
 export function dayOf(ms) {
   return new Date(ms).toISOString().slice(0, 10);
