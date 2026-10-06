@@ -62,7 +62,7 @@ export function redactAttrs(value) {
 
 /**
  * A resource as the API shows it.
- * @param {{ provider: string, rid: string, kind: string, name: string, attrs: string | null, health: string | null, health_at: number | null, health_text: string | null, cost: number | null, currency: string | null, seen: number }} row
+ * @param {{ provider: string, rid: string, kind: string, name: string, attrs: string | null, health: string | null, health_at: number | null, health_text: string | null, cost: number | null, currency: string | null, cost_note?: string | null, seen: number }} row
  * @param {{ id: number, repo: string, name: string }} environment
  * @param {{ uuid: string, wid: string | null, description: string } | null} task the task that owns a short-lived environment
  */
@@ -84,7 +84,13 @@ export function resourceView(row, environment, task) {
     cost:
       row.cost === null || row.cost === undefined
         ? null
-        : { amount: row.cost, currency: row.currency, perMonth: true, estimate: true },
+        : {
+            amount: row.cost,
+            currency: row.currency,
+            perMonth: true,
+            estimate: true,
+            ...(row.cost_note ? { note: row.cost_note } : {}),
+          },
     seen: new Date(row.seen).toISOString(),
   };
 }

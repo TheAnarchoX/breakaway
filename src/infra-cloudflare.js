@@ -9,10 +9,14 @@
  * value, an R2 object, or a Worker's code, a secret is a name in its Worker's settings, and a variable's text is left
  * out. It stops on a 429 rather than retrying, since Cloudflare then refuses every call for five minutes.
  *
- * Plan and apply (BRK-192), observe and events (BRK-191), and cost (BRK-193) aren't built yet: each says so, naming
- * its task, and the store keeps the last health and cost when one fails. Pure apart from `fetch`, so the CLI can
- * import it.
+ * Cost (BRK-193) estimates each resource's monthly cost from its usage in Cloudflare's GraphQL analytics
+ * (src/infra-cloudflare-analytics.js, one query per dataset for the whole environment), times PRICES, a price table kept
+ * as data with where and when it was read.
+ *
+ * Plan and apply (BRK-192), and observe and events (BRK-191), aren't built yet: each says so, naming its task, and the
+ * store keeps the last health when one fails. Pure apart from `fetch`, so the CLI can import it.
  */
+import { COST_DATASETS, readDataset } from './infra-cloudflare-analytics.js';
 import { checkApply } from './infra-provider.js';
 
 /** @typedef {import('./infra-provider.js').Provider} Provider */
@@ -483,6 +487,236 @@ export async function discover(ctx) {
   return done();
 }
 
+/**
+ * Cloudflare's list prices in US dollars on the Workers Paid plan, as data: each product's prices, the page they're
+ * from, and when they were read. Usage beyond what the plan includes is billed at these; what's included is counted
+ * across the whole account, so `cost` doesn't take it off any one resource. Update the prices and `read` together.
+ */
+export const PRICES = {
+  currency: 'USD',
+  read: '2026-10-06',
+  worker: {
+    source: 'https://developers.cloudflare.com/workers/platform/pricing/#workers',
+    perMillionRequests: 0.3,
+    perMillionCpuMs: 0.02,
+  },
+  durableObject: {
+    source: 'https://developers.cloudflare.com/durable-objects/platform/pricing/',
+    perMillionRequests: 0.15,
+    perMillionGbSeconds: 12.5,
+    /** Duration is billed at 128 MB per object while it's active. */
+    gbPerObject: 0.125,
+    perGbMonth: 0.2,
+  },
+  d1: {
+    source: 'https://developers.cloudflare.com/d1/platform/pricing/',
+    perMillionRowsRead: 0.001,
+    perMillionRowsWritten: 1,
+    perGbMonth: 0.75,
+  },
+  kv: {
+    source: 'https://developers.cloudflare.com/kv/platform/pricing/',
+    perMillionReads: 0.5,
+    perMillionWrites: 5,
+    perMillionDeletes: 5,
+    perMillionLists: 5,
+    perGbMonth: 0.5,
+  },
+  r2: {
+    source: 'https://developers.cloudflare.com/r2/pricing/',
+    standard: { perMillionClassA: 4.5, perMillionClassB: 0.36, perGbMonth: 0.015 },
+    infrequentAccess: { perMillionClassA: 9, perMillionClassB: 0.9, perGbMonth: 0.01 },
+  },
+  queue: {
+    source: 'https://developers.cloudflare.com/queues/platform/pricing/',
+    perMillionOperations: 0.4,
+  },
+  container: {
+    source: 'https://developers.cloudflare.com/containers/platform/pricing/',
+    perGibSecondMemory: 0.0000025,
+    perVcpuSecond: 0.00002,
+    perGbSecondDisk: 0.00000007,
+    /** Memory in GiB and disk in GB for each named instance type; `dev` and `standard` are older names. */
+    instanceTypes: {
+      lite: { memory: 0.25, disk: 2 },
+      dev: { memory: 0.25, disk: 2 },
+      basic: { memory: 1, disk: 4 },
+      'standard-1': { memory: 4, disk: 8 },
+      standard: { memory: 4, disk: 8 },
+      'standard-2': { memory: 6, disk: 12 },
+      'standard-3': { memory: 8, disk: 16 },
+      'standard-4': { memory: 12, disk: 20 },
+    },
+  },
+};
+
+/** R2's free operations; of the rest, Class B reads and anything not listed is priced as Class A, the dearer. */
+const R2_FREE = new Set(['DeleteObject', 'DeleteBucket', 'AbortMultipartUpload']);
+const R2_CLASS_B = new Set([
+  'HeadBucket',
+  'HeadObject',
+  'GetObject',
+  'UsageSummary',
+  'GetBucketEncryption',
+  'GetBucketLocation',
+  'GetBucketCors',
+  'GetBucketLifecycleConfiguration',
+]);
+
+/** How many days of usage a cost estimate reads, and the month it's scaled to. */
+export const COST_WINDOW_DAYS = 7;
+const MONTH_DAYS = 30;
+const MONTH_SECONDS = MONTH_DAYS * 86_400;
+const GB = 1e9;
+const M = 1e6;
+
+/** The name a resource has in a dataset: Cloudflare's ID for most kinds, the Worker's or bucket's name for those. */
+function usageKey(r) {
+  const own = r.id.slice(r.kind.length + 1);
+  if (r.kind === 'worker') return r.name;
+  if (r.kind === 'r2') {
+    const j = r.attrs?.jurisdiction;
+    return j && j !== 'default' ? `${j}_${r.name}` : r.name;
+  }
+  return own;
+}
+
+/** A container application's memory in GiB and disk in GB, from its instance type's name or a custom one. */
+function instanceSize(type) {
+  if (typeof type === 'string') return PRICES.container.instanceTypes[type] ?? null;
+  if (type && typeof type === 'object' && Number.isFinite(type.memory_mib) && Number.isFinite(type.disk_mb))
+    return { memory: type.memory_mib / 1024, disk: type.disk_mb / 1000 };
+  return null;
+}
+
+const round = (n) => Math.round(n * 10_000) / 10_000;
+
+/** What every estimate says, so the owner never reads it as the bill. */
+export const COST_NOTE = `Estimated from the last ${COST_WINDOW_DAYS} days of use at Cloudflare’s list prices, before what your plan includes: Cloudflare counts that across the whole account, not by resource, so the bill can be lower.`;
+
+/**
+ * Prices one resource from its usage over the window: the amount a month, and what its note adds.
+ * @param {Resource} r
+ * @param {Record<string, number>} u its usage, by field (and `field:by` for a dataset grouped by `by`)
+ * @param {number} scale turns the window's usage into a month's
+ * @returns {{ amount: number, notes: string[] }}
+ */
+function price(r, u, scale) {
+  const n = (k) => u[k] ?? 0;
+  switch (r.kind) {
+    case 'worker': {
+      const p = PRICES.worker;
+      const amount = ((n('requests') * p.perMillionRequests + (n('cpuTimeUs') / 1000) * p.perMillionCpuMs) / M) * scale;
+      return { amount, notes: [] };
+    }
+    case 'durable-object': {
+      const p = PRICES.durableObject;
+      const gbSeconds = (n('activeTime') / M) * p.gbPerObject;
+      const flow = ((n('requests') * p.perMillionRequests + gbSeconds * p.perMillionGbSeconds) / M) * scale;
+      return { amount: flow + (n('storedBytes') / GB) * p.perGbMonth, notes: [] };
+    }
+    case 'd1': {
+      const p = PRICES.d1;
+      const flow = ((n('rowsRead') * p.perMillionRowsRead + n('rowsWritten') * p.perMillionRowsWritten) / M) * scale;
+      return { amount: flow + (n('databaseSizeBytes') / GB) * p.perGbMonth, notes: [] };
+    }
+    case 'kv': {
+      const p = PRICES.kv;
+      const ops =
+        n('requests:read') * p.perMillionReads +
+        n('requests:write') * p.perMillionWrites +
+        n('requests:delete') * p.perMillionDeletes +
+        n('requests:list') * p.perMillionLists;
+      return { amount: (ops / M) * scale + (n('byteCount') / GB) * p.perGbMonth, notes: [] };
+    }
+    case 'r2': {
+      const p = r.attrs?.storageClass === 'InfrequentAccess' ? PRICES.r2.infrequentAccess : PRICES.r2.standard;
+      let a = 0;
+      let b = 0;
+      for (const [k, v] of Object.entries(u)) {
+        if (!k.startsWith('requests:')) continue;
+        const action = k.slice('requests:'.length);
+        if (R2_FREE.has(action)) continue;
+        if (R2_CLASS_B.has(action)) b += v;
+        else a += v;
+      }
+      const flow = ((a * p.perMillionClassA + b * p.perMillionClassB) / M) * scale;
+      const stored = ((n('payloadSize') + n('metadataSize')) / GB) * p.perGbMonth;
+      const notes = r.attrs?.storageClass === 'InfrequentAccess' ? ['Data retrieval isn’t counted.'] : [];
+      return { amount: flow + stored, notes };
+    }
+    case 'queue':
+      return { amount: ((n('billableOperations') * PRICES.queue.perMillionOperations) / M) * scale, notes: [] };
+    case 'container': {
+      const p = PRICES.container;
+      const size = instanceSize(r.attrs?.instanceType);
+      const active = Number(r.attrs?.active ?? 0) || 0;
+      if (!size) return { amount: 0, notes: ['Its instance type isn’t in the price table, so it isn’t counted.'] };
+      const perSecond = size.memory * p.perGibSecondMemory + size.disk * p.perGbSecondDisk;
+      return {
+        amount: active * perSecond * MONTH_SECONDS,
+        notes: [
+          'Counts memory and disk for the instances running now, all month; CPU isn’t counted, since Cloudflare bills it by use and doesn’t report it per application.',
+        ],
+      };
+    }
+    default:
+      return { amount: 0, notes: ['No cost of its own: it’s part of its Worker’s.'] };
+  }
+}
+
+/**
+ * Estimates each resource's cost a month, in US dollars (converting is BRK-226's), from the last COST_WINDOW_DAYS
+ * of usage in the analytics, scaled to a month, times PRICES; stored data is priced at its most over the window. Every
+ * amount is an estimate, and its note says what it leaves out. Uses `ctx.resources` when the store passes what
+ * discover just found, and discovers otherwise. A dataset Cloudflare won't answer is left out of the resources it
+ * prices, and their notes say so; anything else (a 429, a 403, Cloudflare out of reach) stops the estimate, so the
+ * store keeps the last one.
+ * @param {ProviderContext} ctx
+ * @returns {Promise<import('./infra-provider.js').Cost[]>}
+ */
+export async function cost(ctx) {
+  const resources = ctx.resources ?? (await discover(ctx)).resources;
+  if (!resources.length) return [];
+  const cf = reader(ctx);
+  const account = await accountOf(cf, ctx);
+  const to = new Date();
+  const from = new Date(to.getTime() - COST_WINDOW_DAYS * 86_400_000);
+  const scale = MONTH_DAYS / COST_WINDOW_DAYS;
+  /** @type {Map<string, Record<string, number>>} usage by resource ID */
+  const usage = new Map(resources.map((r) => [r.id, {}]));
+  /** @type {Map<string, string[]>} what each resource's estimate leaves out */
+  const left = new Map();
+
+  for (const d of Object.values(COST_DATASETS)) {
+    const mine = resources.filter((r) => r.kind === d.kind);
+    if (!mine.length) continue;
+    const byKey = new Map(mine.map((r) => [usageKey(r), r.id]));
+    let found;
+    try {
+      found = await readDataset(ctx, { account, dataset: d, keys: [...byKey.keys()], from, to });
+    } catch (error) {
+      if (error?.status !== 400) throw error;
+      for (const r of mine) left.set(r.id, [...(left.get(r.id) ?? []), d.label]);
+      continue;
+    }
+    for (const [key, u] of found) Object.assign(/** @type {object} */ (usage.get(byKey.get(key))), u);
+  }
+
+  return resources.map((r) => {
+    const { amount, notes } = price(r, /** @type {Record<string, number>} */ (usage.get(r.id)), scale);
+    const missed = left.get(r.id);
+    if (missed) notes.push(`Not counted, since Cloudflare’s analytics didn’t return it: ${missed.join(', ')}.`);
+    return {
+      resource: r.id,
+      amount: round(amount),
+      currency: PRICES.currency,
+      estimate: /** @type {const} */ (true),
+      note: [COST_NOTE, ...notes].join(' '),
+    };
+  });
+}
+
 /** A step that isn't built yet, naming the task that builds it. */
 const notYet = (step, task) => async () => {
   throw new Error(`cloudflare ${step} isn't built yet (${task})`);
@@ -533,6 +767,6 @@ export const cloudflare = {
     return notYet('apply', 'BRK-192')();
   },
   observe: notYet('observe', 'BRK-191'),
-  cost: notYet('cost', 'BRK-193'),
+  cost,
   events: notYet('events', 'BRK-191'),
 };
