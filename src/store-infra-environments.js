@@ -189,7 +189,6 @@ export const infraEnvironmentsMethods = {
         if (frozen !== Boolean(row.frozen)) {
           next.frozen = frozen ? 1 : 0;
           next.frozen_at = frozen ? Date.now() : null;
-          // TODO(BRK-175): append a `freeze` entry (outcome on/off, by owner) with this.appendInfraAudit once it lands.
         }
       }
       if (own && next.target !== row.target)
@@ -220,6 +219,16 @@ export const infraEnvironmentsMethods = {
           row.id,
         )
         .one();
+      // A freeze or thaw goes in the audit trail (BRK-175), once it's written.
+      if (next.frozen !== row.frozen)
+        this.appendInfraAudit({
+          kind: 'freeze',
+          repo: updated.repo,
+          environment: updated.name,
+          environmentId: updated.id,
+          by: 'owner',
+          outcome: updated.frozen ? 'on' : 'off',
+        });
       return { status: 200, body: { environment: this.environmentOut(updated) } };
     });
   },

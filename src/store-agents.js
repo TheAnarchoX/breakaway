@@ -1799,6 +1799,7 @@ export const agentsMethods = {
     this.sql.exec('DELETE FROM agent_runs WHERE started < ?', Date.now() - 30 * 86_400_000);
     this.pruneMessages();
     this.prunePeloton();
+    this.pruneInfraAudit();
     this.foldInfraSignals();
   },
 
