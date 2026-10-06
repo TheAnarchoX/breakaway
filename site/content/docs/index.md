@@ -31,6 +31,7 @@ These docs cover all of it. Start where you are.
 | Taskwarrior 3 sync | [Taskwarrior](/docs/taskwarrior/) |
 | How a release reaches your board, and how to roll one back | [Deploying and updating](/docs/deploying/) |
 | Secrets, rotation, backups, and fixes | [Operating a board](/docs/operations/) |
+| Redeploying the board and rebuilding environments by hand, without the board | [Recover without the board](/docs/recovery/) |
 | What runs where | [Architecture](/docs/architecture/) |
 | Licence, privacy, and what breakaway doesn’t do | [FAQ](/docs/faq/) |
 
