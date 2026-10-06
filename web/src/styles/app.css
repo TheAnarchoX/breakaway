@@ -4479,6 +4479,16 @@ fieldset.field {
   margin: 0;
   font-size: 16px;
 }
+/* A card's name opens its environment's page (WEB-88). */
+.flow-head h3 a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 3px;
+}
+.flow-head h3 a:hover {
+  text-decoration-color: currentColor;
+}
 .flow-state {
   display: inline-flex;
   align-items: center;
@@ -5499,6 +5509,13 @@ fieldset.field {
 .st-rate {
   width: 9em;
   font-variant-numeric: tabular-nums;
+}
+/* Fetch today's rate (BRK-239): the button sits beside the rate field, and wraps under it when narrow. */
+.st-rate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 /* The routine panel: the task panel's shell (panel, panel-body, panel-top, facts, dep-list) with a few extras. */
@@ -8684,6 +8701,20 @@ a.pl-mention {
 .infra-flag-frozen {
   color: var(--text);
   font-weight: 600;
+}
+/* A pipeline environment's deploys (WEB-88): its card's buttons side by side, then its recent deploys. */
+.infra-live {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.env-deploy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.infra-deploys-recent {
+  margin: 4px 0 0;
+  font-size: 15px;
 }
 .infra-env-foot {
   display: flex;

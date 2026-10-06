@@ -113,7 +113,7 @@ Architect is the board running infrastructure too: environments, plans you appro
 | **incident** | A task tagged `+incident`, opened when a signal crosses a rule, in the repository that owns what broke | outage (unless it is one), page, sev 1, P1, ticket |
 | **drift** | What runs no longer matches what the repository says should | out of sync (sync is Taskwarrior's), skew |
 | **break-glass** | A change you made by hand outside a plan. The board records it and adds a task to put it in code; it never undoes it. | override, hotfix, manual change, drift (on its own) |
-| **freeze** / **unfreeze** | Stop every change to one environment, envelopes included, until you unfreeze it | lock (that's the board's, inside an apply), pause (that's deploys'), change window, maintenance mode |
+| **freeze** / **unfreeze** | Stop every plan on one environment, envelopes included, until you unfreeze it. Freezing a pipeline's production pauses its deploys too (Roll back still works); merges keep deploying staging. | lock (that's the board's, inside an apply), pause (on its own: freezing production is what pauses deploys), change window, maintenance mode |
 | **observe only** | An environment the board watches and never changes. The board's own install is always observe only. | read-only (that's a token's), monitored, unmanaged |
 | **cost limit** | The most one plan may add to an environment's monthly cost before it waits for you | spend cap, threshold, quota |
 | **budget** | What one environment may cost a month; the board sends a signal near it and over it | spend, burn, bill, allowance |
@@ -124,7 +124,8 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 
 - "Approve this plan for production? The board applies it next and rolls back if the health check fails."
 - "Reject this plan? Nothing changes."
-- "Freeze production? Nothing changes there until you unfreeze it."
+- "Freeze production? Freezing production pauses deploys and plans; Roll back still works."
+- "Freeze staging? Freezing staging stops plans; merges still deploy here."
 
 **A plan's status** reads **Draft**, **Waiting for you**, **Approved**, **Rejected**, **Applying**, **Applied**, **Failed**, or **Rolled back**. A plan says why it waits in words, one rule a line: "Production needs you." "Can't be undone: it deletes the `widgets` database." "Adds €6 a month, over your €5 limit."
 
@@ -137,7 +138,7 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 | Inside an envelope (inbox only) | Scaled widgets-api to 6 instances, inside its envelope. |
 | A restart cap used up | **A restart waits for you in production** · widgets-api used its 3 restarts today. |
 
-**Amounts** are estimates, so they say so once per view ("Estimated cost"), in the currency you set in Settings, formatted the way your browser formats it: "€4.60 a month", never "4.6 EUR/mo". Write "a month", use tabular figures, and mark a fall with a minus sign: "−€1.20 a month". A converted amount names its rate and when you set it, next to the total, not on every number: "At 1 USD = 0.92 EUR, set 3 Oct." Until you set a currency, amounts are in the provider's, with no rate.
+**Amounts** are estimates, so they say so once per view ("Estimated cost"), in the currency you set in Settings, formatted the way your browser formats it: "€4.60 a month", never "4.6 EUR/mo". Write "a month", use tabular figures, and mark a fall with a minus sign: "−€1.20 a month". A converted amount names its rate and when you set it, next to the total, not on every number: "At 1 USD = 0.92 EUR, set 3 Oct." Until you set a currency, amounts are in the provider's, with no rate. **Fetch today's rate** beside the rate in Settings fills the field from [Frankfurter](https://frankfurter.dev) (the European Central Bank's reference rates), only when you press it; you still save it, and the board never fetches a rate any other way.
 
 ## Claims that must stay true
 
@@ -151,6 +152,7 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, and Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair.
 - **Free, and the source is public** ([below](#free-and-fair-source)).
 
 Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.

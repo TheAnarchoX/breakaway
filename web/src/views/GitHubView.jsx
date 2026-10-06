@@ -29,8 +29,10 @@ import {
   hashFor,
   installName,
   loadGitHub,
+  loadPipelineEnvironments,
   multiRepo,
   navOrder,
+  pipelineEnvironments,
   pullSettingsList,
   repoName,
   repoScope,
@@ -42,7 +44,7 @@ import { Title } from '../lib/richtext.jsx';
 import { PrRow } from '../components/GitHub.jsx';
 import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
-import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
+import { DeployRow, ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
 import { PackageRelease, ReleaseSetup } from '../components/PackageRelease.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
@@ -60,7 +62,8 @@ const savedTab = (() => {
   }
 })();
 const tabChoice = signal(savedTab);
-function chooseTab(id) {
+/** Picks the tab under the dashboard, as a press on it would: an environment's page opens the release flow (WEB-88). */
+export function chooseTab(id) {
   tabChoice.value = id;
   try {
     localStorage.setItem(TAB_KEY, id);
@@ -227,39 +230,9 @@ function Deploys({ deploys = [], releases = [], tags = [] }) {
     <>
       {deploys.length ? (
         <ul class="gh-runs">
-          {deploys.map((d) => {
-            const state =
-              d.state === 'success' ? 'success' : ['failure', 'error'].includes(d.state) ? 'failure' : 'pending';
-            const Icon = state === 'success' ? CircleCheck : state === 'failure' ? CircleX : LoaderCircle;
-            return (
-              <li key={`${d.repo}-${d.id}`} class={`gh-run run-${state}`}>
-                <Icon size={18} class="run-icon" aria-hidden="true" />
-                <a class="gh-run-title" href={d.logUrl ?? '#'} {...ext}>
-                  <span class="gh-run-name">
-                    {d.env} {shortVersion(d)}
-                    {d.task === 'rollback' ? ' (rollback)' : ''}
-                  </span>
-                  <span class="gh-run-sub">{d.description ?? d.state}</span>
-                </a>
-                <span class="gh-run-meta">
-                  <span class="visually-hidden">
-                    {state === 'success' ? 'Deployed' : state === 'failure' ? 'Failed' : 'In progress'}
-                  </span>
-                  {d.repo && <RepoChip slug={d.repo} />}
-                  <span class="gh-sha">{d.sha.slice(0, 7)}</span>
-                  {d.migrations && d.migrations !== 'none' && <span class="meta">migrations {d.migrations}</span>}
-                  {d.shipped?.map((t) => (
-                    <a key={t.wid} class="gh-task" href={hashFor({ task: t.wid })}>
-                      <span class="wid">{t.wid}</span>
-                    </a>
-                  ))}
-                  <span class="meta" title={d.updated}>
-                    {ago(d.updated)}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
+          {deploys.map((d) => (
+            <DeployRow key={`${d.repo}-${d.id}`} d={d} />
+          ))}
         </ul>
       ) : (
         <p class="muted small">
@@ -765,6 +738,11 @@ export function GitHubView() {
     if (!state.loaded) loadGitHub();
   }, []);
   const d = githubView.value;
+  const hasFlows = Boolean(d?.flows?.length);
+  // The release flow's cards open their environments' pages (WEB-88).
+  useEffect(() => {
+    if (hasFlows) loadPipelineEnvironments();
+  }, [hasFlows]);
   if (githubPr.value) return <PullPage />;
   const sync = () =>
     loadGitHub({ sync: true }).then(() => {
@@ -894,7 +872,12 @@ export function GitHubView() {
               ))}
             {tab === 'releases' &&
               d.flows.map((r) => (
-                <ReleaseFlow key={r.slug} view={r} label={d.all && multiRepo.value ? r.name : null} />
+                <ReleaseFlow
+                  key={r.slug}
+                  view={r}
+                  label={d.all && multiRepo.value ? r.name : null}
+                  environments={pipelineEnvironments.value[r.slug]}
+                />
               ))}
             {tab === 'deploys' && <Deploys deploys={d.deploys} releases={d.releases} tags={d.tags} />}
             {tab === 'packages' && <Packages versions={d.packages} several={d.all && multiRepo.value} />}
