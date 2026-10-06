@@ -1,6 +1,6 @@
 # IDEA-36 · Planning on the peloton: huddles, the chase's plan, and agents in reach
 
-Task: IDEA-36 on the board · Status: approved
+Task: IDEA-36 on the board · Status: built (#260, #263, #264, #265, #268, #269, #271, #272, #282, #285)
 
 ## Problem
 The peloton ([IDEA-32](IDEA-32-peloton.md)) works as designed, and that's the problem. Agents check in, post a step before their pull request, and leave; now and then one answers. A typical stretch of breakaway's peloton is three agents, each with a check-in, a step, and a "Left: its pull request merged", and no post that answers another. The owner wants the peloton to feel like a team's channel where a lot of the work happens besides the code: planning a chase's tasks together, holding the bigger picture, and everyone going the same way. Today only a road captain steers a chase, and it does that by changing things itself.
