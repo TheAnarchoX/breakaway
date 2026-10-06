@@ -1,0 +1,66 @@
+# Rendered by npx breakaway infra init from the environments in .github/breakaway-infra/: add one there and run npx breakaway infra init --update, not this file.
+#
+# Apply infrastructure: applies one plan the owner approved on the board to one environment, and nothing else. The
+# board starts it when a plan is approved; without a plan the board approved for this environment and this run, it
+# stops before it reads the write token. That token is CLOUDFLARE_API_TOKEN, a secret of the GitHub environment named
+# for the environment, which only main may use. It checks out none of this repository's code: it runs
+# breakaway's runner, pinned to 2.0.0, and reports each step to the board. Agents never run this workflow.
+name: Apply infrastructure
+run-name: Apply plan ${{ inputs.plan }} to ${{ inputs.environment }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: The approved plan's ID, from the board
+        required: true
+        type: string
+      environment:
+        description: The environment the plan is for
+        required: true
+        type: choice
+        options:
+          - "production"
+          - "staging"
+
+permissions: {}
+
+# One apply at a time in each environment; the board holds the environment's lock as well.
+concurrency:
+  group: breakaway-infra-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: apply
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    # id-token proves to the board which repository, environment, workflow, and run asks for the plan.
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BREAKAWAY_URL: ${{ vars.BREAKAWAY_URL }}
+      PLAN: ${{ inputs.plan }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      RUN_ID: ${{ github.run_id }}
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check the plan
+        run: npx --yes breakaway@2.0.0 infra runner check
+
+      - name: Apply the plan
+        env:
+          BREAKAWAY_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes breakaway@2.0.0 infra runner apply
+
+      - name: Report the end
+        if: always()
+        env:
+          OUTCOME: ${{ job.status }}
+        run: npx --yes breakaway@2.0.0 infra runner end

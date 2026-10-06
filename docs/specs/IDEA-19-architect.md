@@ -82,6 +82,8 @@ The only path that changes infrastructure (BRK-183): take the environment's lock
 
 The runner is **a workflow in the repository, started by the board on approval, with a write token per environment in a GitHub environment** (BRK-171), which is the trust Promote has today, so the board itself still holds no write credentials. CLI-12 renders it with `npx breakaway infra init`, like `pipeline init`. An observe-only environment is refused.
 
+The runner and the board share no secret (CLI-12, `src/infra-runner.js`). The workflow, `.github/workflows/breakaway-infra.yml`, takes the plan's ID and the environment, runs only from the default branch, checks out none of the repository's code, and asks the board for the plan at `/api/infra/runs/<plan>` with the run's GitHub OIDC token. The board answers only the run it started, for a plan approved for that environment, and only once; the runner stops otherwise, before it reads the write token. Each step it reports carries the digest of the plan it applies, so a plan changed since approval is refused.
+
 ### Envelopes
 
 Bounds the owner approves once on one environment, in any environment, production included (BRK-171): scaling bounds ("2 to 10 instances", "up to this much a month") and a **restart cap** (how many restarts in a window; 3 a day by default, set by the owner). A scaling rule in the repository, or a runbook, acts inside them through the executor with no press, writes an audit entry, and notes it quietly in the inbox. Once the restart cap is used up, the next restart becomes a plan that waits, with a push. Anything else, or outside the bounds, is a plan that waits (BRK-186, BRK-227).
@@ -171,7 +173,7 @@ Every path is under `https://api.cloudflare.com/client/v4`, with `{a}` for the a
 
 ### Resource kinds
 
-The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-object`, `d1`, `kv`, `r2`, `queue`, `container`, `route`, `custom-domain`. A Worker's secrets are relations by name (`binds`), not resources. Each table gives the calls for one kind, and the permission each needs (read ones in the board's token, write ones in the runner's).
+The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-object`, `d1`, `kv`, `r2`, `queue`, `container`, `route`, `custom-domain`. A Worker's secrets are names in its settings, not resources (BRK-189: a relation needs a resource at each end). Each table gives the calls for one kind, and the permission each needs (read ones in the board's token, write ones in the runner's).
 
 **Workers** (`worker`). Changes: create, update, delete.
 
@@ -274,6 +276,12 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Observe | Its Worker's health | |
 | Cost | None of its own | |
 | Scale or restart | Neither | |
+
+### Discover, as built (BRK-189)
+
+`src/infra-cloudflare.js` starts at the environment's target (a Worker's name) and follows what it reaches: the Workers it calls by a service binding or whose Durable Object classes it binds, and then each Worker's D1 databases, KV namespaces, R2 buckets, queues, Durable Object namespaces, the containers those run, and the routes and custom domains that serve it. It only fetches a list when a Worker in scope binds that kind, and keeps nothing else from it. Resource IDs are the kind and Cloudflare's own ID (`worker:acme-api`, `d1:<uuid>`). Relations: `calls` (Worker to Worker), `uses` (Worker to D1, KV, R2, or Durable Object), `produces` and `consumes` (Worker to queue), `runs-in` (Durable Object to the Worker its class is in), `defines` (a Worker to a Durable Object it defines but doesn't bind), `runs` (Durable Object to container), and `serves` (Worker to route or custom domain). A Worker keeps its bindings by name and type, never a variable's text, and no deployment's author.
+
+The account is `ctx.scope.account` when given, else the one account `GET /accounts` lists for the token; a token that reaches several is refused. Every call is a `GET`, checked against a list of paths that read data before it's made. A 403 on queues or containers skips that kind and marks its permission missing on Connections; a 403 on anything else fails discovery and marks that permission missing. Plan and apply (BRK-192), observe and events (BRK-191), and cost (BRK-193) refuse, naming their task, until they're built.
 
 ### Alerts
 

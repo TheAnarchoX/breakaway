@@ -92,6 +92,8 @@ Deploy checks that the new release answers and goes back by itself when it doesn
 1. **`stable`:** revert the pull request that moved `breakaway.json`, and merge the revert. Deploy runs the old release.
 2. **Either channel, right now:** run `wrangler rollback <version-id>`. The Worker’s versions are on Cloudflare.
 
+When Deploy can’t run at all, [Recover without the board](/docs/recovery/#redeploy-the-board-by-hand) deploys a release by hand.
+
 The board’s data only changes forward, and only by adding, so an install can always go back one release.
 
 ## The update feed

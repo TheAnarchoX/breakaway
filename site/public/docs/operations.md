@@ -97,6 +97,8 @@ npx breakaway export --out tasks-backup.json
 
 It writes every task in every repository, with status and horizon, as the board’s JSON with comments, and checks the count against `health`, failing when they differ. Keep the file out of Git. A Taskwarrior replica is a full copy only while it syncs: compare `task count` with `health`’s total. A point-in-time restore of the Durable Object puts every replica that synced after the restore point in the same state: each one gets `410 Gone` and has to be started again.
 
+To redeploy the board, or rebuild an environment, with the board down, see [Recover without the board](https://leavethepack.dev/docs/recovery/). Its first section is what to export while the board still answers.
+
 ## The install
 
 What makes one board itself and not another is one file, `breakaway.config.json`:
