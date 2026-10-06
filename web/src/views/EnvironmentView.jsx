@@ -4,6 +4,7 @@ import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { environmentId, hashFor, navOrder, repoName } from '../lib/store.js';
 import { DeploysSection } from '../components/EnvironmentDeploys.jsx';
+import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
 import {
   EnvironmentFlags,
   FreezeButton,
@@ -481,6 +482,8 @@ export function EnvironmentView() {
       </div>
 
       <DeploysSection env={env} />
+
+      <EnvironmentPlans env={env} />
 
       <IncidentsSection env={env} />
 

@@ -10,6 +10,7 @@
  */
 import { AgentError } from './store-agents.js';
 import { AUDIT_KEPT_DAYS, AUDIT_KINDS, DAY, YEAR_DAYS, auditEntry } from './infra-audit.js';
+import { planId, planNumber } from './infra-plans.js';
 
 export { AUDIT_KEPT_DAYS } from './infra-audit.js';
 
@@ -114,8 +115,9 @@ export const infraAuditMethods = {
   },
 
   /**
-   * Entries newest first, filtered by environment (its name or ID), repository, and kind, paged with `before` (an entry's id).
-   * @param {{ environment?: string, environmentId?: string | number, repo?: string, kind?: string, before?: string | number, limit?: string | number }} query
+   * Entries newest first, filtered by environment (its name or ID), repository, kind, and plan (its ID, for the plan
+   * page's steps), paged with `before` (an entry's id).
+   * @param {{ environment?: string, environmentId?: string | number, repo?: string, kind?: string, plan?: string, before?: string | number, limit?: string | number }} query
    * @returns {{ entries: AuditEntry[], more: boolean }}
    */
   infraAudit(query = {}) {
@@ -139,6 +141,12 @@ export const infraAuditMethods = {
         throw new AgentError(`kind must be one of ${AUDIT_KINDS.join(', ')}`, 400);
       where.push('kind = ?');
       args.push(String(query.kind));
+    }
+    if (query.plan) {
+      const n = planNumber(query.plan);
+      if (n === null) throw new AgentError('plan must be a plan’s ID, like plan-12', 400);
+      where.push('plan = ?');
+      args.push(planId(n));
     }
     const before = whole(query.before, 'before', 1, Number.MAX_SAFE_INTEGER);
     if (before !== null) {

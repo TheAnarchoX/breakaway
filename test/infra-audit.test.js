@@ -66,6 +66,17 @@ describe('the infrastructure audit trail', () => {
     expect((await api('infra/audit?environmentId=-1')).status).toBe(400);
   });
 
+  it('reads one plan’s entries, by its ID, for the plan page', async () => {
+    const base = { repo: 'widgets', environment: 'audit-plans', environmentId: 9002, by: 'owner' };
+    const made = await append({ ...base, kind: 'plan', plan: 'plan-901', outcome: 'waiting' });
+    await append({ ...base, kind: 'plan', plan: 'plan-902', outcome: 'waiting' });
+    const approved = await append({ ...base, kind: 'approve', plan: 'plan-901', outcome: 'approved' });
+    const { entries } = await read('?environmentId=9002&plan=plan-901');
+    expect(entries.map((e) => e.id)).toEqual([approved.id, made.id]);
+    expect((await read('?plan=901')).entries.map((e) => e.id)).toEqual([approved.id, made.id]);
+    expect((await api('infra/audit?plan=nine')).status).toBe(400);
+  });
+
   it('pages with before and limit', async () => {
     const ids = [];
     for (let i = 0; i < 5; i++)
