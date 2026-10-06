@@ -9053,6 +9053,70 @@ a.pl-mention {
   margin: 0;
   font-size: 14px;
 }
+/* Describe it as code (WEB-92): the board's draft, read only, and the one press that has an agent open the pull request. */
+.infra-describe {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.infra-describe h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.infra-describe p {
+  margin: 0;
+  font-size: 14px;
+}
+.infra-describe-file {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.infra-describe-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.infra-describe-head code {
+  overflow-wrap: anywhere;
+}
+.infra-describe-head .btn {
+  margin-left: auto;
+}
+.infra-describe-json {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 12px / 1.5 var(--font-mono);
+  white-space: pre;
+  max-height: min(320px, 40vh);
+  overflow: auto;
+}
+.infra-describe-notes {
+  margin: 0;
+  padding-left: 18px;
+}
+.infra-describe-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.infra-describe-task svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.infra-describe-task a svg {
+  margin: 0 2px 0 0;
+  vertical-align: -2px;
+}
 /* What nobody owns (WEB-93): a removal plan that waits for you stands out, like an incident's. */
 .unowned p {
   margin: 0;

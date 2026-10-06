@@ -1,9 +1,9 @@
 import { env, runInDurableObject } from 'cloudflare:test';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, boardApi } from './helpers.js';
 import { fakeProvider } from './fake-infra-provider.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
-import { draftDesired } from '../src/infra-adopt.js';
+import { describeBrief, describeTitle, draftDesired } from '../src/infra-adopt.js';
 import { checkDesiredFile, DESIRED_MAX_RESOURCES } from '../src/infra-desired.js';
 import { cloudflare, MANAGED } from '../src/infra-cloudflare.js';
 import { cloudflareApi } from './cloudflare-fixture.js';
@@ -254,5 +254,143 @@ describe('GET /api/infra/environments/<id>/draft (BRK-240)', () => {
 
   it('is a 404 for an environment that isn’t there', async () => {
     expect((await api('infra/environments/99999/draft')).status).toBe(404);
+  });
+});
+
+describe('Describe it as code (WEB-92)', () => {
+  const PROVIDER = 'fake-describe';
+  const FIRE = 'https://api.anthropic.com/v1/claude_code/routines/trig_test/fire';
+  /** @type {string[]} */
+  const fires = [];
+  /** @type {Record<string, any>} */
+  const envs = {};
+  let spy;
+  const press = (id, extra = {}) =>
+    boardApi(`infra/environments/${id}/describe`, { method: 'POST', body: { ...extra } });
+  const look = async (id) => body(await boardApi(`infra/environments/${id}/describe`));
+
+  beforeAll(async () => {
+    expect(
+      (await api('repos', { method: 'POST', body: { slug: 'gadgets', github: 'acme/gadgets', areas: ['app:GAD'] } }))
+        .status,
+    ).toBe(201);
+    for (const [name, extra] of [
+      ['describe-staging', { target: 'api' }],
+      ['describe-done', { target: 'api' }],
+      ['describe-watch', { target: 'api', observeOnly: true }],
+      ['describe-empty', {}],
+      ['describe-elsewhere', { target: 'api', repo: 'gadgets' }],
+    ]) {
+      const made = await body(
+        await boardApi('infra/environments', {
+          method: 'POST',
+          body: { repo: 'widgets', provider: PROVIDER, name, kind: 'staging', ...extra },
+        }),
+      );
+      envs[name] = made.environment;
+    }
+    await runInDurableObject(store(), async (instance) => {
+      instance.infraProviders = new ProviderRegistry();
+      instance.infraProviders.register(fakeProvider({ id: PROVIDER }));
+      await instance.refreshInventory(PROVIDER);
+      instance.sql.exec(
+        "INSERT INTO infra_desired (repo, file, environment, provider, read_at) VALUES ('widgets', ?, 'describe-done', ?, ?)",
+        '.github/breakaway-infra/describe-done.json',
+        PROVIDER,
+        Date.now(),
+      );
+    });
+  });
+  beforeEach(() => {
+    spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url !== FIRE) return new Response('{"message":"Not Found"}', { status: 404 });
+      fires.push(JSON.parse(String(init.body)).text);
+      return Response.json({
+        claude_code_session_id: `session_${fires.length}`,
+        claude_code_session_url: `https://claude.ai/code/session_${fires.length}`,
+      });
+    });
+  });
+  afterEach(() => spy.mockRestore());
+
+  it('writes a brief that names the environment, infra adopt, infra check, and a pull request', () => {
+    const brief = describeBrief({ name: 'staging', repo: 'widgets' });
+    expect(describeTitle('staging')).toBe('Describe staging as code');
+    expect(brief).toContain('npx breakaway infra adopt staging');
+    expect(brief).toContain('.github/breakaway-infra/staging.json');
+    expect(brief).toContain('npx breakaway infra check');
+    expect(brief).toContain('pull request');
+    expect(brief).toMatch(/Never apply/);
+  });
+
+  it('says nothing is open and nothing stops a press, before one', async () => {
+    expect(await look(envs['describe-staging'].id)).toEqual({ status: 200, task: null, refusal: null, routine: false });
+  });
+
+  it('adds the task in the environment’s repository and starts its agent, once', async () => {
+    const id = envs['describe-staging'].id;
+    const res = await body(await press(id));
+    expect(res.status).toBe(201);
+    expect(res.already).toBe(false);
+    expect(res.waiting).toBeNull();
+    const task = (await body(await api(`tasks/${res.task.uuid}`))).task;
+    expect(task).toMatchObject({
+      description: 'Describe describe-staging as code',
+      brief: describeBrief({ name: 'describe-staging', repo: 'widgets' }),
+      horizon: 'now',
+      claim: `claude-${task.short}`,
+    });
+    expect(task.autostart).toBeFalsy();
+    expect(task.tags).toEqual(['agent', 'general']);
+    expect(res.run).toMatchObject({ agent: `claude-${task.short}`, trigger: 'describe', kind: 'general' });
+    const payload = fires.at(-1);
+    expect(payload).toContain(`Task: ${task.uuid}`);
+    expect(payload).toContain('Mode: general');
+    expect(payload).toContain('Have an agent open the pull request');
+
+    // A second press shows the one that's open instead of adding another, and starts nothing.
+    const before = fires.length;
+    const again = await body(await press(id));
+    expect(again).toMatchObject({ status: 200, already: true, task: { uuid: task.uuid } });
+    expect(fires.length).toBe(before);
+    expect((await look(id)).task).toMatchObject({ uuid: task.uuid, description: 'Describe describe-staging as code' });
+  });
+
+  it('adds nothing when the repository’s agent routine isn’t connected, and says so', async () => {
+    const id = envs['describe-elsewhere'].id;
+    const seen = await look(id);
+    expect(seen.routine).toBe(true);
+    expect(seen.refusal).toMatch(/gadgets’s agent routine isn’t connected yet/);
+    const count = async () =>
+      (await body(await api('tasks?status=pending'))).tasks.filter((t) => t.description.includes('describe-elsewhere'))
+        .length;
+    const res = await body(await press(id));
+    expect(res.status).toBe(409);
+    expect(res.error).toMatch(/gadgets’s agent routine isn’t connected yet/);
+    expect(await count()).toBe(0);
+  });
+
+  it('refuses an environment that has its file, is observe only, or has no draft yet', async () => {
+    const done = await body(await press(envs['describe-done'].id));
+    expect(done.status).toBe(409);
+    expect(done.error).toBe(
+      'describe-done already has .github/breakaway-infra/describe-done.json on widgets’s default branch',
+    );
+    expect((await look(envs['describe-done'].id)).refusal).toBe(done.error);
+    const watch = await body(await press(envs['describe-watch'].id));
+    expect(watch.status).toBe(409);
+    expect(watch.error).toMatch(/observe only/);
+    const empty = await body(await press(envs['describe-empty'].id));
+    expect(empty.status).toBe(409);
+    expect(empty.error).toMatch(/has no target/);
+  });
+
+  it('is the owner’s press: the token is refused, and so is an agent’s by', async () => {
+    const id = envs['describe-staging'].id;
+    expect((await api(`infra/environments/${id}/describe`, { method: 'POST', body: {} })).status).toBe(403);
+    expect((await press(id, { by: 'claude-web-92' })).status).toBe(403);
+    // Reading what's open is anyone's.
+    expect((await api(`infra/environments/${id}/describe`)).status).toBe(200);
   });
 });

@@ -219,6 +219,7 @@ const TRIGGER_TEXT = {
   routines: 'by “Make with an agent” on the Routines view, from the board',
   'routines-carry-on': 'by “Send answers and carry on” on a routine maker’s decision, from the board',
   move: 'by “Move to breakaway’s deploy flow” on the GitHub page, from the board',
+  describe: 'by “Have an agent open the pull request” on an environment’s page, from the board',
 };
 
 /**
