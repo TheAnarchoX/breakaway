@@ -293,7 +293,9 @@ describe('plans in the store (BRK-178)', () => {
       ['rolled back', 'executor'],
     ];
     for (const [to, by] of path) {
-      const moved = await inStore((s) => s.moveInfraPlan(plan.id, to, { by }));
+      // Approving keeps the plan's digest (BRK-182).
+      const digest = to === 'approved' ? 'a'.repeat(64) : undefined;
+      const moved = await inStore((s) => s.moveInfraPlan(plan.id, to, { by, digest }));
       expect(moved).toMatchObject({ ok: true, value: { state: to } });
     }
     const entries = (await audit(plan.id)).reverse();

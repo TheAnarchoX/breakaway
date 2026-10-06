@@ -394,7 +394,12 @@ describe('policy in the store (BRK-181)', () => {
       rule: 'staging routes',
     });
     const audit = (await body(await api(`infra/audit?environmentId=${envs['policy-staging'].id}`))).entries;
-    expect(audit.find((e) => e.plan === value.id).summary).toMatch(/policy allows it by “staging routes”/u);
+    expect(audit.find((e) => e.plan === value.id && e.outcome === 'draft').summary).toMatch(
+      /policy allows it by “staging routes”/u,
+    );
+    // The board approves it by itself, naming the rule (BRK-182).
+    expect(value.state).toBe('approved');
+    expect(audit.find((e) => e.plan === value.id).summary).toBe('approved by your policy’s rule “staging routes”');
     // The same rule doesn't reach production.
     await want('policy-production', desired({ 'route-api': { attrs: { path: '/v4/*' } } }));
     expect((await plan('policy-production')).value.policy.rule).toBe('production');
