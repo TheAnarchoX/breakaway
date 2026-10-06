@@ -6,6 +6,7 @@ import { FAKE_KINDS, fakeProvider } from './fake-infra-provider.js';
 import { ProviderRegistry, checkProvider } from '../src/infra-provider.js';
 import { toB64u } from '../src/push.js';
 import { checkAct, checkEnvelope, envelopeWords, judgeChange } from '../src/infra-envelopes.js';
+import { ACTS_KEPT } from '../src/store-infra-envelopes.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
@@ -344,6 +345,24 @@ describe('envelopes on the board (BRK-186)', () => {
     expect(sent).toHaveLength(1);
     const entry = (await audit(production)).find((e) => e.plan === third.act.plan.id && e.kind === 'envelope');
     expect(entry.outcome).toBe('cap used');
+  });
+
+  it('keeps the restarts that used the cap however many acts come after them (BRK-229)', async () => {
+    await set(production, { restarts: { cap: 2, hours: 24 } });
+    await act(production, { resource: 'api', change: 'restart' });
+    await act(production, { resource: 'api', change: 'restart' });
+    // More acts than the table keeps, all outside the envelope, newer than the two restarts.
+    await runInDurableObject(store(), (s) => {
+      for (let i = 0; i < ACTS_KEPT + 5; i++)
+        s.sql.exec(
+          "INSERT INTO infra_envelope_acts (environment, at, change, resource, inside, plan, agent, why) VALUES (?, ?, 'scale', 'svc-api', 0, NULL, NULL, 'outside')",
+          production.id,
+          Date.now(),
+        );
+    });
+    const third = await act(production, { resource: 'api', change: 'restart' });
+    expect(third.act).toMatchObject({ inside: false, why: 'api used its 2 restarts in a day' });
+    expect((await body(await api(`infra/envelopes/${production.id}`))).restartsUsed).toBe(2);
   });
 
   it('refuses what an envelope can’t do, and anyone but a runbook’s agent', async () => {
