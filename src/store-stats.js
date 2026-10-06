@@ -7,6 +7,7 @@
  * Rows hold counts and times only: no titles, no task text, no output.
  */
 import { view } from './model.js';
+import { pipelineOf } from './release.js';
 import { repoSlugOf } from './repos.js';
 import { computeStats, STATS_DAYS, zoneOf } from './stats.js';
 
@@ -138,6 +139,14 @@ export const statsMethods = {
         )
         .toArray()
         .map((r) => ({ at: r.at, ...JSON.parse(r.data) }));
+    // A pipeline's Deployments (and the ships they record) are named after its Workers: count them as staging and production.
+    const role = new Map();
+    for (const p of this.repos().map(pipelineOf)) {
+      if (!p) continue;
+      role.set(p.staging, 'staging');
+      role.set(p.production, 'production');
+    }
+    const envOf = (env) => role.get(env) ?? env;
 
     // The plain task views: GitHub's links and agent runs aren't needed to count.
     const at = new Date(now);
@@ -170,12 +179,12 @@ export const statsMethods = {
       tasks,
       prs: log('pr').map((p) => ({ merged: p.at, created: p.created, author: p.author })),
       runs: log('run').map((r) => ({ ...r, created: r.at })),
-      deploys: log('deploy'),
+      deploys: log('deploy').map((d) => ({ ...d, env: envOf(d.env) })),
       ships: this.sql
         .exec('SELECT wid, env, at FROM gh_ships')
         .toArray()
         .filter((s) => !slug || wids.has(s.wid))
-        .map((s) => ({ wid: s.wid, env: s.env, at: ms(s.at) })),
+        .map((s) => ({ wid: s.wid, env: envOf(s.env), at: ms(s.at) })),
       agentRuns: log('agent').map((r) => ({
         kind: r.kind,
         trigger: r.trigger,
