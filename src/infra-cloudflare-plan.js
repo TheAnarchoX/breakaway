@@ -25,6 +25,7 @@ import {
   API,
   BINDING_TARGETS,
   CloudflareError,
+  MANAGED,
   PRICES,
   accountOf,
   bindingTarget,
@@ -46,21 +47,8 @@ import {
 /** @typedef {import('./infra-provider.js').ApplyResult} ApplyResult */
 /** @typedef {import('./infra-cloudflare.js').LiveAccount} LiveAccount */
 
-/**
- * The settings Architect manages, by kind. Everything else a resource carries (a Worker's handlers, secrets, and live
- * versions, a database's size, a container's instances) is Cloudflare's or the deploy's, and is never compared.
- */
-export const MANAGED = {
-  worker: ['compatibilityDate', 'compatibilityFlags', 'usageModel', 'observability', 'placement', 'bindings', 'crons'],
-  'durable-object': [],
-  d1: [],
-  kv: [],
-  r2: ['cors', 'lifecycle'],
-  queue: ['deliveryDelay', 'deliveryPaused', 'retention', 'maxConcurrency'],
-  container: ['maxInstances'],
-  route: ['worker'],
-  'custom-domain': ['worker', 'environment'],
-};
+/** The settings Architect manages, by kind: infra-cloudflare.js keeps them, on each kind. */
+export { MANAGED };
 
 /** Kinds Cloudflare names by their name, so a rename is a change of its own (KV's title, a route's pattern). */
 const RENAMES = new Set(['kv', 'route']);

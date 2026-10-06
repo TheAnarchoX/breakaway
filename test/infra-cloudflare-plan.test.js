@@ -544,13 +544,18 @@ describe('the Cloudflare provider’s scale and restart, inside an envelope (BRK
     expect(cloudflare.kinds.container).toEqual({
       changes: ['create', 'update', 'delete', 'scale', 'restart'],
       scales: 'maxInstances',
+      settings: ['maxInstances'],
     });
-    expect(cloudflare.kinds.queue).toEqual({
+    expect(cloudflare.kinds.queue).toMatchObject({
       changes: ['create', 'update', 'delete', 'scale'],
       scales: 'maxConcurrency',
     });
-    for (const kind of ['worker', 'durable-object', 'd1', 'kv', 'r2', 'route', 'custom-domain'])
-      expect(cloudflare.kinds[kind]).toEqual({ changes: ['create', 'update', 'delete'] });
+    // BRK-240's adopt keeps a kind's settings, so a queue's concurrency is kept in its draft too.
+    expect(cloudflare.kinds.queue.settings).toContain('maxConcurrency');
+    for (const kind of ['worker', 'durable-object', 'd1', 'kv', 'r2', 'route', 'custom-domain']) {
+      expect(cloudflare.kinds[kind].changes).toEqual(['create', 'update', 'delete']);
+      expect(cloudflare.kinds[kind].scales).toBeUndefined();
+    }
     // So the envelope form offers only those two, and an envelope can't bound anything else.
     expect(() => checkEnvelope({ scale: [{ kind: 'worker', min: 1, max: 2 }] }, cloudflare.kinds)).toThrow(
       /doesn’t scale/u,

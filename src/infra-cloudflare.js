@@ -33,21 +33,36 @@ export const API = 'https://api.cloudflare.com/client/v4';
 
 const BASE = ['create', 'update', 'delete'];
 /**
+ * The settings Architect manages, by kind. Everything else a resource carries (a Worker's handlers, secrets, and live
+ * versions, a database's size, a container's instances) is Cloudflare's or the deploy's, and is never compared.
+ */
+export const MANAGED = {
+  worker: ['compatibilityDate', 'compatibilityFlags', 'usageModel', 'observability', 'placement', 'bindings', 'crons'],
+  'durable-object': [],
+  d1: [],
+  kv: [],
+  r2: ['cors', 'lifecycle'],
+  queue: ['deliveryDelay', 'deliveryPaused', 'retention', 'maxConcurrency'],
+  container: ['maxInstances'],
+  route: ['worker'],
+  'custom-domain': ['worker', 'environment'],
+};
+
+/**
  * What envelopes may change, by kind (BRK-188's "Scale and restart, for envelopes"; BRK-227): a container application
  * scales its `max_instances` and restarts with a rollout of its configuration, and a queue scales its Worker
  * consumer's `max_concurrency`. Cloudflare scales every other kind itself, so none of them scales or restarts.
- * @type {Record<string, Partial<import('./infra-provider.js').KindSpec>>}
  */
 const ENVELOPE = {
   container: { changes: ['scale', 'restart'], scales: 'maxInstances' },
   queue: { changes: ['scale'], scales: 'maxConcurrency' },
 };
 export const CLOUDFLARE_KINDS = Object.fromEntries(
-  ['worker', 'durable-object', 'd1', 'kv', 'r2', 'queue', 'container', 'route', 'custom-domain'].map((k) => [
+  Object.entries(MANAGED).map(([k, settings]) => [
     k,
     ENVELOPE[k]
-      ? { changes: [...BASE, ...(ENVELOPE[k].changes ?? [])], scales: ENVELOPE[k].scales }
-      : { changes: [...BASE] },
+      ? { changes: [...BASE, ...ENVELOPE[k].changes], scales: ENVELOPE[k].scales, settings: [...settings] }
+      : { changes: [...BASE], settings: [...settings] },
   ]),
 );
 
