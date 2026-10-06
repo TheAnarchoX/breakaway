@@ -54,6 +54,7 @@ import { kickoffsMethods } from './store-kickoffs.js';
 import { isKickoffIdea } from './kickoff.js';
 import { initMethods } from './store-init.js';
 import { routineKeepMethods } from './store-routine-keep.js';
+import { infraAuditMethods } from './store-infra-audit.js';
 import { oauthMethods } from './store-oauth.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
@@ -110,6 +111,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initKickoffs();
     this.initRoutineKeep();
     this.initOAuth();
+    this.initInfraAudit();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1398,6 +1400,7 @@ Object.assign(
   initMethods,
   routineKeepMethods,
   oauthMethods,
+  infraAuditMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
