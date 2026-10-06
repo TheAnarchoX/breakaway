@@ -53,6 +53,8 @@ const GITHUB_EVENTS = [
   ['pr_merged', 'A pull request is merged'],
   ['release_published', 'A release is published'],
   ['workflow_failed', 'A workflow run fails'],
+  ['issue_opened', 'An issue is opened'],
+  ['issue_reopened', 'An issue is reopened'],
 ];
 
 /** Another repository than `slug` for a copy to go to: the one in view, else the first other one. */
