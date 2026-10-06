@@ -93,7 +93,7 @@ The owner set it up on 5 Oct 2026 (LCH-26), the same way as `site`: a write depl
 ### 6. What the directory asks, and our answers
 The plugin's `README.md` (over 40 words, in `plugin/`, as the directory requires) says what the plugin does, how to set it up, and everything it runs, sends, or fetches:
 
-- It runs `npx --yes breakaway@1`, which downloads the CLI from npm's public registry.
+- It runs `npx --yes breakaway@1`, which downloads the CLI from npm's public registry. The CLI has no dependencies, and since CLI-21 each release ships it with `npm-shrinkwrap.json`, so the plugin directory sees that what npx installs is the package it reviewed.
 - It sends to **the board you set it up with, and nowhere else**: the task you claim, your comments, the session's output while you hold a task (the hooks), and the MCP server's calls. That board runs on your own Cloudflare account.
 - It stores nothing of its own: the settings are Claude Code's (the token in the keychain), and the board keeps what you send it.
 
