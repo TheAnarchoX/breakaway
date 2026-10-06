@@ -20,9 +20,9 @@ const FAILED = new Set(['failure', 'error']);
  */
 
 /**
- * The environment a Deployment's Worker runs: its name, its ID when the repository has the environment, and whether
- * it is production.
- * @typedef {{ name: string, id: number | null, production: boolean }} DeployEnvironment
+ * The environment a Deployment's Worker runs (environmentForDeploy, src/store-infra-deploys.js): its name, its ID, and
+ * whether it is production.
+ * @typedef {{ name: string, id: number, production: boolean }} DeployEnvironment
  */
 
 /**
