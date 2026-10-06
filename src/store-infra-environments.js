@@ -40,6 +40,26 @@ function ownerOnly(by) {
     throw new AgentError('only the owner adds, changes, or removes an environment; agents read them', 403);
 }
 
+/**
+ * The fields an owner's change can move, in the audit trail's words, and how each value reads there.
+ * @type {Array<[string, string, (v: any) => string]>}
+ */
+const CHANGED = [
+  ['name', 'name', (v) => v],
+  ['kind', 'kind', (v) => v],
+  ['provider', 'provider', (v) => v ?? 'none'],
+  ['target', 'target', (v) => v ?? 'none'],
+  ['gates', 'production gates', (v) => (v ? 'on' : 'off')],
+  ['observe_only', 'observe only', (v) => (v ? 'on' : 'off')],
+];
+
+/** What an owner's change moved, in words, or '' when it moved nothing the audit trail records (BRK-229). */
+function changedWords(before, after) {
+  return CHANGED.filter(([key]) => (before[key] ?? null) !== (after[key] ?? null))
+    .map(([key, words, read]) => `${words} ${read(before[key])} → ${read(after[key])}`)
+    .join('; ');
+}
+
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraEnvironmentsMethods = {
   initInfraEnvironments() {
@@ -176,6 +196,16 @@ export const infraEnvironmentsMethods = {
           now,
         )
         .one();
+      // Adding, changing, and removing one goes in the audit trail too (BRK-229): it's where a plan applies.
+      this.appendInfraAudit({
+        kind: 'environment',
+        repo,
+        environment: row.name,
+        environmentId: row.id,
+        by: 'owner',
+        outcome: 'added',
+        summary: `added by the owner: ${row.kind}, ${row.provider ?? 'no provider'} ${row.target ?? 'no target'}${row.observe_only ? ', observe only' : ''}`,
+      });
       return { status: 201, body: { environment: this.environmentOut(row) } };
     });
   },
@@ -234,6 +264,17 @@ export const infraEnvironmentsMethods = {
           row.id,
         )
         .one();
+      const moved = changedWords(row, updated);
+      if (moved)
+        this.appendInfraAudit({
+          kind: 'environment',
+          repo: updated.repo,
+          environment: updated.name,
+          environmentId: updated.id,
+          by: 'owner',
+          outcome: 'changed',
+          summary: `changed by the owner: ${moved}`,
+        });
       if (next.frozen === row.frozen) return { status: 200, body: { environment: this.environmentOut(updated) } };
       // One switch with DEPLOYS_PAUSED (BRK-236): the board's freeze already holds; then the pipeline's production
       // sets the variable, outside any transaction. Staging's freeze stops only plans, and says so.
@@ -265,6 +306,15 @@ export const infraEnvironmentsMethods = {
       if (row.frozen)
         throw new AgentError(`${row.name} is frozen: unfreeze it first, on the board, if you mean to remove it`, 409);
       this.sql.exec('DELETE FROM infra_environments WHERE id = ?', row.id);
+      this.appendInfraAudit({
+        kind: 'environment',
+        repo: row.repo,
+        environment: row.name,
+        environmentId: row.id,
+        by: 'owner',
+        outcome: 'removed',
+        summary: 'removed by the owner',
+      });
       return { status: 200, body: { removed: this.environmentOut(row) } };
     });
   },

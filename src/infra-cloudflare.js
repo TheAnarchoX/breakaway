@@ -57,12 +57,21 @@ const ENVELOPE = {
   container: { changes: ['scale', 'restart'], scales: 'maxInstances' },
   queue: { changes: ['scale'], scales: 'maxConcurrency' },
 };
+/**
+ * The kinds that decide what reaches a Worker: a route or a custom domain can send a hostname somewhere else, so every
+ * change to one asks the owner, whatever a repository's allow rules say (the policy's access guard; BRK-229).
+ */
+const ACCESS = ['route', 'custom-domain'];
+
 export const CLOUDFLARE_KINDS = Object.fromEntries(
   Object.entries(MANAGED).map(([k, settings]) => [
     k,
-    ENVELOPE[k]
-      ? { changes: [...BASE, ...ENVELOPE[k].changes], scales: ENVELOPE[k].scales, settings: [...settings] }
-      : { changes: [...BASE], settings: [...settings] },
+    {
+      ...(ENVELOPE[k]
+        ? { changes: [...BASE, ...ENVELOPE[k].changes], scales: ENVELOPE[k].scales, settings: [...settings] }
+        : { changes: [...BASE], settings: [...settings] }),
+      ...(ACCESS.includes(k) ? { access: true } : {}),
+    },
   ]),
 );
 
