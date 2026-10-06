@@ -680,7 +680,7 @@ export function initPlan(files, readTarget, { update = false } = {}) {
 }
 
 /** The checkout's top folder, or the folder the command runs in. */
-function topOf(cwd) {
+export function topOf(cwd) {
   try {
     return execFileSync('git', ['rev-parse', '--show-toplevel'], {
       cwd,

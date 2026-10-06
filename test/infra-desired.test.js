@@ -208,7 +208,12 @@ describe('reading the desired state from the default branch', () => {
     });
     expect(got.desired.desired.resources.map((r) => r.id)).toEqual(['svc-api', 'db-main']);
     expect((await one(String(staging.environment.id))).desired.environment).toBe('staging');
-    expect(gh.calls).toEqual([`/contents/${DESIRED_DIR}`, `/contents/${DESIRED_DIR}/staging.json`]);
+    // policy.json is the policy's (BRK-181), read from the same listing, and never an environment's.
+    expect(gh.calls).toEqual([
+      `/contents/${DESIRED_DIR}`,
+      `/contents/${DESIRED_DIR}/policy.json`,
+      `/contents/${DESIRED_DIR}/staging.json`,
+    ]);
     // The same commit reads nothing again.
     gh.calls = [];
     await sync();
