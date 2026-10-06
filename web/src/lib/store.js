@@ -1428,6 +1428,20 @@ export const actions = {
     loadRoutines();
     return result;
   },
+  /** Adds or changes a routine's signal trigger (BRK-196): the owner's, from the signed-in board only. */
+  async saveSignalTrigger(slug, body, message = 'Signal trigger saved.') {
+    const result = await change(() => api(`infra/runbooks/${enc(slug)}`, { method: 'PUT', body }), message);
+    loadRoutines();
+    return result;
+  },
+  async removeSignalTrigger(slug) {
+    const result = await change(
+      () => api(`infra/runbooks/${enc(slug)}`, { method: 'DELETE', body: {} }),
+      'Signal trigger removed.',
+    );
+    loadRoutines();
+    return result;
+  },
   async routineSettings(settings) {
     const message =
       settings.paused === undefined

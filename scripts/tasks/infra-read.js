@@ -270,12 +270,15 @@ function changeLines(change) {
 }
 
 /**
- * `infra plan <id>`: what it changes, what it costs, what else it touches, and whether it can be undone.
+ * `infra plan <id>`: what it changes, what it costs, what else it touches, and whether it can be undone. A preview
+ * (`infra check`, CLI-14) has no ID or state: it's what a plan would hold, kept nowhere.
  * @param {{ plan: any }} data
  */
 export function planText({ plan }) {
   const out = [
-    `${plan.id} · ${PLAN_STATE_LABELS[plan.state] ?? plan.state} · ${plan.environment.name} · ${plan.repo}`,
+    plan.id
+      ? `${plan.id} · ${PLAN_STATE_LABELS[plan.state] ?? plan.state} · ${plan.environment.name} · ${plan.repo}`
+      : `${plan.environment.name} · ${plan.repo} · the plan it would make, a preview the board doesn’t keep`,
     '',
   ];
   const row = (k, v) => v && out.push(`  ${k.padEnd(11)} ${v}`);
@@ -481,7 +484,7 @@ export async function infraRead(args, { get, repo, opts = {}, inRepo = () => tru
   }
 
   return bad(
-    `infra has no "${sub}"; it has ${['init', ...INFRA_READS].join(', ')}. npx breakaway help says what each does.`,
+    `infra has no "${sub}"; it has ${['init', 'check', ...INFRA_READS].join(', ')}. npx breakaway help says what each does.`,
   );
 }
 
