@@ -49,6 +49,7 @@ const SOURCE = {
   envelope: 'an envelope',
   incident: 'an incident',
   deploy: 'the deploy flow',
+  'short-lived': 'a short-lived environment',
 };
 
 /** What the audit trail says each of the plan's moves was. */
@@ -399,10 +400,11 @@ function Steps({ run, audit, names }) {
  */
 function Answer({ plan, env, outOfDate, onChange }) {
   const [busy, setBusy] = useState(/** @type {'approve' | 'reject' | null} */ (null));
+  // An approved plan can still be rejected until the executor starts applying it (BRK-183).
   const open = plan.state === 'draft' || plan.state === 'waiting';
-  if (!open) return null;
+  if (!open && plan.state !== 'approved') return null;
   const refused = plan.policy?.outcome === 'refused';
-  const canApprove = !env.frozen && !outOfDate && !refused && !env.observeOnly;
+  const canApprove = open && !env.frozen && !outOfDate && !refused && !env.observeOnly;
   const approve = async () => {
     const ok = await confirmDialog({
       title: `Approve this plan for ${env.name}?`,
@@ -448,7 +450,8 @@ function Answer({ plan, env, outOfDate, onChange }) {
   };
   return (
     <div class="infra-plan-answer">
-      {!canApprove && (
+      {!open && <p class="infra-plan-why-not">Approved: the board applies it next. Reject it to stop that.</p>}
+      {open && !canApprove && (
         <p class="infra-plan-why-not">
           {env.frozen ? (
             <>
