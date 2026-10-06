@@ -147,7 +147,7 @@ Anything nobody owns is flagged, and after a grace period a removal plan waits f
 
 ### Golden paths
 
-The owner's opinionated templates for a capability (a queue, a database, a new service) live in the repository; `npx breakaway infra add <template>` scaffolds the change into the checkout, and the agent opens an ordinary pull request (CLI-15).
+The owner's opinionated templates for a capability (a queue, a database, a new service) live in the repository; `npx breakaway infra add <template>` scaffolds the change into the checkout, and the agent opens an ordinary pull request (CLI-15). The repository's templates are `.github/breakaway-infra/templates/<name>/template.json`; breakaway ships one example, `queue` for Cloudflare, which a repository's template of the same name replaces. `infra add` writes files and nothing else: it never plans or applies.
 
 ### Connections
 
