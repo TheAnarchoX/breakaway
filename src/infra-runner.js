@@ -30,6 +30,21 @@ export const RUNNER_HEADER = 'Breakaway-Runner-Token';
 export const PLAN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 /** An environment's name, as its desired-state file is named (BRK-180). */
 const ENVIRONMENT = /^[a-z0-9][a-z0-9-]{0,39}$/u;
+
+/**
+ * The one GitHub environment every short-lived environment's run uses (BRK-242): its write token is there, since a
+ * short-lived environment's name is new for each task. No environment can be named this (RESERVED_FILES).
+ */
+export const SHORT_LIVED_GITHUB_ENVIRONMENT = 'short-lived';
+
+/**
+ * The GitHub environment an environment's run applies in, and the one its OIDC token must name: `short-lived` for
+ * every short-lived environment, otherwise the environment's own name. The provider's scope still keeps each apply
+ * inside its own environment's resources.
+ * @param {{ name: string, kind: string }} env
+ */
+export const runnerEnvironment = (env) => (env.kind === 'short-lived' ? SHORT_LIVED_GITHUB_ENVIRONMENT : env.name);
+
 /** The states a plan may be in when the board hands it to its run: approved, or applying once the board started it. */
 export const RUNNABLE_STATES = ['approved', 'applying'];
 /** What a run reports, in order: about to apply, then one of the two ends. */
