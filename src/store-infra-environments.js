@@ -28,6 +28,8 @@ const COLUMNS = {
   frozen_at: 'INTEGER',
   gates: 'INTEGER',
   observe_only: 'INTEGER NOT NULL DEFAULT 0',
+  // The part it plays in its repository's pipeline, `staging` or `production`, when the board made it for one (BRK-195).
+  pipeline: 'TEXT',
 };
 
 /** Only the owner adds, changes, or removes an environment: no `by`, or `owner`, is them. */
@@ -66,6 +68,8 @@ export const infraEnvironmentsMethods = {
       ...environmentView(row, { worker: install(this.env).worker, task }),
       waitingPlan: this.waitingInfraPlan(row.id),
       ...this.driftFor(row.id),
+      // What the deploy flow runs there (BRK-195): the live commit and version, and the last deploy.
+      deploys: this.environmentDeploys(row),
     };
   },
 

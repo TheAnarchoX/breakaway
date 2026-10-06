@@ -301,7 +301,11 @@ export const githubMethods = {
       return { connected: true, error: error.message };
     }
     this.setGhMeta('gh_empty', repo.slug, null);
-    const { deploySignals, ...automation } = this.applyGitHub(fetched, repo);
+    // A pipeline's staging and production environments (BRK-195), so its deploys have somewhere to be recorded.
+    this.ensurePipelineEnvironments(repo.slug);
+    const { deploySignals, deployChanges, ...automation } = this.applyGitHub(fetched, repo);
+    // Each finished Deploy, Promote, and Roll back on its environment's audit trail (BRK-195).
+    automation.errors.push(...this.recordDeploys(deployChanges, repo.slug).map((e) => `deploys: ${e}`));
     // Failed deploys and roll backs become signals on their environment (BRK-198), once the rows are stored.
     if (deploySignals.length)
       try {
@@ -571,7 +575,7 @@ export const githubMethods = {
     }
   },
 
-  /** Stores what was fetched, records events, and moves linked tasks. Synchronous: the deploy flow's signals come back to record. */
+  /** Stores what was fetched, records events, and moves linked tasks. Synchronous: the deploy flow's signals and finished deploys come back to record. */
   applyGitHub(
     { pulls, runs, commits, alerts, details, stored, deploys, releases, tags, workers = new Map(), patterns },
     repo,
@@ -593,6 +597,7 @@ export const githubMethods = {
     const closedAlerts = [];
     let shipped = [];
     let deploySignals = [];
+    let deployChanges = [];
 
     this.ctx.storage.transactionSync(() => {
       for (const p of pulls) {
@@ -799,7 +804,10 @@ export const githubMethods = {
 
       const changed = [];
       shipped = this.applyDeploys(deploys, event, slug, changed);
-      if (initialized) deploySignals = this.deploySignals(changed, slug);
+      if (initialized) {
+        deploySignals = this.deploySignals(changed, slug);
+        deployChanges = changed;
+      }
       if (isDefault) this.applyBackfill();
       if (releases)
         this.setGhMeta(
@@ -868,7 +876,7 @@ export const githubMethods = {
         errors.push(`${wid}: ${error.message}`);
       }
     }
-    return { events: events.length, errors, newAlerts, deploySignals };
+    return { events: events.length, errors, newAlerts, deploySignals, deployChanges };
   },
 
   /**
