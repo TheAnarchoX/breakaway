@@ -214,7 +214,7 @@ A board made with the Deploy to Cloudflare button has no install repository, so 
 
 The board checks that the token reaches its own Worker, then keeps it as a secret on that Worker (`TASKS_UPDATE_TOKEN`). It never shows it again and sends it only to Cloudflare. A token that can edit this Worker can also change its code, so give it no more scope than that. A board with an install repository can't turn this on: its repository updates it.
 
-**Check for updates, then update.** Press **Check for updates**. The board reads the release feed at `leavethepack.dev/releases.json`, the one call it makes that you didn't connect, and it sends nothing about itself. If the latest release in your channel is newer and checks out, the row says so and shows **Update to `<version>`**. Pressing it:
+**Check for updates, then update.** Press **Check for updates**. The board reads the release feed at `leavethepack.dev/releases.json`, one of two calls it makes that you didn't connect (the other is **Fetch today's rate** in Settings, on your press), and it sends nothing about itself. If the latest release in your channel is newer and checks out, the row says so and shows **Update to `<version>`**. Pressing it:
 
 1. Checks the release's signature, then its checksums, then that your version is new enough to update to it directly.
 2. Uploads the release as a new Worker version, with the bindings the running Worker has, so a binding you added by hand stays.

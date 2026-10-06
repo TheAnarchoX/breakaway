@@ -4,9 +4,19 @@
  * is the owner's, from the signed-in browser only (the worker refuses the bearer token, and an agent's `by` here).
  * Nothing stored is converted: the inventory converts on read, and a plan converts its cost change when it's made, so
  * the policy's limits, which are in this currency, compare like with like.
+ *
+ * Fetch today's rate (BRK-239) is the one call here to a service the owner didn't connect: it runs only on the owner's
+ * press in Settings, sends only the currency pair, stores nothing, and hands the rate back for the owner to save.
  */
 import { AgentError } from './store-agents.js';
-import { checkCurrency, DEFAULT_CURRENCY, PROVIDER_CURRENCY } from './infra-currency.js';
+import {
+  checkCurrency,
+  DEFAULT_CURRENCY,
+  PROVIDER_CURRENCY,
+  RATE_SOURCE,
+  rateSourceUrl,
+  readFetchedRate,
+} from './infra-currency.js';
 
 const KEY = 'infra_currency';
 
@@ -46,6 +56,33 @@ export const infraCurrencyMethods = {
       if (currency === PROVIDER_CURRENCY) this.setMeta(KEY, null);
       else this.setMeta(KEY, JSON.stringify({ currency, rate, setAt: new Date().toISOString() }));
       return { status: 200, body: { currency: this.currencyOut() } };
+    });
+  },
+
+  /** POST /api/infra/currency/rate: the owner pressed Fetch today's rate. Returns the rate; stores nothing. */
+  currencyRateApi(body = {}) {
+    return this.run(async () => {
+      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
+        throw new AgentError('only the owner fetches a rate, from Settings', 403);
+      const checked = checkCurrency({ currency: body.currency, rate: 1 });
+      if ('error' in checked) throw new AgentError(checked.error, 400);
+      const { currency } = checked.setting;
+      if (currency === PROVIDER_CURRENCY) throw new AgentError('US dollars need no rate', 400);
+      let answer;
+      try {
+        const res = await fetch(rateSourceUrl(currency), {
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.status === 404 || res.status === 422) answer = null;
+        else if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        else answer = await res.json();
+      } catch {
+        throw new AgentError(`couldn’t reach ${RATE_SOURCE.name}: try again, or type the rate yourself`, 502);
+      }
+      const read = readFetchedRate(answer, currency);
+      if ('error' in read) throw new AgentError(read.error, 422);
+      return { status: 200, body: { rate: read.rate } };
     });
   },
 };

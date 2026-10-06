@@ -1,7 +1,8 @@
 /**
  * Costs in the owner's currency (docs/specs/IDEA-19-architect.md, "Cost"; BRK-225, BRK-226). Platforms price in US
  * dollars; the owner picks one currency for the whole board in Settings, with a rate they set and change when they
- * like. The board never fetches a rate: that would be a call to a service the owner didn't connect.
+ * like. The board fetches a rate only when the owner presses Fetch today's rate (BRK-239, `RATE_SOURCE` below), and
+ * that only fills the field.
  *
  * Every estimate is kept as the provider gave it, in its own currency, and converted here, once, when the board shows
  * it or checks it against the policy's limits, which are in the owner's currency. Switching back to US dollars changes
@@ -139,4 +140,42 @@ function day(iso, now = new Date()) {
 export function rateWords(rate, now = new Date()) {
   if (!rate) return '';
   return `at 1 ${rate.from} = ${rate.rate} ${rate.to}${rate.setAt ? `, set ${day(rate.setAt, now)}` : ''}`;
+}
+
+/**
+ * Where Fetch today's rate in Settings reads a rate (BRK-239): Frankfurter, a free, keyless, public API of the
+ * European Central Bank's reference rates. The board calls it only when the owner presses the button, never on load, a
+ * schedule, or the cron; it sends only the pair (US dollars and the owner's currency), and the rate only fills the
+ * field: the owner still saves it.
+ */
+export const RATE_SOURCE = Object.freeze({
+  name: 'Frankfurter',
+  about: 'the European Central Bank’s reference rates',
+  site: 'https://frankfurter.dev',
+});
+
+/** The one URL a press fetches: today's rate from US dollars to `currency`. */
+export function rateSourceUrl(/** @type {string} */ currency) {
+  return `https://api.frankfurter.dev/v1/latest?base=${PROVIDER_CURRENCY}&symbols=${encodeURIComponent(currency)}`;
+}
+
+/**
+ * A fetched rate, for the owner to save or change: how much of `currency` one US dollar buys, on which day, and from
+ * where.
+ * @typedef {{ currency: string, rate: number, date: string | null, source: string, site: string }} FetchedRate
+ */
+
+/**
+ * Reads the source's answer for `currency`, or says why it holds no usable rate.
+ * @param {unknown} answer the source's JSON
+ * @param {string} currency
+ * @returns {{ ok: true, rate: FetchedRate } | { ok: false, error: string }}
+ */
+export function readFetchedRate(answer, currency) {
+  const o = /** @type {Record<string, any>} */ (answer && typeof answer === 'object' ? answer : {});
+  const rate = o.base === PROVIDER_CURRENCY && o.rates && typeof o.rates === 'object' ? o.rates[currency] : undefined;
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0 || rate > MAX_RATE)
+    return { ok: false, error: `${RATE_SOURCE.name} has no rate for ${currency}: type yours in the field` };
+  const date = typeof o.date === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(o.date) ? o.date : null;
+  return { ok: true, rate: { currency, rate, date, source: RATE_SOURCE.name, site: RATE_SOURCE.site } };
 }
