@@ -242,6 +242,14 @@ describe('incidents from the signals stream (BRK-197)', () => {
     expect((await incidents(`?environment=${production.id}`))[0].signals).toBe(4);
   });
 
+  it('ends the ping’s sentence once when the signal’s text already ends one (WEB-87)', async () => {
+    await record([signal({ environment: 'in-staging', resource: 'db-main', text: 'db-main is over its budget.' })]);
+    const [incident] = await incidents('?environment=in-staging&repo=widgets');
+    const task = await detail(incident.task.wid);
+    expect(task.pings[0].message).toContain('db-main is over its budget. ');
+    expect(task.pings[0].message).not.toContain('..');
+  });
+
   it('opens a quiet one in staging, and nothing for a warning, an unknown environment, or an old signal', async () => {
     const quiet = await record([signal({ environment: 'in-staging', resource: null, kind: 'alert' })]);
     expect(quiet).toEqual({ pushes: 0, started: 0 });

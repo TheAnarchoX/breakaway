@@ -793,6 +793,7 @@ export function FilterBar() {
       'agents',
       'routines',
       'roadmap',
+      'infrastructure',
       'mcp',
       'connections',
       'add-repo',

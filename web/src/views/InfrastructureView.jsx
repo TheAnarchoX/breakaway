@@ -507,7 +507,7 @@ export function InfrastructureView() {
       </div>
       {state.error && (
         <p class="field-error" role="alert">
-          {state.error}
+          Couldn’t load the environments. {state.error} Reload tries again.
         </p>
       )}
       {state.environments === null && !state.error && (
