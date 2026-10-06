@@ -515,6 +515,25 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && method === 'DELETE')
       return send(await s.environmentsDeleteApi(parts[2], { repo, ...body }));
   }
+  // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
+  if (parts[0] === 'infra' && parts[1] === 'inventory') {
+    const q = (name) => url.searchParams.get(name);
+    if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST')
+      return send(await s.inventoryRefreshApi(body));
+    if (parts.length === 2 && method === 'GET')
+      return send(
+        await s.inventoryApi({
+          repo: q('repo'),
+          environment: q('environment'),
+          provider: q('provider'),
+          kind: q('kind'),
+        }),
+      );
+    if (parts.length >= 3 && method === 'GET')
+      return send(
+        await s.inventoryResourceApi(parts.slice(2).join('/'), { repo: q('repo'), environment: q('environment') }),
+      );
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
