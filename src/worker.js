@@ -515,6 +515,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && method === 'DELETE')
       return send(await s.environmentsDeleteApi(parts[2], { repo, ...body }));
   }
+  // Desired state (BRK-180): read only, from each repository's default branch; it changes by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'desired' && parts.length <= 3 && method === 'GET') {
+    const repo = url.searchParams.get('repo');
+    return send(await (parts.length === 2 ? s.desiredApi({ repo }) : s.desiredOneApi(parts[2], { repo })));
+  }
   // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
   if (parts[0] === 'infra' && parts[1] === 'inventory') {
     const q = (name) => url.searchParams.get(name);
