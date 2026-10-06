@@ -61,6 +61,7 @@ import { infraAuditMethods } from './store-infra-audit.js';
 import { oauthMethods } from './store-oauth.js';
 import { infraEnvironmentsMethods } from './store-infra-environments.js';
 import { infraDeploysMethods } from './store-infra-deploys.js';
+import { infraPauseMethods } from './store-infra-pause.js';
 import { infraDesiredMethods } from './store-infra-desired.js';
 import { infraInventoryMethods } from './store-infra-inventory.js';
 import { infraLocksMethods } from './store-infra-locks.js';
@@ -1437,6 +1438,7 @@ Object.assign(
   infraAuditMethods,
   infraPlansMethods,
   infraDeploysMethods,
+  infraPauseMethods,
   infraCheckMethods,
   infraPolicyMethods,
   infraDriftMethods,

@@ -303,6 +303,8 @@ export const githubMethods = {
     this.setGhMeta('gh_empty', repo.slug, null);
     // A pipeline's staging and production environments (BRK-195), so its deploys have somewhere to be recorded.
     this.ensurePipelineEnvironments(repo.slug);
+    // Freeze and DEPLOYS_PAUSED as one switch (BRK-236): a change on either side reaches the other.
+    await this.syncDeployPause(client, repo.slug);
     const { deploySignals, deployChanges, ...automation } = this.applyGitHub(fetched, repo);
     // Each finished Deploy, Promote, and Roll back on its environment's audit trail (BRK-195).
     automation.errors.push(...this.recordDeploys(deployChanges, repo.slug).map((e) => `deploys: ${e}`));
@@ -1261,6 +1263,7 @@ export const githubMethods = {
               runs: runs(),
               repoUrl: `https://github.com/${repo.github}`,
               workers: pipeline,
+              frozen: this.productionFrozen(repo.slug),
             }),
           ),
       access: pullAccess(live?.repos?.[repo.slug] ?? null, {

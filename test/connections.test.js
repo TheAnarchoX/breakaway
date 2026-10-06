@@ -15,6 +15,7 @@ const ALL = {
   statuses: 'read',
   actions: 'write',
   deployments: 'read',
+  variables: 'write',
   vulnerability_alerts: 'read',
 };
 

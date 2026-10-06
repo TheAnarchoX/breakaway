@@ -453,6 +453,7 @@ export function appManifest(origin, repo, name = /** @type {string} */ (DEFAULTS
       deployments: 'read',
       vulnerability_alerts: 'read',
       issues: 'read', // routines that start on an opened or reopened issue
+      variables: 'write', // Freeze sets DEPLOYS_PAUSED, and the sync reads it
     },
     default_events: [
       'pull_request',
