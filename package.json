@@ -23,6 +23,7 @@
     "src/decision.js",
     "src/infra-desired.js",
     "src/infra-cloudflare.js",
+    "src/infra-cloudflare-analytics.js",
     "src/infra-cloudflare-plan.js",
     "src/infra-provider.js",
     "src/infra-providers.js",

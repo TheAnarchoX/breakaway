@@ -1,7 +1,18 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { NEVER_CALLED, checkToken, cloudflare, discover, rid } from '../src/infra-cloudflare.js';
-import { checkDiscovery, checkProvider } from '../src/infra-provider.js';
+import { COST_DATASETS, analyticsQuery, datasetQuery, readDataset } from '../src/infra-cloudflare-analytics.js';
+import {
+  COST_NOTE,
+  NEVER_CALLED,
+  PRICES,
+  checkToken,
+  cloudflare,
+  cost,
+  discover,
+  priceResource,
+  rid,
+} from '../src/infra-cloudflare.js';
+import { checkCosts, checkDiscovery, checkProvider } from '../src/infra-provider.js';
 import { providers } from '../src/infra-providers.js';
 import { scopeDiscovery } from '../src/infra-inventory.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -18,6 +29,8 @@ import {
   QUEUE_JOBS,
   cloudflareAnswers,
   cloudflareApi,
+  cloudflareUsage,
+  cloudflareUsageRows,
 } from './cloudflare-fixture.js';
 
 const TOKEN = 'cf-read-token-for-tests-only';
@@ -232,6 +245,204 @@ describe('the Cloudflare provider’s discover (BRK-189)', () => {
   });
 });
 
+describe('the Cloudflare provider’s cost (BRK-193)', () => {
+  /** The fixture's usage, priced by hand: 7 days scaled to 30, storage at its most, before included usage. */
+  const scale = 30 / 7;
+  const expected = {
+    [rid('worker', 'acme-api')]: (0.7 * 0.3 + 3.5 * 0.02) * scale,
+    [rid('worker', 'acme-auth')]: (0.07 * 0.3 + 0.07 * 0.02) * scale,
+    [rid('worker', 'acme-rooms')]: 0,
+    [`durable-object:${DO_ROOMS}`]: (0.14 * 0.15 + 0.175 * 12.5) * scale + 2 * 0.2,
+    [`durable-object:${DO_COUNTER}`]: 0.007 * 0.15 * scale,
+    [`d1:${D1_ID}`]: (70 * 0.001 + 0.7 * 1) * scale + 4 * 0.75,
+    [`kv:${KV_CACHE}`]: (2.1 * 0.5 + 0.07 * 5) * scale + 1 * 0.5,
+    [`kv:${KV_SESSIONS}`]: (0.007 * 0.5 + 0.0007 * 5 + 0.0007 * 5) * scale,
+    'r2:acme-files': (0.07 * 4.5 + 0.7 * 0.36) * scale + 100 * 0.015,
+    [`queue:${QUEUE_JOBS}`]: 0.21 * 0.4 * scale,
+    // 2 basic instances (1 GiB, 4 GB) running all month.
+    [`container:${CONTAINER}`]: 2 * (1 * 0.0000025 + 4 * 0.00000007) * 30 * 86_400,
+    'route:0000000000000000000000000000d101': 0,
+    'custom-domain:0000000000000000000000000000d201': 0,
+  };
+
+  it('gives each resource a monthly estimate in US dollars from a recorded week of usage', async () => {
+    const { ctx } = context();
+    const costs = checkCosts(cloudflare, await cost(ctx));
+    expect(costs.map((c) => c.resource).sort()).toEqual(Object.keys(expected).sort());
+    for (const c of costs) {
+      expect(c.amount, c.resource).toBeCloseTo(expected[c.resource], 3);
+      expect(c).toMatchObject({ currency: 'USD', estimate: true });
+      expect(c.note.startsWith(COST_NOTE)).toBe(true);
+    }
+    const by = Object.fromEntries(costs.map((c) => [c.resource, c]));
+    expect(by[`container:${CONTAINER}`].note).toMatch(/CPU isn’t counted/u);
+    expect(by['route:0000000000000000000000000000d101'].note).toMatch(/part of its Worker’s/u);
+    expect(COST_NOTE).toMatch(/across the whole account, not by resource/u);
+  });
+
+  it('asks one query per dataset for the whole environment, over the last 7 days, and reads nothing else', async () => {
+    const { ctx, fetch } = context();
+    const resources = (await discover(ctx)).resources;
+    fetch.calls.length = 0;
+    await cost({ ...ctx, resources });
+    const posts = fetch.calls.filter((c) => c.method === 'POST');
+    expect(posts.every((c) => c.path === '/graphql')).toBe(true);
+    expect(fetch.calls.every((c) => c.method === 'POST' || c.path.startsWith('/accounts?'))).toBe(true);
+    expect(posts).toHaveLength(Object.keys(COST_DATASETS).length);
+    for (const { body } of posts) {
+      expect(body.query).toMatch(/^query /u);
+      expect(body.variables.account).toBe(ACCOUNT);
+      const days = (Date.parse(body.variables.to) - Date.parse(body.variables.from)) / 86_400_000;
+      expect(days).toBeGreaterThanOrEqual(7);
+      expect(days).toBeLessThan(7.01);
+    }
+    const workers = posts.find((c) => c.body.query.includes('workersInvocationsAdaptive('));
+    expect(workers.body.variables.keys.sort()).toEqual(['acme-api', 'acme-auth', 'acme-rooms']);
+    const kv = posts.find((c) => c.body.query.includes('kvOperationsAdaptiveGroups('));
+    expect(kv.body.variables.keys.sort()).toEqual([KV_CACHE, KV_SESSIONS].sort());
+  });
+
+  it('skips a dataset that has no resources in the environment', async () => {
+    const { ctx, fetch } = context();
+    await cost({ ...ctx, resources: [{ id: rid('worker', 'acme-api'), kind: 'worker', name: 'acme-api' }] });
+    const posts = fetch.calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body.query).toContain('workersInvocationsAdaptive(');
+  });
+
+  it('leaves out a dataset Cloudflare won’t answer, and says so on the resources it prices', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage({ ...cloudflareUsageRows(), durableObjectsStorageGroups: 'unknown field' });
+    const { ctx } = context(answers);
+    const by = Object.fromEntries((await cost(ctx)).map((c) => [c.resource, c]));
+    const rooms = by[`durable-object:${DO_ROOMS}`];
+    expect(rooms.amount).toBeCloseTo(expected[`durable-object:${DO_ROOMS}`] - 2 * 0.2, 3);
+    expect(rooms.note).toMatch(/Not counted, since Cloudflare’s analytics didn’t return it: stored data\./u);
+    expect(by[`d1:${D1_ID}`].note).not.toMatch(/Not counted/u);
+  });
+
+  it('stops on a 429 or a token without Account Analytics Read, so the store keeps the last estimate', async () => {
+    for (const status of [429, 403]) {
+      const answers = cloudflareAnswers();
+      answers['/graphql'] = status;
+      const { ctx } = context(answers);
+      const error = await cost(ctx).catch((e) => e);
+      expect(error.status).toBe(status);
+      if (status === 403) expect(error.permission).toBe('Account Analytics Read');
+    }
+  });
+
+  it('prices Infrequent Access, a jurisdiction’s bucket name, and a custom container size', async () => {
+    const { ctx, fetch } = context();
+    const resources = [
+      {
+        id: 'r2:acme-cold',
+        kind: 'r2',
+        name: 'acme-cold',
+        attrs: { storageClass: 'InfrequentAccess', jurisdiction: 'eu' },
+      },
+      {
+        id: 'container:c2',
+        kind: 'container',
+        name: 'acme-big',
+        attrs: { instanceType: { vcpu: 1, memory_mib: 3072, disk_mb: 10_000 }, active: 1 },
+      },
+      { id: 'container:c3', kind: 'container', name: 'acme-odd', attrs: { instanceType: 'mystery', active: 1 } },
+    ];
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage({
+      ...cloudflareUsageRows(),
+      r2OperationsAdaptiveGroups: [
+        { sum: { requests: 70_000 }, dimensions: { bucketName: 'eu_acme-cold', actionType: 'PutObject' } },
+        { sum: { requests: 70_000 }, dimensions: { bucketName: 'eu_acme-cold', actionType: 'HeadObject' } },
+      ],
+      r2StorageAdaptiveGroups: [
+        { max: { payloadSize: 10_000_000_000, metadataSize: 0 }, dimensions: { bucketName: 'eu_acme-cold' } },
+      ],
+    });
+    const run = context(answers);
+    const by = Object.fromEntries((await cost({ ...run.ctx, resources })).map((c) => [c.resource, c]));
+    expect(by['r2:acme-cold'].amount).toBeCloseTo((0.07 * 9 + 0.07 * 0.9) * scale + 10 * 0.01, 3);
+    expect(by['r2:acme-cold'].note).toMatch(/retrieval isn’t counted/u);
+    expect(by['container:c2'].amount).toBeCloseTo((3 * 0.0000025 + 10 * 0.00000007) * 30 * 86_400, 3);
+    expect(by['container:c3']).toMatchObject({ amount: 0 });
+    expect(by['container:c3'].note).toMatch(/isn’t in the price table/u);
+    expect(fetch.calls).toHaveLength(0);
+  });
+
+  it('prices one resource from its usage alone, for a plan’s estimate', () => {
+    const worker = { id: rid('worker', 'acme-new'), kind: 'worker', name: 'acme-new' };
+    expect(priceResource(worker)).toEqual({ amount: 0, notes: [] });
+    expect(priceResource(worker, { requests: 1_000_000 }, 1).amount).toBeCloseTo(0.3, 6);
+    const box = {
+      id: 'container:new',
+      kind: 'container',
+      name: 'acme-box',
+      attrs: { instanceType: 'lite', active: 1 },
+    };
+    expect(priceResource(box).amount).toBeCloseTo((0.25 * 0.0000025 + 2 * 0.00000007) * 30 * 86_400, 6);
+  });
+
+  it('keeps its price table as data, with where and when each price was read', () => {
+    expect(PRICES.currency).toBe('USD');
+    expect(PRICES.read).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
+    for (const product of ['worker', 'durableObject', 'd1', 'kv', 'r2', 'queue', 'container'])
+      expect(PRICES[product].source).toMatch(/^https:\/\/developers\.cloudflare\.com\//u);
+  });
+
+  it('estimates nothing for an environment with nothing in it, and asks for a token first', async () => {
+    const { ctx, fetch } = context();
+    expect(await cost({ ...ctx, resources: [] })).toEqual([]);
+    expect(fetch.calls).toHaveLength(0);
+    await expect(cost({ ...ctx, token: undefined })).rejects.toThrow(/no read-only token/u);
+  });
+});
+
+describe('Cloudflare’s GraphQL analytics (BRK-193, for BRK-191)', () => {
+  it('reads one dataset for some resources over a window, summed by resource and split by its action', async () => {
+    const { ctx, fetch } = context();
+    const from = new Date('2026-09-29T00:00:00Z');
+    const to = new Date('2026-10-06T00:00:00Z');
+    const usage = await readDataset(ctx, {
+      account: ACCOUNT,
+      dataset: COST_DATASETS.kvOperations,
+      keys: [KV_CACHE, KV_SESSIONS],
+      from,
+      to,
+    });
+    expect(Object.fromEntries(usage)).toEqual({
+      [KV_CACHE]: { 'requests:read': 2_100_000, 'requests:write': 70_000 },
+      [KV_SESSIONS]: { 'requests:read': 7_000, 'requests:delete': 700, 'requests:list': 700 },
+    });
+    expect(fetch.calls).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        path: '/graphql',
+        auth: `Bearer ${TOKEN}`,
+        body: {
+          query: datasetQuery(COST_DATASETS.kvOperations),
+          variables: { account: ACCOUNT, from: '2026-09-29', to: '2026-10-06', keys: [KV_CACHE, KV_SESSIONS] },
+        },
+      }),
+    ]);
+    expect(datasetQuery(COST_DATASETS.r2Storage)).toContain(
+      'r2StorageAdaptiveGroups(limit: 10000, filter: { datetime_geq: $from, datetime_leq: $to, bucketName_in: $keys })',
+    );
+  });
+
+  it('only sends queries, and says what Cloudflare said about one it won’t answer', async () => {
+    const { ctx } = context();
+    await expect(analyticsQuery(ctx, 'mutation { x }', {})).rejects.toThrow(/only read/u);
+    await expect(analyticsQuery(ctx, 'query { viewer { nothing } }', {})).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('unknown field'),
+    });
+    await expect(analyticsQuery({ ...ctx, token: undefined }, 'query { x }', {})).rejects.toThrow(
+      /no read-only token/u,
+    );
+  });
+});
+
 describe('the Cloudflare provider’s token (BRK-189, for BRK-194)', () => {
   it('declares a read-only token with BRK-188’s permissions, and is in the Worker’s registry', () => {
     expect(() => checkProvider(cloudflare)).not.toThrow();
@@ -303,13 +514,19 @@ describe('discovering into the inventory (BRK-189)', () => {
     const inventory = await (await api('infra/inventory?provider=cloudflare')).json();
     expect(inventory.resources.map((r) => r.id)).toContain(`d1:${D1_ID}`);
     expect(inventory.resources.every((r) => r.owner.environment === 'production')).toBe(true);
-    expect(inventory.resources.every((r) => r.health === null && r.cost === null)).toBe(true);
+    expect(inventory.resources.every((r) => r.health === null)).toBe(true);
+    const api_ = inventory.resources.find((r) => r.id === 'worker:acme-api');
+    expect(api_.cost).toMatchObject({ currency: 'USD', perMonth: true, estimate: true });
+    expect(api_.cost.amount).toBeCloseTo((0.7 * 0.3 + 3.5 * 0.02) * (30 / 7), 3);
+    expect(api_.cost.note).toMatch(/not by resource/u);
     expect(inventory.relations).toContainEqual(
       expect.objectContaining({ from: 'worker:acme-api', to: `d1:${D1_ID}`, kind: 'uses' }),
     );
     const stored = JSON.stringify(inventory);
     for (const value of [...NEVER_KEPT, TOKEN, 'acme-other']) expect(stored).not.toContain(value);
-    for (const call of cf.calls) expect(call.method).toBe('GET');
+    for (const call of cf.calls) expect(call.method === 'GET' || call.path === '/graphql').toBe(true);
+    // Cost reads what discover just found, so nothing is discovered twice.
+    expect(cf.calls.filter((c) => c.path.endsWith('/workers/scripts/acme-api/settings'))).toHaveLength(1);
 
     const row = (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
     expect(row.provider.discovery).toMatchObject({ ok: true });

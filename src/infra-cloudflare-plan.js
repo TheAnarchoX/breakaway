@@ -25,11 +25,15 @@ import {
   API,
   BINDING_TARGETS,
   CloudflareError,
+  PRICES,
   accountOf,
   bindingTarget,
   cloudflare,
+  cost,
   discover,
+  priceResource,
   reader,
+  round,
 } from './infra-cloudflare.js';
 
 /** @typedef {import('./infra-provider.js').ProviderContext} ProviderContext */
@@ -450,6 +454,40 @@ async function existsOnAccount(cf, a, kind, name) {
 }
 
 /**
+ * The context an apply or rollback calls Cloudflare with: the environment's write token for every call, reads too.
+ * Only the apply runner sets `writeToken` (CLI-12); the board never does, so without it nothing is sent.
+ * @param {ProviderContext} ctx
+ * @param {string} step
+ * @returns {ProviderContext}
+ */
+function withWriteToken(ctx, step) {
+  if (typeof ctx?.writeToken !== 'string' || !ctx.writeToken)
+    throw new Error(
+      `cloudflare ${step} needs ${ctx?.environment ?? 'the environment'}’s write token, which only the apply runner holds: nothing was sent to Cloudflare`,
+    );
+  return { ...ctx, token: ctx.writeToken };
+}
+
+/**
+ * What a resource would cost a month once `change` is applied (BRK-178's plans read it): a new resource from its
+ * settings alone, since it has no usage yet; a changed one from its last week of use (BRK-193's `cost`) with its new
+ * settings. null for a delete or a restart, which the plan prices itself.
+ * @param {ProviderContext} ctx
+ * @param {Change} change
+ * @returns {Promise<import('./infra-provider.js').Cost | null>}
+ */
+export async function estimate(ctx, change) {
+  const r = { id: change.resource, kind: change.kind, name: change.name, attrs: change.after ?? {} };
+  if (change.op === 'create') {
+    const { amount } = priceResource(r);
+    return { resource: r.id, amount: round(amount), currency: PRICES.currency, estimate: true };
+  }
+  if (change.op !== 'update' && change.op !== 'scale') return null;
+  const [priced] = await cost({ ...ctx, resources: [r] });
+  return priced ?? null;
+}
+
+/**
  * A writer for one apply: each call made with the write token, stopping on a 429 and saying which permission a 403
  * wants.
  * @param {ProviderContext} ctx
@@ -531,6 +569,7 @@ function workerSettings(after, live, resolve) {
  */
 export async function apply(ctx, p) {
   checkApply(cloudflare, ctx, p);
+  ctx = withWriteToken(ctx, 'apply');
   if (p.changes.length === 0) return { ok: true, steps: [] };
   const found = await discover(ctx, { live: true });
   const live = /** @type {LiveAccount} */ (found.live);
@@ -706,6 +745,7 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
  */
 export async function rollbackWorker(ctx, { worker, versions, force = false }) {
   if (ctx?.observeOnly) throw new Error(`cloudflare rollback: ${ctx.environment} is observe only`);
+  ctx = withWriteToken(ctx, 'rollback');
   if (!Array.isArray(versions) || versions.length === 0)
     throw new Error(`there is no earlier version of ${worker} to roll back to`);
   const account = await accountOf(reader(ctx), ctx);

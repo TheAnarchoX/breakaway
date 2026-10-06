@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cloudflare, rid } from '../src/infra-cloudflare.js';
-import { MANAGED, PlanRefused, apply, plan, rollbackWorker } from '../src/infra-cloudflare-plan.js';
+import { MANAGED, PlanRefused, apply, estimate, plan, rollbackWorker } from '../src/infra-cloudflare-plan.js';
 import { checkApplyResult, checkPlan, desiredFrom } from '../src/infra-provider.js';
 import { keptDiff } from '../src/infra-plans.js';
 import { ACCOUNT, D1_ID, KV_CACHE, KV_SESSIONS, ZONE, cloudflareAnswers, cloudflareApi } from './cloudflare-fixture.js';
@@ -105,7 +105,7 @@ function account() {
   const api = Object.assign(
     async (input, init = {}) => {
       const method = init.method ?? 'GET';
-      if (method === 'GET') {
+      if (method === 'GET' || String(input).endsWith('/graphql')) {
         const res = await reads(input, init);
         const last = reads.calls.at(-1);
         calls.push({ ...last });
@@ -148,6 +148,9 @@ const ctxFor = (fetch, token = READ, extra = {}) => ({
   ...extra,
 });
 
+/** The context the apply runner calls with (CLI-12): the board's read token and the environment's write token. */
+const runner = (fetch, extra = {}) => ctxFor(fetch, READ, { writeToken: WRITE, ...extra });
+
 /** What the account runs, as a desired state: planning it changes nothing. */
 async function current(fetch) {
   return desiredFrom(await cloudflare.discover(ctxFor(fetch)));
@@ -171,9 +174,9 @@ providerContract(
   async () => {
     const fetch = account();
     const desired = await changed(fetch);
-    return { provider: cloudflare, ctx: ctxFor(fetch, WRITE), desired, since: '2026-10-01T00:00:00Z' };
+    return { provider: cloudflare, ctx: runner(fetch), desired, since: '2026-10-01T00:00:00Z' };
   },
-  { notYet: { observe: 'BRK-191', cost: 'BRK-193', events: 'BRK-191' } },
+  { notYet: { observe: 'BRK-191', events: 'BRK-191' } },
 );
 
 describe('the Cloudflare provider’s plan (BRK-192)', () => {
@@ -324,7 +327,7 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     const fetch = account();
     const desired = await changed(fetch);
     const p = keptDiff(await plan(ctxFor(fetch), desired));
-    const result = checkApplyResult(cloudflare, p, await apply(ctxFor(fetch, WRITE), p));
+    const result = checkApplyResult(cloudflare, p, await apply(runner(fetch), p));
     expect(result).toEqual({
       ok: true,
       steps: [
@@ -354,10 +357,21 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     expect((await plan(ctxFor(fetch), desired)).changes).toEqual([]);
   });
 
-  it('is refused with only the board’s read token: Cloudflare answers 403, and nothing after it runs', async () => {
+  it('is refused before any call without the runner’s write token, and the board’s read token can’t write', async () => {
     const fetch = account();
     const p = await plan(ctxFor(fetch), await changed(fetch));
-    const result = checkApplyResult(cloudflare, p, await apply(ctxFor(fetch, READ), p));
+    const before = fetch.calls.length;
+    // The board never sets writeToken: an apply that reached the provider there sends nothing.
+    await expect(apply(ctxFor(fetch, READ), p)).rejects.toThrow(/only the apply runner holds: nothing was sent/u);
+    await expect(
+      rollbackWorker(ctxFor(fetch, READ), {
+        worker: 'acme-api',
+        versions: [{ id: 'ver-acme-api-2', percentage: 100 }],
+      }),
+    ).rejects.toThrow(/only the apply runner holds/u);
+    expect(fetch.calls.length).toBe(before);
+    // A read-only token in the runner's secret by mistake: Cloudflare's 403 stops the first write.
+    const result = checkApplyResult(cloudflare, p, await apply(runner(fetch, { writeToken: READ }), p));
     expect(result.ok).toBe(false);
     expect(result.steps).toEqual([
       {
@@ -374,7 +388,7 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     const fetch = account();
     const p = await plan(ctxFor(fetch), await changed(fetch));
     const before = fetch.calls.length;
-    await expect(apply(ctxFor(fetch, WRITE, { observeOnly: true }), p)).rejects.toThrow(/observe only/u);
+    await expect(apply(runner(fetch, { observeOnly: true }), p)).rejects.toThrow(/observe only/u);
     expect(fetch.calls.length).toBe(before);
   });
 
@@ -382,7 +396,7 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     const fetch = account();
     const p = await plan(ctxFor(fetch), await changed(fetch));
     fetch.answers[`${a}/workers/scripts/acme-api/settings`].result.compatibility_date = '2026-09-15';
-    const result = checkApplyResult(cloudflare, p, await apply(ctxFor(fetch, WRITE), p));
+    const result = checkApplyResult(cloudflare, p, await apply(runner(fetch), p));
     expect(result.ok).toBe(false);
     expect(result.steps.at(-1)).toMatchObject({
       resource: W('acme-api'),
@@ -408,7 +422,7 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
       `update ${W('acme-auth')}`,
       `delete kv:${KV_SESSIONS}`,
     ]);
-    expect((await apply(ctxFor(fetch, WRITE), p)).ok).toBe(true);
+    expect((await apply(runner(fetch), p)).ok).toBe(true);
     expect(fetch.writes()).toEqual([
       `POST ${a}/workers/workers`,
       `PUT ${a}/workers/scripts/acme-new/schedules`,
@@ -421,11 +435,11 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
 
   it('rolls a Worker back with a deployment of its earlier versions, forced only when asked', async () => {
     const fetch = account();
-    await rollbackWorker(ctxFor(fetch, WRITE), {
+    await rollbackWorker(runner(fetch), {
       worker: 'acme-api',
       versions: [{ id: 'ver-acme-api-2', percentage: 100 }],
     });
-    await rollbackWorker(ctxFor(fetch, WRITE), {
+    await rollbackWorker(runner(fetch), {
       worker: 'acme-api',
       versions: [{ id: 'ver-acme-api-2', percentage: 100 }],
       force: true,
@@ -439,7 +453,23 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
       versions: [{ version_id: 'ver-acme-api-2', percentage: 100 }],
     });
     await expect(
-      rollbackWorker(ctxFor(fetch, WRITE, { observeOnly: true }), { worker: 'acme-api', versions: [] }),
+      rollbackWorker(runner(fetch, { observeOnly: true }), { worker: 'acme-api', versions: [] }),
     ).rejects.toThrow(/observe only/u);
+  });
+});
+
+describe('the Cloudflare provider’s estimate (BRK-192)', () => {
+  it('prices a new resource from its settings, a changed one from its use, and nothing for a delete', async () => {
+    const fetch = account();
+    const ctx = ctxFor(fetch);
+    const p = checkPlan(cloudflare, await plan(ctx, await changed(fetch)));
+    const [kv, worker] = p.changes;
+    expect(await estimate(ctx, kv)).toEqual({ resource: 'kv:acme-flags', amount: 0, currency: 'USD', estimate: true });
+    const priced = await estimate(ctx, worker);
+    expect(priced).toMatchObject({ resource: W('acme-api'), currency: 'USD', estimate: true });
+    expect(priced.amount).toBeGreaterThan(0);
+    expect(fetch.calls.some((c) => c.path === '/graphql')).toBe(true);
+    expect(await estimate(ctx, { ...worker, op: 'delete', after: null })).toBeNull();
+    expect(typeof cloudflare.estimate).toBe('function');
   });
 });
