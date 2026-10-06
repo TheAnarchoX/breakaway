@@ -84,6 +84,7 @@ import {
   removedRepoByHand,
   unknownSubcommand,
 } from './tasks/cli.js';
+import { InfraReadError, infraRead } from './tasks/infra-read.js';
 import { keepLines } from './tasks/keep.js';
 import { checkMcp, headersRepo, mcpAgent, mcpConfig, mcpHeaders, mcpLines } from './tasks/mcp.js';
 import {
@@ -408,10 +409,22 @@ Deploy and release flows   (no board needed: run in the checkout of the reposito
                          example. Never overwrites a file  [--update] replaces what it rendered before  [--dry-run]
   pipeline check         say whether the config is sound and the workflows are what it renders now (exits 1 if not)
 
-Infrastructure   (no board needed: run in the checkout of the repository whose infrastructure the board applies)
+Infrastructure   (init needs no board: run it in the checkout of the repository whose infrastructure the board applies)
   infra init             render .github/workflows/breakaway-infra.yml, the workflow that applies one approved plan to one
                          of the environments in .github/breakaway-infra/; the board starts it, agents never do
                          [--update] replaces what it rendered before  [--dry-run]  [--branch <name>] (default: origin's)
+  infra                  this repository's environments: kind, provider, target, frozen, observe only, a plan waiting
+                         (read only, like every infra read below; approving, rejecting, and freezing are the owner's,
+                         on the board)
+  infra show <environment>   one environment: its desired state, drift, and inventory, with what each resource uses
+  infra plans            plans, newest first  [--environment <name>] [--state draft|waiting|approved|rejected|applying|
+                         applied|failed|"rolled back"] [--before <id>] [--limit <n>]
+  infra plan <id>        one plan: what changes, the cost change, the policy's answer, what else it touches, and
+                         whether it can be undone
+  infra signals          what the board heard, newest first: health, alerts, and cost  [--environment <name>]
+                         [--resource <id>] [--kind health|alert|cost] [--level info|warning|critical] [--source <id>]
+                         [--before <id>] [--limit <n>]  [--days] the daily summaries  [--all] every repository's
+  infra incidents        open incidents: tasks tagged +incident  [--status completed|all] [--all] every repository's
 
 Repositories
   The checkout's repository is the one its origin remote names (git remote get-url origin), matched
@@ -487,6 +500,7 @@ const FLAGS = new Set([
   'package',
   'check',
   'headers',
+  'days',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline', 'copies']);
@@ -1398,6 +1412,24 @@ const commands = {
         ),
       ].join('\n'),
     );
+  },
+  async infra() {
+    // Architect's reads (CLI-13): every request is a GET, so an agent's token reads and never writes.
+    const { slug } = await checkoutRepo();
+    let result;
+    try {
+      result = await infraRead(args, {
+        get: (path) => call('GET', path, undefined, { raw: true }),
+        repo: slug,
+        opts,
+        inRepo: (t) => !slug || inRepo(t, slug, repoContext.registry),
+      });
+    } catch (error) {
+      if (!(error instanceof InfraReadError)) throw error;
+      if (opts.json) console.log(JSON.stringify({ error: error.message }, null, 2));
+      fail(error.message);
+    }
+    print(result.data, () => result.text);
   },
   async specs() {
     // A repository's specs (IDEA-31), read from its default branch on GitHub: the checkout's unless --repo names another.
