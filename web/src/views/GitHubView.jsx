@@ -45,6 +45,7 @@ import { ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
 import { PackageRelease, ReleaseSetup } from '../components/PackageRelease.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
+import { RunWorkflow } from '../components/RunWorkflow.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -163,7 +164,7 @@ function duration(r) {
 }
 
 /** @param {Record<string, any>} props */
-function Runs({ runs }) {
+function Runs({ runs, view }) {
   const [all, setAll] = useState(false);
   // Running first, then failures, then the rest, newest first within each.
   const order = (r) =>
@@ -172,6 +173,7 @@ function Runs({ runs }) {
   const shown = all ? sorted : sorted.slice(0, 12);
   return (
     <>
+      <RunWorkflow view={view} />
       {runs.length ? (
         <ul class="gh-runs">
           {shown.map((r) => {
@@ -879,7 +881,7 @@ export function GitHubView() {
             {tab === 'deploys' && <Deploys deploys={d.deploys} releases={d.releases} tags={d.tags} />}
             {tab === 'packages' && <Packages versions={d.packages} several={d.all && multiRepo.value} />}
             {tab === 'completed' && <ClosedPrs prs={d.closed} />}
-            {tab === 'runs' && <Runs runs={d.runs} />}
+            {tab === 'runs' && <Runs runs={d.runs} view={d} />}
             {tab === 'commits' && <Commits commits={d.commits} />}
           </div>
         </div>
@@ -889,8 +891,8 @@ export function GitHubView() {
           {plural(d.open.length + d.closed.length, 'pull request')} kept · the board writes to GitHub only when you
           press{' '}
           {d.pipeline
-            ? `Update branch, Merge, Merge when green, Promote, Roll back${d.packages.some((v) => v.release) ? ', or Release' : ''}`
-            : 'Update branch, Merge, or Merge when green'}
+            ? `Update branch, Merge, Merge when green, Run workflow, Promote, Roll back${d.packages.some((v) => v.release) ? ', or Release' : ''}`
+            : 'Update branch, Merge, Merge when green, or Run workflow'}
           {settings && ', or when your settings in this browser say so'}
         </p>
       )}

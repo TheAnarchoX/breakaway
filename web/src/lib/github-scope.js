@@ -122,7 +122,7 @@ export function githubTabs(view) {
   if (view.packages?.length) tabs.push({ id: 'packages', label: 'Packages', count: view.packages.length });
   tabs.push(
     { id: 'completed', label: 'Recently completed', count: view.closed?.length ?? 0 },
-    { id: 'runs', label: 'CI runs', count: view.runs?.length ?? 0 },
+    { id: 'runs', label: 'Runs', count: view.runs?.length ?? 0 },
     { id: 'commits', label: view.branch ? `Commits on ${view.branch}` : 'Commits', count: view.commits?.length ?? 0 },
   );
   return tabs;
