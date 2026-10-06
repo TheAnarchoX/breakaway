@@ -1,6 +1,6 @@
 # BRK-220 · Make routines with an agent
 
-Task: BRK-220 on the board (a general agent started from the owner's prompt) · Status: approved (5 Oct 2026, by the owner)
+Task: BRK-220 on the board (a general agent started from the owner's prompt) · Status: built (#280, #283, #287, #288, #290; approved 5 Oct 2026, by the owner)
 
 ## Problem
 Making a routine today means filling in the Routines view's form: a slug, a name, the prompt, a done when, a horizon, a schedule as cron text, GitHub events, caps, and whether a trigger starts a run by itself or waits. The owner knows what they want a routine to do, but turning that into the right fields, and deciding whether it's one routine or three, is work they'd rather hand off.
