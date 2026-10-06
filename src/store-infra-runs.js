@@ -4,7 +4,8 @@
  *
  * Approving a plan queues its run (store-infra-approvals.js), and the tick starts it: the board re-checks the plan
  * (still approved, its digest still its diff's, not out of date) and its environment (not frozen, not observe only),
- * checks the runner's workflow is in the repository, takes the environment's lock (BRK-179), and starts
+ * checks the runner's workflow is in the repository and that the GitHub environment it applies in lets only the default
+ * branch deploy (BRK-250), takes the environment's lock (BRK-179), and starts
  * `.github/workflows/breakaway-infra.yml` on the default branch through the GitHub App's workflow_dispatch. A run that
  * can't start yet stays queued and says why; one waiting on another's lock starts when that lock is released.
  *
@@ -32,6 +33,7 @@ import {
   RUN_LOCK_MINUTES,
   RunRefused,
   checkRunClaims,
+  deployBranchProblem,
   healthVerdict,
   rollbackDiff,
   runView,
@@ -242,6 +244,8 @@ export const infraRunsMethods = {
           : `GitHub answered ${error.status} for ${RUNNER_WORKFLOW}: ${error.reason ?? error.message}`,
       );
     }
+    const branchProblem = await this.deployBranchCheck(client, githubEnvironmentOf(row, env), branch);
+    if (branchProblem) return wait(branchProblem);
     let taken;
     try {
       taken = this.takeEnvironmentLock(env.id, { holder: `executor:${id}`, plan: id, minutes: RUN_LOCK_MINUTES });
@@ -274,6 +278,37 @@ export const infraRunsMethods = {
       if (!(error instanceof AgentError)) throw error;
       return undo(error.message);
     }
+  },
+
+  /**
+   * Why the run can't start in the GitHub environment `name` yet, or null: it must exist and let only the default
+   * branch deploy (BRK-250), so an edited copy of the runner on another branch never reaches its write token. Read
+   * through the GitHub App before each start: at most two reads.
+   * @returns {Promise<string | null>}
+   */
+  async deployBranchCheck(client, name, branch) {
+    const path = `/environments/${encodeURIComponent(name)}`;
+    const read = async (/** @type {string} */ what, /** @type {() => Promise<any>} */ get) => {
+      try {
+        return { data: await get() };
+      } catch (error) {
+        if (!(error instanceof GitHubError)) throw error;
+        if (error.status === 404) return { data: null };
+        return { problem: `GitHub answered ${error.status} for ${what}: ${error.reason ?? error.message}` };
+      }
+    };
+    const environment = await read(`the GitHub environment ${name}`, () => client.get(path));
+    if (environment.problem) return environment.problem;
+    const rule = environment.data?.deployment_branch_policy;
+    let policies = null;
+    if (rule?.custom_branch_policies && !rule.protected_branches) {
+      const listed = await read(`the GitHub environment ${name}’s branches`, () =>
+        client.get(`${path}/deployment-branch-policies?per_page=100`),
+      );
+      if (listed.problem) return listed.problem;
+      policies = listed.data?.branch_policies ?? [];
+    }
+    return deployBranchProblem(name, branch, environment.data, policies);
   },
 
   /**
