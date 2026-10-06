@@ -605,6 +605,23 @@ async function handleApi(request, env, url, ctx) {
         ? s.runsApi({ repo: url.searchParams.get('repo'), environment: url.searchParams.get('environment') })
         : s.runApi(parts[2])),
     );
+  // Envelopes (BRK-186): anyone signed in reads them; setting, changing, and revoking one is the owner's, from the
+  // signed-in browser only. An act is a runbook's agent's, for the run it holds; the board builds its plan.
+  if (parts[0] === 'infra' && parts[1] === 'envelopes' && parts.length <= 4) {
+    const repo = url.searchParams.get('repo');
+    if (parts.length === 4 && parts[3] === 'act' && method === 'POST')
+      return send(await s.envelopeActApi(parts[2], body));
+    if (parts.length <= 3 && method === 'GET')
+      return send(await (parts.length === 2 ? s.envelopesApi({ repo }) : s.envelopeApi(parts[2], { repo })));
+    if (parts.length === 3 && ['PUT', 'DELETE'].includes(method)) {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can set or revoke an envelope' });
+      return send(
+        await (method === 'PUT'
+          ? s.envelopeSetApi(parts[2], { repo, ...body })
+          : s.envelopeRevokeApi(parts[2], { repo, ...body })),
+      );
+    }
+  }
   // Approve and reject (BRK-182): the owner's alone, from the signed-in browser only, like Merge; never the bearer
   // token agents and the CLI hold. An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length === 4 && ['approve', 'reject'].includes(parts[3])) {
