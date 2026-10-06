@@ -122,7 +122,7 @@ export const infraPolicyMethods = {
     return evaluatePolicy(
       policy,
       {
-        environment: { name: env.name, frozen: view.frozen, gates: view.gates },
+        environment: { name: env.name, kind: env.kind, frozen: view.frozen, gates: view.gates },
         diff,
         cost,
         provider,

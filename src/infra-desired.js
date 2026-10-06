@@ -17,8 +17,11 @@ import { redact } from './redact.js';
 export const DESIRED_DIR = '.github/breakaway-infra';
 /** @param {string} environment */
 export const desiredPath = (environment) => `${DESIRED_DIR}/${environment}.json`;
-/** Files in the folder that aren't an environment's: policy (BRK-181) and scaling rules (BRK-186). */
-export const RESERVED_FILES = ['policy', 'scaling'];
+/**
+ * Files in the folder that aren't an environment's: policy (BRK-181), scaling rules (BRK-186), and the template
+ * short-lived environments are made from (BRK-200).
+ */
+export const RESERVED_FILES = ['policy', 'scaling', 'short-lived'];
 /** The only version there is. */
 export const DESIRED_VERSION = 1;
 /** Bigger than any one environment needs, and small enough to keep a copy of each in the store. */
@@ -204,10 +207,11 @@ function secretIn(value, path) {
  * resource's kind must be one it declares. With `expectProvider` (the environment's provider ID), a `provider` in the
  * file must be that one.
  * @param {string} source the file's text
- * @param {{ provider?: import('./infra-provider.js').Provider | null, expectProvider?: string | null }} [options]
+ * @param {{ provider?: import('./infra-provider.js').Provider | null, expectProvider?: string | null, extra?: string[] }} [options]
+ *   `extra` names more top-level keys a caller reads itself, like a short-lived template's `target` (BRK-200)
  * @returns {{ ok: true, desired: import('./infra-provider.js').DesiredState, provider: string | null } | { ok: false, error: DesiredError }}
  */
-export function checkDesiredFile(source, { provider = null, expectProvider = null } = {}) {
+export function checkDesiredFile(source, { provider = null, expectProvider = null, extra = [] } = {}) {
   /** @param {string | null} field @param {string} message @param {number | null} [at] */
   const wrong = (field, message, at) => ({
     ok: /** @type {const} */ (false),
@@ -228,8 +232,11 @@ export function checkDesiredFile(source, { provider = null, expectProvider = nul
   if (!isObject(file))
     return wrong(null, 'the file is one JSON object: { "version": 1, "resources": [ … ] }', lines.get('') ?? 1);
   for (const key of Object.keys(file))
-    if (!TOP.includes(key))
-      return wrong(key, `“${key}” isn’t part of a desired state: the file has version, provider, and resources`);
+    if (!TOP.includes(key) && !extra.includes(key))
+      return wrong(
+        key,
+        `“${key}” isn’t part of a desired state: the file has ${[...TOP, ...extra].join(', ').replace(/, (?=[^,]*$)/u, ', and ')}`,
+      );
   if (file.version !== DESIRED_VERSION)
     return wrong(
       file.version === undefined ? null : 'version',
