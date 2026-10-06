@@ -10,6 +10,10 @@
  * anything else) makes none, and while an earlier drift plan is still open it makes no other, saying instead that the
  * open one no longer matches. A frozen environment's drift is kept but not planned until it's unfrozen. Observe-only
  * environments (BRK-169) are never compared: they take no desired state.
+ *
+ * A delete isn't drift: it's a resource that runs but isn't in the desired state, which nobody owns. Each comparison
+ * hands those to clean up (BRK-201, store-infra-cleanup.js), which flags them and proposes removing them after a grace
+ * period, and drift's count, fingerprint, and plan leave them out.
  */
 import { AgentError } from './store-agents.js';
 import { install } from './install.js';
@@ -20,10 +24,12 @@ import { keptDiff, planNumber } from './infra-plans.js';
 import {
   DRIFT_PER_TICK,
   OPEN_PLAN_STATES,
+  driftChanges,
   driftDue,
   driftFingerprint,
   driftResources,
   driftView,
+  isDrift,
 } from './infra-drift.js';
 
 const OPEN = OPEN_PLAN_STATES.map(() => '?').join(', ');
@@ -123,10 +129,13 @@ export const infraDriftMethods = {
         error: `${provider.name} couldn’t compare ${env.repo}’s ${env.name}: ${redact(error?.message ?? error)}. The board tries again on the next check.`,
       });
     }
-    const fingerprint = await driftFingerprint(diff);
-    const resources = JSON.stringify(driftResources(diff));
     // Changes the owner marked as break-glass (BRK-187) are never planned back: the board doesn't propose undoing them.
     const brokenGlass = await this.settleBreakGlass(env, diff);
+    // What runs but isn't in the desired state is clean up's (BRK-201): flagged now, proposed for removal later.
+    await this.settleUnowned(env, diff);
+    diff = driftChanges(diff);
+    const fingerprint = await driftFingerprint(diff);
+    const resources = JSON.stringify(driftResources(diff));
     if (diff.changes.length === 0)
       return this.keepDrift(env, { desiredSha, count: 0, resources, fingerprint, plan: null, planMatches: false });
 
@@ -138,7 +147,7 @@ export const infraDriftMethods = {
       )
       .toArray();
     for (const p of open)
-      if ((await driftFingerprint(JSON.parse(p.diff))) === fingerprint)
+      if ((await driftFingerprint(driftChanges(JSON.parse(p.diff)))) === fingerprint)
         return this.keepDrift(env, {
           desiredSha,
           count: diff.changes.length,
@@ -173,7 +182,7 @@ export const infraDriftMethods = {
     let planMatches = false;
     let error = null;
     try {
-      const made = await this.makeInfraPlan(env.id, { source: 'drift', by: 'board' });
+      const made = await this.makeInfraPlan(env.id, { source: 'drift', by: 'board', only: isDrift });
       plan = planNumber(made.id);
       planMatches = (await driftFingerprint(made.diff)) === fingerprint;
     } catch (e) {
@@ -238,6 +247,7 @@ export const infraDriftMethods = {
         .toArray()[0];
       if (this.driftRefusal(env)) {
         if (last) this.sql.exec('DELETE FROM infra_drift WHERE environment = ?', env.id);
+        this.forgetUnowned(env);
         continue;
       }
       const sha =
@@ -247,6 +257,7 @@ export const infraDriftMethods = {
       if (driftDue(last, sha, now)) due.push({ env, checked: last ? Number(last.checked) : 0 });
     }
     this.sql.exec('DELETE FROM infra_drift WHERE environment NOT IN (SELECT id FROM infra_environments)');
+    this.sql.exec('DELETE FROM infra_cleanup WHERE environment NOT IN (SELECT id FROM infra_environments)');
     const compared = [];
     for (const { env } of due.sort((a, b) => a.checked - b.checked).slice(0, DRIFT_PER_TICK)) {
       try {
