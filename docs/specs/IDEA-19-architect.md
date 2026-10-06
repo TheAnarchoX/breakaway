@@ -82,6 +82,8 @@ The only path that changes infrastructure (BRK-183): take the environment's lock
 
 The runner is **a workflow in the repository, started by the board on approval, with a write token per environment in a GitHub environment** (BRK-171), which is the trust Promote has today, so the board itself still holds no write credentials. CLI-12 renders it with `npx breakaway infra init`, like `pipeline init`. An observe-only environment is refused.
 
+The runner and the board share no secret (CLI-12, `src/infra-runner.js`). The workflow, `.github/workflows/breakaway-infra.yml`, takes the plan's ID and the environment, runs only from the default branch, checks out none of the repository's code, and asks the board for the plan at `/api/infra/runs/<plan>` with the run's GitHub OIDC token. The board answers only the run it started, for a plan approved for that environment, and only once; the runner stops otherwise, before it reads the write token. Each step it reports carries the digest of the plan it applies, so a plan changed since approval is refused.
+
 ### Envelopes
 
 Bounds the owner approves once on one environment, in any environment, production included (BRK-171): scaling bounds ("2 to 10 instances", "up to this much a month") and a **restart cap** (how many restarts in a window; 3 a day by default, set by the owner). A scaling rule in the repository, or a runbook, acts inside them through the executor with no press, writes an audit entry, and notes it quietly in the inbox. Once the restart cap is used up, the next restart becomes a plan that waits, with a push. Anything else, or outside the bounds, is a plan that waits (BRK-186, BRK-227).
