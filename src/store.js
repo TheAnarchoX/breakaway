@@ -70,6 +70,7 @@ import { infraCheckMethods } from './store-infra-check.js';
 import { infraPlansMethods } from './store-infra-plans.js';
 import { infraApprovalsMethods } from './store-infra-approvals.js';
 import { infraPolicyMethods } from './store-infra-policy.js';
+import { infraPullsMethods } from './store-infra-pulls.js';
 import { infraDriftMethods } from './store-infra-drift.js';
 import { infraBreakGlassMethods } from './store-infra-break-glass.js';
 import { infraRunsMethods } from './store-infra-runs.js';
@@ -142,6 +143,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraApprovals();
     this.initInfraDeploys();
     this.initInfraPolicy();
+    this.initInfraPulls();
     this.initInfraDrift();
     this.initInfraBreakGlass();
     this.initInfraRuns();
@@ -1452,6 +1454,7 @@ Object.assign(
   infraDeploysMethods,
   infraCheckMethods,
   infraPolicyMethods,
+  infraPullsMethods,
   infraDriftMethods,
   infraBreakGlassMethods,
   infraRunsMethods,
