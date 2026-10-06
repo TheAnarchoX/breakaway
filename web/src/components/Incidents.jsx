@@ -365,9 +365,10 @@ function IncidentRow({ incident: i }) {
 
 /**
  * An environment's incidents, on its page: open ones first, then the ones whose task is finished, newest first.
- * @param {{ env: any }} props
+ * A new `tick` reads again (the console's poll, WEB-94).
+ * @param {{ env: any, tick?: number }} props
  */
-export function IncidentsSection({ env }) {
+export function IncidentsSection({ env, tick = 0 }) {
   const [state, setState] = useState(
     /** @type {{ incidents: any[], more: boolean, error: string | null, loaded: boolean }} */ ({
       incidents: [],
@@ -388,7 +389,7 @@ export function IncidentsSection({ env }) {
     return () => {
       live = false;
     };
-  }, [env.id]);
+  }, [env.id, tick]);
   const loadOlder = async () => {
     const last = state.incidents.at(-1);
     if (!last) return;
@@ -439,12 +440,7 @@ export function IncidentsSection({ env }) {
           )}
         </>
       ) : (
-        !state.error && (
-          <p class="muted">
-            None. When a critical signal comes in here, the board opens an incident: a task with its steps, in your
-            inbox.
-          </p>
-        )
+        !state.error && <p class="console-quiet">None: a critical signal here opens one, in your inbox.</p>
       )}
     </section>
   );

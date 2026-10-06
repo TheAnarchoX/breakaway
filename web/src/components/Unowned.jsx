@@ -113,10 +113,7 @@ export function UnownedSection({ env }) {
           </ul>
         </>
       ) : (
-        <p class="muted">
-          Nothing flagged. What runs here that the desired state doesn’t declare and no task owns shows here, and a week
-          later the board proposes removing it.
-        </p>
+        <p class="console-quiet">Nothing flagged: everything here is declared or owned.</p>
       )}
     </section>
   );
