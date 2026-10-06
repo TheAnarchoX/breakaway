@@ -11,6 +11,7 @@ import {
   KIND_LABEL,
   environmentHealth,
 } from './InfrastructureView.jsx';
+import { IncidentsSection } from '../components/Incidents.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>: its resources
@@ -452,6 +453,8 @@ export function EnvironmentView() {
         <Health health={env.target ? health : null} />
         <EnvironmentFlags env={env} />
       </div>
+
+      <IncidentsSection env={env} />
 
       <section class="infra-section" aria-labelledby="infra-resources">
         <h2 id="infra-resources">
