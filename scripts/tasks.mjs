@@ -377,7 +377,7 @@ Working
   features modify <slug> change one (owner): --title, --brief, --brief-file, --release <x.y.z|none>, --state open|shipped
   routines add <slug>    new routine (owner, or the agent of a routine maker's task)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
-  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed (or "") starts it on those GitHub events
+  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened (or "") starts it on those GitHub events
   routines trigger <slug> new webhook/API trigger (owner): prints its secret once  [--label <text>]
   routines revoke <slug> <id>  revoke a trigger
   routines pause|resume  stop or allow every routine  [--daily-all <n>] sets the cap for all routines a day

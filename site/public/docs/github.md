@@ -11,7 +11,7 @@ The board reads each registered repository through a **private GitHub App** that
 3. Open the install link it prints, choose **Only select repositories**, pick the repository, and install.
 4. In the repository’s settings, turn on **Allow auto-merge**.
 
-The App needs read and write on **Pull requests** and **Contents**, read and write on **Actions** where a repository has a deploy pipeline, and read on the rest (metadata, checks, commit statuses, deployments, Dependabot alerts). An App made from the board’s manifest has them. If you made yours before a permission was added, the buttons say so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
+The App needs read and write on **Pull requests** and **Contents**, read and write on **Actions** where a repository has a deploy pipeline, and read on the rest (metadata, checks, commit statuses, deployments, Dependabot alerts, and issues, which only start routines on an opened or reopened issue). An App made from the board’s manifest has them. If you made yours before a permission was added, the buttons say so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
 
 Install the App on every repository you register. One App serves them all.
 
