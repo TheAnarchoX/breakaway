@@ -213,6 +213,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     if (clientId.toLowerCase() === current.clientId) return fail(400, 'use a new client ID');
     // Routines kept on the board are sealed with a key from the sync key (BRK-133): sealed again here, written below.
     const routines = await this.resealedRoutines(keyBase64.trim());
+    const providerTokens = await this.resealedProviderTokens(keyBase64.trim());
     let count = 0;
     try {
       this.atomically(() => {
@@ -231,6 +232,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           this.sql.exec('UPDATE snapshot SET data = ? WHERE id = 1', seal(newKey, snap.version_id, plain));
         }
         for (const r of routines) this.sql.exec('UPDATE kept_routines SET sealed = ? WHERE slug = ?', r.sealed, r.slug);
+        for (const t of providerTokens)
+          this.sql.exec('UPDATE infra_connections SET sealed = ? WHERE provider = ?', t.sealed, t.provider);
         this.setMeta('client_id', clientId.toLowerCase());
         this.setMeta('sync_key', keyBase64.trim());
         this.setMeta('rekeyed_at', new Date().toISOString());
