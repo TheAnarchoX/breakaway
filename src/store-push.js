@@ -99,18 +99,32 @@ export const pushMethods = {
   /** Sends a ping's notification to every subscription. Never throws: a ping must work without push. */
   async pushPing(pingId) {
     try {
-      const keys = await vapidKeys(this.env, this.homeUrl());
-      if (!keys) return;
-      const subs = this.sql.exec('SELECT endpoint, p256dh, auth FROM push_subscriptions').toArray();
-      if (!subs.length) return;
       const row = this.sql
         .exec('SELECT id, task, kind, message, resolved FROM pings WHERE id = ?', Number(pingId))
         .toArray()[0];
       if (!row || row.resolved) return;
-      const message = pingMessage(
-        { id: row.id, kind: row.kind, message: row.message, task: this.tasks.get(row.task)?.wid ?? 'A task' },
-        install(this.env).name,
+      await this.pushToOwner(
+        pingMessage(
+          { id: row.id, kind: row.kind, message: row.message, task: this.tasks.get(row.task)?.wid ?? 'A task' },
+          install(this.env).name,
+        ),
       );
+    } catch {
+      /* push is a convenience; the ping and its comment are the record */
+    }
+  },
+
+  /**
+   * Sends one notification to every subscribed browser, dropping the ones the push service says are gone. Never
+   * throws: whatever pushes (a ping, a waiting plan) keeps its own record.
+   * @param {{ title: string, body: string, tag: string, url: string }} message
+   */
+  async pushToOwner(message) {
+    try {
+      const keys = await vapidKeys(this.env, this.homeUrl());
+      if (!keys) return;
+      const subs = this.sql.exec('SELECT endpoint, p256dh, auth FROM push_subscriptions').toArray();
+      if (!subs.length) return;
       const statuses = await Promise.all(subs.map((sub) => sendPush(sub, message, keys)));
       subs.forEach((sub, i) => {
         if (statuses[i] === 404 || statuses[i] === 410)
@@ -120,7 +134,7 @@ export const pushMethods = {
       const sent = statuses.filter((s) => s >= 200 && s < 300).length;
       this.connectionsPushSent({ sent, gone, failed: statuses.length - sent - gone });
     } catch {
-      /* push is a convenience; the ping and its comment are the record */
+      /* push is a convenience */
     }
   },
 };

@@ -555,6 +555,13 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.lockReleaseApi(parts[2], { repo }));
     }
   }
+  // Approve and reject (BRK-182): the owner's alone, from the signed-in browser only, like Merge; never the bearer
+  // token agents and the CLI hold. An agent's `by` is refused too.
+  if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length === 4 && ['approve', 'reject'].includes(parts[3])) {
+    if (method !== 'POST') return json(405, { error: `${parts[3]} a plan with POST` });
+    if (via !== 'cookie') return json(403, { error: `only the signed-in web board can ${parts[3]} a plan` });
+    return send(await (parts[3] === 'approve' ? s.planApproveApi(parts[2], body) : s.planRejectApi(parts[2], body)));
+  }
   // Plans (BRK-178): anyone signed in reads them; the owner and agents make drafts, which the board computes from the
   // environment's desired state; only the owner puts one in front of the owner, from the signed-in browser only.
   if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length <= 3) {
