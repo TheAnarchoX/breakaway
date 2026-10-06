@@ -32,6 +32,7 @@ import {
   repoSettingsHref,
   repos,
 } from '../lib/store.js';
+import { ProviderAlerts } from '../components/ProviderAlerts.jsx';
 import { ProviderConnect } from '../components/ProviderConnect.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { SelfUpdate } from '../components/SelfUpdate.jsx';
@@ -244,6 +245,7 @@ function Row({ c }) {
       {c.provider && (
         <ProviderConnect id={c.provider.id} name={c.name} connected={c.provider.connected} onDone={loadConnections} />
       )}
+      {c.provider?.alerts && <ProviderAlerts id={c.provider.id} name={c.name} connected={c.provider.connected} />}
       <Items c={c} />
     </li>
   );

@@ -168,9 +168,27 @@ export function worst(states) {
 
 // ---- providers' read-only tokens (BRK-194) ----------------------------------------------
 
+/**
+ * A permission as the board names it: its name, with any older names in parentheses (BRK-243).
+ * @param {import('./infra-provider.js').TokenPermission} p
+ */
+export function permissionLabel(p) {
+  return p.legacy?.length ? `${p.name} (or the legacy ${p.legacy.join(' or ')})` : p.name;
+}
+
+/**
+ * Whether a token kept with `names` has permission `p`, by its name or one of its older ones, so a token made before
+ * the platform renamed a permission still counts (BRK-243).
+ * @param {import('./infra-provider.js').TokenPermission} p
+ * @param {Set<string>} names
+ */
+export function hasPermission(p, names) {
+  return names.has(p.name) || (p.legacy ?? []).some((n) => names.has(n));
+}
+
 /** A provider's needed permissions, in words: "A, B, and C". */
 function permissionList(provider) {
-  const names = provider.readToken.permissions.map((p) => p.name);
+  const names = provider.readToken.permissions.map(permissionLabel);
   return names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
 }
 
@@ -193,7 +211,7 @@ export function readTokenProblem(provider, check) {
     return `that token can change things on ${provider.name} (${writes.join(', ')}), and the board keeps read-only tokens only: make one with ${list} and nothing else`;
   if (check.permissions) {
     const has = new Set(granted.map((p) => p.name));
-    const missing = provider.readToken.permissions.filter((p) => !has.has(p.name)).map((p) => p.name);
+    const missing = provider.readToken.permissions.filter((p) => !hasPermission(p, has)).map(permissionLabel);
     if (missing.length) return `that token is missing ${missing.join(', ')}: make one with ${list}`;
   }
   return null;
@@ -235,10 +253,10 @@ export function providerRow(provider, record) {
   const kept = record && !('broken' in record) ? new Set(record.permissions) : new Set();
   const items = provider.readToken.permissions.map((p) => ({
     name: p.name,
-    label: p.name,
+    label: permissionLabel(p),
     need: 'read',
-    has: kept.has(p.name) ? 'read' : 'none',
-    ok: kept.has(p.name),
+    has: hasPermission(p, kept) ? 'read' : 'none',
+    ok: hasPermission(p, kept),
     for: p.for,
   }));
   const make = `make a read-only token on ${name} with ${list} and nothing else, then paste it here. The board keeps it encrypted, sends it only to ${name}, and never shows it again.`;
@@ -260,7 +278,7 @@ export function providerRow(provider, record) {
     };
   const seen = [record.discovery, record.signal].filter(Boolean).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const at = seen[0]?.at ?? null;
-  const missing = items.filter((i) => !i.ok).map((i) => i.name);
+  const missing = items.filter((i) => !i.ok).map((i) => i.label);
   if (missing.length)
     return {
       state: 'attention',

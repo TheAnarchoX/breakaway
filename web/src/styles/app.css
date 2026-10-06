@@ -9258,6 +9258,27 @@ a.pl-mention {
     gap: 0;
   }
 }
+/* Which of a provider's alerts reach the board, under its row on Connections (WEB-91). */
+.conn-alerts-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 13.5px;
+}
+.conn-alerts-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.conn-items li.is-off svg {
+  color: var(--muted);
+}
+.conn-items .conn-alerts-policies {
+  margin: 2px 0 0;
+  gap: 2px;
+}
+.conn-items .conn-alerts-policies li {
+  display: list-item;
+}
 
 /* ---------- incidents (WEB-63) ---------- */
 
