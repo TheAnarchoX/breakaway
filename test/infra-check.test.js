@@ -32,7 +32,10 @@ describe('infra check, the files (CLI-14)', () => {
       { name: 'staging.json', text: staging },
       { name: 'production.json', text: '{ "version": 1, "resources": [] }' },
       { name: 'policy.json', text: '{\n  "version": 1,\n  "ask": true\n}' },
-      { name: 'scaling.json', text: 'not yet' },
+      {
+        name: 'scaling.json',
+        text: '{\n  "version": 1,\n  "rules": [\n    { "name": "busy", "resource": "api", "act": "grow" }\n  ]\n}',
+      },
       { name: 'README.md', text: '# notes' },
       { name: 'Prod.json', text: '{}' },
     ]);
@@ -49,8 +52,12 @@ describe('infra check, the files (CLI-14)', () => {
     );
     expect(by['production.json']).toMatchObject({ kind: 'desired', ok: true, resources: 0 });
     expect(by['policy.json']).toMatchObject({ kind: 'policy', ok: false, error: { line: 3, field: 'ask' } });
-    // scaling.json is a later piece's (BRK-186), and anything not JSON isn't the folder's to check.
-    expect(by['scaling.json'].kind).toBe('skipped');
+    // scaling.json is checked as the scaling rules (BRK-241), and anything not JSON isn't the folder's to check.
+    expect(by['scaling.json']).toMatchObject({
+      kind: 'scaling',
+      ok: false,
+      error: { line: 4, field: 'rules[0].act' },
+    });
     expect(by['README.md'].kind).toBe('skipped');
     expect(by['Prod.json']).toMatchObject({ kind: 'problem', ok: false, error: { line: null, field: null } });
     expect(problemLine(by['Prod.json'].path, by['Prod.json'].error)).toMatch(
