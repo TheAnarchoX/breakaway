@@ -15,6 +15,7 @@ import { api, enc } from '../lib/api.js';
 import { AREAS, plural } from '../lib/model.js';
 import { RepoPullSettings } from '../components/PullSettings.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
+import { InfraSettings } from '../components/InfraSettings.jsx';
 import { WORKFLOWS, deployField, missingOf, pipelineForm, pipelineOf } from '../lib/pipeline-form.js';
 import {
   agents,
@@ -36,7 +37,7 @@ import {
 
 /**
  * A repository's settings page (docs/specs/IDEA-29-settings.md, sections 2 and 5; WEB-30, WEB-31): General, Areas,
- * Agents, and Deploys, everything `repos modify` changes; Pull requests, this browser's; and Take it off the board,
+ * Agents, and Deploys, everything `repos modify` changes; Infrastructure, its policy, envelopes, and freeze (WEB-64); Pull requests, this browser's; and Take it off the board,
  * the CLI command to copy. It reads GET /api/repos/<slug> and saves each section on its own
  * through PATCH /api/repos/<slug>, with the row's last-changed time it loaded (`edited`), so a change made
  * somewhere else since is shown instead of overwritten. The server's checks are the CLI's (`checkRepo`), so a
@@ -1359,6 +1360,7 @@ export function RepoSettingsView() {
             onReload={load}
             readOnly={readOnly}
           />
+          {!readOnly && <InfraSettings key={`infra:${data.repo.slug}`} repo={data.repo} />}
           {!readOnly && <PullRequests repo={data.repo} />}
           {!readOnly && <TakeOff data={data} />}
           {repos.value.list.length > 1 && (
