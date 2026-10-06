@@ -504,6 +504,11 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && method === 'DELETE')
       return send(await s.environmentsDeleteApi(parts[2], { repo, ...body }));
   }
+  // Desired state (BRK-180): read only, from each repository's default branch; it changes by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'desired' && parts.length <= 3 && method === 'GET') {
+    const repo = url.searchParams.get('repo');
+    return send(await (parts.length === 2 ? s.desiredApi({ repo }) : s.desiredOneApi(parts[2], { repo })));
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {

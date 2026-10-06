@@ -193,8 +193,12 @@ describe('Turn on deploys', () => {
   it('finds nothing for a repository that hasn’t moved, and reads its root for the move’s card', async () => {
     const view = await sync();
     expect(view.pipelineFound).toBeNull();
-    // The root's listing says whether it has a package.json to read (WEB-12); this one has none.
-    expect(gh.calls).toEqual([`/contents/${CONFIG_PATH}`, '/contents/']);
+    // The root's listing says whether it has a package.json to read (WEB-12); this one has none. (The desired-state
+    // folder, BRK-180, is read in the same sync and has its own tests.)
+    expect(gh.calls.filter((c) => !c.startsWith('/contents/.github/breakaway-infra'))).toEqual([
+      `/contents/${CONFIG_PATH}`,
+      '/contents/',
+    ]);
   });
 
   it('shows what the default branch says once the move merged, and changes nothing until the press', async () => {
