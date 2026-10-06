@@ -1,7 +1,7 @@
 /**
  * An in-memory Architect provider (BRK-173) for every Architect test: it discovers, plans, applies, observes, prices,
  * and reports events from state held in the test, and never reaches the network. Its kinds: `service` (scales and
- * restarts), `database` (deleting one can't be undone), and `route`.
+ * restarts), `database` (deleting one can't be undone), and `route`. It estimates what a change would cost, too.
  *
  * `fakeProvider()` takes the starting state; `provider.state` is live, so a test can change the platform by hand
  * (drift, break-glass) and `provider.calls` records every call, with its environment.
@@ -225,6 +225,19 @@ export function fakeProvider({
         currency: 'USD',
         estimate: /** @type {const} */ (true),
       }));
+    },
+
+    /** A service costs 2.5 an instance, a database by its size, a route nothing; anything else it can't say. */
+    async estimate(ctx, change) {
+      record('estimate', ctx);
+      const attrs = change.after ?? {};
+      let amount = null;
+      if (change.kind === 'service') amount = 2.5 * Number(attrs.instances ?? 1);
+      else if (change.kind === 'database') amount = { small: 1.5, large: 6 }[String(attrs.size)] ?? null;
+      else if (change.kind === 'route') amount = 0;
+      return amount === null
+        ? null
+        : { resource: change.resource, amount, currency: 'USD', estimate: /** @type {const} */ (true) };
     },
 
     async events(ctx, since) {
