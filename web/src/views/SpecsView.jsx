@@ -1,12 +1,13 @@
 // The Specs view (WEB-25, docs/specs/IDEA-31-specs-view.md section 3): a repository's specs, read from GitHub on
 // its default branch, each one readable beside the list with the tasks that link it. The board never stores a
 // spec: the server reads it through the GitHub App and keeps it a minute.
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { ArrowLeft, ExternalLink, GitPullRequest, ListFilter, RefreshCw, X } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { ago, plural, ref, stateOf } from '../lib/model.js';
 import { Markdown, Title } from '../lib/richtext.jsx';
+import { CodeBlock } from '../lib/highlight.jsx';
 import {
   filterSpecs,
   inSpecsDir,
@@ -289,6 +290,8 @@ function SpecPane({ slug, path }) {
   const key = `${slug}\n${path}`;
   const state = docs.value[key];
   const heading = useRef(null);
+  // Show raw: the spec's Markdown as written, highlighted (WEB-86).
+  const [raw, setRaw] = useState(false);
   // The server keeps a spec a minute, so reading it again on each open is cheap and catches a change.
   useEffect(() => {
     loadDoc(slug, path);
@@ -403,6 +406,11 @@ function SpecPane({ slug, path }) {
               <ExternalLink size={16} aria-hidden="true" />
               Open on GitHub
             </a>
+            {d.text !== null && !d.tooLarge && (
+              <button type="button" class="btn btn-outline btn-sm" aria-pressed={raw} onClick={() => setRaw(!raw)}>
+                {raw ? 'Show formatted' : 'Show raw'}
+              </button>
+            )}
             <MarkSpec slug={slug} path={d.path} status={d.status} />
             <RefineSpec slug={slug} path={d.path} title={shortTitle(d.title, d.wid)} />
           </div>
@@ -410,6 +418,8 @@ function SpecPane({ slug, path }) {
         </div>
         {d.tooLarge || d.text === null ? (
           <p class="muted">This spec is over 1 MB, too large to show here. Read it on GitHub.</p>
+        ) : raw ? (
+          <CodeBlock code={d.text} lang="md" class="md-code spec-raw" />
         ) : (
           <Markdown
             text={withoutTitle(d.text)}

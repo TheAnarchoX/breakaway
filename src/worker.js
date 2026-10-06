@@ -606,6 +606,14 @@ async function handleApi(request, env, url, ctx) {
   }
   if (parts[0] === 'github' && parts[1] === 'pulls' && parts.length === 3 && method === 'GET')
     return send(await s.githubPullApi(parts[2], url.searchParams.get('repo')));
+  if (parts[0] === 'github' && parts[1] === 'pulls' && parts[3] === 'file' && parts.length === 4 && method === 'GET')
+    return send(
+      await s.githubPullFileApi(parts[2], {
+        path: url.searchParams.get('path'),
+        side: url.searchParams.get('side'),
+        slug: url.searchParams.get('repo'),
+      }),
+    );
   if (parts[0] === 'github' && parts[1] === 'pulls' && parts[3] === 'fix' && parts.length === 4 && method === 'POST')
     return send(await s.fixPrApi(parts[2], { ...body, repo: body.repo ?? url.searchParams.get('repo') }));
   // Merging is the owner's: the signed-in browser only, never the bearer token agents and the CLI hold.

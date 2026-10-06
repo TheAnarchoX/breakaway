@@ -5,6 +5,7 @@ import '@fontsource-variable/archivo/wdth-italic.css';
 import '@fontsource-variable/chivo-mono/wght.css';
 // breakaway's tokens, straight from the brand, then the base styles (buttons, fields, pills, focus) and the board's own.
 import '../../brand/tokens.css';
+import '../../brand/code-colors.css';
 import './styles/base.css';
 import './styles/app.css';
 import { App } from './App.jsx';

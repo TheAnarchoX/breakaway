@@ -33,10 +33,13 @@ import {
   toast,
 } from '../lib/store.js';
 import { Markdown, Title } from '../lib/richtext.jsx';
+import { diffPieces, previewOf } from '../lib/code.js';
+import { CodeBlock, tokensOf, useHighlightAll } from '../lib/highlight.jsx';
+import { FilePreview } from './FilePreview.jsx';
 import { RepoChip } from './ui.jsx';
 import { Checks, PrIcon, Review, VERDICT, Verdict, prStateLabel } from './GitHub.jsx';
 import { useMedia } from '../lib/media.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, Segmented } from './ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -68,6 +71,9 @@ function parsePatch(patch) {
   return rows;
 }
 
+/** A row's code: highlighted once its language loads (WEB-86), plain until then. */
+const codeOf = (r) => (r.tokens?.length ? tokensOf(r.tokens) : r.text || ' ');
+
 const SIGN = { added: '+', removed: '−', context: ' ' };
 const WORD = { added: 'added', removed: 'removed', context: 'unchanged' };
 
@@ -94,7 +100,7 @@ function Unified({ rows, wrap }) {
                 <span class="visually-hidden">{WORD[r.kind]}: </span>
               </td>
               <td class="diff-code">
-                <code>{r.text || ' '}</code>
+                <code>{codeOf(r)}</code>
               </td>
             </tr>
           ),
@@ -142,7 +148,7 @@ function Split({ rows }) {
         </td>
         <td class={`diff-code diff-${r.kind}`}>
           {r.kind !== 'context' && <span class="visually-hidden">{WORD[r.kind]}: </span>}
-          <code>{r.text || ' '}</code>
+          <code>{codeOf(r)}</code>
         </td>
       </>
     ) : (
@@ -178,11 +184,28 @@ function Split({ rows }) {
   );
 }
 
+/**
+ * A patch's rows with their code highlighted (WEB-86), each hunk's old and new sides as a whole; the plain rows until
+ * the language loads.
+ * @param {any[] | null} rows
+ * @param {string} path
+ */
+function useHighlightedRows(rows, path) {
+  const { pieces, at } = rows ? diffPieces(rows) : { pieces: null, at: [] };
+  const lit = useHighlightAll(pieces, path);
+  if (!rows || !lit) return rows;
+  return rows.map((r, i) => (at[i] ? { ...r, tokens: lit[at[i][0]]?.[at[i][1]] ?? null } : r));
+}
+
 /** @param {Record<string, any>} props */
-function FileDiffView({ file, split, wrap, url, open: startOpen }) {
+function FileDiffView({ page, file, split, wrap, url, open: startOpen }) {
   const [open, setOpen] = useState(startOpen);
+  const preview = previewOf(file.name);
+  // Diff or Preview, per file; a file with no patch (an image, a large file) opens on Preview when it has one.
+  const [mode, setMode] = useState(preview && !file.patch ? 'preview' : 'diff');
   const id = `file-${file.name.replace(/[^\w-]/gu, '-')}`;
-  const rows = open && file.patch ? parsePatch(file.patch) : null;
+  const rows = useHighlightedRows(open && file.patch ? parsePatch(file.patch) : null, file.name);
+  const showPreview = open && preview && mode === 'preview';
   return (
     <section class="diff-file" aria-labelledby={id}>
       <h3 id={id}>
@@ -201,9 +224,24 @@ function FileDiffView({ file, split, wrap, url, open: startOpen }) {
           </span>
           {file.status !== 'modified' && <span class="meta">{file.status}</span>}
           {file.worker && <span class="chip">runs in a Worker</span>}
+          {open && preview && (
+            <Segmented
+              label={`Show ${file.name} as`}
+              size="xs"
+              options={[
+                { id: 'diff', label: 'Diff' },
+                { id: 'preview', label: 'Preview' },
+              ]}
+              value={mode}
+              onChange={setMode}
+            />
+          )}
         </span>
       </h3>
-      {open &&
+      {showPreview ? (
+        <FilePreview page={page} file={file} kind={preview} split={split} />
+      ) : (
+        open &&
         (file.patch ? (
           split ? (
             <Split rows={rows} />
@@ -218,7 +256,8 @@ function FileDiffView({ file, split, wrap, url, open: startOpen }) {
               <ExternalLink size={13} aria-hidden="true" />
             </a>
           </p>
-        ))}
+        ))
+      )}
     </section>
   );
 }
@@ -275,7 +314,15 @@ function Diff({ page }) {
       )}
       {files.length ? (
         files.map((f) => (
-          <FileDiffView key={f.name} file={f} split={split && wide} wrap={diffWrap.value} url={page.url} open={!many} />
+          <FileDiffView
+            key={f.name}
+            page={page}
+            file={f}
+            split={split && wide}
+            wrap={diffWrap.value}
+            url={page.url}
+            open={!many}
+          />
         ))
       ) : (
         <p class="muted small">No files match.</p>
@@ -778,7 +825,7 @@ function Description({ page }) {
         </button>
       </div>
       {raw ? (
-        <pre class="pr-body">{page.body}</pre>
+        <CodeBlock code={page.body} lang="md" class="pr-body" />
       ) : (
         <div class="pr-body pr-body-md">
           <Markdown text={page.body} base={base} />

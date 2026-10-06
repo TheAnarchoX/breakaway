@@ -185,6 +185,19 @@ All colors are tokens in [`tokens.css`](tokens.css), with the same names the boa
 - **`--faint` fails as text** (4.0:1 on carbon, 3.3:1 on chalk): it's for input edges and icons, which need 3:1.
 - **Flat color, hard edges.** No gradients, glows, or film grain.
 
+**Code colors.** Highlighted code (diffs, code blocks, and raw Markdown on the board) wears its own eight tokens, so it reads as code and leaves red to lead. These are breakaway's; Code colors in Settings swaps them for a well-known editor palette ([`code-colors.css`](code-colors.css): GitHub, One, and Gruvbox), each with a carbon side and a chalk side. Every one passes 4.5:1 on the surfaces code sits on and on a diff's added and removed rows, which the contrast test checks.
+
+| Token | Carbon | Chalk | Use |
+| --- | --- | --- | --- |
+| `--code-keyword` | `#ff7a5c` | `#b3260f` | Keywords and tags in a selector |
+| `--code-string` | `#7fd49a` | `#196b33` | Strings and patterns |
+| `--code-number` | `#ffc26b` | `#865100` | Numbers and literals |
+| `--code-comment` | `#9da0a9` | `#595c64` | Comments |
+| `--code-title` | `#8fb8ff` | `#1f55b8` | Function names and headings |
+| `--code-type` | `#d7a6ff` | `#7a3bb0` | Types, classes, and built-ins |
+| `--code-attr` | `#6fd4d4` | `#0d6868` | Attributes, properties, and variables |
+| `--code-meta` | `#ff9bb5` | `#a3214f` | Markup tags, list markers, and links |
+
 ## Type
 
 Two open-source families (SIL Open Font License), self-hosted from `@fontsource-variable/archivo` and `@fontsource-variable/chivo-mono`, so no font requests go to a third party. Both come from the same foundry, Omnibus-Type.
@@ -250,7 +263,7 @@ Paths are from this folder.
 
 | What | Where |
 | --- | --- |
-| Design tokens | [`tokens.css`](tokens.css) |
+| Design tokens | [`tokens.css`](tokens.css), and the other code colors in [`code-colors.css`](code-colors.css) |
 | Logo files | [`logo/`](logo/) |
 | Preview sheets | [`previews/`](previews/) |
 | How they're built | [`tools/build.mjs`](tools/build.mjs): `cd tools && npm install && npm run build`. The geometry is in the file, the colors come from `tokens.css`, and every word is outlines, so the files need no fonts. |

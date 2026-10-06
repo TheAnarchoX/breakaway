@@ -267,6 +267,7 @@ const gh = {
   tags: [],
   mergeable: {}, // number → [mergeable, mergeable_state]
   fileDetails: {}, // number → GitHub's file objects (with patches)
+  contents: {}, // `${sha}:${path}` → a file's text, or { size, encoding: 'none' } for one too large to send
   comments: {},
   calls: [],
   writes: [], // [method, path, body] the board sent
@@ -425,6 +426,18 @@ function mockGitHub() {
         html_url: 'https://github.com/acme/widgets/blob/main/tools/tasks/routine-prompt.md',
       });
     }
+    if (path.startsWith(`${REPO}/contents/`)) {
+      const file = gh.contents[`${url.searchParams.get('ref')}:${decodeURIComponent(path.slice(REPO.length + 10))}`];
+      if (file === undefined) return reply({ message: 'Not Found' }, 404);
+      if (typeof file !== 'string') return reply({ type: 'file', content: '', ...file });
+      const bytes = encoder.encode(file);
+      return reply({
+        type: 'file',
+        size: bytes.length,
+        encoding: 'base64',
+        content: btoa(String.fromCharCode(...bytes)),
+      });
+    }
     let m = /\/deployments\/(\d+)\/statuses$/u.exec(path);
     if (m) return reply(gh.statuses[m[1]] ?? []);
     m = /\/compare\/([^/]+)\.\.\.([^/]+)$/u.exec(path);
@@ -444,7 +457,7 @@ function mockGitHub() {
             mergeable_state: state,
             commits: 2,
             changed_files: (gh.fileDetails[m[1]] ?? []).length,
-            base: { ref: 'main' },
+            base: { ref: 'main', sha: `base${m[1]}` },
           })
         : reply({ message: 'Not Found' }, 404);
     }
@@ -659,6 +672,63 @@ describe('GitHub on the board', () => {
     gh.mergeable = {};
     gh.fileDetails = {};
     gh.comments = {};
+  });
+
+  it('reads a changed file whole, on either side, for Preview (WEB-86)', async () => {
+    gh.pulls = [pr(22, { title: 'Docs and a logo', sha: 'head22' })];
+    gh.fileDetails = {
+      22: [
+        { filename: 'docs/guide.md', status: 'modified', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-Old\n+New' },
+        { filename: 'docs/new.md', previous_filename: 'docs/old.md', status: 'renamed', additions: 0, deletions: 0 },
+        { filename: 'docs/added.txt', status: 'added', additions: 1, deletions: 0 },
+        { filename: 'logo.png', status: 'modified', additions: 0, deletions: 0 },
+        { filename: 'data.bin', status: 'modified', additions: 0, deletions: 0 },
+        { filename: 'big.md', status: 'modified', additions: 1, deletions: 0 },
+      ],
+    };
+    gh.contents = {
+      'head22:docs/guide.md': '# Guide\n\nNew ✓\n',
+      'base22:docs/guide.md': '# Guide\n\nOld\n',
+      'base22:docs/old.md': 'Before the move\n',
+      'head22:docs/added.txt': 'Hello\n',
+      'head22:logo.png': '\u0089PNG\u0000\u0001',
+      'head22:data.bin': 'a\u0000b',
+      'head22:big.md': { size: 3_000_000, encoding: 'none' },
+    };
+    const file = (query) => api(`github/pulls/22/file?${new URLSearchParams(query)}`).then(body);
+
+    expect(await file({ path: 'docs/guide.md', side: 'head' })).toMatchObject({
+      status: 200,
+      path: 'docs/guide.md',
+      side: 'head',
+      sha: 'head22',
+      text: '# Guide\n\nNew ✓\n',
+      binary: false,
+      tooLarge: false,
+    });
+    expect((await file({ path: 'docs/guide.md', side: 'base' })).text).toBe('# Guide\n\nOld\n');
+    // A renamed file's base is read at its old name.
+    expect(await file({ path: 'docs/new.md', side: 'base' })).toMatchObject({
+      path: 'docs/old.md',
+      text: 'Before the move\n',
+    });
+    // A new file has no base, and a path the pull request doesn't change isn't read at all.
+    const added = await file({ path: 'docs/added.txt', side: 'base' });
+    expect(added.status).toBe(404);
+    expect(added.error).toMatch(/new in this pull request/u);
+    const before = gh.calls.filter((c) => c.includes('/contents/')).length;
+    expect((await file({ path: 'src/secret.js', side: 'head' })).status).toBe(404);
+    expect(gh.calls.filter((c) => c.includes('/contents/')).length).toBe(before);
+    // An image comes back to show; other binary files and very large ones only say so.
+    const logo = await file({ path: 'logo.png', side: 'head' });
+    expect(logo).toMatchObject({ status: 200, text: null, binary: true });
+    expect(logo.image).toMatch(/^data:image\/png;base64,/u);
+    expect(await file({ path: 'data.bin', side: 'head' })).toMatchObject({ text: null, binary: true, image: null });
+    expect(await file({ path: 'big.md', side: 'head' })).toMatchObject({ text: null, tooLarge: true });
+    expect((await file({ path: 'docs/guide.md', side: 'middle' })).status).toBe(400);
+    expect((await file({ side: 'head' })).status).toBe(400);
+    gh.fileDetails = {};
+    gh.contents = {};
   });
 
   it('refuses webhooks with a bad signature, and schedules one reconcile for good ones', async () => {

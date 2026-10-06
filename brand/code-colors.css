@@ -1,0 +1,114 @@
+/*
+ * Code colors (WEB-86): the palettes Settings offers for highlighted code, besides breakaway's own in tokens.css. Each
+ * has a dark side for carbon and a light side for chalk, picked by data-code on <html> and following the theme.
+ * They're the well-known editor palettes, nudged where needed so every color passes 4.5:1 on the board's surfaces and
+ * on a diff's added and removed rows; test/brand.test.js checks it.
+ */
+
+/* GitHub */
+:root[data-code="github"] {
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-comment: #98a0a9;
+  --code-title: #d2a8ff;
+  --code-type: #ffa657;
+  --code-attr: #79c0ff;
+  --code-meta: #7ee787;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-code="github"]:not([data-theme="dark"]) {
+    --code-keyword: #b71e29;
+    --code-string: #0a3069;
+    --code-number: #0550ae;
+    --code-comment: #565d65;
+    --code-title: #6c43ba;
+    --code-type: #953800;
+    --code-attr: #0550ae;
+    --code-meta: #116329;
+  }
+}
+
+:root[data-code="github"][data-theme="light"] {
+  --code-keyword: #b71e29;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-comment: #565d65;
+  --code-title: #6c43ba;
+  --code-type: #953800;
+  --code-attr: #0550ae;
+  --code-meta: #116329;
+}
+
+/* One */
+:root[data-code="one"] {
+  --code-keyword: #cb84e0;
+  --code-string: #98c379;
+  --code-number: #d19a66;
+  --code-comment: #9b9fa6;
+  --code-title: #61afef;
+  --code-type: #e5c07b;
+  --code-attr: #d19a66;
+  --code-meta: #e5858c;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-code="one"]:not([data-theme="dark"]) {
+    --code-keyword: #9c249a;
+    --code-string: #346934;
+    --code-number: #7f5701;
+    --code-comment: #5c5d61;
+    --code-title: #2f58b2;
+    --code-type: #7e5601;
+    --code-attr: #7f5701;
+    --code-meta: #9e3c33;
+  }
+}
+
+:root[data-code="one"][data-theme="light"] {
+  --code-keyword: #9c249a;
+  --code-string: #346934;
+  --code-number: #7f5701;
+  --code-comment: #5c5d61;
+  --code-title: #2f58b2;
+  --code-type: #7e5601;
+  --code-attr: #7f5701;
+  --code-meta: #9e3c33;
+}
+
+/* Gruvbox */
+:root[data-code="gruvbox"] {
+  --code-keyword: #fc7565;
+  --code-string: #b8bb26;
+  --code-number: #d48a9e;
+  --code-comment: #aa9e92;
+  --code-title: #fabd2f;
+  --code-type: #8ec07c;
+  --code-attr: #87a89b;
+  --code-meta: #fe8019;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-code="gruvbox"]:not([data-theme="dark"]) {
+    --code-keyword: #9d0006;
+    --code-string: #65610c;
+    --code-number: #8f3f71;
+    --code-comment: #675c53;
+    --code-title: #81540e;
+    --code-type: #376649;
+    --code-attr: #076678;
+    --code-meta: #a53703;
+  }
+}
+
+:root[data-code="gruvbox"][data-theme="light"] {
+  --code-keyword: #9d0006;
+  --code-string: #65610c;
+  --code-number: #8f3f71;
+  --code-comment: #675c53;
+  --code-title: #81540e;
+  --code-type: #376649;
+  --code-attr: #076678;
+  --code-meta: #a53703;
+}
