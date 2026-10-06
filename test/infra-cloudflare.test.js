@@ -387,7 +387,12 @@ describe('the Cloudflare provider’s cost (BRK-193)', () => {
     const worker = { id: rid('worker', 'acme-new'), kind: 'worker', name: 'acme-new' };
     expect(priceResource(worker)).toEqual({ amount: 0, notes: [] });
     expect(priceResource(worker, { requests: 1_000_000 }, 1).amount).toBeCloseTo(0.3, 6);
-    const box = { id: 'container:new', kind: 'container', name: 'acme-box', attrs: { instanceType: 'lite', active: 1 } };
+    const box = {
+      id: 'container:new',
+      kind: 'container',
+      name: 'acme-box',
+      attrs: { instanceType: 'lite', active: 1 },
+    };
     expect(priceResource(box).amount).toBeCloseTo((0.25 * 0.0000025 + 2 * 0.00000007) * 30 * 86_400, 6);
   });
 
