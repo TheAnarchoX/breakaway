@@ -599,6 +599,23 @@ async function handleApi(request, env, url, ctx) {
     if (res) return res;
   }
   if (parts[0] === 'pings' && parts.length === 1 && method === 'GET') return send(await s.pingsApi());
+  // Architect's audit trail (BRK-175): read only, for the token and the cookie alike; the control plane appends inside
+  // the store, and nothing changes or removes an entry.
+  if (parts[0] === 'infra' && parts[1] === 'audit' && parts.length === 2) {
+    if (method !== 'GET')
+      return json(405, { error: 'the audit trail is append-only: entries can’t be changed or removed' });
+    const q = url.searchParams;
+    return send(
+      await s.infraAuditApi({
+        environment: q.get('environment') ?? undefined,
+        environmentId: q.get('environmentId') ?? undefined,
+        repo: q.get('repo') ?? undefined,
+        kind: q.get('kind') ?? undefined,
+        before: q.get('before') ?? undefined,
+        limit: q.get('limit') ?? undefined,
+      }),
+    );
+  }
   // The peloton (IDEA-32, IDEA-36): agents post as the holder of a claimed task, with the bearer token. A post from
   // the signed-in browser is the owner's, and only the signed-in browser posts as the owner, never the bearer token.
   if (parts[0] === 'peloton') {
