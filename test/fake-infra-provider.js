@@ -5,6 +5,9 @@
  *
  * `fakeProvider()` takes the starting state; `provider.state` is live, so a test can change the platform by hand
  * (drift, break-glass) and `provider.calls` records every call, with its environment.
+ *
+ * Its read-only token (BRK-194) is one of `FAKE_TOKENS`: the platform knows each and says what it can do;
+ * `provider.tokensSeen` records every token it was asked about.
  */
 import { checkApply } from '../src/infra-provider.js';
 
@@ -17,6 +20,19 @@ export const FAKE_KINDS = {
   service: { changes: ['create', 'update', 'delete', 'scale', 'restart'] },
   database: { changes: ['create', 'update', 'delete'] },
   route: { changes: ['create', 'update', 'delete'] },
+};
+
+/** Tokens the fake platform knows, and the permissions each carries. Plainly fake values. */
+export const FAKE_TOKENS = {
+  'fake-read-token': [
+    { name: 'Fake Services Read', level: 'read' },
+    { name: 'Fake Alerts Read', level: 'read' },
+  ],
+  'fake-write-token': [
+    { name: 'Fake Services Read', level: 'read' },
+    { name: 'Fake Services Edit', level: 'write' },
+  ],
+  'fake-narrow-token': [{ name: 'Fake Services Read', level: 'read' }],
 };
 
 /** Attributes that scale a service: a change to only these is a `scale`. */
@@ -79,12 +95,23 @@ const clone = (v) => (v == null ? null : structuredClone(v));
  * @param {ReturnType<typeof fakeState>} [options.state]
  * @param {string[]} [options.failOn] resource IDs whose change fails on apply, for rollback tests
  * @param {string} [options.now] the time observe reports, ISO 8601
- * @returns {Provider & { state: ReturnType<typeof fakeState>, calls: Array<{ method: string, environment: string }>, failOn: Set<string> }}
+ * @param {Record<string, Array<{ name: string, level: 'read' | 'write' }>>} [options.tokens] the tokens the platform knows
+ * @param {boolean} [options.readToken] false for a provider that needs no token
+ * @returns {Provider & { state: ReturnType<typeof fakeState>, calls: Array<{ method: string, environment: string }>, failOn: Set<string>, tokensSeen: string[] }}
  */
-export function fakeProvider({ id = 'fake', state = fakeState(), failOn = [], now = '2026-10-06T12:00:00Z' } = {}) {
+export function fakeProvider({
+  id = 'fake',
+  state = fakeState(),
+  failOn = [],
+  now = '2026-10-06T12:00:00Z',
+  tokens = FAKE_TOKENS,
+  readToken = true,
+} = {}) {
   /** @type {Array<{ method: string, environment: string }>} */
   const calls = [];
   const record = (method, ctx) => calls.push({ method, environment: ctx.environment });
+  /** @type {string[]} */
+  const tokensSeen = [];
   const find = (rid) => state.resources.find((r) => r.id === rid);
 
   /** @param {Resource} r @param {'create' | 'delete'} op @returns {Change} */
@@ -109,6 +136,26 @@ export function fakeProvider({ id = 'fake', state = fakeState(), failOn = [], no
     state,
     calls,
     failOn: new Set(failOn),
+    tokensSeen,
+    ...(readToken
+      ? {
+          readToken: {
+            permissions: [
+              { name: 'Fake Services Read', for: 'what runs, and its health' },
+              { name: 'Fake Alerts Read', for: 'alerts, as signals' },
+            ],
+            url: 'https://fake.example/tokens',
+            /** @param {{ token: string }} ctx */
+            async check({ token }) {
+              tokensSeen.push(token);
+              const known = tokens[token];
+              return known
+                ? { ok: true, permissions: structuredClone(known) }
+                : { ok: false, error: 'the platform doesn’t know this token' };
+            },
+          },
+        }
+      : {}),
 
     async discover(ctx) {
       record('discover', ctx);

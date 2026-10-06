@@ -2,8 +2,8 @@
  * Routines the board keeps itself (docs/specs/IDEA-26-kickoff.md, BRK-133): a repository's routine /fire URL and
  * token, connected from the board's form instead of `agents-connect`, stored in the Durable Object encrypted at rest.
  *
- * This is the one place the Worker keeps a secret it was given (IDEA-14 section 4 keeps the Secrets Store the
- * owner's): routine URLs and tokens only. The key is derived with HKDF-SHA256 from the sync key the board uses (the
+ * One of the two places the Worker keeps a secret it was given (IDEA-14 section 4 keeps the Secrets Store the
+ * owner's): routine URLs and tokens here, and providers' read-only tokens on Connections (BRK-194), sealed the same way. The key is derived with HKDF-SHA256 from the sync key the board uses (the
  * Secrets Store's TASKS_SYNC_KEY until a rotation, then the rotated one, which `rekey` re-seals these with), so an
  * install needs no new secret. Each record is bound to its repository's slug, so one can't be moved to another.
  *
@@ -46,19 +46,67 @@ export function checkRoutine(input) {
 }
 
 /**
- * The AES-GCM key for routine records, from the board's sync key (base64, 32 bytes).
+ * An AES-GCM key from the board's sync key (base64, 32 bytes), for the records `info` names: each kind of record the
+ * board keeps sealed (routines here, providers' read tokens in connections.js) gets its own.
  * @param {string} syncKey
+ * @param {Uint8Array} info
  * @returns {Promise<CryptoKey>}
  */
-export async function routineKey(syncKey) {
+export async function sealingKey(syncKey, info) {
   const material = await crypto.subtle.importKey('raw', keyFromBase64(syncKey), 'HKDF', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: INFO },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info },
     material,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt'],
   );
+}
+
+/**
+ * Seals `value` as JSON, bound to `bound` (what the record belongs to), so it opens only for the same.
+ * @param {CryptoKey} key
+ * @param {string} bound
+ * @param {unknown} value
+ * @returns {Promise<string>}
+ */
+export async function sealJson(key, bound, value) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: encoder.encode(bound) },
+    key,
+    encoder.encode(JSON.stringify(value)),
+  );
+  return `${VERSION}.${b64(iv)}.${b64(data)}`;
+}
+
+/**
+ * Opens what `sealJson` sealed for `bound`. Throws when it can't: another key (the sync key changed without a
+ * rotation), another record's, or a damaged one.
+ * @param {CryptoKey} key
+ * @param {string} bound
+ * @param {string} sealed
+ * @param {string} what what it should be, for the error
+ * @returns {Promise<any>}
+ */
+export async function openJson(key, bound, sealed, what) {
+  const [version, iv, data] = String(sealed).split('.');
+  if (version !== VERSION || !iv || !data) throw new Error(`not a sealed ${what}`);
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: unb64(iv), additionalData: encoder.encode(bound) },
+    key,
+    unb64(data),
+  );
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+/**
+ * The AES-GCM key for routine records, from the board's sync key (base64, 32 bytes).
+ * @param {string} syncKey
+ * @returns {Promise<CryptoKey>}
+ */
+export function routineKey(syncKey) {
+  return sealingKey(syncKey, INFO);
 }
 
 /**
@@ -68,14 +116,8 @@ export async function routineKey(syncKey) {
  * @param {{ url: string, token: string }} routine
  * @returns {Promise<string>}
  */
-export async function sealRoutine(key, slug, { url, token }) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv, additionalData: encoder.encode(slug) },
-    key,
-    encoder.encode(JSON.stringify({ url, token })),
-  );
-  return `${VERSION}.${b64(iv)}.${b64(data)}`;
+export function sealRoutine(key, slug, { url, token }) {
+  return sealJson(key, slug, { url, token });
 }
 
 /**
@@ -87,14 +129,7 @@ export async function sealRoutine(key, slug, { url, token }) {
  * @returns {Promise<{ url: string, token: string }>}
  */
 export async function openRoutine(key, slug, sealed) {
-  const [version, iv, data] = String(sealed).split('.');
-  if (version !== VERSION || !iv || !data) throw new Error('not a sealed routine');
-  const plain = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: unb64(iv), additionalData: encoder.encode(slug) },
-    key,
-    unb64(data),
-  );
-  const routine = JSON.parse(new TextDecoder().decode(plain));
+  const routine = await openJson(key, slug, sealed, 'routine');
   if (typeof routine?.url !== 'string' || typeof routine?.token !== 'string') throw new Error('not a routine');
   return { url: routine.url, token: routine.token };
 }
