@@ -574,6 +574,17 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.planModifyApi(parts[2], body));
     }
   }
+  // Drift (BRK-184): anyone signed in reads it; comparing an environment now is the owner's, from the signed-in browser
+  // only (the cron compares them anyway). A plan it makes is a draft.
+  if (parts[0] === 'infra' && parts[1] === 'drift' && parts.length <= 3) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET')
+      return send(await (parts.length === 2 ? s.driftApi({ repo }) : s.driftOneApi(parts[2], { repo })));
+    if (parts.length === 3 && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can compare an environment now' });
+      return send(await s.driftCheckApi(parts[2], { repo, ...body }));
+    }
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
