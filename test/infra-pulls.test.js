@@ -92,7 +92,7 @@ describe('a pull request’s plan as a check', () => {
 
   /** GitHub, as a pull request's client sees it: its files, each file at its head, and the checks posted. */
   const gh = {
-    /** @type {Array<Record<string, any>>} */ files: [],
+    /** @type {Array<Record<string, any>> | null} */ files: [],
     /** @type {Record<string, string>} */ at: {},
     /** @type {string[]} */ calls: [],
     /** @type {any[]} */ posted: [],
@@ -101,7 +101,10 @@ describe('a pull request’s plan as a check', () => {
   const client = {
     async get(path) {
       gh.calls.push(`GET ${path.split('?')[0]}`);
-      if (/^\/pulls\/\d+\/files/u.test(path)) return gh.files;
+      if (/^\/pulls\/\d+\/files/u.test(path)) {
+        if (gh.files === null) throw new GitHubError('Not Found', 404);
+        return gh.files;
+      }
       const m = /^\/contents\/(.+)\?ref=(.+)$/u.exec(path);
       if (m) {
         const name = decodeURIComponent(m[1]);
@@ -233,6 +236,14 @@ describe('a pull request’s plan as a check', () => {
     expect(gh.calls).toEqual(['GET /pulls/12/files']);
     expect(gh.posted).toEqual([]);
     expect(await shown(12)).toBeNull();
+  });
+
+  it('takes a pull request GitHub won’t list the files of as one that changes nothing', async () => {
+    gh.files = null;
+    await check([pull(20, 'sha-20')]);
+    expect(gh.calls).toEqual(['GET /pulls/20/files']);
+    expect(gh.posted).toEqual([]);
+    expect(await shown(20)).toBeNull();
   });
 
   it('asks GitHub nothing for a repository with no environment the board can plan for', async () => {

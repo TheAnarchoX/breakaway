@@ -99,7 +99,8 @@ export const infraPullsMethods = {
     const sha = pull.head.sha;
     const files = [];
     for (let page = 1; page <= FILE_PAGES; page += 1) {
-      const batch = await client.get(`/pulls/${pull.number}/files?per_page=100&page=${page}`);
+      // A pull request GitHub won't list the files of (gone since the list was read) has nothing to plan.
+      const batch = (await orNull(client.get(`/pulls/${pull.number}/files?per_page=100&page=${page}`))) ?? [];
       files.push(...batch);
       if (batch.length < 100) break;
     }
