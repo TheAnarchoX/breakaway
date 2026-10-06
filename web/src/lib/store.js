@@ -847,6 +847,8 @@ export const addRepoTarget = signal(null);
 export const settingsSlug = signal(null);
 /** The kickoff open on #/kickoff/<id> (WEB-35), or null for #/kickoff: the list and the form to start one. */
 export const kickoffId = signal(null);
+/** The environment open on #/infrastructure/<id> (WEB-61), or null for #/infrastructure: every environment. */
+export const environmentId = signal(/** @type {string | null} */ (null));
 /** The sign-in from MCP apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
 export const authorizeId = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
@@ -879,6 +881,8 @@ function parseHash() {
     const settings = /^settings(?:\/([^/]{0,64}))?$/u.exec(path);
     const kickoff = /^kickoff(?:\/([0-9a-f-]{36}))?$/u.exec(path);
     kickoffId.value = kickoff?.[1] ?? null;
+    const environment = /^infrastructure\/(\d{1,9})$/u.exec(path);
+    environmentId.value = environment?.[1] ?? null;
     authorizeId.value = /^authorize\/([\w-]{20,64})$/u.exec(path)?.[1] ?? null;
     view.value = settings
       ? settings[1]
@@ -886,9 +890,11 @@ function parseHash() {
         : 'settings'
       : kickoff
         ? 'kickoff'
-        : VIEW_IDS.includes(path)
-          ? path
-          : 'board';
+        : environment
+          ? 'infrastructure'
+          : VIEW_IDS.includes(path)
+            ? path
+            : 'board';
     settingsSlug.value = settings?.[1] ? safeDecode(settings[1]).toLowerCase() : null;
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
@@ -934,6 +940,7 @@ export function hashFor({
   settings = settingsSlug.value,
   spec = selectedSpec.value,
   kickoff = kickoffId.value,
+  environment = view.value === 'infrastructure' ? environmentId.value : null,
 } = {}) {
   // The consent page stands alone: nothing else in the hash, so the URL stays the one the sign-in came to.
   if (authorizeId.value) return `#/authorize/${authorizeId.value}`;
@@ -966,7 +973,9 @@ export function hashFor({
       ? `settings${settings ? `/${enc(settings)}` : ''}`
       : v === 'kickoff' && kickoff
         ? `kickoff/${kickoff}`
-        : v;
+        : v === 'infrastructure' && environment
+          ? `infrastructure/${environment}`
+          : v;
   return `#/${path}${qs ? `?${qs}` : ''}`;
 }
 

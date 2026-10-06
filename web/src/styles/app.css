@@ -8648,3 +8648,242 @@ a.pl-mention {
 .infra-form-actions {
   justify-content: flex-end;
 }
+
+/* ---------- an environment's page (WEB-61) ---------- */
+
+/* Its resources by kind, then its desired state and drift, then its audit trail: one column, as wide as reads well. */
+.infra-page {
+  gap: 24px;
+  max-width: 920px;
+}
+.infra-page .fr-back {
+  margin-bottom: -12px;
+}
+.infra-page .view-intro h1 {
+  overflow-wrap: anywhere;
+}
+.infra-env-name a {
+  color: inherit;
+  text-decoration: none;
+}
+.infra-env-name a:hover {
+  text-decoration: underline;
+}
+.infra-page-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.infra-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.infra-section > h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+}
+.infra-section > h2 svg {
+  color: var(--muted);
+}
+.infra-section > p {
+  margin: 0;
+  font-size: 14px;
+}
+.infra-kind-group {
+  display: grid;
+  gap: 8px;
+}
+.infra-kind-group h3 {
+  font: 600 13px / 1.4 var(--font-mono);
+  color: var(--muted);
+}
+.infra-res-list,
+.infra-audit {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.infra-res {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  scroll-margin: calc(var(--topbar-h) + 16px);
+}
+.infra-res:focus {
+  outline: none;
+}
+.infra-res:focus-visible,
+.infra-res:focus {
+  border-color: var(--accent);
+}
+.infra-res-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.infra-res-name {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.infra-res-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.infra-res-head .infra-health {
+  margin-left: auto;
+}
+.infra-res-text {
+  margin: 0;
+  font-size: 14px;
+}
+.infra-res-id {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.infra-rels {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.infra-rel {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 14px;
+}
+.infra-rel dt {
+  color: var(--muted);
+}
+.infra-rel dd {
+  margin: 0;
+}
+.infra-rel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+.infra-rel-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.infra-rel-link:hover {
+  text-decoration-color: currentColor;
+}
+.infra-settings summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+.infra-settings dl,
+.infra-facts {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+.infra-settings dl > div,
+.infra-facts > div {
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+  gap: 10px;
+  font-size: 13px;
+}
+.infra-facts {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.infra-facts > div {
+  font-size: 14px;
+}
+.infra-settings dt,
+.infra-facts dt {
+  color: var(--muted);
+}
+.infra-settings dd,
+.infra-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.infra-desired {
+  font-weight: 600;
+}
+.infra-desired-valid {
+  color: var(--success);
+}
+.infra-desired-invalid,
+.infra-desired-to-add {
+  color: var(--warn);
+}
+.infra-audit {
+  gap: 0;
+  border-left: 2px solid var(--line);
+  padding-left: 14px;
+}
+.infra-audit-entry {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  min-width: 0;
+}
+.infra-audit-entry p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.infra-audit-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.infra-audit-kind {
+  font-weight: 600;
+}
+.infra-audit-when {
+  margin-left: auto;
+}
+.infra-audit-summary {
+  font-size: 14px;
+}
+.infra-audit-more {
+  justify-self: start;
+}
+@media (max-width: 560px) {
+  .infra-res-head .infra-health,
+  .infra-audit-when {
+    margin-left: 0;
+  }
+  .infra-rel,
+  .infra-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

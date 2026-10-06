@@ -343,7 +343,7 @@ export function Sidebar({ drawer = false }) {
             <a
               key={v.id}
               class="side-item"
-              href={hashFor({ view: v.id, pr: null, ping: null })}
+              href={hashFor({ view: v.id, pr: null, ping: null, environment: null })}
               aria-current={view.value === v.id ? 'page' : undefined}
               title={tip(v.label)}
               onClick={close}
