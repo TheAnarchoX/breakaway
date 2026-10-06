@@ -223,7 +223,7 @@ export const infraEnvironmentsMethods = {
           row.id,
         )
         .one();
-      // A freeze or thaw goes in the audit trail (BRK-175), once it's written.
+      // A freeze or thaw goes in the audit trail (BRK-175, BRK-232).
       if (next.frozen !== row.frozen)
         this.appendInfraAudit({
           kind: 'freeze',
