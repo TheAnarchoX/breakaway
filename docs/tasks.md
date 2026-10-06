@@ -202,6 +202,16 @@ A board from before a read's route says so and names the update. The `--json` ou
 - The board keeps none of it: the preview (`POST /api/infra/check`) has no ID and no state, writes no audit entry, and can't be approved or applied, so an agent's token may ask for it. Each preview asks the provider for a plan, so a repository gets 10 a minute.
 - A file for an environment the board doesn't have yet is one to add, as the board shows it; an observe-only environment is refused, and so is a board from before the route.
 
+#### Plans from pull requests
+
+`BRK-185`, [spec](specs/IDEA-19-architect.md#change). Once the pull request is open, the board does the same on its own. On a sync, an open pull request whose head moved and that changes an environment's file or `policy.json` in `.github/breakaway-infra/` gets one check, **breakaway: infrastructure plan**, on its head commit, and the board's pull request page shows the same under **Infrastructure plan**.
+
+- **What it says.** For each environment whose file changed (every environment with a desired state, when `policy.json` changed), up to 5: the plan its file at the head would make, from what runs now, with the same computation as `infra check` (what changes, the cost change, what else it touches, whether it can be undone), and the policy's answer under the head's `policy.json` (or the default).
+- **How it ends.** It fails when a file doesn't check, names an observe-only environment, or the policy refuses the plan (a frozen environment). It's neutral when something couldn't be planned: an environment the board doesn't have yet, or a provider that didn't answer. Otherwise it passes, even when the plan will wait for you, which is the default.
+- **Merging applies nothing.** The check is a preview: no plan ID, no state, no audit entry. Once the pull request merges, the board reads the default branch and plans from it, and that plan waits for you on the board, unless a repository's policy lets it through.
+- **Its cost.** Only repositories with an environment the board can plan for are looked at, each pull request once per head commit, at most 3 a sync. A pull request that changes nothing in the folder costs one read of its files.
+- **Permissions.** Posting the check needs read and write on **Checks** for the board's GitHub App. An App made from the manifest before `BRK-185` has read only: until you accept the new permission (Permissions & events, **Checks** to read and write, then accept the request on the installation), the check isn't posted and the pull request page says why, and still shows the plan.
+
 #### Golden paths (infrastructure templates)
 
 `CLI-15`, [spec](specs/IDEA-19-architect.md#golden-paths). The owner keeps opinionated templates for a capability (a queue, a database, a new service) in the repository, and **`npx breakaway infra add <template> [<environment>] [<input>=<value> …]`** writes the change one makes into the checkout, so an agent opens an ordinary pull request. It needs no board, never overwrites a file, and never plans or applies: the plan comes from the board once the change merges, and waits for the owner like any other.

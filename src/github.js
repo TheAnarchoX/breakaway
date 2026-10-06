@@ -447,7 +447,7 @@ export function appManifest(origin, repo, name = /** @type {string} */ (DEFAULTS
       metadata: 'read',
       contents: 'write', // update branch and merge
       pull_requests: 'write',
-      checks: 'read',
+      checks: 'write', // post an infrastructure change's plan as a check (BRK-185)
       actions: 'write', // start Promote and Roll back
       statuses: 'read',
       deployments: 'read',

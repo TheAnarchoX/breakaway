@@ -1124,16 +1124,16 @@ describe('GitHub on the board', () => {
     expect(setup.manifest.default_permissions).toMatchObject({
       pull_requests: 'write',
       contents: 'write',
-      checks: 'read',
+      checks: 'write',
       vulnerability_alerts: 'read',
     });
-    // Only pull requests and contents write (update branch and merge); everything else reads.
+    // Write only where a button or a check needs it: update branch and merge, workflows, and a plan's check (BRK-185).
     expect(
       Object.entries(setup.manifest.default_permissions)
         .filter(([, v]) => v !== 'read')
         .map(([k]) => k)
         .sort(),
-    ).toEqual(['actions', 'contents', 'pull_requests']);
+    ).toEqual(['actions', 'checks', 'contents', 'pull_requests']);
     const bad = await SELF.fetch(`${ORIGIN}/github/connected?code=abcdef123456&state=nope`, { redirect: 'manual' });
     expect(bad.headers.get('Location')).toBe('/#/github?connect=failed');
     const good = await SELF.fetch(`${ORIGIN}/github/connected?code=abcdef123456&state=${setup.state}`, {
