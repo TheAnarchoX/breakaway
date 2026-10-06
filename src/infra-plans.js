@@ -21,9 +21,10 @@ export const PLAN_STATES = ['draft', 'waiting', 'approved', 'rejected', 'applyin
 
 /**
  * Where a plan comes from: a pull request that changed a desired-state file (BRK-185), drift (BRK-184), an envelope
- * acting (BRK-186), an incident's runbook (BRK-197), or the deploy flow's Promote and Roll back (BRK-195).
+ * acting (BRK-186), an incident's runbook (BRK-197), the deploy flow's Promote and Roll back (BRK-195), or removing
+ * what nobody owns once its grace period is over (BRK-201).
  */
-export const PLAN_SOURCES = ['pull-request', 'drift', 'envelope', 'incident', 'deploy'];
+export const PLAN_SOURCES = ['pull-request', 'drift', 'envelope', 'incident', 'deploy', 'cleanup'];
 
 /**
  * Which states a plan may move to from each. A draft waits for the owner or is dropped; only an approved plan is
