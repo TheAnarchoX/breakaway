@@ -7,6 +7,7 @@
  * gives (and the tests mock), and which answers `{ ok, status, data }` for any answer.
  */
 import { sentAt } from './session-messages.js';
+import { rateWords } from '../../src/infra-currency.js';
 
 /** The reads `infra` takes; `infra` alone is `infra environments`. */
 export const INFRA_READS = ['environments', 'show', 'plans', 'plan', 'signals', 'incidents'];
@@ -197,6 +198,8 @@ export function environmentText({ environment: env, resources, relations, desire
   }
   const names = new Map(resources.map((r) => [r.id, `${r.kind} ${r.name}`]));
   out.push(`Resources (${resources.length})`);
+  const rate = resources.find((r) => r.cost?.rate)?.cost.rate;
+  if (rate) out.push(`  Estimated costs ${rateWords(rate)}.`);
   for (const r of resources) {
     const state = resourceState(r);
     out.push(state ? `  ${`${r.kind} ${r.name}`.padEnd(32)}  ${state}` : `  ${r.kind} ${r.name}`);
@@ -297,7 +300,7 @@ export function planText({ plan }) {
         ? `: ${money(cost.now, cost.currency)} → ${money(cost.after, cost.currency)}`
         : '';
     const unknown = cost.unknown?.length ? ` (not known for ${cost.unknown.join(', ')})` : '';
-    row('Cost', `${words}${span}, estimated${unknown}`);
+    row('Cost', `${words}${span}, estimated${unknown}${cost.rate ? `, ${rateWords(cost.rate)}` : ''}`);
   }
   row(
     'Undo',

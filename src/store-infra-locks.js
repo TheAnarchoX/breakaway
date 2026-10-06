@@ -34,8 +34,6 @@ export const infraLocksMethods = {
 
   /** A release goes on the audit trail first; with no trail to write to, the release doesn't happen. */
   auditLockRelease(env, lock, { by, outcome, summary }) {
-    if (typeof this.appendInfraAudit !== 'function')
-      throw new AgentError('the audit trail isn’t on this board yet, so a lock can’t be released unrecorded', 503);
     this.appendInfraAudit({
       kind: 'lock-release',
       repo: env.repo,
