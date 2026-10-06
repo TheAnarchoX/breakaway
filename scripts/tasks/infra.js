@@ -262,7 +262,7 @@ async function apply(io) {
   let result;
   try {
     const provider = io.providers.get(plan.diff.provider);
-    const ctx = { environment: plan.environment, scope: plan.scope ?? {}, token, fetch: io.fetch };
+    const ctx = { environment: plan.environment, scope: plan.scope ?? {}, token, writeToken: token, fetch: io.fetch };
     result = checkApplyResult(provider, plan.diff, await provider.apply(ctx, plan.diff));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
