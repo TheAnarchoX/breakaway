@@ -43,7 +43,7 @@ export const infraDriftMethods = {
   /** An environment's drift for its view: `driftCount` (null until compared) and the last comparison, or null. */
   driftFor(environmentId) {
     const row = this.sql.exec('SELECT * FROM infra_drift WHERE environment = ?', environmentId).toArray()[0];
-    const drift = row ? driftView(row) : null;
+    const drift = row ? { ...driftView(row), breakGlass: this.breakGlassFor(environmentId) } : null;
     return { driftCount: drift?.count ?? null, drift };
   },
 
@@ -84,24 +84,33 @@ export const infraDriftMethods = {
     }
   },
 
-  async compareDrift(env) {
+  /**
+   * What the provider would change to bring what runs back to the environment's desired state: the drift, as a kept
+   * diff. Throws when the provider fails. Break-glass (BRK-187) reads it too.
+   */
+  async driftDiff(env) {
     const provider = this.infraRegistry().get(env.provider);
-    const desiredSha =
-      this.sql
-        .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
-        .toArray()[0]?.valid_sha ?? null;
     const ctx = {
       environment: env.name,
       scope: { target: env.target },
       observeOnly: false,
       token: (await this.providerReadToken(env.provider)) ?? undefined,
     };
+    return keptDiff(
+      checkPlan(provider, await provider.plan(ctx, checkDesired(provider, this.desiredStateFor(env))), ctx),
+    );
+  },
+
+  async compareDrift(env) {
+    const provider = this.infraRegistry().get(env.provider);
+    const desiredSha =
+      this.sql
+        .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
+        .toArray()[0]?.valid_sha ?? null;
     const last = this.sql.exec('SELECT * FROM infra_drift WHERE environment = ?', env.id).toArray()[0];
     let diff;
     try {
-      diff = keptDiff(
-        checkPlan(provider, await provider.plan(ctx, checkDesired(provider, this.desiredStateFor(env))), ctx),
-      );
+      diff = await this.driftDiff(env);
     } catch (error) {
       // What differed last time stays on the environment, with why this comparison couldn't finish.
       return this.keepDrift(env, {
@@ -116,6 +125,8 @@ export const infraDriftMethods = {
     }
     const fingerprint = await driftFingerprint(diff);
     const resources = JSON.stringify(driftResources(diff));
+    // Changes the owner marked as break-glass (BRK-187) are never planned back: the board doesn't propose undoing them.
+    const brokenGlass = await this.settleBreakGlass(env, diff);
     if (diff.changes.length === 0)
       return this.keepDrift(env, { desiredSha, count: 0, resources, fingerprint, plan: null, planMatches: false });
 
@@ -147,8 +158,9 @@ export const infraDriftMethods = {
         planMatches: false,
       });
 
-    // A frozen environment's drift is kept and shown, but planned only once it's unfrozen.
-    if (env.frozen)
+    // A frozen environment's drift is kept and shown, but planned only once it's unfrozen. Drift with a change marked
+    // as break-glass is kept and shown, and planned only once the file says what runs (or the change is gone).
+    if (env.frozen || brokenGlass)
       return this.keepDrift(env, {
         desiredSha,
         count: diff.changes.length,
@@ -203,7 +215,12 @@ export const infraDriftMethods = {
 
   driftOut(env) {
     const row = this.sql.exec('SELECT * FROM infra_drift WHERE environment = ?', env.id).toArray()[0];
-    return { repo: env.repo, environment: { id: Number(env.id), name: env.name }, ...driftView(row) };
+    return {
+      repo: env.repo,
+      environment: { id: Number(env.id), name: env.name },
+      ...driftView(row),
+      breakGlass: this.breakGlassFor(env.id),
+    };
   },
 
   /**

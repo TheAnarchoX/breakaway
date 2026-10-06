@@ -98,6 +98,8 @@ The cron compares each environment with a provider and a desired state at most o
 
 The owner may change something by hand. Marking the drift as break-glass records it and makes a follow-up task to put it into code by pull request (BRK-171); the board never proposes undoing it (BRK-187).
 
+**Mark as break-glass** on an environment's drift, with a note, is the owner's, from the signed-in board (`POST /api/infra/break-glass/<environment>`). The board compares the environment again, so the mark is for what differs now, then appends one `break-glass` entry to the audit trail and makes one task in the environment's repository, tagged `+break-glass`, whose brief names `.github/breakaway-infra/<environment>.json` and, change by change, what to write into it so the file says what runs. It rejects the open drift plans, which would put the change back, and makes no drift plan while what differs still holds a marked change; it refuses while an approved drift plan is about to apply. Marking the same changes again returns the first mark. A mark is settled once none of its changes differ any more (the file caught up, or the change is gone), and drift is planned as usual after that. The drift shows the standing mark (`breakGlass`), and `GET /api/infra/break-glass` lists the marks.
+
 ### Audit trail
 
 Every plan, approval, apply, envelope action, lock release, and break-glass, appended once and never edited, redacted, kept at least a year (BRK-175). The environment page shows it.
