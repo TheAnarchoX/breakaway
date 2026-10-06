@@ -5,7 +5,7 @@ import { INFRA_TOOL_NAMES } from '../src/mcp-infra.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
 import { api, boardApi } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
-import { fakeProvider } from './fake-infra-provider.js';
+import { fakeProvider, fakeState } from './fake-infra-provider.js';
 
 const AGENT = 'claude-mcp-infra';
 const PROVIDER = 'fakemcp';
@@ -79,7 +79,9 @@ describe('Architect on the MCP server (BRK-202)', () => {
     );
     expect(theirs, theirs.error).toMatchObject({ status: 201 });
     elsewhere = theirs.environment;
-    const provider = fakeProvider({ id: PROVIDER });
+    // No events of its own: a refresh pulls a provider's events into the stream (BRK-191), and these tests read only
+    // the signals recorded below.
+    const provider = fakeProvider({ id: PROVIDER, state: { ...fakeState(), events: [] } });
     await runInDurableObject(store(), async (instance) => {
       instance.infraProviders = new ProviderRegistry();
       instance.infraProviders.register(provider);
