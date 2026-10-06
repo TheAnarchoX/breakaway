@@ -239,6 +239,20 @@ describe('drift in the store (BRK-184)', () => {
     expect(list.drift.map((d) => d.environment.name)).toContain('drift-staging');
   });
 
+  it('keeps a frozen environment’s drift without planning it, and plans it once it’s unfrozen', async () => {
+    await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { frozen: true } });
+    for (const p of (await driftPlans()).filter((p) => p.state === 'draft'))
+      await inStore((s) => s.moveInfraPlan(p.id, 'rejected', { by: 'owner' }));
+    const before = (await driftPlans()).length;
+    await cron();
+    expect(await driftPlans()).toHaveLength(before);
+    expect((await view()).drift).toMatchObject({ count: 2, plan: null, error: null });
+    await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { frozen: false } });
+    await cron();
+    expect(await driftPlans()).toHaveLength(before + 1);
+    expect((await view()).drift).toMatchObject({ count: 2, planMatches: true });
+  });
+
   it('shows no drift once what runs matches again', async () => {
     provider.state.resources.find((r) => r.id === 'db-main').attrs.size = 'small';
     provider.state.resources.find((r) => r.id === 'svc-api').attrs.instances = 2;

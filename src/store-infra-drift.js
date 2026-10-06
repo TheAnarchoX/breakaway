@@ -8,7 +8,8 @@
  *
  * One drift, one plan: a comparison that finds an open plan covering the same changes (from drift, a pull request, or
  * anything else) makes none, and while an earlier drift plan is still open it makes no other, saying instead that the
- * open one no longer matches. Observe-only environments (BRK-169) are never compared: they take no desired state.
+ * open one no longer matches. A frozen environment's drift is kept but not planned until it's unfrozen. Observe-only
+ * environments (BRK-169) are never compared: they take no desired state.
  */
 import { AgentError } from './store-agents.js';
 import { install } from './install.js';
@@ -146,6 +147,16 @@ export const infraDriftMethods = {
         planMatches: false,
       });
 
+    // A frozen environment's drift is kept and shown, but planned only once it's unfrozen.
+    if (env.frozen)
+      return this.keepDrift(env, {
+        desiredSha,
+        count: diff.changes.length,
+        resources,
+        fingerprint,
+        plan: null,
+        planMatches: false,
+      });
     let plan = null;
     let planMatches = false;
     let error = null;
