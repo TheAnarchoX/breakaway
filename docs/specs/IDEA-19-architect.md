@@ -83,7 +83,10 @@ The file is `.github/breakaway-infra/policy.json` on the default branch, read wi
   "budget": 20,
   "environments": { "production": { "budget": 200 } },
   "access": { "kinds": ["route"], "settings": ["public"] },
-  "allow": [{ "name": "small staging changes", "environments": ["staging"], "changes": ["update", "scale"], "maxChanges": 3 }]
+  "allow": [
+    { "name": "small staging changes", "environments": ["staging"], "changes": ["update", "scale"], "maxChanges": 3 },
+    { "name": "task environments", "environmentKinds": ["short-lived"] }
+  ]
 }
 ```
 
@@ -150,6 +153,21 @@ The owner works in euros, or any currency (BRK-171, BRK-172), while platforms pr
 ### Short-lived environments
 
 A task can ask for its own environment, made from the repository's template through a plan and removed through a plan when the task closes (BRK-200).
+
+**As built (BRK-200).** The template is `.github/breakaway-infra/short-lived.json` on the default branch, a reserved name read with the desired state: a desired-state file with a `provider` and a `target`, where `{environment}` in the target and in each resource's id and name becomes the environment's name (every id must have it, so no two tasks share a resource). An invalid template keeps the last valid one, with its error, like a desired-state file.
+
+```json
+{
+  "version": 1,
+  "provider": "cloudflare",
+  "target": "app-{environment}",
+  "resources": [{ "id": "app-{environment}", "kind": "worker", "name": "app-{environment}" }]
+}
+```
+
+A task asks with the `+environment` tag (an agent tags its own task), or the owner presses for one (`POST /api/infra/short-lived/<task>`, from the signed-in board only). Asking only asks: the board adds an environment named after the task's work ID (`ops-12`), kind short-lived, owned by the task, appends an `environment` entry to the audit trail, and makes the plan that makes it (source `short-lived`, by the board). Under the default policy it waits for the owner, with a push; a repository's policy can let it through with an allow rule for `"environmentKinds": ["short-lived"]`. A repository has at most 3 short-lived environments at once, inside its cap of 50; a request over it, or with no template or no connected provider, is refused with why and looked at again in an hour.
+
+The board notices from the alarm and the cron, so a task closed anywhere (the board, the CLI, a merged pull request, Taskwarrior) counts. When the task closes, the board makes the plan that removes everything in the environment's scope; it's all deletes, so the destructive guard always asks the owner, whatever the policy says. Once it's applied, the environment goes, with an `environment` entry. A task that closes while the plan that makes its environment still waits for the owner has that plan rejected by the board (nothing was made), and an environment with nothing in it goes at once. An environment whose task stays open is offered for removal after a grace period of 14 days; when the owner rejects a removal (or it fails), it stays for another 14 days before the board asks again. `GET /api/infra/short-lived` lists the requests, with each repository's template.
 
 ### Clean up
 
@@ -455,7 +473,7 @@ Answered by the owner on 6 Oct 2026; DOC-29 records them in the decision log and
 
 ## Open questions
 
-- Whether short-lived environments are made on claim, on a tag, or only on a press. BRK-200 starts with a tag or a press.
+- Whether short-lived environments are made on claim, on a tag, or only on a press. BRK-200 starts with a tag or a press. Whether 14 days is the right grace for an environment whose task stays open.
 - Whether the plan check needs a new GitHub App permission (checks: write). BRK-185 adds an owner task if it does.
 - Whether the board's own install, staging, and production should be on separate Cloudflare accounts. Cloudflare's per-Worker Workers Editor keeps a staging write token off production's and the board's Workers, but every other account permission reaches every resource of its kind, so on one account only the provider's scope check keeps it off production's data (First provider). Separate accounts make the token the boundary; the owner chooses when making the tokens (BRK-204, BRK-206).
 

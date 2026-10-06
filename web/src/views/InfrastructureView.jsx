@@ -4,6 +4,7 @@ import {
   CircleDashed,
   CircleX,
   Eye,
+  FileDiff,
   Plug,
   Plus,
   RefreshCw,
@@ -272,6 +273,15 @@ function EnvironmentCard({ env, resources, cost, onChange }) {
       {cost && cost.cost.resources > 0 && <BudgetLine entry={cost} compact />}
       <LiveLine env={env} />
       <EnvironmentFlags env={env} />
+      {env.waitingPlan && (
+        <a
+          class="infra-env-plan"
+          href={hashFor({ view: 'infrastructure', environment: String(env.id), plan: env.waitingPlan, task: null })}
+        >
+          <FileDiff size={14} aria-hidden="true" />
+          {env.waitingPlan} waits for you
+        </a>
+      )}
       <div class="infra-env-foot">
         <FreezeButton env={env} onChange={onChange} />
       </div>

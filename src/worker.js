@@ -706,6 +706,19 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.breakGlassMarkApi(parts[2], { repo, ...body }));
     }
   }
+  // Short-lived environments (BRK-200): anyone signed in reads the requests; asking for one from the board is the
+  // owner's, from the signed-in browser only. Agents ask with the +environment tag; either way, plans decide.
+  if (parts[0] === 'infra' && parts[1] === 'short-lived' && parts.length <= 3) {
+    if (parts.length === 2 && method === 'GET')
+      return send(await s.shortLivedApi({ repo: url.searchParams.get('repo') }));
+    if (parts.length === 3 && method === 'POST') {
+      if (via !== 'cookie')
+        return json(403, {
+          error: 'only the signed-in web board asks for an environment; agents tag their task +environment',
+        });
+      return send(await s.shortLivedAskApi(parts[2], body));
+    }
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
@@ -822,6 +835,7 @@ async function handleApi(request, env, url, ctx) {
         environmentId: q.get('environmentId') ?? undefined,
         repo: q.get('repo') ?? undefined,
         kind: q.get('kind') ?? undefined,
+        plan: q.get('plan') ?? undefined,
         before: q.get('before') ?? undefined,
         limit: q.get('limit') ?? undefined,
       }),
