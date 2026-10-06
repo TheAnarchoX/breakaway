@@ -32,12 +32,25 @@ import { apply, estimate, plan } from './infra-cloudflare-plan.js';
 export const API = 'https://api.cloudflare.com/client/v4';
 
 const BASE = ['create', 'update', 'delete'];
+/**
+ * The settings Architect manages, by kind. Everything else a resource carries (a Worker's handlers, secrets, and live
+ * versions, a database's size, a container's instances) is Cloudflare's or the deploy's, and is never compared.
+ */
+export const MANAGED = {
+  worker: ['compatibilityDate', 'compatibilityFlags', 'usageModel', 'observability', 'placement', 'bindings', 'crons'],
+  'durable-object': [],
+  d1: [],
+  kv: [],
+  r2: ['cors', 'lifecycle'],
+  queue: ['deliveryDelay', 'deliveryPaused', 'retention'],
+  container: ['maxInstances'],
+  route: ['worker'],
+  'custom-domain': ['worker', 'environment'],
+};
+
 /** BRK-227 adds `scale` to queues and `scale` and `restart` to containers. */
 export const CLOUDFLARE_KINDS = Object.fromEntries(
-  ['worker', 'durable-object', 'd1', 'kv', 'r2', 'queue', 'container', 'route', 'custom-domain'].map((k) => [
-    k,
-    { changes: [...BASE] },
-  ]),
+  Object.entries(MANAGED).map(([k, settings]) => [k, { changes: [...BASE], settings: [...settings] }]),
 );
 
 /**

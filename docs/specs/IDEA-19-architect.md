@@ -60,6 +60,8 @@ What actually exists, from each provider's `discover`, scoped to what the board'
 
 What should exist, as code, read from the repository's default branch once per new commit, the way `.github/breakaway-pipeline.json` is read (BRK-180). One file per environment, `.github/breakaway-infra/<environment>.json` (BRK-169). A file for an environment that doesn't exist shows as one to add; one for an observe-only environment is refused. An invalid file shows its error and keeps the last valid copy. `npx breakaway infra check` validates it locally and asks for the plan it would make (CLI-14).
 
+Nobody has to write the first file by hand (BRK-240): `GET /api/infra/environments/<id>/draft` writes it from the environment's slice of the inventory, valid as written, with only the settings the provider manages (never what the platform reports by itself, like versions and sizes) and never a secret's value, and notes saying what it left out. Agents read it with the token as well as the owner; `infra adopt` (CLI-23) writes it into a checkout. An environment with no inventory yet gets a 409 saying to connect the provider and refresh.
+
 ### Plans
 
 The exact difference an apply would make: the provider's diff, the cost change, the blast radius (from the inventory's relations), whether it can be undone or why not, the policy results, and a state (`draft`, `waiting`, `approved`, `rejected`, `applying`, `applied`, `failed`, `rolled back`). Its source is a pull request, drift, an envelope, an incident, or the deploy flow (BRK-178).
