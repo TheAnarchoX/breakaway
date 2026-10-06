@@ -172,6 +172,7 @@ export const routinesMethods = {
       nextRun: this.nextScheduledRun(r),
       triggerStart: r.trigger_start ?? 'wait',
       githubEvents: githubEventsOf(r),
+      signal: this.runbookOf(r.slug),
       triggers: this.sql
         .exec(
           'SELECT id, label, created, last_used, revoked FROM routine_triggers WHERE slug = ? AND revoked IS NULL ORDER BY id',
@@ -733,8 +734,11 @@ export const routinesMethods = {
     return { started };
   },
 
-  /** Notes a trigger on the routine's open run, or makes a run (and starts it when the routine says auto). */
-  async deliverTrigger(routine, label, comment, trigger, refuse) {
+  /**
+   * Notes a trigger on the routine's open run, or makes a run (and starts it when the routine says auto, or when
+   * `auto` says so: a signal trigger has its own, BRK-196).
+   */
+  async deliverTrigger(routine, label, comment, trigger, refuse, auto = routine.trigger_start === 'auto') {
     // A run already open gets the trigger noted on it, not a second run.
     if (routine.enabled && !this.routineSettings().paused) {
       const open = this.openRunOf(routine.slug);
@@ -753,7 +757,6 @@ export const routinesMethods = {
         return { started: false, noted: this.tasks.get(open)?.wid ?? null, routine: routine.slug };
       }
     }
-    const auto = routine.trigger_start === 'auto';
     let result;
     try {
       result = await this.runRoutine(routine.slug, { trigger, comment, start: auto });
