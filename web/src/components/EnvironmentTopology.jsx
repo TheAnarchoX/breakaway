@@ -136,10 +136,10 @@ function HealthPill({ state }) {
 function Marks({ r, drift, ops, plan }) {
   const d = drift.get(r.id);
   const o = ops.get(r.id);
-  if (!d && !o && !r.cost) return null;
+  if (!d && !o && !(r.cost?.amount > 0)) return null;
   return (
     <ul class="topo-marks">
-      {r.cost && typeof r.cost.amount === 'number' && (
+      {r.cost?.amount > 0 && (
         <li class="topo-mark">
           {amountText(r.cost.amount, r.cost.currency)} a month, estimated
           {r.group ? ' together' : ''}
@@ -281,7 +281,7 @@ function TopologyMap({ map, selected, onSelect, drift, ops }) {
             const state = n.planned ? 'planned' : healthOf(n);
             const o = ops.get(n.id);
             const d = drift.get(n.id);
-            const cost = n.cost && typeof n.cost.amount === 'number' ? amountText(n.cost.amount, n.cost.currency) : '';
+            const cost = n.cost?.amount > 0 ? amountText(n.cost.amount, n.cost.currency) : '';
             const mark = o ? `${EFFECT[o.effect].sign} ${o.effect}` : d ? 'drift' : '';
             const words = [
               n.name,
@@ -300,7 +300,8 @@ function TopologyMap({ map, selected, onSelect, drift, ops }) {
                 class={`topo-node topo-health-${state} ${o ? `topo-plan-${o.effect}` : ''} ${d ? 'has-drift' : ''} ${n.target ? 'is-target' : ''} ${selected === n.id ? 'is-selected' : ''} ${selected && !near.has(n.id) ? 'is-dim' : ''}`}
                 transform={`translate(${n.x} ${n.y})`}
                 role="button"
-                tabIndex={0}
+                // Lowercase: SVG keeps an attribute’s case, and only `tabindex` makes it focusable.
+                tabindex={0}
                 aria-pressed={selected === n.id}
                 aria-label={words.join(', ')}
                 onClick={pick}

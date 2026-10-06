@@ -304,12 +304,20 @@ export function EnvironmentView() {
         ) : state.error ? (
           <>
             <p class="field-error" role="alert">
-              {state.error}
+              Couldn’t load the environment. {state.error}
             </p>
-            <button type="button" class="btn btn-outline btn-sm" onClick={() => load()}>
-              <RefreshCw size={16} aria-hidden="true" />
-              Try again
-            </button>
+            <div class="conn-buttons">
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                onClick={() => load()}
+                disabled={state.loading}
+                aria-busy={state.loading}
+              >
+                <RefreshCw size={16} aria-hidden="true" class={state.loading ? 'spin' : ''} />
+                Try again
+              </button>
+            </div>
           </>
         ) : (
           <p class="muted" aria-busy="true">
