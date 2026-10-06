@@ -11,7 +11,7 @@ import {
   Snowflake,
   TriangleAlert,
 } from 'lucide-preact';
-import { ago } from '../lib/model.js';
+import { ago, shortVersion } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import {
   confirmDialog,
@@ -105,7 +105,28 @@ export function Health({ health }) {
 }
 
 /**
- * Freeze or Unfreeze one environment, after the owner confirms: the signed-in browser's alone (BRK-174).
+ * What freezing or unfreezing an environment stops or lets run again, in the words BRK-235 settled: a pipeline's
+ * production is the deploy pause too (BRK-236), and merges keep deploying a pipeline's staging.
+ * @param {any} env
+ * @param {boolean} freezing
+ */
+export function freezeWords(env, freezing) {
+  if (env.pipeline === 'production')
+    return freezing
+      ? `Freezing ${env.name} pauses deploys and plans; Roll back still works.`
+      : 'Promote and the plans you approve can run there again.';
+  if (env.pipeline === 'staging')
+    return freezing
+      ? `Freezing ${env.name} stops plans; merges still deploy here.`
+      : 'The plans you approve, and changes inside its envelopes, can apply there again.';
+  return freezing
+    ? 'Plans, and changes inside its envelopes, wait until you unfreeze it.'
+    : 'The plans you approve, and changes inside its envelopes, can apply there again.';
+}
+
+/**
+ * Freeze or Unfreeze one environment, after the owner confirms: the signed-in browser's alone (BRK-174). On a
+ * pipeline's production it sets the deploy pause on GitHub too (BRK-236), and says so when that didn't sync.
  * @param {{ env: any, onChange: (env: any) => void }} props
  */
 export function FreezeButton({ env, onChange }) {
@@ -114,20 +135,24 @@ export function FreezeButton({ env, onChange }) {
     const freezing = !env.frozen;
     const ok = await confirmDialog({
       title: freezing ? `Freeze ${env.name}?` : `Unfreeze ${env.name}?`,
-      body: freezing
-        ? 'Nothing changes there until you unfreeze it.'
-        : 'Plans you approve, and changes inside its envelopes, can apply there again.',
+      body: freezeWords(env, freezing),
       confirmLabel: freezing ? 'Freeze' : 'Unfreeze',
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const { environment } = await api(`infra/environments/${enc(env.id)}`, {
+      const { environment, pause, note } = await api(`infra/environments/${enc(env.id)}`, {
         method: 'PATCH',
         body: { frozen: freezing, by: 'owner' },
       });
       onChange(environment);
-      toast(freezing ? `${env.name} is frozen.` : `${env.name} is unfrozen.`, 'success');
+      const done = freezing ? `${env.name} is frozen.` : `${env.name} is unfrozen.`;
+      if (pause && pause.synced === false)
+        toast(
+          `${done} The deploy pause on GitHub didn’t change${pause.error ? `: ${pause.error}` : ''}. Open Connections to fix it.`,
+          'error',
+        );
+      else toast(note ? `${done} ${note}` : done, 'success');
     } catch (error) {
       toast(error.message, 'error');
     } finally {
@@ -151,7 +176,9 @@ export function FreezeButton({ env, onChange }) {
 
 /** @param {{ env: any }} props */
 export function EnvironmentFlags({ env }) {
-  if (!env.frozen && !env.observeOnly) return null;
+  // The deploy pause on GitHub that freeze couldn't set or read (BRK-236): Connections says how to fix it.
+  const unsynced = env.deploysPaused?.synced === false;
+  if (!env.frozen && !env.observeOnly && !unsynced) return null;
   return (
     <ul class="infra-flags">
       {env.frozen && (
@@ -168,6 +195,15 @@ export function EnvironmentFlags({ env }) {
           )}
         </li>
       )}
+      {unsynced && (
+        <li class="infra-flag infra-flag-frozen">
+          <TriangleAlert size={14} aria-hidden="true" />
+          <span>
+            The deploy pause isn’t synced with GitHub.{' '}
+            <a href={hashFor({ view: 'connections', environment: null, task: null })}>Open Connections</a>
+          </span>
+        </li>
+      )}
       {env.observeOnly && (
         <li class="infra-flag" title={env.runsTheBoard ? 'It runs this board: the board never changes it.' : ''}>
           <Eye size={14} aria-hidden="true" />
@@ -175,6 +211,31 @@ export function EnvironmentFlags({ env }) {
         </li>
       )}
     </ul>
+  );
+}
+
+/**
+ * What the deploy flow runs on a pipeline's environment (BRK-195): its live version and commit, and when it went live.
+ * @param {{ env: any }} props
+ */
+function LiveLine({ env }) {
+  if (!env.pipeline) return null;
+  const live = env.deploys?.live;
+  if (!live) return <p class="meta infra-live">Nothing deployed yet</p>;
+  return (
+    <p class="meta infra-live">
+      Live: <code>{shortVersion(live)}</code>
+      {live.version && (
+        <>
+          {' at '}
+          <span class="gh-sha">{live.sha.slice(0, 7)}</span>
+        </>
+      )}
+      ,{' '}
+      <time dateTime={live.at} title={new Date(live.at).toLocaleString()}>
+        {ago(live.at)}
+      </time>
+    </p>
   );
 }
 
@@ -207,6 +268,7 @@ function EnvironmentCard({ env, resources, onChange }) {
         )}
       </p>
       <Health health={env.target ? health : null} />
+      <LiveLine env={env} />
       <EnvironmentFlags env={env} />
       <div class="infra-env-foot">
         <FreezeButton env={env} onChange={onChange} />
