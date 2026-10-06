@@ -148,7 +148,7 @@ The board has no Cloudflare, GitHub settings, or npm credentials, and agents nev
 - Make the GitHub environments `staging` and `production`, each with its token as `CLOUDFLARE_API_TOKEN` and restricted to the default branch, and a repository variable `CLOUDFLARE_ACCOUNT_ID`.
 - Give the board’s GitHub App read and write on **Actions** for the repository: Promote, Roll back, and Release need it.
 - For a package: make the GitHub environment `npm`, restricted to the default branch. On npm, add a trusted publisher for `release.yml` and the `npm` environment, or put a granular `NPM_TOKEN` that can’t bypass 2FA in the environment.
-- Optional: the repository variable `DEPLOYS_PAUSED`, set to `true`, stops Promote and Release.
+- Give the App read and write on **Variables** too: freezing production on the board sets the repository variable `DEPLOYS_PAUSED`, which stops Promote and Release, and setting it on GitHub freezes production on the board.
 
 ### Turn on deploys
 
