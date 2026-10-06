@@ -163,3 +163,132 @@ export function worst(states) {
   if (states.includes('off')) return 'off';
   return 'working';
 }
+
+// ---- providers' read-only tokens (BRK-194) ----------------------------------------------
+
+/** A provider's needed permissions, in words: "A, B, and C". */
+function permissionList(provider) {
+  const names = provider.readToken.permissions.map((p) => p.name);
+  return names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
+}
+
+/**
+ * What's wrong with a token pasted for `provider`, from its `readToken.check`, or null when the board may keep it:
+ * the platform took it, it can change nothing, and it has every permission the board reads with. A provider that
+ * can't check (no `check`) passes `null`, and the board keeps the token on the owner's word.
+ * @param {import('./infra-provider.js').Provider} provider
+ * @param {import('./infra-provider.js').TokenCheck | null} check
+ * @returns {string | null}
+ */
+export function readTokenProblem(provider, check) {
+  if (!check) return null;
+  const list = permissionList(provider);
+  if (!check.ok)
+    return `${provider.name} refused the token (${clip(check.error, 200)}): make a read-only token with ${list} on ${provider.readToken.url}, then paste it here`;
+  const granted = check.permissions ?? [];
+  const writes = granted.filter((p) => p.level !== 'read').map((p) => p.name);
+  if (writes.length)
+    return `that token can change things on ${provider.name} (${writes.join(', ')}), and the board keeps read-only tokens only: make one with ${list} and nothing else`;
+  if (check.permissions) {
+    const has = new Set(granted.map((p) => p.name));
+    const missing = provider.readToken.permissions.filter((p) => !has.has(p.name)).map((p) => p.name);
+    if (missing.length) return `that token is missing ${missing.join(', ')}: make one with ${list}`;
+  }
+  return null;
+}
+
+/**
+ * The permissions the board keeps for a token it accepted: their names only, from the platform's answer, or the
+ * provider's own list when it can't say.
+ * @param {import('./infra-provider.js').Provider} provider
+ * @param {import('./infra-provider.js').TokenCheck | null} check
+ * @returns {string[]}
+ */
+export function keptPermissions(provider, check) {
+  const names = check?.permissions?.map((p) => p.name) ?? provider.readToken.permissions.map((p) => p.name);
+  return [...new Set(names)].sort();
+}
+
+/**
+ * What the board last saw from a provider with its token.
+ * @typedef {{ at: string, ok: boolean, error: string | null }} ProviderSeen
+ */
+
+/**
+ * A provider's token as Connections knows it: none (null), kept but unreadable (`broken`), or kept, with its
+ * permissions by name and the last discovery and signal. Never its value.
+ * @typedef {null | { broken: true } | { permissions: string[], checked: boolean, connected: string, discovery: ProviderSeen | null, signal: ProviderSeen | null }} ProviderRecord
+ */
+
+/**
+ * A provider's Connections row (docs/specs/IDEA-19-architect.md, "Connections"): its state, what the board saw, the
+ * fix in words, and each permission the board reads with, by name.
+ * @param {import('./infra-provider.js').Provider} provider
+ * @param {ProviderRecord} record
+ * @returns {{ state: string, detail: string, fix: string | null, at: string | null, items: object[] }}
+ */
+export function providerRow(provider, record) {
+  const { name } = provider;
+  const list = permissionList(provider);
+  const kept = record && !('broken' in record) ? new Set(record.permissions) : new Set();
+  const items = provider.readToken.permissions.map((p) => ({
+    name: p.name,
+    label: p.name,
+    need: 'read',
+    has: kept.has(p.name) ? 'read' : 'none',
+    ok: kept.has(p.name),
+    for: p.for,
+  }));
+  const make = `make a read-only token on ${name} with ${list} and nothing else, then paste it here. The board keeps it encrypted, sends it only to ${name}, and never shows it again.`;
+  if (!record)
+    return {
+      state: 'off',
+      detail: `not connected: the board has no read-only token for ${name}, so it can’t see what runs there`,
+      fix: `${make[0].toUpperCase()}${make.slice(1)}`,
+      at: null,
+      items,
+    };
+  if ('broken' in record)
+    return {
+      state: 'attention',
+      detail: 'connected, but its stored token can’t be read any more',
+      fix: `The board’s sync key changed since the token was pasted, so it can’t be decrypted. Make a new read-only token on ${name} with ${list}, and paste it here.`,
+      at: null,
+      items,
+    };
+  const seen = [record.discovery, record.signal].filter(Boolean).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const at = seen[0]?.at ?? null;
+  const missing = items.filter((i) => !i.ok).map((i) => i.name);
+  if (missing.length)
+    return {
+      state: 'attention',
+      detail: `connected, but the token doesn’t have ${missing.join(', ')}`,
+      fix: `${name} needs more than when the token was made: make a new read-only token with ${list}, and replace it here.`,
+      at,
+      items,
+    };
+  const failed = seen[0] && !seen[0].ok ? seen[0] : null;
+  if (failed) {
+    const what = failed === record.discovery ? 'discovery' : 'signal';
+    return {
+      state: 'attention',
+      detail: `the last ${what} failed: ${clip(failed.error ?? 'no reason given')}`,
+      fix: `If ${name} refused the token, make a new read-only token with ${list} and replace it here. Otherwise the next ${what} tries again.`,
+      at,
+      items,
+    };
+  }
+  const parts = [];
+  if (!record.discovery) parts.push('no discovery yet');
+  if (!record.checked)
+    parts.push(
+      `${name} can’t list a token’s permissions, so the board can’t see extras: make sure it has only these, all read`,
+    );
+  return {
+    state: 'working',
+    detail: parts.length ? `connected; ${parts.join('; ')}` : 'connected',
+    fix: null,
+    at,
+    items,
+  };
+}
