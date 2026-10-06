@@ -137,7 +137,7 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 | Inside an envelope (inbox only) | Scaled widgets-api to 6 instances, inside its envelope. |
 | A restart cap used up | **A restart waits for you in production** · widgets-api used its 3 restarts today. |
 
-**Amounts** are estimates, so they say so once per view ("Estimated cost"), in the currency you set in Settings, formatted the way your browser formats it: "€4.60 a month", never "4.6 EUR/mo". Write "a month", use tabular figures, and mark a fall with a minus sign: "−€1.20 a month". A converted amount names its rate and when you set it, next to the total, not on every number: "At 1 USD = 0.92 EUR, set 3 Oct." Until you set a currency, amounts are in the provider's, with no rate.
+**Amounts** are estimates, so they say so once per view ("Estimated cost"), in the currency you set in Settings, formatted the way your browser formats it: "€4.60 a month", never "4.6 EUR/mo". Write "a month", use tabular figures, and mark a fall with a minus sign: "−€1.20 a month". A converted amount names its rate and when you set it, next to the total, not on every number: "At 1 USD = 0.92 EUR, set 3 Oct." Until you set a currency, amounts are in the provider's, with no rate. **Fetch today's rate** beside the rate in Settings fills the field from [Frankfurter](https://frankfurter.dev) (the European Central Bank's reference rates), only when you press it; you still save it, and the board never fetches a rate any other way.
 
 ## Claims that must stay true
 
@@ -151,6 +151,7 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, and Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair.
 - **Free, and the source is public** ([below](#free-and-fair-source)).
 
 Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.

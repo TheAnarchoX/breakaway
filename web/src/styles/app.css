@@ -5474,6 +5474,13 @@ fieldset.field {
   width: 9em;
   font-variant-numeric: tabular-nums;
 }
+/* Fetch today's rate (BRK-239): the button sits beside the rate field, and wraps under it when narrow. */
+.st-rate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 
 /* The routine panel: the task panel's shell (panel, panel-body, panel-top, facts, dep-list) with a few extras. */
 .rt-slug {
