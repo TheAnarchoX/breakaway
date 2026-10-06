@@ -72,6 +72,8 @@ export const infraEnvironmentsMethods = {
       ...this.driftFor(row.id),
       // Whether DEPLOYS_PAUSED on GitHub matches a pipeline production's freeze (BRK-236), else null.
       deploysPaused: this.deployPause(row),
+      // What nobody owns there (BRK-201): flagged, and proposed for removal after the grace period.
+      ...this.unownedFor(row.id),
       // What the deploy flow runs there (BRK-195): the live commit and version, and the last deploy.
       deploys: this.environmentDeploys(row),
     };

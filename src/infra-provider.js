@@ -147,6 +147,9 @@ export const COST_NOTE_MAX = 500;
  *   owner for any change to one (BRK-181)
  * @property {string[]} [accessSettings] settings of the kind that decide who or what can reach it (like `public`): policy
  *   asks the owner for a change to one
+ * @property {string[]} [settings] the settings a desired state sets for the kind; the rest of a resource's attrs are what
+ *   the platform reports by itself (versions, sizes, deploys), which a draft of the desired state leaves out (BRK-240).
+ *   Without it, every attr is a setting.
  * @property {string} [scales] the whole-number setting a `scale` changes (like `instances`): required when the kind
  *   declares `scale`, so an envelope (BRK-186) knows what its bounds are bounds of
  */
@@ -184,6 +187,9 @@ export const COST_NOTE_MAX = 500;
  * @property {string} id short and lowercase, like `fake`
  * @property {string} name what people see
  * @property {Record<string, KindSpec>} kinds the resource kinds it discovers and plans
+ * @property {(resource: Resource, op: string) => string | null} [refuses] why the platform can't make an envelope's
+ *   `scale` or `restart` to this one resource although its kind declares it (a setting of the resource rules it out),
+ *   in words, or null when it can; an act asks it before it plans (BRK-227)
  * @property {ReadToken} [readToken] the read-only token it needs, if any
  * @property {(ctx: ProviderContext) => Promise<Discovery>} discover
  * @property {(ctx: ProviderContext, desired: DesiredState) => Promise<PlanDiff>} plan
@@ -241,10 +247,13 @@ export function checkProvider(provider) {
       fail(what, `${kind}'s access is not true or false`);
     if (spec.accessSettings !== undefined && (!Array.isArray(spec.accessSettings) || !spec.accessSettings.every(text)))
       fail(what, `${kind}'s accessSettings is not a list of settings' names`);
+    if (spec.settings !== undefined && (!Array.isArray(spec.settings) || !spec.settings.every(text)))
+      fail(what, `${kind}'s settings is not a list of settings' names`);
     if (spec.changes.includes('scale') ? !text(spec.scales) : spec.scales !== undefined)
       fail(what, `${kind}'s scales names the setting a scale changes, and only a kind that scales has one`);
   }
   if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
+  if (provider.refuses !== undefined && typeof provider.refuses !== 'function') fail(what, 'refuses is not a function');
   if (provider.estimate !== undefined && typeof provider.estimate !== 'function')
     fail(what, 'estimate is not a function');
   return provider;

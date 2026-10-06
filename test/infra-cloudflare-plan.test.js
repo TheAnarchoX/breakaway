@@ -3,7 +3,19 @@ import { cloudflare, rid } from '../src/infra-cloudflare.js';
 import { MANAGED, PlanRefused, apply, estimate, plan, rollbackWorker } from '../src/infra-cloudflare-plan.js';
 import { checkApplyResult, checkPlan, desiredFrom } from '../src/infra-provider.js';
 import { keptDiff } from '../src/infra-plans.js';
-import { ACCOUNT, D1_ID, KV_CACHE, KV_SESSIONS, ZONE, cloudflareAnswers, cloudflareApi } from './cloudflare-fixture.js';
+import { checkEnvelope, judgeChange } from '../src/infra-envelopes.js';
+import { healthVerdict } from '../src/infra-runs.js';
+import {
+  ACCOUNT,
+  CONTAINER,
+  D1_ID,
+  KV_CACHE,
+  KV_SESSIONS,
+  QUEUE_JOBS,
+  ZONE,
+  cloudflareAnswers,
+  cloudflareApi,
+} from './cloudflare-fixture.js';
 import { providerContract } from './infra-provider-contract.js';
 
 const READ = 'cf-read-token-for-tests-only';
@@ -29,6 +41,9 @@ function account() {
   const script = (name) => `${a}/workers/scripts/${name}`;
   answers[`${a}/d1/database?name=acme-new-db&page=1&per_page=100`] = ok([]);
   answers[`${a}/d1/database?name=acme-db&page=1&per_page=100`] = ok([{ uuid: D1_ID, name: 'acme-db' }]);
+
+  // One container application, as `GET …/applications/{id}` answers it: the same one the list shows.
+  answers[`${a}/containers/applications/${CONTAINER}`] = ok(list(`${a}/containers/applications`)[0]);
 
   const writes = {
     'POST /workers/workers': (body) => {
@@ -79,6 +94,17 @@ function account() {
         answers[path].result = list(path).filter((ns) => ns.id !== id);
       }
       return null;
+    },
+    'PATCH /containers/applications/:id': (body, [id]) => {
+      const app = list(`${a}/containers/applications`).find((x) => x.id === id);
+      Object.assign(app, body);
+      return app;
+    },
+    'POST /containers/applications/:id/rollouts': (body, [id]) => ({ id: `rollout-${id.slice(-4)}`, ...body }),
+    'PUT /queues/:id/consumers/:consumer': (body, [id, consumer]) => {
+      const c = list(`${a}/queues/${id}/consumers`).find((x) => x.consumer_id === consumer);
+      c.settings = body.settings;
+      return c;
     },
     'POST /d1/database': (body) => ({ uuid: `00000000-0000-4000-8000-0000000d0${++n}`, name: body.name }),
     'DELETE /d1/database/:id': () => null,
@@ -467,5 +493,200 @@ describe('the Cloudflare provider’s estimate (BRK-192)', () => {
     expect(fetch.calls.some((c) => c.path === '/graphql')).toBe(true);
     expect(await estimate(ctx, { ...worker, op: 'delete', after: null })).toBeNull();
     expect(typeof cloudflare.estimate).toBe('function');
+  });
+});
+
+describe('the Cloudflare provider’s scale and restart, inside an envelope (BRK-227)', () => {
+  const APP = rid('container', CONTAINER);
+  const JOBS = rid('queue', QUEUE_JOBS);
+  const envelope = checkEnvelope(
+    {
+      scale: [
+        { kind: 'container', min: 1, max: 8 },
+        { kind: 'queue', resource: 'acme-jobs', min: 1, max: 10 },
+      ],
+      restarts: { cap: 2, hours: 24 },
+    },
+    cloudflare.kinds,
+  );
+
+  /** The one change an act plans, built as the board builds it (store-infra-envelopes.js), from what runs now. */
+  async function act(fetch, resource, op, value = null) {
+    const found = await cloudflare.discover(ctxFor(fetch));
+    const r = found.resources.find((x) => x.id === resource);
+    const scales = cloudflare.kinds[r.kind].scales;
+    const change = {
+      op,
+      resource: r.id,
+      kind: r.kind,
+      name: r.name,
+      before: structuredClone(r.attrs),
+      after: op === 'scale' ? { ...structuredClone(r.attrs), [scales]: value } : structuredClone(r.attrs),
+      reversible: true,
+    };
+    const diff = checkPlan(
+      cloudflare,
+      { provider: 'cloudflare', environment: 'production', changes: [change], reversible: true },
+      ctxFor(fetch),
+    );
+    return {
+      diff,
+      verdict: judgeChange(envelope, change, { scales, costAfter: null, currency: 'USD', restartsUsed: 0 }),
+    };
+  }
+
+  /** The executor's health check after a run: what observe says of what the plan touched. */
+  async function health(fetch, diff) {
+    return healthVerdict(diff, await cloudflare.observe(ctxFor(fetch)));
+  }
+
+  it('declares scale for containers and queues, restart for containers, and nothing else', () => {
+    expect(cloudflare.kinds.container).toEqual({
+      changes: ['create', 'update', 'delete', 'scale', 'restart'],
+      scales: 'maxInstances',
+      settings: ['maxInstances'],
+    });
+    expect(cloudflare.kinds.queue).toMatchObject({
+      changes: ['create', 'update', 'delete', 'scale'],
+      scales: 'maxConcurrency',
+    });
+    // BRK-240's adopt keeps a kind's settings, so a queue's concurrency is kept in its draft too.
+    expect(cloudflare.kinds.queue.settings).toContain('maxConcurrency');
+    for (const kind of ['worker', 'durable-object', 'd1', 'kv', 'r2', 'route', 'custom-domain']) {
+      expect(cloudflare.kinds[kind].changes).toEqual(['create', 'update', 'delete']);
+      expect(cloudflare.kinds[kind].scales).toBeUndefined();
+    }
+    // So the envelope form offers only those two, and an envelope can't bound anything else.
+    expect(() => checkEnvelope({ scale: [{ kind: 'worker', min: 1, max: 2 }] }, cloudflare.kinds)).toThrow(
+      /doesn’t scale/u,
+    );
+  });
+
+  it('scales a container application: one PATCH with the write token, read back, and healthy after', async () => {
+    const fetch = account();
+    const { diff, verdict } = await act(fetch, APP, 'scale', 8);
+    expect(verdict).toMatchObject({ inside: true, why: '8 is inside 1 to 8' });
+    const result = checkApplyResult(cloudflare, diff, await apply(runner(fetch), diff));
+    expect(result).toEqual({ ok: true, steps: [{ resource: APP, op: 'scale', ok: true }] });
+    expect(fetch.writes()).toEqual([`PATCH ${a}/containers/applications/${CONTAINER}`]);
+    const write = fetch.calls.find((c) => c.method === 'PATCH');
+    expect(write).toMatchObject({ auth: `Bearer ${WRITE}`, body: { max_instances: 8 } });
+    // The apply read it back after the write.
+    const after = fetch.calls.slice(fetch.calls.indexOf(write) + 1);
+    expect(after.some((c) => c.method === 'GET' && c.path === `${a}/containers/applications/${CONTAINER}`)).toBe(true);
+    expect(await health(fetch, diff)).toEqual({ ok: true, problems: [], unknown: [], touched: 1 });
+  });
+
+  it('restarts a container application with a rollout of the configuration it runs, then checks its health', async () => {
+    const fetch = account();
+    const { diff, verdict } = await act(fetch, APP, 'restart');
+    expect(verdict).toMatchObject({ inside: true, why: 'restart 1 of 2 in a day' });
+    const result = checkApplyResult(cloudflare, diff, await apply(runner(fetch), diff));
+    expect(result).toEqual({ ok: true, steps: [{ resource: APP, op: 'restart', ok: true }] });
+    expect(fetch.writes()).toEqual([`POST ${a}/containers/applications/${CONTAINER}/rollouts`]);
+    const rollout = fetch.calls.find((c) => c.method === 'POST');
+    expect(rollout.auth).toBe(`Bearer ${WRITE}`);
+    expect(rollout.body).toEqual({
+      description: 'Restarted by breakaway',
+      strategy: 'rolling',
+      kind: 'full_auto',
+      step_percentage: 10,
+      target_configuration: { image: 'registry.example/acme/sandbox:1', instance_type: 'basic' },
+    });
+    // The configuration went from Cloudflare to Cloudflare: the plan never held it.
+    expect(JSON.stringify(diff)).not.toContain('registry.example');
+    expect(await health(fetch, diff)).toMatchObject({ ok: true, touched: 1 });
+
+    // A rollout that leaves no instance running fails the health check, so the executor knows.
+    fetch.answers[`${a}/containers/applications`].result[0].health.instances.active = 0;
+    expect(await health(fetch, diff)).toMatchObject({
+      ok: false,
+      problems: [expect.stringMatching(/acme-rooms-sandbox is down/u)],
+    });
+  });
+
+  it('scales a queue’s Worker consumer, keeping its other settings, and checks its health', async () => {
+    const fetch = account();
+    const { diff, verdict } = await act(fetch, JOBS, 'scale', 6);
+    expect(verdict).toMatchObject({ inside: true });
+    const result = checkApplyResult(cloudflare, diff, await apply(runner(fetch), diff));
+    expect(result).toEqual({ ok: true, steps: [{ resource: JOBS, op: 'scale', ok: true }] });
+    expect(fetch.writes()).toEqual([`PUT ${a}/queues/${QUEUE_JOBS}/consumers/consumer-1`]);
+    expect(fetch.calls.find((c) => c.method === 'PUT').body).toEqual({
+      type: 'worker',
+      script_name: 'acme-api',
+      dead_letter_queue: 'acme-jobs-dlq',
+      settings: { batch_size: 10, max_retries: 3, max_wait_time_ms: 5000, max_concurrency: 6 },
+    });
+    const now = await cloudflare.discover(ctxFor(fetch));
+    expect(now.resources.find((r) => r.id === JOBS).attrs.maxConcurrency).toBe(6);
+    expect((await health(fetch, diff)).problems).toEqual([]);
+  });
+
+  it('a scale outside the envelope isn’t inside it, and the cap counts restarts', async () => {
+    const fetch = account();
+    expect((await act(fetch, APP, 'scale', 9)).verdict).toMatchObject({
+      inside: false,
+      why: '9 is outside its envelope’s 1 to 8',
+    });
+    const { diff } = await act(fetch, APP, 'restart');
+    expect(
+      judgeChange(envelope, diff.changes[0], { scales: undefined, costAfter: null, currency: 'USD', restartsUsed: 2 }),
+    ).toMatchObject({ inside: false, capUsed: true });
+  });
+
+  it('refuses, in words, a kind or an application Cloudflare can’t scale or restart', async () => {
+    const fetch = account();
+    const found = await cloudflare.discover(ctxFor(fetch));
+    const get = (id) => found.resources.find((r) => r.id === id);
+    expect(cloudflare.refuses(get(W('acme-api')), 'scale')).toBe(
+      'acme-api is a worker: Cloudflare scales it by itself, so there’s nothing to scale',
+    );
+    expect(cloudflare.refuses(get(`d1:${D1_ID}`), 'restart')).toMatch(/is a d1: Cloudflare scales it by itself/u);
+    expect(cloudflare.refuses(get(JOBS), 'restart')).toBe(
+      'acme-jobs is a queue: Cloudflare has no restart for one, only its consumer’s concurrency scales',
+    );
+    expect(cloudflare.refuses(get(APP), 'scale')).toBeNull();
+    expect(cloudflare.refuses(get(JOBS), 'scale')).toBeNull();
+    expect(cloudflare.refuses(get(APP), 'update')).toBeNull();
+
+    const onDurableObjects = { ...get(APP), attrs: { ...get(APP).attrs, schedulingPolicy: 'durable_objects' } };
+    expect(cloudflare.refuses(onDurableObjects, 'restart')).toBe(
+      'acme-rooms-sandbox runs on the durable_objects scheduling policy: its own code starts and stops its instances, so Cloudflare can’t restart it',
+    );
+    const unconsumed = { ...get(JOBS), attrs: { ...get(JOBS).attrs, consumers: [] } };
+    expect(cloudflare.refuses(unconsumed, 'scale')).toBe(
+      'acme-jobs has no Worker consuming it, so there’s no concurrency to scale',
+    );
+
+    // Apply refuses it too, from what runs at apply, before any write.
+    fetch.answers[`${a}/containers/applications`].result[0].scheduling_policy = 'durable_objects';
+    const diff = {
+      provider: 'cloudflare',
+      environment: 'production',
+      changes: [{ ...(await act(account(), APP, 'restart')).diff.changes[0] }],
+      reversible: true,
+    };
+    diff.changes[0].before = { ...diff.changes[0].before, schedulingPolicy: 'durable_objects' };
+    diff.changes[0].after = { ...diff.changes[0].before };
+    const result = await apply(runner(fetch), diff);
+    expect(result.steps).toEqual([
+      { resource: APP, op: 'restart', ok: false, error: expect.stringMatching(/durable_objects scheduling policy/u) },
+    ]);
+    expect(fetch.writes()).toEqual([]);
+  });
+
+  it('isn’t stopped by instance counts Cloudflare moved since the plan, but is by a changed setting', async () => {
+    const fetch = account();
+    const { diff } = await act(fetch, APP, 'scale', 4);
+    const app = fetch.answers[`${a}/containers/applications`].result[0];
+    app.health.instances.active = 1;
+    expect((await apply(runner(fetch), diff)).ok).toBe(true);
+
+    const again = account();
+    const second = (await act(again, APP, 'scale', 4)).diff;
+    again.answers[`${a}/containers/applications`].result[0].max_instances = 7;
+    expect((await apply(runner(again), second)).steps[0].error).toMatch(/changed since it was planned/u);
+    expect(again.writes()).toEqual([]);
   });
 });
