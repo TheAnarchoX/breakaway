@@ -49,6 +49,8 @@ export const SIGNAL_TEXT_MAX = 500;
  * @typedef {object} Discovery
  * @property {Resource[]} resources
  * @property {Relation[]} relations
+ * @property {string[]} [missing] permissions the token lacks for a kind the provider skipped instead of failing, by
+ *   name, for the provider's Connections row
  */
 
 /**
@@ -288,6 +290,8 @@ export function checkDiscovery(provider, discovery) {
       if (!ids.has(end))
         fail(what, `relation ${rel.from} ${rel.kind} ${rel.to} names ${end}, which it didn't discover`);
   }
+  if (discovery.missing !== undefined && (!Array.isArray(discovery.missing) || !discovery.missing.every(text)))
+    fail(what, 'missing is not a list of permission names');
   return discovery;
 }
 
@@ -497,5 +501,5 @@ export class ProviderRegistry {
   }
 }
 
-/** The Worker's registry. Real providers register here as they're built (BRK-189 onwards); none yet. */
+/** The Worker's registry. This module names no vendor: src/infra-providers.js registers the real ones. */
 export const providers = new ProviderRegistry();
