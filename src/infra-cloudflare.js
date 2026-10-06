@@ -94,11 +94,22 @@ export function refuses(r, op) {
 }
 
 /**
+ * Cloudflare's Workers role the board reads Workers with (BRK-243): Metadata Read-Only at the Workers product scope,
+ * which reads settings and never a Worker's code. It replaces the legacy Workers Scripts Read, which Cloudflare maps to
+ * Content Read-Only (code included); a token made with that still works.
+ */
+export const WORKERS_READ = 'Workers Metadata Read-Only';
+
+/**
  * The board's read-only token (BRK-188, "Tokens"; BRK-194 keeps it). Read only: no permission ends in Edit or Write.
  * @type {import('./infra-provider.js').ReadToken['permissions']}
  */
 export const READ_PERMISSIONS = [
-  { name: 'Workers Scripts Read', for: 'Workers, their settings, deployments, secret names, and cron triggers' },
+  {
+    name: WORKERS_READ,
+    legacy: ['Workers Scripts Read'],
+    for: 'Workers, their settings, deployments, secret names, cron triggers, Durable Object namespaces, and custom domains, never their code',
+  },
   { name: 'Workers KV Storage Read', for: 'KV namespaces, never their values' },
   { name: 'Workers R2 Storage Read', for: 'R2 buckets and their settings, never their objects' },
   { name: 'D1 Read', for: 'D1 databases' },
@@ -130,6 +141,12 @@ export const NEVER_CALLED = [
   /\/versions\/[^/?]+\?.*include=modules/u,
   /\/secrets\/[^/]+$/u,
 ];
+
+/** A permission as a 403 names it: with its legacy names in parentheses, for a token made before Cloudflare renamed it. */
+export function named(permission) {
+  const legacy = READ_PERMISSIONS.find((p) => p.name === permission)?.legacy;
+  return legacy?.length ? `${permission} (or the legacy ${legacy.join(' or ')})` : permission;
+}
 
 /** An answer Cloudflare refused, with what the token was missing when it was a 403. */
 export class CloudflareError extends Error {
@@ -181,7 +198,7 @@ export function reader(ctx) {
     if (res.status === 404 && missingOk) return null;
     if (res.status === 403)
       throw Object.assign(
-        new CloudflareError(`Cloudflare refused GET ${path.split('?')[0]}: the token needs ${permission}`, 403),
+        new CloudflareError(`Cloudflare refused GET ${path.split('?')[0]}: the token needs ${named(permission)}`, 403),
         { permission },
       );
     if (!res.ok || json?.success === false)
@@ -322,9 +339,9 @@ export async function discover(ctx, { live = false } = {}) {
   seen.account = await accountOf(cf, ctx);
   const a = enc(seen.account);
   const scripts = new Map(
-    (
-      await cf.get(`/accounts/${a}/workers/scripts`, { permission: 'Workers Scripts Read' }).then((j) => j.result ?? [])
-    ).map((s) => [String(s.id), s]),
+    (await cf.get(`/accounts/${a}/workers/scripts`, { permission: WORKERS_READ }).then((j) => j.result ?? [])).map(
+      (s) => [String(s.id), s],
+    ),
   );
   seen.scripts = [...scripts.keys()];
   if (!scripts.has(target)) return done();
@@ -337,7 +354,7 @@ export async function discover(ctx, { live = false } = {}) {
     const name = /** @type {string} */ (queue.shift());
     if (bindingsOf.has(name) || !scripts.has(name)) continue;
     const p = `/accounts/${a}/workers/scripts/${enc(name)}`;
-    const opts = { permission: 'Workers Scripts Read' };
+    const opts = { permission: WORKERS_READ };
     const settings = (await cf.get(`${p}/settings`, opts)).result ?? {};
     const deployments = (await cf.get(`${p}/deployments`, opts)).result ?? {};
     const secrets = (await cf.get(`${p}/secrets`, opts)).result ?? [];
@@ -501,7 +518,7 @@ export async function discover(ctx, { live = false } = {}) {
   // Durable Object namespaces: those a Worker in scope binds or defines, and the Worker whose class runs them.
   const doBound = scoped('durable_object_namespace');
   const namespaces = await cf.all(`/accounts/${a}/workers/durable_objects/namespaces`, {
-    permission: 'Workers Scripts Read',
+    permission: WORKERS_READ,
   });
   for (const ns of namespaces) {
     const id = rid('durable-object', ns.id);
@@ -578,7 +595,7 @@ export async function discover(ctx, { live = false } = {}) {
   }
 
   // Custom domains attached to a Worker in scope.
-  const domains = (await cf.get(`/accounts/${a}/workers/domains`, { permission: 'Workers Scripts Read' })).result ?? [];
+  const domains = (await cf.get(`/accounts/${a}/workers/domains`, { permission: WORKERS_READ })).result ?? [];
   for (const d of domains) {
     if (!workers.has(String(d.service))) continue;
     add({

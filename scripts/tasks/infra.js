@@ -164,7 +164,7 @@ function init(opts, { cwd, log, error, version = VERSION }) {
   }
   log(`${opts['dry-run'] ? 'Would write' : 'Wrote'} ${file.path}, for ${environments.join(', ')}, from ${branch}.`);
   log(
-    `Before the board can apply a plan, the owner makes, for each environment, a GitHub environment of the same name that only ${branch} may use, with that environment's write token as the secret CLOUDFLARE_API_TOKEN; sets the repository variable BREAKAWAY_URL to the board's address; and gives the board's GitHub App Actions: read and write here. Agents never do these, and never run the workflow.`,
+    `Before the board can apply a plan, the owner makes, for each environment, a GitHub environment of the same name that only ${branch} may use, with that environment's write token as the secret CLOUDFLARE_API_TOKEN (the board's read permissions, plus Cloudflare's Workers Editor on that environment's Workers, or the legacy Workers Scripts Write, and only the Write permissions its file needs); sets the repository variable BREAKAWAY_URL to the board's address; and gives the board's GitHub App Actions: read and write here. Agents never do these, and never run the workflow.`,
   );
   return 0;
 }

@@ -158,8 +158,10 @@ export const COST_NOTE_MAX = 500;
  * One permission a read-only token needs, by the name the platform's token page gives it, and what the board reads
  * with it. Never a token's value.
  * @typedef {object} TokenPermission
- * @property {string} name like `Workers Scripts Read`
+ * @property {string} name like `Workers Metadata Read-Only`
  * @property {string} for what the board reads with it, in a few words
+ * @property {string[]} [legacy] older names for the same access (like `Workers Scripts Read`): a token made with one of
+ *   them still counts as having it, and the board names them in parentheses
  */
 
 /**
@@ -263,8 +265,11 @@ export function checkProvider(provider) {
 function checkReadToken(what, token) {
   if (!isObject(token)) fail(what, 'readToken is not an object');
   if (!Array.isArray(token.permissions) || token.permissions.length === 0) fail(what, 'readToken names no permissions');
-  for (const p of token.permissions)
+  for (const p of token.permissions) {
     if (!isObject(p) || !text(p.name) || !text(p.for)) fail(what, 'a readToken permission has no name or no for');
+    if (p.legacy !== undefined && (!Array.isArray(p.legacy) || !p.legacy.every(text)))
+      fail(what, 'a readToken permission’s legacy is not a list of names');
+  }
   if (typeof token.url !== 'string' || !token.url.startsWith('https://')) fail(what, 'readToken has no https url');
   if (token.check !== undefined && typeof token.check !== 'function') fail(what, 'readToken check is not a function');
 }
