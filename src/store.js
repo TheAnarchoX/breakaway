@@ -77,6 +77,7 @@ import { infraBreakGlassMethods } from './store-infra-break-glass.js';
 import { infraAdoptMethods } from './store-infra-adopt.js';
 import { infraRunsMethods } from './store-infra-runs.js';
 import { infraEnvelopesMethods } from './store-infra-envelopes.js';
+import { infraScalingMethods } from './store-infra-scaling.js';
 import { infraCurrencyMethods } from './store-infra-currency.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
@@ -152,6 +153,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraBreakGlass();
     this.initInfraRuns();
     this.initInfraEnvelopes();
+    this.initInfraScaling();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1466,6 +1468,7 @@ Object.assign(
   infraAdoptMethods,
   infraRunsMethods,
   infraEnvelopesMethods,
+  infraScalingMethods,
   infraCurrencyMethods,
 );
 
