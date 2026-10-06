@@ -2105,6 +2105,8 @@ export const agentsMethods = {
     await this.updatesAutoCheck(source);
     // A self-update waiting on its health check (BRK-53): the new code answers, or the previous version comes back.
     await this.selfUpdateTick();
+    // The executor (BRK-183): runs that stopped reporting, then approved plans waiting to apply.
+    await this.infraRunsTick();
     // Before the prune: agent runs and GitHub's rows live on in the dashboard's log (store-stats.js).
     this.archiveStats();
     this.pruneAgentLogs();
