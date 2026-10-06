@@ -541,6 +541,17 @@ async function handleApi(request, env, url, ctx) {
     method === 'GET'
   )
     return send(await s.infraDraftApi(parts[2], { repo: url.searchParams.get('repo') }));
+  // Describe it as code (WEB-92): anyone signed in reads the open task; starting one is the owner's press, from the
+  // signed-in browser only, since it starts an agent.
+  if (parts[0] === 'infra' && parts[1] === 'environments' && parts[3] === 'describe' && parts.length === 4) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET') return send(await s.infraDescribeApi(parts[2], { repo }));
+    if (method === 'POST') {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can have an agent describe an environment as code' });
+      return send(await s.infraDescribeStartApi(parts[2], { repo, by: body.by, force: body.force }));
+    }
+  }
   // Environments (BRK-174): anyone signed in reads them; adding, changing, and removing one is the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold (BRK-233). An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'environments' && parts.length <= 3) {

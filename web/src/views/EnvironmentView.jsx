@@ -16,6 +16,7 @@ import {
 import { IncidentsSection } from '../components/Incidents.jsx';
 import { UnownedSection } from '../components/Unowned.jsx';
 import { CostSection } from '../components/InfraCosts.jsx';
+import { DescribeAsCode } from '../components/InfraDescribe.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>: its resources
@@ -213,17 +214,20 @@ function Drift({ env, desired, error }) {
           {error}
         </p>
       ) : !desired ? (
-        <p class="muted">
-          {env.observeOnly
-            ? 'It’s observe only: the board watches it and never changes it, so it takes no desired state.'
-            : 'No desired state yet. Add '}
-          {!env.observeOnly && (
-            <>
-              <code>{file}</code> to the repository’s default branch by pull request, and the board compares it with
-              what runs.
-            </>
-          )}
-        </p>
+        <>
+          <p class="muted">
+            {env.observeOnly
+              ? 'It’s observe only: the board watches it and never changes it, so it takes no desired state.'
+              : 'No desired state yet. Add '}
+            {!env.observeOnly && (
+              <>
+                <code>{file}</code> to the repository’s default branch by pull request, and the board compares it with
+                what runs.
+              </>
+            )}
+          </p>
+          <DescribeAsCode env={env} />
+        </>
       ) : (
         <dl class="infra-facts">
           <div>

@@ -43,6 +43,7 @@ export const TRIGGER_LABEL = {
   'road-captain': 'started as a chase’s road captain',
   move: 'started to move a repository to the deploy flow',
   signal: 'started by a signal, through a runbook',
+  describe: 'started to describe an environment as code',
 };
 
 /** The same rules the server uses, to decide which controls to show. */

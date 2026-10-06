@@ -107,3 +107,24 @@ export function draftDesired({ environment, resources, provider = null }) {
     );
   return { path: desiredPath(environment.name), json, resources: kept.length, observeOnly, notes };
 }
+
+/** The title of the task that describes environment `name` as code (WEB-92): one open one per environment. */
+export const describeTitle = (/** @type {string} */ name) => `Describe ${name} as code`;
+
+/**
+ * The brief of the task that describes an environment as code (WEB-92): its agent writes the board's draft into its
+ * checkout with `infra adopt` (CLI-23), checks it, and opens a pull request. Nothing is applied.
+ * @param {{ name: string, repo: string }} environment
+ */
+export function describeBrief({ name, repo }) {
+  const path = desiredPath(name);
+  return [
+    `${name} in ${repo} runs without a desired-state file, so the board can't compare it with what runs. Describe it as code from what runs, never from guesses:`,
+    '',
+    `1. Run \`npx breakaway infra adopt ${name}\`. It writes \`${path}\` from the board's draft, built from the environment's inventory.`,
+    '2. Run `npx breakaway infra check`, and fix what it says until it passes. Keep each setting the draft holds unless the check refuses it.',
+    `3. Open a pull request with the file and nothing else, saying what the draft left out (\`infra adopt\` prints its notes).`,
+    '',
+    'Never apply, and never hold a provider’s write credentials: the owner merges the pull request, and the board compares the file with what runs from then on.',
+  ].join('\n');
+}
