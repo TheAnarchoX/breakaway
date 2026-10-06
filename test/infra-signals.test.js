@@ -49,7 +49,7 @@ describe('signals', () => {
       kind: 'alert',
       level: 'warning',
       value: 81,
-      at: '2026-10-02T10:00:00.000Z',
+      at: provider.state.events[1].at,
       text: 'main is 81% full',
     });
     expect(signals[0].resource).toBeNull();
