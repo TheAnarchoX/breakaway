@@ -34,7 +34,9 @@ import {
   discover,
   priceResource,
   reader,
+  refuses,
   round,
+  workerConsumer,
 } from './infra-cloudflare.js';
 
 /** @typedef {import('./infra-provider.js').ProviderContext} ProviderContext */
@@ -65,6 +67,8 @@ const LOST = {
 const ORDER = [
   ['create', ['d1', 'kv', 'r2', 'queue']],
   ['update', ['d1', 'kv', 'r2', 'queue', 'container']],
+  ['scale', ['queue', 'container']],
+  ['restart', ['container']],
   ['create', ['worker']],
   ['update', ['worker']],
   ['create', ['route', 'custom-domain']],
@@ -73,6 +77,13 @@ const ORDER = [
   ['delete', ['worker']],
   ['delete', ['container', 'queue', 'r2', 'kv', 'd1']],
 ];
+/**
+ * Settings Cloudflare moves by itself between a plan and its apply (a container application's instance counts), so
+ * they never make a change look out of date.
+ */
+const LIVE = { container: ['instances', 'active', 'assigned'] };
+const settled = (kind, attrs) =>
+  Object.fromEntries(Object.entries(attrs ?? {}).filter(([k]) => !(LIVE[kind] ?? []).includes(k)));
 const rank = (c) => ORDER.findIndex(([op, kinds]) => op === c.op && kinds.includes(c.kind));
 
 /** Binding types whose targets are a resource of a kind Architect makes, and the field that names it. */
@@ -581,8 +592,10 @@ export async function apply(ctx, p) {
         const exists = h ?? [...have.values()].find((x) => x.kind === c.kind && x.name === c.name);
         if (exists) throw new Error(`${c.name} already exists: plan again`);
       } else if (!h) throw new Error(`${c.name} is no longer in ${ctx.environment}: plan again`);
-      else if (!same(redactAttrs(h.attrs ?? {}), c.before))
+      else if (!same(settled(c.kind, redactAttrs(h.attrs ?? {})), settled(c.kind, c.before)))
         throw new Error(`${c.name} changed since it was planned: plan again`);
+      const refused = h ? refuses(h, c.op) : null;
+      if (refused) throw new Error(refused);
       await applyChange(c, { call, a, live, have, made, resolve });
       steps.push({ resource: c.resource, op: c.op, ok: true });
     } catch (error) {
@@ -670,6 +683,7 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
     case 'queue': {
       const perm = { permission: 'Queues Write' };
       if (c.op === 'delete') return call('DELETE', `${a}/queues/${id}`, perm);
+      if (c.op === 'scale') return scaleConsumer(call, `${a}/queues/${id}`, c.name, after.maxConcurrency, perm);
       const settings = Object.fromEntries(
         [
           ['delivery_delay', after.deliveryDelay],
@@ -677,7 +691,13 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
           ['message_retention_period', after.retention],
         ].filter(([, v]) => v !== undefined && v !== null),
       );
-      if (c.op === 'update') return call('PATCH', `${a}/queues/${id}`, { ...perm, json: { settings } });
+      if (c.op === 'update') {
+        if (['deliveryDelay', 'deliveryPaused', 'retention'].some(changed))
+          await call('PATCH', `${a}/queues/${id}`, { ...perm, json: { settings } });
+        if (changed('maxConcurrency'))
+          await scaleConsumer(call, `${a}/queues/${id}`, c.name, after.maxConcurrency, perm);
+        return;
+      }
       await call('POST', `${a}/queues`, {
         ...perm,
         json: { queue_name: c.name, ...(Object.keys(settings).length ? { settings } : {}) },
@@ -687,11 +707,17 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
     }
     case 'container': {
       const perm = { permission: 'Containers Write' };
-      if (c.op === 'delete') return call('DELETE', `${a}/containers/applications/${id}`, perm);
-      return call('PATCH', `${a}/containers/applications/${id}`, {
-        ...perm,
-        json: { max_instances: after.maxInstances },
-      });
+      const p = `${a}/containers/applications/${id}`;
+      if (c.op === 'delete') return call('DELETE', p, perm);
+      if (c.op === 'restart') return restartContainer(call, p, c.name, perm);
+      await call('PATCH', p, { ...perm, json: { max_instances: after.maxInstances } });
+      // Read it back: the scale is done only once Cloudflare reports the new maximum.
+      const app = await call('GET', p, perm);
+      if (app?.max_instances !== after.maxInstances)
+        throw new Error(
+          `Cloudflare still reports ${c.name} at ${app?.max_instances ?? 'no'} max instances, not ${after.maxInstances}`,
+        );
+      return;
     }
     case 'route': {
       const perm = { permission: 'Workers Routes Write' };
@@ -722,6 +748,65 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
     default:
       throw new Error(`Architect can’t ${c.op} a ${c.kind}`);
   }
+}
+
+/**
+ * Sets a queue's Worker consumer's `max_concurrency` (BRK-188: `PUT …/consumers/{consumer}`, which replaces the
+ * consumer, so its other settings are sent as Cloudflare has them), then reads it back. The consumer is read with the
+ * write token at apply, so the plan never holds its ID.
+ * @param {ReturnType<typeof writer>} call
+ * @param {string} q the queue's path
+ * @param {string} name
+ * @param {unknown} to
+ * @param {{ permission: string }} perm
+ */
+async function scaleConsumer(call, q, name, to, perm) {
+  const consumer = workerConsumer(await call('GET', `${q}/consumers`, perm));
+  if (!consumer?.consumer_id) throw new Error(`${name} has no Worker consuming it, so there’s no concurrency to scale`);
+  const p = `${q}/consumers/${encodeURIComponent(String(consumer.consumer_id))}`;
+  await call('PUT', p, {
+    ...perm,
+    json: {
+      type: 'worker',
+      script_name: String(consumer.script ?? consumer.script_name ?? consumer.service),
+      ...(consumer.dead_letter_queue ? { dead_letter_queue: consumer.dead_letter_queue } : {}),
+      settings: { ...(consumer.settings ?? {}), max_concurrency: to ?? undefined },
+    },
+  });
+  const now = workerConsumer(await call('GET', `${q}/consumers`, perm));
+  if ((now?.settings?.max_concurrency ?? null) !== (to ?? null))
+    throw new Error(
+      `Cloudflare still reports ${name}’s consumer at ${now?.settings?.max_concurrency ?? 'automatic'} concurrency, not ${to ?? 'automatic'}`,
+    );
+}
+
+/**
+ * Restarts a container application (BRK-188's Restart row): a rollout of the configuration it runs now, so every
+ * instance is replaced step by step, each after SIGTERM and up to 15 minutes to drain. The body is the one Wrangler
+ * sends for a deploy's rollout (`strategy: rolling`, `kind: full_auto`); Cloudflare's API reference shows the endpoint
+ * but not its body, so BRK-207's staging run confirms it. The configuration is read with the write token at apply and
+ * passed through as it is: the board never stores it.
+ * @param {ReturnType<typeof writer>} call
+ * @param {string} p the application's path
+ * @param {string} name
+ * @param {{ permission: string }} perm
+ */
+async function restartContainer(call, p, name, perm) {
+  const app = await call('GET', p, perm);
+  if (!isObject(app?.configuration)) throw new Error(`Cloudflare didn’t say what ${name} runs, so it wasn’t restarted`);
+  const max = Number(app.max_instances ?? 0);
+  const rollout = await call('POST', `${p}/rollouts`, {
+    ...perm,
+    json: {
+      description: 'Restarted by breakaway',
+      strategy: 'rolling',
+      kind: 'full_auto',
+      // One step for a single instance, as Wrangler does; otherwise a tenth at a time.
+      step_percentage: max < 2 ? 100 : 10,
+      target_configuration: app.configuration,
+    },
+  });
+  if (!rollout?.id) throw new Error(`Cloudflare didn’t start a rollout of ${name}`);
 }
 
 /**

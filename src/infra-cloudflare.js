@@ -42,16 +42,56 @@ export const MANAGED = {
   d1: [],
   kv: [],
   r2: ['cors', 'lifecycle'],
-  queue: ['deliveryDelay', 'deliveryPaused', 'retention'],
+  queue: ['deliveryDelay', 'deliveryPaused', 'retention', 'maxConcurrency'],
   container: ['maxInstances'],
   route: ['worker'],
   'custom-domain': ['worker', 'environment'],
 };
 
-/** BRK-227 adds `scale` to queues and `scale` and `restart` to containers. */
+/**
+ * What envelopes may change, by kind (BRK-188's "Scale and restart, for envelopes"; BRK-227): a container application
+ * scales its `max_instances` and restarts with a rollout of its configuration, and a queue scales its Worker
+ * consumer's `max_concurrency`. Cloudflare scales every other kind itself, so none of them scales or restarts.
+ */
+const ENVELOPE = {
+  container: { changes: ['scale', 'restart'], scales: 'maxInstances' },
+  queue: { changes: ['scale'], scales: 'maxConcurrency' },
+};
 export const CLOUDFLARE_KINDS = Object.fromEntries(
-  Object.entries(MANAGED).map(([k, settings]) => [k, { changes: [...BASE], settings: [...settings] }]),
+  Object.entries(MANAGED).map(([k, settings]) => [
+    k,
+    ENVELOPE[k]
+      ? { changes: [...BASE, ...ENVELOPE[k].changes], scales: ENVELOPE[k].scales, settings: [...settings] }
+      : { changes: [...BASE], settings: [...settings] },
+  ]),
 );
+
+/** The scheduling policy whose container applications Cloudflare scales and rolls out; any other is the code's. */
+export const DEFAULT_SCHEDULING = 'default';
+
+/**
+ * Why Cloudflare can't make an envelope's change to this resource, in words, or null when it can. A kind that never
+ * scales or restarts says the platform does it; a container application on another scheduling policy (the Durable
+ * Object one) is started and stopped by its own code; a queue with no Worker consuming it has no concurrency to set.
+ * @param {Resource} r
+ * @param {string} op
+ * @returns {string | null}
+ */
+export function refuses(r, op) {
+  if (op !== 'scale' && op !== 'restart') return null;
+  if (!CLOUDFLARE_KINDS[r.kind]?.changes.includes(op))
+    return r.kind === 'queue'
+      ? `${r.name} is a queue: Cloudflare has no restart for one, only its consumer’s concurrency scales`
+      : `${r.name} is a ${r.kind}: Cloudflare scales it by itself, so there’s nothing to ${op}`;
+  const attrs = /** @type {Record<string, unknown>} */ (r.attrs ?? {});
+  if (r.kind === 'container' && attrs.schedulingPolicy !== DEFAULT_SCHEDULING)
+    return attrs.schedulingPolicy
+      ? `${r.name} runs on the ${attrs.schedulingPolicy} scheduling policy: its own code starts and stops its instances, so Cloudflare can’t ${op} it`
+      : `${r.name}’s scheduling policy isn’t known, so it can’t ${op}: discover it again`;
+  if (r.kind === 'queue' && !(/** @type {any[]} */ (attrs.consumers ?? []).some((c) => c?.type === 'worker')))
+    return `${r.name} has no Worker consuming it, so there’s no concurrency to scale`;
+  return null;
+}
 
 /**
  * The board's read-only token (BRK-188, "Tokens"; BRK-194 keeps it). Read only: no permission ends in Edit or Write.
@@ -69,6 +109,10 @@ export const READ_PERMISSIONS = [
   { name: 'Zone Read', for: 'naming the zones your routes are on' },
   { name: 'Workers Routes Read', for: 'routes' },
 ];
+
+/** The consumer a queue's scale changes: its Worker consumer (Cloudflare allows one), or undefined. */
+export const workerConsumer = (consumers) =>
+  (consumers ?? []).find((c) => String(c?.type ?? 'worker') === 'worker' && (c.script ?? c.script_name ?? c.service));
 
 /** At most this many Workers in one environment's scope, and pages of one list: far more than a repository runs. */
 const MAX_WORKERS = 50;
@@ -430,7 +474,10 @@ export async function discover(ctx, { live = false } = {}) {
           deliveryDelay: q.settings?.delivery_delay ?? null,
           deliveryPaused: Boolean(q.settings?.delivery_paused),
           retention: q.settings?.message_retention_period ?? null,
+          // The Worker consumer's concurrency, which a scale sets (null: Cloudflare picks it).
+          maxConcurrency: workerConsumer(consumers)?.settings?.max_concurrency ?? null,
           consumers: consumers.map((c) => ({
+            type: String(c.type ?? 'worker'),
             worker: String(c.script ?? c.service ?? ''),
             batchSize: c.settings?.batch_size ?? null,
             maxRetries: c.settings?.max_retries ?? null,
@@ -1133,6 +1180,7 @@ export const cloudflare = {
     url: 'https://dash.cloudflare.com/profile/api-tokens',
     check: checkToken,
   },
+  refuses,
   discover,
   plan: (ctx, desired) => plan(ctx, desired),
   apply: (ctx, p) => apply(ctx, p),
