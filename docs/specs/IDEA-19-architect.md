@@ -54,7 +54,7 @@ A named target in one of the board's repositories: kind (`production`, `staging`
 
 ### Inventory
 
-What actually exists, from each provider's `discover`, scoped to what the board's repositories run on (BRK-169: nothing outside an environment's scope is stored): a graph of resources with relations (this Worker uses that database, secret by name, and route), ownership (repository, task, environment), last health, and last cost. A refresh replaces one provider's slice atomically (BRK-177).
+What actually exists, from each provider's `discover`, scoped to what the board's repositories run on (BRK-169: nothing outside an environment's scope is stored): a graph of resources with relations (this Worker uses that database, secret by name, and route), ownership (repository, task, environment), last health, and last cost. An environment's scope is its target (the resource whose ID or name is the environment's `target`) and everything the target reaches by relations; the store applies it to whatever a provider returns, so an environment without a target stores nothing. A refresh replaces one provider's slice atomically, and a failed discovery changes nothing (BRK-177).
 
 ### Desired state
 
