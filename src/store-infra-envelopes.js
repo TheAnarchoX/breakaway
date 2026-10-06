@@ -75,6 +75,24 @@ export const infraEnvelopesMethods = {
     );
   },
 
+  /**
+   * What the owner can bound on an environment, for the board's form (WEB-64): its provider's kinds that scale, each
+   * with the setting a scale changes, and why an envelope can't be set there now, or null when it can.
+   * @returns {{ scalable: { kind: string, setting: string }[], blocked: string | null }}
+   */
+  envelopeScope(env) {
+    try {
+      const { provider } = this.envelopeEnvironment(env.id, env.repo);
+      const scalable = Object.entries(provider.kinds)
+        .filter(([, spec]) => spec.changes.includes('scale') && spec.scales)
+        .map(([kind, spec]) => ({ kind, setting: /** @type {string} */ (spec.scales) }));
+      return { scalable, blocked: null };
+    } catch (error) {
+      if (error instanceof AgentError) return { scalable: [], blocked: error.message };
+      throw error;
+    }
+  },
+
   /** An environment's envelope as the API shows it, with the restarts its cap has used. */
   envelopeOut(env) {
     const row = this.sql.exec('SELECT * FROM infra_envelopes WHERE environment = ?', env.id).toArray()[0];
@@ -100,6 +118,7 @@ export const infraEnvelopesMethods = {
       created: row ? new Date(Number(row.created)).toISOString() : null,
       edited: row ? new Date(Number(row.edited)).toISOString() : null,
       acts,
+      ...this.envelopeScope(env),
     };
   },
 
