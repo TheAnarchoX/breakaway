@@ -24,7 +24,7 @@ Anyone signed in reads features, and an agent shaping an idea adds one for the t
 
 ### The Roadmap
 
-The **Roadmap** view (`m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
+The **Roadmap** view (`g` `m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
 
 Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. Tick **Shape it with an agent, like an idea** to have an agent write its tasks from the brief, and use **Refine with an agent** on a feature to have one refine its tasks as you ask. A board with none says “No features yet.” and offers the suggested tags.
 

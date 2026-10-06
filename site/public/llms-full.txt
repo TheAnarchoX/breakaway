@@ -567,7 +567,7 @@ Right-click a task in the Board, List, or Dependencies view (a long press on a t
 
 ### New agent
 
-**New agent** in the top bar (`p`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
+**New agent** in the top bar (`a`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
 
 ### Dictation
 
@@ -577,22 +577,46 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 
 ## Keyboard shortcuts
 
+One key does what you do most, and `g` then a letter goes to a view. They don’t fire while you type in a field; `?` shows them all.
+
 | Key | Does |
 | --- | --- |
 | `/` | Search |
 | `n` | New task |
 | `i` | New idea |
-| `p` | New agent |
-| `b` `l` `m` `g` `o` `a` `h` `e` `x` `u` | Switch views |
-| `t` | MCP |
-| `w` | Connections |
-| `[` | Collapse or expand the sidebar |
+| `a` | New agent |
 | `s` | Switch repository (with several) |
+| `[` | Collapse or expand the sidebar |
+| `r` | Refresh |
+| `?` | Show all shortcuts |
+
+On the open task:
+
+| Key | Does |
+| --- | --- |
 | `j` `k` | Next and previous task |
 | `c` | Claim or release |
 | `d` | Done |
+| `m` | Write a comment |
 | `Esc` | Close |
-| `?` | Show all shortcuts |
+
+Go to a view with `g`, then:
+
+| Key | View |
+| --- | --- |
+| `b` | Board |
+| `l` | List |
+| `m` | Roadmap |
+| `d` | Dependencies |
+| `i` | Inbox |
+| `t` | Activity |
+| `h` | GitHub |
+| `s` | Specs |
+| `a` | Agents |
+| `r` | Routines |
+| `p` | MCP |
+| `c` | Connections |
+| `,` | Settings |
 
 ## Several repositories
 
@@ -850,7 +874,7 @@ It never skips Claude’s own limits (30 starts an hour for each routine, 100 fo
 
 ### From a prompt: New agent
 
-Some work isn’t one task, or isn’t worth writing one for: a change across several tasks, a quick fix to something you can see on a page, bringing work in line with a decision. **New agent** in the top bar (`p`) starts an agent from what you write.
+Some work isn’t one task, or isn’t worth writing one for: a change across several tasks, a quick fix to something you can see on a page, bringing work in line with a decision. **New agent** in the top bar (`a`) starts an agent from what you write.
 
 - **The dialog** asks what the agent should do (rough is fine), takes up to 4 images (picked, dropped, or pasted), and, with several repositories, which one. It opens the new task, where the live output appears. It shows only once an agent routine is connected.
 - **Its task** takes your prompt as its description, never rewritten, and the first line as its title. It has no area, and so no work ID, until its agent picks one of the repository’s areas.
@@ -993,7 +1017,7 @@ Anyone signed in reads features, and an agent shaping an idea adds one for the t
 
 ### The Roadmap
 
-The **Roadmap** view (`m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
+The **Roadmap** view (`g` `m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
 
 Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. Tick **Shape it with an agent, like an idea** to have an agent write its tasks from the brief, and use **Refine with an agent** on a feature to have one refine its tasks as you ask. A board with none says “No features yet.” and offers the suggested tags.
 
@@ -1197,7 +1221,7 @@ npx breakaway routines run changelog --note "Since v0.2."
 
 The prompt can live in the repository as a file, so it’s reviewed like code. After a change to the file, update the routine with `routines modify <slug> --prompt-file <path>`. Only you create or edit routines.
 
-The **Routines** view (`u`) shows a row for each routine: its state, how it starts, runs used today, and a **Run** button, beside the On/Paused switch and the latest runs of all routines.
+The **Routines** view (`g` `r`) shows a row for each routine: its state, how it starts, runs used today, and a **Run** button, beside the On/Paused switch and the latest runs of all routines.
 
 ## Ways to start one
 
@@ -1255,7 +1279,7 @@ Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, De
 
 ## The GitHub view
 
-The **GitHub** view (`h`) is a dashboard. It opens on what’s live:
+The **GitHub** view (`g` `h`) is a dashboard. It opens on what’s live:
 
 - **Open pull requests**, with their verdict, checks, reviews, and tasks.
 - **Live now**: staging and production, with each one’s version and commit and **Promote or roll back**. Only for a repository with a [deploy pipeline](#deploys-releases-promote-and-roll-back).

@@ -56,7 +56,7 @@ It never skips Claude’s own limits (30 starts an hour for each routine, 100 fo
 
 ### From a prompt: New agent
 
-Some work isn’t one task, or isn’t worth writing one for: a change across several tasks, a quick fix to something you can see on a page, bringing work in line with a decision. **New agent** in the top bar (`p`) starts an agent from what you write.
+Some work isn’t one task, or isn’t worth writing one for: a change across several tasks, a quick fix to something you can see on a page, bringing work in line with a decision. **New agent** in the top bar (`a`) starts an agent from what you write.
 
 - **The dialog** asks what the agent should do (rough is fine), takes up to 4 images (picked, dropped, or pasted), and, with several repositories, which one. It opens the new task, where the live output appears. It shows only once an agent routine is connected.
 - **Its task** takes your prompt as its description, never rewritten, and the first line as its title. It has no area, and so no work ID, until its agent picks one of the repository’s areas.

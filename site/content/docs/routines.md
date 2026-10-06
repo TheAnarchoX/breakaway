@@ -18,7 +18,7 @@ npx breakaway routines run changelog --note "Since v0.2."
 
 The prompt can live in the repository as a file, so it’s reviewed like code. After a change to the file, update the routine with `routines modify <slug> --prompt-file <path>`. Only you create or edit routines.
 
-The **Routines** view (`u`) shows a row for each routine: its state, how it starts, runs used today, and a **Run** button, beside the On/Paused switch and the latest runs of all routines.
+The **Routines** view (`g` `r`) shows a row for each routine: its state, how it starts, runs used today, and a **Run** button, beside the On/Paused switch and the latest runs of all routines.
 
 ## Ways to start one
 
