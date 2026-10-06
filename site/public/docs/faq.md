@@ -14,7 +14,7 @@ breakaway’s maintainer hosts it, as a non-commercial project. The page has no 
 
 ## Where does my data live?
 
-On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), and npm's public registry, read-only, to see whether a version your repository's workflows staged on npm is live yet.
+On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), npm's public registry, read-only, to see whether a version your repository's workflows staged on npm is live yet, and Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings.
 
 ## Does it run my code, or deploy it?
 
