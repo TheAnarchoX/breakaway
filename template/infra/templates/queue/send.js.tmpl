@@ -1,0 +1,9 @@
+/**
+ * Sends to the {{name}} queue, which {{worker}} has as env.{{binding}}. Made by npx breakaway infra add queue: the
+ * queue and the binding are in the environment's desired state, and exist once the owner approves the plan.
+ * @param {{ {{binding}}: Queue }} env
+ * @param {unknown} body
+ */
+export async function send(env, body) {
+  await env.{{binding}}.send(body);
+}
