@@ -667,6 +667,12 @@ async function handleApi(request, env, url, ctx) {
       }),
     );
   }
+  // Which of a provider's alerts reach the board (BRK-191): a live read with its read-only token, for the token and the
+  // cookie alike. The alerts themselves are signals (kind=alert).
+  if (parts[0] === 'infra' && parts[1] === 'alerts' && parts.length === 2) {
+    if (method !== 'GET') return json(405, { error: 'alerts are set up in the provider’s dashboard, not here' });
+    return send(await s.infraAlertsApi({ provider: url.searchParams.get('provider') ?? undefined }));
+  }
   // Mark approved and Mark built on a spec (BRK-215) open a pull request: the owner's press, from the signed-in
   // browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'specs' && parts.length > 1 && method === 'POST') {

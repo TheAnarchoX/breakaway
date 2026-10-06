@@ -191,6 +191,19 @@ export const COST_NOTE_MAX = 500;
  * @property {(ctx: ProviderContext, since: string) => Promise<Signal[]>} events
  * @property {(ctx: ProviderContext, change: Change) => Promise<Cost | null>} [estimate] what a resource would cost a
  *   month once `change` is applied, or null when the provider can't say; a plan's cost change uses it (BRK-178)
+ * @property {(ctx: ProviderContext, options: { board: string[] }) => Promise<AlertSetup>} [alerts] reads which of the
+ *   platform's alerts are set up and which reach the board (`board` is its https origins), for a provider whose
+ *   platform sends alerts to the board
+ */
+
+/**
+ * Which of a platform's alerts are set up, and which reach the board: each alert type with how many policies use it
+ * and whether one sends to the board, each policy (on or off, the routines on the board it fires), and how many
+ * webhooks point at the board. Names only: never an address or a destination's URL.
+ * @typedef {object} AlertSetup
+ * @property {Array<{ type: string, name: string, product: string, policies: number, reachesBoard: boolean }>} alerts
+ * @property {Array<{ name: string, alertType: string, enabled: boolean, reachesBoard: boolean, routines: string[] }>} policies
+ * @property {{ toBoard: number, other: number }} webhooks
  */
 
 const METHODS = ['discover', 'plan', 'apply', 'observe', 'cost', 'events'];
