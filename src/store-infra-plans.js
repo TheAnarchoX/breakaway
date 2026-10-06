@@ -39,6 +39,16 @@ const SHOWN = 50;
 const SHOWN_MAX = 200;
 const SELECT = 'SELECT p.*, e.name AS env_name FROM infra_plans p JOIN infra_environments e ON e.id = p.environment';
 
+/** The moves a frozen environment refuses: rejecting a plan, finishing an apply, and rolling back still go. */
+const FORWARD = ['waiting', 'approved', 'applying'];
+
+/** Why a frozen environment refuses a plan, in words. */
+const frozen = (env) => `${env.name} is frozen: nothing changes there until the owner unfreezes it, on the board`;
+
+/** The policy's result for the audit trail: what it decided, and the rule that did. */
+const policySummary = (p) =>
+  p.outcome === 'allowed' ? `policy allows it by “${p.rule}”` : `policy: needs the owner (${p.rule})`;
+
 /** Who acts on a plan, from the API's `by`: none, or `owner`, is the owner; anything else is an agent's name. */
 function actor(by) {
   return by === undefined || by === null || by === '' || by === 'owner'
@@ -78,6 +88,14 @@ export const infraPlansMethods = {
       CREATE INDEX IF NOT EXISTS infra_plans_by_environment ON infra_plans (environment, state, n);
       CREATE INDEX IF NOT EXISTS infra_plans_by_repo ON infra_plans (repo, n);
     `);
+    // The policy's result (BRK-181), on a store from before it was kept.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_plans)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('policy')) this.sql.exec('ALTER TABLE infra_plans ADD COLUMN policy TEXT');
   },
 
   /** A plan's row with its environment's name, by its ID (`plan-12`), or a 404. */
@@ -122,36 +140,19 @@ export const infraPlansMethods = {
   },
 
   /**
-   * Makes a draft plan for an environment: asks its provider for the diff from the environment's desired state (or
-   * `desired`, for the board's own callers, like an envelope's scale), prices it, measures its blast radius from the
-   * inventory, and keeps it with an audit entry. Refused on an observe-only environment, one with no provider or no
-   * desired state, and when nothing would change.
-   * @param {string | number} ref the environment's ID or name
-   * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
-   *   agent?: string | null, desired?: DesiredState }} input
+   * What a plan for an environment would hold, kept nowhere: its provider's diff from `wanted`, its cost change, and
+   * its blast radius from the inventory. makeInfraPlan keeps it; `infra check`'s preview (store-infra-check.js) only
+   * shows it. Refused on an environment with no provider, or one whose provider isn't connected. With nothing to
+   * change, the diff is empty and there's no cost or blast radius.
+   * @param {Record<string, any>} env the environment's row
+   * @param {DesiredState} wanted
    */
-  async makeInfraPlan(
-    ref,
-    { repo = null, source, sourceRef = null, by, agent = null, desired } = /** @type {any} */ ({}),
-  ) {
-    const from = checkSource(source, sourceRef);
-    const env = this.environmentRow(ref, repo);
-    if (env.observe_only || runsTheBoard(env, install(this.env).worker))
-      throw new AgentError(`${env.name} is observe only: Architect watches it and never plans changes to it`, 409);
+  async computeInfraPlan(env, wanted) {
     if (!env.provider) throw new AgentError(`${env.name} has no provider: the owner picks one on the board first`, 409);
     const registry = this.infraRegistry();
     if (!registry.has(env.provider))
       throw new AgentError(`${env.provider} isn’t connected, so ${env.name} can’t be planned`, 409);
     const provider = registry.get(env.provider);
-    const kept = this.sql
-      .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
-      .toArray()[0];
-    const wanted = desired ?? this.desiredStateFor(env);
-    if (!wanted)
-      throw new AgentError(
-        `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
-        409,
-      );
     const ctx = {
       environment: env.name,
       scope: { target: env.target },
@@ -167,8 +168,7 @@ export const infraPlansMethods = {
         502,
       );
     }
-    if (diff.changes.length === 0)
-      throw new AgentError(`${env.name} already matches its desired state: there’s nothing to plan`, 409);
+    if (diff.changes.length === 0) return { provider, stored: keptDiff(diff), cost: null, blast: null };
     if (diff.changes.length > MAX_PLAN_CHANGES)
       throw new AgentError(
         `the plan for ${env.name} has ${diff.changes.length} changes, more than ${MAX_PLAN_CHANGES}: split the desired state`,
@@ -200,14 +200,49 @@ export const infraPlansMethods = {
       }
     const cost = costChange(stored, costs, estimates);
     const blast = blastRadius(stored, inventory);
+    return { provider, stored, cost, blast };
+  },
+
+  /**
+   * Makes a draft plan for an environment: asks its provider for the diff from the environment's desired state (or
+   * `desired`, for the board's own callers, like an envelope's scale), prices it, measures its blast radius from the
+   * inventory, and keeps it with an audit entry. Refused on an observe-only environment, one with no provider or no
+   * desired state, and when nothing would change.
+   * @param {string | number} ref the environment's ID or name
+   * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
+   *   agent?: string | null, desired?: DesiredState }} input
+   */
+  async makeInfraPlan(
+    ref,
+    { repo = null, source, sourceRef = null, by, agent = null, desired } = /** @type {any} */ ({}),
+  ) {
+    const from = checkSource(source, sourceRef);
+    const env = this.environmentRow(ref, repo);
+    if (env.observe_only || runsTheBoard(env, install(this.env).worker))
+      throw new AgentError(`${env.name} is observe only: Architect watches it and never plans changes to it`, 409);
+    if (env.frozen) throw new AgentError(frozen(env), 409);
+    const kept = this.sql
+      .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
+      .toArray()[0];
+    const wanted = desired ?? this.desiredStateFor(env);
+    if (!wanted)
+      throw new AgentError(
+        `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
+        409,
+      );
+    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted);
+    if (stored.changes.length === 0)
+      throw new AgentError(`${env.name} already matches its desired state: there’s nothing to plan`, 409);
+    const text = JSON.stringify(stored);
+    const policy = this.checkInfraPolicy(env, { diff: stored, cost, provider });
     const now = Date.now();
     let n;
     this.ctx.storage.transactionSync(() => {
       n = Number(
         this.sql
           .exec(
-            `INSERT INTO infra_plans (environment, repo, provider, target, desired_sha, source, ref, state, diff, cost, blast, reversible, by, agent, created, updated)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?) RETURNING n`,
+            `INSERT INTO infra_plans (environment, repo, provider, target, desired_sha, source, ref, state, diff, cost, blast, reversible, policy, by, agent, created, updated)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING n`,
             env.id,
             env.repo,
             env.provider,
@@ -219,6 +254,7 @@ export const infraPlansMethods = {
             JSON.stringify(cost),
             JSON.stringify(blast),
             stored.reversible ? 1 : 0,
+            JSON.stringify(policy),
             by,
             agent,
             now,
@@ -235,7 +271,7 @@ export const infraPlansMethods = {
         by,
         agent,
         outcome: 'draft',
-        summary: `${stored.changes.length} change${stored.changes.length === 1 ? '' : 's'} from ${from.source}${from.ref ? ` ${from.ref}` : ''}${stored.reversible ? '' : ', not all reversible'}`,
+        summary: `${stored.changes.length} change${stored.changes.length === 1 ? '' : 's'} from ${from.source}${from.ref ? ` ${from.ref}` : ''}${stored.reversible ? '' : ', not all reversible'}; ${policySummary(policy)}`,
       });
     });
     return planView(this.planRow(n));
@@ -256,6 +292,13 @@ export const infraPlansMethods = {
         checkMove(row.state, to);
       } catch (error) {
         throw new AgentError(`${planId(Number(row.n))}: ${error.message}`, 409);
+      }
+      // A frozen environment refuses every plan: none waits, is approved, or starts applying until it's unfrozen.
+      if (FORWARD.includes(to)) {
+        const env = this.sql
+          .exec('SELECT name, frozen FROM infra_environments WHERE id = ?', row.environment)
+          .toArray()[0];
+        if (env?.frozen) throw new AgentError(`${planId(Number(row.n))} can’t become ${to}: ${frozen(env)}`, 409);
       }
       this.sql.exec('UPDATE infra_plans SET state = ?, updated = ? WHERE n = ?', to, Date.now(), row.n);
       this.appendInfraAudit({
