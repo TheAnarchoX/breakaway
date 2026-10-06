@@ -9,7 +9,7 @@
  * transaction: a change that can't be recorded doesn't happen.
  *
  * Anyone signed in reads plans, and an agent may propose one (a draft); a draft waits for the owner only by the owner's
- * or the board's hand. Approve and reject are BRK-182's, and applying is the executor's: `moveInfraPlan` is the one
+ * hand, from the signed-in board, or the board's own. Approve and reject are BRK-182's, and applying is the executor's: `moveInfraPlan` is the one
  * path that changes a plan's state, for them to call. The plan's hash is `planDigest(diff)` (src/infra-runner.js),
  * stored on approval (BRK-182).
  */
@@ -341,8 +341,9 @@ export const infraPlansMethods = {
   },
 
   /**
-   * PATCH /api/infra/plans/<id>: `{ state: 'waiting' }` puts a draft in front of the owner. The owner's or the
-   * board's; an agent's `by` is refused. Approve and reject come with BRK-182.
+   * PATCH /api/infra/plans/<id>: `{ state: 'waiting' }` puts a draft in front of the owner. The owner's, from the
+   * signed-in browser only (the worker refuses the bearer token); an agent's `by` is refused too. Approve and reject
+   * come with BRK-182.
    */
   planModifyApi(ref, body = {}) {
     return this.run(async () => {

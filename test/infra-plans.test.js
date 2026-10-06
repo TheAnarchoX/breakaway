@@ -324,6 +324,15 @@ describe('plans in the store (BRK-178)', () => {
       await api(`infra/plans/${proposed.plan.id}`, { method: 'PATCH', body: { state: 'waiting', by: 'claude-a' } }),
     );
     expect(refused.status).toBe(403);
+    // The bearer token never does, whoever it says it is.
+    const token = await body(
+      await api(`infra/plans/${proposed.plan.id}`, { method: 'PATCH', body: { state: 'waiting' } }),
+    );
+    expect(token).toMatchObject({ status: 403, error: /only the signed-in web board/u });
+    const byAgent = await body(
+      await board(`infra/plans/${proposed.plan.id}`, { method: 'PATCH', body: { state: 'waiting', by: 'claude-a' } }),
+    );
+    expect(byAgent.status).toBe(403);
     const approve = await body(
       await board(`infra/plans/${proposed.plan.id}`, { method: 'PATCH', body: { state: 'approved' } }),
     );
