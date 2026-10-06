@@ -225,7 +225,11 @@ describe('envelopes on the board (BRK-186)', () => {
         .status,
     ).toBe(403);
     expect((await body(await api(`infra/envelopes/${staging.id}`, { method: 'DELETE' }))).status).toBe(403);
-    expect((await body(await api(`infra/envelopes/${staging.id}`))).envelope).toBeNull();
+    expect(await body(await api(`infra/envelopes/${staging.id}`))).toMatchObject({
+      envelope: null,
+      scalable: [{ kind: 'service', setting: 'instances' }],
+      blocked: null,
+    });
 
     expect((await set(staging, { scale: [{ kind: 'database', min: 1, max: 2 }] })).status).toBe(400);
     const made = await set(staging, envelope);
@@ -383,6 +387,10 @@ describe('envelopes on the board (BRK-186)', () => {
     ).environment;
     const res = await set(watched, { restarts: { cap: 1 } });
     expect(res).toMatchObject({ status: 409, error: expect.stringMatching(/observe only/) });
+    expect(await body(await api(`infra/envelopes/${watched.id}`))).toMatchObject({
+      scalable: [],
+      blocked: expect.stringMatching(/observe only/),
+    });
     expect((await act(watched, { resource: 'api', change: 'restart' })).status).toBe(409);
   });
 });

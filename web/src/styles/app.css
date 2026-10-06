@@ -7823,6 +7823,75 @@ a.pl-mention {
   display: grid;
   gap: 4px;
 }
+/* Infrastructure in a repository's settings (WEB-64): the policy in words, then each environment's freeze and envelope. */
+.ifs-policy,
+.ifs-envs {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.ifs-envs {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ifs-rules {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+.ifs-env-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.ifs-env .infra-env-name {
+  font-size: 16px;
+}
+.ifs-freeze {
+  margin-left: auto;
+}
+.ifs-envelope {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.ifs-envelope svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--success);
+}
+.ifs-form {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.ifs-form fieldset.field {
+  display: grid;
+  gap: 10px;
+}
+.ifs-bound {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(140px, 1.4fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.ifs-remove {
+  margin-bottom: 4px;
+}
+@media (max-width: 759px) {
+  .ifs-bound {
+    grid-template-columns: 1fr 1fr;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ifs-remove {
+    justify-self: start;
+  }
+}
 /* On a phone the areas table is a list: each area a card, each cell labelled. */
 @media (max-width: 759px) {
   .rs-areas,
