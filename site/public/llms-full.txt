@@ -1749,6 +1749,8 @@ For `stable`, merge the Update workflow’s pull request. For `main`, do nothing
 
 The board’s **Connections** page has a **Version** row that says what the board runs and the latest release in its channel. If it says a release “isn’t running yet”, open Actions on the install repository: the Deploy run says why it stopped.
 
+Once the board runs a newer release, it says what changed the next time you open it. A stable release opens a short list of what’s new since the last stable; a pre-release on `main`, which comes with every merge, shows a small note in a corner that you can open or dismiss. The list comes with the release itself, so the board asks no one for it. **See what’s new** in Settings opens it again, and a browser opening the board for the first time shows nothing.
+
 ### Doing a manual step
 
 When Deploy stops on **Manual steps**, read the release notes, do the steps (for example, a new binding), and deploy with `wrangler` yourself. `npx breakaway install config` makes the Worker’s config. Then run Deploy again so the board records the release.

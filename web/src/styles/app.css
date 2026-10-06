@@ -3111,6 +3111,56 @@ fieldset.field {
   box-shadow: var(--shadow-pop);
   animation: toast-in var(--dur) var(--ease);
 }
+/* ---------- what's new (WEB-80) ---------- */
+
+.whats-new .wn-head {
+  display: grid;
+  gap: 4px;
+}
+.whats-new .wn-notes {
+  max-height: min(56dvh, 520px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+/* A pre-release's note: small, in a corner clear of the toasts and the sidebar, and gone once dismissed. */
+.wn-note {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 10px 10px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  animation: toast-in var(--dur) var(--ease);
+}
+.wn-note-icon {
+  flex: none;
+  color: var(--muted);
+}
+.wn-note-text {
+  display: grid;
+  min-width: 0;
+  font-size: 14px;
+}
+.wn-note-text strong {
+  overflow-wrap: anywhere;
+}
+.wn-note .btn {
+  flex: none;
+}
+@media (max-width: 759px) {
+  .wn-note {
+    left: max(16px, env(safe-area-inset-left));
+    max-width: none;
+  }
+}
+
 /* Things arrive from the left. */
 @keyframes toast-in {
   from {
