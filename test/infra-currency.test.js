@@ -1,5 +1,5 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { api, boardApi } from './helpers.js';
 import { fakeProvider } from './fake-infra-provider.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
@@ -9,8 +9,11 @@ import {
   convert,
   costChangeInCurrency,
   costInCurrency,
+  RATE_SOURCE,
   rateOf,
+  rateSourceUrl,
   rateWords,
+  readFetchedRate,
 } from '../src/infra-currency.js';
 import { DEFAULT_POLICY, evaluatePolicy } from '../src/infra-policy.js';
 
@@ -259,5 +262,91 @@ describe('costs in your currency on the board (BRK-226)', () => {
     expect(await inventoryCost('svc-api')).toMatchObject({ amount: 5, currency: 'USD' });
     // The plan keeps the cost it was checked with.
     expect((await body(await api(`infra/plans/${made.id}`))).plan.cost).toMatchObject({ currency: 'EUR', delta: 6 });
+  });
+});
+
+describe('Fetch today’s rate, on the owner’s press only (BRK-239)', () => {
+  /** @type {string[]} */
+  let calls = [];
+  /** What the mocked source answers, by currency. */
+  let answer = (/** @type {string} */ currency) =>
+    Response.json({ amount: 1, base: 'USD', date: '2026-10-05', rates: { [currency]: 0.8571 } });
+  beforeAll(() => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      calls.push(url);
+      if (url.startsWith('https://api.frankfurter.dev/')) return answer(new URL(url).searchParams.get('symbols') ?? '');
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  });
+  afterEach(() => {
+    calls = [];
+  });
+  afterAll(() => vi.restoreAllMocks());
+  const rateCalls = () => calls.filter((u) => u.includes('frankfurter'));
+
+  it('names its source, asks for only the pair, and reads only a usable rate', () => {
+    expect(RATE_SOURCE).toMatchObject({ name: 'Frankfurter', site: 'https://frankfurter.dev' });
+    expect(rateSourceUrl('EUR')).toBe('https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR');
+    expect(readFetchedRate({ base: 'USD', date: '2026-10-05', rates: { EUR: 0.8571 } }, 'EUR')).toEqual({
+      ok: true,
+      rate: {
+        currency: 'EUR',
+        rate: 0.8571,
+        date: '2026-10-05',
+        source: 'Frankfurter',
+        site: 'https://frankfurter.dev',
+      },
+    });
+    for (const bad of [null, {}, { base: 'EUR', rates: { EUR: 1 } }, { base: 'USD', rates: { GBP: 0.7 } }])
+      expect(readFetchedRate(bad, 'EUR')).toMatchObject({ ok: false, error: /Frankfurter has no rate for EUR/u });
+    expect(readFetchedRate({ base: 'USD', rates: { EUR: -1 } }, 'EUR')).toMatchObject({ ok: false });
+    expect(readFetchedRate({ base: 'USD', date: 'today', rates: { EUR: 0.9 } }, 'EUR')).toMatchObject({
+      rate: { date: null },
+    });
+  });
+
+  it('fills, never saves: the owner’s press returns the rate and the board’s currency stays as it was', async () => {
+    const before = (await body(await api('infra/currency'))).currency;
+    const res = await body(await boardApi('infra/currency/rate', { method: 'POST', body: { currency: 'eur' } }));
+    expect(res).toMatchObject({
+      status: 200,
+      rate: { currency: 'EUR', rate: 0.8571, date: '2026-10-05', source: 'Frankfurter' },
+    });
+    expect(rateCalls()).toEqual(['https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR']);
+    expect((await body(await api('infra/currency'))).currency).toEqual(before);
+  });
+
+  it('is the owner’s, from the signed-in board, and refuses what needs no rate', async () => {
+    const token = await body(await api('infra/currency/rate', { method: 'POST', body: { currency: 'EUR' } }));
+    expect(token).toMatchObject({ status: 403, error: /only the signed-in web board can fetch a rate/u });
+    const agent = await body(
+      await boardApi('infra/currency/rate', { method: 'POST', body: { currency: 'EUR', by: 'claude-x' } }),
+    );
+    expect(agent).toMatchObject({ status: 403, error: /only the owner fetches a rate/u });
+    const dollars = await body(await boardApi('infra/currency/rate', { method: 'POST', body: { currency: 'USD' } }));
+    expect(dollars).toMatchObject({ status: 400, error: /US dollars need no rate/u });
+    const nonsense = await body(await boardApi('infra/currency/rate', { method: 'POST', body: { currency: 'zz1' } }));
+    expect(nonsense).toMatchObject({ status: 400, error: /three-letter code/u });
+    expect(rateCalls()).toEqual([]);
+  });
+
+  it('says what failed when the source has no rate or can’t be reached', async () => {
+    answer = () => Response.json({ message: 'not found' }, { status: 404 });
+    expect(
+      await body(await boardApi('infra/currency/rate', { method: 'POST', body: { currency: 'XOF' } })),
+    ).toMatchObject({ status: 422, error: 'Frankfurter has no rate for XOF: type yours in the field' });
+    answer = () => new Response('down', { status: 503 });
+    expect(
+      await body(await boardApi('infra/currency/rate', { method: 'POST', body: { currency: 'EUR' } })),
+    ).toMatchObject({ status: 502, error: /couldn’t reach Frankfurter: try again, or type the rate yourself/u });
+  });
+
+  it('fetches nothing any other way: reading, saving, and the cron leave the source alone', async () => {
+    await api('infra/currency');
+    await boardApi('infra/currency', { method: 'PUT', body: { currency: 'EUR', rate: 0.9 } });
+    await boardApi('infra/currency', { method: 'PUT', body: { currency: 'USD' } });
+    await runInDurableObject(store(), (instance) => instance.tick('cron').catch(() => {}));
+    expect(rateCalls()).toEqual([]);
   });
 });

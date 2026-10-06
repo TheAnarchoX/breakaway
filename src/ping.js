@@ -10,9 +10,10 @@ export const PING_KINDS = ['blocked', 'question', 'stale', 'done', 'fyi'];
 export const PUSH_KINDS = ['blocked', 'question', 'stale', 'done'];
 /**
  * Kinds only the board itself writes, never an agent (BRK-197): an incident pushes for production and is quiet in
- * the inbox otherwise, so its row says which.
+ * the inbox otherwise, so its row says which. An envelope's note (BRK-186) is always quiet: what it did inside its
+ * bounds, on the runbook's task that asked.
  */
-export const BOARD_PING_KINDS = ['incident'];
+export const BOARD_PING_KINDS = ['incident', 'envelope'];
 export const MAX_MESSAGE = 500;
 export const MAX_CHANGES = 10;
 export const MAX_PROPOSAL_BYTES = 20 * 1024;
