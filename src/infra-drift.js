@@ -28,6 +28,15 @@ function canonical(value) {
 }
 
 /**
+ * One change as one line, the same whatever order its keys came in: what a fingerprint is made of, and what
+ * break-glass (infra-break-glass.js) marks.
+ * @param {import('./infra-provider.js').Change} c
+ */
+export function driftLine(c) {
+  return canonical({ op: c.op, resource: c.resource, kind: c.kind, name: c.name, before: c.before, after: c.after });
+}
+
+/**
  * What differs, a line per resource: what the plan would do to it to bring it back to the desired state.
  * @param {PlanDiff} diff
  * @returns {Array<{ id: string, kind: string, name: string, op: string }>}
@@ -43,11 +52,7 @@ export function driftResources(diff) {
  * @returns {Promise<string>}
  */
 export async function driftFingerprint(diff) {
-  const lines = diff.changes
-    .map((c) =>
-      canonical({ op: c.op, resource: c.resource, kind: c.kind, name: c.name, before: c.before, after: c.after }),
-    )
-    .sort();
+  const lines = diff.changes.map(driftLine).sort();
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(lines.join('\n')));
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
