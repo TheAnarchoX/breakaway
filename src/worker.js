@@ -518,6 +518,12 @@ async function handleApi(request, env, url, ctx) {
     const repo = url.searchParams.get('repo');
     return send(await (parts.length === 2 ? s.desiredApi({ repo }) : s.desiredOneApi(parts[2], { repo })));
   }
+  // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
+    return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
+  // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
+  if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
+    return send(await s.infraCheckApi(body));
   // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
   if (parts[0] === 'infra' && parts[1] === 'inventory') {
     const q = (name) => url.searchParams.get(name);
@@ -569,6 +575,17 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && method === 'PATCH') {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can put a plan in front of you' });
       return send(await s.planModifyApi(parts[2], body));
+    }
+  }
+  // Drift (BRK-184): anyone signed in reads it; comparing an environment now is the owner's, from the signed-in browser
+  // only (the cron compares them anyway). A plan it makes is a draft.
+  if (parts[0] === 'infra' && parts[1] === 'drift' && parts.length <= 3) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET')
+      return send(await (parts.length === 2 ? s.driftApi({ repo }) : s.driftOneApi(parts[2], { repo })));
+    if (parts.length === 3 && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can compare an environment now' });
+      return send(await s.driftCheckApi(parts[2], { repo, ...body }));
     }
   }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
