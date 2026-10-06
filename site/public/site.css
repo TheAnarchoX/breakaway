@@ -831,6 +831,10 @@ td:first-child {
   max-width: 80ch;
   margin: 0;
 }
+.wink {
+  margin-top: 12px;
+  font-style: italic;
+}
 
 @media (max-width: 640px) {
   body {

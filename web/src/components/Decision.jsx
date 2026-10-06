@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ArrowDown, ArrowUp, CircleCheck, RotateCcw } from 'lucide-preact';
-import { actions, isKickoffIdea } from '../lib/store.js';
+import { actions, isKickoffIdea, isRoutineMaker } from '../lib/store.js';
 import {
   clearDraft,
   describe,
@@ -281,8 +281,10 @@ function Form({ task: t }) {
   const set = (id) => (patch) =>
     setDraft((old) => ({ ...old, [id]: { value: undefined, other: '', comment: '', ...old[id], ...patch } }));
   const todo = missing(questions, draft);
-  // A kickoff's IDEA stays open once answered (BRK-134), and can start its next run in the same press.
-  const kickoff = isKickoffIdea(t);
+  // A kickoff's IDEA stays open once answered (BRK-134), and can start its next run in the same press; so does a
+  // routine maker's task (BRK-220 section 3).
+  const maker = isRoutineMaker(t);
+  const carry = isKickoffIdea(t) || maker;
   const send = async (carryOn) => {
     if (todo.length || busy) return;
     setBusy(true);
@@ -292,7 +294,7 @@ function Form({ task: t }) {
   };
   const submit = (e) => {
     e.preventDefault();
-    send(kickoff);
+    send(carry);
   };
   return (
     <form class="decision-form" onSubmit={submit}>
@@ -303,11 +305,13 @@ function Form({ task: t }) {
         <span class="meta" role="status">
           {todo.length
             ? `Still to answer: ${todo.map((q) => questions.indexOf(q) + 1).join(', ')}.`
-            : kickoff
-              ? 'Everything is answered. Carry on starts the next run, which plans it or asks a little more.'
-              : 'Everything is answered. Sending them finishes this task.'}
+            : maker
+              ? 'Everything is answered. Carry on starts its agent again, which makes the routines.'
+              : carry
+                ? 'Everything is answered. Carry on starts the next run, which plans it or asks a little more.'
+                : 'Everything is answered. Sending them finishes this task.'}
         </span>
-        {kickoff ? (
+        {carry ? (
           <span class="row-gap">
             <button
               type="button"
@@ -407,11 +411,12 @@ function Decide({ task: t }) {
  */
 export function DecisionSection({ task: t }) {
   const structured = Array.isArray(t.decision) && t.decision.length > 0;
-  // A kickoff's IDEA stays pending once answered: its answers stand while +decide is off it.
+  // A kickoff's IDEA and a routine maker's task stay pending once answered: the answers stand while +decide is off.
   const answered =
     structured &&
     Boolean(t.decisionAnswers) &&
-    (t.status === 'completed' || (isKickoffIdea(t) && t.status === 'pending' && !t.tags.includes('decide')));
+    (t.status === 'completed' ||
+      ((isKickoffIdea(t) || isRoutineMaker(t)) && t.status === 'pending' && !t.tags.includes('decide')));
   const pending = t.status === 'pending';
   if (!structured && !(pending && t.tags.includes('decide'))) return null;
   if (structured && !answered && !pending) return null;
