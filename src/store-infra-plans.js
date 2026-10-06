@@ -149,8 +149,10 @@ export const infraPlansMethods = {
    * @param {DesiredState | null} wanted
    * @param {import('./infra-provider.js').PlanDiff | null} [built] a diff the board built itself (an envelope's scale or
    *   restart, store-infra-envelopes.js), checked like the provider's; never one a caller sent
+   * @param {{ only?: (change: import('./infra-provider.js').Change) => boolean }} [options] the board's own callers keep
+   *   part of the provider's diff: drift leaves deletes to clean up, and clean up removes only what's due (BRK-201)
    */
-  async computeInfraPlan(env, wanted, built = null) {
+  async computeInfraPlan(env, wanted, built = null, { only } = {}) {
     if (!env.provider) throw new AgentError(`${env.name} has no provider: the owner picks one on the board first`, 409);
     const registry = this.infraRegistry();
     if (!registry.has(env.provider))
@@ -170,6 +172,10 @@ export const infraPlansMethods = {
         `${provider.name} couldn’t plan ${env.repo}’s ${env.name}: ${redact(error?.message ?? error)}. Nothing was kept; try again once the provider answers.`,
         502,
       );
+    }
+    if (only) {
+      const changes = diff.changes.filter(only);
+      diff = { ...diff, changes, reversible: changes.every((c) => c.reversible) };
     }
     if (diff.changes.length === 0) return { provider, stored: keptDiff(diff), cost: null, blast: null };
     if (diff.changes.length > MAX_PLAN_CHANGES)
@@ -211,15 +217,16 @@ export const infraPlansMethods = {
    * Makes a draft plan for an environment: asks its provider for the diff from the environment's desired state (or
    * `desired`, for the board's own callers), prices it, measures its blast radius from the inventory, and keeps it
    * with an audit entry. `diff` is for the board's own callers too: an envelope's scale or restart, which the board
-   * builds from what the provider discovered. Refused on an observe-only environment, one with no provider or no
-   * desired state, and when nothing would change.
+   * builds from what the provider discovered; so is `only`, which keeps part of the diff (computeInfraPlan). Refused
+   * on an observe-only environment, one with no provider or no desired state, and when nothing would change.
    * @param {string | number} ref the environment's ID or name
    * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
-   *   agent?: string | null, desired?: DesiredState, diff?: import('./infra-provider.js').PlanDiff }} input
+   *   agent?: string | null, desired?: DesiredState, diff?: import('./infra-provider.js').PlanDiff,
+   *   only?: (change: import('./infra-provider.js').Change) => boolean }} input
    */
   async makeInfraPlan(
     ref,
-    { repo = null, source, sourceRef = null, by, agent = null, desired, diff } = /** @type {any} */ ({}),
+    { repo = null, source, sourceRef = null, by, agent = null, desired, diff, only } = /** @type {any} */ ({}),
   ) {
     const from = checkSource(source, sourceRef);
     const env = this.environmentRow(ref, repo);
@@ -235,9 +242,14 @@ export const infraPlansMethods = {
         `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
         409,
       );
-    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted, diff ?? null);
+    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted, diff ?? null, { only });
     if (stored.changes.length === 0)
-      throw new AgentError(`${env.name} already matches its desired state: there’s nothing to plan`, 409);
+      throw new AgentError(
+        only
+          ? `${env.name} has nothing left of that to plan: what runs changed since`
+          : `${env.name} already matches its desired state: there’s nothing to plan`,
+        409,
+      );
     const text = JSON.stringify(stored);
     const policy = this.checkInfraPolicy(env, { diff: stored, cost, provider });
     const now = Date.now();

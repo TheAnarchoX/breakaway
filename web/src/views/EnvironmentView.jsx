@@ -37,6 +37,7 @@ const AUDIT_LABEL = {
   'break-glass': 'Break-glass',
   freeze: 'Frozen',
   environment: 'Target changed',
+  cleanup: 'Clean up',
 };
 
 /** Who acted, as the trail records it: the owner is never named. */
