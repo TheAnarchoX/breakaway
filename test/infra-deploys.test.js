@@ -68,11 +68,13 @@ const environments = async () => {
   return (await res.json()).environments;
 };
 const byName = async () => Object.fromEntries((await environments()).map((e) => [e.name, e]));
-const audit = async (query) => {
+const entries = async (query) => {
   const res = await api(`infra/audit?repo=widgets&${query}`);
   expect(res.status).toBe(200);
   return (await res.json()).entries;
 };
+/** The deploys' entries: the board's own `environment` entries (a pipeline pointing them elsewhere) aside. */
+const audit = async (query) => (await entries(query)).filter((e) => e.kind !== 'environment');
 const plan = async (id) => {
   const res = await api(`infra/plans/${id}`);
   expect(res.status).toBe(200);
@@ -241,14 +243,45 @@ describe('a pipeline’s environments', () => {
     expect(await environments()).toHaveLength(2);
   });
 
-  it('follow a changed pipeline to its new Workers, keeping their IDs', async () => {
+  it('follow a changed pipeline to its new Workers, keeping their IDs, freeze, and gates, and say so on the trail', async () => {
     const before = await byName();
+    expect(await entries('kind=environment')).toEqual([]);
+    await inStore((store) =>
+      store.sql.exec(
+        'UPDATE infra_environments SET frozen = 1, frozen_at = 1, gates = 1 WHERE id = ?',
+        before.staging.id,
+      ),
+    );
     await setPipeline({ ...PIPELINE, workers: { staging: 'widgets-next', production: 'widgets' } });
     const after = await byName();
-    expect(after.staging).toMatchObject({ id: before.staging.id, target: 'widgets-next', pipeline: 'staging' });
+    expect(after.staging).toMatchObject({
+      id: before.staging.id,
+      target: 'widgets-next',
+      pipeline: 'staging',
+      frozen: true,
+      gates: true,
+    });
     expect(after.production).toMatchObject({ id: before.production.id, target: 'widgets' });
+    expect(await entries('kind=environment')).toMatchObject([
+      {
+        environment: 'staging',
+        environmentId: before.staging.id,
+        by: 'board',
+        outcome: 'follows the pipeline’s staging',
+        summary: 'now follows the pipeline’s staging: cloudflare widgets-staging → cloudflare widgets-next',
+      },
+    ]);
+    await inStore((store) =>
+      store.sql.exec(
+        'UPDATE infra_environments SET frozen = 0, frozen_at = NULL, gates = 0 WHERE id = ?',
+        before.staging.id,
+      ),
+    );
     await setPipeline(PIPELINE);
     expect((await byName()).staging.target).toBe('widgets-staging');
+    // A save that changes nothing about the Workers leaves no entry.
+    await setPipeline(PIPELINE);
+    expect(await entries('kind=environment')).toHaveLength(2);
   });
 
   it('come with turning on deploys, taking over an environment of that name with no target, and leaving one that points elsewhere', async () => {
@@ -276,6 +309,9 @@ describe('a pipeline’s environments', () => {
     expect(now.staging).toMatchObject({ id: owners.staging.id, target: 'widgets-staging', pipeline: 'staging' });
     expect(now.production).toMatchObject({ id: owners.production.id, target: 'something-else', pipeline: null });
     expect(Object.keys(now)).toEqual(['production', 'staging']);
+    expect((await entries(`kind=environment&environmentId=${owners.staging.id}`))[0]).toMatchObject({
+      summary: 'now follows the pipeline’s staging: cloudflare no target → cloudflare widgets-staging',
+    });
     // Back to the pipeline's own production for the rest of the file.
     await inStore((store) => store.sql.exec('DELETE FROM infra_environments WHERE id = ?', owners.production.id));
     await setPipeline(PIPELINE);

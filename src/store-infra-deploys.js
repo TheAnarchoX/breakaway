@@ -91,6 +91,7 @@ export const infraDeploysMethods = {
         rows.find((r) => !r.pipeline && r.name === want.name && !r.target);
       if (mine) {
         if (mine.pipeline !== want.role || mine.target !== want.target || mine.provider !== want.provider)
+          // Only what the pipeline decides: its name, kind, freeze, and production gates stay as they are.
           this.sql.exec(
             'UPDATE infra_environments SET pipeline = ?, provider = ?, target = ?, observe_only = ?, edited = ? WHERE id = ?',
             want.role,
@@ -100,6 +101,17 @@ export const infraDeploysMethods = {
             Date.now(),
             mine.id,
           );
+        // Pointing an environment somewhere else leaves a trace.
+        if (mine.target !== want.target || mine.provider !== want.provider)
+          this.appendInfraAudit({
+            kind: 'environment',
+            repo: slug,
+            environment: mine.name,
+            environmentId: Number(mine.id),
+            by: 'board',
+            outcome: `follows the pipeline’s ${want.role}`,
+            summary: `now follows the pipeline’s ${want.role}: ${mine.provider ?? 'no provider'} ${mine.target ?? 'no target'} → ${want.provider} ${want.target}`,
+          });
         continue;
       }
       if (rows.some((r) => r.name === want.name) || rows.length >= MAX_ENVIRONMENTS) continue;
