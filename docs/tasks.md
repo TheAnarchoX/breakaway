@@ -189,7 +189,9 @@ A repository moved with `npx breakaway pipeline init` doesn't need the file: onc
 - **`infra show <environment>`**: its desired state, drift with the plan that puts it back, and its inventory, each resource with its health, its estimated cost, and what it uses.
 - **`infra plans`** (`--environment`, `--state`, `--before`, `--limit`) and **`infra plan <id>`**: what changes, setting by setting, the cost change, the policy's answer, what else it touches, and whether it can be undone.
 - **`infra signals`** (`--environment`, `--resource`, `--kind`, `--level`, `--source`, `--before`, `--limit`), newest first; `--days` for the daily summaries.
-- **`infra incidents`**: open tasks tagged `+incident` (`--status completed|all`).
+- **`infra incidents`**: the board's open incidents (`BRK-197`), each a task tagged `+incident`, with what broke and where, the step it's on (diagnose, propose, approve, apply, verify, write-up), and how often the signal came (`--environment`, `--status completed|all`, `--before`, `--limit`); `--json` adds the linked plans.
+
+**Agents on infrastructure** (`BRK-203`). The core ([`prompts/core.md`](../prompts/core.md)) teaches every agent these reads under "Infrastructure is read wide and changed only by pull request": read before changing, change an environment only by pull request with `infra check` passing, and never apply, hold write credentials, run the apply runner, or approve. A task tagged `+incident` has its own mode, "Working an incident": diagnose read only and comment it on the incident, propose the fix by a pull request that ends `Part of <the incident>.`, and once verify is done write it up, add the follow-ups, and ping `done` so you close it. A runbook's run does the same in a routine's shape. An incident never starts an agent by itself: you start one, or a runbook you turned on does.
 
 A board from before a read's route says so and names the update. The `--json` output is the board's own answers (`show` puts its four together as `{ environment, resources, relations, desired }`), so the MCP server's reads (`BRK-202`) can return the same shapes. The text is `scripts/tasks/infra-read.js`.
 
@@ -197,7 +199,7 @@ A board from before a read's route says so and names the update. The `--json` ou
 
 `CLI-14`, [spec](specs/IDEA-19-architect.md#desired-state). Before a pull request that changes `.github/breakaway-infra/`, an agent or the owner runs **`npx breakaway infra check`** (or `infra check <environment>` for one) in the checkout, the way `pipeline check` checks the deploy config.
 
-- It checks each environment's file and `policy.json` here, with the board's own checks (`src/infra-check.js`). A file that doesn't check is named with its line and field (`.github/breakaway-infra/staging.json:4: resources[0].kind: …`), nothing goes to the board, and it exits 1.
+- It checks each environment's file, `policy.json`, and `scaling.json` here, with the board's own checks (`src/infra-check.js`). A file that doesn't check is named with its line and field (`.github/breakaway-infra/staging.json:4: resources[0].kind: …`), nothing goes to the board, and it exits 1.
 - For each valid file it asks the board for the plan it would make from what runs now: what changes, the cost change, what else it touches, whether it can be undone, and the policy's answer under the checkout's `policy.json` (or the default, when there's none). The board checks the file again against the environment's provider and its kinds.
 - The board keeps none of it: the preview (`POST /api/infra/check`) has no ID and no state, writes no audit entry, and can't be approved or applied, so an agent's token may ask for it. Each preview asks the provider for a plan, so a repository gets 10 a minute.
 - A file for an environment the board doesn't have yet is one to add, as the board shows it; an observe-only environment is refused, and so is a board from before the route.

@@ -14,11 +14,13 @@ import {
   environmentHealth,
 } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
+import { UnownedSection } from '../components/Unowned.jsx';
+import { CostSection } from '../components/InfraCosts.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>: its resources
  * grouped by kind, each with what it uses and what uses it, its owner, and its health (BRK-177's inventory); its
- * desired state and drift (BRK-180, BRK-184); and its audit trail, newest first (BRK-175). Cost is WEB-65's. A
+ * desired state and drift (BRK-180, BRK-184); and its audit trail, newest first (BRK-175). Its cost is WEB-65's. A
  * pipeline's staging and production (BRK-195) show what's live, their recent deploys, and on production Promote and
  * Roll back, the release flow's own buttons (WEB-88).
  */
@@ -38,6 +40,7 @@ const AUDIT_LABEL = {
   'break-glass': 'Break-glass',
   freeze: 'Frozen',
   environment: 'Target changed',
+  cleanup: 'Clean up',
 };
 
 /** Who acted, as the trail records it: the owner is never named. */
@@ -516,6 +519,10 @@ export function EnvironmentView() {
           </p>
         )}
       </section>
+
+      <UnownedSection env={env} />
+
+      <CostSection env={env} />
 
       <Drift env={env} desired={state.desired} error={state.desiredError} />
 

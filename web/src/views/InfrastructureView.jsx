@@ -28,11 +28,12 @@ import {
   toast,
 } from '../lib/store.js';
 import { Dialog } from '../components/ui.jsx';
+import { BudgetLine, CostOverview } from '../components/InfraCosts.jsx';
 
 /**
  * The Infrastructure view (WEB-60; docs/specs/IDEA-19-architect.md, "Views"): each repository's environments with
- * their health and freeze. Health is the worst of the environment's resources in the inventory (BRK-177). Drift, cost,
- * and the plan waiting join each environment as BRK-184, BRK-199 with BRK-226, and BRK-178 put them on the board.
+ * their health and freeze. Health is the worst of the environment's resources in the inventory (BRK-177). Each card's
+ * estimated cost against its budget, and the overview by repository and task, are WEB-65's (src/components/InfraCosts.jsx).
  */
 
 const KINDS = [
@@ -240,8 +241,8 @@ function LiveLine({ env }) {
   );
 }
 
-/** @param {{ env: any, resources: any[], onChange: (env: any) => void }} props */
-function EnvironmentCard({ env, resources, onChange }) {
+/** @param {{ env: any, resources: any[], cost: any, onChange: (env: any) => void }} props */
+function EnvironmentCard({ env, resources, cost, onChange }) {
   const health = environmentHealth(resources);
   return (
     <li class={`infra-env ${env.frozen ? 'is-frozen' : ''}`}>
@@ -269,6 +270,7 @@ function EnvironmentCard({ env, resources, onChange }) {
         )}
       </p>
       <Health health={env.target ? health : null} />
+      {cost && cost.cost.resources > 0 && <BudgetLine entry={cost} compact />}
       <LiveLine env={env} />
       <EnvironmentFlags env={env} />
       {env.waitingPlan && (
@@ -427,9 +429,10 @@ function ConnectProvider() {
 
 export function InfrastructureView() {
   const [state, setState] = useState(
-    /** @type {{ environments: any[] | null, resources: any[], error: string | null, loading: boolean }} */ ({
+    /** @type {{ environments: any[] | null, resources: any[], costs: any, error: string | null, loading: boolean }} */ ({
       environments: null,
       resources: [],
+      costs: null,
       error: null,
       loading: true,
     }),
@@ -438,12 +441,14 @@ export function InfrastructureView() {
   const load = async () => {
     setState((s) => ({ ...s, loading: true }));
     try {
-      const [{ environments }, { resources }] = await Promise.all([
+      const [{ environments }, { resources }, costs] = await Promise.all([
         api('infra/environments'),
         api('infra/inventory'),
+        // Cost is an extra: the environments show without it.
+        api('infra/costs').catch(() => null),
         loadConnections(),
       ]);
-      setState({ environments, resources, error: null, loading: false });
+      setState({ environments, resources, costs, error: null, loading: false });
     } catch (error) {
       setState((s) => ({ ...s, error: error.message, loading: false }));
     }
@@ -471,6 +476,8 @@ export function InfrastructureView() {
   for (const env of shown) byRepo.set(env.repo, [...(byRepo.get(env.repo) ?? []), env]);
   const connectedProviders = providerRows().filter((p) => p.provider?.connected && p.state !== 'off');
   const resourcesOf = (/** @type {any} */ env) => state.resources.filter((r) => r.owner?.environmentId === env.id);
+  const costOf = (/** @type {any} */ env) =>
+    state.costs?.environments.find((/** @type {any} */ c) => c.environmentId === env.id) ?? null;
   const scope = repoScope.value;
   return (
     <div class="infra-view">
@@ -520,7 +527,13 @@ export function InfrastructureView() {
               )}
               <ul class="infra-envs" aria-label={`${repoName(repo)}’s environments`}>
                 {envs.map((env) => (
-                  <EnvironmentCard key={env.id} env={env} resources={resourcesOf(env)} onChange={replace} />
+                  <EnvironmentCard
+                    key={env.id}
+                    env={env}
+                    resources={resourcesOf(env)}
+                    cost={costOf(env)}
+                    onChange={replace}
+                  />
                 ))}
               </ul>
             </section>
@@ -542,6 +555,7 @@ export function InfrastructureView() {
             </div>
           </div>
         ))}
+      {shown.length > 0 && <CostOverview costs={state.costs} />}
       <Dialog open={adding} onClose={() => setAdding(false)} labelledBy="infra-add-title">
         <div class="sheet">
           <h2 id="infra-add-title">Add an environment</h2>

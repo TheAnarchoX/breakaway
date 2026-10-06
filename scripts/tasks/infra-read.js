@@ -381,19 +381,42 @@ export function signalDaysText({ days }) {
 
 // ---- incidents ---------------------------------------------------------------------------
 
-/** One incident: its work ID, what broke, and who's on it. */
-export function incidentLine(t) {
-  const notes = [];
-  if (t.claim) notes.push(`claimed by ${t.claim}`);
-  if (t.status !== 'pending') notes.push(t.status);
-  return `${String(t.wid ?? t.uuid.slice(0, 8)).padEnd(8)}  ${t.description}${notes.length ? `  (${notes.join('; ')})` : ''}`;
+/** Where an incident is in its steps: the one to do now, or the one that failed. */
+const STEP_WORDS = {
+  diagnose: 'diagnose',
+  propose: 'propose a plan',
+  approve: 'waits for you to approve',
+  apply: 'applying',
+  verify: 'verify',
+  'write-up': 'write it up',
+};
+
+/** One incident: its work ID, what broke and where, the step it's on, and how often the signal came. */
+export function incidentLine(incident) {
+  const t = incident.task ?? {};
+  const where = [incident.environment, incident.resource].filter(Boolean).join(' · ');
+  const notes = [`${incident.level} ${incident.kind} in ${where || 'an environment'}`];
+  const failed = (incident.steps ?? []).find((s) => s.state === 'failed');
+  const now = (incident.steps ?? []).find((s) => s.state === 'now');
+  if (incident.closed) notes.push('closed');
+  else if (failed) notes.push(`${failed.step} failed`);
+  else if (now) notes.push(`now: ${STEP_WORDS[now.step] ?? now.step}`);
+  if (incident.recovered && !incident.closed) notes.push('health is back');
+  if (incident.signals > 1) notes.push(plural(incident.signals, 'signal'));
+  return `${String(t.wid ?? `#${incident.id}`).padEnd(8)}  ${t.description ?? ''}  (${notes.join('; ')})`;
 }
 
-/** `infra incidents`: tasks tagged +incident. */
-export function incidentsText(incidents, repo, { status = 'pending' } = {}) {
+/**
+ * `infra incidents`: the board's incidents (BRK-197), each a task tagged +incident with its steps and linked plans.
+ * @param {{ incidents: any[], more: boolean }} data
+ */
+export function incidentsText({ incidents, more }, repo, { status = 'pending' } = {}) {
   if (!incidents.length)
-    return `No ${status === 'pending' ? 'open ' : ''}incidents${repo ? ` in ${repo}` : ''}. A signal that crosses a rule opens one, as a task tagged +incident.`;
-  return [...incidents.map(incidentLine), '', 'One incident: npx breakaway show <ID>'].join('\n');
+    return `No ${status === 'pending' ? 'open ' : status === 'completed' ? 'closed ' : ''}incidents${repo ? ` in ${repo}` : ''}. A signal that crosses a rule opens one, as a task tagged +incident.`;
+  const out = [...incidents.map(incidentLine)];
+  if (more) out.push('', `Older: npx breakaway infra incidents --before ${incidents[incidents.length - 1].id}`);
+  out.push('', 'One incident, with its steps and plans: npx breakaway show <ID>');
+  return out.join('\n');
 }
 
 // ---- the command -------------------------------------------------------------------------
@@ -402,10 +425,10 @@ export function incidentsText(incidents, repo, { status = 'pending' } = {}) {
  * Runs one `infra` read.
  * @param {string[]} args what follows `infra`
  * @param {{ get: (path: string) => Promise<{ ok: boolean, status: number, data: any }>, repo: string | null,
- *   opts: Record<string, any>, inRepo?: (task: any) => boolean }} ctx
+ *   opts: Record<string, any> }} ctx
  * @returns {Promise<{ data: any, text: string }>}
  */
-export async function infraRead(args, { get, repo, opts = {}, inRepo = () => true }) {
+export async function infraRead(args, { get, repo, opts = {} }) {
   const sub = args[0] ?? 'environments';
   const repoQuery = repo ?? undefined;
 
@@ -481,9 +504,17 @@ export async function infraRead(args, { get, repo, opts = {}, inRepo = () => tru
 
   if (sub === 'incidents') {
     const status = opts.status ?? 'pending';
-    const { tasks } = answer(await get(`tasks${query({ status })}`), 'tasks');
-    const incidents = tasks.filter((t) => (t.tags ?? []).includes('incident') && (opts.all || inRepo(t)));
-    return { data: { incidents }, text: incidentsText(incidents, opts.all ? null : repo, { status }) };
+    const open = { pending: true, completed: false, all: undefined };
+    if (!(status in open)) bad(`infra incidents --status takes pending, completed, or all, not "${status}".`);
+    const path = `infra/incidents${query({
+      repo: opts.all ? undefined : repoQuery,
+      environment: opts.environment,
+      open: open[status],
+      before: opts.before,
+      limit: opts.limit,
+    })}`;
+    const data = answer(await get(path), 'incidents');
+    return { data, text: incidentsText(data, opts.all ? null : repo, { status }) };
   }
 
   return bad(

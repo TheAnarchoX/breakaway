@@ -160,6 +160,7 @@ describe('runbooks: routines started by signals (BRK-196)', () => {
     ]);
     expect(comment).not.toContain(token);
     expect(comment).toContain('Read only');
+    expect(comment).toContain('npx breakaway infra act');
 
     // The same signal again, a minute later and in other words, is a duplicate: no run, no note.
     await record([signal({ at: new Date().toISOString(), text: 'api is still down' })]);
