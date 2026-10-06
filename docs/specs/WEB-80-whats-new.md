@@ -1,6 +1,6 @@
 # WEB-80 · What's new after an update
 
-Task: WEB-80 on the board · Status: draft (built in the same pull request as the spec)
+Task: WEB-80 on the board · Status: approved (6 Oct 2026, by the owner)
 
 ## Problem
 A board updates itself on the `main` channel with every merge, and on `stable` when you merge the Update workflow's pull request. Either way, nothing on the board says what changed, so new things go unnoticed until someone reads the release notes on GitHub. The owner wants the board to say what's new by itself: a dialog after a stable release, and something smaller and less in the way on the `main` channel, where releases come often.
