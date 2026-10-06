@@ -25,6 +25,7 @@
 import { CHANGE_KINDS } from './infra-provider.js';
 import { DESIRED_DIR, parseWithLines } from './infra-desired.js';
 import { rateWords } from './infra-currency.js';
+import { ENVIRONMENT_KINDS } from './infra-environments.js';
 
 /** @typedef {import('./infra-provider.js').PlanDiff} PlanDiff */
 /** @typedef {import('./infra-provider.js').Change} Change */
@@ -67,6 +68,8 @@ export const DEFAULT_POLICY = Object.freeze({
  * @typedef {object} AllowRule
  * @property {string} name what the plan and the audit trail call it
  * @property {string[]} [environments] the environments it covers, by name; every one when left out
+ * @property {string[]} [environmentKinds] the kinds of environment it covers (ENVIRONMENT_KINDS), like `short-lived`
+ *   for the environments tasks ask for (BRK-200), whose names aren't known ahead; every kind when left out
  * @property {string[]} [changes] the change kinds it covers (CHANGE_KINDS); every one when left out
  * @property {string[]} [kinds] the resource kinds it covers; every one when left out
  * @property {number} [maxChanges] the most changes a plan it lets through has
@@ -86,7 +89,7 @@ export const DEFAULT_POLICY = Object.freeze({
 const TOP = ['version', 'costLimit', 'budget', 'environments', 'access', 'allow'];
 const LIMITS = ['costLimit', 'budget'];
 const ACCESS = ['kinds', 'settings'];
-const RULE = ['name', 'environments', 'changes', 'kinds', 'maxChanges'];
+const RULE = ['name', 'environments', 'environmentKinds', 'changes', 'kinds', 'maxChanges'];
 const ENV_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/u;
 const KIND = /^[a-z][a-z0-9-]{0,39}$/u;
 const SETTING = /^[A-Za-z_][\w.-]{0,79}$/u;
@@ -239,6 +242,22 @@ export function checkPolicyFile(source) {
         if (bad) return bad;
         rule.environments = [...r.environments];
       }
+      if (r.environmentKinds !== undefined) {
+        const bad = names(
+          r.environmentKinds,
+          `${at}.environmentKinds`,
+          KIND,
+          `a kind of environment: ${ENVIRONMENT_KINDS.join(', ')}`,
+        );
+        if (bad) return bad;
+        const unknown = r.environmentKinds.findIndex((k) => !ENVIRONMENT_KINDS.includes(k));
+        if (unknown >= 0)
+          return wrong(
+            `${at}.environmentKinds[${unknown}]`,
+            `${r.environmentKinds[unknown]} isn’t a kind of environment: ${ENVIRONMENT_KINDS.join(', ')}`,
+          );
+        rule.environmentKinds = [...r.environmentKinds];
+      }
       if (r.changes !== undefined) {
         const bad = names(r.changes, `${at}.changes`, KIND, `a change kind: ${CHANGE_KINDS.join(', ')}`);
         if (bad) return bad;
@@ -369,8 +388,9 @@ const upper = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * keeps and shows. Pure: the caller gives the environment as it is now, and the plan's diff and cost change.
  * @param {Policy} policy
  * @param {object} plan
- * @param {{ name: string, frozen: boolean, gates: boolean }} plan.environment `gates` is production's gates
- *   (environmentView's `gates`: on for a production environment unless the owner turned them off)
+ * @param {{ name: string, kind?: string, frozen: boolean, gates: boolean }} plan.environment `gates` is production's
+ *   gates (environmentView's `gates`: on for a production environment unless the owner turned them off); `kind` is
+ *   what an allow rule's `environmentKinds` matches
  * @param {PlanDiff} plan.diff
  * @param {CostChange} plan.cost
  * @param {import('./infra-provider.js').Provider | null} [plan.provider] for the kinds and settings it marks as access
@@ -471,7 +491,7 @@ export function evaluatePolicy(
     outcome = 'needs-owner';
     rule = asked[0].rule;
   } else {
-    const allowed = policy.allow.find((a) => allows(a, env, diff));
+    const allowed = policy.allow.find((a) => allows(a, env, diff, environment.kind));
     if (allowed) {
       outcome = 'allowed';
       rule = allowed.name;
@@ -511,9 +531,11 @@ export function evaluatePolicy(
  * @param {AllowRule} rule
  * @param {string} environment
  * @param {PlanDiff} diff
+ * @param {string} [kind] the environment's kind, for a rule with `environmentKinds`
  */
-export function allows(rule, environment, diff) {
+export function allows(rule, environment, diff, kind) {
   if (rule.environments && !rule.environments.includes(environment)) return false;
+  if (rule.environmentKinds && !rule.environmentKinds.includes(String(kind))) return false;
   if (rule.maxChanges !== undefined && diff.changes.length > rule.maxChanges) return false;
   return diff.changes.every(
     (c) => (!rule.changes || rule.changes.includes(c.op)) && (!rule.kinds || rule.kinds.includes(c.kind)),

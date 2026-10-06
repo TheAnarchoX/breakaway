@@ -24,6 +24,7 @@
     "src/infra-check.js",
     "src/infra-currency.js",
     "src/infra-desired.js",
+    "src/infra-environments.js",
     "src/infra-inventory.js",
     "src/infra-cloudflare.js",
     "src/infra-cloudflare-analytics.js",

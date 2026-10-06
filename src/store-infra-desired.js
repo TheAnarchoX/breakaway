@@ -64,6 +64,7 @@ export const infraDesiredMethods = {
     const list = await orNull(client.get(`/contents/${DESIRED_DIR}${ref}`));
     // The policy (BRK-181) is in the same folder: read from this listing, so a repository without one costs no call.
     await this.readInfraPolicy(client, repo, sha, Array.isArray(list) ? list : []);
+    await this.readShortLivedTemplate(client, repo, sha, Array.isArray(list) ? list : []);
     const files = (Array.isArray(list) ? list : [])
       .filter((e) => e?.type === 'file' && environmentOfFile(e.name))
       .sort((a, b) => a.name.localeCompare(b.name))
