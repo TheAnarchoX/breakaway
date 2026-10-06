@@ -594,6 +594,7 @@ async function handleApi(request, env, url, ctx) {
     const q = url.searchParams;
     const query = {
       environment: q.get('environment') ?? undefined,
+      environmentId: q.get('environmentId') ?? undefined,
       resource: q.get('resource') ?? undefined,
       source: q.get('source') ?? undefined,
       kind: q.get('kind') ?? undefined,

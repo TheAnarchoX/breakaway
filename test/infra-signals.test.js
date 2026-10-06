@@ -61,6 +61,35 @@ describe('signals', () => {
     expect((await read('?environment=sig-nowhere')).signals).toEqual([]);
   });
 
+  it('keeps the environment’s ID beside its name, and reads and summarises by it', async () => {
+    const now = Date.parse('2026-10-06T12:00:00Z');
+    const old = iso(Date.parse('2026-09-20T10:00:00Z'));
+    const result = await inStore(async (store) => {
+      const stored = await store.recordSignals([
+        signal({ environment: 'sig-ids', environmentId: 41, text: 'acme/widgets staging' }),
+        signal({ environment: 'sig-ids', environmentId: 42, text: 'acme/gadgets staging' }),
+        signal({ environment: 'sig-ids', environmentId: 41, at: old }),
+        signal({ environment: 'sig-ids', environmentId: 42, at: old }),
+      ]);
+      store.foldInfraSignals(now);
+      return {
+        stored,
+        days: store.infraSignalDays({ environmentId: 41 }).days,
+      };
+    });
+    expect(result.stored.map((s) => s.environmentId).sort()).toEqual([41, 41, 42, 42]);
+    const { signals } = await read('?environmentId=41');
+    expect(signals.map((s) => [s.environment, s.environmentId, s.text])).toEqual([
+      ['sig-ids', 41, 'acme/widgets staging'],
+    ]);
+    expect(result.days).toEqual([expect.objectContaining({ environment: 'sig-ids', environmentId: 41, count: 1 })]);
+    const days = await (await api('infra/signals/days?environment=sig-ids')).json();
+    expect(days.days.map((d) => d.environmentId).sort()).toEqual([41, 42]);
+    expect((await api('infra/signals?environmentId=x')).status).toBe(400);
+    expect(() => signalEntry(signal({ environmentId: -1 }))).toThrow(/environmentId/u);
+    expect(signalEntry(signal()).environmentId).toBeNull();
+  });
+
   it('refuses any other kind, and stores none of a batch with one in it', async () => {
     for (const kind of ['metric', 'log', 'trace']) {
       const error = await inStore((store) =>
@@ -178,6 +207,7 @@ describe('signals', () => {
         day: '2026-09-20',
         source: 'fake',
         environment: 'sig-fold',
+        environmentId: null,
         resource: 'svc-api',
         kind: 'alert',
         count: 3,

@@ -28,19 +28,21 @@ const EMAIL = /\b[\w.%+-]+@[\w-]+(?:\.[\w-]+)+\b/gu;
 const RESOURCE_MAX = 200;
 
 /**
- * A signal as it comes in: a provider's `events`, its health and cost turned into signals, or the deploy flow.
- * @typedef {import('./infra-provider.js').Signal} SignalInput
+ * A signal as it comes in: a provider's `events`, its health and cost turned into signals, or the deploy flow. The
+ * caller adds `environmentId` when the environment has a record (BRK-174): names can be renamed, IDs can't.
+ * @typedef {import('./infra-provider.js').Signal & { environmentId?: number | null }} SignalInput
  */
 
 /**
  * A signal ready to store: `at` in milliseconds, every text scrubbed.
- * @typedef {{ source: string, environment: string, resource: string | null, kind: string, level: string,
- *   value: number | null, at: number, text: string }} SignalEntry
+ * @typedef {{ source: string, environment: string, environmentId: number | null, resource: string | null,
+ *   kind: string, level: string, value: number | null, at: number, text: string }} SignalEntry
  */
 
 /**
  * One day's signals for a source, environment, resource, and kind.
- * @typedef {{ day: string, source: string, environment: string, resource: string | null, kind: string, count: number,
+ * @typedef {{ day: string, source: string, environment: string, environmentId: number | null,
+ *   resource: string | null, kind: string, count: number,
  *   info: number, warning: number, critical: number, min: number | null, max: number | null, last: number | null,
  *   lastAt: number, text: string }} SignalDay
  */
@@ -65,6 +67,10 @@ export function signalEntry(input, now = Date.now()) {
   if (!SOURCE.test(source)) throw new AgentError('source must be a provider’s ID', 400);
   const environment = String(input?.environment ?? '').toLowerCase();
   if (!ENVIRONMENT.test(environment)) throw new AgentError('environment must be an environment’s name', 400);
+  const rawId = /** @type {unknown} */ (input?.environmentId);
+  const environmentId = rawId === undefined || rawId === null || rawId === '' ? null : Number(rawId);
+  if (environmentId !== null && !(Number.isSafeInteger(environmentId) && environmentId > 0))
+    throw new AgentError('environmentId must be an environment’s ID', 400);
   const kind = String(input?.kind ?? '');
   if (!SIGNAL_KINDS.includes(kind))
     throw new AgentError(`kind must be one of ${SIGNAL_KINDS.join(', ')}, not "${scrub(kind, 40)}"`, 400);
@@ -84,6 +90,7 @@ export function signalEntry(input, now = Date.now()) {
   return {
     source,
     environment,
+    environmentId,
     resource: raw ? scrub(raw, RESOURCE_MAX) : null,
     kind,
     level,
@@ -98,10 +105,12 @@ export function dayOf(ms) {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-const keyOf = (s) => JSON.stringify([dayOf(s.at), s.source, s.environment, s.resource ?? '', s.kind]);
+/** What a day's summary is for: one day, source, environment (by name and ID), resource, and kind. */
+export const dayKey = (day, s) =>
+  JSON.stringify([day, s.source, s.environment, s.environmentId ?? 0, s.resource ?? '', s.kind]);
 
 /**
- * Folds signals into daily summaries, one per day, source, environment, resource, and kind, merged into `existing`
+ * Folds signals into daily summaries, one per dayKey, merged into `existing`
  * (summaries already stored for those keys) so folding the same day twice adds up instead of overwriting.
  * @param {SignalEntry[]} signals
  * @param {SignalDay[]} [existing]
@@ -110,16 +119,16 @@ const keyOf = (s) => JSON.stringify([dayOf(s.at), s.source, s.environment, s.res
 export function foldSignals(signals, existing = []) {
   /** @type {Map<string, SignalDay>} */
   const days = new Map();
-  for (const d of existing)
-    days.set(JSON.stringify([d.day, d.source, d.environment, d.resource ?? '', d.kind]), { ...d });
+  for (const d of existing) days.set(dayKey(d.day, d), { ...d });
   for (const s of signals) {
-    const key = keyOf(s);
+    const key = dayKey(dayOf(s.at), s);
     let d = days.get(key);
     if (!d) {
       d = {
         day: dayOf(s.at),
         source: s.source,
         environment: s.environment,
+        environmentId: s.environmentId ?? null,
         resource: s.resource,
         kind: s.kind,
         count: 0,

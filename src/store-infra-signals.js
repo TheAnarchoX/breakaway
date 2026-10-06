@@ -16,6 +16,7 @@ import {
   SIGNAL_LEVELS,
   SIGNAL_RAW_DAYS,
   SIGNAL_SUMMARY_DAYS,
+  dayKey,
   dayOf,
   foldSignals,
   signalEntry,
@@ -28,8 +29,8 @@ const SHOWN_MAX = 200;
 
 /**
  * A signal as stored and shown.
- * @typedef {{ id: number, source: string, environment: string, resource: string | null, kind: string, level: string,
- *   value: number | null, at: string, text: string }} StoredSignal
+ * @typedef {{ id: number, source: string, environment: string, environmentId: number | null,
+ *   resource: string | null, kind: string, level: string, value: number | null, at: string, text: string }} StoredSignal
  */
 
 /**
@@ -69,6 +70,7 @@ function shown(row) {
     id: Number(row.id),
     source: row.source,
     environment: row.environment,
+    environmentId: row.environment_id === null || row.environment_id === undefined ? null : Number(row.environment_id),
     resource: row.resource ?? null,
     kind: row.kind,
     level: row.level,
@@ -84,6 +86,7 @@ function dayRow(row) {
     day: row.day,
     source: row.source,
     environment: row.environment,
+    environmentId: Number(row.environment_id) || null,
     resource: row.resource === '' ? null : row.resource,
     kind: row.kind,
     count: Number(row.count),
@@ -115,6 +118,11 @@ function filters(query) {
     where.push('environment = ?');
     args.push(String(query.environment).toLowerCase());
   }
+  const environmentId = whole(query.environmentId, 'environmentId', 1, Number.MAX_SAFE_INTEGER);
+  if (environmentId !== null) {
+    where.push('environment_id = ?');
+    args.push(environmentId);
+  }
   if (query.resource) {
     where.push('resource = ?');
     args.push(String(query.resource));
@@ -142,6 +150,7 @@ export const infraSignalsMethods = {
         received INTEGER NOT NULL,
         source TEXT NOT NULL,
         environment TEXT NOT NULL,
+        environment_id INTEGER,
         resource TEXT,
         kind TEXT NOT NULL,
         level TEXT NOT NULL,
@@ -149,12 +158,14 @@ export const infraSignalsMethods = {
         text TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS infra_signals_by_environment ON infra_signals (environment, at);
+      CREATE INDEX IF NOT EXISTS infra_signals_by_environment_id ON infra_signals (environment_id, at);
       CREATE INDEX IF NOT EXISTS infra_signals_by_resource ON infra_signals (resource, at);
       CREATE INDEX IF NOT EXISTS infra_signals_by_age ON infra_signals (at);
       CREATE TABLE IF NOT EXISTS infra_signal_days (
         day TEXT NOT NULL,
         source TEXT NOT NULL,
         environment TEXT NOT NULL,
+        environment_id INTEGER NOT NULL,
         resource TEXT NOT NULL,
         kind TEXT NOT NULL,
         count INTEGER NOT NULL,
@@ -166,9 +177,10 @@ export const infraSignalsMethods = {
         last REAL,
         last_at INTEGER NOT NULL,
         text TEXT NOT NULL,
-        PRIMARY KEY (day, source, environment, resource, kind)
+        PRIMARY KEY (day, source, environment, environment_id, resource, kind)
       );
       CREATE INDEX IF NOT EXISTS infra_signal_days_by_environment ON infra_signal_days (environment, day);
+      CREATE INDEX IF NOT EXISTS infra_signal_days_by_environment_id ON infra_signal_days (environment_id, day);
     `);
   },
 
@@ -187,11 +199,12 @@ export const infraSignalsMethods = {
       shown(
         this.sql
           .exec(
-            'INSERT INTO infra_signals (at, received, source, environment, resource, kind, level, value, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+            'INSERT INTO infra_signals (at, received, source, environment, environment_id, resource, kind, level, value, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
             e.at,
             now,
             e.source,
             e.environment,
+            e.environmentId,
             e.resource,
             e.kind,
             e.level,
@@ -228,7 +241,7 @@ export const infraSignalsMethods = {
   /**
    * Raw signals newest first (as they came in), filtered by environment, resource, source, kind, and level, paged with `before` (a
    * signal's id).
-   * @param {{ environment?: string, resource?: string, source?: string, kind?: string, level?: string,
+   * @param {{ environment?: string, environmentId?: string | number, resource?: string, source?: string, kind?: string, level?: string,
    *   before?: string | number, limit?: string | number }} query
    * @returns {{ signals: StoredSignal[], more: boolean }}
    */
@@ -258,7 +271,7 @@ export const infraSignalsMethods = {
 
   /**
    * Daily summaries newest day first, filtered like the raw signals.
-   * @param {{ environment?: string, resource?: string, source?: string, kind?: string }} query
+   * @param {{ environment?: string, environmentId?: string | number, resource?: string, source?: string, kind?: string }} query
    * @returns {{ days: Array<Omit<import('./infra-signals.js').SignalDay, 'lastAt'> & { lastAt: string }> }}
    */
   infraSignalDays(query = {}) {
@@ -293,21 +306,21 @@ export const infraSignalsMethods = {
       const entries = old.map((r) => ({
         ...r,
         at: Number(r.at),
+        environmentId: r.environment_id === null || r.environment_id === undefined ? null : Number(r.environment_id),
         resource: r.resource ?? null,
         value: r.value ?? null,
       }));
-      const keys = new Set(
-        entries.map((e) => JSON.stringify([dayOf(e.at), e.source, e.environment, e.resource ?? '', e.kind])),
-      );
+      const keys = new Set(entries.map((e) => dayKey(dayOf(e.at), e)));
       const existing = [];
       for (const key of keys) {
-        const [day, source, environment, resource, kind] = JSON.parse(key);
+        const [day, source, environment, environmentId, resource, kind] = JSON.parse(key);
         const row = this.sql
           .exec(
-            'SELECT * FROM infra_signal_days WHERE day = ? AND source = ? AND environment = ? AND resource = ? AND kind = ?',
+            'SELECT * FROM infra_signal_days WHERE day = ? AND source = ? AND environment = ? AND environment_id = ? AND resource = ? AND kind = ?',
             day,
             source,
             environment,
+            environmentId,
             resource,
             kind,
           )
@@ -316,10 +329,11 @@ export const infraSignalsMethods = {
       }
       for (const d of foldSignals(entries, existing))
         this.sql.exec(
-          'INSERT OR REPLACE INTO infra_signal_days (day, source, environment, resource, kind, count, info, warning, critical, min, max, last, last_at, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT OR REPLACE INTO infra_signal_days (day, source, environment, environment_id, resource, kind, count, info, warning, critical, min, max, last, last_at, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           d.day,
           d.source,
           d.environment,
+          d.environmentId ?? 0,
           d.resource ?? '',
           d.kind,
           d.count,
