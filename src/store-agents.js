@@ -1800,6 +1800,7 @@ export const agentsMethods = {
     this.pruneMessages();
     this.prunePeloton();
     this.pruneInfraAudit();
+    this.foldInfraSignals();
   },
 
   /** Per task: its latest run and when its session last said something (for cards). */
