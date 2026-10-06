@@ -406,6 +406,63 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     expect(fetch.writes()).toHaveLength(1);
   });
 
+  it('names Cloudflare’s Workers roles when the write token is refused, legacy names included (BRK-243)', async () => {
+    /** The account, but refusing these writes with a 403, as a write token with only per-Worker Workers Editor does. */
+    const refusing = (fetch, re) =>
+      Object.assign(
+        async (input, init = {}) =>
+          (init.method ?? 'GET') !== 'GET' && re.test(String(input))
+            ? Response.json(
+                { success: false, errors: [{ code: 10000, message: 'Authentication error' }] },
+                { status: 403 },
+              )
+            : fetch(input, init),
+        { calls: fetch.calls, answers: fetch.answers, writes: fetch.writes },
+      );
+
+    // Editor's own work: a settings change, refused, names Editor on the Worker and the legacy permission.
+    let fetch = account();
+    let desired = await current(fetch);
+    desired.resources.find((r) => r.id === W('acme-api')).attrs = { compatibilityDate: '2026-10-01' };
+    let p = await plan(ctxFor(fetch), desired);
+    let result = await apply(runner(refusing(fetch, /\/settings$/u)), p);
+    expect(result.steps.at(-1).error).toMatch(
+      /write token needs Workers Editor on this Worker \(or the legacy Workers Scripts Write\)/u,
+    );
+    await expect(
+      rollbackWorker(runner(refusing(fetch, /\/deployments/u)), {
+        worker: 'acme-api',
+        versions: [{ id: 'ver-acme-api-2', percentage: 100 }],
+      }),
+    ).rejects.toThrow(/needs Workers Editor on this Worker/u);
+
+    // Editor can't make or delete a Worker: the plan says a delete needs Admin, and a refused one says so too.
+    fetch = account();
+    desired = await current(fetch);
+    const api = desired.resources.find((r) => r.id === W('acme-api'));
+    api.attrs = { bindings: api.attrs.bindings.filter((b) => b.name !== 'AUTH') };
+    desired.resources = desired.resources.filter((r) => r.id !== W('acme-auth') && r.id !== `kv:${KV_SESSIONS}`);
+    desired.resources.push({ id: W('acme-new'), kind: 'worker', name: 'acme-new', attrs: {} });
+    p = await plan(ctxFor(fetch), desired);
+    expect(p.changes.find((c) => c.resource === W('acme-auth')).why).toMatch(/needs Workers Admin on the write token/u);
+    result = await apply(runner(refusing(fetch, /\/workers\/workers$/u)), p);
+    expect(result.steps.at(-1)).toMatchObject({
+      resource: W('acme-new'),
+      ok: false,
+      error: expect.stringMatching(
+        /needs Workers Admin at the Workers product scope, because Workers Editor can’t make/u,
+      ),
+    });
+    fetch = account();
+    p = await plan(ctxFor(fetch), { ...desired, resources: desired.resources.filter((r) => r.id !== W('acme-new')) });
+    result = await apply(runner(refusing(fetch, /\/workers\/scripts\/acme-auth$/u)), p);
+    expect(result.steps.at(-1)).toMatchObject({
+      resource: W('acme-auth'),
+      ok: false,
+      error: expect.stringMatching(/needs Workers Admin, because Workers Editor can’t delete a Worker/u),
+    });
+  });
+
   it('refuses an observe-only environment before it calls Cloudflare', async () => {
     const fetch = account();
     const p = await plan(ctxFor(fetch), await changed(fetch));

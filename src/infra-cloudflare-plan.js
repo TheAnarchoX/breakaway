@@ -9,7 +9,8 @@
  * a discovered resource the desired state doesn't list is deleted. Deleting a Worker, D1 database, KV namespace, R2
  * bucket, queue, or container application is marked irreversible, with why.
  *
- * Tokens can't be scoped to one Worker, so the provider keeps every change inside the environment's scope itself: it
+ * Only Workers can be scoped one by one (Workers Editor, BRK-243); a database, namespace, bucket, or queue permission
+ * reaches every one on the account. So the provider keeps every change inside the environment's scope itself: it
  * refuses to make a resource that already exists on the account outside the scope, a database, namespace, bucket, or
  * queue no Worker in the desired state binds, and a delete of something a remaining Worker still binds.
  *
@@ -53,9 +54,27 @@ export { MANAGED };
 /** Kinds Cloudflare names by their name, so a rename is a change of its own (KV's title, a route's pattern). */
 const RENAMES = new Set(['kv', 'route']);
 
+/**
+ * What the write token needs to change a Worker (BRK-243): Cloudflare's Workers Editor role, scoped to the
+ * environment's Workers. It replaces the legacy Workers Scripts Write (Editor at the Workers product scope), and a
+ * token made with that still works. Editor can't make or delete a Worker: that's Admin at the Workers product scope,
+ * which the owner gives the write token by hand for the one apply that needs it. Custom domains have no per-Worker
+ * role yet, so an environment that declares them scopes Editor to the Workers product.
+ */
+export const WORKERS_WRITE = {
+  edit: 'Workers Editor on this Worker (or the legacy Workers Scripts Write)',
+  create:
+    'Workers Admin at the Workers product scope, because Workers Editor can’t make a Worker: give the write token Admin for this apply, then take it away',
+  delete:
+    'Workers Admin, because Workers Editor can’t delete a Worker: give the write token Admin for this apply, then take it away',
+  domain:
+    'Workers Editor at the Workers product scope (custom domains have no per-Worker role yet; or the legacy Workers Scripts Write) and Workers Routes Write on its zone',
+};
+
 /** Why deleting each kind can't be undone. Routes and custom domains hold nothing, so they can be made again. */
 const LOST = {
-  worker: 'deleting a Worker deletes every version of it, so it can’t be rolled back',
+  worker:
+    'deleting a Worker deletes every version of it, so it can’t be rolled back; it needs Workers Admin on the write token, which Workers Editor doesn’t have, so give it for this apply and take it away after',
   d1: 'deleting a D1 database deletes its data; Time Travel can’t restore a deleted database',
   kv: 'deleting a KV namespace deletes every key in it',
   r2: 'deleting an R2 bucket deletes it for good (Cloudflare refuses unless it’s empty)',
@@ -620,11 +639,11 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
   switch (c.kind) {
     case 'worker': {
       const p = `${a}/workers/scripts/${encodeURIComponent(c.name)}`;
-      const perm = { permission: 'Workers Scripts Write' };
-      if (c.op === 'delete') return call('DELETE', p, perm);
+      const perm = { permission: WORKERS_WRITE.edit };
+      if (c.op === 'delete') return call('DELETE', p, { permission: WORKERS_WRITE.delete });
       if (c.op === 'create') {
         // The Worker alone: its first version, with its code, comes from its deploy.
-        await call('POST', `${a}/workers/workers`, { ...perm, json: { name: c.name } });
+        await call('POST', `${a}/workers/workers`, { permission: WORKERS_WRITE.create, json: { name: c.name } });
         if (Array.isArray(after.crons) && after.crons.length)
           await call('PUT', `${p}/schedules`, { ...perm, json: after.crons.map((cron) => ({ cron })) });
         return;
@@ -731,7 +750,7 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
     }
     case 'custom-domain': {
       // Attaching makes a DNS record and a certificate, so it needs Workers Routes Write on the zone too.
-      const perm = { permission: 'Workers Scripts Write and Workers Routes Write on its zone' };
+      const perm = { permission: WORKERS_WRITE.domain };
       if (c.op === 'delete') return call('DELETE', `${a}/workers/domains/${id}`, perm);
       const zone = after.zone ?? before.zone;
       return call('PUT', `${a}/workers/domains`, {
@@ -824,7 +843,7 @@ export async function rollbackWorker(ctx, { worker, versions, force = false }) {
   const account = await accountOf(reader(ctx), ctx);
   const p = `/accounts/${encodeURIComponent(account)}/workers/scripts/${encodeURIComponent(worker)}/deployments${force ? '?force=true' : ''}`;
   return writer(ctx)('POST', p, {
-    permission: 'Workers Scripts Write',
+    permission: WORKERS_WRITE.edit,
     json: {
       strategy: 'percentage',
       versions: versions.map((v) => ({ version_id: v.id, percentage: v.percentage })),
