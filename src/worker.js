@@ -597,6 +597,17 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.driftCheckApi(parts[2], { repo, ...body }));
     }
   }
+  // Break-glass (BRK-187): anyone signed in reads the marks; marking drift as break-glass is the owner's, from the
+  // signed-in browser only. It records the change and makes a task to put it into code; it never undoes it.
+  if (parts[0] === 'infra' && parts[1] === 'break-glass' && parts.length <= 3) {
+    const repo = url.searchParams.get('repo');
+    if (parts.length === 2 && method === 'GET')
+      return send(await s.breakGlassApi({ repo, environment: url.searchParams.get('environment') }));
+    if (parts.length === 3 && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can mark drift as break-glass' });
+      return send(await s.breakGlassMarkApi(parts[2], { repo, ...body }));
+    }
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {

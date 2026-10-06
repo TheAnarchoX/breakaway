@@ -32,6 +32,7 @@ const AUDIT_LABEL = {
   'lock-release': 'Lock released',
   'break-glass': 'Break-glass',
   freeze: 'Frozen',
+  environment: 'Target changed',
 };
 
 /** Who acted, as the trail records it: the owner is never named. */

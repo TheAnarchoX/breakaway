@@ -60,6 +60,7 @@ import { routineKeepMethods } from './store-routine-keep.js';
 import { infraAuditMethods } from './store-infra-audit.js';
 import { oauthMethods } from './store-oauth.js';
 import { infraEnvironmentsMethods } from './store-infra-environments.js';
+import { infraDeploysMethods } from './store-infra-deploys.js';
 import { infraDesiredMethods } from './store-infra-desired.js';
 import { infraInventoryMethods } from './store-infra-inventory.js';
 import { infraLocksMethods } from './store-infra-locks.js';
@@ -67,6 +68,7 @@ import { infraCheckMethods } from './store-infra-check.js';
 import { infraPlansMethods } from './store-infra-plans.js';
 import { infraPolicyMethods } from './store-infra-policy.js';
 import { infraDriftMethods } from './store-infra-drift.js';
+import { infraBreakGlassMethods } from './store-infra-break-glass.js';
 import { infraCurrencyMethods } from './store-infra-currency.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
@@ -131,8 +133,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraLocks();
     this.initInfraAudit();
     this.initInfraPlans();
+    this.initInfraDeploys();
     this.initInfraPolicy();
     this.initInfraDrift();
+    this.initInfraBreakGlass();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -1433,9 +1437,11 @@ Object.assign(
   infraLocksMethods,
   infraAuditMethods,
   infraPlansMethods,
+  infraDeploysMethods,
   infraCheckMethods,
   infraPolicyMethods,
   infraDriftMethods,
+  infraBreakGlassMethods,
   infraCurrencyMethods,
 );
 

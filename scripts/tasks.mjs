@@ -377,7 +377,7 @@ Working
   features modify <slug> change one (owner): --title, --brief, --brief-file, --release <x.y.z|none>, --state open|shipped
   routines add <slug>    new routine (owner, or the agent of a routine maker's task)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
-  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed (or "") starts it on those GitHub events
+  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened (or "") starts it on those GitHub events
   routines trigger <slug> new webhook/API trigger (owner): prints its secret once  [--label <text>]
   routines revoke <slug> <id>  revoke a trigger
   routines pause|resume  stop or allow every routine  [--daily-all <n>] sets the cap for all routines a day
@@ -409,7 +409,7 @@ Deploy and release flows   (no board needed: run in the checkout of the reposito
                          example. Never overwrites a file  [--update] replaces what it rendered before  [--dry-run]
   pipeline check         say whether the config is sound and the workflows are what it renders now (exits 1 if not)
 
-Infrastructure   (init needs no board: run it in the checkout of the repository whose infrastructure the board applies)
+Infrastructure   (init and add need no board: run them in the checkout of the repository whose infrastructure the board applies)
   infra init             render .github/workflows/breakaway-infra.yml, the workflow that applies one approved plan to one
                          of the environments in .github/breakaway-infra/; the board starts it, agents never do
                          [--update] replaces what it rendered before  [--dry-run]  [--branch <name>] (default: origin's)
@@ -429,6 +429,10 @@ Infrastructure   (init needs no board: run it in the checkout of the repository 
                          and policy.json, naming the file, line, and field that's wrong), then show the plan each valid
                          file would make from what runs now and the policy's answer; the board keeps none of it
                          (exits 1 if a file doesn't check or the board refuses one)
+  infra add [<template>] [<environment>] [<input>=<value> …]   a golden path: write the change one of the owner's
+                         templates makes (.github/breakaway-infra/templates/<name>/, else breakaway's example of that
+                         name) into the environment's file and the code it needs, for a pull request; it never
+                         overwrites a file and never plans or applies. Without a template it lists them  [--dry-run]
 
 Repositories
   The checkout's repository is the one its origin remote names (git remote get-url origin), matched
@@ -2733,6 +2737,14 @@ if (opts.help || command === 'help') {
 } else if (command === 'pipeline') {
   // A repository's deploy and release workflows (BRK-90): rendered from its own config, so they need no board either.
   process.exitCode = (await import('./tasks/pipeline.js')).run(args, opts);
+} else if (command === 'infra' && args[0] === 'add') {
+  // Golden paths (CLI-15): a template's change, written into the checkout for a pull request. It needs no board.
+  const { infraAdd } = await import('./tasks/infra-add.js');
+  const { topOf } = await import('./tasks/pipeline.js');
+  const result = infraAdd(args.slice(1), { root: topOf(process.cwd()), dryRun: Boolean(opts['dry-run']) });
+  if (opts.json) console.log(JSON.stringify(result.data, null, 2));
+  else (result.code ? console.error : console.log)(result.text);
+  process.exitCode = result.code;
 } else if (command === 'infra' && (args[0] === 'init' || args[0] === 'runner')) {
   // Architect's apply runner (CLI-12): init renders it from the checkout; runner is its steps, run only inside it.
   process.exitCode = await (await import('./tasks/infra.js')).run(args, opts);

@@ -226,6 +226,13 @@ export const githubMethods = {
     } else if (slug) {
       repo = this.githubRepo(slug);
     }
+    const answer = {
+      status: 'scheduled',
+      repo: repo?.slug ?? null,
+      isDefault: !repo || repo.slug === this.defaultRepoSlug(),
+    };
+    // Issues are only for routines (BRK-237): the board syncs nothing from them, so nothing to reconcile.
+    if (event === 'issues') return answer;
     if (workflowsChanged && repo) this.dropWorkflows(repo.slug);
     if (event === 'installation' && (action === 'deleted' || action === 'suspend')) this.ghCache = {};
     const dirty = new Set(JSON.parse(this.meta('gh_dirty') ?? '[]'));
@@ -233,7 +240,7 @@ export const githubMethods = {
     this.setMeta('gh_dirty', JSON.stringify([...dirty]));
     const pending = await this.ctx.storage.getAlarm();
     if (!pending) await this.ctx.storage.setAlarm(Date.now() + DEBOUNCE_MS);
-    return { status: 'scheduled', repo: repo?.slug ?? null, isDefault: !repo || repo.slug === this.defaultRepoSlug() };
+    return answer;
   },
 
   /** The repositories webhooks asked to reconcile since the last alarm (null: all of them), and forgets them. */
@@ -294,7 +301,11 @@ export const githubMethods = {
       return { connected: true, error: error.message };
     }
     this.setGhMeta('gh_empty', repo.slug, null);
-    const { deploySignals, ...automation } = this.applyGitHub(fetched, repo);
+    // A pipeline's staging and production environments (BRK-195), so its deploys have somewhere to be recorded.
+    this.ensurePipelineEnvironments(repo.slug);
+    const { deploySignals, deployChanges, ...automation } = this.applyGitHub(fetched, repo);
+    // Each finished Deploy, Promote, and Roll back on its environment's audit trail (BRK-195).
+    automation.errors.push(...this.recordDeploys(deployChanges, repo.slug).map((e) => `deploys: ${e}`));
     // Failed deploys and roll backs become signals on their environment (BRK-198), once the rows are stored.
     if (deploySignals.length)
       try {
@@ -557,7 +568,7 @@ export const githubMethods = {
     }
   },
 
-  /** Stores what was fetched, records events, and moves linked tasks. Synchronous: the deploy flow's signals come back to record. */
+  /** Stores what was fetched, records events, and moves linked tasks. Synchronous: the deploy flow's signals and finished deploys come back to record. */
   applyGitHub(
     { pulls, runs, commits, alerts, details, stored, deploys, releases, tags, workers = new Map(), patterns },
     repo,
@@ -579,6 +590,7 @@ export const githubMethods = {
     const closedAlerts = [];
     let shipped = [];
     let deploySignals = [];
+    let deployChanges = [];
 
     this.ctx.storage.transactionSync(() => {
       for (const p of pulls) {
@@ -785,7 +797,10 @@ export const githubMethods = {
 
       const changed = [];
       shipped = this.applyDeploys(deploys, event, slug, changed);
-      if (initialized) deploySignals = this.deploySignals(changed, slug);
+      if (initialized) {
+        deploySignals = this.deploySignals(changed, slug);
+        deployChanges = changed;
+      }
       if (isDefault) this.applyBackfill();
       if (releases)
         this.setGhMeta(
@@ -854,7 +869,7 @@ export const githubMethods = {
         errors.push(`${wid}: ${error.message}`);
       }
     }
-    return { events: events.length, errors, newAlerts, deploySignals };
+    return { events: events.length, errors, newAlerts, deploySignals, deployChanges };
   },
 
   /**
