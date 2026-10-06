@@ -47,7 +47,8 @@ describe('infra init renders the runner (CLI-12)', () => {
     });
     const job = doc.jobs.apply;
     expect(job.if).toBe("github.ref == 'refs/heads/trunk'");
-    expect(job.environment).toBe(`\${{ inputs.environment }}`);
+    expect(job.environment).toBe(`\${{ inputs.github_environment || inputs.environment }}`);
+    expect(doc.on.workflow_dispatch.inputs.github_environment).toMatchObject({ required: false, type: 'string' });
     expect(job.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
     expect(job.steps.some((s) => String(s.uses ?? '').startsWith('actions/checkout'))).toBe(false);
     expect(job.steps.filter((s) => s.run).map((s) => s.run)).toEqual([
@@ -126,6 +127,26 @@ describe('npx breakaway infra init in a scratch repository (CLI-12)', () => {
     writeFileSync(join(root, RUNNER_WORKFLOW), 'name: Ours\n');
     expect(await run(['init'], { update: true }, io())).toBe(1);
     expect(readFileSync(join(root, RUNNER_WORKFLOW), 'utf8')).toBe('name: Ours\n');
+  });
+
+  it('with short-lived.json, takes any environment and the short-lived GitHub environment, and says to make it (BRK-242)', async () => {
+    mkdirSync(join(root, '.github/breakaway-infra'), { recursive: true });
+    for (const name of ['staging', 'short-lived'])
+      writeFileSync(join(root, `.github/breakaway-infra/${name}.json`), '{}\n');
+    expect(await run(['init'], {}, io())).toBe(0);
+    const text = readFileSync(join(root, RUNNER_WORKFLOW), 'utf8');
+    expect(text).toBe(renderRunner({ ...SAMPLE, environments: ['staging'], shortLived: true }, TEMPLATE).text);
+    expect(lintWorkflow(text)).toEqual([]);
+    const doc = parseYaml(text);
+    expect(doc.on.workflow_dispatch.inputs.environment).toEqual({
+      description: 'The environment the plan is for',
+      required: true,
+      type: 'string',
+    });
+    expect(doc.on.workflow_dispatch.inputs.github_environment).toMatchObject({ required: false, type: 'string' });
+    expect(doc.jobs.apply.environment).toBe(`\${{ inputs.github_environment || inputs.environment }}`);
+    expect(out.join('\n')).toMatch(/for staging and short-lived environments, from main/u);
+    expect(out.join('\n')).toMatch(/one more named short-lived that every short-lived environment applies in/u);
   });
 
   it('takes --branch', async () => {

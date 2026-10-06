@@ -33,6 +33,7 @@
     "src/infra-plans.js",
     "src/infra-policy.js",
     "src/infra-scaling.js",
+    "src/infra-short-lived.js",
     "src/infra-providers.js",
     "src/infra-runner.js",
     "src/infra-templates.js",

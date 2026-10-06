@@ -15,12 +15,14 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DESIRED_DIR, environmentOfFile } from '../../src/infra-desired.js';
+import { SHORT_LIVED_FILE } from '../../src/infra-short-lived.js';
 import { checkApplyResult } from '../../src/infra-provider.js';
 import { providers as registry } from '../../src/infra-providers.js';
 import {
   RUNNER_HEADER,
   RUNNER_WORKFLOW,
   RunnerError,
+  SHORT_LIVED_GITHUB_ENVIRONMENT,
   checkRunInputs,
   checkRunPlan,
   planDigest,
@@ -67,18 +69,22 @@ export function environmentsIn(names) {
 }
 
 /**
- * The runner's workflow for these environments, applied from `branch`, running breakaway `version`.
- * @param {{ environments: string[], branch: string, version: string }} input
+ * The runner's workflow for these environments, applied from `branch`, running breakaway `version`. With `shortLived`
+ * (the folder has short-lived.json), the environment is any name, since each short-lived one is new, and the run may
+ * name the GitHub environment that holds the write token: `short-lived` for all of them (BRK-242).
+ * @param {{ environments: string[], branch: string, version: string, shortLived?: boolean }} input
  * @param {string} template template/infra/apply.yml
  * @returns {{ path: string, text: string }}
  */
-export function renderRunner({ environments, branch, version }, template) {
+export function renderRunner({ environments, branch, version, shortLived = false }, template) {
   if (!BRANCH.test(branch)) bad(`${branch.slice(0, 80)} isn't a branch's name.`);
   if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u.test(version)) bad(`${version} isn't a breakaway release.`);
   const text = fill(template, {
     header: HEADER,
     branchName: branch,
     version,
+    shortLived,
+    fixedOnly: !shortLived,
     environments: environments.map((name) => `- ${JSON.stringify(name)}`),
   });
   const problems = lintWorkflow(text);
@@ -145,9 +151,11 @@ function init(opts, { cwd, log, error, version = VERSION }) {
     bad(
       `${DESIRED_DIR}/ isn't here: write the desired state of each environment there first (<environment>.json), then run this again.`,
     );
-  const environments = environmentsIn(readdirSync(folder));
+  const names = readdirSync(folder);
+  const environments = environmentsIn(names);
+  const shortLived = names.includes(SHORT_LIVED_FILE);
   const branch = opts.branch ? String(opts.branch) : defaultBranch(root);
-  const file = renderRunner({ environments, branch, version }, readFileSync(TEMPLATE, 'utf8'));
+  const file = renderRunner({ environments, branch, version, shortLived }, readFileSync(TEMPLATE, 'utf8'));
   const at = join(root, file.path);
   const step = initStep(file, existsSync(at) ? readFileSync(at, 'utf8') : null, { update: Boolean(opts.update) });
   if (step.refused) {
@@ -162,9 +170,11 @@ function init(opts, { cwd, log, error, version = VERSION }) {
     mkdirSync(dirname(at), { recursive: true });
     writeFileSync(at, file.text);
   }
-  log(`${opts['dry-run'] ? 'Would write' : 'Wrote'} ${file.path}, for ${environments.join(', ')}, from ${branch}.`);
   log(
-    `Before the board can apply a plan, the owner makes, for each environment, a GitHub environment of the same name that only ${branch} may use, with that environment's write token as the secret CLOUDFLARE_API_TOKEN (the board's read permissions, plus Cloudflare's Workers Editor on that environment's Workers, or the legacy Workers Scripts Write, and only the Write permissions its file needs); sets the repository variable BREAKAWAY_URL to the board's address; and gives the board's GitHub App Actions: read and write here. Agents never do these, and never run the workflow.`,
+    `${opts['dry-run'] ? 'Would write' : 'Wrote'} ${file.path}, for ${environments.join(', ')}${shortLived ? ' and short-lived environments' : ''}, from ${branch}.`,
+  );
+  log(
+    `Before the board can apply a plan, the owner makes, for each environment, a GitHub environment of the same name that only ${branch} may use${shortLived ? `, and one more named ${SHORT_LIVED_GITHUB_ENVIRONMENT} that every short-lived environment applies in` : ''}, with that environment's write token as the secret CLOUDFLARE_API_TOKEN (the board's read permissions, plus Cloudflare's Workers Editor on that environment's Workers, or the legacy Workers Scripts Write, and only the Write permissions its file needs); sets the repository variable BREAKAWAY_URL to the board's address; and gives the board's GitHub App Actions: read and write here. Agents never do these, and never run the workflow.`,
   );
   return 0;
 }
@@ -256,7 +266,7 @@ async function apply(io) {
   const token = io.env.BREAKAWAY_WRITE_TOKEN;
   if (!token)
     throw new RunnerError(
-      `${plan.environment}'s GitHub environment has no write token: the owner adds it as the secret CLOUDFLARE_API_TOKEN.`,
+      `The GitHub environment this run applies in has no write token for ${plan.environment}: the owner adds it there as the secret CLOUDFLARE_API_TOKEN.`,
     );
   await report(io, state, { step: 'applying' });
   let result;

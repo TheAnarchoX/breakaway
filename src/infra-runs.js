@@ -229,6 +229,7 @@ export function runView(row) {
     plan: `plan-${Number(row.n)}`,
     repo: row.repo,
     environment: { id: Number(row.environment), name: row.env_name },
+    githubEnvironment: row.github_env ?? row.env_name,
     phase: row.phase,
     rollback:
       String(row.phase).startsWith('rollback-') || row.outcome === 'rolled back' || row.outcome === 'rollback failed',
