@@ -9,11 +9,11 @@
  * value, an R2 object, or a Worker's code, a secret is a name in its Worker's settings, and a variable's text is left
  * out. It stops on a 429 rather than retrying, since Cloudflare then refuses every call for five minutes.
  *
- * Plan and apply (BRK-192), observe and events (BRK-191), and cost (BRK-193) aren't built yet: each says so, naming
- * its task, and the store keeps the last health and cost when one fails. Pure apart from `fetch`, so the CLI can
- * import it.
+ * Plan and apply (BRK-192) are in infra-cloudflare-plan.js. Observe and events (BRK-191) and cost (BRK-193) aren't
+ * built yet: each says so, naming its task, and the store keeps the last health and cost when one fails. Pure apart
+ * from `fetch`, so the CLI can import it.
  */
-import { checkApply } from './infra-provider.js';
+import { apply, plan } from './infra-cloudflare-plan.js';
 
 /** @typedef {import('./infra-provider.js').Provider} Provider */
 /** @typedef {import('./infra-provider.js').ProviderContext} ProviderContext */
@@ -89,7 +89,7 @@ function said(json) {
  * A reader for one call of the provider: GETs only, each checked against NEVER_CALLED, stopping on a 429.
  * @param {ProviderContext} ctx
  */
-function reader(ctx) {
+export function reader(ctx) {
   const doFetch = ctx.fetch ?? fetch;
   if (!ctx.token) throw new CloudflareError('no read-only token: connect Cloudflare on Connections', 401);
   /**
@@ -150,7 +150,7 @@ function reader(ctx) {
  * @param {ReturnType<typeof reader>} cf
  * @param {ProviderContext} ctx
  */
-async function accountOf(cf, ctx) {
+export async function accountOf(cf, ctx) {
   const given = ctx.scope?.account;
   if (typeof given === 'string' && given) return given;
   const accounts = await cf.all('/accounts', { permission: 'access to the account' }, 50);
@@ -196,14 +196,44 @@ function workerAttrs(script, settings, deployments, secrets, schedules) {
 /** Resource IDs: the kind and Cloudflare's own ID, so they're unique within the provider. */
 export const rid = (kind, id) => `${kind}:${id}`;
 
+/** The fields of a binding that name what it binds to, by binding type: IDs and names, never a variable's text. */
+export const BINDING_TARGETS = {
+  d1: ['id'],
+  kv_namespace: ['namespace_id'],
+  r2_bucket: ['bucket_name', 'jurisdiction'],
+  queue: ['queue_name'],
+  service: ['service', 'environment', 'entrypoint'],
+  durable_object_namespace: ['class_name', 'script_name'],
+};
+
+/** A binding's name, type, and what it binds to (BINDING_TARGETS), without anything else it carries. */
+export function bindingTarget(b) {
+  /** @type {Record<string, string>} */
+  const out = { name: String(b.name), type: String(b.type) };
+  for (const f of BINDING_TARGETS[b.type] ?? []) if (b[f] != null && b[f] !== '') out[f] = String(b[f]);
+  return out;
+}
+
+/**
+ * What plan and apply (BRK-192) need from a discovery besides its resources, never kept in the inventory: the account,
+ * every Worker's name on it (to refuse one outside the scope), each Worker's bindings with what they bind to, and the
+ * zones by name.
+ * @typedef {object} LiveAccount
+ * @property {string} account
+ * @property {string[]} scripts
+ * @property {Record<string, Array<Record<string, string>>>} bindings by Worker
+ * @property {Record<string, string>} zones zone IDs by name
+ */
+
 /**
  * Discovers what the environment's target Worker runs on, as resources and relations. `missing` names a permission
  * the token lacks for a kind a repository may leave out (queues, containers): that kind isn't read, and discovery goes
- * on (BRK-188, "Tokens").
+ * on (BRK-188, "Tokens"). With `live`, it also returns the LiveAccount plan and apply work from.
  * @param {ProviderContext} ctx
- * @returns {Promise<Discovery & { missing: string[] }>}
+ * @param {{ live?: boolean }} [options]
+ * @returns {Promise<Discovery & { missing: string[], live?: LiveAccount }>}
  */
-export async function discover(ctx) {
+export async function discover(ctx, { live = false } = {}) {
   const target = typeof ctx.scope?.target === 'string' ? ctx.scope.target : null;
   /** @type {Map<string, Resource>} */
   const resources = new Map();
@@ -211,22 +241,27 @@ export async function discover(ctx) {
   const relations = new Map();
   /** @type {string[]} */
   const missing = [];
+  /** @type {LiveAccount} */
+  const seen = { account: '', scripts: [], bindings: {}, zones: {} };
   const add = (r) => resources.set(r.id, r);
   const relate = (from, to, kind) => relations.set(`${from} ${kind} ${to}`, { from, to, kind });
   const done = () => ({
     resources: [...resources.values()],
     relations: [...relations.values()].filter((r) => resources.has(r.from) && resources.has(r.to)),
     missing,
+    ...(live ? { live: seen } : {}),
   });
   if (!target) return done();
 
   const cf = reader(ctx);
-  const a = enc(await accountOf(cf, ctx));
+  seen.account = await accountOf(cf, ctx);
+  const a = enc(seen.account);
   const scripts = new Map(
     (
       await cf.get(`/accounts/${a}/workers/scripts`, { permission: 'Workers Scripts Read' }).then((j) => j.result ?? [])
     ).map((s) => [String(s.id), s]),
   );
+  seen.scripts = [...scripts.keys()];
   if (!scripts.has(target)) return done();
 
   // The Workers in scope: the target, and the Workers it calls or whose Durable Objects it binds.
@@ -244,6 +279,7 @@ export async function discover(ctx) {
     const schedules = (await cf.get(`${p}/schedules`, opts)).result ?? {};
     const bindings = settings.bindings ?? [];
     bindingsOf.set(name, bindings);
+    seen.bindings[name] = bindings.map(bindingTarget);
     add({
       id: rid('worker', name),
       kind: 'worker',
@@ -458,6 +494,7 @@ export async function discover(ctx) {
   // Routes, on the zones the token reaches, that send to a Worker in scope.
   const zones = await cf.all(`/zones?account.id=${a}`, { permission: 'Zone Read' }, 50);
   for (const zone of zones) {
+    seen.zones[String(zone.name)] = String(zone.id);
     const routes =
       (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
     for (const route of routes) {
@@ -527,11 +564,8 @@ export const cloudflare = {
     check: checkToken,
   },
   discover,
-  plan: notYet('plan', 'BRK-192'),
-  async apply(ctx, p) {
-    checkApply(cloudflare, ctx, p);
-    return notYet('apply', 'BRK-192')();
-  },
+  plan: (ctx, desired) => plan(ctx, desired),
+  apply: (ctx, p) => apply(ctx, p),
   observe: notYet('observe', 'BRK-191'),
   cost: notYet('cost', 'BRK-193'),
   events: notYet('events', 'BRK-191'),

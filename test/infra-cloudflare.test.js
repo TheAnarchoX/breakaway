@@ -6,7 +6,6 @@ import { providers } from '../src/infra-providers.js';
 import { scopeDiscovery } from '../src/infra-inventory.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { api, boardApi } from './helpers.js';
-import { providerContract } from './infra-provider-contract.js';
 import {
   ACCOUNT,
   CONTAINER,
@@ -29,19 +28,7 @@ function context(answers = cloudflareAnswers(), extra = {}) {
   return { fetch, ctx: { environment: 'production', scope: { target: 'acme-api' }, token: TOKEN, fetch, ...extra } };
 }
 
-providerContract(
-  'cloudflare',
-  () => {
-    const { ctx } = context();
-    return {
-      provider: cloudflare,
-      ctx,
-      desired: { resources: [{ id: 'worker:acme-new', kind: 'worker', name: 'acme-new' }] },
-      since: '2026-10-01T00:00:00Z',
-    };
-  },
-  { notYet: { plan: 'BRK-192', apply: 'BRK-192', observe: 'BRK-191', cost: 'BRK-193', events: 'BRK-191' } },
-);
+// The provider contract runs in infra-cloudflare-plan.test.js, against an account that answers writes.
 
 describe('the Cloudflare provider’s discover (BRK-189)', () => {
   const W = (name) => rid('worker', name);
