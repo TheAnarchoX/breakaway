@@ -518,6 +518,9 @@ async function handleApi(request, env, url, ctx) {
     const repo = url.searchParams.get('repo');
     return send(await (parts.length === 2 ? s.desiredApi({ repo }) : s.desiredOneApi(parts[2], { repo })));
   }
+  // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
+  if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
+    return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
   // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
   if (parts[0] === 'infra' && parts[1] === 'inventory') {
     const q = (name) => url.searchParams.get(name);
