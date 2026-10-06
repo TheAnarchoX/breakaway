@@ -424,7 +424,8 @@ Infrastructure   (init and add need no board: run them in the checkout of the re
   infra signals          what the board heard, newest first: health, alerts, and cost  [--environment <name>]
                          [--resource <id>] [--kind health|alert|cost] [--level info|warning|critical] [--source <id>]
                          [--before <id>] [--limit <n>]  [--days] the daily summaries  [--all] every repository's
-  infra incidents        open incidents: tasks tagged +incident  [--status completed|all] [--all] every repository's
+  infra incidents        open incidents, each a task tagged +incident, with the step it's on  [--environment <name>]
+                         [--status completed|all] [--before <id>] [--limit <n>]  [--all] every repository's
   infra check [<environment>]   before a pull request: check .github/breakaway-infra/ here (each environment's file
                          and policy.json, naming the file, line, and field that's wrong), then show the plan each valid
                          file would make from what runs now and the policy's answer; the board keeps none of it
@@ -1469,7 +1470,6 @@ const commands = {
         get: (path) => call('GET', path, undefined, { raw: true }),
         repo: slug,
         opts,
-        inRepo: (t) => !slug || inRepo(t, slug, repoContext.registry),
       });
     } catch (error) {
       if (!(error instanceof InfraReadError)) throw error;
