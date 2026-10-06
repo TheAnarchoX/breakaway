@@ -141,6 +141,10 @@ export const COST_NOTE_MAX = 500;
  * A resource kind a provider knows, and which change kinds it can make to it.
  * @typedef {object} KindSpec
  * @property {string[]} changes BASE_CHANGES, plus any of ENVELOPE_CHANGES it supports
+ * @property {boolean} [access] the kind decides who or what can reach something (a route, a domain): policy asks the
+ *   owner for any change to one (BRK-181)
+ * @property {string[]} [accessSettings] settings of the kind that decide who or what can reach it (like `public`): policy
+ *   asks the owner for a change to one
  */
 
 /**
@@ -229,6 +233,10 @@ export function checkProvider(provider) {
     if (!Array.isArray(spec?.changes)) fail(what, `${kind} lists no changes`);
     for (const c of BASE_CHANGES) if (!spec.changes.includes(c)) fail(what, `${kind} can't ${c}`);
     for (const c of spec.changes) if (!CHANGE_KINDS.includes(c)) fail(what, `${kind} has unknown change "${c}"`);
+    if (spec.access !== undefined && typeof spec.access !== 'boolean')
+      fail(what, `${kind}'s access is not true or false`);
+    if (spec.accessSettings !== undefined && (!Array.isArray(spec.accessSettings) || !spec.accessSettings.every(text)))
+      fail(what, `${kind}'s accessSettings is not a list of settings' names`);
   }
   if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
   if (provider.estimate !== undefined && typeof provider.estimate !== 'function')
