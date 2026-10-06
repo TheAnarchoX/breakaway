@@ -64,6 +64,7 @@ import { infraEnvironmentsMethods } from './store-infra-environments.js';
 import { infraDeploysMethods } from './store-infra-deploys.js';
 import { infraDesiredMethods } from './store-infra-desired.js';
 import { infraInventoryMethods } from './store-infra-inventory.js';
+import { infraCostsMethods } from './store-infra-costs.js';
 import { infraLocksMethods } from './store-infra-locks.js';
 import { infraCheckMethods } from './store-infra-check.js';
 import { infraPlansMethods } from './store-infra-plans.js';
@@ -72,6 +73,7 @@ import { infraPolicyMethods } from './store-infra-policy.js';
 import { infraPullsMethods } from './store-infra-pulls.js';
 import { infraDriftMethods } from './store-infra-drift.js';
 import { infraBreakGlassMethods } from './store-infra-break-glass.js';
+import { infraAdoptMethods } from './store-infra-adopt.js';
 import { infraRunsMethods } from './store-infra-runs.js';
 import { infraEnvelopesMethods } from './store-infra-envelopes.js';
 import { infraCurrencyMethods } from './store-infra-currency.js';
@@ -136,6 +138,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraEnvironments();
     this.initInfraDesired();
     this.initInfraInventory();
+    this.initInfraCosts();
     this.initInfraLocks();
     this.initInfraAudit();
     this.initInfraPlans();
@@ -1446,6 +1449,7 @@ Object.assign(
   infraEnvironmentsMethods,
   infraDesiredMethods,
   infraInventoryMethods,
+  infraCostsMethods,
   infraLocksMethods,
   infraAuditMethods,
   infraPlansMethods,
@@ -1456,6 +1460,7 @@ Object.assign(
   infraPullsMethods,
   infraDriftMethods,
   infraBreakGlassMethods,
+  infraAdoptMethods,
   infraRunsMethods,
   infraEnvelopesMethods,
   infraCurrencyMethods,

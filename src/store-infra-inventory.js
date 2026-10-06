@@ -205,6 +205,8 @@ export const infraInventoryMethods = {
           this.recordAlertSignals(alerts.map((a) => ({ ...a, environmentId: environment.id }))),
         );
     }
+    // Cost by environment and its budget (BRK-199): a failure here never fails the refresh.
+    await tryCall(() => this.recordInfraCosts(slices.map((s) => s.environment.id)));
     if (slices.length)
       await this.infraConnectionSeen(
         providerId,
