@@ -2,7 +2,7 @@ import { env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it } from 'vitest';
 import { api } from './helpers.js';
 import { fakeProvider } from './fake-infra-provider.js';
-import { DAY, foldSignals, signalEntry } from '../src/infra-signals.js';
+import { DAY, foldSignals, healthSignals, signalEntry } from '../src/infra-signals.js';
 import { SIGNAL_RAW_DAYS, SIGNAL_SUMMARY_DAYS, signalSubscribers } from '../src/store-infra-signals.js';
 
 const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
@@ -279,5 +279,36 @@ describe('signals', () => {
       '2026-10-01 db-main 1',
       '2026-10-02 svc-api 1',
     ]);
+  });
+});
+
+describe('health as signals (BRK-191)', () => {
+  const where = { source: 'fake', environment: 'production', environmentId: 7 };
+  const at = '2026-10-06T10:00:00.000Z';
+
+  it('signals degraded and down, healthy again once, and nothing for healthy or unknown', () => {
+    const health = [
+      { resource: 'svc-api', state: 'down', at, text: 'half its requests failed' },
+      { resource: 'db-main', state: 'degraded', at },
+      { resource: 'route-api', state: 'healthy', at },
+      { resource: 'svc-new', state: 'unknown', at },
+      { resource: 'svc-back', state: 'healthy', at, text: 'all good' },
+    ];
+    const before = new Map([
+      ['route-api', 'healthy'],
+      ['svc-new', 'down'],
+      ['svc-back', 'degraded'],
+    ]);
+    const signals = healthSignals(where, health, before);
+    expect(signals.map((s) => [s.resource, s.level, s.text])).toEqual([
+      ['svc-api', 'critical', 'svc-api is down: half its requests failed'],
+      ['db-main', 'warning', 'db-main is degraded'],
+      ['svc-back', 'info', 'svc-back is healthy again: all good'],
+    ]);
+    for (const s of signals) {
+      expect(s).toMatchObject({ source: 'fake', environment: 'production', environmentId: 7, kind: 'health', at });
+      expect(() => signalEntry(s)).not.toThrow();
+    }
+    expect(healthSignals(where, health.slice(2))).toEqual([]);
   });
 });

@@ -13,10 +13,16 @@
  * (src/infra-cloudflare-analytics.js, one query per dataset for the whole environment), times PRICES, a price table kept
  * as data with where and when it was read.
  *
- * Plan and apply (BRK-192), and observe and events (BRK-191), aren't built yet: each says so, naming its task, and the
- * store keeps the last health when one fails. Pure apart from `fetch`, so the CLI can import it.
+ * Observe (BRK-191) reads each resource's health from the same analytics over the last few minutes, plus a queue's
+ * backlog and a container application's instance counts; a route or custom domain takes its Worker's health. Events
+ * (BRK-191) reads the account's alert history and reports each alert as a signal on the Worker it names, the same way
+ * the board's alert webhook does (`alertFields`), and `alertSetup` reads which alerts are set up and which reach the
+ * board. Alerts need Notifications Read; the token never has Notifications Write.
+ *
+ * Plan and apply (BRK-192) aren't built yet: each says so, naming its task. Pure apart from `fetch`, so the CLI can
+ * import it.
  */
-import { COST_DATASETS, readDataset } from './infra-cloudflare-analytics.js';
+import { COST_DATASETS, HEALTH_DATASETS, HEALTH_WINDOW_MINUTES, readDataset } from './infra-cloudflare-analytics.js';
 import { checkApply } from './infra-provider.js';
 
 /** @typedef {import('./infra-provider.js').Provider} Provider */
@@ -466,7 +472,12 @@ export async function discover(ctx) {
       (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
     for (const route of routes) {
       if (!workers.has(String(route.script))) continue;
-      add({ id: rid('route', route.id), kind: 'route', name: String(route.pattern), attrs: { zone: zone.name } });
+      add({
+        id: rid('route', route.id),
+        kind: 'route',
+        name: String(route.pattern),
+        attrs: { zone: zone.name, worker: String(route.script) },
+      });
       relate(rid('worker', String(route.script)), rid('route', route.id), 'serves');
     }
   }
@@ -479,7 +490,7 @@ export async function discover(ctx) {
       id: rid('custom-domain', d.id),
       kind: 'custom-domain',
       name: String(d.hostname),
-      attrs: { zone: d.zone_name ?? null, environment: d.environment ?? null },
+      attrs: { zone: d.zone_name ?? null, environment: d.environment ?? null, worker: String(d.service) },
     });
     relate(rid('worker', String(d.service)), rid('custom-domain', d.id), 'serves');
   }
@@ -717,6 +728,323 @@ export async function cost(ctx) {
   });
 }
 
+/**
+ * When a resource's health turns: the share of requests that fail before it's degraded or down, how slow a D1 query
+ * may be on average, how long a queue's oldest message may wait, and how big a backlog may grow past its recent
+ * average before it's degraded.
+ */
+export const HEALTH_LIMITS = {
+  degradedErrors: 0.05,
+  downErrors: 0.5,
+  slowQueryMs: 1000,
+  staleQueueMinutes: 15,
+  growingBacklog: 1000,
+};
+
+const MINUTE = 60_000;
+const pct = (n) => `${Math.round(n * 100)}%`;
+const since = `in the last ${HEALTH_WINDOW_MINUTES} minutes`;
+
+/** Health from requests and the ones that failed: unknown with no requests, then by HEALTH_LIMITS. */
+function byErrors(requests, errors, noun = 'requests') {
+  if (!requests) return { state: 'unknown', text: `No ${noun} ${since}` };
+  const share = errors / requests;
+  const said = `${pct(share)} of ${requests} ${noun} failed ${since}`;
+  if (share >= HEALTH_LIMITS.downErrors) return { state: 'down', text: said };
+  if (share >= HEALTH_LIMITS.degradedErrors) return { state: 'degraded', text: said };
+  return { state: 'healthy', text: `${requests} ${noun}, ${errors} failed, ${since}` };
+}
+
+/**
+ * One resource's health from what the analytics and the APIs said.
+ * @param {Resource} r
+ * @param {Record<string, number> | undefined} u its usage over the window
+ * @param {{ backlog_count?: number, oldest_message_timestamp_ms?: number } | undefined} backlog a queue's, now
+ * @param {number} now
+ * @returns {{ state: string, text: string }}
+ */
+function judge(r, u = {}, backlog, now) {
+  const n = (k) => Number(u[k] ?? 0) || 0;
+  const attrs = /** @type {Record<string, any>} */ (r.attrs ?? {});
+  switch (r.kind) {
+    case 'worker':
+      if (Array.isArray(attrs.versions) && attrs.versions.length === 0)
+        return { state: 'down', text: 'No deployment: it serves nothing' };
+      return byErrors(n('requests'), n('errors'));
+    case 'durable-object':
+      return byErrors(n('requests'), n('errors'));
+    case 'r2': {
+      let all = 0;
+      let failed = 0;
+      for (const [k, v] of Object.entries(u)) {
+        if (!k.startsWith('requests:')) continue;
+        all += v;
+        if (Number(k.slice('requests:'.length)) >= 500) failed += v;
+      }
+      return byErrors(all, failed, 'operations');
+    }
+    case 'd1': {
+      const queries = n('readQueries') + n('writeQueries');
+      if (!queries) return { state: 'unknown', text: `No queries ${since}` };
+      const ms = Math.round(n('queryBatchTimeMs'));
+      if (ms > HEALTH_LIMITS.slowQueryMs)
+        return { state: 'degraded', text: `Queries took ${ms} ms on average ${since}` };
+      return { state: 'healthy', text: `${queries} queries, ${ms} ms on average, ${since}` };
+    }
+    case 'kv':
+      return n('requests')
+        ? { state: 'healthy', text: `${n('requests')} operations ${since}` }
+        : { state: 'unknown', text: `No operations ${since}` };
+    case 'queue': {
+      if (attrs.deliveryPaused) return { state: 'degraded', text: 'Delivery is paused' };
+      if (!backlog) return { state: 'unknown', text: 'Its backlog couldn’t be read' };
+      const count = Number(backlog.backlog_count ?? 0) || 0;
+      const oldest = Number(backlog.oldest_message_timestamp_ms ?? 0) || 0;
+      const waited = count && oldest ? Math.floor((now - oldest) / MINUTE) : 0;
+      if (waited > HEALTH_LIMITS.staleQueueMinutes)
+        return { state: 'degraded', text: `The oldest message has waited ${waited} minutes; ${count} in the backlog` };
+      const usual = Math.round(n('messages'));
+      if (count >= HEALTH_LIMITS.growingBacklog && count > 2 * usual)
+        return { state: 'degraded', text: `The backlog is growing: ${count} now, about ${usual} ${since}` };
+      return { state: 'healthy', text: `${count} in the backlog` };
+    }
+    case 'container': {
+      const active = attrs.active;
+      const assigned = attrs.assigned;
+      if (typeof active !== 'number' || typeof assigned !== 'number')
+        return { state: 'unknown', text: 'Its instance counts aren’t known' };
+      if (assigned > 0 && active === 0) return { state: 'down', text: `None of ${assigned} instances is running` };
+      if (active < assigned) return { state: 'degraded', text: `${active} of ${assigned} instances are running` };
+      return { state: 'healthy', text: `${active} of ${assigned} instances are running` };
+    }
+    default:
+      return { state: 'unknown', text: 'Cloudflare reports no health for it' };
+  }
+}
+
+/**
+ * Each resource's health now (BRK-188's "Observe" rows): errors and slowness over the last HEALTH_WINDOW_MINUTES from
+ * the analytics, one query per dataset for the whole environment; a queue's backlog now; a container application's
+ * instance counts as discover found them; and a route's or custom domain's from the Worker it serves. A dataset
+ * Cloudflare won't answer leaves its resources unknown, saying so; anything else (a 429, a 403, Cloudflare out of
+ * reach) stops it, so the store keeps the last health. Uses `ctx.resources` when the store passes what discover just
+ * found, and discovers otherwise.
+ * @param {ProviderContext} ctx
+ * @returns {Promise<import('./infra-provider.js').Health[]>}
+ */
+export async function observe(ctx) {
+  const resources = ctx.resources ?? (await discover(ctx)).resources;
+  if (!resources.length) return [];
+  const cf = reader(ctx);
+  const account = await accountOf(cf, ctx);
+  const now = Date.now();
+  const to = new Date(now);
+  const from = new Date(now - HEALTH_WINDOW_MINUTES * MINUTE);
+  /** @type {Map<string, Record<string, number>>} usage by resource ID */
+  const usage = new Map();
+  /** @type {Map<string, string>} what the analytics didn't answer, by resource ID */
+  const unread = new Map();
+  for (const d of Object.values(HEALTH_DATASETS)) {
+    const mine = resources.filter((r) => r.kind === d.kind);
+    if (!mine.length) continue;
+    const byKey = new Map(mine.map((r) => [usageKey(r), r.id]));
+    let found;
+    try {
+      found = await readDataset(ctx, { account, dataset: d, keys: [...byKey.keys()], from, to });
+    } catch (error) {
+      if (error?.status !== 400) throw error;
+      for (const r of mine) unread.set(r.id, d.label);
+      continue;
+    }
+    for (const [key, u] of found) usage.set(/** @type {string} */ (byKey.get(key)), u);
+  }
+  /** @type {Map<string, any>} a queue's backlog now, by resource ID */
+  const backlogs = new Map();
+  for (const r of resources.filter((q) => q.kind === 'queue')) {
+    const path = `/accounts/${enc(account)}/queues/${enc(r.id.slice('queue:'.length))}/metrics`;
+    try {
+      const json = await cf.get(path, { permission: 'Queues Read', missingOk: true });
+      if (json?.result) backlogs.set(r.id, json.result);
+    } catch (error) {
+      if (error?.status !== 403) throw error;
+    }
+  }
+
+  /** @type {Map<string, { state: string, text: string }>} */
+  const health = new Map();
+  for (const r of resources) {
+    if (r.kind === 'route' || r.kind === 'custom-domain') continue;
+    const label = unread.get(r.id);
+    health.set(
+      r.id,
+      label
+        ? { state: 'unknown', text: `Cloudflare’s analytics didn’t answer for its ${label}` }
+        : judge(r, usage.get(r.id), backlogs.get(r.id), now),
+    );
+  }
+  for (const r of resources) {
+    if (r.kind !== 'route' && r.kind !== 'custom-domain') continue;
+    const worker = String(/** @type {any} */ (r.attrs ?? {}).worker ?? '');
+    const its = health.get(rid('worker', worker));
+    health.set(
+      r.id,
+      its
+        ? { state: its.state, text: `Its Worker, ${worker}: ${its.text}` }
+        : { state: 'unknown', text: 'Its Worker isn’t in this environment' },
+    );
+  }
+  const at = to.toISOString();
+  return resources.map((r) => {
+    const h = /** @type {{ state: string, text: string }} */ (health.get(r.id));
+    return { resource: r.id, state: h.state, at, text: h.text };
+  });
+}
+
+/**
+ * A Cloudflare alert, cut down to three fields: its name, when it fired, and the Worker it names. Everything else
+ * (its text, data, account and policy IDs) is left out. The board's alert webhook (src/store-routines.js) and the
+ * alert history (`events`) both read alerts with this, so an alert heard both ways reads the same.
+ * @param {any} body a notification webhook's body, or an alert history entry's `alert_body`
+ * @returns {{ alert: string | null, at: string | null, worker: string | null }}
+ */
+export function alertFields(body) {
+  const pick = (...values) => values.find((v) => typeof v === 'string' && v.trim()) ?? null;
+  const data = body?.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {};
+  const ts = Number(body?.ts);
+  const at =
+    Number.isFinite(ts) && ts > 0
+      ? new Date(ts < 1e11 ? ts * 1000 : ts)
+      : new Date(pick(body?.timestamp, body?.time) ?? Number.NaN);
+  return {
+    alert: pick(body?.alert_name, body?.policy_name, body?.name, body?.alert_type),
+    at: Number.isNaN(at.getTime()) ? null : at.toISOString(),
+    worker: pick(data.script_name, data.worker_name, data.worker, data.service, data.script),
+  };
+}
+
+/** An alert signal's text: the alert's name and the Worker it names. */
+export function alertText(alert, worker) {
+  const name = String(alert ?? '').slice(0, 200) || 'unnamed alert';
+  return `Cloudflare alert: ${name}${worker ? ` on ${String(worker).slice(0, 100)}` : ''}`;
+}
+
+/**
+ * The account's alerts since `since`, from its alert history (`GET …/alerting/v3/history`, Notifications Read), as
+ * `alert` signals: each on the Worker it names when that Worker is in the environment, or on the whole environment
+ * when it names none; an alert about a Worker outside the environment is another environment's. Oldest first. The
+ * board's alert webhook reports the same alerts as they fire; the store keeps one of each.
+ * @param {ProviderContext} ctx
+ * @param {string} since ISO 8601
+ * @returns {Promise<import('./infra-provider.js').Signal[]>}
+ */
+export async function events(ctx, since) {
+  const from = Date.parse(since);
+  if (Number.isNaN(from)) throw new Error('cloudflare events needs a time to read since, in ISO 8601');
+  const now = Date.now();
+  if (from > now) return [];
+  const resources = ctx.resources ?? (await discover(ctx)).resources;
+  const workers = new Set(resources.filter((r) => r.kind === 'worker').map((r) => r.name));
+  const cf = reader(ctx);
+  const a = enc(await accountOf(cf, ctx));
+  const window = `since=${enc(new Date(from).toISOString())}&before=${enc(new Date(now).toISOString())}`;
+  const history = await cf.all(`/accounts/${a}/alerting/v3/history?${window}`, { permission: 'Notifications Read' });
+  /** @type {import('./infra-provider.js').Signal[]} */
+  const signals = [];
+  for (const entry of history) {
+    let body = entry?.alert_body;
+    if (typeof body === 'string')
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = {};
+      }
+    const fields = alertFields(body);
+    const at = fields.at ?? (Number.isNaN(Date.parse(entry?.sent)) ? null : new Date(entry.sent).toISOString());
+    if (!at || Date.parse(at) < from) continue;
+    if (fields.worker && !workers.has(fields.worker)) continue;
+    signals.push({
+      source: 'cloudflare',
+      environment: ctx.environment,
+      resource: fields.worker ? rid('worker', fields.worker) : null,
+      kind: 'alert',
+      level: 'warning',
+      value: null,
+      at,
+      text: alertText(fields.alert ?? entry?.name ?? entry?.alert_type, fields.worker),
+    });
+  }
+  return signals.sort((x, y) => Date.parse(x.at) - Date.parse(y.at));
+}
+
+/** The routine a webhook's URL fires on the board, or null when it points anywhere else. */
+function boardRoutine(url, board) {
+  try {
+    const u = new URL(String(url));
+    if (!board.includes(u.origin)) return null;
+    return /^\/api\/routines\/([a-z][a-z0-9-]{0,39})\/fire\/?$/u.exec(u.pathname)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which alerts reach the board (BRK-188, "Alerts"): the alert types the account can have (`available_alerts`), its
+ * policies (on or off, and whether one sends to a webhook that fires a routine on the board), and how many webhooks
+ * point at the board. Reads only, with Notifications Read: setting up a policy or a webhook is the owner's, in
+ * Cloudflare's dashboard. Keeps no address: a webhook's URL is only matched against `board`, and a policy's email or
+ * other destinations aren't read.
+ * @param {ProviderContext} ctx
+ * @param {{ board?: string[] }} [options] the board's own https origins
+ */
+export async function alertSetup(ctx, { board = [] } = {}) {
+  const cf = reader(ctx);
+  const a = enc(await accountOf(cf, ctx));
+  const opts = { permission: 'Notifications Read' };
+  const available = (await cf.get(`/accounts/${a}/alerting/v3/available_alerts`, opts)).result ?? {};
+  const policies = (await cf.get(`/accounts/${a}/alerting/v3/policies`, opts)).result ?? [];
+  const webhooks = (await cf.get(`/accounts/${a}/alerting/v3/destinations/webhooks`, opts)).result ?? [];
+  /** @type {Map<string, string>} the routine each webhook to the board fires, by the webhook's ID */
+  const toBoard = new Map();
+  for (const w of Array.isArray(webhooks) ? webhooks : []) {
+    const slug = boardRoutine(w?.url, board);
+    if (slug) toBoard.set(String(w.id), slug);
+  }
+  const shown = (Array.isArray(policies) ? policies : []).map((p) => {
+    const routines = [
+      ...new Set(
+        (p?.mechanisms?.webhooks ?? [])
+          .map((m) => toBoard.get(String(m?.id)))
+          .filter((slug) => typeof slug === 'string'),
+      ),
+    ];
+    return {
+      name: String(p?.name ?? '').slice(0, 200),
+      alertType: String(p?.alert_type ?? ''),
+      enabled: Boolean(p?.enabled),
+      reachesBoard: Boolean(p?.enabled) && routines.length > 0,
+      routines,
+    };
+  });
+  const types =
+    available && typeof available === 'object'
+      ? Object.entries(available).flatMap(([product, list]) =>
+          (Array.isArray(list) ? list : []).map((t) => ({
+            type: String(t?.type ?? ''),
+            name: String(t?.display_name ?? t?.type ?? '').slice(0, 200),
+            product: String(product).slice(0, 100),
+          })),
+        )
+      : [];
+  return {
+    alerts: types.map((t) => {
+      const mine = shown.filter((p) => p.alertType === t.type);
+      return { ...t, policies: mine.length, reachesBoard: mine.some((p) => p.reachesBoard) };
+    }),
+    policies: shown,
+    webhooks: { toBoard: toBoard.size, other: (Array.isArray(webhooks) ? webhooks.length : 0) - toBoard.size },
+  };
+}
+
 /** A step that isn't built yet, naming the task that builds it. */
 const notYet = (step, task) => async () => {
   throw new Error(`cloudflare ${step} isn't built yet (${task})`);
@@ -766,7 +1094,8 @@ export const cloudflare = {
     checkApply(cloudflare, ctx, p);
     return notYet('apply', 'BRK-192')();
   },
-  observe: notYet('observe', 'BRK-191'),
+  observe,
   cost,
-  events: notYet('events', 'BRK-191'),
+  events,
+  alerts: alertSetup,
 };

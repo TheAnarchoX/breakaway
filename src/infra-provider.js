@@ -183,6 +183,19 @@ export const COST_NOTE_MAX = 500;
  * @property {(ctx: ProviderContext) => Promise<Health[]>} observe
  * @property {(ctx: ProviderContext) => Promise<Cost[]>} cost
  * @property {(ctx: ProviderContext, since: string) => Promise<Signal[]>} events
+ * @property {(ctx: ProviderContext, options: { board: string[] }) => Promise<AlertSetup>} [alerts] reads which of the
+ *   platform's alerts are set up and which reach the board (`board` is its https origins), for a provider whose
+ *   platform sends alerts to the board
+ */
+
+/**
+ * Which of a platform's alerts are set up, and which reach the board: each alert type with how many policies use it
+ * and whether one sends to the board, each policy (on or off, the routines on the board it fires), and how many
+ * webhooks point at the board. Names only: never an address or a destination's URL.
+ * @typedef {object} AlertSetup
+ * @property {Array<{ type: string, name: string, product: string, policies: number, reachesBoard: boolean }>} alerts
+ * @property {Array<{ name: string, alertType: string, enabled: boolean, reachesBoard: boolean, routines: string[] }>} policies
+ * @property {{ toBoard: number, other: number }} webhooks
  */
 
 const METHODS = ['discover', 'plan', 'apply', 'observe', 'cost', 'events'];

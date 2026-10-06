@@ -1,17 +1,26 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { COST_DATASETS, analyticsQuery, datasetQuery, readDataset } from '../src/infra-cloudflare-analytics.js';
+import {
+  COST_DATASETS,
+  HEALTH_DATASETS,
+  analyticsQuery,
+  datasetQuery,
+  readDataset,
+} from '../src/infra-cloudflare-analytics.js';
 import {
   COST_NOTE,
   NEVER_CALLED,
   PRICES,
+  alertSetup,
   checkToken,
   cloudflare,
   cost,
   discover,
+  events,
+  observe,
   rid,
 } from '../src/infra-cloudflare.js';
-import { checkCosts, checkDiscovery, checkProvider } from '../src/infra-provider.js';
+import { checkCosts, checkDiscovery, checkHealth, checkProvider, checkSignals } from '../src/infra-provider.js';
 import { providers } from '../src/infra-providers.js';
 import { scopeDiscovery } from '../src/infra-inventory.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -19,6 +28,9 @@ import { api, boardApi } from './helpers.js';
 import { providerContract } from './infra-provider-contract.js';
 import {
   ACCOUNT,
+  ALERT_NEVER_KEPT,
+  ALERT_ROUTINE,
+  ALERT_TIMES,
   CONTAINER,
   D1_ID,
   DO_COUNTER,
@@ -52,7 +64,7 @@ providerContract(
       since: '2026-10-01T00:00:00Z',
     };
   },
-  { notYet: { plan: 'BRK-192', apply: 'BRK-192', observe: 'BRK-191', events: 'BRK-191' } },
+  { notYet: { plan: 'BRK-192', apply: 'BRK-192' } },
 );
 
 describe('the Cloudflare provider’s discover (BRK-189)', () => {
@@ -513,7 +525,7 @@ describe('discovering into the inventory (BRK-189)', () => {
     const inventory = await (await api('infra/inventory?provider=cloudflare')).json();
     expect(inventory.resources.map((r) => r.id)).toContain(`d1:${D1_ID}`);
     expect(inventory.resources.every((r) => r.owner.environment === 'production')).toBe(true);
-    expect(inventory.resources.every((r) => r.health === null)).toBe(true);
+    expect(inventory.resources.every((r) => r.health !== null)).toBe(true);
     const api_ = inventory.resources.find((r) => r.id === 'worker:acme-api');
     expect(api_.cost).toMatchObject({ currency: 'USD', perMonth: true, estimate: true });
     expect(api_.cost.amount).toBeCloseTo((0.7 * 0.3 + 3.5 * 0.02) * (30 / 7), 3);
@@ -531,5 +543,439 @@ describe('discovering into the inventory (BRK-189)', () => {
     expect(row.provider.discovery).toMatchObject({ ok: true });
     expect(row.items.find((i) => i.name === 'Containers Read')).toMatchObject({ ok: false });
     expect(row.items.find((i) => i.name === 'D1 Read')).toMatchObject({ ok: true });
+  });
+});
+
+/** Fifteen made-up minutes of analytics: acme-api failing, acme-auth degraded, a slow database, R2 with some 503s. */
+function healthRows() {
+  return {
+    workersInvocationsAdaptive: [
+      { sum: { requests: 1_000, errors: 600 }, dimensions: { scriptName: 'acme-api' } },
+      { sum: { requests: 1_000, errors: 100 }, dimensions: { scriptName: 'acme-auth' } },
+      { sum: { requests: 5_000, errors: 5_000 }, dimensions: { scriptName: 'acme-other' } },
+    ],
+    durableObjectsInvocationsAdaptiveGroups: [
+      { sum: { requests: 100, errors: 0 }, dimensions: { namespaceId: DO_ROOMS } },
+    ],
+    d1AnalyticsAdaptiveGroups: [
+      {
+        sum: { readQueries: 40, writeQueries: 10 },
+        avg: { queryBatchTimeMs: 2_500 },
+        dimensions: { databaseId: D1_ID },
+      },
+    ],
+    kvOperationsAdaptiveGroups: [{ sum: { requests: 10 }, dimensions: { namespaceId: KV_CACHE } }],
+    r2OperationsAdaptiveGroups: [
+      { sum: { requests: 90 }, dimensions: { bucketName: 'acme-files', responseStatusCode: 200 } },
+      { sum: { requests: 10 }, dimensions: { bucketName: 'acme-files', responseStatusCode: 503 } },
+    ],
+    queuesBacklogAdaptiveGroups: [{ avg: { messages: 10 }, dimensions: { queueId: QUEUE_JOBS } }],
+  };
+}
+
+describe('the Cloudflare provider’s observe (BRK-191)', () => {
+  const W = (name) => rid('worker', name);
+  const healthOf = async (answers) => {
+    const { ctx, fetch } = context(answers);
+    const health = checkHealth(cloudflare, await observe(ctx));
+    return { fetch, by: Object.fromEntries(health.map((h) => [h.resource, h])) };
+  };
+
+  it('reads each resource’s health from the last 15 minutes, and routes and domains take their Worker’s', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage(healthRows());
+    const { by } = await healthOf(answers);
+    const state = Object.fromEntries(Object.entries(by).map(([id, h]) => [id, h.state]));
+    expect(state).toEqual({
+      [W('acme-api')]: 'down',
+      [W('acme-auth')]: 'degraded',
+      [W('acme-rooms')]: 'unknown',
+      [`d1:${D1_ID}`]: 'degraded',
+      [`kv:${KV_CACHE}`]: 'healthy',
+      [`kv:${KV_SESSIONS}`]: 'unknown',
+      'r2:acme-files': 'degraded',
+      [`queue:${QUEUE_JOBS}`]: 'healthy',
+      [`durable-object:${DO_ROOMS}`]: 'healthy',
+      [`durable-object:${DO_COUNTER}`]: 'unknown',
+      [`container:${CONTAINER}`]: 'healthy',
+      'route:0000000000000000000000000000d101': 'down',
+      'custom-domain:0000000000000000000000000000d201': 'down',
+    });
+    expect(by[W('acme-api')].text).toBe('60% of 1000 requests failed in the last 15 minutes');
+    expect(by[`d1:${D1_ID}`].text).toBe('Queries took 2500 ms on average in the last 15 minutes');
+    expect(by['r2:acme-files'].text).toBe('10% of 100 operations failed in the last 15 minutes');
+    expect(by[`queue:${QUEUE_JOBS}`].text).toBe('12 in the backlog');
+    expect(by[`container:${CONTAINER}`].text).toBe('2 of 2 instances are running');
+    expect(by['route:0000000000000000000000000000d101'].text).toMatch(/^Its Worker, acme-api: 60% of 1000/u);
+    expect(by[W('acme-rooms')].text).toBe('No requests in the last 15 minutes');
+  });
+
+  it('asks one query per dataset for the whole environment, over the last 15 minutes, and reads nothing else', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage(healthRows());
+    const { ctx, fetch } = context(answers);
+    const found = await discover(ctx);
+    fetch.calls.length = 0;
+    await observe({ ...ctx, resources: found.resources });
+    const queries = fetch.calls.filter((c) => c.path === '/graphql');
+    expect(queries.map((c) => c.body.query)).toEqual(Object.values(HEALTH_DATASETS).map((d) => datasetQuery(d)));
+    for (const q of queries) {
+      const { from, to } = q.body.variables;
+      expect(Date.parse(to) - Date.parse(from)).toBe(15 * 60_000);
+      expect(q.body.variables.account).toBe(ACCOUNT);
+    }
+    const workers = queries.find((q) => q.body.query.includes('workersInvocationsAdaptive('));
+    expect(workers.body.variables.keys).toEqual(['acme-api', 'acme-auth', 'acme-rooms']);
+    // The rest is the account and the queue's backlog now: given what discover found, it discovers nothing again.
+    expect(fetch.calls.filter((c) => c.path !== '/graphql').map((c) => c.path)).toEqual([
+      '/accounts?page=1&per_page=50',
+      `/accounts/${ACCOUNT}/queues/${QUEUE_JOBS}/metrics`,
+    ]);
+    for (const c of fetch.calls) expect(NEVER_CALLED.some((re) => re.test(c.path.split('?')[0]))).toBe(false);
+  });
+
+  it('calls a Worker with no deployment down, a stopped container down, and a waiting or paused queue degraded', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage({ ...healthRows(), queuesBacklogAdaptiveGroups: [] });
+    answers[`/accounts/${ACCOUNT}/queues/${QUEUE_JOBS}/metrics`] = () => ({
+      success: true,
+      result: { backlog_count: 40, oldest_message_timestamp_ms: Date.now() - 45.5 * 60_000 },
+    });
+    const { ctx } = context(answers);
+    const found = await discover(ctx);
+    const resources = found.resources.map((r) => {
+      if (r.id === W('acme-auth')) return { ...r, attrs: { ...r.attrs, versions: [] } };
+      if (r.kind === 'container') return { ...r, attrs: { ...r.attrs, active: 0, assigned: 2 } };
+      return r;
+    });
+    const by = Object.fromEntries((await observe({ ...ctx, resources })).map((h) => [h.resource, h]));
+    expect(by[W('acme-auth')]).toMatchObject({ state: 'down', text: 'No deployment: it serves nothing' });
+    expect(by[`container:${CONTAINER}`]).toMatchObject({ state: 'down', text: 'None of 2 instances is running' });
+    expect(by[`queue:${QUEUE_JOBS}`]).toMatchObject({
+      state: 'degraded',
+      text: 'The oldest message has waited 45 minutes; 40 in the backlog',
+    });
+
+    const paused = resources.map((r) =>
+      r.kind === 'queue' ? { ...r, attrs: { ...r.attrs, deliveryPaused: true } } : r,
+    );
+    const again = await observe({ ...ctx, resources: paused });
+    expect(again.find((h) => h.resource === `queue:${QUEUE_JOBS}`)).toMatchObject({
+      state: 'degraded',
+      text: 'Delivery is paused',
+    });
+  });
+
+  it('leaves a dataset Cloudflare won’t answer unknown, and stops on a 429 or a token without the analytics', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage({ ...healthRows(), d1AnalyticsAdaptiveGroups: 'unknown field "avg"' });
+    const { by } = await healthOf(answers);
+    expect(by[`d1:${D1_ID}`]).toMatchObject({
+      state: 'unknown',
+      text: 'Cloudflare’s analytics didn’t answer for its queries and their time',
+    });
+    expect(by[W('acme-api')].state).toBe('down');
+
+    for (const [status, permission] of [
+      [429, undefined],
+      [403, 'Account Analytics Read'],
+    ]) {
+      const refused = cloudflareAnswers();
+      refused['/graphql'] = status;
+      const { ctx } = context(refused);
+      await expect(observe(ctx)).rejects.toMatchObject({ status, ...(permission ? { permission } : {}) });
+    }
+  });
+
+  it('observes nothing in an environment with nothing in it, and asks for a token first', async () => {
+    const { ctx, fetch } = context();
+    expect(await observe({ ...ctx, resources: [] })).toEqual([]);
+    expect(fetch.calls).toEqual([]);
+    await expect(observe({ ...ctx, token: undefined })).rejects.toThrow(/no read-only token/u);
+  });
+});
+
+describe('the Cloudflare provider’s events and alerts (BRK-191)', () => {
+  it('reports the alert history as alert signals on the Worker each names, or the whole environment', async () => {
+    const { ctx, fetch } = context();
+    const since = '2026-10-01T00:00:00Z';
+    const signals = checkSignals(cloudflare, ctx, since, await events(ctx, since));
+    expect(signals).toEqual([
+      {
+        source: 'cloudflare',
+        environment: 'production',
+        resource: 'worker:acme-api',
+        kind: 'alert',
+        level: 'warning',
+        value: null,
+        at: ALERT_TIMES[0],
+        text: 'Cloudflare alert: Worker error rate on acme-api',
+      },
+      {
+        source: 'cloudflare',
+        environment: 'production',
+        resource: null,
+        kind: 'alert',
+        level: 'warning',
+        value: null,
+        at: ALERT_TIMES[2],
+        text: 'Cloudflare alert: Usage based billing',
+      },
+    ]);
+    const stored = JSON.stringify(signals);
+    for (const value of [...ALERT_NEVER_KEPT, 'acme-other', ACCOUNT]) expect(stored).not.toContain(value);
+    const history = fetch.calls.find((c) => c.path.includes('/alerting/v3/history'));
+    const url = new URL(`https://x${history.path}`);
+    expect(url.searchParams.get('since')).toBe('2026-10-01T00:00:00.000Z');
+    expect(Date.parse(url.searchParams.get('before') ?? '')).toBeGreaterThan(Date.parse(since));
+    for (const c of fetch.calls) expect(c.method).toBe('GET');
+  });
+
+  it('asks only for what’s new, asks nothing for a time ahead, and names Notifications Read when it’s refused', async () => {
+    const { ctx, fetch } = context();
+    expect(await events(ctx, new Date(Date.parse(ALERT_TIMES[1]) + 1).toISOString())).toHaveLength(1);
+    fetch.calls.length = 0;
+    expect(await events(ctx, new Date(Date.now() + 86_400_000).toISOString())).toEqual([]);
+    expect(fetch.calls).toEqual([]);
+
+    const answers = cloudflareAnswers();
+    answers[`/accounts/${ACCOUNT}/alerting/v3/history?*`] = 403;
+    await expect(events(context(answers).ctx, '2026-10-01T00:00:00Z')).rejects.toMatchObject({
+      status: 403,
+      permission: 'Notifications Read',
+    });
+  });
+
+  it('reads which alerts are set up and which reach the board, keeping names and never an address', async () => {
+    const { ctx, fetch } = context();
+    const setup = await alertSetup(ctx, { board: [ORIGIN] });
+    expect(setup.alerts).toEqual([
+      { type: 'workers_alert', name: 'Worker error rate', product: 'Workers', policies: 1, reachesBoard: true },
+      {
+        type: 'billing_usage_alert',
+        name: 'Usage based billing',
+        product: 'Billing',
+        policies: 1,
+        reachesBoard: false,
+      },
+      {
+        type: 'real_origin_monitoring',
+        name: 'Origin error rate',
+        product: 'Origin Monitoring',
+        policies: 1,
+        reachesBoard: false,
+      },
+    ]);
+    expect(setup.policies).toEqual([
+      {
+        name: 'Errors to the board',
+        alertType: 'workers_alert',
+        enabled: true,
+        reachesBoard: true,
+        routines: [ALERT_ROUTINE],
+      },
+      { name: 'Billing by email', alertType: 'billing_usage_alert', enabled: true, reachesBoard: false, routines: [] },
+      {
+        name: 'Origin errors (off)',
+        alertType: 'real_origin_monitoring',
+        enabled: false,
+        reachesBoard: false,
+        routines: [ALERT_ROUTINE],
+      },
+    ]);
+    expect(setup.webhooks).toEqual({ toBoard: 1, other: 1 });
+    const kept = JSON.stringify(setup);
+    for (const value of [...ALERT_NEVER_KEPT, 'tasks.acme.example', 'wh-board']) expect(kept).not.toContain(value);
+    for (const c of fetch.calls) expect(c.method).toBe('GET');
+
+    // Another board's webhook doesn't reach this one.
+    const elsewhere = await alertSetup(ctx, { board: ['https://tasks.other.example'] });
+    expect(elsewhere.webhooks).toEqual({ toBoard: 0, other: 2 });
+    expect(elsewhere.alerts.some((a) => a.reachesBoard)).toBe(false);
+  });
+});
+
+describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () => {
+  const inStore = (fn) => runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), fn);
+  let spy;
+  afterEach(() => spy?.mockRestore());
+
+  /** Points Cloudflare's API at `answers`, connects the token, and makes sure production runs `acme-api`. */
+  async function onCloudflare(answers) {
+    const cf = cloudflareApi(answers);
+    spy?.mockRestore();
+    spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith('https://api.cloudflare.com/')) return cf(url, init);
+      return new Response('{}', { status: 404 });
+    });
+    const put = await boardApi('infra/connections/cloudflare', { method: 'PUT', body: { token: TOKEN } });
+    expect(put.status).toBeLessThan(300);
+    const listed = await (await api('infra/environments?repo=widgets')).json();
+    let production = listed.environments.find((e) => e.name === 'production');
+    if (!production) {
+      const made = await boardApi('infra/environments', {
+        method: 'POST',
+        body: { repo: 'widgets', name: 'production', kind: 'production', provider: 'cloudflare', target: 'acme-api' },
+      });
+      expect(made.status).toBe(201);
+      production = (await made.json()).environment;
+    }
+    return { cf, production };
+  }
+  const signals = async (query) =>
+    (await (await api(`infra/signals?environment=production&source=cloudflare&${query}`)).json()).signals;
+
+  it('turns failing health into signals on the right resource, and again once it’s healthy', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage(healthRows());
+    const { production } = await onCloudflare(answers);
+    await inStore((s) => s.refreshInventory('cloudflare'));
+
+    const health = await signals('kind=health');
+    const on = (id) => health.filter((s) => s.resource === id);
+    expect(on('worker:acme-api')).toEqual([
+      expect.objectContaining({
+        source: 'cloudflare',
+        environment: 'production',
+        environmentId: production.id,
+        kind: 'health',
+        level: 'critical',
+        text: 'worker:acme-api is down: 60% of 1000 requests failed in the last 15 minutes',
+      }),
+    ]);
+    expect(on('worker:acme-auth')).toEqual([expect.objectContaining({ level: 'warning' })]);
+    expect(on('route:0000000000000000000000000000d101')).toEqual([expect.objectContaining({ level: 'critical' })]);
+    // Healthy and unknown resources add nothing: the inventory keeps their health.
+    expect(on(`kv:${KV_CACHE}`)).toEqual([]);
+    expect(on(`kv:${KV_SESSIONS}`)).toEqual([]);
+    const inventory = await (await api('infra/inventory?provider=cloudflare')).json();
+    expect(inventory.resources.find((r) => r.id === 'worker:acme-api').health).toMatchObject({ state: 'down' });
+
+    const row = (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
+    expect(row.provider.signal).toMatchObject({ ok: true });
+
+    // Fixed: acme-api is healthy again, and says so once.
+    const fixed = healthRows();
+    fixed.workersInvocationsAdaptive[0].sum.errors = 0;
+    answers['/graphql'] = cloudflareUsage(fixed);
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    const after = (await signals('kind=health&resource=worker:acme-api')).map((s) => `${s.level} ${s.text}`);
+    expect(after).toEqual([
+      'info worker:acme-api is healthy again: 1000 requests, 0 failed, in the last 15 minutes',
+      'critical worker:acme-api is down: 60% of 1000 requests failed in the last 15 minutes',
+    ]);
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    expect(await signals('kind=health&resource=worker:acme-api')).toHaveLength(2);
+  });
+
+  it('adds the alert history once, on the Worker it names or the whole environment, and nothing it leaves out', async () => {
+    const { production } = await onCloudflare(cloudflareAnswers());
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    const alerts = await signals('kind=alert');
+    expect(alerts.filter((a) => a.at === ALERT_TIMES[0] || a.at === ALERT_TIMES[2])).toEqual([
+      expect.objectContaining({
+        resource: null,
+        environmentId: production.id,
+        text: 'Cloudflare alert: Usage based billing',
+      }),
+      expect.objectContaining({
+        resource: 'worker:acme-api',
+        level: 'warning',
+        text: 'Cloudflare alert: Worker error rate on acme-api',
+      }),
+    ]);
+    const stored = JSON.stringify(alerts);
+    for (const value of [...ALERT_NEVER_KEPT, 'acme-other']) expect(stored).not.toContain(value);
+
+    // The same history again (as after a refresh that failed half way) adds nothing.
+    const { ctx } = context();
+    const history = await events(ctx, new Date(Date.parse(ALERT_TIMES[0]) - 1).toISOString());
+    expect(history).toHaveLength(2);
+    const again = await inStore((s) =>
+      s.recordAlertSignals(history.map((a) => ({ ...a, environmentId: production.id }))),
+    );
+    expect(again).toEqual([]);
+    expect(await signals('kind=alert')).toHaveLength(alerts.length);
+  });
+
+  it('records a Cloudflare webhook’s alert as a signal on its Worker, once, and the routine still starts', async () => {
+    const { production } = await onCloudflare(cloudflareAnswers());
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    const made = await api('routines', {
+      method: 'POST',
+      body: { slug: ALERT_ROUTINE, name: 'Cloudflare alerts', prompt: 'Look into the alert.', gapMinutes: 0 },
+    });
+    expect(made.status).toBe(201);
+    const secret = (
+      await (await api(`routines/${ALERT_ROUTINE}/triggers`, { method: 'POST', body: { label: 'cloudflare' } })).json()
+    ).secret;
+    const fire = (alert) =>
+      SELF.fetch(`${ORIGIN}/api/routines/${ALERT_ROUTINE}/fire`, {
+        method: 'POST',
+        headers: { 'cf-webhook-auth': secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify(alert),
+      });
+    const count = async () => (await signals('kind=alert')).length;
+    const before = await count();
+
+    // The alert the history already brought in: the webhook's copy is the same signal.
+    const heard = await fire({
+      alert_name: 'Worker error rate',
+      ts: Date.parse(ALERT_TIMES[0]) / 1000,
+      text: 'acme-alert-details: write to oncall@example.com',
+      data: { script_name: 'acme-api' },
+    });
+    expect(heard.status).toBe(202);
+    expect((await heard.json()).task.wid).toBeTruthy();
+    expect(await count()).toBe(before);
+
+    // A new one becomes one signal on acme-api in production, however often it's delivered.
+    const cpu = { alert_name: 'Worker CPU time', ts: Math.floor(Date.now() / 1000), data: { script_name: 'acme-api' } };
+    expect((await fire(cpu)).status).toBe(202);
+    expect((await fire(cpu)).status).toBe(202);
+    const onApi = (await signals('kind=alert&resource=worker:acme-api')).filter((s) => /CPU/u.test(s.text));
+    expect(onApi).toEqual([
+      expect.objectContaining({
+        environmentId: production.id,
+        level: 'warning',
+        text: 'Cloudflare alert: Worker CPU time on acme-api',
+      }),
+    ]);
+
+    // An alert naming no Worker is about the whole environment.
+    expect((await fire({ alert_name: 'Zone traffic anomaly', ts: Math.floor(Date.now() / 1000) })).status).toBe(202);
+    const whole = (await signals('kind=alert')).find((s) => s.text === 'Cloudflare alert: Zone traffic anomaly');
+    expect(whole).toMatchObject({ resource: null, environmentId: production.id });
+    expect(JSON.stringify(await signals('kind=alert'))).not.toContain('oncall@example.com');
+  });
+
+  it('marks the signal connection when the alert history is refused, and still refreshes the inventory', async () => {
+    const answers = cloudflareAnswers();
+    answers[`/accounts/${ACCOUNT}/alerting/v3/history?*`] = 403;
+    await onCloudflare(answers);
+    const result = await inStore((s) => s.refreshInventory('cloudflare'));
+    expect(result.resources).toBeGreaterThan(0);
+    const row = (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
+    expect(row.provider.signal).toMatchObject({ ok: false });
+    expect(row.items.find((i) => i.name === 'Notifications Read')).toMatchObject({ ok: false });
+    expect(JSON.stringify(row)).not.toContain(TOKEN);
+  });
+
+  it('says which alerts reach the board on GET /api/infra/alerts, read only', async () => {
+    await onCloudflare(cloudflareAnswers());
+    const res = await api('infra/alerts?provider=cloudflare');
+    expect(res.status).toBe(200);
+    const setup = await res.json();
+    expect(setup.provider).toBe('cloudflare');
+    expect(setup.alerts.find((a) => a.type === 'workers_alert')).toMatchObject({ reachesBoard: true });
+    expect(setup.policies.find((p) => p.name === 'Errors to the board')).toMatchObject({ routines: [ALERT_ROUTINE] });
+    expect(setup.webhooks).toEqual({ toBoard: 1, other: 1 });
+    const kept = JSON.stringify(setup);
+    for (const value of [...ALERT_NEVER_KEPT, TOKEN]) expect(kept).not.toContain(value);
+
+    expect((await api('infra/alerts')).status).toBe(400);
+    expect((await api('infra/alerts?provider=nowhere')).status).toBe(404);
+    expect((await api('infra/alerts?provider=cloudflare', { method: 'POST', body: {} })).status).toBe(405);
   });
 });
