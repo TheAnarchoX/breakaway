@@ -8489,3 +8489,162 @@ a.pl-mention {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---------- infrastructure (WEB-60) ---------- */
+
+/* Each repository's environments as cards: one column on a phone, as many as fit on a wide screen. */
+.infra-view {
+  display: grid;
+  gap: 20px;
+}
+.infra-view .conn-top {
+  align-items: center;
+}
+.infra-notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.infra-notice > svg {
+  flex: none;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.infra-notice > div {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.infra-notice h2 {
+  font-size: 18px;
+}
+.infra-notice p {
+  margin: 0;
+  font-size: 14px;
+}
+.infra-repo {
+  display: grid;
+  gap: 10px;
+}
+.infra-repo h2 {
+  font-size: 18px;
+}
+.infra-envs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+}
+.infra-env {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.infra-env.is-frozen {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+.infra-env-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.infra-env-name {
+  margin: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.infra-kind {
+  padding: 1px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 600 12px / 1.5 var(--font-mono);
+}
+.infra-env-where {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.infra-health-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.infra-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font: 600 12px / 1.4 var(--font-mono);
+  white-space: nowrap;
+  width: fit-content;
+}
+.infra-health-healthy {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.infra-health-degraded {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+/* No red text below display size: the icon carries the red. */
+.infra-health-down {
+  color: var(--text);
+  background: var(--danger-bg);
+}
+.infra-health-down svg {
+  color: var(--danger);
+}
+.infra-health-unknown,
+.infra-health-none {
+  color: var(--muted);
+}
+.infra-flags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.infra-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.infra-flag-frozen {
+  color: var(--text);
+  font-weight: 600;
+}
+.infra-env-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.infra-form {
+  display: grid;
+  gap: 12px;
+}
+.infra-form-hint {
+  margin-top: -6px;
+}
+.infra-form-actions {
+  justify-content: flex-end;
+}

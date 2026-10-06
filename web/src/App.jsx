@@ -51,6 +51,7 @@ import { AddRepoView } from './views/AddRepoView.jsx';
 import { RepoSettingsView } from './views/RepoSettingsView.jsx';
 import { KickoffView } from './views/KickoffView.jsx';
 import { SettingsView } from './views/SettingsView.jsx';
+import { InfrastructureView } from './views/InfrastructureView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { NewAgentDialog } from './components/NewAgent.jsx';
@@ -66,6 +67,7 @@ const VIEW_COMPONENTS = {
   list: ListView,
   roadmap: RoadmapView,
   graph: GraphView,
+  infrastructure: InfrastructureView,
   inbox: InboxView,
   activity: ActivityView,
   github: GitHubView,

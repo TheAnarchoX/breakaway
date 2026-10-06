@@ -802,6 +802,7 @@ export const VIEWS = [
   { id: 'list', label: 'List', key: 'l' },
   { id: 'roadmap', label: 'Roadmap', key: 'm' },
   { id: 'graph', label: 'Dependencies', key: 'd' },
+  { id: 'infrastructure', label: 'Infrastructure', key: 'n' },
   { id: 'inbox', label: 'Inbox', key: 'i' },
   { id: 'activity', label: 'Activity', key: 't' },
   { id: 'github', label: 'GitHub', key: 'h' },
