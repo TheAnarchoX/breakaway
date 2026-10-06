@@ -252,7 +252,7 @@ describe('break-glass in the store (BRK-187)', () => {
   it('refuses while an approved drift plan is about to put things back', async () => {
     const [draft] = (await driftPlans()).filter((p) => p.state === 'draft');
     await inStore((s) => s.moveInfraPlan(draft.id, 'waiting', { by: 'owner' }));
-    await inStore((s) => s.moveInfraPlan(draft.id, 'approved', { by: 'owner' }));
+    await inStore((s) => s.moveInfraPlan(draft.id, 'approved', { by: 'owner', digest: 'a'.repeat(64) }));
     expect(await body(await mark())).toMatchObject({ status: 409, error: /approved/u });
     expect(await glassAudit()).toHaveLength(1);
   });

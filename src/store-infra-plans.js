@@ -9,15 +9,16 @@
  * transaction: a change that can't be recorded doesn't happen.
  *
  * Anyone signed in reads plans, and an agent may propose one (a draft); a draft waits for the owner only by the owner's
- * hand, from the signed-in board, or the board's own. Approve and reject are BRK-182's, and applying is the executor's: `moveInfraPlan` is the one
- * path that changes a plan's state, for them to call. The plan's hash is `planDigest(diff)` (src/infra-runner.js),
- * stored on approval (BRK-182).
+ * hand, from the signed-in board, or the board's own. Approve and reject are store-infra-approvals.js's (BRK-182), and
+ * applying is the executor's: `moveInfraPlan` is the one path that changes a plan's state, for them to call. The plan's
+ * hash is `planDigest(diff)` (src/infra-runner.js), stored on approval.
  */
 import { AgentError } from './store-agents.js';
 import { install } from './install.js';
 import { redact } from './redact.js';
 import { runsTheBoard } from './infra-environments.js';
 import { checkCosts, checkDesired, checkPlan } from './infra-provider.js';
+import { costChangeInCurrency } from './infra-currency.js';
 import {
   MAX_PLAN_BYTES,
   MAX_PLAN_CHANGES,
@@ -198,7 +199,8 @@ export const infraPlansMethods = {
         });
         if (e) estimates.set(c.resource, { amount: e.amount, currency: e.currency });
       }
-    const cost = costChange(stored, costs, estimates);
+    // In the board's currency, with its rate (BRK-226): the policy's limits are in it, and the plan keeps what it was checked with.
+    const cost = costChangeInCurrency(costChange(stored, costs, estimates), this.infraCurrency());
     const blast = blastRadius(stored, inventory);
     return { provider, stored, cost, blast };
   },
@@ -274,7 +276,8 @@ export const infraPlansMethods = {
         summary: `${stored.changes.length} change${stored.changes.length === 1 ? '' : 's'} from ${from.source}${from.ref ? ` ${from.ref}` : ''}${stored.reversible ? '' : ', not all reversible'}; ${policySummary(policy)}`,
       });
     });
-    return planView(this.planRow(n));
+    // A plan the repository's policy lets through is approved by the board (BRK-182, store-infra-approvals.js).
+    return this.settleInfraPlan(planView(this.planRow(n)));
   },
 
   /**
@@ -282,9 +285,10 @@ export const infraPlansMethods = {
    * one path every later piece (approve, reject, the executor) changes a plan through.
    * @param {string} ref the plan's ID
    * @param {string} to
-   * @param {{ by: 'owner' | 'board' | 'executor' | 'envelope' | 'agent', agent?: string | null, outcome?: string, summary?: string }} input
+   * `digest`, on a move to approved, is planDigest() of the plan's diff (store-infra-approvals.js), kept with the time.
+   * @param {{ by: 'owner' | 'board' | 'executor' | 'envelope' | 'agent', agent?: string | null, outcome?: string, summary?: string, digest?: string }} input
    */
-  moveInfraPlan(ref, to, { by, agent = null, outcome, summary = '' } = /** @type {any} */ ({})) {
+  moveInfraPlan(ref, to, { by, agent = null, outcome, summary = '', digest } = /** @type {any} */ ({})) {
     let row;
     this.ctx.storage.transactionSync(() => {
       row = this.planRow(ref);
@@ -300,7 +304,19 @@ export const infraPlansMethods = {
           .toArray()[0];
         if (env?.frozen) throw new AgentError(`${planId(Number(row.n))} can’t become ${to}: ${frozen(env)}`, 409);
       }
-      this.sql.exec('UPDATE infra_plans SET state = ?, updated = ? WHERE n = ?', to, Date.now(), row.n);
+      if (to === 'approved' && !digest)
+        throw new AgentError(`${planId(Number(row.n))} is approved with its digest`, 500);
+      const now = Date.now();
+      if (to === 'approved')
+        this.sql.exec(
+          'UPDATE infra_plans SET state = ?, updated = ?, digest = ?, approved = ? WHERE n = ?',
+          to,
+          now,
+          digest,
+          now,
+          row.n,
+        );
+      else this.sql.exec('UPDATE infra_plans SET state = ?, updated = ? WHERE n = ?', to, now, row.n);
       this.appendInfraAudit({
         kind: PLAN_AUDIT_KINDS[to],
         repo: row.repo,
@@ -385,8 +401,8 @@ export const infraPlansMethods = {
 
   /**
    * PATCH /api/infra/plans/<id>: `{ state: 'waiting' }` puts a draft in front of the owner. The owner's, from the
-   * signed-in browser only (the worker refuses the bearer token); an agent's `by` is refused too. Approve and reject
-   * come with BRK-182.
+   * signed-in browser only (the worker refuses the bearer token); an agent's `by` is refused too. It sends one push.
+   * Approve and reject are their own routes (store-infra-approvals.js).
    */
   planModifyApi(ref, body = {}) {
     return this.run(async () => {
@@ -395,10 +411,10 @@ export const infraPlansMethods = {
         throw new AgentError('only the owner puts a plan in front of the owner; agents make drafts', 403);
       if (body.state !== 'waiting')
         throw new AgentError(
-          'a plan’s state changes here only to waiting; approve and reject are the owner’s, on the board',
+          'a plan’s state changes here only to waiting; approve and reject it at /approve and /reject',
           400,
         );
-      return { status: 200, body: { plan: this.moveInfraPlan(ref, 'waiting', { by: 'owner' }) } };
+      return { status: 200, body: { plan: await this.waitForOwner(ref, { by: 'owner' }) } };
     });
   },
 };

@@ -121,7 +121,13 @@ export const infraPolicyMethods = {
     const view = this.environmentOut(env);
     return evaluatePolicy(
       policy,
-      { environment: { name: env.name, frozen: view.frozen, gates: view.gates }, diff, cost, provider },
+      {
+        environment: { name: env.name, frozen: view.frozen, gates: view.gates },
+        diff,
+        cost,
+        provider,
+        currency: this.infraCurrency().currency,
+      },
       { policy: from, sha, error },
     );
   },
@@ -137,6 +143,7 @@ export const infraPolicyMethods = {
       state: error ? 'invalid' : row ? 'valid' : 'none',
       error,
       rules: policy,
+      currency: this.currencyOut(),
       sha: row?.sha ?? null,
       readAt: row ? new Date(row.read_at).toISOString() : null,
     };

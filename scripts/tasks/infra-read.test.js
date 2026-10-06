@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { unknownSubcommand } from './cli.js';
-import { INFRA_READS, InfraReadError, infraRead, money } from './infra-read.js';
+import { INFRA_READS, InfraReadError, environmentText, infraRead, money, planText } from './infra-read.js';
 
 const CLI = fileURLToPath(new URL('../tasks.mjs', import.meta.url));
 const TOKEN = 'fake-token-for-tests-0123456789abcdef';
@@ -367,6 +367,23 @@ describe('infra plans and infra plan <id> (CLI-13)', () => {
 
   it('needs a plan’s ID', async () => {
     await expect(read(['plan'])).rejects.toThrow(/infra plan <id>: name one/u);
+  });
+
+  it('shows a converted cost in the board’s currency, with the rate once (BRK-226)', () => {
+    const rate = { from: 'USD', to: 'EUR', rate: 0.92, setAt: '2026-10-03T09:00:00.000Z' };
+    const euros = plan({ cost: { ...plan().cost, currency: 'EUR', now: 9.2, delta: 3.68, after: 12.88, rate } });
+    expect(planText({ plan: euros })).toMatch(
+      / {2}Cost {8}adds €3\.68 a month: €9\.20 a month → €12\.88 a month, estimated, at 1 USD = 0\.92 EUR, set 3 Oct/u,
+    );
+    const cost = { amount: 4.23, currency: 'EUR', perMonth: true, estimate: true, rate: { ...rate, amount: 4.6 } };
+    const text = environmentText({
+      environment: env(),
+      resources: [resource('svc-api', 'service', 'widgets-api', { cost })],
+      relations: [],
+      desired: null,
+    });
+    expect(text).toMatch(/Resources \(1\)\n {2}Estimated costs at 1 USD = 0\.92 EUR, set 3 Oct/u);
+    expect(text).toContain('€4.23 a month, estimated');
   });
 });
 
