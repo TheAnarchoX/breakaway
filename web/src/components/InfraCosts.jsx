@@ -95,10 +95,7 @@ export function BudgetLine({ entry, compact = false }) {
     <div class={`infra-cost ${compact ? 'is-compact' : ''}`}>
       <p class="infra-cost-line">
         <span class="infra-cost-amount">{costText(cost)}</span>
-        <span class="meta">
-          {' '}
-          a month · budget {amountText(budget.amount, budget.currency)}
-        </span>
+        <span class="meta"> a month · budget {amountText(budget.amount, budget.currency)}</span>
       </p>
       <div class={`infra-meter infra-meter-${budget.state}`} aria-hidden="true">
         <span style={{ width: `${Math.round(used * 100)}%` }} />
