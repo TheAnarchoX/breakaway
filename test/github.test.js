@@ -822,6 +822,51 @@ describe('GitHub on the board', () => {
     gh.deployments = null;
   });
 
+  it('counts a pipeline’s deploys on the Activity view under staging and production, not its Workers’ names', async () => {
+    const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
+    const dep = (id, environment, hours, extra = {}) => ({
+      id,
+      sha: `s${id}`,
+      environment,
+      task: 'deploy',
+      created_at: ago(hours),
+      creator: { login: 'github-actions[bot]' },
+      ...extra,
+    });
+    gh.deployments = [
+      dep(24, 'widgets', 1),
+      dep(23, 'widgets', 3, { task: 'rollback' }),
+      dep(22, 'widgets', 5),
+      dep(21, 'widgets-staging', 6),
+      dep(20, 'widgets-staging', 7),
+    ];
+    const status = (state, hours) => [
+      { state, description: 'version a0000000 · migrations none', created_at: ago(hours) },
+    ];
+    gh.statuses = {
+      24: status('success', 1),
+      23: status('success', 3),
+      22: status('inactive', 5),
+      21: status('success', 6),
+      20: status('failure', 7),
+    };
+    await api('github/sync', { method: 'POST' });
+
+    const stats = await body(await api('stats?days=7&tz=UTC'));
+    expect(stats.deploys.production).toEqual({ landed: 2, failed: 0, rollbacks: 1 });
+    expect(stats.deploys.staging).toEqual({ landed: 1, failed: 1, rollbacks: 0 });
+    expect(stats.totals.deploys.now).toBe(2);
+    expect(stats.deploys.lastProduction).not.toBeNull();
+    expect(stats.deploys.recent.map((d) => d.env)).toEqual([
+      'staging',
+      'staging',
+      'production',
+      'production',
+      'production',
+    ]);
+    gh.deployments = null;
+  });
+
   it('marks tasks per environment: on staging first, live after a promote, never by try or rollback', async () => {
     await api('tasks', {
       method: 'POST',

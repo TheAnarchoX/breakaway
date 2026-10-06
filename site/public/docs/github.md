@@ -25,7 +25,7 @@ Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, De
 
 ## The GitHub view
 
-The **GitHub** view (`h`) is a dashboard. It opens on what’s live:
+The **GitHub** view (`g` `h`) is a dashboard. It opens on what’s live:
 
 - **Open pull requests**, with their verdict, checks, reviews, and tasks.
 - **Live now**: staging and production, with each one’s version and commit and **Promote or roll back**. Only for a repository with a [deploy pipeline](#deploys-releases-promote-and-roll-back).

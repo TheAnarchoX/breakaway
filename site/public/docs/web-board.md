@@ -83,7 +83,7 @@ Right-click a task in the Board, List, or Dependencies view (a long press on a t
 
 ### New agent
 
-**New agent** in the top bar (`p`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
+**New agent** in the top bar (`a`) starts an agent from what you write, without a task first: rough is fine, with up to 4 images and, with several repositories, the repository. The agent makes the task its own. See [Agents](https://leavethepack.dev/docs/agents/#from-a-prompt-new-agent).
 
 ### Dictation
 
@@ -93,22 +93,46 @@ Filters (area, horizon, who can move it, claimed, finished) and search live in t
 
 ## Keyboard shortcuts
 
+One key does what you do most, and `g` then a letter goes to a view. They don’t fire while you type in a field; `?` shows them all.
+
 | Key | Does |
 | --- | --- |
 | `/` | Search |
 | `n` | New task |
 | `i` | New idea |
-| `p` | New agent |
-| `b` `l` `m` `g` `o` `a` `h` `e` `x` `u` | Switch views |
-| `t` | MCP |
-| `w` | Connections |
-| `[` | Collapse or expand the sidebar |
+| `a` | New agent |
 | `s` | Switch repository (with several) |
+| `[` | Collapse or expand the sidebar |
+| `r` | Refresh |
+| `?` | Show all shortcuts |
+
+On the open task:
+
+| Key | Does |
+| --- | --- |
 | `j` `k` | Next and previous task |
 | `c` | Claim or release |
 | `d` | Done |
+| `m` | Write a comment |
 | `Esc` | Close |
-| `?` | Show all shortcuts |
+
+Go to a view with `g`, then:
+
+| Key | View |
+| --- | --- |
+| `b` | Board |
+| `l` | List |
+| `m` | Roadmap |
+| `d` | Dependencies |
+| `i` | Inbox |
+| `t` | Activity |
+| `h` | GitHub |
+| `s` | Specs |
+| `a` | Agents |
+| `r` | Routines |
+| `p` | MCP |
+| `c` | Connections |
+| `,` | Settings |
 
 ## Several repositories
 
