@@ -7281,6 +7281,16 @@ fieldset.field {
 .pl-scroll.is-compact {
   max-height: min(300px, 45dvh);
 }
+/* On desktop the posts get twice the room, and the box's corner drags it shorter or taller up to that (WEB-90). */
+@media (min-width: 760px) and (pointer: fine) {
+  .pl-scroll {
+    max-height: min(840px, 80dvh);
+    resize: vertical;
+  }
+  .pl-scroll.is-compact {
+    max-height: min(600px, 70dvh);
+  }
+}
 /* Your posts: a bar on the left as well as "You", so they're yours by more than colour. */
 .pl-post.is-mine {
   background: var(--surface);
