@@ -13,6 +13,7 @@ import {
   environmentHealth,
 } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
+import { UnownedSection } from '../components/Unowned.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>: its resources
@@ -514,6 +515,8 @@ export function EnvironmentView() {
           </p>
         )}
       </section>
+
+      <UnownedSection env={env} />
 
       <Drift env={env} desired={state.desired} error={state.desiredError} />
 

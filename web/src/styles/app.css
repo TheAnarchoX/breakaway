@@ -8776,6 +8776,17 @@ a.pl-mention {
   margin: 0;
   font-size: 14px;
 }
+/* What nobody owns (WEB-93): a removal plan that waits for you stands out, like an incident's. */
+.unowned p {
+  margin: 0;
+}
+.unowned .infra-res-head .meta {
+  font-family: var(--font-mono);
+}
+.unowned-plan-waiting {
+  color: var(--accent);
+  font-weight: 600;
+}
 .infra-kind-group {
   display: grid;
   gap: 8px;
