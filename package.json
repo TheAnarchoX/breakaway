@@ -33,6 +33,7 @@
     "src/session-report.js",
     "src/specs.js",
     "src/versions.js",
+    "src/yaml.js",
     "prompts/*.md",
     "taskrc",
     ".agents/skills/tasks/SKILL.md",

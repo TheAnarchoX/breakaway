@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { YamlError, parseYaml as readYaml } from '../../src/yaml.js';
 
 export const CONFIG_PATH = '.github/breakaway-pipeline.json';
 export const DEPLOY_PATHS = '.github/deploy-paths.json';
@@ -330,154 +331,17 @@ export function helpersFor(config) {
 // ---- the workflow checks -------------------------------------------------------------------
 
 /**
- * The YAML the templates use, parsed: block mappings and sequences, `|` block scalars, `[a, b]` flow sequences, and
- * plain, single-, and double-quoted scalars. Anything else is an error with its line, so a broken render fails here
- * instead of on GitHub.
+ * A workflow's YAML, parsed (the shared reader in src/yaml.js, which the Worker reads a repository's workflows with
+ * too). Anything it can't read is a PipelineError with its line, so a broken render fails here instead of on GitHub.
  * @param {string} text
  */
 export function parseYaml(text) {
-  const src = text.split('\n');
-  let pos = 0;
-  const fail = (message, at = pos) => bad(`line ${at + 1}: ${message}`);
-  src.forEach((line, i) => {
-    if (/^\s*\t/u.test(line)) fail('a tab in the indentation; YAML indents with spaces', i);
-  });
-  const indentOf = (line) => line.length - line.trimStart().length;
-  const blank = (line) => !line.trim() || line.trim().startsWith('#');
-  const skip = () => {
-    while (pos < src.length && blank(src[pos])) pos += 1;
-  };
-  const isItem = (t) => t === '-' || t.startsWith('- ');
-  const KEY = /^("[^"]*"|'[^']*'|[^\s'"#[\]{}&*!|>%@`-][^:#]*?|-[^\s:#][^:#]*?):(?:\s+(.*))?$/u;
-
-  function scalar(raw) {
-    const s = raw.trim();
-    if (!s) return null;
-    if (s[0] === '"') {
-      let end = 1;
-      while (end < s.length && s[end] !== '"') end += s[end] === '\\' ? 2 : 1;
-      if (end >= s.length) fail('a double-quoted string that never ends');
-      const rest = s.slice(end + 1).trim();
-      if (rest && !rest.startsWith('#')) fail(`text after a quoted string: ${rest.slice(0, 40)}`);
-      return JSON.parse(s.slice(0, end + 1));
-    }
-    if (s[0] === "'") {
-      const m = /^'((?:[^']|'')*)'\s*(#.*)?$/u.exec(s);
-      if (!m) fail('a single-quoted string that never ends, or text after it');
-      return m[1].replace(/''/gu, "'");
-    }
-    if (s[0] === '[') {
-      const end = s.indexOf(']');
-      if (end < 0) fail('a [list] that never ends');
-      const rest = s.slice(end + 1).trim();
-      if (rest && !rest.startsWith('#')) fail(`text after a [list]: ${rest.slice(0, 40)}`);
-      const inner = s.slice(1, end).trim();
-      return inner ? (inner.match(/"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^,]+/gu) ?? []).map((item) => scalar(item)) : [];
-    }
-    if (s === '{}') return {};
-    if (/^[{&*!|>%@`]/u.test(s)) fail(`a value the templates don't use: ${s.slice(0, 40)}`);
-    const plain = s.replace(/\s+#.*$/u, '');
-    if (/:\s/u.test(plain) || plain.endsWith(':'))
-      fail(`a plain value can't hold ": " (quote it): ${plain.slice(0, 60)}`);
-    if (plain === 'true' || plain === 'false') return plain === 'true';
-    if (/^-?\d+$/u.test(plain)) return Number(plain);
-    return plain;
+  try {
+    return readYaml(text);
+  } catch (error) {
+    if (error instanceof YamlError) bad(error.message);
+    throw error;
   }
-
-  function blockScalar(parent) {
-    const lines = [];
-    let indent = null;
-    while (pos < src.length) {
-      const line = src[pos];
-      if (!line.trim()) {
-        lines.push('');
-        pos += 1;
-        continue;
-      }
-      const n = indentOf(line);
-      if (n <= parent) break;
-      indent ??= n;
-      if (n < indent) fail('a line of the block less indented than its first');
-      lines.push(line.slice(indent));
-      pos += 1;
-    }
-    while (lines.length && lines.at(-1) === '') lines.pop();
-    if (!lines.length) fail('an empty block', pos - 1);
-    return `${lines.join('\n')}\n`;
-  }
-
-  function entry(obj, content, indent) {
-    const m = KEY.exec(content);
-    if (!m) fail(`expected "key: value": ${content.slice(0, 60)}`);
-    const key = /^["']/u.test(m[1]) ? m[1].slice(1, -1) : m[1].trim();
-    if (Object.hasOwn(obj, key)) fail(`"${key}" twice in one mapping`);
-    const rest = (m[2] ?? '').trim();
-    if (rest && !rest.startsWith('#') && !/^\|-?(\s+#.*)?$/u.test(rest)) {
-      if (rest.startsWith('>')) fail('folded blocks (>) are not used here: use |');
-      obj[key] = scalar(rest);
-      pos += 1;
-      return;
-    }
-    pos += 1;
-    if (!rest || rest.startsWith('#')) {
-      skip();
-      const next = src[pos];
-      if (next !== undefined && indentOf(next) === indent && isItem(next.trim())) obj[key] = sequence(indent);
-      else obj[key] = block(indent + 1);
-    } else obj[key] = blockScalar(indent);
-  }
-
-  function mapping(indent, obj = {}) {
-    for (;;) {
-      skip();
-      if (pos >= src.length) return obj;
-      const n = indentOf(src[pos]);
-      if (n < indent) return obj;
-      if (n > indent) fail('more indented than the lines before it');
-      const t = src[pos].trim();
-      if (isItem(t)) return obj;
-      entry(obj, t, indent);
-    }
-  }
-
-  function sequence(indent) {
-    const list = [];
-    for (;;) {
-      skip();
-      if (pos >= src.length) return list;
-      const n = indentOf(src[pos]);
-      if (n < indent) return list;
-      if (n > indent) fail('more indented than the lines before it');
-      const t = src[pos].trim();
-      if (!isItem(t)) return list;
-      const content = t.slice(1).trimStart();
-      const at = n + (t.length - content.length);
-      if (!content) {
-        pos += 1;
-        list.push(block(indent + 1));
-      } else if (KEY.test(content) && !/^["'[]/u.test(content.split(':')[0])) {
-        const obj = {};
-        entry(obj, content, at);
-        list.push(mapping(at, obj));
-      } else {
-        list.push(scalar(content));
-        pos += 1;
-      }
-    }
-  }
-
-  function block(min) {
-    skip();
-    if (pos >= src.length) return null;
-    const n = indentOf(src[pos]);
-    if (n < min) return null;
-    return isItem(src[pos].trim()) ? sequence(n) : mapping(n);
-  }
-
-  const doc = block(0);
-  skip();
-  if (pos < src.length) fail('a line outside the document');
-  return doc ?? {};
 }
 
 const CONTEXTS = new Set([

@@ -25,6 +25,7 @@ import {
   ThumbsUp,
   MessageSquareWarning,
   Bot,
+  Play,
 } from 'lucide-preact';
 import { TRIGGER_LABEL } from '../components/Agents.jsx';
 import {
@@ -84,6 +85,7 @@ const ICONS = {
   promote_started: Rocket,
   rollback_started: Undo2,
   release_started: Rocket,
+  workflow_started: Play,
   ci_failed: CircleX,
   ci_fixed: CircleCheck,
   main_failed: CircleX,
@@ -194,6 +196,8 @@ function describe(change) {
       return `You rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
     case 'release_started':
       return `You released ${change.package}@${change.prerelease} as ${change.version}${change.next && change.next !== 'patch' ? `, next ${change.next}` : ''}: it waits on npm for your approval`;
+    case 'workflow_started':
+      return `You ran ${change.workflow} on ${change.ref}${change.inputs?.length ? ` with ${change.inputs.join(', ')}` : ''}`;
     case 'pr_closed':
       return `#${change.number} closed without merging`;
     case 'ci_failed':

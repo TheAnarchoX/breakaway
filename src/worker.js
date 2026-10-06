@@ -14,6 +14,7 @@
 import { authenticate, login, logout, sameOrigin } from './auth.js';
 import { isUuid } from './crypto.js';
 import { appCredentials, verifyWebhook } from './github.js';
+import { workflowsChanged } from './workflows.js';
 import { install } from './install.js';
 import { handleMcp } from './mcp.js';
 import { handleOAuth, oauthApi } from './oauth.js';
@@ -118,6 +119,7 @@ async function githubWebhook(request, env) {
   // The delivery's repository decides which one syncs; one that isn't registered is ignored.
   const result = await store(env).githubWebhook(event, payload.action ?? null, {
     full: payload.repository?.full_name ?? null,
+    workflowsChanged: workflowsChanged(event, payload),
   });
   if (result.status === 'ignored') return text(202, 'other repository, ignored');
   if (result.repo) await store(env).connectionsWebhookRepo(result.repo); // Connections: when, per repository
@@ -651,6 +653,27 @@ async function handleApi(request, env, url, ctx) {
         version: body.version,
         next: body.next,
         repo: body.repo ?? url.searchParams.get('repo'),
+      }),
+    );
+  }
+  // Workflows that run by hand (BRK-224): anyone signed in lists them; running one is the owner's, from the signed-in
+  // browser only, never the bearer token agents, the CLI, the MCP server, and routines hold.
+  if (parts[0] === 'github' && parts[1] === 'workflows' && parts.length === 2 && method === 'GET')
+    return send(await s.workflowsApi(url.searchParams.get('repo')));
+  if (
+    parts[0] === 'github' &&
+    parts[1] === 'workflows' &&
+    parts[2] === 'run' &&
+    parts.length === 3 &&
+    method === 'POST'
+  ) {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can run a workflow' });
+    return send(
+      await s.runWorkflowApi({
+        repo: body.repo ?? url.searchParams.get('repo'),
+        workflow: body.workflow,
+        ref: body.ref,
+        inputs: body.inputs,
       }),
     );
   }

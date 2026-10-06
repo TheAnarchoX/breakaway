@@ -1,7 +1,8 @@
 /**
  * What the owner's GitHub buttons can do in one repository, and why not (CLD-125): Update branch,
  * Merge, and Publish need the App to write pull requests and contents; Merge when green also needs
- * the repository to allow auto-merge; Promote and Roll back need it to start workflows (Actions).
+ * the repository to allow auto-merge; Run workflow (BRK-224), Promote, and Roll back need it to start workflows (Actions),
+ * on every repository.
  *
  * Read from the Connections view's last live check (store-connections.js, meta `conn_live`), so a
  * button that can't work says so before it's pressed. Pure, so it's tested without GitHub. While
@@ -46,7 +47,7 @@ export function pullAccess(check, { github, at = null, pipeline = false } = {}) 
       `Auto-merge is off on ${github}. Turn on “Allow auto-merge” in its settings on GitHub (General, Pull Requests).`,
     );
   }
-  const actionsMissing = pipeline ? missing(['actions']) : [];
+  const actionsMissing = missing(['actions']);
   const actions = actionsMissing.length
     ? blocked(
         `The board’s GitHub App can’t start workflows on ${github}: give it read and write on Actions. Connections shows the fix.`,
