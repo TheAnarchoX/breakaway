@@ -429,6 +429,10 @@ Infrastructure   (init and add need no board: run them in the checkout of the re
                          and policy.json, naming the file, line, and field that's wrong), then show the plan each valid
                          file would make from what runs now and the policy's answer; the board keeps none of it
                          (exits 1 if a file doesn't check or the board refuses one)
+  infra adopt <environment>   write the board's draft of the environment's desired state, drafted from what runs
+                         there, to .github/breakaway-infra/<environment>.json, then check it like infra check and say
+                         what to commit; it never plans or applies, and writes nothing for an observe-only environment
+                         [--force] replaces a file that's there  [--dry-run] prints the draft instead
   infra add [<template>] [<environment>] [<input>=<value> …]   a golden path: write the change one of the owner's
                          templates makes (.github/breakaway-infra/templates/<name>/, else breakaway's example of that
                          name) into the environment's file and the code it needs, for a pull request; it never
@@ -1430,6 +1434,22 @@ const commands = {
       const result = await infraCheck(args.slice(1), {
         files: readInfraFolder(topOf(process.cwd())),
         repo: slug,
+        post: (path, body) => call('POST', path, body, { raw: true }),
+      });
+      print(result.data, () => result.text);
+      process.exitCode = result.code;
+      return;
+    }
+    if (args[0] === 'adopt') {
+      // infra adopt (CLI-23): the board's draft of an environment's desired state, written into the checkout and checked.
+      const { infraAdopt } = await import('./tasks/infra-adopt.js');
+      const { topOf } = await import('./tasks/pipeline.js');
+      const result = await infraAdopt(args.slice(1), {
+        root: topOf(process.cwd()),
+        repo: slug,
+        force: Boolean(opts.force),
+        dryRun: Boolean(opts['dry-run']),
+        get: (path) => call('GET', path, undefined, { raw: true }),
         post: (path, body) => call('POST', path, body, { raw: true }),
       });
       print(result.data, () => result.text);

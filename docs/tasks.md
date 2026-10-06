@@ -193,6 +193,14 @@ A repository moved with `npx breakaway pipeline init` doesn't need the file: onc
 
 A board from before a read's route says so and names the update. The `--json` output is the board's own answers (`show` puts its four together as `{ environment, resources, relations, desired }`), so the MCP server's reads (`BRK-202`) can return the same shapes. The text is `scripts/tasks/infra-read.js`.
 
+#### Describing an environment that already runs
+
+`CLI-23`, [spec](specs/IDEA-19-architect.md#desired-state). Nobody hand-writes an environment's first desired state: **`npx breakaway infra adopt <environment>`**, in the checkout, writes the board's draft of it to `.github/breakaway-infra/<environment>.json`. The board drafts it from what runs there now (`BRK-240`): names, kinds, and the settings its provider manages, never a secret's value.
+
+- **It never overwrites.** A file that's already there stays as it is unless you pass `--force`; `--dry-run` prints the draft and writes nothing. An observe-only environment takes no desired state, so nothing is written for one.
+- **Then it checks it**, the same as `infra check <environment>`, and prints the next step: commit the file and open a pull request. It never plans or applies: once the pull request merges, the board plans from the file, and the plan waits for you like any other.
+- The draft's notes say what was left out and why (a setting that looked like a secret, a kind the provider doesn't manage). A board with no inventory for the environment yet says to connect its provider and refresh first. `--json` gives the same as data.
+
 #### Checking a change to infrastructure
 
 `CLI-14`, [spec](specs/IDEA-19-architect.md#desired-state). Before a pull request that changes `.github/breakaway-infra/`, an agent or the owner runs **`npx breakaway infra check`** (or `infra check <environment>` for one) in the checkout, the way `pipeline check` checks the deploy config.
