@@ -10320,4 +10320,12 @@ a.pl-mention {
 }
 .console-band-actions {
   justify-content: flex-end;
+  align-items: center;
+}
+/* A fact beside its action under the band (WEB-95): who holds the lock, or the break-glass mark. */
+.env-action-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }

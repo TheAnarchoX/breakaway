@@ -68,6 +68,7 @@ import { DecisionSection } from './Decision.jsx';
 import { AttachmentsSection } from './Attachments.jsx';
 import { FeatureSection } from './Feature.jsx';
 import { IncidentSection } from './Incidents.jsx';
+import { ShortLivedSection } from './ShortLived.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
 
@@ -902,6 +903,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
       <FeatureSection task={t} />
       <Details task={t} />
       <Shipping task={t} />
+      <ShortLivedSection task={t} />
       <PullRequests task={t} />
       <Dependencies task={t} />
       <Related task={t} />
@@ -1010,6 +1012,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
             <FeatureSection task={t} />
             <Details task={t} />
             <Shipping task={t} />
+            <ShortLivedSection task={t} />
             <PullRequests task={t} />
             <Dependencies task={t} />
             <Related task={t} />
