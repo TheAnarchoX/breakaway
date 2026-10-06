@@ -87,14 +87,37 @@ function typing(target) {
   );
 }
 
+/** Keys that work on the open task, even while it's open as a modal. */
+const TASK_KEYS = ['j', 'k', 'c', 'd', 'm'];
+/** How long g waits for the letter of a view. */
+const GO_WAIT = 1500;
+
+/**
+ * The board's shortcuts (the sheet in Shell.jsx lists them): one key for the primary actions, the open task's
+ * keys, and g then a letter to go to a view.
+ */
 function useShortcuts() {
   useEffect(() => {
+    let goSince = 0;
     const onKey = (e) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
-      // Dialogs own the keyboard, except that the task modal still steps with j and k.
+      // Dialogs own the keyboard, except that the open task's keys still work in the task modal.
       const others = [...document.querySelectorAll('dialog[open]')].filter((d) => !d.classList.contains('dialog-task'));
-      if (others.length || (document.querySelector('dialog[open]') && !['j', 'k'].includes(e.key))) return;
+      if (others.length || (document.querySelector('dialog[open]') && !TASK_KEYS.includes(e.key))) {
+        goSince = 0;
+        return;
+      }
       const t = current.value;
+      if (goSince && Date.now() - goSince < GO_WAIT) {
+        goSince = 0;
+        const view_ = VIEWS.find((v) => v.key === e.key);
+        if (view_) go(view_.id);
+        else if (e.key === ',') go('settings');
+        else return;
+        e.preventDefault();
+        return;
+      }
+      goSince = 0;
       const step = (delta) => {
         const order = navOrder.value;
         if (!order.length) return;
@@ -102,14 +125,13 @@ function useShortcuts() {
         const next = byUuid.value.get(order[Math.min(order.length - 1, Math.max(0, i + delta))] ?? order[0]);
         if (next) openTask(next);
       };
-      const view_ = VIEWS.find((v) => v.key === e.key);
       let handled = true;
-      if (e.key === '/') document.getElementById('search')?.focus();
+      if (e.key === 'g') goSince = Date.now();
+      else if (e.key === '/') document.getElementById('search')?.focus();
       else if (e.key === 'n') newTask.value = {};
       else if (e.key === 'i') newTask.value = { mode: 'idea' };
-      else if (e.key === 'p' && canNewAgent.value) newAgent.value = true;
+      else if (e.key === 'a' && canNewAgent.value) newAgent.value = true;
       else if (e.key === 's') cycleRepo();
-      else if (view_) go(view_.id);
       else if (e.key === 'j') step(1);
       else if (e.key === 'k') step(-1);
       else if (e.key === '?') helpOpen.value = true;
@@ -142,6 +164,7 @@ function useShortcuts() {
             'info',
           );
       } else if (e.key === 'd' && t && t.status === 'pending') actions.done(t);
+      else if (e.key === 'm' && t) document.getElementById(`comment-${t.uuid}`)?.focus();
       else handled = false;
       if (handled) e.preventDefault();
     };

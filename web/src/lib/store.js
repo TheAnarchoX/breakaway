@@ -789,19 +789,20 @@ export function confirmDialog(options) {
 
 // ---- the view, filters, and the URL -------------------------------------------------------
 
+/** The views in the sidebar's order. `key` is the letter after g that goes there: its first letter, or one close to it. */
 export const VIEWS = [
   { id: 'board', label: 'Board', key: 'b' },
   { id: 'list', label: 'List', key: 'l' },
   { id: 'roadmap', label: 'Roadmap', key: 'm' },
-  { id: 'graph', label: 'Dependencies', key: 'g' },
-  { id: 'inbox', label: 'Inbox', key: 'o' },
-  { id: 'activity', label: 'Activity', key: 'a' },
+  { id: 'graph', label: 'Dependencies', key: 'd' },
+  { id: 'inbox', label: 'Inbox', key: 'i' },
+  { id: 'activity', label: 'Activity', key: 't' },
   { id: 'github', label: 'GitHub', key: 'h' },
-  { id: 'specs', label: 'Specs', key: 'e' },
-  { id: 'agents', label: 'Agents', key: 'x' },
-  { id: 'routines', label: 'Routines', key: 'u' },
-  { id: 'mcp', label: 'MCP', key: 't' },
-  { id: 'connections', label: 'Connections', key: 'w' },
+  { id: 'specs', label: 'Specs', key: 's' },
+  { id: 'agents', label: 'Agents', key: 'a' },
+  { id: 'routines', label: 'Routines', key: 'r' },
+  { id: 'mcp', label: 'MCP', key: 'p' },
+  { id: 'connections', label: 'Connections', key: 'c' },
 ];
 /**
  * Pages that aren't in the nav: the Add a repository wizard (CLD-194), reached from Connections and the switcher,

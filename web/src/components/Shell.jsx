@@ -666,7 +666,7 @@ export function TopBar({ phone = false }) {
             class="btn btn-outline btn-sm new-agent"
             aria-label="New agent"
             aria-haspopup="dialog"
-            title="Start an agent from a prompt (p)"
+            title="Start an agent from a prompt (a)"
             onClick={() => {
               newAgent.value = true;
             }}
@@ -853,31 +853,39 @@ export function FilterBar() {
   );
 }
 
-/** Going to a view: one row per key, read from VIEWS so the sheet follows the keys the app handles. */
-const VIEW_SHORTCUTS = VIEWS.map((v) => [v.key, v.label]);
-
+/**
+ * The shortcuts sheet, in three groups: one key for what you do most, the open task's keys, and g then a letter
+ * to go to a view. The views' letters come from VIEWS, so the sheet follows the keys the app handles.
+ */
 export const SHORTCUTS = [
   {
-    title: 'Go to a view',
-    rows: VIEW_SHORTCUTS,
-  },
-  {
-    title: 'Actions',
+    title: 'Anywhere',
     rows: [
       ['/', 'Search'],
       ['n', 'New task'],
       ['i', 'New idea'],
-      ['p', 'New agent, when an agent routine is connected'],
-      ['[', 'Collapse or expand the menu'],
+      ['a', 'New agent, when an agent routine is connected'],
       ['s', 'Switch repository, when there are several'],
-      ['j k', 'Next and previous task'],
-      ['c', 'Claim or release the open task'],
-      ['d', 'Mark the open task done'],
-      ['Shift+F10', 'The menu of the focused task (the Menu key opens it too)'],
-      ['Esc', 'Close the task'],
+      ['[', 'Collapse or expand the menu'],
       ['r', 'Refresh'],
+      ['Shift+F10', 'The menu of the focused task (the Menu key opens it too)'],
       ['?', 'These shortcuts'],
     ],
+  },
+  {
+    title: 'The open task',
+    rows: [
+      ['j k', 'Next and previous task'],
+      ['c', 'Claim or release it'],
+      ['d', 'Mark it done'],
+      ['m', 'Write a comment'],
+      ['Esc', 'Close it'],
+    ],
+  },
+  {
+    title: 'Go to',
+    lead: 'g',
+    rows: [...VIEWS.map((v) => [v.key, v.label]), [',', 'Settings']],
   },
 ];
 
@@ -888,7 +896,14 @@ export function HelpContent() {
       <div class="shortcut-groups">
         {SHORTCUTS.map((group) => (
           <section key={group.title}>
-            <h3 class="shortcut-title">{group.title}</h3>
+            <h3 class="shortcut-title">
+              {group.title}
+              {group.lead && (
+                <>
+                  : <Kbd>{group.lead}</Kbd>, then
+                </>
+              )}
+            </h3>
             <dl class="shortcuts">
               {group.rows.map(([keys, what]) => (
                 <div key={keys} class="shortcut">
