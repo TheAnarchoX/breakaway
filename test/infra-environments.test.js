@@ -1,31 +1,14 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { api } from './helpers.js';
-import { ORIGIN, TEST_API_TOKEN } from './constants.js';
+import { describe, expect, it } from 'vitest';
+import { api, boardApi } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
 
 describe('environments (BRK-174)', () => {
-  let cookie;
-  beforeAll(async () => {
-    const res = await SELF.fetch(`${ORIGIN}/login`, {
-      method: 'POST',
-      redirect: 'manual',
-      headers: { Origin: ORIGIN, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token: TEST_API_TOKEN }),
-    });
-    cookie = res.headers.get('Set-Cookie').split(';')[0];
-  });
-  /** The signed-in board's call, from its own origin unless told otherwise. */
-  const board = (path, { method = 'GET', body: payload, origin = ORIGIN } = {}) =>
-    SELF.fetch(`${ORIGIN}/api/${path}`, {
-      method,
-      headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' },
-      body: payload === undefined ? undefined : JSON.stringify(payload),
-    });
+  const board = boardApi;
   const add = (fields) =>
-    api('infra/environments', { method: 'POST', body: { repo: 'widgets', provider: 'fake', ...fields } });
+    board('infra/environments', { method: 'POST', body: { repo: 'widgets', provider: 'fake', ...fields } });
   const list = async (query = '') => body(await api(`infra/environments${query}`));
 
   it('a fresh install has none', async () => {
@@ -34,7 +17,7 @@ describe('environments (BRK-174)', () => {
     expect(res.environments).toEqual([]);
   });
 
-  it('the owner adds one with the CLI, and production gates apply to production by default', async () => {
+  it('the owner adds one on the board, and production gates apply to production by default', async () => {
     const staging = await body(await add({ name: 'staging', kind: 'staging', target: 'widgets-staging' }));
     expect(staging.status).toBe(201);
     expect(staging.environment).toMatchObject({
@@ -90,25 +73,50 @@ describe('environments (BRK-174)', () => {
   it('agents read, but never add, change, or remove one', async () => {
     const as = { by: 'claude-brk-9' };
     expect((await api('infra/environments')).status).toBe(200);
+    // Even through the signed-in board, an agent's `by` is refused: the store's own check stays.
     const created = await body(await add({ name: 'agents', kind: 'staging', ...as }));
     expect(created.status).toBe(403);
     expect(created.error).toMatch(/only the owner/);
     const id = (await list()).environments.find((e) => e.name === 'staging').id;
-    const renamed = await api(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'stage', ...as } });
+    const renamed = await board(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'stage', ...as } });
     expect(renamed.status).toBe(403);
-    const removed = await api(`infra/environments/${id}`, { method: 'DELETE', body: as });
+    const removed = await board(`infra/environments/${id}`, { method: 'DELETE', body: as });
     expect(removed.status).toBe(403);
     expect((await list()).environments.find((e) => e.id === id).name).toBe('staging');
   });
 
-  it('the owner renames one, from the CLI or the board', async () => {
+  it('the API token reads them but never adds, changes, or removes one, with or without a `by`', async () => {
     const id = (await list()).environments.find((e) => e.name === 'staging').id;
-    const renamed = await body(await api(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'stage' } }));
+    expect((await api(`infra/environments/${id}`)).status).toBe(200);
+    expect((await api('infra/environments?repo=widgets')).status).toBe(200);
+    for (const by of [undefined, 'owner', 'claude-brk-9']) {
+      const calls = [
+        api('infra/environments', {
+          method: 'POST',
+          body: { repo: 'widgets', provider: 'fake', name: 'tokened', kind: 'staging', by },
+        }),
+        api(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'retargeted', target: 'elsewhere', by } }),
+        api(`infra/environments/${id}`, { method: 'DELETE', body: by === undefined ? undefined : { by } }),
+      ];
+      for (const res of await Promise.all(calls)) {
+        const refused = await body(res);
+        expect(refused.status).toBe(403);
+        expect(refused.error).toBe('only the signed-in web board can add, change, or remove an environment');
+      }
+    }
+    const after = await list();
+    expect(after.environments.map((e) => e.name)).toEqual(['production', 'staging']);
+    expect(after.environments.find((e) => e.id === id).target).toBe('widgets-staging');
+  });
+
+  it('the owner renames one on the board', async () => {
+    const id = (await list()).environments.find((e) => e.name === 'staging').id;
+    const renamed = await body(await board(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'stage' } }));
     expect(renamed.status).toBe(200);
     expect(renamed.environment.name).toBe('stage');
     const back = await body(await board(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'staging' } }));
     expect(back.environment.name).toBe('staging');
-    const clash = await api(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'production' } });
+    const clash = await board(`infra/environments/${id}`, { method: 'PATCH', body: { name: 'production' } });
     expect(clash.status).toBe(409);
   });
 
@@ -116,7 +124,7 @@ describe('environments (BRK-174)', () => {
     const id = (await list()).environments.find((e) => e.name === 'staging').id;
     const token = await body(await api(`infra/environments/${id}`, { method: 'PATCH', body: { frozen: true } }));
     expect(token.status).toBe(403);
-    expect(token.error).toMatch(/only the signed-in web board can freeze/);
+    expect(token.error).toMatch(/only the signed-in web board/);
     const elsewhere = await board(`infra/environments/${id}`, {
       method: 'PATCH',
       body: { frozen: true },
@@ -130,7 +138,7 @@ describe('environments (BRK-174)', () => {
     expect(Date.parse(frozen.environment.frozenAt)).toBeGreaterThan(Date.now() - 60_000);
 
     // A frozen environment stays: removing it is refused until the owner unfreezes it.
-    const remove = await body(await api(`infra/environments/${id}`, { method: 'DELETE' }));
+    const remove = await body(await board(`infra/environments/${id}`, { method: 'DELETE' }));
     expect(remove.status).toBe(409);
     expect(remove.error).toMatch(/unfreeze it first/);
     // And unfreezing is the signed-in board's too.
@@ -155,7 +163,12 @@ describe('environments (BRK-174)', () => {
       const res = await body(await api(`infra/environments/${id}`, { method: 'PATCH', body: change }));
       expect(res.status).toBe(403);
     }
-    const created = await body(await add({ name: 'quiet', kind: 'staging', observeOnly: true }));
+    const created = await body(
+      await api('infra/environments', {
+        method: 'POST',
+        body: { repo: 'widgets', provider: 'fake', name: 'quiet', kind: 'staging', observeOnly: true },
+      }),
+    );
     expect(created.status).toBe(403);
     const changed = await body(
       await board(`infra/environments/${id}`, { method: 'PATCH', body: { gates: false, observeOnly: true } }),
@@ -201,7 +214,7 @@ describe('environments (BRK-174)', () => {
     // Pointing another environment at the board's Worker makes it observe only too.
     const staging = (await list()).environments.find((e) => e.name === 'staging');
     const pointed = await body(
-      await api(`infra/environments/${staging.id}`, { method: 'PATCH', body: { target: 'widgets-tasks' } }),
+      await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { target: 'widgets-tasks' } }),
     );
     expect(pointed.environment).toMatchObject({ observeOnly: true, runsTheBoard: true });
     const restored = await body(
@@ -210,7 +223,7 @@ describe('environments (BRK-174)', () => {
     expect(restored.status).toBe(409);
 
     // Removing it is still the owner's choice; it stays observe only while it exists.
-    expect((await api(`infra/environments/${id}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await board(`infra/environments/${id}`, { method: 'DELETE' })).status).toBe(200);
   });
 
   it('a short-lived environment may name the task that owns it; the others may not', async () => {
@@ -228,14 +241,14 @@ describe('environments (BRK-174)', () => {
     expect(missing.status).toBe(400);
     expect(missing.error).toMatch(/no task OPS-9999/);
     const cleared = await body(
-      await api(`infra/environments/${preview.environment.id}`, { method: 'PATCH', body: { task: null } }),
+      await board(`infra/environments/${preview.environment.id}`, { method: 'PATCH', body: { task: null } }),
     );
     expect(cleared.environment.task).toBeNull();
   });
 
   it('the owner removes one', async () => {
     const id = (await list()).environments.find((e) => e.name === 'preview-1').id;
-    const removed = await body(await api(`infra/environments/${id}`, { method: 'DELETE' }));
+    const removed = await body(await board(`infra/environments/${id}`, { method: 'DELETE' }));
     expect(removed.status).toBe(200);
     expect((await api(`infra/environments/${id}`)).status).toBe(404);
   });

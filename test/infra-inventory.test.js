@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { api } from './helpers.js';
+import { api, boardApi } from './helpers.js';
 import { fakeProvider } from './fake-infra-provider.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
 import { redactAttrs, scopeDiscovery } from '../src/infra-inventory.js';
@@ -20,7 +20,8 @@ function platform(id) {
 }
 
 const addEnvironment = async (fields) =>
-  (await body(await api('infra/environments', { method: 'POST', body: { repo: 'widgets', ...fields } }))).environment;
+  (await body(await boardApi('infra/environments', { method: 'POST', body: { repo: 'widgets', ...fields } })))
+    .environment;
 
 /** Refreshes inside the Durable Object with a test registry; the Worker's registry has no fake. */
 const refresh = (id, registry) =>
@@ -214,7 +215,7 @@ describe('inventory (BRK-177)', () => {
     const [first] = (await inventory({ environment: 'owner-preview' })).resources;
     expect(first.owner.task).toMatchObject({ uuid, wid });
 
-    await api(`infra/environments/${preview.id}`, { method: 'DELETE' });
+    await boardApi(`infra/environments/${preview.id}`, { method: 'DELETE' });
     expect((await inventory({ provider: 'fake-owner' })).resources).toEqual([]);
   });
 

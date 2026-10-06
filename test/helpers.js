@@ -65,6 +65,22 @@ export function api(path, { method = 'GET', body, token = TEST_API_TOKEN, header
   });
 }
 
+/** The signed-in web board's call: the cookie from /login, from the board's own origin unless told otherwise. */
+export async function boardApi(path, { method = 'GET', body, origin = ORIGIN } = {}) {
+  const login = await SELF.fetch(`${ORIGIN}/login`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { Origin: ORIGIN, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: TEST_API_TOKEN }),
+  });
+  const cookie = login.headers.get('Set-Cookie').split(';')[0];
+  return SELF.fetch(`${ORIGIN}/api/${path}`, {
+    method,
+    headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 /** Gives the install's default repository (widgets) a deploy pipeline, as its owner would with `repos modify`: the seeded row has none. */
 export async function setPipeline(slug = 'widgets') {
   const res = await api(`repos/${slug}`, {
