@@ -5,6 +5,7 @@ import {
   DESIRED_DIR,
   DESIRED_MAX_BYTES,
   environmentOfFile,
+  MAX_DEPTH,
   parseWithLines,
 } from '../src/infra-desired.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
@@ -75,6 +76,15 @@ describe('checking a desired-state file', () => {
     expect(checkDesiredFile('[]').error.message).toMatch(/one JSON object/u);
     expect(checkDesiredFile('').error.message).toMatch(/isn’t JSON/u);
     expect(parseWithLines('{"a": [1, {"b": "c\\n"}]}').value).toEqual({ a: [1, { b: 'c\n' }] });
+  });
+
+  it('refuses a file nested too deep, and keeps __proto__ a plain key (BRK-229)', () => {
+    const deep = checkDesiredFile(`${'['.repeat(MAX_DEPTH + 2)}${']'.repeat(MAX_DEPTH + 2)}`);
+    expect(deep).toMatchObject({ ok: false, error: { line: 1, message: /nested more than 64 deep/u } });
+    const proto = parseWithLines('{"__proto__": {"polluted": true}}').value;
+    expect(Object.getPrototypeOf(proto)).toBe(Object.prototype);
+    expect(Object.keys(proto)).toEqual(['__proto__']);
+    expect(/** @type {any} */ ({}).polluted).toBeUndefined();
   });
 
   it('refuses a secret’s value in a resource’s settings', () => {

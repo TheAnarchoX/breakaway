@@ -8,6 +8,7 @@ import {
   readDataset,
 } from '../src/infra-cloudflare-analytics.js';
 import {
+  CLOUDFLARE_KINDS,
   COST_NOTE,
   NEVER_CALLED,
   PRICES,
@@ -24,6 +25,7 @@ import {
 import { checkCosts, checkDiscovery, checkHealth, checkProvider, checkSignals } from '../src/infra-provider.js';
 import { providers } from '../src/infra-providers.js';
 import { scopeDiscovery } from '../src/infra-inventory.js';
+import { DEFAULT_POLICY, evaluatePolicy } from '../src/infra-policy.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { api, boardApi } from './helpers.js';
 import {
@@ -54,6 +56,31 @@ function context(answers = cloudflareAnswers(), extra = {}) {
 }
 
 // The provider contract runs in infra-cloudflare-plan.test.js, against an account that answers writes.
+
+describe('the Cloudflare provider’s access kinds (BRK-229)', () => {
+  it('marks routes and custom domains as access, so a change to one always asks the owner', () => {
+    expect(CLOUDFLARE_KINDS.route.access).toBe(true);
+    expect(CLOUDFLARE_KINDS['custom-domain'].access).toBe(true);
+    expect(CLOUDFLARE_KINDS.worker.access).toBeUndefined();
+    const route = {
+      op: 'update',
+      resource: 'route:acme-zone/1',
+      kind: 'route',
+      name: 'acme.example/*',
+      before: { worker: 'acme-api' },
+      after: { worker: 'acme-other' },
+      reversible: true,
+    };
+    const result = evaluatePolicy(DEFAULT_POLICY, {
+      environment: { name: 'staging', frozen: false, gates: false },
+      diff: { provider: 'cloudflare', environment: 'staging', changes: [route], reversible: true },
+      cost: null,
+      provider: cloudflare,
+      currency: 'USD',
+    });
+    expect(result.rules.find((r) => r.rule === 'access')).toMatchObject({ applies: true, effect: 'ask' });
+  });
+});
 
 describe('the Cloudflare provider’s discover (BRK-189)', () => {
   const W = (name) => rid('worker', name);

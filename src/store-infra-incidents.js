@@ -22,6 +22,7 @@ import {
   incidentKey,
   incidentSteps,
   incidentTitle,
+  signalWords,
   pushes,
 } from './infra-incidents.js';
 
@@ -131,7 +132,7 @@ export const infraIncidentsMethods = {
         if (at < Number(open.last_signal)) continue;
         this.sql.exec('UPDATE infra_incidents SET recovered = ? WHERE id = ?', at, open.id);
         this.change(open.task, {
-          annotate: `Signal: ${signal.kind} is ${signal.level} again in ${signal.environment} (${signal.at}): ${signal.text}. Verify it holds, then write up what happened and close this task.`,
+          annotate: `Signal: ${signal.kind} is ${signal.level} again in ${signal.environment} (${signal.at}); ${signalWords(signal.text)}. Verify it holds, then write up what happened and close this task.`,
           by: 'board',
         });
         recovered.push(open.id);
@@ -150,7 +151,7 @@ export const infraIncidentsMethods = {
         if (!quiet) {
           const more = Number(open.uncommented);
           this.change(open.task, {
-            annotate: `Signal again: ${signal.kind}, ${signal.level}, in ${signal.environment} (${signal.at}): ${signal.text}${more ? ` (and ${more} more since the last comment)` : ''}.`,
+            annotate: `Signal again: ${signal.kind}, ${signal.level}, in ${signal.environment} (${signal.at}); ${signalWords(signal.text)}${more ? ` (and ${more} more since the last comment)` : ''}.`,
             by: 'board',
           });
         }
