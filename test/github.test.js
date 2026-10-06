@@ -1124,17 +1124,17 @@ describe('GitHub on the board', () => {
     expect(setup.manifest.default_permissions).toMatchObject({
       pull_requests: 'write',
       contents: 'write',
-      checks: 'read',
+      checks: 'write',
       vulnerability_alerts: 'read',
     });
-    // Only actions (Promote and Roll back), contents and pull requests (update branch and merge), and variables
-    // (Freeze sets DEPLOYS_PAUSED, BRK-236) write; everything else reads.
+    // Write only where a button or a check needs it: update branch and merge, workflows, a plan's check (BRK-185),
+    // and the deploy pause (Freeze sets DEPLOYS_PAUSED, BRK-236).
     expect(
       Object.entries(setup.manifest.default_permissions)
         .filter(([, v]) => v !== 'read')
         .map(([k]) => k)
         .sort(),
-    ).toEqual(['actions', 'contents', 'pull_requests', 'variables']);
+    ).toEqual(['actions', 'checks', 'contents', 'pull_requests', 'variables']);
     const bad = await SELF.fetch(`${ORIGIN}/github/connected?code=abcdef123456&state=nope`, { redirect: 'manual' });
     expect(bad.headers.get('Location')).toBe('/#/github?connect=failed');
     const good = await SELF.fetch(`${ORIGIN}/github/connected?code=abcdef123456&state=${setup.state}`, {

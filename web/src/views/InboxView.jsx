@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Check, CircleCheck, FastForward, Inbox, Plug, TriangleAlert, X } from 'lucide-preact';
+import { Check, CircleCheck, FastForward, Inbox, Plug, Siren, TriangleAlert, X } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { HORIZONS, NOTICE_LABEL, PING_KIND_LABEL as KIND_LABEL, ago } from '../lib/model.js';
 import {
@@ -17,6 +17,7 @@ import {
 } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
 import { Dialog, RepoChip, Dictate } from '../components/ui.jsx';
+import { IncidentWhere, stepNote } from '../components/Incidents.jsx';
 
 const link = (wid) => (
   <a class="wid" href={hashFor({ task: wid })}>
@@ -243,8 +244,29 @@ function ApplyDialog({ ping, onClose }) {
   );
 }
 
+/**
+ * An incident ping's line (WEB-63): where it is, the step it's on, and whether it pushed. `incident` is the open
+ * incident behind the ping, when the board has it.
+ * @param {{ ping: any, incident: any }} props
+ */
+function IncidentLine({ ping, incident }) {
+  const note = incident && stepNote(incident);
+  return (
+    <p class="meta incident-ping-line">
+      <Siren size={14} aria-hidden="true" />
+      {incident && (
+        <span>
+          In <IncidentWhere incident={incident} />
+        </span>
+      )}
+      {note && <span>{note}</span>}
+      <span>{ping.push ? 'Pushed to your phone' : 'In the inbox only, not pushed'}</span>
+    </p>
+  );
+}
+
 /** @param {Record<string, any>} props */
-function PingCard({ ping, focused, onApply }) {
+function PingCard({ ping, focused, onApply, incident = null }) {
   const [busy, setBusy] = useState(false);
   const handled = async () => {
     setBusy(true);
@@ -280,6 +302,7 @@ function PingCard({ ping, focused, onApply }) {
           </span>
         </header>
         <p class="ping-message">{ping.message}</p>
+        {ping.kind === 'incident' && <IncidentLine ping={ping} incident={incident} />}
         {ping.proposal && (
           <div class="ping-proposal">
             <h3 class="kicker">Proposal</h3>
@@ -298,6 +321,11 @@ function PingCard({ ping, focused, onApply }) {
           </div>
         )}
         <div class="ping-actions">
+          {ping.kind === 'incident' && (
+            <a class="btn btn-primary btn-sm" href={hashFor({ task: ping.task ?? ping.taskUuid.slice(0, 8) })}>
+              Open the incident<span class="visually-hidden"> {ping.task}</span>
+            </a>
+          )}
           {ping.proposal && (
             <button type="button" class="btn btn-primary btn-sm" disabled={busy} onClick={onApply}>
               <Check size={16} aria-hidden="true" />
@@ -305,7 +333,12 @@ function PingCard({ ping, focused, onApply }) {
             </button>
           )}
           {!ping.proposal && (
-            <button type="button" class="btn btn-primary btn-sm" disabled={busy} onClick={handled}>
+            <button
+              type="button"
+              class={`btn ${ping.kind === 'incident' ? 'btn-quiet' : 'btn-primary'} btn-sm`}
+              disabled={busy}
+              onClick={handled}
+            >
               <CircleCheck size={16} aria-hidden="true" />
               Handled<span class="visually-hidden"> {ping.task}</span>
             </button>
@@ -404,10 +437,17 @@ function ChaseCard({ chase: x }) {
 export function InboxView() {
   const state = pings.value;
   const [applying, setApplying] = useState(null);
+  // The open incidents behind incident pings (WEB-63), by their task: where each is and the step it's on.
+  const [incidents, setIncidents] = useState(/** @type {Map<string, any>} */ (new Map()));
   const focus = focusPing.value;
   useEffect(() => {
     navOrder.value = [];
     loadPings();
+    // A board without Architect has no incidents: the pings still show, without the line's extras.
+    api('infra/incidents?open=true&limit=200').then(
+      ({ incidents: open }) => setIncidents(new Map(open.filter((i) => i.task).map((i) => [i.task.uuid, i]))),
+      () => {},
+    );
   }, []);
   // Opened at one ping (from the bell or a push): bring it into view and put focus on it.
   useEffect(() => {
@@ -421,14 +461,20 @@ export function InboxView() {
   // A ping opened by its link (a push, the bell) shows whichever repository it's in.
   const list = state.list.filter((p) => scopedPings.value.includes(p) || String(p.id) === focus);
   const elsewhere = state.list.length - list.length;
+  // Incidents first, production's before the rest, then newest: what needs you reads first.
+  const production = (/** @type {any} */ p) => incidents.get(p.taskUuid)?.environmentKind === 'production' || p.push;
+  const incidentPings = list
+    .filter((p) => p.kind === 'incident')
+    .sort((a, b) => Number(production(b)) - Number(production(a)) || b.id - a.id);
+  const others = list.filter((p) => p.kind !== 'incident');
   return (
     <div class="inbox-view">
       <div class="view-intro">
         <h1>Inbox</h1>
         <p class="muted">
           Agents ping you when only you can help: something to decide, a task that looks done, or one that can’t be
-          reproduced. Applying a proposal is yours alone; agents only suggest. The board also notes here when a
-          connection stops working, when it works again, and when a chase ends.
+          reproduced. Applying a proposal is yours alone; agents only suggest. The board also notes here when a signal
+          opens an incident, when a connection stops working or works again, and when a chase ends.
         </p>
       </div>
       {state.error && (
@@ -447,6 +493,24 @@ export function InboxView() {
           <h2>Nothing needs you</h2>
           <p class="muted">When an agent gets stuck or finds a task is already done, it shows here.</p>
         </div>
+      )}
+      {incidentPings.length > 0 && (
+        <section class="inbox-notices" aria-labelledby="incidents-title">
+          <h2 id="incidents-title" class="kicker">
+            Incidents
+          </h2>
+          <ol class="pings">
+            {incidentPings.map((p) => (
+              <PingCard
+                key={p.id}
+                ping={p}
+                focused={String(p.id) === focus}
+                onApply={() => setApplying(p.id)}
+                incident={incidents.get(p.taskUuid) ?? null}
+              />
+            ))}
+          </ol>
+        </section>
       )}
       {state.notices.length > 0 && (
         <section class="inbox-notices" aria-labelledby="notices-title">
@@ -472,11 +536,11 @@ export function InboxView() {
           </ol>
         </section>
       )}
-      {(state.notices.length > 0 || state.chases.length > 0) && list.length > 0 && (
+      {(state.notices.length > 0 || state.chases.length > 0 || incidentPings.length > 0) && others.length > 0 && (
         <h2 class="kicker inbox-pings-title">Pings</h2>
       )}
       <ol class="pings" aria-label="Open pings">
-        {list.map((p) => (
+        {others.map((p) => (
           <PingCard key={p.id} ping={p} focused={String(p.id) === focus} onApply={() => setApplying(p.id)} />
         ))}
       </ol>

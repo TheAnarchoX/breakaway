@@ -18,11 +18,13 @@
  *     "access": { "kinds": ["route"], "settings": ["public"] },
  *     "allow": [ { "name": "small staging changes", "environments": ["staging"], "changes": ["update", "scale"] } ] }
  *
- * Limits are a month, in the provider's currency until BRK-226 lands the owner's. Pure and Node-safe, so `npx
+ * Limits are a month, in the board's currency (BRK-226): the owner's, set in Settings, which the plan's cost change is
+ * converted into before it's checked (infra-currency.js). Pure and Node-safe, so `npx
  * breakaway infra check` (CLI-14) can use it: no store and no network.
  */
 import { CHANGE_KINDS } from './infra-provider.js';
 import { DESIRED_DIR, parseWithLines } from './infra-desired.js';
+import { rateWords } from './infra-currency.js';
 
 /** @typedef {import('./infra-provider.js').PlanDiff} PlanDiff */
 /** @typedef {import('./infra-provider.js').Change} Change */
@@ -37,7 +39,7 @@ export const POLICY_MAX_BYTES = 64 * 1024;
 export const POLICY_MAX_RULES = 50;
 const LIST_MAX = 100;
 
-/** The cost limit and budget a policy starts with (BRK-172), a month, in the provider's currency until BRK-226. */
+/** The cost limit and budget a policy starts with (BRK-172), a month, in the board's currency (BRK-226). */
 export const DEFAULT_COST_LIMIT = 5;
 export const DEFAULT_BUDGET = 20;
 
@@ -358,7 +360,8 @@ const upper = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * @property {string} rule the rule that decided: the first that refused, else the first that asked, else the allow rule
  * @property {string[]} reasons why, in words, one rule a line: what a plan page shows
  * @property {RuleResult[]} rules every guard, in GUARDS order, then `every` or the allow rule that let it through
- * @property {{ costLimit: number, budget: number, currency: string | null }} limits
+ * @property {{ costLimit: number, budget: number, currency: string | null, rate: import('./infra-currency.js').Rate | null }} limits
+ *   in the board's currency, with the rate the plan's cost was converted at (null when it wasn't)
  */
 
 /**
@@ -371,13 +374,20 @@ const upper = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * @param {PlanDiff} plan.diff
  * @param {CostChange} plan.cost
  * @param {import('./infra-provider.js').Provider | null} [plan.provider] for the kinds and settings it marks as access
+ * @param {string | null} [plan.currency] the board's currency, which the limits are in, for a plan with no cost change
  * @param {{ policy?: 'default' | 'repository', sha?: string | null, error?: PolicyError | null }} [from] which policy
  *   it is, and the repository file's error when the default stands in for a file that doesn't check
  * @returns {PolicyResult}
  */
-export function evaluatePolicy(policy, { environment, diff, cost, provider = null }, from = {}) {
+export function evaluatePolicy(
+  policy,
+  { environment, diff, cost, provider = null, currency: board = null },
+  from = {},
+) {
   const { costLimit, budget } = limitsFor(policy, environment.name);
-  const currency = cost?.currency ?? null;
+  const currency = cost?.currency ?? board;
+  /** @type {import('./infra-currency.js').Rate | null} */
+  const rate = /** @type {any} */ (cost)?.rate ?? null;
   const env = environment.name;
   /** @type {RuleResult[]} */
   const rules = [];
@@ -434,6 +444,7 @@ export function evaluatePolicy(policy, { environment, diff, cost, provider = nul
   else
     costReason =
       delta !== null && delta < 0 ? `Saves ${money(-delta, currency)} a month.` : 'Adds nothing to the monthly cost.';
+  if (rate) costReason += ` ${upper(rateWords(rate))}.`;
   add('cost', overLimit, 'ask', costReason);
 
   const after = cost?.after ?? null;
@@ -491,7 +502,7 @@ export function evaluatePolicy(policy, { environment, diff, cost, provider = nul
     rule,
     reasons,
     rules,
-    limits: { costLimit, budget, currency },
+    limits: { costLimit, budget, currency, rate },
   };
 }
 

@@ -14,7 +14,7 @@ import {
 import { api } from '../lib/api.js';
 import { ago, shortVersion } from '../lib/model.js';
 import { hashFor, loadGitHub, toast } from '../lib/store.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, RepoChip } from './ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -34,14 +34,19 @@ export function summary(name, card) {
   return `${name}: ${s.label.toLowerCase()}${build}${step}`;
 }
 
-/** @param {Record<string, any>} props */
-function Card({ name, card, children }) {
+/**
+ * One Worker's card: what's live there, or the deploy under way. `envHref` links its environment's page (WEB-88), and
+ * `heading` is its heading's level.
+ * @param {Record<string, any>} props
+ */
+export function Card({ name, card, envHref = null, heading = 'h3', children }) {
   const s = STATES[card.state];
   const b = card.build;
+  const Heading = heading;
   return (
     <div class={`flow-card flow-${s.tone}`} role="group" aria-label={summary(name, card)}>
       <div class="flow-head">
-        <h3>{name}</h3>
+        <Heading>{envHref ? <a href={envHref}>{name}</a> : name}</Heading>
         <span class="flow-state">
           <s.Icon size={16} aria-hidden="true" class={card.state === 'deploying' ? 'spin' : ''} />
           {s.label}
@@ -296,21 +301,90 @@ function RollbackDialog({ flow, view, onClose }) {
 }
 
 /**
+ * Why Promote or Roll back can't run: the workflows can't be started (Actions) comes before the flow's own reasons.
+ * @param {Record<string, any>} view
+ * @param {'promote' | 'rollback'} which
+ */
+function gate(view, which) {
+  const actions = view.access?.actions ?? { ok: true, reason: null };
+  const own = view.flow[which];
+  return actions.ok ? own : { ...own, allowed: false, reason: actions.reason };
+}
+
+/**
+ * Promote to production…, with its reason when it can't, and its dialog: the release flow's Staging card and a
+ * production environment's page (WEB-88) show this same button, with the same checks.
+ * @param {{ view: Record<string, any>, idBase: string }} props
+ */
+export function PromoteButton({ view, idBase }) {
+  const [open, setOpen] = useState(false);
+  const promote = gate(view, 'promote');
+  return (
+    <div class="flow-actions">
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        disabled={!promote.allowed}
+        aria-describedby={promote.allowed ? undefined : `${idBase}-promote-reason`}
+        onClick={() => setOpen(true)}
+      >
+        Promote to production…
+      </button>
+      {!promote.allowed && (
+        <span id={`${idBase}-promote-reason`} class="meta">
+          {promote.reason}
+        </span>
+      )}
+      {open && <PromoteDialog flow={view.flow} view={view} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/**
+ * Roll back…, with its reason when it can't, and its dialog: on the release flow's Production card and a production
+ * environment's page alike.
+ * @param {{ view: Record<string, any>, idBase: string }} props
+ */
+export function RollbackButton({ view, idBase }) {
+  const [open, setOpen] = useState(false);
+  const rollback = gate(view, 'rollback');
+  return (
+    <div class="flow-actions">
+      <button
+        type="button"
+        class="btn btn-outline btn-sm"
+        disabled={!rollback.allowed}
+        aria-describedby={rollback.allowed ? undefined : `${idBase}-rollback-reason`}
+        onClick={() => setOpen(true)}
+      >
+        Roll back…
+      </button>
+      {!rollback.allowed && (
+        <span id={`${idBase}-rollback-reason`} class="meta">
+          {rollback.reason}
+        </span>
+      )}
+      {open && <RollbackDialog flow={view.flow} view={view} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/**
  * Staging and production as two cards joined by what a promote would do, for one repository with a
  * pipeline (`view`: its slug, name, flow, and access). The owner's buttons; the workflows re-check
- * everything. `label` names the repository when the view shows several.
+ * everything. `label` names the repository when the view shows several, and `environments` holds the IDs of its
+ * staging and production environments, so each card opens its page (WEB-88).
  * @param {Record<string, any>} props
  */
-export function ReleaseFlow({ view, label = null }) {
+export function ReleaseFlow({ view, label = null, environments = null }) {
   const flow = view?.flow;
-  const [dialog, setDialog] = useState(null);
   if (!flow) return null;
   const { staging, production } = flow;
-  // A button that can't work says why: the workflows can't be started (Actions), before the flow's own reasons.
-  const actions = view.access?.actions ?? { ok: true, reason: null };
-  const promote = actions.ok ? flow.promote : { ...flow.promote, allowed: false, reason: actions.reason };
-  const rollback = actions.ok ? flow.rollback : { ...flow.rollback, allowed: false, reason: actions.reason };
   const id = (name) => (label ? `${name}-${view.slug}` : name);
+  const envHref = (role) =>
+    environments?.[role]
+      ? hashFor({ view: 'infrastructure', environment: String(environments[role]), task: null })
+      : null;
   return (
     <section class="gh-section flow" aria-labelledby={id('flow-title')}>
       <h2 id={id('flow-title')}>
@@ -322,23 +396,8 @@ export function ReleaseFlow({ view, label = null }) {
         {summary('Staging', staging)}. {summary('Production', production)}.
       </p>
       <div class="flow-row">
-        <Card name="Staging" card={staging}>
-          <div class="flow-actions">
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              disabled={!promote.allowed}
-              aria-describedby={id('promote-reason')}
-              onClick={() => setDialog('promote')}
-            >
-              Promote to production…
-            </button>
-            {!promote.allowed && (
-              <span id={id('promote-reason')} class="meta">
-                {promote.reason}
-              </span>
-            )}
-          </div>
+        <Card name="Staging" card={staging} envHref={envHref('staging')}>
+          <PromoteButton view={view} idBase={id('flow')} />
         </Card>
         <div class="flow-line" role="group" aria-label="What a promote would do">
           <ArrowRight size={18} aria-hidden="true" class="flow-arrow-wide" />
@@ -354,27 +413,60 @@ export function ReleaseFlow({ view, label = null }) {
             <p class="meta">A Worker config changed; the promote may stop for a deploy by hand.</p>
           )}
         </div>
-        <Card name="Production" card={production}>
-          <div class="flow-actions">
-            <button
-              type="button"
-              class="btn btn-outline btn-sm"
-              disabled={!rollback.allowed}
-              aria-describedby={id('rollback-reason')}
-              onClick={() => setDialog('rollback')}
-            >
-              Roll back…
-            </button>
-            {!rollback.allowed && (
-              <span id={id('rollback-reason')} class="meta">
-                {rollback.reason}
-              </span>
-            )}
-          </div>
+        <Card name="Production" card={production} envHref={envHref('production')}>
+          <RollbackButton view={view} idBase={id('flow')} />
         </Card>
       </div>
-      {dialog === 'promote' && <PromoteDialog flow={flow} view={view} onClose={() => setDialog(null)} />}
-      {dialog === 'rollback' && <RollbackDialog flow={flow} view={view} onClose={() => setDialog(null)} />}
     </section>
+  );
+}
+
+/**
+ * A Deployment's state in the deploy flow's words, the same as the cards': Deploying while it runs, Rolled back when
+ * its health check failed and the version before came back, Failed, or Deployed.
+ * @param {Record<string, any>} d a Deployment as the GitHub view keeps it
+ */
+export function deployWord(d) {
+  if (['failure', 'error'].includes(d.state))
+    return /rolled back/iu.test(d.description ?? '') ? STATES.rolledback : STATES.failed;
+  if (d.state === 'success' || d.state === 'inactive') return { label: 'Deployed', Icon: CircleCheck, tone: 'ok' };
+  return STATES.deploying;
+}
+
+/** The run row's tone for each word's. */
+const RUN_TONE = { ok: 'success', bad: 'failure', warn: 'failure', pending: 'pending', muted: 'pending' };
+
+/**
+ * One Deployment the Deploy workflow recorded: what it deployed, where, its state, the tasks it shipped, and its run's
+ * log. The GitHub view's Deploys list and an environment's page (WEB-88) show the same row.
+ * @param {{ d: Record<string, any>, showEnv?: boolean }} props
+ */
+export function DeployRow({ d, showEnv = true }) {
+  const word = deployWord(d);
+  const title = [showEnv ? d.env : null, shortVersion(d), d.task === 'rollback' ? '(Roll back)' : null]
+    .filter(Boolean)
+    .join(' ');
+  return (
+    <li class={`gh-run run-${RUN_TONE[word.tone]}`}>
+      <word.Icon size={18} class={`run-icon ${word === STATES.deploying ? 'spin' : ''}`} aria-hidden="true" />
+      <a class="gh-run-title" href={d.logUrl ?? '#'} {...ext}>
+        <span class="gh-run-name">{title}</span>
+        <span class="gh-run-sub">{d.description ?? word.label}</span>
+      </a>
+      <span class="gh-run-meta">
+        <span class="visually-hidden">{word.label}</span>
+        {d.repo && showEnv && <RepoChip slug={d.repo} />}
+        <span class="gh-sha">{d.sha.slice(0, 7)}</span>
+        {d.migrations && d.migrations !== 'none' && <span class="meta">migrations {d.migrations}</span>}
+        {d.shipped?.map((t) => (
+          <a key={t.wid} class="gh-task" href={hashFor({ task: t.wid })}>
+            <span class="wid">{t.wid}</span>
+          </a>
+        ))}
+        <span class="meta" title={d.updated ?? d.created}>
+          {ago(d.updated ?? d.created)}
+        </span>
+      </span>
+    </li>
   );
 }

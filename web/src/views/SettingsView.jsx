@@ -30,6 +30,7 @@ import {
 import { notifications, turnOffNotifications, turnOnNotifications } from '../lib/push.js';
 import { AgentSettings, RoutinesDailyCap, RoutinesSwitch } from '../components/BoardSettings.jsx';
 import { SelfUpdateSwitch } from '../components/SelfUpdate.jsx';
+import { CurrencySettings } from '../components/CurrencySettings.jsx';
 import { openWhatsNew, whatsNew } from '../components/WhatsNew.jsx';
 import { Segmented } from '../components/ui.jsx';
 import { Pick as PickRepo } from './AddRepoView.jsx';
@@ -253,6 +254,10 @@ function TheBoard() {
       <p class="muted small">For everyone who uses this board. The Agents and Routines views have these too.</p>
       <BoardAgents />
       <BoardRoutines />
+      <div class="st-group">
+        <h3>Currency</h3>
+        <CurrencySettings />
+      </div>
       <div class="st-group">
         <h3>Updates</h3>
         <SelfUpdateSwitch connections={link('connections')} />

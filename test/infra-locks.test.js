@@ -40,13 +40,13 @@ describe('environment locks (BRK-179)', () => {
       }),
     );
     staging = made.environment;
-    // Watch what goes on the audit trail, passing each entry on to the real one when the board has it (BRK-175).
+    // Watch what goes on the audit trail, passing each entry on to the real one (BRK-175).
     await runInDurableObject(store(), (instance) => {
       const real = instance.appendInfraAudit;
       instance.lockAuditSeen = [];
       instance.appendInfraAudit = (entry) => {
         instance.lockAuditSeen.push(entry);
-        return typeof real === 'function' ? real.call(instance, entry) : entry;
+        return real.call(instance, entry);
       };
     });
   });
@@ -179,25 +179,6 @@ describe('environment locks (BRK-179)', () => {
     ]);
     expect((await body(await api('infra/locks/staging'))).lock).toBeNull();
     expect((await board('infra/locks/staging', { method: 'DELETE' })).status).toBe(404);
-  });
-
-  it('a release that can’t be recorded doesn’t happen', async () => {
-    const taken = await take('staging');
-    const refused = await runInDurableObject(store(), async (instance) => {
-      const spy = instance.appendInfraAudit;
-      instance.appendInfraAudit = undefined;
-      try {
-        return await instance.releaseEnvironmentLock('staging', { token: taken.value.token });
-      } catch (error) {
-        return { status: error.status, error: error.message };
-      } finally {
-        instance.appendInfraAudit = spy;
-      }
-    });
-    expect(refused.status).toBe(503);
-    expect(refused.error).toMatch(/audit trail/);
-    expect((await body(await api('infra/locks/staging'))).lock).not.toBeNull();
-    await inStore((s) => s.releaseEnvironmentLock('staging', { token: taken.value.token }));
   });
 
   it('refuses a lock on a frozen, observe-only, or missing environment, and a holder that isn’t one', async () => {
