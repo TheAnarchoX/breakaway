@@ -193,6 +193,15 @@ A repository moved with `npx breakaway pipeline init` doesn't need the file: onc
 
 A board from before a read's route says so and names the update. The `--json` output is the board's own answers (`show` puts its four together as `{ environment, resources, relations, desired }`), so the MCP server's reads (`BRK-202`) can return the same shapes. The text is `scripts/tasks/infra-read.js`.
 
+#### Checking a change to infrastructure
+
+`CLI-14`, [spec](specs/IDEA-19-architect.md#desired-state). Before a pull request that changes `.github/breakaway-infra/`, an agent or the owner runs **`npx breakaway infra check`** (or `infra check <environment>` for one) in the checkout, the way `pipeline check` checks the deploy config.
+
+- It checks each environment's file and `policy.json` here, with the board's own checks (`src/infra-check.js`). A file that doesn't check is named with its line and field (`.github/breakaway-infra/staging.json:4: resources[0].kind: …`), nothing goes to the board, and it exits 1.
+- For each valid file it asks the board for the plan it would make from what runs now: what changes, the cost change, what else it touches, whether it can be undone, and the policy's answer under the checkout's `policy.json` (or the default, when there's none). The board checks the file again against the environment's provider and its kinds.
+- The board keeps none of it: the preview (`POST /api/infra/check`) has no ID and no state, writes no audit entry, and can't be approved or applied, so an agent's token may ask for it. Each preview asks the provider for a plan, so a repository gets 10 a minute.
+- A file for an environment the board doesn't have yet is one to add, as the board shows it; an observe-only environment is refused, and so is a board from before the route.
+
 #### The apply runner (infrastructure)
 
 `CLI-12`, [spec](specs/IDEA-19-architect.md#executor). Architect changes a repository's infrastructure only through one workflow in that repository, `.github/workflows/breakaway-infra.yml` (**Apply infrastructure**), which the board starts for exactly one plan the owner approved. The board holds no write credentials; agents never run it.
@@ -566,7 +575,7 @@ How they work:
 
 **Connecting it (the owner, once, `CLD-25`).**
 
-1. Open the board's **GitHub** view and select **Create the App on GitHub**. GitHub shows the App and its permissions (metadata, contents, pull requests, checks, actions, commit statuses, deployments, Dependabot alerts); create it. GitHub sends you back to the board.
+1. Open the board's **GitHub** view and select **Create the App on GitHub**. GitHub shows the App and its permissions (metadata, contents, pull requests, checks, actions, commit statuses, deployments, Dependabot alerts, issues); create it. GitHub sends you back to the board.
 2. The view shows `npx breakaway github-connect <code>`. Run it in a checkout of the board's repository, with `wrangler` logged in, within the hour. It trades the code for the App's ID, private key, and webhook secret and stores them as the board's secrets ([Secrets](#secrets)); they never pass through the board or a command line. Each code comes from a new App, so on a board that already has one (working, or not checked yet) it refuses before trading the code, names the board's App, and changes nothing: delete the new App on GitHub if you made it by mistake, or run it again with `--replace` to switch the board to it and delete the old one. On a board whose App GitHub refused, it goes ahead.
 3. Open the install link it prints, choose **Only select repositories**, pick the repository, and install. The board fills in within seconds.
 
@@ -748,7 +757,7 @@ What the caller sends is **data, never instructions**: it becomes a comment by `
 
 **Cloudflare alerts** (`CLD-70`). Cloudflare's notification webhooks use the same trigger: make a trigger, then in Cloudflare add a webhook destination with the URL `https://<your board>/api/routines/<slug>/fire` and the secret (Cloudflare sends it as `cf-webhook-auth`). Only the alert's name, its time, and the Worker it names are kept, as the labelled `Trigger data (untrusted)` comment, plus a line saying the run is read-only: it may note and open a pull request, never act on Cloudflare or production. The caps, gap, open-run noting, and wait or auto setting are the webhook trigger's, and the run says `Started: by a Cloudflare alert`.
 
-**GitHub event triggers** (`CLD-69`). A routine can also start on events from the board's GitHub App webhook (already signature-checked), on the routine's own repository only: `pr_merged`, `release_published`, and `workflow_failed`. Set them in the routine's form, or with `routines modify <slug> --github-events pr_merged,release_published` (`""` clears them). Only the title, number, and link (or tag, branch) are passed, as the same labelled `Trigger data (untrusted)` comment; nothing else from the event is read. Each thing that happens starts a routine once (a redelivery does nothing). The caps, gap, open-run noting, and wait or auto setting are the webhook trigger's; a refusal shows in Activity, and the runs say `Started: by a routine’s GitHub event`. The App already subscribes to these events, so nothing changes on GitHub.
+**GitHub event triggers** (`CLD-69`). A routine can also start on events from the board's GitHub App webhook (already signature-checked), on the routine's own repository only: `pr_merged`, `release_published`, `workflow_failed`, `issue_opened`, and `issue_reopened` (`BRK-237`). Set them in the routine's form, or with `routines modify <slug> --github-events pr_merged,release_published` (`""` clears them). Only the title, number, and link (or tag, branch) are passed, never an issue's body or who opened it, as the same labelled `Trigger data (untrusted)` comment; nothing else from the event is read. Each thing that happens starts a routine once (a redelivery does nothing): an issue starts `issue_opened` once, and each time it's reopened starts `issue_reopened`. The caps, gap, open-run noting, and wait or auto setting are the webhook trigger's; a refusal shows in Activity, and the runs say `Started: by a routine’s GitHub event`. An App made before `BRK-237` doesn't get issue events: in its settings (Permissions & events), set **Issues** to read-only, tick the **Issues** event, save, and accept the new permission on the installation. The other events need nothing on GitHub. Issue events start routines only; they don't make the board sync.
 
 ### Make with an agent
 

@@ -29,7 +29,7 @@ export const SUBCOMMANDS = {
     'listen',
   ],
   specs: ['list', 'show'],
-  infra: ['init', 'runner', ...INFRA_READS],
+  infra: ['init', 'runner', 'check', ...INFRA_READS],
 };
 
 /** Commands that take nothing after their name, so a word there is a mistake (an old copy's missing subcommand, say). */

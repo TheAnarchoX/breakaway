@@ -34,6 +34,7 @@ import { RoutinesDailyCap, RoutinesSwitch } from '../components/BoardSettings.js
 import { Dialog, RepoChip, Segmented, Dictate } from '../components/ui.jsx';
 import { MakeRoutinesDialog } from '../components/MakeRoutines.jsx';
 import { RichText } from '../lib/richtext.jsx';
+import { SignalChip, SignalTrigger } from '../components/SignalTrigger.jsx';
 
 const RUN_TRIGGER = {
   manual: 'by hand',
@@ -41,6 +42,7 @@ const RUN_TRIGGER = {
   webhook: 'by webhook',
   github: 'by GitHub',
   cloudflare: 'by a Cloudflare alert',
+  signal: 'by a signal',
 };
 const HORIZONS = [
   ['now', 'Now'],
@@ -51,6 +53,8 @@ const GITHUB_EVENTS = [
   ['pr_merged', 'A pull request is merged'],
   ['release_published', 'A release is published'],
   ['workflow_failed', 'A workflow run fails'],
+  ['issue_opened', 'An issue is opened'],
+  ['issue_reopened', 'An issue is reopened'],
 ];
 
 /** Another repository than `slug` for a copy to go to: the one in view, else the first other one. */
@@ -284,7 +288,7 @@ function Meter({ used, cap, label = 'runs today' }) {
 }
 
 /**
- * Every way a routine can start, as short chips: by hand always, then a schedule, triggers, and GitHub events.
+ * Every way a routine can start, as short chips: by hand always, then a schedule, triggers, GitHub events, and signals.
  * @param {Record<string, any>} props
  */
 function Starts({ r }) {
@@ -315,6 +319,7 @@ function Starts({ r }) {
           {r.githubEvents.length} GitHub {r.githubEvents.length === 1 ? 'event' : 'events'}
         </li>
       )}
+      {r.signal && <SignalChip t={r.signal} />}
     </ul>
   );
 }
@@ -710,6 +715,9 @@ function PanelContent({ r, onClose }) {
           </dl>
           <Section title="Webhook and API triggers" id="rt-triggers">
             <Triggers r={r} />
+          </Section>
+          <Section title="Signal trigger" id="rt-signal">
+            <SignalTrigger r={r} />
           </Section>
           <Section title="Recent runs" id="rt-runs">
             {r.recentRuns.length ? (
