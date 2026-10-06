@@ -49,6 +49,7 @@ import { connectionsMethods } from './store-connections.js';
 import { infraSignalsMethods } from './store-infra-signals.js';
 import { infraDeploySignalsMethods } from './store-infra-deploy-signals.js';
 import { infraRunbooksMethods } from './store-infra-runbooks.js';
+import { infraIncidentsMethods } from './store-infra-incidents.js';
 import { githubStatusMethods } from './store-github-status.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
@@ -60,6 +61,7 @@ import { routineKeepMethods } from './store-routine-keep.js';
 import { infraAuditMethods } from './store-infra-audit.js';
 import { oauthMethods } from './store-oauth.js';
 import { infraEnvironmentsMethods } from './store-infra-environments.js';
+import { infraDeploysMethods } from './store-infra-deploys.js';
 import { infraDesiredMethods } from './store-infra-desired.js';
 import { infraInventoryMethods } from './store-infra-inventory.js';
 import { infraLocksMethods } from './store-infra-locks.js';
@@ -123,6 +125,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initConnections();
     this.initInfraSignals();
     this.initInfraRunbooks();
+    this.initInfraIncidents();
     this.initKickoffs();
     this.initRoutineKeep();
     this.initOAuth();
@@ -132,6 +135,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraLocks();
     this.initInfraAudit();
     this.initInfraPlans();
+    this.initInfraDeploys();
     this.initInfraPolicy();
     this.initInfraPulls();
     this.initInfraDrift();
@@ -504,6 +508,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     return {
       ...task,
       pings: this.pingsFor(uuid),
+      incident: this.incidentOfTask(uuid),
       dependsOn: task.depends.map(brief),
       blockingTasks: task.blocking.map(brief),
       relatedTasks: [...task.related, ...relatedBy].map(brief),
@@ -1422,6 +1427,7 @@ Object.assign(
   infraSignalsMethods,
   infraDeploySignalsMethods,
   infraRunbooksMethods,
+  infraIncidentsMethods,
   githubStatusMethods,
   updatesMethods,
   selfUpdateMethods,
@@ -1436,6 +1442,7 @@ Object.assign(
   infraLocksMethods,
   infraAuditMethods,
   infraPlansMethods,
+  infraDeploysMethods,
   infraCheckMethods,
   infraPolicyMethods,
   infraPullsMethods,

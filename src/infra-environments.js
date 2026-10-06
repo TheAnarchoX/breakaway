@@ -74,7 +74,7 @@ export const runsTheBoard = (row, worker) => Boolean(row.target) && row.target =
 
 /**
  * The environment as the API shows it.
- * @param {{ id: number, repo: string, name: string, kind: string, provider: string | null, target: string | null, task: string | null, frozen: number, frozen_at: number | null, gates: number | null, observe_only: number, created: number, edited: number }} row
+ * @param {{ id: number, repo: string, name: string, kind: string, provider: string | null, target: string | null, task: string | null, frozen: number, frozen_at: number | null, gates: number | null, observe_only: number, pipeline?: string | null, created: number, edited: number }} row
  * @param {{ worker: string, task?: { uuid: string, wid: string | null, description: string } | null }} context
  */
 export function environmentView(row, { worker, task = null }) {
@@ -92,6 +92,8 @@ export function environmentView(row, { worker, task = null }) {
     gates: row.gates === null || row.gates === undefined ? row.kind === 'production' : Boolean(row.gates),
     observeOnly: own || Boolean(row.observe_only),
     runsTheBoard: own,
+    // `staging` or `production` when it's its repository's pipeline's (BRK-195), else null.
+    pipeline: row.pipeline ?? null,
     created: new Date(row.created).toISOString(),
     edited: new Date(row.edited).toISOString(),
   };

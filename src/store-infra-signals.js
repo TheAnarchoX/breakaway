@@ -7,10 +7,16 @@
  * Runbooks (BRK-196) and incidents (BRK-197) hear the stream by registering on `signalSubscribers`: each new batch
  * reaches every subscriber after it's stored, and a subscriber that throws never loses a signal or stops the others.
  * Nothing outside the board writes signals: the API reads only, and providers report inside the store.
+ *
+ * A platform's alert can reach the board twice, by its webhook as it fires and from its alert history when the
+ * inventory refreshes (BRK-191): `recordAlertSignals` keeps one of each. GET /api/infra/alerts reads which of a
+ * provider's alerts are set up and which reach the board.
  */
 import { AgentError } from './store-agents.js';
 import { checkSignals } from './infra-provider.js';
+import { redact } from './redact.js';
 import {
+  ALERT_SAME_MS,
   DAY,
   SIGNAL_KINDS,
   SIGNAL_LEVELS,
@@ -235,7 +241,140 @@ export const infraSignalsMethods = {
    */
   async pullProviderSignals(provider, ctx, since) {
     const signals = checkSignals(provider, ctx, since, await provider.events(ctx, since));
-    return this.recordSignals(signals);
+    return this.recordAlertSignals(signals);
+  },
+
+  /**
+   * Stores signals like `recordSignals`, but keeps one of each alert: an alert already stored (the same source,
+   * environment, resource, and text, within ALERT_SAME_MS) is left out, so an alert heard by its webhook and again
+   * from the platform's history is one signal. Other kinds go through as they are.
+   * @param {import('./infra-signals.js').SignalInput[]} signals
+   */
+  async recordAlertSignals(signals) {
+    if (!Array.isArray(signals)) throw new AgentError('signals must be a list', 400);
+    const now = Date.now();
+    /** @type {import('./infra-signals.js').SignalEntry[]} */
+    const kept = [];
+    const fresh = signals.filter((input) => {
+      const e = signalEntry(input, now);
+      if (e.kind !== 'alert') return true;
+      const same = (o) =>
+        o.source === e.source &&
+        o.environment === e.environment &&
+        o.environmentId === e.environmentId &&
+        o.resource === e.resource &&
+        o.text === e.text &&
+        Math.abs(o.at - e.at) <= ALERT_SAME_MS;
+      if (kept.some(same)) return false;
+      const stored = this.sql
+        .exec(
+          "SELECT 1 FROM infra_signals WHERE kind = 'alert' AND source = ? AND environment = ? AND environment_id IS ? AND resource IS ? AND text = ? AND at BETWEEN ? AND ? LIMIT 1",
+          e.source,
+          e.environment,
+          e.environmentId,
+          e.resource,
+          e.text,
+          e.at - ALERT_SAME_MS,
+          e.at + ALERT_SAME_MS,
+        )
+        .toArray();
+      if (stored.length) return false;
+      kept.push(e);
+      return true;
+    });
+    return this.recordSignals(fresh);
+  },
+
+  /**
+   * A platform's alert, heard by its webhook (src/store-routines.js), as an `alert` signal: on `resource` in each of the
+   * provider's environments whose inventory has it, or, when it names none or no inventory has it, on each of the
+   * provider's environments in `repo` as a whole. An environment that isn't on the board hears nothing. Returns the
+   * signals stored.
+   * @param {string} providerId
+   * @param {string} repo the repository whose routine the alert fired
+   * @param {{ at: string | null, resource: string | null, text: string }} alert
+   */
+  async recordProviderAlert(providerId, repo, { at, resource, text }) {
+    const now = Date.now();
+    const t = at ? Date.parse(at) : Number.NaN;
+    const when = new Date(Number.isNaN(t) || t > now + DAY ? now : t).toISOString();
+    let on = resource;
+    let environments = resource
+      ? this.sql
+          .exec(
+            'SELECT DISTINCT e.id, e.name FROM infra_inventory i JOIN infra_environments e ON e.id = i.environment WHERE i.provider = ? AND i.rid = ? ORDER BY e.id',
+            providerId,
+            resource,
+          )
+          .toArray()
+      : [];
+    if (!environments.length) {
+      on = null;
+      environments = this.sql
+        .exec('SELECT id, name FROM infra_environments WHERE provider = ? AND repo = ? ORDER BY id', providerId, repo)
+        .toArray();
+    }
+    return this.recordAlertSignals(
+      environments.map((e) => ({
+        source: providerId,
+        environment: e.name,
+        environmentId: Number(e.id),
+        resource: on,
+        kind: 'alert',
+        level: 'warning',
+        value: null,
+        at: when,
+        text,
+      })),
+    );
+  },
+
+  /**
+   * GET /api/infra/alerts?provider=: which of the provider's alerts are set up and which reach the board, read live
+   * with the board's read-only token. Read only; names, never an address.
+   */
+  infraAlertsApi(query = {}) {
+    return this.run(async () => {
+      const id = String(query.provider ?? '').trim();
+      if (!id) throw new AgentError('say which provider, like ?provider=<its id>', 400);
+      const registry = this.infraRegistry();
+      if (!registry.has(id)) throw new AgentError(`no provider ${id.slice(0, 40)} is connected`, 404);
+      const provider = registry.get(id);
+      if (typeof provider.alerts !== 'function')
+        throw new AgentError(`${provider.name} doesn’t send alerts to the board`, 404);
+      const token = await this.providerReadToken(id);
+      if (!token)
+        throw new AgentError(
+          `connect ${provider.name} on Connections first: the board reads its alerts with that token`,
+          409,
+        );
+      const board = [this.homeUrl(), this.meta('conn_origin')].flatMap((u) => {
+        try {
+          return u ? [new URL(u).origin] : [];
+        } catch {
+          return [];
+        }
+      });
+      /** @type {import('./infra-provider.js').AlertSetup} */
+      let setup;
+      try {
+        setup = await provider.alerts({ environment: '', token }, { board: [...new Set(board)] });
+      } catch (error) {
+        const message = `${provider.name} couldn’t say which alerts are set up: ${redact(error?.message ?? error)}`;
+        if (typeof error?.permission === 'string')
+          await this.infraConnectionSeen(id, 'signal', { ok: false, error: message, missing: [error.permission] });
+        throw new AgentError(message, error?.status === 429 ? 429 : 502);
+      }
+      return {
+        status: 200,
+        body: {
+          provider: id,
+          alerts: setup.alerts.map((a) => ({ ...a, name: redact(a.name) })),
+          policies: setup.policies.map((p) => ({ ...p, name: redact(p.name) })),
+          webhooks: setup.webhooks,
+        },
+      };
+    });
   },
 
   /**
