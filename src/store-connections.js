@@ -1073,6 +1073,10 @@ export const connectionsMethods = {
     if (missing.length) {
       const row = this.sql.exec('SELECT permissions FROM infra_connections WHERE provider = ?', id).toArray()[0];
       const gone = new Set(missing.map(String));
+      // A permission refused is refused under its older names too, so a token kept with one of them shows it missing.
+      const registry = this.infraRegistry();
+      for (const p of (registry.has(id) ? registry.get(id) : null)?.readToken?.permissions ?? [])
+        if (gone.has(p.name)) for (const old of p.legacy ?? []) gone.add(old);
       if (row)
         this.sql.exec(
           'UPDATE infra_connections SET permissions = ? WHERE provider = ?',

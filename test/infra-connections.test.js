@@ -107,6 +107,51 @@ describe('a provider’s read-only token, the pure parts (BRK-194)', () => {
     expect(short).toMatchObject({ state: 'attention', detail: /doesn’t have Fake Alerts Read/u });
   });
 
+  it('counts a permission by its legacy name, and names both, so a token made before a rename still works (BRK-243)', async () => {
+    const renamed = {
+      ...provider,
+      readToken: {
+        ...provider.readToken,
+        permissions: [
+          {
+            name: 'Fake Services Metadata Read-Only',
+            legacy: ['Fake Services Read'],
+            for: 'what runs, never its code',
+          },
+          provider.readToken.permissions[1],
+        ],
+      },
+    };
+    expect(() => checkProvider(renamed)).not.toThrow();
+    const bad = { ...renamed.readToken, permissions: [{ ...renamed.readToken.permissions[0], legacy: 'Old' }] };
+    expect(() => checkProvider({ ...renamed, readToken: bad })).toThrow(/legacy is not a list of names/u);
+
+    const legacy = {
+      permissions: ['Fake Alerts Read', 'Fake Services Read'],
+      checked: true,
+      connected: '2026-10-06T10:00:00.000Z',
+      discovery: { at: '2026-10-06T11:00:00.000Z', ok: true, error: null },
+      signal: null,
+    };
+    const row = providerRow(renamed, legacy);
+    expect(row).toMatchObject({ state: 'working', detail: 'connected' });
+    expect(row.items[0]).toMatchObject({
+      name: 'Fake Services Metadata Read-Only',
+      label: 'Fake Services Metadata Read-Only (or the legacy Fake Services Read)',
+      ok: true,
+    });
+    expect(providerRow(renamed, null).fix).toMatch(
+      /with Fake Services Metadata Read-Only \(or the legacy Fake Services Read\) and Fake Alerts Read/u,
+    );
+    // A platform that lists permissions: the legacy name counts there too.
+    expect(readTokenProblem(renamed, await renamed.readToken.check({ token: 'fake-read-token' }))).toBeNull();
+    expect(readTokenProblem(renamed, { ok: true, permissions: [{ name: 'Fake Alerts Read', level: 'read' }] })).toMatch(
+      /missing Fake Services Metadata Read-Only \(or the legacy Fake Services Read\)/u,
+    );
+    const short = providerRow(renamed, { ...legacy, permissions: ['Fake Alerts Read'] });
+    expect(short.detail).toMatch(/doesn’t have Fake Services Metadata Read-Only \(or the legacy Fake Services Read\)/u);
+  });
+
   it('seals a token bound to its provider, under a key of its own', async () => {
     const info = new TextEncoder().encode('breakaway provider tokens v1');
     const key = await sealingKey(TEST_SYNC_KEY, info);
@@ -319,5 +364,39 @@ describe('connecting a provider on Connections (BRK-194)', () => {
     expect(short.items.find((i) => i.name === 'Fake Alerts Read')).toMatchObject({ ok: false, has: 'none' });
     expect(await form('unchecked', 'PUT', { token: 'a-new-one' })).toMatchObject({ status: 200 });
     expect((await inStore((s) => s.providerConnections()))[0].state).toBe('working');
+  });
+
+  it('marks a renamed permission missing on a token kept under its legacy name (BRK-243)', async () => {
+    const renamed = fakeProvider({ id: 'renamed' });
+    delete renamed.readToken.check;
+    renamed.readToken.permissions[0] = {
+      name: 'Fake Services Metadata Read-Only',
+      legacy: ['Fake Services Read'],
+      for: 'what runs, never its code',
+    };
+    const reg = new ProviderRegistry();
+    reg.register(renamed);
+    await inStore((s) => {
+      s.infraProviders = reg;
+      // A token kept before the rename, under the legacy name.
+      s.sql.exec(
+        `INSERT INTO infra_connections (provider, sealed, permissions, checked, created, edited) VALUES (?, ?, ?, 0, ?, ?)`,
+        'renamed',
+        'sealed',
+        JSON.stringify(['Fake Alerts Read', 'Fake Services Read']),
+        Date.now(),
+        Date.now(),
+      );
+    });
+    await inStore((s) =>
+      s.infraConnectionSeen('renamed', 'discovery', {
+        ok: true,
+        missing: ['Fake Services Metadata Read-Only'],
+      }),
+    );
+    const row = await inStore(
+      (s) => s.sql.exec('SELECT permissions FROM infra_connections WHERE provider = ?', 'renamed').toArray()[0],
+    );
+    expect(JSON.parse(row.permissions)).toEqual(['Fake Alerts Read']);
   });
 });

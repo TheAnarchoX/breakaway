@@ -196,8 +196,8 @@ Every path is under `https://api.cloudflare.com/client/v4`, with `{a}` for the a
 - **There is no plan endpoint.** Cloudflare has no dry run, so `plan` is the provider's own diff of the desired state against `discover`, made with the read token. Nothing is written to plan.
 - **A Worker change is a version, then a deployment.** Bindings and compatibility settings belong to a version; creating a version doesn't touch traffic, and a deployment sends traffic to it. So a Worker change is reversible: rolling back is a deployment of the version that was live before. A rollback across a secret change is refused unless it's forced (`?force=true`), and the provider asks for that only inside the executor's own rollback, never in a plan (BRK-192).
 - **Deleting is the irreversible part.** Deleting a D1 database, KV namespace, R2 bucket, queue, Durable Object namespace (by a delete migration), or container application destroys its data or its messages. Every delete is marked irreversible, with why. D1's Time Travel can restore a database's contents to a point in the last 30 days, but not a deleted database.
-- **Tokens can't be scoped to one Worker.** Account permissions cover every resource of that kind in the account; zone permissions can be scoped to chosen zones. So the provider itself keeps every call inside the environment's scope (`ctx.scope`: the Workers, databases, buckets, namespaces, queues, applications, and zones it names), and refuses a plan that touches anything outside it. Keeping staging and production apart by token takes **separate Cloudflare accounts**; on one account, a staging write token can technically write production, and the provider's scope check is what stops it. The same is true of the board's own install when it shares the account: it is observe only in the board, but the token can't enforce that (see Open questions).
-- **Read permissions can read data.** `Workers KV Storage Read` can read values, `Workers R2 Storage Read` can read objects, and `Workers Scripts Read` can download a Worker's code. The provider never calls the value, object, or content endpoints (`…/values/…`, object `GET`s, `…/content`, `…/versions/{id}?include=modules`), and the contract test fails a fixture that does. Secrets are listed by name only; the API never returns their values.
+- **Only Workers can be scoped one by one.** Cloudflare's Workers roles (BRK-243) can be given per Worker, so an environment's write token can reach only its own Workers (Workers Editor on them); every other account permission (D1, KV, R2, Queues, Containers) covers every resource of that kind in the account, and zone permissions can be scoped to chosen zones. So the provider itself keeps every call inside the environment's scope (`ctx.scope`: the Workers, databases, buckets, namespaces, queues, applications, and zones it names), and refuses a plan that touches anything outside it. Keeping staging and production fully apart by token takes **separate Cloudflare accounts**; on one account, a staging write token scoped to staging's Workers can't touch production's, but it can technically write production's databases, namespaces, buckets, and queues, and the provider's scope check is what stops it. The same is true of the board's own install when it shares the account: it is observe only in the board, but the token can't enforce that (see Open questions).
+- **Read permissions can read data.** `Workers KV Storage Read` can read values, `Workers R2 Storage Read` can read objects, and the legacy `Workers Scripts Read` can download a Worker's code (Cloudflare maps it to the Workers role Content Read-Only), which is why the board asks for **Workers Metadata Read-Only** instead (BRK-243). The provider never calls the value, object, or content endpoints (`…/values/…`, object `GET`s, `…/content`, `…/versions/{id}?include=modules`), and the contract test fails a fixture that does. Secrets are listed by name only; the API never returns their values.
 - **Only containers and queue consumers scale.** Workers, Durable Objects, D1, KV, and R2 have no instance count to set and nothing to restart: the platform scales them. Containers on the default scheduling policy have `max_instances`, and a rollout replaces every instance (a restart). Queue consumers have `max_concurrency`. Containers on the Durable Object scheduling policy are started and stopped by the application's own code, so they have neither (BRK-227).
 - **Usage and prices come in US dollars.** The published prices are in USD. The Billable Usage API (`GET /accounts/{a}/billable-usage`, `Billing Read`) is alpha, for self-serve accounts only, updated daily, and per product rather than per resource, so the provider estimates each resource's cost from its usage in the analytics and a price table, and doesn't ask for `Billing Read` (BRK-193).
 - **Rate limits.** 1,200 requests per 5 minutes per token across the whole API (dashboard use by the same user counts too), and a 429 blocks every call for the next 5 minutes; GraphQL analytics allows 300 queries per 5 minutes on top of that. `discover` makes about 4 calls per Worker plus 1 per other resource and per page, so it stays well inside for the board's repositories; the provider stops on a 429 and reports the error rather than retrying in a loop, and asks for one GraphQL query per dataset for the whole environment, not one per resource.
@@ -210,10 +210,10 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 
 | Step | Calls | Permission |
 | --- | --- | --- |
-| Discover | `GET /accounts/{a}/workers/scripts` (names, handlers, last modified); per Worker `GET …/scripts/{name}/settings` (bindings, compatibility, observability, which give the relations), `GET …/scripts/{name}/deployments` (the live versions), `GET …/scripts/{name}/secrets` (names only), `GET …/scripts/{name}/schedules` (cron triggers) | Workers Scripts Read |
+| Discover | `GET /accounts/{a}/workers/scripts` (names, handlers, last modified); per Worker `GET …/scripts/{name}/settings` (bindings, compatibility, observability, which give the relations), `GET …/scripts/{name}/deployments` (the live versions), `GET …/scripts/{name}/secrets` (names only), `GET …/scripts/{name}/schedules` (cron triggers) | Workers Metadata Read-Only (legacy: Workers Scripts Read) |
 | Plan | Diff only: the desired bindings, compatibility date and flags, cron triggers, and routes against what discover found | none beyond discover |
-| Apply | `POST /accounts/{a}/workers/workers/{id}/versions` (a new version with the changed bindings, carrying the live version's modules), then `POST /accounts/{a}/workers/scripts/{name}/deployments` (`strategy: percentage`, the new version at 100); cron triggers `PUT …/scripts/{name}/schedules`; delete `DELETE …/scripts/{name}` (irreversible). BRK-192 checked: the versions endpoint needs the version's `modules` (the code), and the provider never reads a Worker's code, so it uses the fallback, `PATCH …/scripts/{name}/settings` (see "Plan and apply, as built") | Workers Scripts Write (the dashboard may call it Edit) |
-| Roll back | `POST …/scripts/{name}/deployments` with the previous version at 100 | Workers Scripts Write |
+| Apply | `POST /accounts/{a}/workers/workers/{id}/versions` (a new version with the changed bindings, carrying the live version's modules), then `POST /accounts/{a}/workers/scripts/{name}/deployments` (`strategy: percentage`, the new version at 100); cron triggers `PUT …/scripts/{name}/schedules`; delete `DELETE …/scripts/{name}` (irreversible). BRK-192 checked: the versions endpoint needs the version's `modules` (the code), and the provider never reads a Worker's code, so it uses the fallback, `PATCH …/scripts/{name}/settings` (see "Plan and apply, as built") | Workers Editor on the environment's Workers (legacy: Workers Scripts Write, which the dashboard may call Edit). Making a Worker (`POST /accounts/{a}/workers/workers`) or deleting one needs Workers Admin at the Workers product scope, which Editor doesn't have |
+| Roll back | `POST …/scripts/{name}/deployments` with the previous version at 100 | Workers Editor on the Worker (legacy: Workers Scripts Write) |
 | Observe | GraphQL `workersInvocationsAdaptive` by `scriptName`: requests and errors over the last 15 minutes give healthy, degraded, or down; a Worker with no deployment is down | Account Analytics Read |
 | Cost | The same dataset's requests and CPU time, times the price table | Account Analytics Read |
 | Scale or restart | Neither | |
@@ -222,9 +222,9 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 
 | Step | Calls | Permission |
 | --- | --- | --- |
-| Discover | `GET /accounts/{a}/workers/durable_objects/namespaces` (class, script, SQLite or not); the Worker's settings give the binding | Workers Scripts Read |
+| Discover | `GET /accounts/{a}/workers/durable_objects/namespaces` (class, script, SQLite or not); the Worker's settings give the binding | Workers Metadata Read-Only (legacy: Workers Scripts Read): Durable Objects have no role of their own and follow the Worker that implements them |
 | Plan | Diff only; a new class or a deleted one is a migration on the Worker's next version | none beyond discover |
-| Apply | The Worker's version and deployment above, with the migration in the version | Workers Scripts Write |
+| Apply | The Worker's version and deployment above, with the migration in the version | Workers Editor on the Worker (legacy: Workers Scripts Write) |
 | Observe | GraphQL `durableObjectsInvocationsAdaptiveGroups` by namespace: requests and errors | Account Analytics Read |
 | Cost | `durableObjectsInvocationsAdaptiveGroups` (requests, duration), `durableObjectsStorageGroups` (stored bytes), times the price table | Account Analytics Read |
 | Scale or restart | Neither | |
@@ -301,9 +301,9 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 
 | Step | Calls | Permission |
 | --- | --- | --- |
-| Discover | `GET /accounts/{a}/workers/domains` (hostname, zone, Worker) | Workers Scripts Read |
+| Discover | `GET /accounts/{a}/workers/domains` (hostname, zone, Worker) | Workers Metadata Read-Only (legacy: Workers Scripts Read) |
 | Plan | Diff only | none beyond discover |
-| Apply | `PUT /accounts/{a}/workers/domains`; `DELETE …/workers/domains/{id}`. BRK-192 checked Cloudflare's Workers authorization page: adding, changing, or removing a custom domain needs Workers Routes Write on every zone it touches, as routes do | Workers Scripts Write, and Workers Routes Write (zone) |
+| Apply | `PUT /accounts/{a}/workers/domains`; `DELETE …/workers/domains/{id}`. BRK-192 checked Cloudflare's Workers authorization page: adding, changing, or removing a custom domain needs Workers Routes Write on every zone it touches, as routes do | Workers Editor at the Workers product scope, since custom domains have no per-Worker role yet (legacy: Workers Scripts Write), and Workers Routes Write (zone) |
 | Observe | Its Worker's health | |
 | Cost | None of its own | |
 | Scale or restart | Neither | |
@@ -328,7 +328,7 @@ Every estimate carries a note, which the inventory keeps and shows with the amou
 
 A binding in the file gives its name and type and, for one to a resource, what it binds to: Cloudflare's own field (`id`, `namespace_id`, `bucket_name`, `queue_name`, `service`, `class_name`), or `resource`, the desired ID of a database or namespace the same plan makes. A binding with only its name and type keeps what it binds to. Variables and secrets (`plain_text`, `json`, `secret_text`, and every other type) are never changed: a file that gives a variable's text, or adds, drops, or retypes one, is refused, and an apply carries them over with `keep_bindings`, so the board never reads or holds a value.
 
-Because tokens can't be scoped to one Worker, plan refuses: a resource whose name already exists on the account outside the environment's scope; a database, namespace, bucket, or queue no Worker in the file binds (it would be outside the scope, and never discovered again); a delete of something a remaining Worker still binds or calls; deleting the environment's target; and what Architect doesn't make, a Durable Object class (a migration in its Worker's code) and a container application (its Worker's deploy). A new Worker is the Worker alone (`POST /accounts/{a}/workers/workers`), with its cron triggers: its first version, with its code, comes from its deploy, and its settings are compared once it has one.
+Because only Workers can be scoped one by one, plan refuses: a resource whose name already exists on the account outside the environment's scope; a database, namespace, bucket, or queue no Worker in the file binds (it would be outside the scope, and never discovered again); a delete of something a remaining Worker still binds or calls; deleting the environment's target; and what Architect doesn't make, a Durable Object class (a migration in its Worker's code) and a container application (its Worker's deploy). A new Worker is the Worker alone (`POST /accounts/{a}/workers/workers`), with its cron triggers: its first version, with its code, comes from its deploy, and its settings are compared once it has one.
 
 **Apply** runs only in the apply runner, with the environment's write token in `ctx.writeToken`, which only the runner sets (from `BREAKAWAY_WRITE_TOKEN`) and the board never does: without it, apply and `rollbackWorker()` stop before any call to Cloudflare. A read-only token put in the runner's secret by mistake gets Cloudflare's 403 at the first write, and the step fails naming the permission. It discovers again first and fails a change whose resource isn't what the plan saw ("changed since it was planned: plan again"), then makes one change at a time and stops at the first that fails. A Worker's settings and bindings change with `PATCH …/scripts/{name}/settings` (a multipart `settings` part), which makes a new version and deploys it; the version that was live before is in the change's `before.versions`. `rollbackWorker()` deploys those versions again (`POST …/scripts/{name}/deployments`), with `?force=true` only when the executor's own rollback crosses a secret change (BRK-183). `estimate(ctx, change)` prices what a change leaves for BRK-178's cost change: a new resource from its settings with `priceResource()` (no usage yet, so most are $0), a changed or scaled one with `cost()` over its last week of use and its new settings, and nothing for a delete or a restart. **Verify** with BRK-207's staging plan that the settings endpoint deploys the new version at 100% on an account that uses gradual deployments.
 
@@ -354,7 +354,7 @@ When the inventory refreshes, a resource that's degraded (warning) or down (crit
 
 | Scope | Permission | For |
 | --- | --- | --- |
-| Account | Workers Scripts Read | Workers, their settings, deployments, secret names, cron triggers, Durable Object namespaces, custom domains |
+| Account, Workers product | Workers Metadata Read-Only (legacy: Workers Scripts Read) | Workers, their settings, deployments, secret names, cron triggers, Durable Object namespaces, custom domains; never their code |
 | Account | Workers KV Storage Read | KV namespaces (never values) |
 | Account | Workers R2 Storage Read | R2 buckets and their settings (never objects) |
 | Account | D1 Read | D1 databases |
@@ -371,7 +371,7 @@ Account resources: the one account the environments run on. Not asked for, on pu
 
 | Scope | Permission | When |
 | --- | --- | --- |
-| Account | Workers Scripts Write | Always: Workers, Durable Objects, custom domains |
+| Account, the environment's Workers | Workers Editor (legacy: Workers Scripts Write) | Always: its Workers and their Durable Objects. Scope it to the Workers product instead when the environment declares custom domains (they have no per-Worker role yet) |
 | Zone (only that environment's zones) | Workers Routes Write | When it declares routes or custom domains |
 | Account | D1 Write | When it declares D1 databases |
 | Account | Workers KV Storage Write | When it declares KV namespaces |
@@ -379,7 +379,31 @@ Account resources: the one account the environments run on. Not asked for, on pu
 | Account | Queues Write | When it declares queues |
 | Account | Containers Write | When it declares containers |
 
-Give it an expiry date and rotate it, never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for another environment. The dashboard may name a write permission Edit rather than Write; it's the same permission. Because account permissions reach every resource of their kind, a production write token belongs on a separate Cloudflare account from staging when the owner can arrange it (see "What it found").
+Give it an expiry date and rotate it, never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for another environment. The dashboard may name a write permission Edit rather than Write; it's the same permission. Because account permissions other than Workers reach every resource of their kind, a production write token belongs on a separate Cloudflare account from staging when the owner can arrange it (see "What it found").
+
+#### Cloudflare's Workers roles (BRK-243)
+
+Cloudflare marks Workers Scripts Read and Write as legacy (no deprecation date yet) and replaces them with **Workers roles**, which an account API token takes at the Workers product scope or for chosen Workers ([Workers roles and permissions](https://developers.cloudflare.com/workers/authorization/workers/), last updated 15 Sep 2026, read 6 Oct 2026). Its own mapping: Workers Scripts Read is Content Read-Only at the product scope, which can read a Worker's code; Workers Scripts Edit is Editor at the product scope. So the board's token asks for **Metadata Read-Only** at the Workers product scope, and each environment's write token for **Editor** on that environment's Workers. A token made with the legacy permissions still works: Connections counts Workers Scripts Read as Metadata Read-Only, and every message that names a permission gives the legacy name in parentheses.
+
+| Role | What Cloudflare says it allows | Where Architect uses it |
+| --- | --- | --- |
+| Metadata Read-Only | Workers' metadata, settings, and observability (metrics, logs, traces); not their code or secret values. Durable Objects follow the Worker that implements them | The board's read token, at the Workers product scope |
+| Content Read-Only | Metadata Read-Only, plus the code | Never: the board never reads code |
+| Editor | Read, update, deploy, and rename existing Workers: settings, schedules, versions, deployments; not create or delete | Each environment's write token, on its Workers |
+| Admin | Everything, including creating and deleting Workers (at the product scope) | Only for an apply that makes or deletes a Worker, given by hand |
+
+Which calls each needs, checked against that page:
+
+| Calls | Needs | Checked |
+| --- | --- | --- |
+| `GET …/workers/scripts`, `…/scripts/{name}/settings`, `…/deployments`, `…/schedules`, `GET …/workers/durable_objects/namespaces`, `GET …/workers/domains` | Metadata Read-Only | Documented: lists, settings, schedules, and deployments are metadata, and Durable Objects inherit the Worker's role |
+| `GET …/scripts/{name}/secrets` (names only) | Metadata Read-Only | Not stated: the page rules out secret *values*, not names. **Verify** with BRK-205's read-only look; if it's refused, discovery fails naming Metadata Read-Only, and the fix is to stop reading secret names, not a wider role |
+| GraphQL analytics (health, cost) | Account Analytics Read, as before | Metadata Read-Only covers Workers observability in the dashboard; the GraphQL API still asks for Account Analytics Read, so the token keeps it |
+| `PATCH …/scripts/{name}/settings`, `PUT …/schedules`, `POST …/deployments` (apply and roll back) | Editor on the Worker | Documented: Editor updates settings, schedules, versions, and deployments |
+| `PUT` and `DELETE …/workers/domains` | Editor at the Workers product scope, and Workers Routes Write on the zone | Documented: custom domains have no per-Worker role yet, and a domain or route change needs Workers Routes Write on every zone it touches |
+| `POST …/workers/workers` (a new Worker), `DELETE …/scripts/{name}` | Admin at the Workers product scope | Documented: per-Worker roles can't be given for a Worker that doesn't exist yet, and Editor can't delete |
+
+Apply discovers again with the write token, so it carries the read token's permissions too; per-Worker Editor reads its own Workers, and Metadata Read-Only at the product scope lets that discovery list the account's. A plan that deletes a Worker says, in its reason, that the write token needs Workers Admin for that apply; a 403 on making or deleting one says the same. A file that adds a Worker makes it with `POST …/workers/workers`, which needs Admin too, but a new Worker usually comes from its first deploy instead, so Admin is never part of the standing write token: the owner gives it for the one apply that needs it and takes it away after.
 
 ### Scale and restart, for envelopes
 
@@ -433,7 +457,7 @@ Answered by the owner on 6 Oct 2026; DOC-29 records them in the decision log and
 
 - Whether short-lived environments are made on claim, on a tag, or only on a press. BRK-200 starts with a tag or a press.
 - Whether the plan check needs a new GitHub App permission (checks: write). BRK-185 adds an owner task if it does.
-- Whether the board's own install, staging, and production should be on separate Cloudflare accounts. Cloudflare tokens can't be scoped to one Worker, so on one account only the provider's scope check keeps a staging write token off production and off the board (First provider). Separate accounts make the token the boundary; the owner chooses when making the tokens (BRK-204, BRK-206).
+- Whether the board's own install, staging, and production should be on separate Cloudflare accounts. Cloudflare's per-Worker Workers Editor keeps a staging write token off production's and the board's Workers, but every other account permission reaches every resource of its kind, so on one account only the provider's scope check keeps it off production's data (First provider). Separate accounts make the token the boundary; the owner chooses when making the tokens (BRK-204, BRK-206).
 
 ## Done when
 
