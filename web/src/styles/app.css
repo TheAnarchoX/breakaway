@@ -8218,3 +8218,82 @@ a.pl-mention {
     box-shadow: 0 0 0 8px transparent;
   }
 }
+
+/* Run workflow… on the GitHub view's runs tab (WEB-82). */
+.run-wf {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.run-wf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.run-wf-started {
+  align-items: flex-start;
+}
+.run-wf-started > span {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+}
+.run-wf-started a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.run-wf-started svg:first-child {
+  flex: none;
+  margin-top: 2px;
+}
+.run-wf-list,
+.run-wf-inputs {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.run-wf-list {
+  gap: 2px;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+}
+.run-wf-list legend,
+.run-wf-inputs legend {
+  margin-bottom: 6px;
+}
+.run-wf-option {
+  min-height: 48px;
+  padding: 6px 8px;
+}
+.run-wf-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.run-wf-name code {
+  overflow-wrap: anywhere;
+}
+.run-wf-inputs {
+  gap: 14px;
+}
+.run-wf-switch {
+  padding: 0;
+}
+.run-wf-empty a,
+.run-wf-unreadable a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.run-wf-unreadable {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-s);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
