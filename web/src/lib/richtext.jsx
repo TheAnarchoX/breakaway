@@ -1,7 +1,9 @@
 // Renders the tokens from links.js and the blocks from markdown.js. Everything becomes elements; nothing is inserted as HTML.
+// A fenced code block is highlighted by its tag (WEB-86).
 import { Square, SquareCheck } from 'lucide-preact';
 import { blocks, splitWids, tokenize } from './links.js';
 import { markdown } from './markdown.js';
+import { CodeBlock } from './highlight.jsx';
 
 const out = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -146,11 +148,7 @@ function renderBlocks(list, here) {
       case 'hr':
         return <hr key={i} />;
       case 'code':
-        return (
-          <pre key={i} class="md-code">
-            <code>{b.text}</code>
-          </pre>
-        );
+        return <CodeBlock key={i} code={b.text} lang={b.lang} />;
       case 'quote':
         return <blockquote key={i}>{renderBlocks(b.blocks, here)}</blockquote>;
       case 'table':

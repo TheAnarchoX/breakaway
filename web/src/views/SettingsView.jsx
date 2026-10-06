@@ -1,8 +1,10 @@
 import { useEffect } from 'preact/hooks';
+import { CodeBlock } from '../lib/highlight.jsx';
 import { CircleArrowUp, FolderPlus, Keyboard, LogOut, Plug, RefreshCw } from 'lucide-preact';
 import { plural } from '../lib/model.js';
 import {
   agents,
+  codeColors,
   connectionsAttention,
   hashFor,
   health,
@@ -80,7 +82,14 @@ function NotificationSettings() {
   );
 }
 
-/** Claim as, theme, open tasks in, notifications, and the merge method: kept in this browser, as they always were. */
+/** What Code colors shows each palette on. */
+const CODE_SAMPLE = `// Claim the next task, if there is one
+export async function claim(board, name = 'claude') {
+  const task = await board.next({ horizon: 'now', limit: 1 });
+  return task ? board.claim(task.id, name) : null;
+}`;
+
+/** Claim as, theme, code colors, open tasks in, notifications, and the merge method: kept in this browser. */
 function ThisBrowser() {
   return (
     <section class="rs-section" aria-labelledby="st-browser">
@@ -113,6 +122,26 @@ function ThisBrowser() {
               theme.value = v;
             }}
           />
+        </div>
+        <div class="field">
+          <span class="field-label">Code colors</span>
+          <Segmented
+            label="Code colors"
+            options={[
+              { id: 'board', label: 'breakaway' },
+              { id: 'github', label: 'GitHub' },
+              { id: 'one', label: 'One' },
+              { id: 'gruvbox', label: 'Gruvbox' },
+            ]}
+            value={codeColors.value}
+            onChange={(v) => {
+              codeColors.value = v;
+            }}
+          />
+          <CodeBlock code={CODE_SAMPLE} lang="js" class="md-code st-code-sample" />
+          <span class="field-hint">
+            How code looks in diffs and documents. Each has a dark and a light side that follow the theme.
+          </span>
         </div>
         <div class="field">
           <span class="field-label">Open tasks in</span>

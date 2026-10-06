@@ -36,6 +36,11 @@ effect(() => savePref('openIn', openIn.value));
 effect(() => savePref('claimName', me.value));
 effect(() => savePref('theme', theme.value));
 effect(() => savePref('lanes', lanes.value));
+/** The colors highlighted code wears (WEB-86): breakaway's own, or a well-known editor palette, in either theme. */
+export const CODE_COLORS = ['board', 'github', 'one', 'gruvbox'];
+const savedCode = pref('codeColors', 'board');
+export const codeColors = signal(CODE_COLORS.includes(savedCode) ? savedCode : 'board');
+effect(() => savePref('codeColors', codeColors.value));
 /** Whether a pull request's unified diff wraps long lines instead of scrolling sideways (WEB-45). */
 export const diffWrap = signal(pref('diffWrap', 'off') === 'on');
 effect(() => savePref('diffWrap', diffWrap.value ? 'on' : 'off'));
@@ -107,6 +112,8 @@ effect(() => {
 
 effect(() => {
   const root = document.documentElement;
+  if (codeColors.value === 'board') delete root.dataset.code;
+  else root.dataset.code = codeColors.value;
   if (theme.value === 'system') delete root.dataset.theme;
   else root.dataset.theme = theme.value;
   const dark =

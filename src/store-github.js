@@ -44,6 +44,19 @@ const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 10
 const MAX_COMPARES = 10;
 const MAX_DETAILS = 20;
 const PAGE_FILES = 3; // 300 files; more are "too many to show", with a link to GitHub
+/** The most of one file the pull request page reads whole for Preview (WEB-86): GitHub's contents API sends up to 1 MB. */
+const PULL_FILE_MAX_BYTES = 1_000_000;
+/** Images Preview shows, by extension. SVG is text, so it's read as text and the page draws it as an image. */
+const IMAGE_TYPES = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+  bmp: 'image/bmp',
+};
 const MAX_FILES = 15; // merged pull requests whose files are read per sync
 const FILE_PAGES = 5;
 const DEBOUNCE_MS = 5000;
@@ -1428,6 +1441,72 @@ export const githubMethods = {
           })),
           filesTruncated: files.length >= PAGE_FILES * 100 || (p.changed_files ?? 0) > files.length,
         },
+      };
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      return { status: error.status === 404 ? 404 : 502, body: { error: error.message } };
+    }
+  },
+
+  /**
+   * One file a pull request changes, read whole at its head or its base commit (WEB-86), for the page's Preview and
+   * rendered diff. Only the pull request's own files are read; a renamed file's base is read at its old name. Text
+   * comes back as text, an image as a data URL to show, and any other binary file or one over 1 MB only says so.
+   * @param {string} number
+   * @param {{ path?: string | null, side?: string | null, slug?: string | null }} query
+   */
+  async githubPullFileApi(number, { path = null, side = null, slug = null } = {}) {
+    await this.ready();
+    const { repo, error: missing } = this.githubRepoOr404(slug);
+    if (missing) return missing;
+    const credentials = await appCredentials(this.env);
+    if (!credentials) return { status: 409, body: { error: 'GitHub isn’t connected yet' } };
+    if (!/^\d+$/u.test(String(number))) return { status: 404, body: { error: 'no such pull request' } };
+    if (!['head', 'base'].includes(String(side)))
+      return { status: 400, body: { error: 'side must be "head" or "base"' } };
+    if (!path) return { status: 400, body: { error: 'say which file as path' } };
+    const client = this.githubClient(credentials, repo);
+    try {
+      const p = await client.get(`/pulls/${number}`);
+      let changed = null;
+      for (let page = 1; page <= PAGE_FILES && !changed; page += 1) {
+        const batch = await client.get(`/pulls/${number}/files?per_page=100&page=${page}`);
+        changed = batch.find((f) => f.filename === path) ?? null;
+        if (batch.length < 100) break;
+      }
+      if (!changed) return { status: 404, body: { error: `#${number} doesn’t change ${path.slice(0, 200)}` } };
+      if (side === 'base' && changed.status === 'added')
+        return { status: 404, body: { error: `${path} is new in this pull request, so it has no earlier version` } };
+      if (side === 'head' && changed.status === 'removed')
+        return { status: 404, body: { error: `this pull request removes ${path}` } };
+      const at = side === 'head' ? changed.filename : (changed.previous_filename ?? changed.filename);
+      const sha = side === 'head' ? p.head.sha : p.base.sha;
+      const file = await client.get(
+        `/contents/${at.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(sha)}`,
+      );
+      const head = { path: at, side, sha, size: Number(file.size ?? 0) };
+      if (Number(file.size ?? 0) > PULL_FILE_MAX_BYTES || file.encoding !== 'base64' || !file.content)
+        return {
+          status: 200,
+          body: { ...head, text: null, image: null, binary: false, tooLarge: Number(file.size ?? 0) > 0 },
+        };
+      const raw = String(file.content).replace(/\s+/gu, '');
+      const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+      const mime = IMAGE_TYPES[at.split('.').pop()?.toLowerCase() ?? ''];
+      if (mime || bytes.subarray(0, 8000).includes(0))
+        return {
+          status: 200,
+          body: {
+            ...head,
+            text: null,
+            image: mime ? `data:${mime};base64,${raw}` : null,
+            binary: true,
+            tooLarge: false,
+          },
+        };
+      return {
+        status: 200,
+        body: { ...head, text: new TextDecoder().decode(bytes), image: null, binary: false, tooLarge: false },
       };
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
