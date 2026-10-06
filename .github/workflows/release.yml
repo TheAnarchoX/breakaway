@@ -121,6 +121,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # The CLI's lockfile, so what npx installs for the plugin is what was published (CLI-21).
+          cp scripts/release/shrinkwrap.mjs "$RUNNER_TEMP/shrinkwrap.mjs"
+          node "$RUNNER_TEMP/shrinkwrap.mjs"
           npm install -g npm@^11.15.0
           # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show npm's
           # usual lines, and on a failure its oidc lines: the Actions logs are public, so never the whole verbose log.
@@ -207,8 +210,11 @@ jobs:
           COMMIT: ${{ steps.promote.outputs.commit }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # main's helper for the CLI's lockfile (CLI-21), since the commit may be from before it.
+          cp scripts/release/shrinkwrap.mjs "$RUNNER_TEMP/shrinkwrap.mjs"
           git checkout --detach "$COMMIT"
           node -e "const f='package.json',p=JSON.parse(require('fs').readFileSync(f));p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          node "$RUNNER_TEMP/shrinkwrap.mjs"
           npm install -g npm@^11.15.0
           # npm says why trusted publishing didn't apply only in its verbose log. Keep that log to the runner and show npm's
           # usual lines, and on a failure its oidc lines: the Actions logs are public, so never the whole verbose log.

@@ -38,7 +38,8 @@
     "taskrc",
     ".agents/skills/tasks/SKILL.md",
     ".agents/skills/pipeline/SKILL.md",
-    "template"
+    "template",
+    "npm-shrinkwrap.json"
   ],
   "engines": {
     "node": ">=20"
