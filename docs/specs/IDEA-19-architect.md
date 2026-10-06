@@ -151,6 +151,8 @@ A task can ask for its own environment, made from the repository's template thro
 
 Anything nobody owns is flagged, and after a grace period a removal plan waits for the owner: removal is destructive, so it always asks (BRK-201).
 
+What nobody owns is what runs in an environment's scope (its inventory slice) that its desired state doesn't declare, so its provider's plan would delete it, and that nothing else owns: not the environment's target, not a short-lived environment's (its task owns it, and BRK-200 removes it), and not a resource a break-glass mark covers (its task puts it into code). Drift's comparison finds it, and drift leaves deletes out of its own count and plan. The board flags it on the environment (`unowned`, and `GET /api/infra/cleanup`) with an audit entry; a week later it makes one removal plan (source `cleanup`) for every flag that's due and puts it in front of the owner, since a delete always trips the destructive guard. A removal the owner rejects keeps the resource, and the board proposes it no more; a frozen environment's flags wait. A flag drops when its resource is declared, covered by break-glass, or gone. Never in an observe-only environment or the board's own install.
+
 ### Golden paths
 
 The owner's opinionated templates for a capability (a queue, a database, a new service) live in the repository; `npx breakaway infra add <template>` scaffolds the change into the checkout, and the agent opens an ordinary pull request (CLI-15). The repository's templates are `.github/breakaway-infra/templates/<name>/template.json`; breakaway ships one example, `queue` for Cloudflare, which a repository's template of the same name replaces. `infra add` writes files and nothing else: it never plans or applies.
