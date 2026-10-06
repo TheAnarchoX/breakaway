@@ -181,6 +181,18 @@ A repository moved with `npx breakaway pipeline init` doesn't need the file: onc
 - for a package: the GitHub environment `npm`, restricted to the default branch, and on npm a trusted publisher for `release.yml` and that environment (or a granular `NPM_TOKEN` in it that can't bypass 2FA); then each staged version approved on npm with 2FA (`npm stage approve <id>`, or Staged Packages on npmjs.com);
 - optional: the repository variable `DEPLOYS_PAUSED` (`true` stops Promote and Release) and the health-check addresses.
 
+#### Reading infrastructure
+
+`CLI-13`, [spec](specs/IDEA-19-architect.md#cli). Agents and the owner read Architect from the terminal, for the checkout's repository (`--all` on `signals` and `incidents` for every one), each with `--json`. Every read is a `GET`, so an agent's token reads Architect and never changes it: approving, rejecting, freezing, and changing an environment stay the owner's, on the board.
+
+- **`npx breakaway infra`** lists the environments: kind, provider, target, frozen, observe only, drift, and the plan waiting.
+- **`infra show <environment>`**: its desired state, drift with the plan that puts it back, and its inventory, each resource with its health, its estimated cost, and what it uses.
+- **`infra plans`** (`--environment`, `--state`, `--before`, `--limit`) and **`infra plan <id>`**: what changes, setting by setting, the cost change, the policy's answer, what else it touches, and whether it can be undone.
+- **`infra signals`** (`--environment`, `--resource`, `--kind`, `--level`, `--source`, `--before`, `--limit`), newest first; `--days` for the daily summaries.
+- **`infra incidents`**: open tasks tagged `+incident` (`--status completed|all`).
+
+A board from before a read's route says so and names the update. The `--json` output is the board's own answers (`show` puts its four together as `{ environment, resources, relations, desired }`), so the MCP server's reads (`BRK-202`) can return the same shapes. The text is `scripts/tasks/infra-read.js`.
+
 #### The apply runner (infrastructure)
 
 `CLI-12`, [spec](specs/IDEA-19-architect.md#executor). Architect changes a repository's infrastructure only through one workflow in that repository, `.github/workflows/breakaway-infra.yml` (**Apply infrastructure**), which the board starts for exactly one plan the owner approved. The board holds no write credentials; agents never run it.
