@@ -2,7 +2,7 @@ import { env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, boardApi, setPipeline } from './helpers.js';
 import { FROZEN_PROMOTE, PAUSE_PERMISSION, STAGING_FREEZE_NOTE, pauseSync, pausedValue } from '../src/infra-pause.js';
-import { comparePermissions } from '../src/connections.js';
+import { comparePermissions, permissionsFix } from '../src/connections.js';
 
 // Freeze and DEPLOYS_PAUSED as one switch (BRK-235's decision; BRK-236), against a pretend GitHub that keeps the
 // repository's variables. Its own file: the environments, Deployments, and audit entries it makes must not mix with
@@ -103,14 +103,25 @@ describe('the deploy pause, pure', () => {
     expect(pauseSync({ github: false, board: true, last: null })).toBe('push');
   });
 
-  it('asks for read and write on Variables, only where there’s a pipeline', () => {
+  it('asks for read and write on Variables, under GitHub’s key actions_variables, only where there’s a pipeline', () => {
     const all = Object.fromEntries(comparePermissions({}, { pipeline: true }).map((p) => [p.name, p.need]));
-    expect(all.variables).toBe('write');
-    const missing = comparePermissions({ ...all, variables: 'read' }, { pipeline: true }).filter((p) => !p.ok);
+    expect(all.actions_variables).toBe('write');
+    expect(comparePermissions(all, { pipeline: true }).filter((p) => !p.ok)).toEqual([]);
+    const missing = comparePermissions({ ...all, actions_variables: 'read' }, { pipeline: true }).filter((p) => !p.ok);
     expect(missing.map((p) => [p.label, p.for])).toEqual([
       ['Variables', 'syncing Freeze with the deploy pause (DEPLOYS_PAUSED)'],
     ]);
-    expect(comparePermissions({ ...all, variables: undefined }).some((p) => p.name === 'variables')).toBe(false);
+    expect(permissionsFix(missing, 'acme-board')).toContain('set Variables to read and write');
+    const without = { ...all };
+    delete without.actions_variables;
+    expect(
+      comparePermissions(without, { pipeline: true })
+        .filter((p) => !p.ok)
+        .map((p) => p.label),
+    ).toEqual(['Variables']);
+    // An installation that reports the older key still counts.
+    expect(comparePermissions({ ...without, variables: 'write' }, { pipeline: true }).every((p) => p.ok)).toBe(true);
+    expect(comparePermissions(without).some((p) => p.name === 'actions_variables')).toBe(false);
   });
 });
 

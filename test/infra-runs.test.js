@@ -624,6 +624,7 @@ describe('the executor (BRK-183)', () => {
     );
     await tick();
     expect(await run(p.id)).toMatchObject({ phase: 'queued', error: /GitHub didn’t start/u });
+    expect((await run(p.id)).error).not.toMatch(/--update/u);
     expect((await plan(p.id)).state).toBe('approved');
     expect(await lock()).toBeNull();
     expect((await audit(p.id)).at(-1)).toEqual(['lock-release', 'executor', 'not started']);
@@ -634,6 +635,59 @@ describe('the executor (BRK-183)', () => {
     );
     await tick();
     expect((await applyAsRunner(p.id)).end.outcome).toBe('applied');
+  });
+
+  it('runs a short-lived environment’s plan in the one short-lived GitHub environment, and only there (BRK-242)', async () => {
+    const kind = (k) =>
+      runInDurableObject(store(), (s) =>
+        s.sql.exec('UPDATE infra_environments SET kind = ? WHERE id = ?', k, staging.id),
+      );
+    await kind('short-lived');
+    try {
+      const p = await approved(13);
+      expect(await run(p.id)).toMatchObject({ phase: 'queued', githubEnvironment: 'short-lived' });
+      // A workflow rendered before short-lived environments refuses the input: the board says to render it again.
+      gh.dispatchStatus = 422;
+      await tick();
+      expect(gh.dispatches.at(-1)).toEqual({
+        ref: 'main',
+        inputs: { plan: p.id, environment: 'exec-staging', github_environment: 'short-lived' },
+      });
+      expect((await run(p.id)).error).toMatch(/infra init --update/u);
+      gh.dispatchStatus = 204;
+      await runInDurableObject(store(), (s) =>
+        s.sql.exec('UPDATE infra_runs SET next_try = NULL WHERE n = ?', Number(p.id.slice(5))),
+      );
+      await tick();
+      expect(gh.dispatches).toHaveLength(2);
+      expect(gh.dispatches[1].inputs).toEqual({
+        plan: p.id,
+        environment: 'exec-staging',
+        github_environment: 'short-lived',
+      });
+      // Anyone with Actions write can dispatch with any inputs: a run in the environment's own name, staging's, or
+      // production's GitHub environment gets nothing; only the short-lived one does.
+      for (const environment of ['exec-staging', 'staging', 'production'])
+        expect((await runner(p.id, { runId: '700', claims: { environment } })).status).toBe(403);
+      const at = { claims: { environment: 'short-lived' } };
+      const checked = await runner(p.id, { runId: '701', ...at });
+      expect(checked).toMatchObject({ status: 200, plan: { id: p.id, environment: 'exec-staging' } });
+      const digest = await planDigest(checked.plan.diff);
+      const send = (fields) =>
+        runner(p.id, { method: 'POST', runId: '701', ...at, report: runReport({ run: '701', digest, ...fields }) });
+      expect((await send({ step: 'applying' })).status).toBe(200);
+      const result = await provider.apply({ environment: 'exec-staging', writeToken: 't' }, checked.plan.diff);
+      expect(await send({ step: 'applied', steps: result.steps })).toMatchObject({ status: 200, outcome: 'applied' });
+      expect(await run(p.id)).toMatchObject({ phase: 'done', outcome: 'applied', githubEnvironment: 'short-lived' });
+    } finally {
+      await kind('staging');
+    }
+    // Staging still applies in its own GitHub environment, and the short-lived one gets nothing there.
+    const q = await approved(14);
+    await tick();
+    expect(gh.dispatches.at(-1).inputs).toEqual({ plan: q.id, environment: 'exec-staging' });
+    expect((await runner(q.id, { runId: '702', claims: { environment: 'short-lived' } })).status).toBe(403);
+    expect((await applyAsRunner(q.id)).end.outcome).toBe('applied');
   });
 
   it('marks a run that stops reporting failed once its lock expires, and sends a signal', async () => {

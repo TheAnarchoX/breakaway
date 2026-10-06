@@ -937,7 +937,7 @@ export const connectionsMethods = {
           fix:
             pause === PAUSE_PERMISSION
               ? permissionsFix(
-                  comparePermissions({}, { pipeline: true }).filter((p) => p.name === 'variables'),
+                  comparePermissions({}, { pipeline: true }).filter((p) => p.name === 'actions_variables'),
                   app.name ?? install(this.env).name,
                 )
               : `The next sync tries again. If it keeps failing, look at the variables on GitHub: ${repo.github} → Settings → Secrets and variables → Actions.`,

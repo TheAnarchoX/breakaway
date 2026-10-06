@@ -24,7 +24,7 @@ import { runsTheBoard } from './infra-environments.js';
 import { checkApplyResult, checkHealth } from './infra-provider.js';
 import { planId } from './infra-plans.js';
 import { held } from './infra-locks.js';
-import { RUN_STEPS, RUNNER_WORKFLOW, planDigest } from './infra-runner.js';
+import { RUN_STEPS, RUNNER_WORKFLOW, planDigest, runnerEnvironment } from './infra-runner.js';
 import { redact } from './redact.js';
 import {
   OIDC_KEYS_URL,
@@ -58,6 +58,23 @@ const SIGNAL_WORDS = {
   unverified: 'applied, but its health isn’t known yet',
 };
 
+/**
+ * The GitHub environment a run applies in: the one recorded when it was queued, or, for a run queued before BRK-242,
+ * the environment's own.
+ * @param {Record<string, any>} row @param {{ name: string, kind: string }} env
+ */
+const githubEnvironmentOf = (row, env) => row.github_env || runnerEnvironment(env);
+
+/**
+ * What to add when GitHub refuses a short-lived environment's dispatch with 422: the workflow was likely rendered
+ * before it took `github_environment`.
+ * @param {GitHubError} error @param {Record<string, any>} row @param {{ name: string, kind: string }} env
+ */
+const staleRunner = (error, row, env) =>
+  error.status === 422 && githubEnvironmentOf(row, env) !== env.name
+    ? `; render ${RUNNER_WORKFLOW} again with npx breakaway infra init --update and merge it`
+    : '';
+
 /** @param {string} message @param {number} [status] */
 const refuse = (message, status = 409) => {
   throw new RunRefused(message, status);
@@ -75,6 +92,14 @@ export const infraRunsMethods = {
       );
       CREATE INDEX IF NOT EXISTS infra_runs_by_phase ON infra_runs (phase, n);
     `);
+    // The GitHub environment the run applies in (BRK-242): one shared one for every short-lived environment.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_runs)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('github_env')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN github_env TEXT');
   },
 
   /** A plan's run with its environment's name, or null. */
@@ -118,10 +143,11 @@ export const infraRunsMethods = {
       throw new AgentError(`${id} is ${plan.state}: only a plan you approved is applied`, 409);
     const now = Date.now();
     this.sql.exec(
-      "INSERT INTO infra_runs (n, environment, repo, phase, created, updated) VALUES (?, ?, ?, 'queued', ?, ?)",
+      "INSERT INTO infra_runs (n, environment, repo, github_env, phase, created, updated) VALUES (?, ?, ?, ?, 'queued', ?, ?)",
       plan.n,
       env.id,
       env.repo,
+      runnerEnvironment(env),
       now,
       now,
     );
@@ -231,10 +257,12 @@ export const infraRunsMethods = {
       wait(why);
     };
     try {
-      await this.dispatchRunner(client, branch, id, env.name);
+      await this.dispatchRunner(client, branch, id, env.name, githubEnvironmentOf(row, env));
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
-      return undo(`GitHub didn’t start ${RUNNER_WORKFLOW} (${error.status}): ${error.reason ?? error.message}`);
+      return undo(
+        `GitHub didn’t start ${RUNNER_WORKFLOW} (${error.status}): ${error.reason ?? error.message}${staleRunner(error, row, env)}`,
+      );
     }
     try {
       this.moveInfraPlan(id, 'applying', {
@@ -248,11 +276,17 @@ export const infraRunsMethods = {
     }
   },
 
-  /** Starts the runner's workflow on the default branch for one plan: the GitHub App's workflow_dispatch, nothing else. */
-  async dispatchRunner(client, branch, plan, environment) {
+  /**
+   * Starts the runner's workflow on the default branch for one plan: the GitHub App's workflow_dispatch, nothing else.
+   * `github_environment` goes only when it isn't the environment's own name, so a workflow rendered before BRK-242
+   * still starts for staging and production.
+   */
+  async dispatchRunner(client, branch, plan, environment, githubEnvironment = environment) {
+    const inputs = { plan, environment };
+    if (githubEnvironment !== environment) inputs.github_environment = githubEnvironment;
     await client.send('POST', `/actions/workflows/${encodeURIComponent(WORKFLOW_FILE)}/dispatches`, {
       ref: branch,
-      inputs: { plan, environment },
+      inputs,
     });
   },
 
@@ -301,7 +335,7 @@ export const infraRunsMethods = {
       const bound = rollback ? row.rollback_run_id : row.run_id;
       const { run } = checkRunClaims(claims, {
         repository: repo.github,
-        environment: env.name,
+        environment: githubEnvironmentOf(row, env),
         branch: repo.defaultBranch || 'main',
         dispatched: Number(row.dispatched),
         run: bound,
@@ -497,11 +531,17 @@ export const infraRunsMethods = {
       summary: `${why}; rolling back ${n} change${n === 1 ? '' : 's'} with a second run`,
     });
     try {
-      await this.dispatchRunner(this.githubClient(credentials, repo), repo.defaultBranch || 'main', id, env.name);
+      await this.dispatchRunner(
+        this.githubClient(credentials, repo),
+        repo.defaultBranch || 'main',
+        id,
+        env.name,
+        githubEnvironmentOf(row, env),
+      );
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       return this.endReport(this.runRow(id), 'rollback failed', {
-        summary: `${why}; GitHub didn’t start the rollback (${error.status}): ${error.reason ?? error.message}`,
+        summary: `${why}; GitHub didn’t start the rollback (${error.status}): ${error.reason ?? error.message}${staleRunner(error, row, env)}`,
       });
     }
     return { status: 200, body: { ok: true, phase: 'rollback-dispatched' } };

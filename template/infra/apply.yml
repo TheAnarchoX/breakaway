@@ -3,8 +3,9 @@
 # Apply infrastructure: applies one plan the owner approved on the board to one environment, and nothing else. The
 # board starts it when a plan is approved; without a plan the board approved for this environment and this run, it
 # stops before it reads the write token. That token is CLOUDFLARE_API_TOKEN, a secret of the GitHub environment named
-# for the environment, which only {{branchName}} may use. It checks out none of this repository's code: it runs
-# breakaway's runner, pinned to {{version}}, and reports each step to the board. Agents never run this workflow.
+# for the environment (for every short-lived environment, the one GitHub environment named short-lived), which only
+# {{branchName}} may use. It checks out none of this repository's code: it runs breakaway's runner, pinned to
+# {{version}}, and reports each step to the board. Agents never run this workflow.
 name: Apply infrastructure
 run-name: Apply plan ${{ inputs.plan }} to ${{ inputs.environment }}
 
@@ -18,9 +19,19 @@ on:
       environment:
         description: The environment the plan is for
         required: true
+{{#if shortLived}}
+        type: string
+{{/if}}
+{{#if fixedOnly}}
         type: choice
         options:
           {{@environments}}
+{{/if}}
+      github_environment:
+        description: The GitHub environment that holds its write token, when it isn't the environment's own (short-lived)
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
@@ -35,7 +46,7 @@ jobs:
     if: github.ref == 'refs/heads/{{branchName}}'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.github_environment || inputs.environment }}
     # id-token proves to the board which repository, environment, workflow, and run asks for the plan.
     permissions:
       contents: read
