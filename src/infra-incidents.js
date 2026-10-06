@@ -71,9 +71,7 @@ export function incidentBrief(signal, context) {
     signal.value === null ? null : `Value: ${signal.value}.`,
     r
       ? `Resource: ${r.name} (${r.kind}, ${r.id})${r.health ? `, health ${r.health}${r.healthText ? `: ${r.healthText}` : ''}` : ''}. ${
-          context.dependents === 1
-            ? '1 resource leans on it.'
-            : `${context.dependents} resources lean on it.`
+          context.dependents === 1 ? '1 resource leans on it.' : `${context.dependents} resources lean on it.`
         }`
       : signal.resource
         ? `Resource: ${signal.resource}, not in the inventory yet.`

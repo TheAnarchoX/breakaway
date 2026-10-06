@@ -157,7 +157,12 @@ export const infraIncidentsMethods = {
         repeated.push(open.id);
         continue;
       }
-      opened.push(await this.openNewIncident(env, key, signal, now));
+      try {
+        opened.push(await this.openNewIncident(env, key, signal, now));
+      } catch (error) {
+        // One that can't be opened (the repository is gone, the history can't be written) never stops the next.
+        console.error(`incident for signal ${signal.id} not opened: ${error.message}`);
+      }
     }
     return { opened, repeated, recovered };
   },
@@ -257,7 +262,9 @@ export const infraIncidentsMethods = {
 
   /** The incident whose task this is, or null: `show` and the task's page carry it. */
   incidentOfTask(uuid) {
-    const row = this.sql.exec('SELECT * FROM infra_incidents WHERE task = ? ORDER BY id DESC LIMIT 1', uuid).toArray()[0];
+    const row = this.sql
+      .exec('SELECT * FROM infra_incidents WHERE task = ? ORDER BY id DESC LIMIT 1', uuid)
+      .toArray()[0];
     return row ? this.incidentView(row) : null;
   },
 
@@ -278,9 +285,15 @@ export const infraIncidentsMethods = {
         where.push('environment = ?');
         args.push(this.environmentRow(query.environment, repo).id);
       }
-      if (query.open !== undefined && query.open !== null && query.open !== '' && !['true', 'false'].includes(String(query.open)))
+      if (
+        query.open !== undefined &&
+        query.open !== null &&
+        query.open !== '' &&
+        !['true', 'false'].includes(String(query.open))
+      )
         throw new AgentError('open must be true or false', 400);
-      const open = query.open === undefined || query.open === null || query.open === '' ? null : String(query.open) === 'true';
+      const open =
+        query.open === undefined || query.open === null || query.open === '' ? null : String(query.open) === 'true';
       const limit = whole(query.limit, 'limit', 1, SHOWN_MAX) ?? SHOWN;
       const incidents = [];
       let more = false;
@@ -317,10 +330,14 @@ export const infraIncidentsMethods = {
     return this.run(async () => {
       const text = String(ref ?? '').trim();
       let row = null;
-      if (/^\d{1,15}$/u.test(text)) row = this.sql.exec('SELECT * FROM infra_incidents WHERE id = ?', Number(text)).toArray()[0];
+      if (/^\d{1,15}$/u.test(text))
+        row = this.sql.exec('SELECT * FROM infra_incidents WHERE id = ?', Number(text)).toArray()[0];
       else {
         const uuid = [...this.tasks].find(([, m]) => m.wid === text.toUpperCase())?.[0];
-        if (uuid) row = this.sql.exec('SELECT * FROM infra_incidents WHERE task = ? ORDER BY id DESC LIMIT 1', uuid).toArray()[0];
+        if (uuid)
+          row = this.sql
+            .exec('SELECT * FROM infra_incidents WHERE task = ? ORDER BY id DESC LIMIT 1', uuid)
+            .toArray()[0];
       }
       if (!row) throw new AgentError(`no incident ${text.slice(0, 40)}`, 404);
       return { status: 200, body: { incident: this.incidentView(row) } };

@@ -113,9 +113,9 @@ describe('incidents, the pure part', () => {
     expect(brief).toContain('Resource: api (service, svc-api), health failing: 503s. 2 resources lean on it.');
     expect(brief).toContain('1. Diagnose, read only');
     expect(brief).toContain('6. Write up');
-    expect(incidentBrief({ ...s, resource: null }, { name: 'p', environmentKind: 'staging', resource: null, dependents: 0 })).toContain(
-      'The whole environment.',
-    );
+    expect(
+      incidentBrief({ ...s, resource: null }, { name: 'p', environmentKind: 'staging', resource: null, dependents: 0 }),
+    ).toContain('The whole environment.');
   });
 
   it('follows the linked plan through its steps', () => {
