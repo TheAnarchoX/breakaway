@@ -61,10 +61,11 @@ export const infraEnvironmentsMethods = {
   environmentOut(row) {
     const map = row.task ? this.tasks.get(row.task) : null;
     const task = map ? { uuid: row.task, wid: map.wid ?? null, description: map.description ?? '' } : null;
-    // The plan waiting for the owner (BRK-178), so the environment's card shows it without a second call.
+    // The plan waiting for the owner (BRK-178) and the drift (BRK-184), so the card shows them without a second call.
     return {
       ...environmentView(row, { worker: install(this.env).worker, task }),
       waitingPlan: this.waitingInfraPlan(row.id),
+      ...this.driftFor(row.id),
     };
   },
 

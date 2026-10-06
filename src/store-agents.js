@@ -2108,6 +2108,12 @@ export const agentsMethods = {
     this.archiveStats();
     this.pruneAgentLogs();
     if (source === 'cron') {
+      // Drift (BRK-184): each environment's desired state against what runs, on the cron only.
+      try {
+        await this.driftTick();
+      } catch (error) {
+        errors.push(error.message); /* the next cron compares again */
+      }
       this.connectionsCronRan(errors);
       await this.connectionsAutoCheck();
     }
