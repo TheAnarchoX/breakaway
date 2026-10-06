@@ -391,9 +391,14 @@ export const infraPlansMethods = {
     });
   },
 
-  /** GET /api/infra/plans/<id>: one plan, with its diff and blast radius. */
+  /** GET /api/infra/plans/<id>: one plan, with its diff and blast radius, and `outOfDate`: why an open plan can no longer be approved, or null. */
   planApi(ref) {
-    return this.run(async () => ({ status: 200, body: { plan: planView(this.planRow(ref)) } }));
+    return this.run(async () => {
+      const row = this.planRow(ref);
+      // Why an open plan can't be approved any more (store-infra-approvals.js), so the plan page says so up front.
+      const outOfDate = ['draft', 'waiting'].includes(row.state) ? this.outOfDatePlan(row) : null;
+      return { status: 200, body: { plan: planView(row), outOfDate } };
+    });
   },
 
   /**
@@ -416,8 +421,9 @@ export const infraPlansMethods = {
 
   /**
    * PATCH /api/infra/plans/<id>: `{ state: 'waiting' }` puts a draft in front of the owner. The owner's, from the
-   * signed-in browser only (the worker refuses the bearer token); an agent's `by` is refused too. It sends one push.
-   * Approve and reject are their own routes (store-infra-approvals.js).
+   * signed-in browser only (the worker refuses the bearer token); an agent's `by` is refused too. It sends one push,
+   * unless `quiet`: the plan page approving a draft the owner is reading needs none. Approve and reject are their own
+   * routes (store-infra-approvals.js).
    */
   planModifyApi(ref, body = {}) {
     return this.run(async () => {
@@ -429,7 +435,7 @@ export const infraPlansMethods = {
           'a plan’s state changes here only to waiting; approve and reject it at /approve and /reject',
           400,
         );
-      return { status: 200, body: { plan: await this.waitForOwner(ref, { by: 'owner' }) } };
+      return { status: 200, body: { plan: await this.waitForOwner(ref, { by: 'owner', quiet: body.quiet === true }) } };
     });
   },
 };

@@ -215,6 +215,15 @@ describe('the Cloudflare provider’s discover (BRK-189)', () => {
     expect(failed.message).toMatch(/the token needs D1 Read/u);
     expect(failed.permission).toBe('D1 Read');
 
+    // A refused Workers read names the role, and the legacy permission an older token has instead.
+    const workers = cloudflareAnswers();
+    workers[`/accounts/${ACCOUNT}/workers/scripts`] = 403;
+    const refused = await discover(context(workers).ctx).catch((e) => e);
+    expect(refused.message).toMatch(
+      /the token needs Workers Metadata Read-Only \(or the legacy Workers Scripts Read\)$/u,
+    );
+    expect(refused.permission).toBe('Workers Metadata Read-Only');
+
     found = await discover(context(cloudflareAnswers()).ctx);
     expect(found.missing).toEqual([]);
   });
@@ -462,7 +471,12 @@ describe('the Cloudflare provider’s token (BRK-189, for BRK-194)', () => {
     expect(() => checkProvider(cloudflare)).not.toThrow();
     const names = cloudflare.readToken.permissions.map((p) => p.name);
     expect(names).toHaveLength(10);
-    for (const name of names) expect(name).toMatch(/ Read$/u);
+    for (const name of names) expect(name).toMatch(/ Read(-Only)?$/u);
+    // Cloudflare's Workers role that never reads code, with the legacy permission a token made before still has.
+    expect(cloudflare.readToken.permissions[0]).toMatchObject({
+      name: 'Workers Metadata Read-Only',
+      legacy: ['Workers Scripts Read'],
+    });
     expect(providers.get('cloudflare')).toBe(cloudflare);
   });
 
@@ -980,5 +994,18 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     expect((await api('infra/alerts')).status).toBe(400);
     expect((await api('infra/alerts?provider=nowhere')).status).toBe(404);
     expect((await api('infra/alerts?provider=cloudflare', { method: 'POST', body: {} })).status).toBe(405);
+  });
+
+  it('marks Cloudflare’s row as one that sends alerts, and names the permission an alerts read is missing (WEB-91)', async () => {
+    const answers = cloudflareAnswers();
+    answers[`/accounts/${ACCOUNT}/alerting/v3/policies`] = 403;
+    await onCloudflare(answers);
+    const row = (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
+    expect(row.provider.alerts).toBe(true);
+    const res = await api('infra/alerts?provider=cloudflare');
+    expect(res.status).toBe(502);
+    const said = await res.json();
+    expect(said).toMatchObject({ error: /couldn’t say which alerts are set up/u, missing: ['Notifications Read'] });
+    expect(JSON.stringify(said)).not.toContain(TOKEN);
   });
 });

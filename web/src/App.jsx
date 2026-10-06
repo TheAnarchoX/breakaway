@@ -31,6 +31,7 @@ import {
   toggleSidebar,
   view,
   environmentId,
+  planRef,
   VIEWS,
 } from './lib/store.js';
 import { useMedia } from './lib/media.js';
@@ -54,6 +55,7 @@ import { KickoffView } from './views/KickoffView.jsx';
 import { SettingsView } from './views/SettingsView.jsx';
 import { InfrastructureView } from './views/InfrastructureView.jsx';
 import { EnvironmentView } from './views/EnvironmentView.jsx';
+import { PlanView } from './views/PlanView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { NewAgentDialog } from './components/NewAgent.jsx';
@@ -189,10 +191,13 @@ function Board() {
   // A routine opens where a task does; a task opened from it (a run) takes the place until it closes.
   const routine = Boolean(selectedRoutine.value) && !(open && !modal);
   useShortcuts();
-  // An environment's page (WEB-61) lives under Infrastructure, at #/infrastructure/<id>.
+  // An environment's page (WEB-61) lives under Infrastructure, at #/infrastructure/<id>, and a plan's (WEB-62) under
+  // its environment, at #/infrastructure/<id>?plan=<plan>.
   const View =
     view.value === 'infrastructure' && environmentId.value
-      ? EnvironmentView
+      ? planRef.value
+        ? PlanView
+        : EnvironmentView
       : (VIEW_COMPONENTS[view.value] ?? BoardView);
   return (
     <div class={`app ${phone ? 'app-phone' : ''}`}>
