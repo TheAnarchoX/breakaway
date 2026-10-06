@@ -36,6 +36,7 @@ export const NEEDED_PERMISSIONS = [
   { name: 'statuses', level: 'read', for: 'commit statuses on pull requests' },
   { name: 'actions', level: 'write', for: 'Run workflow, Promote, and Roll back' },
   { name: 'deployments', level: 'read', for: 'deploys and what shipped', pipeline: true },
+  { name: 'variables', level: 'write', for: 'syncing Freeze with the deploy pause (DEPLOYS_PAUSED)', pipeline: true },
   { name: 'vulnerability_alerts', level: 'read', for: 'Dependabot alerts' },
 ];
 
@@ -48,6 +49,7 @@ const LABEL = {
   statuses: 'Commit statuses',
   actions: 'Actions',
   deployments: 'Deployments',
+  variables: 'Variables',
   vulnerability_alerts: 'Dependabot alerts',
 };
 

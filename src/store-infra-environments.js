@@ -18,6 +18,8 @@ import {
   MAX_ENVIRONMENTS,
   runsTheBoard,
 } from './infra-environments.js';
+import { STAGING_FREEZE_NOTE, pauseSummary } from './infra-pause.js';
+import { pipelineOf } from './release.js';
 
 /** Every column after the first version's, so a store from before one was added gains it on start. */
 const COLUMNS = {
@@ -68,6 +70,8 @@ export const infraEnvironmentsMethods = {
       ...environmentView(row, { worker: install(this.env).worker, task }),
       waitingPlan: this.waitingInfraPlan(row.id),
       ...this.driftFor(row.id),
+      // Whether DEPLOYS_PAUSED on GitHub matches a pipeline production's freeze (BRK-236), else null.
+      deploysPaused: this.deployPause(row),
       // What nobody owns there (BRK-201): flagged, and proposed for removal after the grace period.
       ...this.unownedFor(row.id),
       // What the deploy flow runs there (BRK-195): the live commit and version, and the last deploy.
@@ -230,17 +234,26 @@ export const infraEnvironmentsMethods = {
           row.id,
         )
         .one();
-      // A freeze or thaw goes in the audit trail (BRK-175, BRK-232).
-      if (next.frozen !== row.frozen)
-        this.appendInfraAudit({
-          kind: 'freeze',
-          repo: updated.repo,
-          environment: updated.name,
-          environmentId: updated.id,
-          by: 'owner',
-          outcome: updated.frozen ? 'on' : 'off',
-        });
-      return { status: 200, body: { environment: this.environmentOut(updated) } };
+      if (next.frozen === row.frozen) return { status: 200, body: { environment: this.environmentOut(updated) } };
+      // One switch with DEPLOYS_PAUSED (BRK-236): the board's freeze already holds; then the pipeline's production
+      // sets the variable, outside any transaction. Staging's freeze stops only plans, and says so.
+      const frozen = Boolean(updated.frozen);
+      const pause = this.deployPause(updated) ? await this.writeDeployPause(updated.repo, frozen) : null;
+      const note =
+        updated.pipeline === 'staging' && frozen && pipelineOf(this.repoBySlug(updated.repo))
+          ? STAGING_FREEZE_NOTE
+          : null;
+      // A freeze or thaw goes in the audit trail (BRK-175, BRK-232), with what became of the pause.
+      this.appendInfraAudit({
+        kind: 'freeze',
+        repo: updated.repo,
+        environment: updated.name,
+        environmentId: updated.id,
+        by: 'owner',
+        outcome: frozen ? 'on' : 'off',
+        ...(pause ? { summary: pauseSummary(frozen, pause) } : note ? { summary: note } : {}),
+      });
+      return { status: 200, body: { environment: this.environmentOut(updated), pause, note } };
     });
   },
 

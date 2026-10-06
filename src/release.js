@@ -9,6 +9,7 @@ import { candidate, checkCandidate, productionSha } from './promote.js';
 import { shippedPrs } from './github.js';
 import { isPackageName } from './packages.js';
 import { compareVersions } from './versions.js';
+import { FROZEN_PROMOTE } from './infra-pause.js';
 
 const NAME = /^[\w.-]{1,100}$/u;
 const name = (value) => (typeof value === 'string' && NAME.test(value) ? value : null);
@@ -253,10 +254,10 @@ export function lineFor(candidateSha, productionLive, ahead) {
 /**
  * The whole flow. `deploys`: stored Deployments (any order). `compare`: { from, to, commits, migrations,
  * destructive, config } for production's commit and the candidate, or null. `prs`: stored pull requests
- * with their `tasks`. `workers`: the repository's staging and production Workers (pipelineOf). `paused`
- * isn't known here: the workflow says so in its first step.
+ * with their `tasks`. `workers`: the repository's staging and production Workers (pipelineOf). `frozen`:
+ * production is frozen, which is DEPLOYS_PAUSED too (BRK-236), so Promote waits; Roll back never does.
  */
-export function buildFlow({ deploys, compare = null, prs = [], runs = [], repoUrl = null, workers }) {
+export function buildFlow({ deploys, compare = null, prs = [], runs = [], repoUrl = null, workers, frozen = false }) {
   const newestFirst = [...deploys].sort((a, b) => b.id - a.id);
   const staging = cardFor(newestFirst, workers.staging, { runs, compareUrl: repoUrl });
   const production = cardFor(newestFirst, workers.production, { runs, compareUrl: repoUrl });
@@ -277,7 +278,9 @@ export function buildFlow({ deploys, compare = null, prs = [], runs = [], repoUr
   const tried = cand
     ? productionDeploys.find((d) => d.sha === cand.sha && d.task === 'deploy' && FAILED.has(d.state))
     : null;
-  if (!cand)
+  // A frozen production is DEPLOYS_PAUSED too (BRK-236): Promote waits, whatever staging has.
+  if (frozen) promote = { allowed: false, reason: FROZEN_PROMOTE };
+  else if (!cand)
     promote = { allowed: false, reason: 'Nothing on staging yet. Merge a pull request and let staging deploy.' };
   else if (staging.state === 'deploying')
     promote = { allowed: false, reason: 'Staging is still deploying. Try again when it’s done.' };
@@ -295,6 +298,7 @@ export function buildFlow({ deploys, compare = null, prs = [], runs = [], repoUr
     promote = check.ok ? { allowed: true, reason: null } : { allowed: false, reason: check.reason };
   }
   promote.sha = cand?.sha ?? null;
+  promote.frozen = frozen;
   promote.tried = tried
     ? { at: tried.updated, rolledBack: /rolled back/iu.test(tried.description ?? ''), url: tried.logUrl }
     : null;

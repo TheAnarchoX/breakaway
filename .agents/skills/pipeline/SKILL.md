@@ -116,7 +116,8 @@ Open it the way the repository's prompt's **Pull requests** says, closing the ta
 - the helper scripts, with `repos init <slug> --update`, when `pipeline init` named any;
 - Workers Builds disconnected, when the repository used it;
 - for a package: the GitHub environment `npm`, restricted to the default branch; on npm, a trusted publisher for `release.yml` and the `npm` environment, or a granular `NPM_TOKEN` in that environment that can't bypass 2FA; and, after each run, approving the staged version on npm with 2FA (`npm stage approve <id>`, or Staged Packages on npmjs.com). The board shows what waits and never approves;
-- optional: the repository variable `DEPLOYS_PAUSED` (`true` stops Promote and Release), and the health-check addresses;
+- read and write on **Variables** for the App, so freezing production on the board sets `DEPLOYS_PAUSED` (`true` stops Promote and Release; setting it on GitHub freezes production on the board);
+- optional: the health-check addresses;
 - after the merge, **Turn on deploys** on the repository's GitHub page, which sets its pipeline from the files.
 
 ## Before handing over
