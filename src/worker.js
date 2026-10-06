@@ -603,6 +603,32 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 1) return send(await s.specsApi(url.searchParams.get('repo')));
     return send(await s.specApi(url.searchParams.get('repo'), parts.slice(1).join('/')));
   }
+  // Architect's signals (BRK-190): read only, for the token and the cookie alike; providers and the deploy flow write
+  // inside the store. /days is the daily summaries the cron folds older signals into.
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'signals' &&
+    (parts.length === 2 || (parts.length === 3 && parts[2] === 'days'))
+  ) {
+    if (method !== 'GET') return json(405, { error: 'signals are read only here: providers report them to the board' });
+    const q = url.searchParams;
+    const query = {
+      environment: q.get('environment') ?? undefined,
+      environmentId: q.get('environmentId') ?? undefined,
+      resource: q.get('resource') ?? undefined,
+      source: q.get('source') ?? undefined,
+      kind: q.get('kind') ?? undefined,
+    };
+    if (parts.length === 3) return send(await s.infraSignalDaysApi(query));
+    return send(
+      await s.infraSignalsApi({
+        ...query,
+        level: q.get('level') ?? undefined,
+        before: q.get('before') ?? undefined,
+        limit: q.get('limit') ?? undefined,
+      }),
+    );
+  }
   // Mark approved and Mark built on a spec (BRK-215) open a pull request: the owner's press, from the signed-in
   // browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'specs' && parts.length > 1 && method === 'POST') {
