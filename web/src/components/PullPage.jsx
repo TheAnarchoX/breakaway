@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronRight,
+  CircleAlert,
   CircleCheck,
   CircleX,
   ExternalLink,
@@ -38,6 +39,7 @@ import { CodeBlock, tokensOf, useHighlightAll } from '../lib/highlight.jsx';
 import { FilePreview } from './FilePreview.jsx';
 import { RepoChip } from './ui.jsx';
 import { Checks, PrIcon, Review, VERDICT, Verdict, prStateLabel } from './GitHub.jsx';
+import { costWords, policyWords } from '../../../src/infra-pulls.js';
 import { useMedia } from '../lib/media.js';
 import { Dialog, Segmented } from './ui.jsx';
 
@@ -808,6 +810,140 @@ function AgentReview({ page }) {
   );
 }
 
+const INFRA_ICON = { success: CircleCheck, neutral: CircleAlert, failure: CircleX };
+const INFRA_WORDS = { success: 'Passes', neutral: 'Couldn’t plan it all', failure: 'Fails' };
+/** How many of a plan's changes the page lists before it says how many more. */
+const INFRA_CHANGES = 10;
+
+/** A policy reason's words, with its `names` as code. */
+const withCode = (text) => String(text).split('`').map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
+
+/** One environment's part of the infrastructure check. */
+function InfraEnvironment({ e }) {
+  const p = e.preview;
+  let body;
+  if (e.state === 'invalid')
+    body = (
+      <p>
+        <code>{e.path}</code> doesn’t check{e.error?.line ? ` on line ${e.error.line}` : ''}.{' '}
+        {e.error?.field && <code>{e.error.field}</code>}
+        {e.error?.field && ': '}
+        {e.error?.message}
+      </p>
+    );
+  else if (e.state !== 'planned') body = <p>{e.problem}</p>;
+  else if (!p?.changes)
+    body = (
+      <p>
+        Nothing to change: {e.environment} already matches <code>{e.path}</code>.
+      </p>
+    );
+  else
+    body = (
+      <>
+        <p class="meta">
+          {plural(p.changes, 'change')} · {costWords(p.cost)} · {p.reversible ? 'can be undone' : 'can’t all be undone'}
+          {p.blastRadius?.affected ? ` · touches ${plural(p.blastRadius.affected, 'other resource')}` : ''}
+        </p>
+        <ul class="infra-pr-changes">
+          {p.diff.changes.slice(0, INFRA_CHANGES).map((c) => (
+            <li key={`${c.op}:${c.resource}`}>
+              <span class="infra-pr-op">{c.op}</span> {c.name} <span class="meta">{c.kind}</span>
+            </li>
+          ))}
+        </ul>
+        {p.changes > INFRA_CHANGES && <p class="meta">And {plural(p.changes - INFRA_CHANGES, 'more change')}.</p>}
+        {p.policy && (
+          <>
+            <p>
+              <strong>{policyWords(p.policy)}</strong>
+            </p>
+            <ul class="infra-pr-reasons">
+              {p.policy.reasons.map((r) => (
+                <li key={r}>{withCode(r)}</li>
+              ))}
+            </ul>
+          </>
+        )}
+      </>
+    );
+  return (
+    <div class="infra-pr-env">
+      <h3>{e.environment}</h3>
+      {body}
+    </div>
+  );
+}
+
+/**
+ * The plan a pull request's infrastructure files would make (BRK-185): what its check on GitHub says, from what the
+ * board kept when it looked at the head. Merging applies nothing; the plan made from the default branch waits for you.
+ * @param {Record<string, any>} props
+ */
+function InfraPlan({ page }) {
+  const r = page.infra;
+  if (!r) return null;
+  const Icon = INFRA_ICON[r.conclusion] ?? CircleAlert;
+  const sha = r.sha ? r.sha.slice(0, 7) : null;
+  return (
+    <section class="gh-section infra-pr" aria-labelledby="pr-infra">
+      <h2 id="pr-infra">Infrastructure plan</h2>
+      <p class="agent-review-head">
+        <span class={`agent-review-verdict infra-pr-${r.conclusion}`}>
+          <Icon size={16} aria-hidden="true" />
+          {INFRA_WORDS[r.conclusion] ?? r.conclusion}: {r.title}
+        </span>
+        <span class="meta">
+          <time dateTime={r.checkedAt}>{ago(r.checkedAt)}</time>
+          {sha && (
+            <>
+              {' · of '}
+              <a href={`${page.url}/commits/${r.sha}`} {...ext} aria-label={`commit ${sha}`}>
+                <code>{sha}</code>
+              </a>
+            </>
+          )}
+          {r.check?.url && (
+            <>
+              {' · '}
+              <a href={r.check.url} {...ext}>
+                the check on GitHub
+              </a>
+            </>
+          )}
+        </span>
+      </p>
+      {page.headSha && r.sha !== page.headSha && (
+        <p class="agent-review-moved">
+          The branch has moved since: this is of an earlier commit. The board looks again on its next sync.
+        </p>
+      )}
+      {r.error && <p class="agent-review-moved">{r.error}. The plan still shows here.</p>}
+      {(r.problems ?? []).map((x) => (
+        <p key={x.path}>
+          <code>{x.path}</code>: {x.message}
+        </p>
+      ))}
+      {r.policy && !r.policy.ok && (
+        <p>
+          <code>{r.policy.path}</code> doesn’t check{r.policy.error?.line ? ` on line ${r.policy.error.line}` : ''}:{' '}
+          {r.policy.error?.message} Until it’s fixed, the default policy decides.
+        </p>
+      )}
+      {(r.environments ?? []).map((e) => (
+        <InfraEnvironment key={e.environment} e={e} />
+      ))}
+      {r.skipped > 0 && (
+        <p class="meta">{plural(r.skipped, 'more environment')} not planned: split the pull request to see them.</p>
+      )}
+      <p class="meta">
+        Merging applies nothing. Once it’s merged, the board plans from the default branch, and the plan waits for you
+        on the board unless the policy lets it through.
+      </p>
+    </section>
+  );
+}
+
 /**
  * The pull request's description, as GitHub renders it, or its raw Markdown (WEB-8). Relative links point into
  * the pull request's own repository.
@@ -1069,6 +1205,7 @@ export function PullPage() {
 
       {page.body && <Description page={page} />}
       <AgentReview page={page} />
+      <InfraPlan page={page} />
       <Conversation page={page} />
       <Diff page={page} />
     </div>

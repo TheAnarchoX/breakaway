@@ -324,6 +324,13 @@ export const githubMethods = {
       if (!(error instanceof GitHubError)) throw error;
       automation.errors.push(error.message);
     }
+    // Plans from pull requests (BRK-185): a pull request changing that folder gets its plan as a check.
+    try {
+      await this.checkInfraPulls(client, repo, fetched.pulls);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      automation.errors.push(error.message);
+    }
     try {
       await this.refreshFlowCompare(client, repo.slug);
     } catch (error) {
@@ -1432,6 +1439,8 @@ export const githubMethods = {
           fixes: state === 'open' ? this.prFixes(repo.slug, p.number) : null,
           // The latest agent's review, shown below the description (BRK-111).
           agentReview: this.agentReviewOf(repo.slug, p.number, p.head?.sha ?? null),
+          // The plan its infrastructure files would make, as its check says (BRK-185); null when it changes none.
+          infra: this.infraPullOut(repo.slug, p.number),
           workers,
           deploys: workers.length > 0,
           // null: the repository has no deploy pipeline, so the page says nothing about deploys.
