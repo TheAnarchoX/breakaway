@@ -504,6 +504,18 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && method === 'DELETE')
       return send(await s.environmentsDeleteApi(parts[2], { repo, ...body }));
   }
+  // Environment locks (BRK-179): anyone signed in reads them; the executor takes and releases them inside the board
+  // (BRK-183), and releasing one by force is the owner's, from the signed-in browser only.
+  if (parts[0] === 'infra' && parts[1] === 'locks' && parts.length <= 3) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET')
+      return send(await (parts.length === 2 ? s.locksApi({ repo }) : s.lockApi(parts[2], { repo })));
+    if (parts.length === 3 && method === 'DELETE') {
+      if (via !== 'cookie')
+        return json(403, { error: 'only the signed-in web board can release an environment’s lock' });
+      return send(await s.lockReleaseApi(parts[2], { repo }));
+    }
+  }
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
