@@ -15,7 +15,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DESIRED_DIR, environmentOfFile } from '../../src/infra-desired.js';
-import { checkApplyResult, providers as registry } from '../../src/infra-provider.js';
+import { checkApplyResult } from '../../src/infra-provider.js';
+import { providers as registry } from '../../src/infra-providers.js';
 import {
   RUNNER_HEADER,
   RUNNER_WORKFLOW,

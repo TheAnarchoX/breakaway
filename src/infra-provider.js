@@ -183,6 +183,8 @@ export const COST_NOTE_MAX = 500;
  * @property {(ctx: ProviderContext) => Promise<Health[]>} observe
  * @property {(ctx: ProviderContext) => Promise<Cost[]>} cost
  * @property {(ctx: ProviderContext, since: string) => Promise<Signal[]>} events
+ * @property {(ctx: ProviderContext, change: Change) => Promise<Cost | null>} [estimate] what a resource would cost a
+ *   month once `change` is applied, or null when the provider can't say; a plan's cost change uses it (BRK-178)
  * @property {(ctx: ProviderContext, options: { board: string[] }) => Promise<AlertSetup>} [alerts] reads which of the
  *   platform's alerts are set up and which reach the board (`board` is its https origins), for a provider whose
  *   platform sends alerts to the board
@@ -229,6 +231,8 @@ export function checkProvider(provider) {
     for (const c of spec.changes) if (!CHANGE_KINDS.includes(c)) fail(what, `${kind} has unknown change "${c}"`);
   }
   if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
+  if (provider.estimate !== undefined && typeof provider.estimate !== 'function')
+    fail(what, 'estimate is not a function');
   return provider;
 }
 

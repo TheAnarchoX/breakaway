@@ -30,6 +30,7 @@ import {
   toast,
   toggleSidebar,
   view,
+  environmentId,
   VIEWS,
 } from './lib/store.js';
 import { useMedia } from './lib/media.js';
@@ -52,6 +53,7 @@ import { RepoSettingsView } from './views/RepoSettingsView.jsx';
 import { KickoffView } from './views/KickoffView.jsx';
 import { SettingsView } from './views/SettingsView.jsx';
 import { InfrastructureView } from './views/InfrastructureView.jsx';
+import { EnvironmentView } from './views/EnvironmentView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { NewAgentDialog } from './components/NewAgent.jsx';
@@ -187,7 +189,11 @@ function Board() {
   // A routine opens where a task does; a task opened from it (a run) takes the place until it closes.
   const routine = Boolean(selectedRoutine.value) && !(open && !modal);
   useShortcuts();
-  const View = VIEW_COMPONENTS[view.value] ?? BoardView;
+  // An environment's page (WEB-61) lives under Infrastructure, at #/infrastructure/<id>.
+  const View =
+    view.value === 'infrastructure' && environmentId.value
+      ? EnvironmentView
+      : (VIEW_COMPONENTS[view.value] ?? BoardView);
   return (
     <div class={`app ${phone ? 'app-phone' : ''}`}>
       <a class="skip-link" href="#main">
