@@ -1,6 +1,6 @@
 # IDEA-19 · Architect: breakaway runs the infrastructure too
 
-Task: IDEA-19 on the board, in the `architect` feature · Status: approved (shaped 5 Oct 2026, merged by the owner). Not built yet: three decisions still wait for the owner (BRK-169, BRK-171, BRK-172), and the tasks that build it are open.
+Task: IDEA-19 on the board, in the `architect` feature · Status: approved (shaped 5 Oct 2026, merged by the owner; the owner answered BRK-169, BRK-171, and BRK-172 on 6 Oct 2026, folded in by DOC-38). Not built yet: the tasks that build it are open, and one small decision (BRK-225, cost in the owner's currency) waits for the owner.
 
 ## Problem
 
@@ -12,12 +12,12 @@ Some of it already exists, and it comes first: the deploy flow (Deploy, Promote,
 
 ## Fit
 
-- **The person who runs the board decides.** Agents read and propose; they never hold write credentials and never apply. The board's executor applies only a plan the owner approved, or one inside bounds the owner approved once (an envelope, if BRK-171 allows them). Approve is cookie-only, like Merge, so no agent token can press it. "Nothing in breakaway merges or deploys on an agent's word" still holds; DOC-29 writes the envelope case into `AGENTS.md` and the decision log once the owner has answered.
+- **The person who runs the board decides.** Agents read and propose; they never hold write credentials and never apply. The board's executor applies only a plan the owner approved, or one inside bounds the owner approved once (an envelope, which BRK-171 allows for scaling and capped restarts). Approve is cookie-only, like Merge, so no agent token can press it. "Nothing in breakaway merges or deploys on an agent's word" still holds; DOC-29 writes the envelope case into `AGENTS.md` and the decision log.
 - **An install keeps its data.** Providers are connections the owner makes, like GitHub and push. Signals and the inventory are the owner's own systems' data, kept in the install's Durable Object, redacted, and never sent anywhere else. No telemetry.
 - **Free and self-hosted.** Everything runs in the install, on the owner's own accounts. No hosted control plane.
 - **One claim per task, and pull requests close tasks.** Infrastructure changes are pull requests too; incidents are tasks.
 - **Taskwarrior stays first-class.** Nothing here changes the task model or sync: environments, plans, and signals are their own tables beside tasks, like features and routines. An incident is an ordinary task with a tag.
-- **What agents never do** (`AGENTS.md`) is unchanged for agents, and the board's own install stays observe-only unless BRK-169 says otherwise.
+- **What agents never do** (`AGENTS.md`) is unchanged for agents, and the board's own install is observe only (BRK-169).
 - **Not like IDEA-16.** That idea was deferred whole to 3.0. Architect doesn't wait for it: it uses GitHub pull requests and checks as they are, and the Artifacts work can plug in later as another change source.
 
 ## Design
@@ -44,19 +44,21 @@ The brand guide gets the words before any view is built (ID-5): **environment**,
 
 `src/infra-provider.js` defines a provider: `discover` (what exists, with relations), `plan` (desired against actual, as a diff with reversibility), `apply` (one plan, only inside the runner), `observe` (health), `cost`, and `events` (signals). A registry holds the connected ones. A fake in-memory provider backs every test, and a shared contract test runs against every real provider (BRK-173). The core never names a vendor.
 
-The first provider is BRK-169's choice (recommended: Cloudflare, where the board and the deploy flow already run). BRK-188 writes down its API surface and the narrowest tokens as a **First provider** section in this spec; BRK-189 discovers, BRK-191 observes, BRK-192 plans and applies for Workers and their bindings, and BRK-193 prices.
+Adapters call the platform's API directly; no infrastructure-as-code tool, state file, or second source of truth (BRK-169). A provider may declare **scale** and **restart** as change kinds per resource kind, for envelopes.
+
+The first provider is Cloudflare (BRK-169), where the board and the deploy flow already run. BRK-188 writes down its API surface and the narrowest tokens as a **First provider** section in this spec; BRK-189 discovers, BRK-191 observes, BRK-192 plans and applies for Workers and their bindings, BRK-193 prices, and BRK-227 scales and restarts inside an envelope, for the kinds that can.
 
 ### Environments
 
-A named target in one repository: kind (`production`, `staging`, `short-lived`), its provider, an owning task for a short-lived one, a **freeze** switch (the pause switch, generalised; owner-only), and whether production gates apply (BRK-174). A fresh install has none, and the Infrastructure view says what to connect first.
+A named target in one of the board's repositories: kind (`production`, `staging`, `short-lived`), its provider, an owning task for a short-lived one, a **freeze** switch (the pause switch, generalised; owner-only; no change windows, BRK-171), whether production gates apply, and **observe only**. The environment that runs the board's own install is always observe only (BRK-169) (BRK-174). A fresh install has none, and the Infrastructure view says what to connect first.
 
 ### Inventory
 
-What actually exists, from each provider's `discover`: a graph of resources with relations (this Worker uses that database, secret by name, and route), ownership (repository, task, environment), last health, and last cost. A refresh replaces one provider's slice atomically (BRK-177).
+What actually exists, from each provider's `discover`, scoped to what the board's repositories run on (BRK-169: nothing outside an environment's scope is stored): a graph of resources with relations (this Worker uses that database, secret by name, and route), ownership (repository, task, environment), last health, and last cost. A refresh replaces one provider's slice atomically (BRK-177).
 
 ### Desired state
 
-What should exist, as code, read from the repository's default branch once per new commit, the way `.github/breakaway-pipeline.json` is read (BRK-180). The format is BRK-169's choice (recommended: one file per environment, `.github/breakaway-infra/<environment>.json`). An invalid file shows its error and keeps the last valid copy. `npx breakaway infra check` validates it locally and asks for the plan it would make (CLI-14).
+What should exist, as code, read from the repository's default branch once per new commit, the way `.github/breakaway-pipeline.json` is read (BRK-180). One file per environment, `.github/breakaway-infra/<environment>.json` (BRK-169). A file for an environment that doesn't exist shows as one to add; one for an observe-only environment is refused. An invalid file shows its error and keeps the last valid copy. `npx breakaway infra check` validates it locally and asks for the plan it would make (CLI-14).
 
 ### Plans
 
@@ -68,21 +70,21 @@ One flow for app and infrastructure: a pull request that changes a desired-state
 
 ### Policy
 
-Rules as code beside the desired state, checked at plan time: what needs the owner (by default, from BRK-171: production, destructive or irreversible, access and exposure, cost over a limit), budgets, and a frozen environment refusing everything. A repository with no policy file gets the default. Each rule's result is on the plan in words (BRK-181).
+Rules as code beside the desired state, checked at plan time: what needs the owner, budgets, and a frozen environment refusing everything. A repository with no policy file gets the default, which BRK-171 set to **every plan, in every environment**; it still names each rule that applies (production, destructive or irreversible, access and exposure, a cost change over the limit) so the plan says why. The cost limit starts at 5 a month and the budget at 20 a month per environment (BRK-172), both changeable in the policy file. Each rule's result is on the plan in words (BRK-181). A repository's own policy can let some plans through; envelopes are the only standing exception to the default.
 
 ### Approvals
 
-Approve and Reject are owner-only and cookie-only (BRK-182). A plan that waits sends one push linking to the plan page, so the owner approves from the phone (WEB-62). A plan the policy lets through is approved with the rule that allowed it recorded.
+Approve and Reject are owner-only and cookie-only (BRK-182). A plan that waits sends one push linking to the plan page, so the owner approves from the phone (WEB-62). A plan a repository's policy lets through is approved with the rule that allowed it recorded; the default lets nothing through.
 
 ### Executor
 
 The only path that changes infrastructure (BRK-183): take the environment's lock (BRK-179), start the apply runner for exactly one approved plan, record each step, verify health through the provider, roll back by itself if verification fails (BRK-171), release the lock, and write the outcome. One environment at a time; production last and only on approval.
 
-Where the runner runs and who holds write credentials is BRK-171's choice. Recommended: **a workflow in the repository, started by the board, with a write token per environment in a GitHub environment**, which is the trust Promote has today, so the board itself still holds no write credentials. CLI-12 renders it with `npx breakaway infra init`, like `pipeline init`.
+The runner is **a workflow in the repository, started by the board on approval, with a write token per environment in a GitHub environment** (BRK-171), which is the trust Promote has today, so the board itself still holds no write credentials. CLI-12 renders it with `npx breakaway infra init`, like `pipeline init`. An observe-only environment is refused.
 
 ### Envelopes
 
-If BRK-171 allows them: bounds the owner approves once on one environment ("2 to 10 instances", "up to this much a month"). A scaling rule in the repository acts inside them through the executor with no press, writes an audit entry, and notes it quietly in the inbox; outside them it makes a plan that waits (BRK-186).
+Bounds the owner approves once on one environment, in any environment, production included (BRK-171): scaling bounds ("2 to 10 instances", "up to this much a month") and a **restart cap** (how many restarts in a window; 3 a day by default, set by the owner). A scaling rule in the repository, or a runbook, acts inside them through the executor with no press, writes an audit entry, and notes it quietly in the inbox. Once the restart cap is used up, the next restart becomes a plan that waits, with a push. Anything else, or outside the bounds, is a plan that waits (BRK-186, BRK-227).
 
 ### Drift
 
@@ -90,7 +92,7 @@ On the cron, desired against actual for each environment with a desired state. D
 
 ### Break-glass
 
-The owner may change something by hand. Marking the drift as break-glass records it and makes a follow-up task to put it into code (or undo it, per BRK-171) (BRK-187).
+The owner may change something by hand. Marking the drift as break-glass records it and makes a follow-up task to put it into code by pull request (BRK-171); the board never proposes undoing it (BRK-187).
 
 ### Audit trail
 
@@ -98,7 +100,7 @@ Every plan, approval, apply, envelope action, lock release, and break-glass, app
 
 ### Signals
 
-Health, the platform's alerts, cost, and whatever else BRK-172 picks, normalised into one shape (source, environment, resource, kind, level, value, time, short text), redacted before it's stored, kept for BRK-172's retention with daily summaries (BRK-190). The deploy flow's failed health checks and rollbacks become signals too (BRK-198), and the existing Cloudflare alert webhook feeds the stream as well as its routines (BRK-191).
+Health, the platform's alerts, and cost (BRK-172: no metrics, logs, or traces in the first version), normalised into one shape (source, environment, resource, kind, level, value, time, short text), redacted before it's stored, kept 7 days, with daily summaries kept 90 (BRK-190). The deploy flow's failed health checks and rollbacks become signals too (BRK-198), and the existing Cloudflare alert webhook feeds the stream as well as its routines (BRK-191).
 
 ### Runbooks
 
@@ -106,11 +108,13 @@ A runbook is a routine with a signal trigger: by environment, resource kind, and
 
 ### Incidents
 
-A signal that crosses a rule opens an incident: a task where BRK-172 says (recommended: in the owning repository, tagged `+incident`), with a push as BRK-172 says, and steps on the task: **diagnose** (read only), **propose** (a plan, by pull request), **approve**, **apply**, **verify**, then a write-up and follow-up tasks. A repeat signal comments on the open incident (BRK-197, WEB-63). Whether a diagnosis agent starts by itself is BRK-172's.
+A signal that crosses a rule opens an incident: a task in the repository that owns the resource, tagged `+incident` (BRK-172), with a push for a production incident and a quiet inbox entry for any other, and steps on the task: **diagnose** (read only), **propose** (a plan, by pull request), **approve**, **apply**, **verify**, then a write-up and follow-up tasks. A repeat signal comments on the open incident (BRK-197, WEB-63). An incident never starts an agent by itself: a diagnosis agent starts only from a runbook the owner turned on, one by one (BRK-172, BRK-196).
 
 ### Cost
 
-Each resource's estimate from the provider, summed by environment, repository, and owning task, with budgets in the policy and a signal near or over one (BRK-199, WEB-65).
+Each resource's estimate from the provider, summed by environment, repository, and owning task, with budgets in the policy and a signal near or over one (BRK-199, WEB-65). Every amount is marked as an estimate.
+
+The owner works in euros, or any currency (BRK-171, BRK-172), while platforms price in US dollars. BRK-225 asks how the board converts (recommended: a rate the owner sets in Settings, because fetching rates would be a call to a service the owner didn't connect), which currencies, and where the choice lives; BRK-226 builds it. Until then limits and budgets are in the provider's currency.
 
 ### Short-lived environments
 
@@ -126,7 +130,7 @@ The owner's opinionated templates for a capability (a queue, a database, a new s
 
 ### Connections
 
-A row per provider: state, the token's permissions by name (never its value), the last discovery and signal, and the fix in words. If BRK-171 allows a read-only token on the board, the owner pastes it in a form that stores it encrypted, like routine tokens (BRK-194).
+A row per provider: state, the token's permissions by name (never its value), the last discovery and signal, and the fix in words. The board may hold a read-only token per provider (BRK-171): the owner pastes it in a form that stores it encrypted, like routine tokens (BRK-194).
 
 ### The first instance
 
@@ -142,11 +146,11 @@ An **Infrastructure** view next to Board and List (WEB-60): each repository's en
 
 ### Agents
 
-The core gets an incident mode, and the tasks skill learns `infra` and `infra check`: diagnose read only, propose by pull request, never apply, never hold write credentials (BRK-203). Agents on more providers than Claude are a spec of their own (BRK-176), if BRK-169 keeps it here.
+The core gets an incident mode, and the tasks skill learns `infra` and `infra check`: diagnose read only, propose by pull request, never apply, never hold write credentials (BRK-203). Agents on more providers than Claude are a spec of their own (BRK-176); its build is a later idea (BRK-169).
 
 ### Recovery
 
-breakaway keeps a way to recover that doesn't depend on itself: a manual page that rebuilds an install and its environments from the repository with `wrangler` and the desired-state files alone (DOC-30), rehearsed by the owner (BRK-208). Until BRK-169 says otherwise, Architect observes the board's own install and never applies to it.
+breakaway keeps a way to recover that doesn't depend on itself: a manual page that rebuilds an install and its environments from the repository with `wrangler` and the desired-state files alone (DOC-30), rehearsed by the owner (BRK-208). Architect observes the board's own install and never applies to it (BRK-169), so the page also says how to redeploy the install itself by hand.
 
 ## How a chase runs it
 
@@ -171,15 +175,19 @@ The board stores resource names, kinds, relations, health, cost, and signals fro
 - Moving the deploy flow onto the executor: it keeps its workflows; Architect records it.
 - Building pluggable agent providers (BRK-176 is a spec only).
 - Repositories on Cloudflare Artifacts (IDEA-16); they can become a change source later.
-- Managing the board's own install, unless BRK-169 says so.
+- Managing the board's own install: observe only (BRK-169).
+- Metrics, logs, and traces as signals (BRK-172).
+- Change windows: the freeze switch is the only one (BRK-171).
+- Driving an infrastructure-as-code tool (BRK-169).
 
 ## Decisions
 
-Asked on the board, each with a recommendation; DOC-29 records the answers.
+Answered by the owner on 6 Oct 2026; DOC-29 records them in the decision log and `AGENTS.md`.
 
-- **BRK-169, what Architect manages first:** scope (the board's repositories, or whole accounts), the first provider (Cloudflare recommended), direct API or an IaC tool, where the desired state is written, whether the board's own install is managed, and where pluggable agents go.
-- **BRK-171, keys and approvals:** where the runner runs and who holds write credentials, a read-only token on the board, which plans always ask, the cost limit, envelopes and where they may act, automatic rollback, change windows, and break-glass.
-- **BRK-172, signals and incidents:** which signals, retention, where an incident lives, when it pushes, whether diagnosis starts by itself, and budgets.
+- **BRK-169, what Architect manages first:** what the board's repositories run on, not whole accounts; Cloudflare first; adapters call the API directly; desired state in `.github/breakaway-infra/<environment>.json`; the board's own install observed, never applied to; pluggable agents a spec now (BRK-176), built as their own idea.
+- **BRK-171, keys and approvals:** the runner is a workflow in the repository with credentials in GitHub environments; a read-only token per provider on the board; every plan asks the owner by default; a cost limit of 5 a month, configurable, in the owner's currency; envelopes for scaling and capped restarts (a push when the cap is used up), in every environment, production included; automatic rollback; no change windows, a freeze switch; break-glass is recorded and brought into code by pull request.
+- **BRK-172, signals and incidents:** health, alerts, and cost; raw signals 7 days, daily summaries 90; an incident is a `+incident` task in the owning repository; production incidents push, others go to the inbox quietly; a diagnosis agent starts only from runbooks the owner turns on; a budget of 20 a month per environment, configurable, in the owner's currency.
+- **BRK-225, cost in the owner's currency (open):** how to convert, which currencies, and where it's chosen. Only BRK-226 waits for it.
 
 ## Open questions
 
@@ -195,7 +203,7 @@ Asked on the board, each with a recommendation; DOC-29 records the answers.
 - Agents can read all of it from the CLI and MCP, and the core teaches the incident mode.
 - The manual, the decision log, and the brand's claims describe it, and the recovery page has been rehearsed.
 
-The tasks, all in the `architect` feature, all on the `next` horizon, and all waiting (directly or through another) for IDEA-19:
+The tasks, all in the `architect` feature, all on the `now` horizon, and all waiting (directly or through another) for IDEA-19:
 
 | Task | What | Waits for |
 | --- | --- | --- |
@@ -207,6 +215,7 @@ The tasks, all in the `architect` feature, all on the `next` horizon, and all wa
 | BRK-174 | Environments | IDEA-19 |
 | BRK-175 | The audit trail | IDEA-19 |
 | BRK-176 | Spec: pluggable agent providers | BRK-169 |
+| BRK-225 | Decide cost in your currency (`+owner`) | — |
 | BRK-177 | Inventory | BRK-173, BRK-174 |
 | BRK-178 | Plans | BRK-173, BRK-174, BRK-175 |
 | BRK-179 | Environment locks | BRK-174 |
@@ -217,7 +226,7 @@ The tasks, all in the `architect` feature, all on the `next` horizon, and all wa
 | BRK-183 | The executor | BRK-182, BRK-179, CLI-12 |
 | BRK-184 | Drift | BRK-180, BRK-177, BRK-178 |
 | BRK-185 | Plans from pull requests | BRK-180, BRK-181 |
-| BRK-186 | Envelopes | BRK-183 |
+| BRK-186 | Envelopes: scaling and capped restarts | BRK-183 |
 | BRK-187 | Break-glass | BRK-184 |
 | BRK-188 | Research the first provider | BRK-169, BRK-173 |
 | BRK-189 | First provider: discover | BRK-188, BRK-177 |
@@ -225,12 +234,14 @@ The tasks, all in the `architect` feature, all on the `next` horizon, and all wa
 | BRK-191 | First provider: observe and events | BRK-189, BRK-190 |
 | BRK-192 | First provider: plan and apply | BRK-189, BRK-180, BRK-178 |
 | BRK-193 | First provider: cost | BRK-189 |
+| BRK-226 | Costs in your currency | BRK-225, BRK-181 |
+| BRK-227 | First provider: scale and restart in an envelope | BRK-186, BRK-192, BRK-188 |
 | BRK-194 | Connections for providers | BRK-171, BRK-173 |
 | BRK-195 | The deploy flow as the first instance | BRK-178 |
 | BRK-196 | Runbooks on signals (related to BRK-197) | BRK-190 |
 | BRK-197 | Incidents | BRK-190, BRK-178 |
 | BRK-198 | The deploy flow's health checks as signals | BRK-190 |
-| BRK-199 | Cost attribution and budgets | BRK-177, BRK-181, BRK-190 |
+| BRK-199 | Cost attribution and budgets | BRK-177, BRK-181, BRK-190, BRK-226 |
 | BRK-200 | Short-lived environments (related to BRK-201) | BRK-183 |
 | BRK-201 | Clean up what nobody owns | BRK-177, BRK-182 |
 | CLI-13 | `npx breakaway infra` reads | BRK-177, BRK-178 |
