@@ -41,11 +41,12 @@ describe('the infrastructure audit trail', () => {
     await append({ kind: 'approve', repo: 'widgets', environment: 'audit-staging', plan: 'plan-1', by: 'owner' });
     await append({ kind: 'apply', repo: 'widgets', environment: 'audit-prod', plan: 'plan-2', by: 'executor' });
     await append({ kind: 'apply', repo: 'gadgets', environment: 'audit-staging', plan: 'plan-3', by: 'executor' });
+    await append({ kind: 'rollback', repo: 'widgets', environment: 'audit-prod', plan: 'plan-2', by: 'executor' });
 
     const staging = await read('?environment=audit-staging&repo=widgets');
     expect(staging.entries.map((e) => e.kind)).toEqual(['approve', 'plan']);
     expect(staging.more).toBe(false);
-    expect((await read('?environment=audit-prod')).entries.map((e) => e.plan)).toEqual(['plan-2']);
+    expect((await read('?environment=audit-prod')).entries.map((e) => e.kind)).toEqual(['rollback', 'apply']);
     expect((await read('?environment=audit-staging')).entries.map((e) => e.plan)).toEqual([
       'plan-3',
       'plan-1',

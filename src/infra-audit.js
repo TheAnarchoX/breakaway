@@ -12,8 +12,22 @@ export const DAY = 86_400_000;
 export const AUDIT_KEPT_DAYS = 2 * 365;
 export const YEAR_DAYS = 365;
 
-/** What an entry records, in the spec's words: a plan, its approval or rejection, an apply, and the rest; a freeze or thaw is `freeze`. */
-export const AUDIT_KINDS = ['plan', 'approve', 'reject', 'apply', 'envelope', 'lock-release', 'break-glass', 'freeze'];
+/**
+ * What an entry records, in the spec's words: a plan, its approval or rejection, an apply, the executor's own rollback
+ * when verification fails, an envelope acting, a lock release, break-glass, and a freeze or thaw (`freeze`). The table
+ * stores the kind as text, so a new one is a change here, never a migration.
+ */
+export const AUDIT_KINDS = [
+  'plan',
+  'approve',
+  'reject',
+  'apply',
+  'rollback',
+  'envelope',
+  'lock-release',
+  'break-glass',
+  'freeze',
+];
 /** Who acted: the owner (never by name), the executor, an envelope acting with no press, or an agent proposing. */
 export const AUDIT_ACTORS = ['owner', 'executor', 'envelope', 'agent', 'board'];
 
