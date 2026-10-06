@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { HORIZONS, PRIORITIES, ROLES, ref } from '../lib/model.js';
 import {
   actions,
@@ -14,6 +14,7 @@ import {
   toast,
 } from '../lib/store.js';
 import { canDictate } from '../lib/dictation.js';
+import { clearDraft, draftOf, fillDraft, readDraft, writeDraft } from '../lib/drafts.js';
 import { isImage, MAX_IMAGES, prepareImage } from '../lib/images.js';
 import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails, attachFiles, pastedImages } from './Attachments.jsx';
@@ -23,9 +24,14 @@ function Form({ defaults }) {
   const f = filters.value;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const draft = useFormDraft('task');
   const open = tasks.value.filter((t) => t.status === 'pending');
-  // The repository the switcher shows, else the default; the areas are that repository's own.
-  const [repo, setRepo] = useState(defaults.repo ?? repoScope.value ?? repos.value.default);
+  // The draft's repository, else the one the switcher shows, else the default; the areas are that repository's own.
+  const [repo, setRepo] = useState(() => {
+    const kept = draft.saved?.repo;
+    if (typeof kept === 'string' && repos.value.list.some((r) => r.slug === kept)) return kept;
+    return defaults.repo ?? repoScope.value ?? repos.value.default;
+  });
   const areas = areasOfRepo(repo).filter((a) => !['ideas', 'routines'].includes(a.id));
   const wanted = defaults.project ?? (f.areas.length === 1 ? f.areas[0] : 'product');
   const initialArea = areas.some((a) => a.id === wanted) ? wanted : areas[0]?.id;
@@ -56,13 +62,14 @@ function Form({ defaults }) {
     });
     setBusy(false);
     if (created) {
+      draft.discard();
       newTask.value = null;
       openTask(created);
     }
   };
 
   return (
-    <form class="sheet" onSubmit={submit} noValidate>
+    <form class="sheet" onSubmit={submit} noValidate {...draft.form}>
       <h2 id="new-title">New task</h2>
       <ModeSwitch mode="task" />
       <label class="field">
@@ -183,6 +190,7 @@ function Form({ defaults }) {
           type="button"
           class="btn btn-quiet"
           onClick={() => {
+            draft.discard();
             newTask.value = null;
           }}
         >
@@ -225,12 +233,44 @@ function ModeSwitch({ mode }) {
 }
 
 /**
- * Images a form holds until its task exists: picked, dropped, or pasted, shrunk in the browser, up to
- * MAX_IMAGES. `dropZone(className)` gives the form's class and its drop and paste handlers.
+ * A form's draft (WEB-84): what was typed is kept as the owner types, put back when the form opens again, and
+ * thrown away by `discard()`, which Cancel and a successful submit call. Spread `form` on the `<form>`. `saved` is
+ * the draft the form opened with, for the fields the form holds in state.
+ * @param {string} key
  */
-export function useDraftImages() {
-  const [images, setImages] = useState([]);
+export function useFormDraft(key) {
+  const [saved] = useState(() => readDraft(key));
+  const form = useRef(/** @type {HTMLFormElement | null} */ (null));
+  useLayoutEffect(() => {
+    if (saved && form.current) fillDraft(form.current.elements, saved);
+  }, []);
+  const keep = () => {
+    if (form.current) writeDraft(key, draftOf(form.current.elements));
+  };
+  return { saved, form: { ref: form, onInput: keep, onChange: keep }, discard: () => clearDraft(key) };
+}
+
+/** Images held for a form's draft until it's sent or cancelled, by the form's draft key. They last until a reload. */
+const heldImages = new Map();
+
+/**
+ * Images a form holds until its task exists: picked, dropped, or pasted, shrunk in the browser, up to
+ * MAX_IMAGES. `dropZone(className)` gives the form's class and its drop and paste handlers. With a `key`, they
+ * stay when the form closes and come back when it opens, until `discard()`.
+ * @param {string} [key]
+ */
+export function useDraftImages(key) {
+  const [images, setImages] = useState(() => (key && heldImages.get(key)) || []);
   const [over, setOver] = useState(false);
+  useEffect(() => {
+    if (!key) return;
+    if (images.length) heldImages.set(key, images);
+    else heldImages.delete(key);
+  }, [key, images]);
+  const discard = () => {
+    for (const i of images) URL.revokeObjectURL(i.url);
+    if (key) heldImages.delete(key);
+  };
   const pick = async (files) => {
     for (const file of files.filter(isImage).slice(0, Math.max(MAX_IMAGES - images.length, 0))) {
       try {
@@ -269,7 +309,7 @@ export function useDraftImages() {
       }
     },
   });
-  return { images, pick, drop, dropZone };
+  return { images, pick, drop, dropZone, discard };
 }
 
 /** Uploads a form's images to the task it made, with a toast when some don't attach. */
@@ -339,10 +379,14 @@ export function RepoField({ repo, setRepo, error, id = 'idea-repo', unavailable 
 function IdeaForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [repo, setRepo] = useState(repoScope.value ?? '');
+  const draft = useFormDraft('idea');
+  const [repo, setRepo] = useState(() => {
+    const kept = draft.saved?.repo;
+    return typeof kept === 'string' && repos.value.list.some((r) => r.slug === kept) ? kept : (repoScope.value ?? '');
+  });
   const [repoError, setRepoError] = useState(null);
   // Images wait in the form (already shrunk) and go up once the idea has its work ID.
-  const { images, pick, drop, dropZone } = useDraftImages();
+  const { images, pick, drop, dropZone, discard } = useDraftImages('idea');
 
   const submit = async (e) => {
     e.preventDefault();
@@ -368,16 +412,17 @@ function IdeaForm() {
       brief: idea,
     });
     if (created) await uploadDraftImages(created, images, 'Some images didn’t attach. Add them again from the idea.');
-    images.forEach((i) => URL.revokeObjectURL(i.url));
     setBusy(false);
     if (created) {
+      discard();
+      draft.discard();
       newTask.value = null;
       openTask(created);
     }
   };
 
   return (
-    <form {...dropZone('sheet')} onSubmit={submit} noValidate>
+    <form {...dropZone('sheet')} onSubmit={submit} noValidate {...draft.form}>
       <h2 id="new-title">New idea</h2>
       <ModeSwitch mode="idea" />
       <label class="field">
@@ -447,6 +492,8 @@ function IdeaForm() {
           type="button"
           class="btn btn-quiet"
           onClick={() => {
+            discard();
+            draft.discard();
             newTask.value = null;
           }}
         >

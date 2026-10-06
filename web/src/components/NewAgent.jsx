@@ -4,7 +4,7 @@ import { MAX_IMAGES } from '../lib/images.js';
 import { actions, multiRepo, newAgent, openTask, repoScope, routineConnected, toast } from '../lib/store.js';
 import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails } from './Attachments.jsx';
-import { RepoField, uploadDraftImages, useDraftImages } from './NewTask.jsx';
+import { RepoField, uploadDraftImages, useDraftImages, useFormDraft } from './NewTask.jsx';
 
 export const sentence = (text) => {
   const s = String(text).trim();
@@ -23,13 +23,17 @@ function NewAgentForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [refusal, setRefusal] = useState(null);
-  // Preset to the repository in scope when its routine is connected; with every repository in scope, picked.
+  const draft = useFormDraft('agent');
+  // The draft's repository, else the one in scope, when its routine is connected; with every repository in scope,
+  // picked.
   const [repo, setRepo] = useState(() => {
+    const kept = draft.saved?.repo;
+    if (typeof kept === 'string' && kept && multiRepo.value && !notConnected(kept)) return kept;
     const scope = repoScope.value;
     return scope && !notConnected(scope) ? scope : '';
   });
   const [repoError, setRepoError] = useState(null);
-  const { images, pick, drop, dropZone } = useDraftImages();
+  const { images, pick, drop, dropZone, discard } = useDraftImages('agent');
 
   const submit = async (e) => {
     e.preventDefault();
@@ -60,7 +64,8 @@ function NewAgentForm() {
     }
     const task = result.task;
     await uploadDraftImages(task, images, `Some images didn’t attach. Add them from ${ref(task)}.`);
-    for (const i of images) URL.revokeObjectURL(i.url);
+    discard();
+    draft.discard();
     setBusy(false);
     if (result.run) toast(`Started an agent on ${ref(task)}.`, 'success');
     else if (result.already) toast(`${ref(task)} has an agent already: ${result.already}.`, 'info');
@@ -70,7 +75,7 @@ function NewAgentForm() {
   };
 
   return (
-    <form {...dropZone('sheet')} onSubmit={submit} noValidate aria-busy={busy ? 'true' : undefined}>
+    <form {...dropZone('sheet')} onSubmit={submit} noValidate aria-busy={busy ? 'true' : undefined} {...draft.form}>
       <h2 id="new-agent-title">New agent</h2>
       <label class="field">
         <span class="field-label">What should the agent do?</span>
@@ -138,6 +143,8 @@ function NewAgentForm() {
           type="button"
           class="btn btn-quiet"
           onClick={() => {
+            discard();
+            draft.discard();
             newAgent.value = false;
           }}
         >
