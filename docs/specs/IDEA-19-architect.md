@@ -107,6 +107,8 @@ Bounds the owner approves once on one environment, in any environment, productio
 
 On the cron, desired against actual for each environment with a desired state. Drift shows on the environment and becomes one draft plan; the board never forces it (BRK-184).
 
+The cron compares each environment with a provider and a desired state at most once an hour, or as soon as its desired state moves to a new commit, five environments a tick. What differs shows on the environment (`driftCount`, and `drift` with each resource and what the plan would do to it) and in `GET /api/infra/drift`. One drift makes one draft plan, by the board: a comparison that finds an open plan with the same changes (from drift, a pull request, or anything else) makes none, and while an earlier drift plan is open it makes no other and says that one no longer matches, so the owner rejects it and the next comparison makes a new one. A provider that fails keeps what differed last time, with why. A frozen environment's drift is shown but planned only once it's unfrozen. The owner can compare one now from the board. Observe-only environments are never compared: they take no desired state.
+
 ### Break-glass
 
 The owner may change something by hand. Marking the drift as break-glass records it and makes a follow-up task to put it into code by pull request (BRK-171); the board never proposes undoing it (BRK-187).
