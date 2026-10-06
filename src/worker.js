@@ -532,6 +532,15 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'DELETE') return send(await s.kickoffsDeleteApi(parts[1], body));
     if (parts[2] === 'register' && method === 'POST') return send(await s.kickoffsRegisterApi(parts[1], body));
   }
+  // A draft of an environment's desired state (BRK-240): read only, so agents with the token may ask as well as the owner.
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'environments' &&
+    parts[3] === 'draft' &&
+    parts.length === 4 &&
+    method === 'GET'
+  )
+    return send(await s.infraDraftApi(parts[2], { repo: url.searchParams.get('repo') }));
   // Environments (BRK-174): anyone signed in reads them; adding, changing, and removing one is the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold (BRK-233). An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'environments' && parts.length <= 3) {
@@ -678,6 +687,11 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.driftCheckApi(parts[2], { repo, ...body }));
     }
   }
+  // Clean up (BRK-201): anyone signed in reads what nobody owns; only the board flags it, on drift's comparison.
+  if (parts[0] === 'infra' && parts[1] === 'cleanup' && parts.length === 2 && method === 'GET')
+    return send(
+      await s.cleanupApi({ repo: url.searchParams.get('repo'), environment: url.searchParams.get('environment') }),
+    );
   // Break-glass (BRK-187): anyone signed in reads the marks; marking drift as break-glass is the owner's, from the
   // signed-in browser only. It records the change and makes a task to put it into code; it never undoes it.
   if (parts[0] === 'infra' && parts[1] === 'break-glass' && parts.length <= 3) {

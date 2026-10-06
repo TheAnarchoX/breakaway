@@ -60,6 +60,8 @@ What actually exists, from each provider's `discover`, scoped to what the board'
 
 What should exist, as code, read from the repository's default branch once per new commit, the way `.github/breakaway-pipeline.json` is read (BRK-180). One file per environment, `.github/breakaway-infra/<environment>.json` (BRK-169). A file for an environment that doesn't exist shows as one to add; one for an observe-only environment is refused. An invalid file shows its error and keeps the last valid copy. `npx breakaway infra check` validates it locally and asks for the plan it would make (CLI-14).
 
+Nobody has to write the first file by hand (BRK-240): `GET /api/infra/environments/<id>/draft` writes it from the environment's slice of the inventory, valid as written, with only the settings the provider manages (never what the platform reports by itself, like versions and sizes) and never a secret's value, and notes saying what it left out. Agents read it with the token as well as the owner; `infra adopt` (CLI-23) writes it into a checkout. An environment with no inventory yet gets a 409 saying to connect the provider and refresh.
+
 ### Plans
 
 The exact difference an apply would make: the provider's diff, the cost change, the blast radius (from the inventory's relations), whether it can be undone or why not, the policy results, and a state (`draft`, `waiting`, `approved`, `rejected`, `applying`, `applied`, `failed`, `rolled back`). Its source is a pull request, drift, an envelope, an incident, or the deploy flow (BRK-178).
@@ -170,6 +172,8 @@ The board notices from the alarm and the cron, so a task closed anywhere (the bo
 ### Clean up
 
 Anything nobody owns is flagged, and after a grace period a removal plan waits for the owner: removal is destructive, so it always asks (BRK-201).
+
+What nobody owns is what runs in an environment's scope (its inventory slice) that its desired state doesn't declare, so its provider's plan would delete it, and that nothing else owns: not the environment's target, not a short-lived environment's (its task owns it, and BRK-200 removes it), and not a resource a break-glass mark covers (its task puts it into code). Drift's comparison finds it, and drift leaves deletes out of its own count and plan. The board flags it on the environment (`unowned`, and `GET /api/infra/cleanup`) with an audit entry; a week later it makes one removal plan (source `cleanup`) for every flag that's due and puts it in front of the owner, since a delete always trips the destructive guard. A removal the owner rejects keeps the resource, and the board proposes it no more; a frozen environment's flags wait. A flag drops when its resource is declared, covered by break-glass, or gone. Never in an observe-only environment or the board's own install.
 
 ### Golden paths
 
@@ -298,7 +302,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Observe | The application's instance counts (`active` against `assigned`) and each instance's state; none active when some are assigned is down | Containers Read |
 | Cost | Active instances, their instance type, and the time they ran, times the price table (vCPU, memory, and disk by the second). A rougher estimate than the others: **verify** against the dashboard in BRK-193 | Containers Read |
 | Scale | `PATCH …/applications/{id}` with `max_instances` inside the envelope's bounds | Containers Write |
-| Restart | `POST …/applications/{id}/rollouts` with the current configuration: every instance is replaced, step by step, after `SIGTERM` and up to 15 minutes to drain. The documentation shows the endpoint but not its body: **verify** in BRK-227 | Containers Write |
+| Restart | `POST …/applications/{id}/rollouts` with the current configuration: every instance is replaced, step by step, after `SIGTERM` and up to 15 minutes to drain. The documentation shows the endpoint but not its body; BRK-227 sends the body Wrangler sends for a deploy's rollout (`description`, `strategy: rolling`, `kind: full_auto`, `step_percentage`, `target_configuration` from `GET …/applications/{id}`), which the docs don't confirm: **verify** in BRK-207's staging run | Containers Write |
 
 **Routes** (`route`). Changes: create, update, delete (reversible: a route holds no data).
 
@@ -404,7 +408,7 @@ Give it an expiry date and rotate it, never Account Settings, API Tokens, Billin
 | `queue` | The consumer's `max_concurrency` | No |
 | `worker`, `durable-object`, `d1`, `kv`, `r2`, `route`, `custom-domain` | No: the platform scales them | No |
 
-So the kinds BRK-227 declares are `container` (scale and restart) and `queue` (scale). The envelope form offers nothing else (BRK-186).
+So the kinds BRK-227 declares are `container` (scale and restart, `scales: maxInstances`) and `queue` (scale, `scales: maxConcurrency`, its Worker consumer's, which discover adds to the queue's settings). The envelope form offers nothing else (BRK-186). A resource whose kind scales but which can't (a container application on another scheduling policy, a queue with no Worker consumer) is refused by the provider's `refuses(resource, op)`, in words, before an act plans and again at apply. Apply reads each scale back, and the executor checks health after it as after any apply; a container application's instance counts don't make a plan out of date, since Cloudflare moves them by itself.
 
 ## How a chase runs it
 

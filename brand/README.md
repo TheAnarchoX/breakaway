@@ -114,6 +114,7 @@ Architect is the board running infrastructure too: environments, plans you appro
 | **drift** | What runs no longer matches what the repository says should | out of sync (sync is Taskwarrior's), skew |
 | **break-glass** | A change you made by hand outside a plan. The board records it and adds a task to put it in code; it never undoes it. | override, hotfix, manual change, drift (on its own) |
 | **freeze** / **unfreeze** | Stop every plan on one environment, envelopes included, until you unfreeze it. Freezing a pipeline's production pauses its deploys too (Roll back still works); merges keep deploying staging. | lock (that's the board's, inside an apply), pause (on its own: freezing production is what pauses deploys), change window, maintenance mode |
+| **nobody owns** | Something that runs in an environment's scope that its desired state doesn't declare and no task owns. The board flags it, and after a week proposes a plan to remove it, which waits for you. | orphan, zombie, stray, unmanaged, garbage |
 | **observe only** | An environment the board watches and never changes. The board's own install is always observe only. | read-only (that's a token's), monitored, unmanaged |
 | **cost limit** | The most one plan may add to an environment's monthly cost before it waits for you | spend cap, threshold, quota |
 | **budget** | What one environment may cost a month; the board sends a signal near it and over it | spend, burn, bill, allowance |
