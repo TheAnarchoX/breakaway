@@ -53,12 +53,15 @@ Or put the printed entry in the checkout’s `.mcp.json`. Claude Code fills in `
 | `messages` | Your messages to the session on the task it holds. |
 | `list_specs`, `show_spec`, `features` | The repository’s specs and the features on the roadmap. |
 | `pull_request` | A pull request’s checks, reviews, and whether it can merge. |
+| `infra_environments`, `infra_environment` | The repository’s environments, and one with its desired state and inventory. |
+| `infra_plans`, `infra_plan` | Plans, newest first, and one with its changes, cost, blast radius, and policy. |
+| `infra_signals`, `infra_incidents` | The signal stream or its daily summaries, and open incidents. |
 
 The read-only tools are marked so a client can run them without asking. A refused call, like a `409` on a claimed task, comes back with the board’s own message. The server also has **resources**, a task, a spec, and the repository’s agent prompt, and two **prompts**: `work_on_task` and `shape_idea`, so a client that never read the `tasks` skill follows the same loop: claim, read, check in, build, hand over.
 
 ## What it never does
 
-There’s no tool for `done` (pull requests close tasks), for `force`, or for `autostart`, and none for starting agents, chases, routines, repositories, merging, releasing, promoting or rolling back, answering a decision, resolving a ping, messaging an agent, settings, or updates. Those are yours, on the board or with your own CLI. Ask a connected client to merge, and it says it can’t.
+There’s no tool for `done` (pull requests close tasks), for `force`, or for `autostart`, and none for starting agents, chases, routines, repositories, merging, releasing, promoting or rolling back, approving, rejecting, freezing, or applying a plan, answering a decision, resolving a ping, messaging an agent, settings, or updates. Those are yours, on the board or with your own CLI. Ask a connected client to merge, and it says it can’t.
 
 ## The token
 
