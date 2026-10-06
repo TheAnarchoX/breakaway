@@ -515,6 +515,8 @@ describe('GitHub on the board', () => {
       {
         id: 501,
         name: 'CI',
+        workflow_id: 61,
+        path: '.github/workflows/ci.yml',
         display_title: 'Build the GitHub view',
         head_branch: 'cld-1-github-view',
         event: 'pull_request',
@@ -564,7 +566,13 @@ describe('GitHub on the board', () => {
       ['CLD-1', true],
       ['OPS-1', false],
     ]);
-    expect(overview.runs[0]).toMatchObject({ id: 501, conclusion: 'failure', prs: [10] });
+    expect(overview.runs[0]).toMatchObject({
+      id: 501,
+      conclusion: 'failure',
+      prs: [10],
+      workflow: 61,
+      path: '.github/workflows/ci.yml',
+    });
     expect(overview.commits[0]).toMatchObject({
       sha: 'abc123',
       pr: 9,

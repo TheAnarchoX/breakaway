@@ -8234,6 +8234,10 @@ a.pl-mention {
 .run-wf-started {
   align-items: flex-start;
 }
+/* Run on a run whose workflow runs by hand (WEB-83), at the end of its line. */
+.gh-run-again {
+  margin-left: auto;
+}
 .run-wf-started > span {
   flex: 1;
   min-width: 0;
