@@ -100,7 +100,7 @@ export const COST_NOTE_MAX = 500;
  */
 
 /**
- * A resource's cost from `cost`, always an estimate, per month, in the provider's currency until BRK-226.
+ * A resource's cost from `cost`, always an estimate, per month, in the provider's currency (the board converts it, BRK-226).
  * @typedef {object} Cost
  * @property {string} resource
  * @property {number} amount

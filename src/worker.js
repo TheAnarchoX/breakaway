@@ -554,6 +554,15 @@ async function handleApi(request, env, url, ctx) {
   // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
   if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
     return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
+  // The board's currency (BRK-226): anyone signed in reads it; setting it and its rate is the owner's, from the
+  // signed-in browser only.
+  if (parts[0] === 'infra' && parts[1] === 'currency' && parts.length === 2) {
+    if (method === 'GET') return send(await s.currencyApi());
+    if (method === 'PUT') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can set the board’s currency' });
+      return send(await s.currencySetApi(body));
+    }
+  }
   // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
   if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
     return send(await s.infraCheckApi(body));
