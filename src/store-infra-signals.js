@@ -1,0 +1,339 @@
+/**
+ * TaskStore's signals (docs/specs/IDEA-19-architect.md, "Signals"; BRK-190): one stream of what providers and the
+ * deploy flow report (health, the platform's alerts, and cost), each signal checked and redacted by
+ * src/infra-signals.js before it's stored, and readable by environment and resource. Raw signals are kept
+ * SIGNAL_RAW_DAYS; the cron folds older ones into daily summaries, kept SIGNAL_SUMMARY_DAYS.
+ *
+ * Runbooks (BRK-196) and incidents (BRK-197) hear the stream by registering on `signalSubscribers`: each new batch
+ * reaches every subscriber after it's stored, and a subscriber that throws never loses a signal or stops the others.
+ * Nothing outside the board writes signals: the API reads only, and providers report inside the store.
+ */
+import { AgentError } from './store-agents.js';
+import { checkSignals } from './infra-provider.js';
+import {
+  DAY,
+  SIGNAL_KINDS,
+  SIGNAL_LEVELS,
+  SIGNAL_RAW_DAYS,
+  SIGNAL_SUMMARY_DAYS,
+  dayOf,
+  foldSignals,
+  signalEntry,
+} from './infra-signals.js';
+
+export { SIGNAL_RAW_DAYS, SIGNAL_SUMMARY_DAYS } from './infra-signals.js';
+
+const SHOWN = 50;
+const SHOWN_MAX = 200;
+
+/**
+ * A signal as stored and shown.
+ * @typedef {{ id: number, source: string, environment: string, resource: string | null, kind: string, level: string,
+ *   value: number | null, at: string, text: string }} StoredSignal
+ */
+
+/**
+ * What hears the stream: the store, and the signals just stored, oldest first.
+ * @typedef {(store: any, signals: StoredSignal[]) => void | Promise<void>} SignalSubscriber
+ */
+
+/** The stream's subscribers, by name: runbooks and incidents register here as they're built. */
+export class SignalSubscribers {
+  /** @type {Map<string, SignalSubscriber>} */
+  #subscribers = new Map();
+
+  /**
+   * Adds a subscriber; refuses a second one with the same name. Returns a function that removes it.
+   * @param {string} name
+   * @param {SignalSubscriber} fn
+   */
+  subscribe(name, fn) {
+    if (typeof fn !== 'function') throw new Error(`signal subscriber ${name} is not a function`);
+    if (this.#subscribers.has(name)) throw new Error(`signal subscriber ${name} is already registered`);
+    this.#subscribers.set(name, fn);
+    return () => this.#subscribers.delete(name);
+  }
+
+  /** The subscribers, in the order they registered. */
+  list() {
+    return [...this.#subscribers.entries()].map(([name, fn]) => ({ name, fn }));
+  }
+}
+
+/** The Worker's subscribers. None yet: runbooks (BRK-196) and incidents (BRK-197) add theirs. */
+export const signalSubscribers = new SignalSubscribers();
+
+/** @returns {StoredSignal} */
+function shown(row) {
+  return {
+    id: Number(row.id),
+    source: row.source,
+    environment: row.environment,
+    resource: row.resource ?? null,
+    kind: row.kind,
+    level: row.level,
+    value: row.value ?? null,
+    at: new Date(Number(row.at)).toISOString(),
+    text: row.text,
+  };
+}
+
+/** @returns {import('./infra-signals.js').SignalDay} */
+function dayRow(row) {
+  return {
+    day: row.day,
+    source: row.source,
+    environment: row.environment,
+    resource: row.resource === '' ? null : row.resource,
+    kind: row.kind,
+    count: Number(row.count),
+    info: Number(row.info),
+    warning: Number(row.warning),
+    critical: Number(row.critical),
+    min: row.min ?? null,
+    max: row.max ?? null,
+    last: row.last ?? null,
+    lastAt: Number(row.last_at),
+    text: row.text,
+  };
+}
+
+/** A whole number from a query string, or an AgentError naming it. */
+function whole(value, what, min, max) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max)
+    throw new AgentError(`${what} must be a whole number from ${min} to ${max}`, 400);
+  return n;
+}
+
+/** The WHERE clause for the filters both reads share. */
+function filters(query) {
+  const where = [];
+  const args = [];
+  if (query.environment) {
+    where.push('environment = ?');
+    args.push(String(query.environment).toLowerCase());
+  }
+  if (query.resource) {
+    where.push('resource = ?');
+    args.push(String(query.resource));
+  }
+  if (query.source) {
+    where.push('source = ?');
+    args.push(String(query.source));
+  }
+  if (query.kind) {
+    if (!SIGNAL_KINDS.includes(String(query.kind)))
+      throw new AgentError(`kind must be one of ${SIGNAL_KINDS.join(', ')}`, 400);
+    where.push('kind = ?');
+    args.push(String(query.kind));
+  }
+  return { where, args };
+}
+
+/** @type {Record<string, (this: any, ...args: any[]) => any>} */
+export const infraSignalsMethods = {
+  initInfraSignals() {
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS infra_signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at INTEGER NOT NULL,
+        received INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        resource TEXT,
+        kind TEXT NOT NULL,
+        level TEXT NOT NULL,
+        value REAL,
+        text TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS infra_signals_by_environment ON infra_signals (environment, at);
+      CREATE INDEX IF NOT EXISTS infra_signals_by_resource ON infra_signals (resource, at);
+      CREATE INDEX IF NOT EXISTS infra_signals_by_age ON infra_signals (at);
+      CREATE TABLE IF NOT EXISTS infra_signal_days (
+        day TEXT NOT NULL,
+        source TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        info INTEGER NOT NULL,
+        warning INTEGER NOT NULL,
+        critical INTEGER NOT NULL,
+        min REAL,
+        max REAL,
+        last REAL,
+        last_at INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        PRIMARY KEY (day, source, environment, resource, kind)
+      );
+      CREATE INDEX IF NOT EXISTS infra_signal_days_by_environment ON infra_signal_days (environment, day);
+    `);
+  },
+
+  /**
+   * Stores signals, for providers and the deploy flow to call inside the store; there is no API to write. Every
+   * signal is checked first, so a batch with one the stream can't take (another kind, a bad time) stores none of it.
+   * Then each subscriber hears the batch. Returns the signals as stored, oldest first.
+   * @param {import('./infra-signals.js').SignalInput[]} signals
+   * @returns {Promise<StoredSignal[]>}
+   */
+  async recordSignals(signals) {
+    if (!Array.isArray(signals)) throw new AgentError('signals must be a list', 400);
+    const now = Date.now();
+    const entries = signals.map((s) => signalEntry(s, now)).sort((a, b) => a.at - b.at);
+    const stored = entries.map((e) =>
+      shown(
+        this.sql
+          .exec(
+            'INSERT INTO infra_signals (at, received, source, environment, resource, kind, level, value, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+            e.at,
+            now,
+            e.source,
+            e.environment,
+            e.resource,
+            e.kind,
+            e.level,
+            e.value,
+            e.text,
+          )
+          .one(),
+      ),
+    );
+    if (stored.length)
+      for (const { name, fn } of signalSubscribers.list()) {
+        try {
+          await fn(this, stored);
+        } catch (error) {
+          // The signals are stored either way; a subscriber's failure is its own, and the next one still hears them.
+          console.error(`signal subscriber ${name} failed: ${error.message}`);
+        }
+      }
+    return stored;
+  },
+
+  /**
+   * Asks a provider for its signals in one environment since `since`, checks them against the provider contract,
+   * and stores them.
+   * @param {import('./infra-provider.js').Provider} provider
+   * @param {import('./infra-provider.js').ProviderContext} ctx
+   * @param {string} since ISO 8601
+   */
+  async pullProviderSignals(provider, ctx, since) {
+    const signals = checkSignals(provider, ctx, since, await provider.events(ctx, since));
+    return this.recordSignals(signals);
+  },
+
+  /**
+   * Raw signals newest first (as they came in), filtered by environment, resource, source, kind, and level, paged with `before` (a
+   * signal's id).
+   * @param {{ environment?: string, resource?: string, source?: string, kind?: string, level?: string,
+   *   before?: string | number, limit?: string | number }} query
+   * @returns {{ signals: StoredSignal[], more: boolean }}
+   */
+  infraSignals(query = {}) {
+    const { where, args } = filters(query);
+    if (query.level) {
+      if (!SIGNAL_LEVELS.includes(String(query.level)))
+        throw new AgentError(`level must be one of ${SIGNAL_LEVELS.join(', ')}`, 400);
+      where.push('level = ?');
+      args.push(String(query.level));
+    }
+    const before = whole(query.before, 'before', 1, Number.MAX_SAFE_INTEGER);
+    if (before !== null) {
+      where.push('id < ?');
+      args.push(before);
+    }
+    const limit = whole(query.limit, 'limit', 1, SHOWN_MAX) ?? SHOWN;
+    const rows = this.sql
+      .exec(
+        `SELECT * FROM infra_signals ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`,
+        ...args,
+        limit + 1,
+      )
+      .toArray();
+    return { signals: rows.slice(0, limit).map(shown), more: rows.length > limit };
+  },
+
+  /**
+   * Daily summaries newest day first, filtered like the raw signals.
+   * @param {{ environment?: string, resource?: string, source?: string, kind?: string }} query
+   * @returns {{ days: Array<Omit<import('./infra-signals.js').SignalDay, 'lastAt'> & { lastAt: string }> }}
+   */
+  infraSignalDays(query = {}) {
+    const { where, args } = filters(query);
+    const rows = this.sql
+      .exec(
+        `SELECT * FROM infra_signal_days ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY day DESC, environment, resource, kind`,
+        ...args,
+      )
+      .toArray();
+    return { days: rows.map(dayRow).map((d) => ({ ...d, lastAt: new Date(d.lastAt).toISOString() })) };
+  },
+
+  /** GET /api/infra/signals: the raw stream, for the CLI, agents, and the environment's page. Read only. */
+  infraSignalsApi(query) {
+    return this.run(async () => ({ status: 200, body: this.infraSignals(query) }));
+  },
+
+  /** GET /api/infra/signals/days: the daily summaries. Read only. */
+  infraSignalDaysApi(query) {
+    return this.run(async () => ({ status: 200, body: this.infraSignalDays(query) }));
+  },
+
+  /**
+   * Retention, on the cron: raw signals older than SIGNAL_RAW_DAYS fold into their day's summary and go, and
+   * summaries older than SIGNAL_SUMMARY_DAYS go.
+   */
+  foldInfraSignals(now = Date.now()) {
+    const cutoff = now - SIGNAL_RAW_DAYS * DAY;
+    const old = this.sql.exec('SELECT * FROM infra_signals WHERE at < ? ORDER BY at, id', cutoff).toArray();
+    if (old.length) {
+      const entries = old.map((r) => ({
+        ...r,
+        at: Number(r.at),
+        resource: r.resource ?? null,
+        value: r.value ?? null,
+      }));
+      const keys = new Set(
+        entries.map((e) => JSON.stringify([dayOf(e.at), e.source, e.environment, e.resource ?? '', e.kind])),
+      );
+      const existing = [];
+      for (const key of keys) {
+        const [day, source, environment, resource, kind] = JSON.parse(key);
+        const row = this.sql
+          .exec(
+            'SELECT * FROM infra_signal_days WHERE day = ? AND source = ? AND environment = ? AND resource = ? AND kind = ?',
+            day,
+            source,
+            environment,
+            resource,
+            kind,
+          )
+          .toArray()[0];
+        if (row) existing.push(dayRow(row));
+      }
+      for (const d of foldSignals(entries, existing))
+        this.sql.exec(
+          'INSERT OR REPLACE INTO infra_signal_days (day, source, environment, resource, kind, count, info, warning, critical, min, max, last, last_at, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          d.day,
+          d.source,
+          d.environment,
+          d.resource ?? '',
+          d.kind,
+          d.count,
+          d.info,
+          d.warning,
+          d.critical,
+          d.min,
+          d.max,
+          d.last,
+          d.lastAt,
+          d.text,
+        );
+      this.sql.exec('DELETE FROM infra_signals WHERE at < ?', cutoff);
+    }
+    this.sql.exec('DELETE FROM infra_signal_days WHERE day < ?', dayOf(now - SIGNAL_SUMMARY_DAYS * DAY));
+  },
+};
