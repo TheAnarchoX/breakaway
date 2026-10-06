@@ -413,6 +413,24 @@ export async function loadGitHub({ sync = false, quiet = false } = {}) {
   }
 }
 
+/**
+ * Each repository's pipeline environments (BRK-195) by the part they play, `{ [slug]: { staging, production } }` with
+ * their IDs, so the release flow's cards open their pages (WEB-88). Empty until it loads, and the cards stay plain.
+ */
+export const pipelineEnvironments = signal(/** @type {Record<string, Record<string, number>>} */ ({}));
+
+export async function loadPipelineEnvironments() {
+  try {
+    const { environments } = await api('infra/environments');
+    /** @type {Record<string, Record<string, number>>} */
+    const byRepo = {};
+    for (const e of environments) if (e.pipeline) byRepo[e.repo] = { ...byRepo[e.repo], [e.pipeline]: e.id };
+    pipelineEnvironments.value = byRepo;
+  } catch {
+    /* the cards stay without links until the next load */
+  }
+}
+
 /** Whether repository `slug`'s agent routine is connected, from the Agents API (false until it loads). */
 export function routineConnected(slug) {
   const want = slug ?? repos.value.default;

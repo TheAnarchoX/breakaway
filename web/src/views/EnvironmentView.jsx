@@ -3,6 +3,7 @@ import { ArrowLeft, Boxes, FileCode, History, RefreshCw, Server, Target } from '
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { environmentId, hashFor, navOrder, repoName } from '../lib/store.js';
+import { DeploysSection } from '../components/EnvironmentDeploys.jsx';
 import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
 import {
   EnvironmentFlags,
@@ -12,11 +13,14 @@ import {
   KIND_LABEL,
   environmentHealth,
 } from './InfrastructureView.jsx';
+import { IncidentsSection } from '../components/Incidents.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>: its resources
  * grouped by kind, each with what it uses and what uses it, its owner, and its health (BRK-177's inventory); its
- * desired state and drift (BRK-180, BRK-184); and its audit trail, newest first (BRK-175). Cost is WEB-65's.
+ * desired state and drift (BRK-180, BRK-184); and its audit trail, newest first (BRK-175). Cost is WEB-65's. A
+ * pipeline's staging and production (BRK-195) show what's live, their recent deploys, and on production Promote and
+ * Roll back, the release flow's own buttons (WEB-88).
  */
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
@@ -270,12 +274,32 @@ function Drift({ env, desired, error }) {
   );
 }
 
+/**
+ * What the deploy flow recorded (BRK-195), from its summary's first words: it deploys, never applies, so its entries
+ * read in the release flow's words.
+ */
+const DEPLOY_LABEL = { Deploy: 'Deployed', Promote: 'Promoted', 'Roll back': 'Rolled back' };
+
+/**
+ * An entry's label and outcome in words.
+ * @param {any} e
+ */
+function auditWords(e) {
+  if (e.kind === 'freeze') return { label: e.outcome === 'off' ? 'Unfrozen' : AUDIT_LABEL.freeze, outcome: '' };
+  const flow = /^(Deploy|Promote|Roll back) of /u.exec(e.summary ?? '')?.[1];
+  if (!flow || (e.kind !== 'apply' && e.kind !== 'rollback'))
+    return { label: AUDIT_LABEL[e.kind] ?? e.kind, outcome: e.outcome };
+  if (e.outcome === 'failed') return { label: `${flow} failed`, outcome: '' };
+  // A deploy whose health check failed, and the version before came back by itself.
+  if (e.outcome === 'rolled back') return { label: 'Rolled back', outcome: `${flow.toLowerCase()} failed its check` };
+  return { label: DEPLOY_LABEL[flow], outcome: '' };
+}
+
 /** @param {{ e: any }} props */
 function AuditEntry({ e }) {
   const iso = new Date(e.at).toISOString();
-  const label = e.kind === 'freeze' && e.outcome === 'off' ? 'Unfrozen' : (AUDIT_LABEL[e.kind] ?? e.kind);
+  const { label, outcome } = auditWords(e);
   const who = e.by === 'agent' ? (e.agent ?? 'an agent') : (ACTOR[e.by] ?? e.by);
-  const outcome = e.kind === 'freeze' ? '' : e.outcome;
   return (
     <li class={`infra-audit-entry infra-audit-${e.kind}`}>
       <div class="infra-audit-head">
@@ -454,7 +478,11 @@ export function EnvironmentView() {
         <EnvironmentFlags env={env} />
       </div>
 
+      <DeploysSection env={env} />
+
       <EnvironmentPlans env={env} />
+
+      <IncidentsSection env={env} />
 
       <section class="infra-section" aria-labelledby="infra-resources">
         <h2 id="infra-resources">
