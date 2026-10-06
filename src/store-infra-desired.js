@@ -44,6 +44,15 @@ export const infraDesiredMethods = {
         PRIMARY KEY (repo, file)
       );
     `);
+    // 1 when the file first appeared on a read after the repository had been read before: merged since the board was
+    // watching, not there from the start. Drift's first comparison of it is a merged change (BRK-246).
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_desired)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('added')) this.sql.exec('ALTER TABLE infra_desired ADD COLUMN added INTEGER NOT NULL DEFAULT 0');
   },
 
   /** The registered provider an environment names, else null. */
@@ -101,6 +110,8 @@ export const infraDesiredMethods = {
       read.push({ file: entry.name, environment: of.environment, ...checked });
     }
     const now = Date.now();
+    // A file the board finds on its first read of the repository was there from the start; one found later was added.
+    const added = kept ? 1 : 0;
     this.ctx.storage.transactionSync(() => {
       const names = read.map((r) => r.file);
       for (const old of this.sql.exec('SELECT file FROM infra_desired WHERE repo = ?', repo.slug).toArray())
@@ -109,8 +120,8 @@ export const infraDesiredMethods = {
       for (const r of read) {
         if (r.ok)
           this.sql.exec(
-            `INSERT INTO infra_desired (repo, file, environment, provider, sha, read_at, desired, valid_sha, valid_at, error)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            `INSERT INTO infra_desired (repo, file, environment, provider, sha, read_at, desired, valid_sha, valid_at, error, added)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
              ON CONFLICT (repo, file) DO UPDATE SET environment = excluded.environment, provider = excluded.provider,
                sha = excluded.sha, read_at = excluded.read_at, desired = excluded.desired, valid_sha = excluded.valid_sha,
                valid_at = excluded.valid_at, error = NULL`,
@@ -123,11 +134,12 @@ export const infraDesiredMethods = {
             JSON.stringify(r.desired),
             sha ?? null,
             now,
+            added,
           );
         // An invalid file keeps the last valid copy, its provider, and when it was valid.
         else
           this.sql.exec(
-            `INSERT INTO infra_desired (repo, file, environment, sha, read_at, error) VALUES (?, ?, ?, ?, ?, ?)
+            `INSERT INTO infra_desired (repo, file, environment, sha, read_at, error, added) VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (repo, file) DO UPDATE SET environment = excluded.environment, sha = excluded.sha,
                read_at = excluded.read_at, error = excluded.error`,
             repo.slug,
@@ -136,6 +148,7 @@ export const infraDesiredMethods = {
             sha ?? null,
             now,
             JSON.stringify(r.error),
+            added,
           );
       }
     });

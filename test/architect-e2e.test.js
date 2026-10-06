@@ -251,12 +251,10 @@ describe('Architect’s whole loop (BRK-228)', () => {
       2,
     );
   /** A new commit on the default branch with `files` changed: the next sync reads it. */
-  const commit = (files) => {
+  /** A new commit on main with `files`; `sha` names it, like a pull request's merge commit. */
+  const commit = (files, sha = `e2e-main-${++shas}`) => {
     Object.assign(gh.main, files);
-    gh.commits = [
-      { sha: `e2e-main-${++shas}`, commit: { message: 'Merge', author: { date: new Date().toISOString() } } },
-      ...gh.commits,
-    ];
+    gh.commits = [{ sha, commit: { message: 'Merge', author: { date: new Date().toISOString() } } }, ...gh.commits];
     return gh.commits[0].sha;
   };
   const tick = () => inStore((s) => s.infraRunsTick());
@@ -430,34 +428,34 @@ describe('Architect’s whole loop (BRK-228)', () => {
 
   it('merging it makes one plan from the new desired state, which the default policy puts in front of the owner', async () => {
     gh.pulls = [pull(31, 'e2e-pr-31', { state: 'closed', merged: true })];
-    const sha = commit({ [PATHS.staging]: gh.heads['e2e-pr-31'][PATHS.staging] });
+    const sha = commit({ [PATHS.staging]: gh.heads['e2e-pr-31'][PATHS.staging] }, 'merge-31');
     await sync();
     const desired = (await body(await api(`infra/desired/${STAGING}?repo=widgets`))).desired;
     expect(desired).toMatchObject({ state: 'valid', validSha: sha });
 
-    // The desired state moved, so the next comparison is due at once: one drift plan, by the board.
+    // The desired state moved, so the next comparison is due at once: one plan from the merged pull request, by the
+    // board, waiting for the owner with one push.
     const compared = await inStore((s) => s.driftTick());
     expect(compared.find((d) => d.environment.id === envs.staging.id)).toMatchObject({ count: 1 });
     const [made] = await plans(envs.staging);
     expect(made).toMatchObject({
-      source: { kind: 'drift' },
+      state: 'waiting',
+      source: { kind: 'pull-request', ref: '#31' },
       by: 'board',
       changes: 1,
       policy: { policy: 'default', outcome: 'needs-owner', rule: 'every' },
     });
     planId = made.id;
-    // TODO(BRK-246): a merged change's plan stays a draft, with no push, until the owner opens it.
-    expect(made.state).toBe('draft');
-    expect(sent.pushes).toEqual([]);
+    expect(sent.pushes).toEqual([PUSH]);
+    expect(await trail(envs.staging, planId)).toEqual([
+      ['plan', 'board', 'draft'],
+      ['plan', 'board', 'waiting'],
+    ]);
     // Nothing applies by itself.
     expect(platform.staging.state.resources.find((r) => r.id === 'svc-api').attrs.instances).toBe(2);
-    // A second comparison makes no second plan.
+    // A second comparison makes no second plan, and no second push.
     await driftTick();
     expect(await plans(envs.staging)).toHaveLength(1);
-
-    // The owner opens it: it waits for them, with one push.
-    const waiting = await body(await board(`infra/plans/${planId}`, { method: 'PATCH', body: { state: 'waiting' } }));
-    expect(waiting.plan.state).toBe('waiting');
     expect(sent.pushes).toEqual([PUSH]);
   });
 
@@ -489,12 +487,11 @@ describe('Architect’s whole loop (BRK-228)', () => {
     );
     expect(rejected.plan.state).toBe('rejected');
 
-    // The next comparison plans what the file says now, and the owner approves that one.
+    // The next comparison plans what the file says now, in front of the owner again, and the owner approves that one.
     await driftTick();
-    const fresh = (await plans(envs.staging)).find((p) => p.state === 'draft');
-    expect(fresh.changes).toBe(2);
+    const fresh = (await plans(envs.staging)).find((p) => p.state === 'waiting');
+    expect(fresh).toMatchObject({ changes: 2, source: { kind: 'pull-request' } });
     planId = fresh.id;
-    await board(`infra/plans/${planId}`, { method: 'PATCH', body: { state: 'waiting', quiet: true } });
     const approved = await approve(planId);
     expect(approved).toMatchObject({ status: 200, plan: { state: 'approved' } });
     expect(await run(planId)).toMatchObject({ phase: 'queued' });
@@ -538,7 +535,7 @@ describe('Architect’s whole loop (BRK-228)', () => {
     expect(await lock(envs.staging)).toBeNull();
     expect(await trail(envs.staging, planId)).toEqual([
       ['plan', 'board', 'draft'],
-      ['plan', 'owner', 'waiting'],
+      ['plan', 'board', 'waiting'],
       ['approve', 'owner', 'approved'],
       ['apply', 'executor', 'started'],
       ['apply', 'executor', 'applying'],
@@ -555,9 +552,8 @@ describe('Architect’s whole loop (BRK-228)', () => {
     commit({ [PATHS.production]: fileOf(platform.production, change) });
     await sync();
     await inStore((s) => s.driftTick());
-    const made = (await plans(envs.production)).find((p) => p.state === 'draft');
+    const made = (await plans(envs.production)).find((p) => p.state === 'waiting');
     expect(made.policy).toMatchObject({ outcome: 'needs-owner', rule: 'production' });
-    await board(`infra/plans/${made.id}`, { method: 'PATCH', body: { state: 'waiting' } });
     return made.id;
   };
 

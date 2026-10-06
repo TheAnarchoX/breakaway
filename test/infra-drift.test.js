@@ -4,7 +4,15 @@ import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { fakeProvider } from './fake-infra-provider.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
-import { DRIFT_EVERY_MS, driftDue, driftFingerprint, driftResources, driftView } from '../src/infra-drift.js';
+import {
+  DRIFT_EVERY_MS,
+  desiredFingerprint,
+  desiredMoved,
+  driftDue,
+  driftFingerprint,
+  driftResources,
+  driftView,
+} from '../src/infra-drift.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
@@ -57,6 +65,25 @@ describe('drift, the pure part (BRK-184)', () => {
     expect(driftDue({ checked: now - DRIFT_EVERY_MS, desired_sha: 'abc' }, 'abc', now)).toBe(true);
   });
 
+  it('tells a merged change from a change by hand by the desired state the drift was settled against', async () => {
+    const a = await desiredFingerprint({ version: 1, resources: [{ id: 'svc-api', attrs: { instances: 2 } }] });
+    expect(a).toMatch(/^[0-9a-f]{64}$/u);
+    expect(await desiredFingerprint({ resources: [{ attrs: { instances: 2 }, id: 'svc-api' }], version: 1 })).toBe(a);
+    const b = await desiredFingerprint({ version: 1, resources: [{ id: 'svc-api', attrs: { instances: 3 } }] });
+    expect(b).not.toBe(a);
+    expect(await desiredFingerprint(null)).toBeNull();
+    // A first comparison is a merge only when the file was added since the board started reading the repository; one
+    // kept before the board remembered the desired state can't tell, so it's by hand.
+    expect(desiredMoved(null, a)).toBe(false);
+    expect(desiredMoved(null, a, true)).toBe(true);
+    expect(desiredMoved(null, null, true)).toBe(false);
+    expect(desiredMoved({ desired_hash: null }, a)).toBe(false);
+    expect(desiredMoved({ desired_hash: a }, a)).toBe(false);
+    expect(desiredMoved({ desired_hash: a }, b)).toBe(true);
+    // An added file's first drift, kept unplanned (frozen), is still a merge on the next comparison.
+    expect(desiredMoved({ desired_hash: 'added' }, a)).toBe(true);
+  });
+
   it('shows a comparison that failed before the provider answered as not counted', () => {
     expect(driftView({ checked: 0, count: null, resources: null, plan: null, plan_matches: 0, error: 'down' })).toEqual(
       {
@@ -82,10 +109,15 @@ describe('drift in the store (BRK-184)', () => {
       headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
       body: b ? JSON.stringify(b) : undefined,
     });
-  /** Puts what runs now as the environment's desired state, as a read of its file from the default branch would. */
-  const want = (sha = 'abc123') =>
+  /**
+   * Puts what runs now as the environment's desired state, as a read of its file from the default branch would;
+   * `change` edits it first, as a merged pull request would.
+   */
+  const want = (sha = 'abc123', change = (/** @type {any[]} */ _resources) => {}) =>
     runInDurableObject(store(), (instance) => {
-      const state = { version: 1, provider: PROVIDER, resources: structuredClone(provider.state.resources) };
+      const resources = structuredClone(provider.state.resources);
+      change(resources);
+      const state = { version: 1, provider: PROVIDER, resources };
       instance.sql.exec(
         `INSERT INTO infra_desired (repo, file, environment, provider, sha, read_at, desired, valid_sha, valid_at, error)
          VALUES ('widgets', 'drift-staging.json', 'drift-staging', ?, ?, ?, ?, ?, ?, NULL)
@@ -98,6 +130,22 @@ describe('drift in the store (BRK-184)', () => {
         Date.now(),
       );
     });
+  /** Every plan a comparison made for the environment, newest first. */
+  const comparedPlans = async () =>
+    (await body(await api(`infra/plans?environment=${staging.id}&limit=200`))).plans.filter((p) =>
+      ['drift', 'pull-request'].includes(p.source.kind),
+    );
+  /** A merged pull request, as the sync keeps it. */
+  const merged = (number, mergeSha) =>
+    runInDurableObject(store(), (instance) => {
+      instance.sql.exec(
+        `INSERT OR REPLACE INTO gh_pulls (repo, number, updated, state, data) VALUES ('widgets', ?, ?, 'merged', ?)`,
+        number,
+        new Date().toISOString(),
+        JSON.stringify({ repo: 'widgets', number, state: 'merged', mergeSha }),
+      );
+    });
+  const pushes = () => runInDurableObject(store(), (instance) => instance.planPushes.length);
   const driftPlans = async () =>
     (await body(await api(`infra/plans?environment=${staging.id}&limit=200`))).plans.filter(
       (p) => p.source.kind === 'drift',
@@ -126,6 +174,9 @@ describe('drift in the store (BRK-184)', () => {
       instance.infraProviders = new ProviderRegistry();
       instance.infraProviders.register(provider);
       await instance.refreshInventory(PROVIDER);
+      // The pushes a waiting plan sends, counted rather than sent.
+      instance.planPushes = [];
+      instance.pushInfraPlan = async (plan) => instance.planPushes.push(plan.id);
     });
   });
 
@@ -267,5 +318,99 @@ describe('drift in the store (BRK-184)', () => {
     await cron();
     expect(await view()).toMatchObject({ driftCount: null, drift: null });
     await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { observeOnly: false } });
+  });
+
+  it('puts a merged change’s plan in front of the owner with one push, naming its pull request (BRK-246)', async () => {
+    // Settled first: what runs matches the desired state, with nothing open.
+    for (const p of (await comparedPlans()).filter((p) => ['draft', 'waiting'].includes(p.state)))
+      await inStore((s) => s.moveInfraPlan(p.id, 'rejected', { by: 'owner' }));
+    await cron();
+    expect((await view()).drift).toMatchObject({ count: 0, plan: null });
+    const before = await pushes();
+
+    await merged(12, 'def456');
+    await want('def456', (resources) => {
+      resources.find((r) => r.id === 'svc-api').attrs.instances = 4;
+    });
+    await cron();
+    const [made] = await comparedPlans();
+    expect(made).toMatchObject({
+      state: 'waiting',
+      by: 'board',
+      source: { kind: 'pull-request', ref: '#12' },
+      changes: 1,
+      policy: { outcome: 'needs-owner' },
+    });
+    expect(await pushes()).toBe(before + 1);
+    expect((await view()).drift).toMatchObject({ count: 1, plan: made.id, planMatches: true });
+    const audit = (await body(await api(`infra/audit?environmentId=${staging.id}`))).entries;
+    expect(
+      audit
+        .filter((e) => e.plan === made.id)
+        .map((e) => [e.by, e.outcome])
+        .reverse(),
+    ).toEqual([
+      ['board', 'draft'],
+      ['board', 'waiting'],
+    ]);
+    // The same desired state again makes no second plan and no second push; nothing applies by itself.
+    const count = (await comparedPlans()).length;
+    await cron();
+    await cron(2 * DRIFT_EVERY_MS);
+    expect(await comparedPlans()).toHaveLength(count);
+    expect((await comparedPlans())[0].id).toBe(made.id);
+    expect(await pushes()).toBe(before + 1);
+    expect(provider.calls.filter((c) => c.method === 'apply')).toEqual([]);
+  });
+
+  it('keeps a newer merge waiting behind the open plan, then plans it from the commit when no pull request is known', async () => {
+    const [open] = await comparedPlans();
+    const before = await pushes();
+    await want('ghi789', (resources) => {
+      resources.find((r) => r.id === 'svc-api').attrs.instances = 5;
+    });
+    await cron();
+    // One plan at a time: the open one no longer matches, and the owner rejects it.
+    expect((await comparedPlans())[0].id).toBe(open.id);
+    expect((await view()).drift).toMatchObject({ plan: open.id, planMatches: false });
+    expect(await pushes()).toBe(before);
+    await inStore((s) => s.moveInfraPlan(open.id, 'rejected', { by: 'owner' }));
+    await cron();
+    const [next] = await comparedPlans();
+    expect(next).toMatchObject({ state: 'waiting', source: { kind: 'pull-request', ref: null } });
+    expect(await pushes()).toBe(before + 1);
+  });
+
+  it('keeps drift from a change by hand after a merge a draft, with no push', async () => {
+    const [open] = await comparedPlans();
+    await inStore((s) => s.moveInfraPlan(open.id, 'rejected', { by: 'owner' }));
+    provider.state.resources.find((r) => r.id === 'svc-api').attrs.instances = 5;
+    await cron();
+    expect((await view()).drift).toMatchObject({ count: 0, plan: null });
+    const before = await pushes();
+    provider.state.resources.find((r) => r.id === 'db-main').attrs.size = 'large';
+    await cron();
+    const [made] = await comparedPlans();
+    expect(made).toMatchObject({ state: 'draft', source: { kind: 'drift' } });
+    expect(await pushes()).toBe(before);
+    await inStore((s) => s.moveInfraPlan(made.id, 'rejected', { by: 'owner' }));
+    provider.state.resources.find((r) => r.id === 'db-main').attrs.size = 'small';
+  });
+
+  it('makes no plan for a merge into a frozen environment until it’s unfrozen, then puts it in front of the owner', async () => {
+    await cron();
+    await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { frozen: true } });
+    const before = await pushes();
+    const count = (await comparedPlans()).length;
+    await want('jkl012', (resources) => {
+      resources.find((r) => r.id === 'svc-api').attrs.instances = 6;
+    });
+    await cron();
+    expect(await comparedPlans()).toHaveLength(count);
+    expect((await view()).drift).toMatchObject({ count: 1, plan: null });
+    await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { frozen: false } });
+    await cron();
+    expect((await comparedPlans())[0]).toMatchObject({ state: 'waiting', source: { kind: 'pull-request' } });
+    expect(await pushes()).toBe(before + 1);
   });
 });
