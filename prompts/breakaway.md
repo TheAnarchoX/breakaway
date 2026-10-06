@@ -13,7 +13,7 @@ breakaway: the repository whose `origin` ends with `/breakaway`. Its areas on th
 
 ## Building
 
-Do the work the way `AGENTS.md` says: tests first for the Worker and anything shared (`test/*.test.js`, in the Workers pool), the `brand-guide` skill and `brand/README.md` for anything people see or read, and the install's config (`src/install.js`) for any name, URL, or secret, never a hard-coded one. Keep `prompts/core.md` and `prompts/stub.md` about the board: other repositories copy them unchanged.
+Do the work the way `AGENTS.md` says: tests first for the Worker and anything shared (`test/*.test.js`, in the Workers pool), the `brand-guide` skill and `brand/README.md` for anything people see or read, and the install's config (`src/install.js`) for any name, URL, or secret, never a hard-coded one. Keep `prompts/core.md` and `prompts/stub.md` about the board: other repositories copy them unchanged. Architect, the part of the board that runs infrastructure, keeps its pure logic in `src/infra-<piece>.js` and its store methods in `src/store-infra-<piece>.js` (a table `infra_<piece>`, routes `/api/infra/<piece>`, tests in `test/infra-<piece>.test.js`); a provider's code only in `src/infra-<vendor>*.js`, registered in `src/infra-providers.js`; the CLI's reads in `scripts/tasks/infra-read.js` and the MCP server's in `src/mcp-infra.js`; and the apply workflow's template in `template/infra/apply.yml`. Its tests use the fake provider and never reach the network. Building Architect is changing the board's code, never infrastructure: the core's "Infrastructure is read wide" and "Working an incident" hold here too, and breakaway's own install is observe only.
 
 ## Checks
 

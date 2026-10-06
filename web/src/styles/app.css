@@ -8732,6 +8732,214 @@ a.pl-mention {
   justify-content: flex-end;
 }
 
+/* ---------- cost and budgets (WEB-65) ---------- */
+
+/* An environment's month against its budget: the amount, a bar of how much is used, and its state in words. */
+.infra-cost {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.infra-cost-line {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.infra-cost-amount {
+  font-weight: 600;
+}
+.infra-cost:not(.is-compact) .infra-cost-amount {
+  font-size: 20px;
+}
+.infra-cost-note {
+  margin: 0;
+}
+.infra-meter {
+  height: 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.infra-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+}
+.infra-meter-inside > span {
+  background: var(--success);
+}
+.infra-meter-near > span {
+  background: var(--warn);
+}
+.infra-meter-over > span {
+  background: var(--danger);
+}
+.infra-budget {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 600 12px / 1.4 var(--font-mono);
+  white-space: nowrap;
+  width: fit-content;
+}
+.infra-budget-inside {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.infra-budget-near {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+/* No red text below display size: the icon carries the red. */
+.infra-budget-over {
+  color: var(--text);
+  background: var(--danger-bg);
+}
+.infra-budget-over svg {
+  color: var(--danger);
+}
+.infra-cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.infra-cost-table caption {
+  text-align: left;
+  padding-bottom: 4px;
+}
+.infra-cost-table th,
+.infra-cost-table td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.infra-cost-table thead th {
+  color: var(--muted);
+  font: 600 12px / 1.4 var(--font-mono);
+}
+.infra-cost-table .num {
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 0;
+}
+/* The trend: one series of thin bars on a recessive baseline, the budget as a dashed line. */
+.infra-trend {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+.infra-trend-plot {
+  position: relative;
+  height: 140px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.infra-trend-budget {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--muted);
+  pointer-events: none;
+}
+.infra-trend-budget .meta {
+  position: absolute;
+  left: 0;
+  bottom: 2px;
+  padding: 0 4px;
+  background: var(--bg);
+  font-size: 12px;
+}
+.infra-trend-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+.infra-trend-bar {
+  position: relative;
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  outline: none;
+}
+.infra-trend-fill {
+  width: min(100%, 24px);
+  min-height: 1px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: var(--muted);
+}
+.infra-trend-bar:last-child .infra-trend-fill {
+  background: var(--text);
+}
+.infra-trend-bar:hover .infra-trend-fill,
+.infra-trend-bar:focus-visible .infra-trend-fill {
+  background: var(--accent);
+}
+.infra-trend-bar:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-radius: var(--radius-xs);
+}
+.infra-trend-month {
+  position: absolute;
+  top: calc(100% + 4px);
+  color: var(--muted);
+  font: 400 11px / 1.4 var(--font-mono);
+  white-space: nowrap;
+}
+.infra-trend-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 2;
+  display: none;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.infra-trend-bar:first-child .infra-trend-tip {
+  left: 0;
+}
+.infra-trend-bar:last-child .infra-trend-tip {
+  right: 0;
+}
+.infra-trend-bar:hover .infra-trend-tip,
+.infra-trend-bar:focus-visible .infra-trend-tip {
+  display: block;
+}
+/* A narrow screen keeps every other month's name, and the newest. */
+@media (max-width: 520px) {
+  .infra-trend-bar:nth-child(even):not(:last-child) .infra-trend-month {
+    display: none;
+  }
+}
+.infra-trend-table summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+.infra-trend-empty {
+  margin: 0;
+  font-size: 14px;
+}
+
 /* ---------- an environment's page (WEB-61) ---------- */
 
 /* Its resources by kind, then its desired state and drift, then its audit trail: one column, as wide as reads well. */
@@ -8775,6 +8983,17 @@ a.pl-mention {
 .infra-section > p {
   margin: 0;
   font-size: 14px;
+}
+/* What nobody owns (WEB-93): a removal plan that waits for you stands out, like an incident's. */
+.unowned p {
+  margin: 0;
+}
+.unowned .infra-res-head .meta {
+  font-family: var(--font-mono);
+}
+.unowned-plan-waiting {
+  color: var(--accent);
+  font-weight: 600;
 }
 .infra-kind-group {
   display: grid;

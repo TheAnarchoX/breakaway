@@ -64,6 +64,7 @@ export async function infraCheck(args, { files, repo, post }) {
     if (f.kind === 'skipped') continue;
     if (!f.ok) out.push(problemLine(f.path, /** @type {any} */ (f.error)));
     else if (f.kind === 'policy') out.push(`${f.path}: the policy checks`);
+    else if (f.kind === 'scaling') out.push(`${f.path}: checks, ${plural(f.rules ?? 0, 'scaling rule')}`);
     else out.push(`${f.path}: checks, ${plural(f.resources ?? 0, 'resource')}`);
   }
   if (!environments.length) out.push(`No environment’s file yet: add one, like ${DESIRED_DIR}/staging.json.`);

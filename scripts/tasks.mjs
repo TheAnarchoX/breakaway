@@ -424,11 +424,16 @@ Infrastructure   (init and add need no board: run them in the checkout of the re
   infra signals          what the board heard, newest first: health, alerts, and cost  [--environment <name>]
                          [--resource <id>] [--kind health|alert|cost] [--level info|warning|critical] [--source <id>]
                          [--before <id>] [--limit <n>]  [--days] the daily summaries  [--all] every repository's
-  infra incidents        open incidents: tasks tagged +incident  [--status completed|all] [--all] every repository's
+  infra incidents        open incidents, each a task tagged +incident, with the step it's on  [--environment <name>]
+                         [--status completed|all] [--before <id>] [--limit <n>]  [--all] every repository's
   infra check [<environment>]   before a pull request: check .github/breakaway-infra/ here (each environment's file
                          and policy.json, naming the file, line, and field that's wrong), then show the plan each valid
                          file would make from what runs now and the policy's answer; the board keeps none of it
                          (exits 1 if a file doesn't check or the board refuses one)
+  infra act <environment> <resource> scale <n>|restart   a runbook's agent asks for one scale or restart, for the
+                         run it holds (--task <ID>, else the one routine run it has claimed here); it says whether
+                         the owner's envelope covers it or it waits for the owner, and names the plan. Only a
+                         runbook's run may; it's the one change a run may ask for, and it never applies anything
   infra add [<template>] [<environment>] [<input>=<value> …]   a golden path: write the change one of the owner's
                          templates makes (.github/breakaway-infra/templates/<name>/, else breakaway's example of that
                          name) into the environment's file and the code it needs, for a pull request; it never
@@ -1436,6 +1441,28 @@ const commands = {
       process.exitCode = result.code;
       return;
     }
+    if (args[0] === 'act') {
+      // infra act (CLI-24): a runbook's agent asks for one scale or restart, for the run it holds; the board decides.
+      const { infraAct, InfraActError } = await import('./tasks/infra-act.js');
+      let result;
+      try {
+        result = await infraAct(args.slice(1), {
+          get: (path) => call('GET', path, undefined, { raw: true }),
+          post: (path, body) => call('POST', path, body, { raw: true }),
+          repo: slug,
+          agent: agent(),
+          opts,
+          inRepo: (t) => !slug || inRepo(t, slug, repoContext.registry),
+        });
+      } catch (error) {
+        if (!(error instanceof InfraActError)) throw error;
+        if (opts.json) console.log(JSON.stringify({ error: error.message }, null, 2));
+        fail(error.message);
+      }
+      print(result.data, () => result.text);
+      process.exitCode = result.code;
+      return;
+    }
     // Architect's reads (CLI-13): every request is a GET, so an agent's token reads and never writes.
     let result;
     try {
@@ -1443,7 +1470,6 @@ const commands = {
         get: (path) => call('GET', path, undefined, { raw: true }),
         repo: slug,
         opts,
-        inRepo: (t) => !slug || inRepo(t, slug, repoContext.registry),
       });
     } catch (error) {
       if (!(error instanceof InfraReadError)) throw error;

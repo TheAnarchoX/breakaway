@@ -30,8 +30,12 @@ const owners = (by) => by === undefined || by === null || by === '' || by === 'o
 /** What the audit trail calls an environment's envelope. */
 const envelopeRef = (env) => `envelope-${env.id}`;
 
-/** A whole number's unit from the setting it is: `instances` stays, `max_instances` reads "max instances". */
-const unit = (setting) => String(setting ?? '').replace(/_/gu, ' ');
+/** A whole number's unit from the setting it is: `instances` stays, `max_instances` and `maxInstances` read "max instances". */
+const unit = (setting) =>
+  String(setting ?? '')
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .replace(/_/gu, ' ')
+    .toLowerCase();
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraEnvelopesMethods = {
@@ -206,9 +210,10 @@ export const infraEnvelopesMethods = {
    * by the envelope and the executor applies it; otherwise it's a plan that waits for the owner, with its push.
    * @param {string | number} ref the environment's ID or name
    * @param {{ repo?: string | null, resource: string, change: 'scale' | 'restart', value: number | null,
-   *   by: 'board' | 'agent', agent?: string | null, task?: { uuid: string, wid: string | null } | null }} input
+   *   by: 'board' | 'agent', agent?: string | null, task?: { uuid: string, wid: string | null } | null,
+   *   rule?: string | null }} input `rule` names the scaling rule (BRK-241) the board acts for
    */
-  async actInEnvelope(ref, { repo = null, resource, change, value, by, agent = null, task = null }) {
+  async actInEnvelope(ref, { repo = null, resource, change, value, by, agent = null, task = null, rule = null }) {
     const { env, provider } = this.envelopeEnvironment(ref, repo);
     if (env.frozen)
       throw new AgentError(
@@ -233,8 +238,10 @@ export const infraEnvelopesMethods = {
       throw new AgentError(`${matches.length} resources in ${env.name} are called ${resource}: name it by its ID`, 409);
     const r = exact ?? matches[0];
     if (!r) throw new AgentError(`${env.name} has no resource ${resource}`, 404);
-    if (!declares(provider, r.kind, change))
-      throw new AgentError(`a ${r.kind} can’t ${change} on ${provider.name}, so nothing was planned`, 409);
+    const refused =
+      provider.refuses?.(r, change) ??
+      (declares(provider, r.kind, change) ? null : `a ${r.kind} can’t ${change} on ${provider.name}`);
+    if (refused) throw new AgentError(`${refused}, so nothing was planned`, 409);
     const attrs = structuredClone(r.attrs ?? {});
     const scales = provider.kinds[r.kind]?.scales;
     if (change === 'scale' && attrs[scales] === value)
@@ -259,7 +266,7 @@ export const infraEnvelopesMethods = {
     const made = await this.makeInfraPlan(env.id, {
       repo: env.repo,
       source: 'envelope',
-      sourceRef: task?.wid ?? null,
+      sourceRef: task?.wid ?? (rule ? 'scaling.json' : null),
       ...asked,
       diff,
     });
@@ -302,7 +309,7 @@ export const infraEnvelopesMethods = {
         envelope: envelopeRef(env),
         ...asked,
         outcome: verdict.inside ? 'inside' : verdict.capUsed ? 'cap used' : 'outside',
-        summary: `${what}${task?.wid ? ` for ${task.wid}` : ''}: ${verdict.inside ? 'inside its envelope' : 'waits for the owner'}, ${verdict.why}`,
+        summary: `${what}${task?.wid ? ` for ${task.wid}` : rule ? ` for the scaling rule “${rule}”` : ''}: ${verdict.inside ? 'inside its envelope' : 'waits for the owner'}, ${verdict.why}`,
       });
     });
 
