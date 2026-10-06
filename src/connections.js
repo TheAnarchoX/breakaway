@@ -36,7 +36,15 @@ export const NEEDED_PERMISSIONS = [
   { name: 'statuses', level: 'read', for: 'commit statuses on pull requests' },
   { name: 'actions', level: 'write', for: 'Run workflow, Promote, and Roll back' },
   { name: 'deployments', level: 'read', for: 'deploys and what shipped', pipeline: true },
-  { name: 'variables', level: 'write', for: 'syncing Freeze with the deploy pause (DEPLOYS_PAUSED)', pipeline: true },
+  // GitHub names it `actions_variables` ("GitHub Apps must have the actions_variables:write repository permission",
+  // docs.github.com/rest/actions/variables); `variables`, the key the board first read, still counts if present.
+  {
+    name: 'actions_variables',
+    aliases: ['variables'],
+    level: 'write',
+    for: 'syncing Freeze with the deploy pause (DEPLOYS_PAUSED)',
+    pipeline: true,
+  },
   { name: 'vulnerability_alerts', level: 'read', for: 'Dependabot alerts' },
 ];
 
@@ -49,14 +57,14 @@ const LABEL = {
   statuses: 'Commit statuses',
   actions: 'Actions',
   deployments: 'Deployments',
-  variables: 'Variables',
+  actions_variables: 'Variables',
   vulnerability_alerts: 'Dependabot alerts',
 };
 
 /** Each needed permission, granted or missing, from an installation's `permissions`. */
 export function comparePermissions(granted, { pipeline = false } = {}) {
   return NEEDED_PERMISSIONS.filter((p) => pipeline || !p.pipeline).map((p) => {
-    const has = String(granted?.[p.name] ?? 'none');
+    const has = String([p.name, ...(p.aliases ?? [])].map((k) => granted?.[k]).find((v) => v != null) ?? 'none');
     return {
       name: p.name,
       label: LABEL[p.name],
