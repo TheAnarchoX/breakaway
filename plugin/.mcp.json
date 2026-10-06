@@ -7,7 +7,7 @@
         "Authorization": "Bearer ${user_config.token}",
         "X-Breakaway-Agent": "${user_config.agent_name}"
       },
-      "headersHelper": "cd \"${CLAUDE_PROJECT_DIR}\" && npx --yes breakaway@1 mcp --headers"
+      "headersHelper": "npx --yes breakaway@1 mcp --headers"
     }
   }
 }

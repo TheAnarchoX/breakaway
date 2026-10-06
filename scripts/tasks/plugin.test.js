@@ -71,11 +71,28 @@ describe('the breakaway plugin (CLI-7)', () => {
       },
     });
     expect(json(`${PLUGIN_DIR}.claude-plugin/plugin.json`).userConfig.agent_name.default).toBe('');
-    // The helper runs in the plugin's folder, through a shell: it moves to the checkout, and can't name an option.
-    expect(server.headersHelper).toBe(`cd "\${CLAUDE_PROJECT_DIR}" && npx --yes ${CLI_PACKAGE} mcp --headers`);
+    // The helper runs in the plugin's folder, through a shell, and can't name an option. The CLI finds the session's
+    // checkout itself: the plugin directory refuses a helper that computes a path, like cd "${CLAUDE_PROJECT_DIR}" (CLI-20).
+    expect(server.headersHelper).toBe(`npx --yes ${CLI_PACKAGE} mcp --headers`);
     const { userConfig } = json(`${PLUGIN_DIR}.claude-plugin/plugin.json`);
     for (const [, key] of JSON.stringify(server).matchAll(/\$\{user_config\.(\w+)\}/gu))
       expect(Object.keys(userConfig)).toContain(key);
+  });
+
+  it('has a square PNG icon the plugin directory takes (CLI-20)', () => {
+    const png = readFileSync(new URL(`${PLUGIN_DIR}.claude-plugin/icon.png`, ROOT));
+    expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+    expect(width).toBe(height);
+    expect(width).toBeGreaterThanOrEqual(512);
+    expect(width).toBeLessThanOrEqual(2048);
+    expect(png.length).toBeLessThan(2 * 1024 * 1024);
+  });
+
+  it('links its privacy policy, a page of the docs (CLI-20)', () => {
+    const { privacyPolicyUrl } = json(`${PLUGIN_DIR}.claude-plugin/plugin.json`);
+    expect(privacyPolicyUrl).toBe('https://leavethepack.dev/docs/privacy/');
+    expect(read('site/content/docs/privacy.md')).toMatch(/^---\ntitle: Privacy\n/u);
   });
 
   it('is offered by this repository’s marketplace, from the plugin branch', () => {
