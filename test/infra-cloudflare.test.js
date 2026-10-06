@@ -140,8 +140,10 @@ describe('the Cloudflare provider’s discover (BRK-189)', () => {
       lifecycle: [{ id: 'expire-tmp' }],
       domains: ['files.acme.example'],
     });
+    expect(byId.get(`queue:${QUEUE_JOBS}`).attrs.maxConcurrency).toBe(4);
     expect(byId.get(`queue:${QUEUE_JOBS}`).attrs.consumers).toEqual([
       {
+        type: 'worker',
         worker: 'acme-api',
         batchSize: 10,
         maxRetries: 3,
