@@ -11179,6 +11179,300 @@ a.pl-mention {
 .env-actions:empty {
   display: none;
 }
+/* Plan from the console (WEB-99): the owner's change beside the map, its forms, its plan, and its card. */
+.topo-head-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.change-panel {
+  align-content: start;
+}
+.change-form,
+.change-preview,
+.change-card,
+.change-moved {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.change-form {
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-xs);
+}
+.change-form-title {
+  margin: 0;
+  font-size: 15px;
+}
+.change-form-title:focus {
+  outline: none;
+}
+.change-form > .meta {
+  margin: -6px 0 0;
+}
+.change-field {
+  gap: 4px;
+}
+.change-field .field-hint,
+.change-field .field-error {
+  font-size: 12.5px;
+}
+.change-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.change-input-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.change-rows,
+.change-names,
+.change-lines,
+.change-diff {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.change-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.change-row-kept {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 13px;
+}
+.change-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 13px;
+}
+.change-rule {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+}
+.change-rule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.change-templates {
+  display: grid;
+  gap: 6px;
+}
+.change-template {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.change-template:has(input:checked) {
+  border-color: var(--accent);
+}
+.change-template.is-broken {
+  cursor: default;
+  opacity: 0.7;
+}
+.change-template input {
+  margin-top: 3px;
+}
+.change-template-text {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+.change-lines li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+  font: 500 13px / 1.45 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.change-lines li > .field-error {
+  grid-column: 1 / -1;
+  font-family: var(--font-sans, inherit);
+}
+.change-lines li.has-problem > span:first-child {
+  color: var(--danger);
+}
+.change-card .change-lines li {
+  grid-template-columns: minmax(0, 1fr);
+}
+.change-preview {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.change-preview .kicker,
+.change-preview p,
+.change-card p {
+  margin: 0;
+}
+.change-preview-plan {
+  display: grid;
+  gap: 8px;
+}
+.change-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.change-facts div {
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border-radius: var(--radius-xs);
+}
+.change-facts dt {
+  font: 600 11px / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.change-facts dd {
+  margin: 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.change-policy {
+  font-size: 13.5px;
+}
+.change-policy ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.change-policy-lead {
+  margin: 0;
+  font-weight: 600;
+}
+.change-policy-refused .change-policy-lead {
+  color: var(--danger);
+}
+.change-diff-item {
+  display: grid;
+  grid-template-columns: 1.2em minmax(0, 1fr);
+  gap: 6px;
+  font-size: 13.5px;
+}
+.change-diff-op {
+  font: 700 13px var(--font-mono);
+  color: var(--warn);
+}
+.infra-plan-op-create .change-diff-op {
+  color: var(--success);
+}
+.infra-plan-op-delete .change-diff-op {
+  color: var(--danger);
+}
+.change-diff-settings {
+  display: grid;
+  font: 500 12px / 1.45 var(--font-mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.change-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.change-card {
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
+}
+.change-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.change-card-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.change-card-head h3 a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.change-moved {
+  padding: 10px;
+  background: var(--warn-bg);
+  border-radius: var(--radius-xs);
+}
+.change-node-line {
+  margin: 0;
+}
+/* On a phone, Propose sits at the bottom of the screen while the change is open. */
+@container console (max-width: 559.98px) {
+  .change-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .change-row > select {
+    grid-column: 1;
+  }
+  .change-propose {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin: 0 -12px -12px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+  }
+}
+/* Wide: the change sits under the map, which keeps room to read; wider still, beside it. Each scrolls on its own. */
+@container console (min-width: 1100px) {
+  .console-centre.has-change {
+    grid-template-rows: auto minmax(340px, 1fr) auto;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+  .console-centre.has-change > .change-panel {
+    max-height: 50dvh;
+    overflow-y: auto;
+  }
+}
+@container console (min-width: 1500px) {
+  .console-centre.has-change {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 32%);
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow-y: visible;
+    scrollbar-gutter: auto;
+  }
+  .console-centre.has-change > .console-status {
+    grid-column: 1 / -1;
+  }
+  .console-centre.has-change > .change-panel {
+    max-height: none;
+    min-height: 0;
+    scrollbar-gutter: stable;
+  }
+}
+
 /* A fact beside its action (WEB-95): who holds the lock, or the break-glass mark. */
 .env-action-line {
   display: inline-flex;
