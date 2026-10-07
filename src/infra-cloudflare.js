@@ -156,6 +156,9 @@ export const EDITABLE = {
     ],
     shown: [{ path: 'secrets', label: 'Secrets', help: VALUES_ELSEWHERE }],
   },
+  // Bounds from Cloudflare's docs: a delivery delay of 0 to 86,400 seconds
+  // (developers.cloudflare.com/queues/configuration/javascript-apis/), retention of 60 seconds to 14 days
+  // (Queues changelog, 14 Feb 2025). Concurrency's 250 is Queues' limit as last read; Cloudflare refuses past its real one.
   queue: {
     fields: [
       {
