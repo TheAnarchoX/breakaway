@@ -295,6 +295,13 @@ describe('approving and rejecting a plan (BRK-182)', () => {
       plan: { state: 'waiting', environment: { id: gone.id, name: 'appr-gone' } },
       outOfDate: 'its environment was removed',
     });
+    // Listed too, by repository and unfiltered, under the same name (BRK-264).
+    for (const query of ['?repo=widgets&limit=200', '?limit=200']) {
+      const listed = (await body(await api(`infra/plans${query}`))).plans;
+      expect(listed.find((p) => p.id === made.plan.id)).toMatchObject({
+        environment: { id: gone.id, name: 'appr-gone' },
+      });
+    }
     const refused = await board(`infra/plans/${made.plan.id}/approve`, { method: 'POST', body: {} });
     expect(refused.status).toBe(404);
   });
