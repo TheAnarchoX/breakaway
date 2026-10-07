@@ -479,11 +479,12 @@ function TopologyMap({ map, selected, onSelect, drift, ops, mine = false }) {
 
 /**
  * The topology panel: the map (wide) or the list (phones, and anyone who picks it), and the selected node's detail.
- * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[], relations?: any[] } | null, headActions?: any, note?: string | null }} props
+ * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[], relations?: any[] } | null, headActions?: any, note?: string | null, lead?: any }} props
  *   `nodeActions` renders the owner's actions for a resource in its detail and its row in the list (WEB-99's Change
  *   and Remove); `change` is the owner's change (WEB-99), whose marks show instead of a plan's while they edit, labelled
  *   "your change", with lines from each add to what binds it (WEB-107); `headActions` sit in the panel's header (Add
- *   resource), and are the call to action when nothing runs yet; `note` is a line under it.
+ *   resource), and are the call to action when nothing runs yet; `note` is a line under it; `lead` is a line above
+ *   the map (the last change, folded, WEB-110).
  */
 export function Topology({
   env,
@@ -498,6 +499,7 @@ export function Topology({
   change = null,
   headActions = null,
   note = null,
+  lead = null,
 }) {
   const [selected, setSelected] = useState(/** @type {string | null} */ (null));
   // Escape puts a node's detail away, wherever focus is, unless a dialog is open over the page.
@@ -557,6 +559,7 @@ export function Topology({
           </div>
         )}
       </header>
+      {lead}
       {note && <p class="console-quiet">{note}</p>}
       {!drawn ? (
         <div class="console-quiet topo-empty">

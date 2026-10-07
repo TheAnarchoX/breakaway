@@ -344,22 +344,50 @@ export function suggest(p, now) {
   return { plannedStart: start, plannedEnd: end < start ? start : end };
 }
 
+/** How many days a bar spans when nothing says how long it runs: no plan and no estimate. */
+export const UNSIZED_DAYS = 7;
+
 /**
- * The plan with one end moved `days` days: `start` or `end`. The other end moves with it rather than let the
- * start pass the end. A plan with only an end grows a start from it.
+ * The days a feature's bar spans (WEB-111): its plan, else the pace's start and likely end, as midnights UTC of the
+ * first and last day. The bar is the plan; the pace only suggests one until the owner sets it.
  * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
- * @param {'start' | 'end'} which
+ * @param {any} p one of `project`'s, or undefined
+ * @param {number} now
+ * @returns {{ start: number, end: number, planned: boolean }}
+ */
+export function barDays(f, p, now) {
+  const midnight = (ms) => index(ms) * DAY;
+  const plan = planOf(f);
+  const paceStart = midnight(p?.start ?? now);
+  const paceEnd =
+    p?.state === 'open' && p.likely !== null
+      ? midnight(p.likely)
+      : p?.state === 'done' && p.end
+        ? midnight(p.end)
+        : paceStart + (UNSIZED_DAYS - 1) * DAY;
+  if (!plan) return { start: paceStart, end: Math.max(paceStart, paceEnd), planned: false };
+  const length = Math.max(0, paceEnd - paceStart);
+  const start = plan.start ?? Math.min(plan.end, plan.end - length);
+  const end = plan.end ?? start + length;
+  return { start, end: Math.max(start, end), planned: true };
+}
+
+/**
+ * The plan after dragging a bar `days` days: `move` shifts both ends, `start` and `end` one of them, never past
+ * the other.
+ * @param {{ start: number, end: number }} bar from `barDays`
+ * @param {'move' | 'start' | 'end'} how
  * @param {number} days
  */
-export function shiftPlan(f, which, days) {
-  const end = fromDay(f.plannedEnd ?? null);
-  const start = fromDay(f.plannedStart ?? null);
-  if (which === 'end') {
-    const to = (end ?? start) + days * DAY;
-    return { plannedStart: start === null ? null : toDay(Math.min(start, to)), plannedEnd: toDay(to) };
-  }
-  const from = (start ?? end) + days * DAY;
-  return { plannedStart: toDay(from), plannedEnd: end === null ? null : toDay(Math.max(end, from)) };
+export function dragPlan(bar, how, days) {
+  const by = days * DAY;
+  let { start, end } = bar;
+  if (how === 'move') {
+    start += by;
+    end += by;
+  } else if (how === 'start') start = Math.min(start + by, end);
+  else end = Math.max(end + by, start);
+  return { plannedStart: toDay(start), plannedEnd: toDay(end) };
 }
 
 /**
@@ -410,6 +438,7 @@ export function planDays(f, now) {
   if (start === null && end === null) return '';
   if (start === null) return `by ${day(end, now)}`;
   if (end === null) return `from ${day(start, now)}`;
+  if (start === end) return day(start, now);
   const [a, b] = [new Date(start), new Date(end)];
   const sameMonth = a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth();
   return `${sameMonth ? a.getUTCDate() : day(start, now)} to ${day(end, now)}`;

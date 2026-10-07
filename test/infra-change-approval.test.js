@@ -342,6 +342,9 @@ describe('approving a change from the console', () => {
     await landMerge(change);
     const after = await body(await board(`infra/changes/${change.n}`));
     expect(after.change.approval).toMatchObject({ settled: 'approved', plan: expect.stringMatching(/^plan-\d+$/u) });
+    // The change records what it became (WEB-110): its plan, which the card follows.
+    expect(after.change.outcome).toMatchObject({ kind: 'planned', plan: after.change.approval.plan });
+    expect(after.change.merged).toEqual(expect.any(String));
     const plan = (await body(await board(`infra/plans/${after.change.approval.plan}`))).plan;
     expect(plan).toMatchObject({ state: 'approved', source: { kind: 'pull-request' }, changes: 1 });
     const planAudit = await inStore((s) =>
@@ -549,5 +552,86 @@ describe('approving a change from the console', () => {
     expect(plan.digest).toBe(
       await planDigest(keptForMerge(res.preview.diff, [{ op: 'remove', resource: 'route-api' }])),
     );
+  });
+  describe('what a merge became (WEB-110)', () => {
+    /** The pull request merges on GitHub, not through Approve: the sync follows it, then reads the merge. */
+    const mergeOnGitHub = async (change, { read = true } = {}) => {
+      const pull = gh.pulls[change.pull.number];
+      Object.assign(pull, {
+        state: 'closed',
+        merged: true,
+        merged_at: new Date().toISOString(),
+        merge_commit_sha: `gh-merge-${change.pull.number}`,
+      });
+      await inStore((s) => s.followInfraChanges('widgets', [pull]));
+      if (!read) return;
+      gh.files[FILE] = gh.commits[change.commit][FILE];
+      await want(gh.files[FILE], `gh-merge-${change.pull.number}`);
+    };
+    const changeNow = async (change) => (await body(await board(`infra/changes/${change.n}`))).change;
+    const outcomes = () =>
+      inStore((s) =>
+        s.sql
+          .exec(
+            "SELECT outcome, summary FROM infra_audit WHERE kind = 'change' AND outcome IN ('nothing to apply', 'planned', 'waits', 'refused') ORDER BY id",
+          )
+          .toArray(),
+      );
+
+    it('links the plan a change merged on GitHub makes, which waits for you', async () => {
+      const change = await propose([{ op: 'set', resource: 'svc-api', path: 'instances', value: 6 }]);
+      await mergeOnGitHub(change);
+      expect(await changeNow(change)).toMatchObject({ state: 'merged', outcome: null, approval: null });
+      await settleDrift();
+      const after = await changeNow(change);
+      expect(after.outcome).toMatchObject({ kind: 'waits', plan: expect.stringMatching(/^plan-\d+$/u), why: null });
+      const plan = (await body(await board(`infra/plans/${after.outcome.plan}`))).plan;
+      expect(plan.state).toBe('waiting');
+      expect((await outcomes()).at(-1)).toEqual({
+        outcome: 'waits',
+        summary: `#${change.pull.number}: ${after.outcome.plan} waits for you`,
+      });
+      // A later compare leaves it as it was.
+      await settleDrift();
+      expect((await changeNow(change)).outcome).toEqual(after.outcome);
+    });
+
+    it('says nothing applies when what runs already matches the merge', async () => {
+      const change = await propose([{ op: 'set', resource: 'svc-api', path: 'version', value: 'v9' }]);
+      // Someone set it by hand before the merge: the merged file plans nothing.
+      const svc = provider.state.resources.find((r) => r.id === 'svc-api');
+      const was = svc.attrs.version;
+      svc.attrs.version = 'v9';
+      try {
+        await mergeOnGitHub(change);
+        await settleDrift();
+        const after = await changeNow(change);
+        expect(after.outcome).toMatchObject({ kind: 'nothing', plan: null, why: null });
+        expect((await outcomes()).at(-1)).toEqual({
+          outcome: 'nothing to apply',
+          summary: `#${change.pull.number}: what runs already matches it`,
+        });
+      } finally {
+        if (was === undefined) delete svc.attrs.version;
+        else svc.attrs.version = was;
+      }
+    });
+
+    it('waits until the board has read the merge, and says why a frozen environment holds it', async () => {
+      const change = await propose([{ op: 'set', resource: 'svc-api', path: 'instances', value: 7 }]);
+      await mergeOnGitHub(change, { read: false });
+      // The compare before the sync reads the merged file settles nothing.
+      await settleDrift();
+      expect((await changeNow(change)).outcome).toBeNull();
+      await inStore((s) => s.sql.exec('UPDATE infra_environments SET frozen = 1 WHERE id = ?', envs['apv-staging'].id));
+      gh.files[FILE] = gh.commits[change.commit][FILE];
+      await want(gh.files[FILE], `gh-merge-${change.pull.number}`);
+      await settleDrift();
+      expect((await changeNow(change)).outcome).toMatchObject({
+        kind: 'waits',
+        plan: null,
+        why: 'apv-staging is frozen: it’s planned once you unfreeze it',
+      });
+    });
   });
 });

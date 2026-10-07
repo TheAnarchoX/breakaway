@@ -108,7 +108,7 @@ describe('a change’s edits', () => {
     expect(got.problems).toEqual([]);
     expect(got.lines).toEqual([
       '~ acme-api: usage_model standard → bundled',
-      '~ acme-api: observability.enabled → true',
+      '~ acme-api: observability.enabled → yes',
       '+ queue jobs, worker acme-api’s bindings (from queue)',
       '− d1 acme-db',
     ]);
@@ -176,18 +176,19 @@ describe('a change’s edits', () => {
       { op: 'rename', resource: 'route:r2', name: 'www.acme.example/*' },
     ]);
     expect(got.problems).toEqual([]);
-    expect(got.lines).toEqual([
-      '~ route api.acme.example/*: pattern → v2.acme.example/*',
-      '~ v2.acme.example/*: worker acme-api → acme-api',
+    // Setting the worker it already sends to changes nothing, so that edit is dropped.
+    expect(got.lines).toEqual(['~ route api.acme.example/*: pattern → v2.acme.example/*']);
+    expect(got.dropped).toEqual([
+      { edit: 1, line: 'v2.acme.example/*’s worker is already acme-api, so that edit changes nothing' },
+      { edit: 2, line: 'route:gone is gone from the file, so renaming it was dropped' },
     ]);
-    expect(got.dropped).toEqual([{ edit: 2, line: 'route:gone is gone from the file, so renaming it was dropped' }]);
     expect(got.file.resources[2]).toEqual({
       id: 'route:r1',
       kind: 'route',
       name: 'v2.acme.example/*',
       attrs: { worker: 'acme-api' },
     });
-    expect(got.touched.get('route:r1')).toBe(1);
+    expect(got.touched.get('route:r1')).toBe(0);
     expect(file.resources[2].name).toBe('api.acme.example/*');
 
     expect(

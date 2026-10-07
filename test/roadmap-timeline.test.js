@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   DAY,
+  barDays,
+  dragPlan,
   OWNER_RATE,
   STEP_DAYS,
   explain,
@@ -16,7 +18,6 @@ import {
   planStatus,
   project,
   scale,
-  shiftPlan,
   span,
   statusWords,
   suggest,
@@ -317,18 +318,7 @@ describe('the plan', () => {
     expect(planDays({ plannedStart: '2026-10-30', plannedEnd: '2026-11-02' }, NOW)).toBe('30 Oct to 2 Nov');
     expect(planDays({ plannedStart: null, plannedEnd: '2026-10-19' }, NOW)).toBe('by 19 Oct');
     expect(planDays({ plannedStart: '2026-10-12', plannedEnd: null }, NOW)).toBe('from 12 Oct');
-  });
-
-  it('moves either end a day at a time, never past the other', () => {
-    const f = { plannedStart: '2026-10-12', plannedEnd: '2026-10-14' };
-    expect(shiftPlan(f, 'end', 1)).toEqual({ plannedStart: '2026-10-12', plannedEnd: '2026-10-15' });
-    expect(shiftPlan(f, 'start', -1)).toEqual({ plannedStart: '2026-10-11', plannedEnd: '2026-10-14' });
-    expect(shiftPlan(f, 'end', -5)).toEqual({ plannedStart: '2026-10-09', plannedEnd: '2026-10-09' });
-    expect(shiftPlan(f, 'start', 4)).toEqual({ plannedStart: '2026-10-16', plannedEnd: '2026-10-16' });
-    expect(shiftPlan({ plannedStart: null, plannedEnd: '2026-10-14' }, 'start', -2)).toEqual({
-      plannedStart: '2026-10-12',
-      plannedEnd: '2026-10-14',
-    });
+    expect(planDays({ plannedStart: '2026-10-12', plannedEnd: '2026-10-12' }, NOW)).toBe('12 Oct');
   });
 
   it('orders a lane by planned start, then the pace’s start', () => {
@@ -350,5 +340,37 @@ describe('the plan', () => {
       Date.parse('2026-11-02T00:00:00Z'),
     );
     expect(lanePlanEnd([{ plannedEnd: null }])).toBeNull();
+  });
+});
+
+describe('the bar is the plan', () => {
+  const pace = finished(28, 'web');
+  const at = (d) => Date.parse(`${d}T00:00:00Z`);
+
+  it('spans the pace’s start and likely end until there’s a plan, then the plan', () => {
+    const p = project([{ slug: 'a' }], [...pace, ...Array.from({ length: 5 }, () => task({ tags: ['a'] }))], NOW).get(
+      'a',
+    );
+    expect(barDays({}, p, NOW)).toEqual({ start: at('2026-10-07'), end: at('2026-10-12'), planned: false });
+    expect(barDays({ plannedStart: '2026-10-20', plannedEnd: '2026-10-30' }, p, NOW)).toEqual({
+      start: at('2026-10-20'),
+      end: at('2026-10-30'),
+      planned: true,
+    });
+    // One planned end alone keeps the pace's length.
+    expect(barDays({ plannedEnd: '2026-10-30' }, p, NOW).start).toBe(at('2026-10-25'));
+  });
+
+  it('gives a feature with no estimate a week', () => {
+    const p = project([{ slug: 'a' }], [task({ tags: ['a'] })], NOW).get('a');
+    expect(barDays({}, p, NOW)).toEqual({ start: at('2026-10-07'), end: at('2026-10-13'), planned: false });
+  });
+
+  it('moves both ends, or one, never past the other', () => {
+    const bar = { start: at('2026-10-12'), end: at('2026-10-14') };
+    expect(dragPlan(bar, 'move', 3)).toEqual({ plannedStart: '2026-10-15', plannedEnd: '2026-10-17' });
+    expect(dragPlan(bar, 'end', 2)).toEqual({ plannedStart: '2026-10-12', plannedEnd: '2026-10-16' });
+    expect(dragPlan(bar, 'start', 5)).toEqual({ plannedStart: '2026-10-14', plannedEnd: '2026-10-14' });
+    expect(dragPlan(bar, 'end', -5)).toEqual({ plannedStart: '2026-10-12', plannedEnd: '2026-10-12' });
   });
 });

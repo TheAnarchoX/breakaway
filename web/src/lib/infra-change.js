@@ -5,13 +5,14 @@
 // board's own preview follows), turns the settings form's values into edits, checks a field the way the provider
 // declares it (BRK-262), and says what the change's card shows. Pure, so the tests can check it.
 
+import { bindingLabels, sameSetting, sameWords, settingWords, valueWords } from '../../../src/infra-setting-words.js';
+
 /** At most this many edits in one change (BRK-259's CHANGE_MAX_EDITS). */
 export const CHANGE_MAX_EDITS = 50;
 /** The console asks the board for a preview this long after the last edit. */
 export const PREVIEW_DELAY_MS = 1_500;
 
 const KEY = 'breakaway.change.';
-const WORDS_MAX = 60;
 
 const isObject = (/** @type {unknown} */ v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
@@ -285,7 +286,8 @@ export function settingEdits(resource, fields, form) {
     if (!Object.hasOwn(form, f.path)) continue;
     const before = getPath(resource.attrs, f.path);
     const value = settingValue(f, form[f.path], before);
-    if (sameValue(before ?? null, value)) continue;
+    // The same value, or the same bindings in another order, changes nothing (WEB-110).
+    if (sameSetting(before ?? null, value)) continue;
     // An empty list where nothing was set changes nothing either.
     if (before === undefined && Array.isArray(value) && !value.length) continue;
     out.push({ op: 'set', resource: resource.id, path: f.path, value });
@@ -331,13 +333,6 @@ export function nameEdits(resource, raw) {
 export const nameAfter = (edits, resource) =>
   edits.reduce((name, e) => (e.op === 'rename' && e.resource === resource.id ? e.name : name), resource.name);
 
-/** A value in a line of words: short, and plain where it can be. */
-function words(/** @type {unknown} */ value) {
-  if (value === undefined || value === null) return 'unset';
-  const s = typeof value === 'string' ? value : JSON.stringify(value);
-  return s.length > WORDS_MAX ? `${s.slice(0, WORDS_MAX - 1)}…` : s;
-}
-
 /**
  * The change as words, an edit a line, from what this browser knows: the board's preview says it again from the file.
  * @param {Edit[]} edits
@@ -362,8 +357,34 @@ export function editLines(edits, resources, labels = new Map(), names = new Map(
       return `~ ${r?.kind ?? 'resource'} ${name}: ${(r && names.get(r.kind)?.label.toLowerCase()) ?? 'name'} → ${e.name}`;
     const field = r ? labels.get(r.kind)?.find((f) => f.path === e.path) : null;
     const label = field?.label.toLowerCase() ?? e.path;
-    return `~ ${name}: ${label} ${words(getPath(r?.attrs, e.path))} → ${words(e.value)}`;
+    const before = getPath(r?.attrs, e.path);
+    // In words, never JSON: bindings one at a time ('+ CHAT (Durable Object)'), a setting as 'standard → bundled'.
+    const words = settingWords({ label, before: before ?? null, after: e.value ?? null, labels: bindingLabels(field) });
+    return `~ ${name}: ${words ?? `${label} as it is`}`;
   });
+}
+
+/**
+ * The edits that change nothing, by their index, each with a line saying why: a setting set to what it already is,
+ * like the same bindings in another order (WEB-110). The board drops them too.
+ * @param {Edit[]} edits
+ * @param {{ id: string, name: string, kind: string, attrs?: Record<string, unknown> }[]} resources the desired state's
+ * @param {Map<string, EditableField[]>} [labels]
+ * @returns {Map<number, string>}
+ */
+export function idleEdits(edits, resources, labels = new Map()) {
+  const byId = new Map(resources.map((r) => [r.id, r]));
+  const out = new Map();
+  for (const [n, e] of edits.entries()) {
+    if (e.op !== 'set') continue;
+    const r = byId.get(e.resource);
+    if (!r) continue;
+    const before = getPath(r.attrs, e.path);
+    if (!sameSetting(before ?? null, e.value ?? null)) continue;
+    const field = labels.get(r.kind)?.find((f) => f.path === e.path);
+    out.set(n, `${sameWords(r.name, field?.label.toLowerCase() ?? e.path, before)}, so it changes nothing`);
+  }
+  return out;
 }
 
 /**
@@ -531,7 +552,7 @@ export function createOverlay(edits, resources, creatable = {}) {
 export function codePrompt(env, kind, edit) {
   const settings = kind.fields
     .filter((f) => edit.attrs[f.path] !== undefined)
-    .map((f) => `- ${f.label}: ${words(edit.attrs[f.path])}`);
+    .map((f) => `- ${f.label}: ${valueWords(edit.attrs[f.path])}`);
   return [
     `Write the code for ${edit.name}, a new ${kind.label} in ${env.name} (${env.repo}), by pull request.`,
     '',
@@ -564,6 +585,8 @@ export const CARD = {
   'taken over': 'Taken over',
   rejected: 'Rejected',
   closed: 'Closed',
+  nothing: 'Nothing to apply',
+  refused: 'Refused by your policy',
 };
 
 /**
@@ -574,10 +597,20 @@ export const CARD = {
 export const plansNothing = (change) => Array.isArray(change.edits) && change.edits.length === 0;
 
 /**
+ * The plan a merged change's card follows: the one the first compare after its merge found (WEB-110), or the one
+ * its approval settled (BRK-260). Null before either, and for a change that isn't merged.
+ * @param {{ state: string, outcome?: { plan?: string | null } | null, approval?: { plan?: string | null } | null }} change
+ */
+export const changePlanId = (change) =>
+  change.state === 'merged' ? (change.outcome?.plan ?? change.approval?.plan ?? null) : null;
+
+/**
  * What a change's card shows: the state's key (CARD's, or a plan's once the merged change has one) and whether the
- * owner can approve, merge (a change that plans nothing), reject, or propose it again from here.
+ * owner can approve, merge (a change that plans nothing), reject, or propose it again from here. A merged change ends
+ * in what the compare after its merge found (WEB-110): Nothing to apply, Refused by your policy, Waiting for you (its
+ * plan, or the environment holds it), or its plan's own state (Applied, Failed, Rolled back).
  * @param {{ state: string, why?: string | null, approval?: { plan?: string | null } | null, digest?: string | null,
- *   commit?: string | null, edits?: unknown[] }} change
+ *   commit?: string | null, edits?: unknown[], outcome?: { kind: string, plan?: string | null } | null }} change
  * @param {{ checks?: string | null, plan?: { state: string } | null }} [seen] the pull request's checks (from the board's
  *   GitHub data: `pending`, `success`, `failure`) and the plan the merge made, when the console has them
  * @returns {{ state: string, plan: boolean, approve: boolean, merge: boolean, reject: boolean, again: boolean }}
@@ -600,14 +633,103 @@ export function cardState(change, { checks = null, plan = null } = {}) {
     return change.why
       ? { ...none, state: 'cant', reject: true, again: true }
       : { ...none, state: 'merging', reject: false };
-  if (change.state === 'merged')
-    return plan ? { ...none, state: plan.state, plan: true } : { ...none, state: 'merged' };
+  if (change.state === 'merged') {
+    const kind = change.outcome?.kind ?? null;
+    if (kind === 'nothing') return { ...none, state: 'nothing' };
+    if (kind === 'refused') return { ...none, state: 'refused', plan: Boolean(plan) };
+    if (plan) return { ...none, state: plan.state, plan: true };
+    return { ...none, state: kind === 'waits' ? 'waiting' : 'merged' };
+  }
   return { ...none, state: change.state };
 }
 
 /** Whether a finished change's card still shows: a day after it last moved, it goes. */
 export const recentChange = (/** @type {{ updated: string }} */ change, now = Date.now()) =>
   now - Date.parse(change.updated) < 24 * 60 * 60 * 1000;
+
+/** A finished change's card shows its end state this long, then folds to a line (WEB-110). */
+export const FOLD_MS = 10 * 60 * 1000;
+/** A merge the board hasn't compared yet keeps its card this long, then folds as if it ended. */
+export const MERGED_CARD_MS = 60 * 60 * 1000;
+/** The plan states in which a merged change's card has nothing more to follow. */
+const PLAN_ENDS = ['applied', 'failed', 'rolled back', 'rejected'];
+
+/**
+ * When a change's card ended, in ms, or null while it still follows something: a change that's still the board's, or
+ * a merged change whose plan is approved or applying.
+ * @param {Parameters<typeof cardState>[0] & { updated: string, outcome?: { kind: string, plan?: string | null,
+ *   at?: string } | null }} change
+ * @param {{ state: string }} card cardState's
+ * @param {{ state: string, updated?: string | null } | null} plan the plan it follows, when the console has it
+ * @returns {number | null}
+ */
+export function cardEnded(change, card, plan) {
+  if (change.state === 'open' || change.state === 'approved') return null;
+  if (change.state !== 'merged') return Date.parse(change.updated);
+  if (card.state === 'nothing' || card.state === 'refused' || card.state === 'waiting')
+    return Date.parse(change.outcome?.at ?? change.updated);
+  if (plan && PLAN_ENDS.includes(plan.state)) return Date.parse(plan.updated ?? change.updated);
+  if (card.state === 'merged') return Date.parse(change.updated) + MERGED_CARD_MS - FOLD_MS;
+  return null;
+}
+
+/**
+ * Where a change shows on the console (WEB-110): its `card` while it's the board's, follows a plan, or ended a short
+ * while ago; a `line` above the map once it folds ("Last change: #253 applied, 51 min ago"), until the owner dismisses
+ * it or a day has gone; else nowhere.
+ * @param {Parameters<typeof cardEnded>[0]} change
+ * @param {{ plan?: { state: string, updated?: string | null } | null, dismissed?: boolean, now?: number }} [options]
+ * @returns {'card' | 'line' | null}
+ */
+export function changeShows(change, { plan = null, dismissed = false, now = Date.now() } = {}) {
+  const ended = cardEnded(change, cardState(change, { plan }), plan);
+  if (ended === null) return recentChange(change, now) ? 'card' : null;
+  if (now - ended < FOLD_MS) return 'card';
+  return !dismissed && now - ended < 24 * 60 * 60 * 1000 ? 'line' : null;
+}
+
+/** What the folded line says a change became, after its number. */
+const ENDED_WORDS = {
+  nothing: 'nothing to apply',
+  refused: 'refused by your policy',
+  waiting: 'waits for you',
+  applied: 'applied',
+  failed: 'failed',
+  'rolled back': 'rolled back',
+  rejected: 'rejected',
+  closed: 'closed',
+  'taken over': 'taken over',
+  merged: 'merged',
+};
+
+/**
+ * The folded line's words, without when: "#253 applied".
+ * @param {{ n: number, pull?: { number: number } | null }} change
+ * @param {{ state: string }} card
+ */
+export const endedWords = (change, card) =>
+  `${change.pull ? `#${change.pull.number}` : `Change ${change.n}`} ${ENDED_WORDS[/** @type {keyof typeof ENDED_WORDS} */ (card.state)] ?? card.state}`;
+
+const FOLDED_KEY = 'breakaway.change.folded.';
+
+/** The change whose folded line the owner dismissed on environment `envId`, by its number, or null. */
+export function readDismissed(/** @type {string | number} */ envId, storage = local()) {
+  try {
+    const n = Number(storage?.getItem(FOLDED_KEY + envId));
+    return Number.isSafeInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps the dismissed line's change number for environment `envId`. */
+export function writeDismissed(/** @type {string | number} */ envId, /** @type {number} */ n, storage = local()) {
+  try {
+    storage?.setItem(FOLDED_KEY + envId, String(n));
+  } catch {
+    /* blocked: the line comes back when the page reloads */
+  }
+}
 
 /**
  * The prompt Have an agent do it starts with: the environment, and what the owner was changing, for them to finish.

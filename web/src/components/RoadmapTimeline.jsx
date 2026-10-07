@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CalendarCheck, CalendarRange, Hand, MoveHorizontal, TriangleAlert, X } from 'lucide-preact';
+import { CalendarCheck, CalendarRange, Hand, MoveHorizontal, TriangleAlert } from 'lucide-preact';
 import { plural } from '../lib/model.js';
 import { actions, roadmapZoom, tasks } from '../lib/store.js';
 import {
   DAY,
   WEEKS_PX,
+  barDays,
+  dragPlan,
   day,
   explain,
   explainPlan,
@@ -19,7 +21,6 @@ import {
   planStatus,
   project,
   scale,
-  shiftPlan,
   span,
   statusWords,
   suggest,
@@ -29,13 +30,11 @@ import { Segmented } from './ui.jsx';
 import { STANDINGS, featureHref, nextUp } from './Feature.jsx';
 
 /**
- * The roadmap as a timeline (WEB-102): a lane per release, a bar per feature from its first work to when it's
- * likely done, with the range it could land in, the steps that wait on the owner, and its tasks' states inside.
- * Dragging a bar to another lane, or Alt+arrow on one, aims the feature there; clicking it opens the feature.
- * Projections come from the board's history (web/src/lib/roadmap-timeline.js), never from dates someone typed.
- * The owner's plan (WEB-106) is a frame around the bar, from the planned start to the planned end: Plan it sets it
- * from the pace, its ends drag (or Alt+left and Alt+right on the bar, with Shift for the start), and the bar says
- * in words how the pace compares.
+ * The roadmap as a timeline (WEB-102): a lane per release, a bar per feature with its tasks' states inside.
+ * Dragging a bar into another lane, or Alt+up and Alt+down on one, aims the feature there; clicking it opens the
+ * feature. The pace comes from the board's history (web/src/lib/roadmap-timeline.js).
+ * The bar is the owner's plan (WEB-106, WEB-111): it runs from the planned start to the planned end, the pace's
+ * suggestion until there is one, and fills with the feature's progress. The pace says in words how it compares.
  */
 
 const ZOOM_OPTIONS = [
@@ -60,25 +59,6 @@ function Segments({ progress: p }) {
   );
 }
 
-/** Where the bar's pieces sit, in pixels, from its projection. */
-function geometry(p, x, now) {
-  if (p.state === 'empty') return { left: x(now), width: MIN_BAR, empty: true };
-  const left = x(p.start ?? now);
-  if (p.state === 'done') return { left, width: Math.max(MIN_BAR, x(p.end ?? now) - left) };
-  if (p.state === 'unknown') return { left, width: Math.max(MIN_BAR, x(now) - left) + 120, unknown: true };
-  const width = Math.max(MIN_BAR, x(p.likely) - left);
-  const at = (ms) => Math.min(width, Math.max(0, x(ms) - left));
-  return { left, width, sure: Math.max(at(p.optimistic), 4), owner: at(p.ownerFrom) };
-}
-
-/** Where the plan's frame sits: from its start (or the bar's, for a plan with only an end) to the end of its last day. */
-function frameOf(plan, x, barLeft) {
-  if (!plan) return null;
-  const left = plan.start === null ? Math.min(barLeft, x(plan.end)) : x(plan.start);
-  const right = plan.end === null ? null : x(plan.end + DAY);
-  return { left, width: right === null ? null : Math.max(MIN_BAR, right - left), open: plan.start === null };
-}
-
 const STATUS_ICON = { behind: TriangleAlert, 'not-started': TriangleAlert, on: CalendarCheck };
 
 /** How the pace compares to the plan, in words, with an icon where it's a warning. */
@@ -93,65 +73,37 @@ export function PlanStatus({ status }) {
   );
 }
 
-/** The plan's day `which` end dragged with the pointer, a day at a time. */
-function Handle({ which, at, px, plan, setDraft, save }) {
-  const down = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const el = /** @type {HTMLElement} */ (e.currentTarget);
-    el.setPointerCapture(e.pointerId);
-    const from = e.clientX;
-    let moved = plan;
-    const move = (m) => {
-      moved = shiftPlan(plan, which, Math.round((m.clientX - from) / px));
-      setDraft(moved);
-    };
-    const up = () => {
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
-      save(moved);
-    };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-  };
-  return (
-    <span
-      class={`tl-handle is-${which}`}
-      style={{ left: `${at}px` }}
-      title={which === 'start' ? 'Drag to move the planned start' : 'Drag to move the planned end'}
-      aria-hidden="true"
-      onPointerDown={down}
-    />
-  );
-}
+/** How far the pointer moves before a press on a bar becomes a drag rather than a click. */
+const DRAG_SLOP = 4;
 
-function Bar({ f, p, x, px, now, past, lanes, compact, onShow, dragging, setDragging }) {
+/**
+ * A feature's bar (WEB-111): it is the plan, from the planned start to the end of the planned end (the pace's
+ * suggestion until there is one), filled with the feature's progress. Drag it to move it in time, or into another
+ * lane to aim it there; drag an end to change how long it runs. The pace says in words how it compares.
+ */
+function Bar({ f, p, x, px, now, past, lanes, compact, onShow, laneAt, setOver }) {
   const [draft, setDraft] = useState(null);
+  const [moving, setMoving] = useState(false);
   const timer = useRef(null);
+  const dragged = useRef(false);
   const saved = { plannedStart: f.plannedStart ?? null, plannedEnd: f.plannedEnd ?? null };
   const fp = { ...f, ...(draft ?? saved) };
-  const plan = planOf(fp);
+  const bar = barDays(fp, p, now);
   const status = planStatus(fp, p, now);
-  const offer = !plan && !f.shipped ? suggest(p, now) : null;
-  // A plan the pace can't check draws on its own.
-  const planOnly = plan && (p.state === 'unknown' || p.state === 'empty');
-  const g = geometry(p, x, now);
-  const frame = frameOf(plan, x, g.left);
-  const left = planOnly ? frame.left : g.left;
+  const left = x(bar.start);
+  const width = Math.max(MIN_BAR, x(bar.end + DAY) - left);
   const id = `tl-why-${f.slug}`;
   const why = `${explainPlan(fp, p, now)} ${explain(p, past, now)}`.trim();
-  const when =
-    p.state === 'open'
+  const when = bar.planned
+    ? planDays(fp, now)
+    : p.state === 'open'
       ? `likely by ${day(p.likely, now)}`
       : p.state === 'done'
         ? 'done'
-        : planOnly
-          ? `planned ${planDays(fp, now)}`
-          : p.state === 'unknown'
-            ? 'no estimate yet'
-            : 'no tasks yet';
+        : p.state === 'unknown'
+          ? 'no estimate yet'
+          : 'no tasks yet';
+  const fixed = Boolean(f.shipped);
   const save = async (next) => {
     clearTimeout(timer.current);
     if (next.plannedStart === saved.plannedStart && next.plannedEnd === saved.plannedEnd) {
@@ -163,10 +115,10 @@ function Bar({ f, p, x, px, now, past, lanes, compact, onShow, dragging, setDrag
   };
   useEffect(() => () => clearTimeout(timer.current), []);
   const keys = (e) => {
-    if (!e.altKey || f.shipped) return;
-    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && plan) {
+    if (!e.altKey || fixed) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
-      const next = shiftPlan(fp, e.shiftKey ? 'start' : 'end', e.key === 'ArrowLeft' ? -1 : 1);
+      const next = dragPlan(barDays(fp, p, now), e.shiftKey ? 'end' : 'move', e.key === 'ArrowLeft' ? -1 : 1);
       setDraft(next);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => save(next), KEY_SAVE_MS);
@@ -178,35 +130,67 @@ function Bar({ f, p, x, px, now, past, lanes, compact, onShow, dragging, setDrag
     e.preventDefault();
     actions.moveFeature(f, to);
   };
+  const down = (e) => {
+    if (fixed || e.button !== 0 || e.pointerType === 'touch') return;
+    const edge = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.tl-edge'));
+    const how = /** @type {'move' | 'start' | 'end'} */ (edge?.dataset.edge ?? 'move');
+    const el = /** @type {HTMLElement} */ (e.currentTarget);
+    const base = barDays(fp, p, now);
+    const from = { x: e.clientX, y: e.clientY };
+    const home = f.release ?? null;
+    let next = null;
+    let lane = home;
+    dragged.current = false;
+    const move = (m) => {
+      if (!dragged.current && Math.hypot(m.clientX - from.x, m.clientY - from.y) < DRAG_SLOP) return;
+      if (!dragged.current) {
+        dragged.current = true;
+        el.setPointerCapture(e.pointerId);
+        setMoving(true);
+      }
+      next = dragPlan(base, how, Math.round((m.clientX - from.x) / px));
+      setDraft(next);
+      if (how === 'move') {
+        const at = laneAt(m.clientX, m.clientY);
+        if (at !== undefined) lane = at;
+        setOver(lane === home ? null : LANE_KEY(lane));
+      }
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      setMoving(false);
+      setOver(null);
+      if (!dragged.current) return;
+      if (lane !== home) actions.moveFeature(f, lane);
+      if (next) save(next);
+      else setDraft(null);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
   const show = () => onShow(f.slug);
-  const trackEnd = left + (planOnly ? 0 : g.width);
-  const after = Math.max(trackEnd, frame && frame.width !== null ? frame.left + frame.width : trackEnd) + 10;
   return (
     <li class={`tl-row ${compact ? 'is-compact' : ''}`}>
-      {frame && (
-        <span
-          class={`tl-frame ${frame.open ? 'is-open' : ''} ${frame.width === null ? 'is-no-end' : ''} ${status ? `is-${status.kind}` : ''} ${draft ? 'is-moving' : ''}`}
-          style={{ left: `${frame.left}px`, width: frame.width === null ? undefined : `${frame.width}px` }}
-          aria-hidden="true"
-        >
-          {draft && <span class="tl-frame-days">{planDays(fp, now)}</span>}
-        </span>
-      )}
       <a
-        class={`tl-bar ${f.chase?.on ? 'is-chasing' : ''} ${dragging === f.slug ? 'is-dragging' : ''} ${
+        class={`tl-bar ${f.chase?.on ? 'is-chasing' : ''} ${moving ? 'is-dragging' : ''} ${
           f.needsYou.length && !f.done ? 'is-yours' : ''
-        }`}
+        } ${fixed ? 'is-fixed' : ''}`}
         style={{ left: `${left}px` }}
         href={featureHref(f.slug)}
         data-feature={f.slug}
-        draggable={!f.shipped}
+        draggable={false}
         aria-describedby={id}
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('application/x-breakaway-feature', f.slug);
-          setDragging(f.slug);
+        onPointerDown={down}
+        onClick={(e) => {
+          // A drag ends with a click on the bar; it isn't one.
+          if (dragged.current) {
+            e.preventDefault();
+            dragged.current = false;
+          }
         }}
-        onDragEnd={() => setDragging(null)}
         onKeyDown={keys}
         onMouseEnter={show}
         onFocus={show}
@@ -224,24 +208,21 @@ function Bar({ f, p, x, px, now, past, lanes, compact, onShow, dragging, setDrag
             </span>
           </span>
         )}
-        {planOnly ? (
-          <span class="tl-track is-plan-only" style={{ width: `${frame.width ?? MIN_BAR}px` }} />
-        ) : (
-          <span
-            class={`tl-track ${g.unknown ? 'is-unknown' : ''} ${g.empty ? 'is-empty' : ''}`}
-            style={{ width: `${g.width}px` }}
-          >
-            <span class="tl-sure" style={g.sure !== undefined ? { width: `${g.sure}px` } : undefined}>
-              <Segments progress={f.progress} />
-            </span>
-            {g.sure !== undefined && g.owner > g.sure && (
-              <span class="tl-range" style={{ left: `${g.sure}px`, width: `${g.owner - g.sure}px` }} />
-            )}
-            {g.owner !== undefined && g.width > g.owner && (
-              <span class="tl-owner" style={{ left: `${g.owner}px`, width: `${g.width - g.owner}px` }} />
-            )}
+        <span
+          class={`tl-track ${p.state === 'empty' ? 'is-empty' : ''} ${bar.planned ? 'is-planned' : ''}`}
+          style={{ width: `${width}px` }}
+        >
+          <span class="tl-sure">
+            <Segments progress={f.progress} />
           </span>
-        )}
+          {!fixed && !compact && (
+            <>
+              <span class="tl-edge is-start" data-edge="start" title="Drag to move the start" aria-hidden="true" />
+              <span class="tl-edge is-end" data-edge="end" title="Drag to move the end" aria-hidden="true" />
+            </>
+          )}
+        </span>
+        {draft && moving && <span class="tl-drag-days">{planDays(fp, now)}</span>}
         {compact && (
           <span class="tl-label is-after">
             <Title text={f.title} />
@@ -249,43 +230,9 @@ function Bar({ f, p, x, px, now, past, lanes, compact, onShow, dragging, setDrag
           </span>
         )}
         <span id={id} class="visually-hidden">
-          {`${f.title}: ${why} ${nextUp(f)}${plan && !f.shipped ? ' Alt+left and Alt+right move the planned end, with Shift the start.' : ''}`}
+          {`${f.title}: ${why} ${nextUp(f)}${fixed ? '' : ' Alt+left and Alt+right move it a day, with Shift its end; Alt+up and Alt+down move it to another release.'}`}
         </span>
       </a>
-      {frame && !f.shipped && !compact && (
-        <>
-          {!frame.open && <Handle which="start" at={frame.left} px={px} plan={fp} setDraft={setDraft} save={save} />}
-          {frame.width !== null && (
-            <Handle which="end" at={frame.left + frame.width} px={px} plan={fp} setDraft={setDraft} save={save} />
-          )}
-        </>
-      )}
-      {!compact && (offer || (plan && !f.shipped)) && (
-        <span class="tl-row-actions" style={{ left: `${after}px` }}>
-          {offer ? (
-            <button
-              type="button"
-              class="btn btn-sm tl-plan-it"
-              onClick={() => actions.planFeature(f, offer)}
-              onFocus={show}
-            >
-              <CalendarRange size={14} aria-hidden="true" />
-              Plan it: {day(fromDay(offer.plannedStart), now)} to {day(fromDay(offer.plannedEnd), now)}
-            </button>
-          ) : (
-            <button
-              type="button"
-              class="btn btn-sm btn-quiet tl-plan-it"
-              aria-label={`Clear the plan for ${f.title}`}
-              onClick={() => actions.planFeature(f, { plannedStart: null, plannedEnd: null })}
-              onFocus={show}
-            >
-              <X size={14} aria-hidden="true" />
-              Clear plan
-            </button>
-          )}
-        </span>
-      )}
     </li>
   );
 }
@@ -351,12 +298,11 @@ export function usePace(all, released) {
 }
 
 /**
- * @param {{ all: any, pace: ReturnType<typeof usePace>, groups: any[], released: any[], head: (g: any) => any, other: (g: any) => any }} props
+ * @param {{ pace: ReturnType<typeof usePace>, groups: any[], released: any[], head: (g: any) => any, other: (g: any) => any }} props
  */
-export function RoadmapTimeline({ all, pace, groups, released, head, other }) {
+export function RoadmapTimeline({ pace, groups, released, head, other }) {
   const zoom = roadmapZoom.value;
   const { now, past, projections } = pace;
-  const [dragging, setDragging] = useState(null);
   const [over, setOver] = useState(null);
   const [shown, setShown] = useState(null);
   const [width, setWidth] = useState(0);
@@ -406,13 +352,12 @@ export function RoadmapTimeline({ all, pace, groups, released, head, other }) {
     if (scroller.current) scroller.current.scrollLeft = Math.max(0, earliest);
   }, [zoom, range.from, zoom === 'fit' ? px : 0]);
 
-  const drop = (release) => (e) => {
-    e.preventDefault();
-    const slug = e.dataTransfer.getData('application/x-breakaway-feature') || dragging;
-    setOver(null);
-    setDragging(null);
-    const f = all.features.find((x) => x.slug === slug);
-    if (f) actions.moveFeature(f, release);
+  /** The release of the lane under a point, or undefined when it's over none. */
+  const laneAt = (clientX, clientY) => {
+    const key = /** @type {HTMLElement | null} */ (
+      document.elementFromPoint(clientX, clientY)?.closest('.tl-lane[data-lane]')
+    )?.dataset.lane;
+    return key === undefined ? undefined : lanes.find((r) => LANE_KEY(r) === key);
   };
   const lanesShown = lanes.map(
     (release) => groups.find((g) => g.release === release) ?? { release, features: [], other: [] },
@@ -431,8 +376,8 @@ export function RoadmapTimeline({ all, pace, groups, released, head, other }) {
         lanes={lanes}
         compact={compact}
         onShow={setShown}
-        dragging={dragging}
-        setDragging={setDragging}
+        laneAt={laneAt}
+        setOver={setOver}
       />
     ) : null;
   };
@@ -442,19 +387,10 @@ export function RoadmapTimeline({ all, pace, groups, released, head, other }) {
       <div class="tl-tools">
         <p class="muted small tl-hint">
           <MoveHorizontal size={15} aria-hidden="true" />
-          Drag a bar to another release (or Alt+↑, Alt+↓) to aim it there, and a plan’s ends (or Alt+←, Alt+→, with
-          Shift for the start) to move it. The pace is an estimate from the last {past.windowDays} days.
+          Drag a bar to plan when it runs, or its ends to change how long, and into another release to aim it there. On
+          a bar, Alt+← and Alt+→ move it a day (Shift its end), and Alt+↑ and Alt+↓ change its release. The pace is an
+          estimate from the last {past.windowDays} days.
         </p>
-        <span class="tl-legend small muted" aria-hidden="true">
-          <span class="tl-key tl-key-sure" />
-          Likely
-          <span class="tl-key tl-key-range" />
-          Could run to
-          <span class="tl-key tl-key-owner" />
-          Your steps
-          <span class="tl-key tl-key-plan" />
-          Plan
-        </span>
         <Segmented
           label="Zoom"
           options={ZOOM_OPTIONS}
@@ -486,18 +422,9 @@ export function RoadmapTimeline({ all, pace, groups, released, head, other }) {
             return (
               <section
                 key={key}
-                class={`tl-lane ${over === key ? 'is-over' : ''} ${dragging ? 'is-target' : ''}`}
+                class={`tl-lane ${over === key ? 'is-over' : ''}`}
                 aria-labelledby={`tl-l-${key}`}
-                onDragOver={(e) => {
-                  if (!dragging) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (over !== key) setOver(key);
-                }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(/** @type {Node} */ (e.relatedTarget))) setOver(null);
-                }}
-                onDrop={drop(g.release)}
+                data-lane={key}
               >
                 <div class="tl-lane-head">
                   <h2 id={`tl-l-${key}`}>
