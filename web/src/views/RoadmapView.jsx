@@ -4,7 +4,9 @@ import {
   ArrowUpToLine,
   ChevronsUp,
   FastForward,
+  GanttChart,
   Hand,
+  LayoutList,
   Milestone,
   Pencil,
   Plus,
@@ -25,25 +27,32 @@ import {
   navOrder,
   repoName,
   repoScope,
+  roadmapLayout,
   selected,
   selectedFeature,
 } from '../lib/store.js';
-import { ClaimChip, Dialog, RepoChip, widClass } from '../components/ui.jsx';
+import { ClaimChip, Dialog, RepoChip, Segmented, widClass } from '../components/ui.jsx';
 import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
+import { RoadmapTimeline } from '../components/RoadmapTimeline.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 
 /**
  * The roadmap (docs/specs/IDEA-28-features-and-chase.md, section 2): releases in version order, then
- * Unplanned, each with its feature cards; a feature opens for its tasks in dependency order. Features
+ * Unplanned, each with its feature cards; a feature opens for its tasks in dependency order. On a wide screen
+ * it's a timeline by default (WEB-102, components/RoadmapTimeline.jsx), with the cards one press away and on a phone. Features
  * are install-wide: with a repository picked in the switcher, the roadmap shows the features with tasks in it
  * (and those with none yet), its loose release tasks, and its suggestions (WEB-78). A feature's progress and
  * its page stay whole, and its tasks carry repository chips.
  */
 
 const STANDING_LABEL = Object.fromEntries(STANDINGS.map((s) => [s.id, s.label]));
+const LAYOUTS = [
+  { id: 'timeline', label: 'Timeline', icon: <GanttChart size={15} aria-hidden="true" /> },
+  { id: 'list', label: 'List', icon: <LayoutList size={15} aria-hidden="true" /> },
+];
 
 /** The server's reason as a sentence; one that starts with an agent's name keeps its case. */
 const sentence = (why) => `${why.startsWith('it') ? `I${why.slice(1)}` : why}.`;
@@ -402,6 +411,17 @@ function PullInto({ release, tasks, into }) {
   );
 }
 
+/** The release's Pull into next and Pull into now, when it's the one they'd pull. */
+function Pulls({ d, release }) {
+  if (!release || (d.stagePull?.release !== release && d.nextPull?.release !== release)) return null;
+  return (
+    <div class="fr-pulls">
+      {d.stagePull?.release === release && <PullInto release={release} tasks={d.stagePull.tasks} into="next" />}
+      {d.nextPull?.release === release && <PullInto release={release} tasks={d.nextPull.tasks} into="now" />}
+    </div>
+  );
+}
+
 function Overview() {
   const state = features.value;
   const [adding, setAdding] = useState(false);
@@ -413,6 +433,7 @@ function Overview() {
   const none = all && !all.features.length;
   // Features elsewhere on the board, and none in the repository the switcher shows.
   const noneHere = !none && d && !d.features.length;
+  const timeline = roadmapLayout.value === 'timeline' && d && !none && !noneHere;
   return (
     <div class="roadmap-view">
       <div class="gh-intro">
@@ -423,11 +444,34 @@ function Overview() {
             joins a feature by carrying its tag.
           </p>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
-          <Plus size={16} aria-hidden="true" />
-          New feature
-        </button>
+        <div class="fr-actions">
+          {d && !none && !noneHere && (
+            <span class="fr-layout">
+              <Segmented
+                label="Show the roadmap as"
+                options={LAYOUTS}
+                value={roadmapLayout.value}
+                onChange={(v) => {
+                  roadmapLayout.value = v;
+                }}
+              />
+            </span>
+          )}
+          <button type="button" class="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+            <Plus size={16} aria-hidden="true" />
+            New feature
+          </button>
+        </div>
       </div>
+      {timeline && (
+        <RoadmapTimeline
+          all={all}
+          groups={groups}
+          released={released}
+          head={(g) => <Pulls d={d} release={g.release} />}
+          other={(g) => <OtherTasks tasks={g.other} />}
+        />
+      )}
       {state.error && (
         <p class="field-error" role="alert">
           {state.error}
@@ -459,22 +503,17 @@ function Overview() {
       {d && (
         <div class="fr-releases">
           {groups.map((g) => (
-            <section key={g.release ?? 'none'} class="fr-release" aria-labelledby={`fr-r-${g.release ?? 'none'}`}>
+            <section
+              key={g.release ?? 'none'}
+              class={`fr-release ${timeline ? 'is-fallback' : ''}`}
+              aria-labelledby={`fr-r-${g.release ?? 'none'}`}
+            >
               <div class="fr-release-head">
                 <h2 id={`fr-r-${g.release ?? 'none'}`}>
                   {g.release ? <span class="mono">{g.release}</span> : 'Unplanned'}
                   {g.features.length > 0 && <span class="count">{plural(g.features.length, 'feature')}</span>}
                 </h2>
-                {g.release && (d.stagePull?.release === g.release || d.nextPull?.release === g.release) && (
-                  <div class="fr-pulls">
-                    {d.stagePull?.release === g.release && (
-                      <PullInto release={g.release} tasks={d.stagePull.tasks} into="next" />
-                    )}
-                    {d.nextPull?.release === g.release && (
-                      <PullInto release={g.release} tasks={d.nextPull.tasks} into="now" />
-                    )}
-                  </div>
-                )}
+                <Pulls d={d} release={g.release} />
               </div>
               {g.features.length > 0 && (
                 <ul class="fr-cards">
@@ -488,7 +527,7 @@ function Overview() {
           ))}
           <Suggestions list={d.suggestions} first={none} />
           {released.length > 0 && (
-            <details class="fr-release fr-released">
+            <details class={`fr-release fr-released ${timeline ? 'is-fallback' : ''}`}>
               <summary>
                 <h2>
                   Released <span class="count">{plural(released.length, 'feature')}</span>

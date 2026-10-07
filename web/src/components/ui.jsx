@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { CircleAlert, CircleCheck, Info, Mic, Square } from 'lucide-preact';
-import { confirmState, forceOffer, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
+import { confirmState, dismissToast, forceOffer, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
 import { STATE_LABEL, age, isStale, stateOf } from '../lib/model.js';
 import { canDictate, checkOnDevice, dictate } from '../lib/dictation.js';
 
@@ -169,6 +169,18 @@ export function Toasts() {
         <div key={t.id} class={`toast toast-${t.tone}`}>
           {icons[t.tone]}
           <span>{t.text}</span>
+          {t.action && (
+            <button
+              type="button"
+              class="btn btn-sm toast-action"
+              onClick={() => {
+                dismissToast(t.id);
+                t.action.run();
+              }}
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>
