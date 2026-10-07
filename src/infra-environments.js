@@ -70,7 +70,14 @@ export function checkSwitch(value, field) {
  * @param {{ target: string | null }} row
  * @param {string} worker the install's Worker
  */
-export const runsTheBoard = (row, worker) => Boolean(row.target) && row.target === worker;
+export const runsTheBoard = (row, worker) => {
+  // Compared as names (BRK-253): ` Breakaway ` is still the install's Worker, so no spelling of it escapes observe only.
+  const name = (value) =>
+    String(value ?? '')
+      .trim()
+      .toLowerCase();
+  return Boolean(name(row.target)) && name(row.target) === name(worker);
+};
 
 /**
  * The environment as the API shows it.

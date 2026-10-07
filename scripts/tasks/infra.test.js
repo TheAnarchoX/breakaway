@@ -49,13 +49,17 @@ describe('infra init renders the runner (CLI-12)', () => {
     expect(job.if).toBe("github.ref == 'refs/heads/trunk'");
     expect(job.environment).toBe(`\${{ inputs.github_environment || inputs.environment }}`);
     expect(doc.on.workflow_dispatch.inputs.github_environment).toMatchObject({ required: false, type: 'string' });
-    expect(job.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
+    // Nothing is checked out, so it reads nothing of the repository (BRK-253).
+    expect(job.permissions).toEqual({ 'id-token': 'write' });
     expect(job.steps.some((s) => String(s.uses ?? '').startsWith('actions/checkout'))).toBe(false);
+    // The runner installs once, pinned, from its lockfile and without scripts, before any step holds the token.
     expect(job.steps.filter((s) => s.run).map((s) => s.run)).toEqual([
-      'npx --yes breakaway@2.0.0 infra runner check',
-      'npx --yes breakaway@2.0.0 infra runner apply',
-      'npx --yes breakaway@2.0.0 infra runner end',
+      'npm install --global --ignore-scripts --no-audit --no-fund breakaway@2.0.0',
+      'breakaway infra runner check',
+      'breakaway infra runner apply',
+      'breakaway infra runner end',
     ]);
+    expect(job.steps.some((s) => /\bnpx\b/u.test(String(s.run ?? '')))).toBe(false);
     // The write token reaches only the apply step, which runs after the plan is checked.
     const withSecret = job.steps.filter((s) => JSON.stringify(s).includes('secrets.'));
     expect(withSecret.map((s) => s.name)).toEqual(['Apply the plan']);

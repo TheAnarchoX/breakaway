@@ -1897,7 +1897,7 @@ Claude Code’s plugin carries the new skill once the stable release moves it.
 
 ## If you ran a pre-release
 
-If you ran `npx breakaway infra init` in a repository on a 2.0.0 pre-release before short-lived environments had their own GitHub environment, run `npx breakaway infra init --update` there and merge the result. Check each GitHub environment that holds a write token is limited to the default branch.
+If you ran `npx breakaway infra init` in a repository on a 2.0.0 pre-release, run `npx breakaway infra init --update` there and merge the result: the apply workflow has changed since (short-lived environments got their own GitHub environment, and the runner now installs once, before any step holds the write token). Check each GitHub environment that holds a write token is limited to the default branch.
 
 ## Going back
 
