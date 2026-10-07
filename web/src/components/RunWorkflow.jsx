@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CircleCheck, ExternalLink, Play, X } from 'lucide-preact';
+import { fieldOf, inputsToSend } from '../../../src/workflows.js';
 import { api, enc } from '../lib/api.js';
 import { githubRepoFacts, loadGitHub, repoName } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
@@ -60,16 +61,11 @@ export function useRunnable(runs, slugOf) {
   };
 }
 
-/** Each input's starting value: its default, a choice's first option, a switch off, else empty. */
+/** Each input's starting value (fieldOf): its default, a required choice's first option, a switch off, else empty. */
 function startValues(workflow) {
   /** @type {Record<string, string | boolean>} */
   const values = {};
-  for (const input of workflow?.inputs ?? []) {
-    if (input.type === 'boolean') values[input.name] = input.default === true;
-    else if (input.default !== null && input.default !== undefined) values[input.name] = String(input.default);
-    else if (input.type === 'choice') values[input.name] = input.required ? (input.options?.[0] ?? '') : '';
-    else values[input.name] = '';
-  }
+  for (const input of workflow?.inputs ?? []) values[input.name] = fieldOf(input).start;
   return values;
 }
 
@@ -110,6 +106,7 @@ function InputField({ input, value, onChange, idBase, environments }) {
         {help}
       </div>
     );
+  const { empty } = fieldOf(input);
   if (input.type === 'choice')
     return (
       <label class="field">
@@ -121,7 +118,7 @@ function InputField({ input, value, onChange, idBase, environments }) {
           aria-describedby={hint}
           onChange={(e) => onChange(e.currentTarget.value)}
         >
-          {!input.required && <option value="">None</option>}
+          {empty !== null && <option value="">{empty}</option>}
           {(input.options ?? []).map((o) => (
             <option key={o} value={o}>
               {o}
@@ -225,13 +222,7 @@ function RunWorkflowDialog({ repos, slug: first, run, deploys, onClose, onStarte
     if (!workflow?.readable || !actions.ok) return;
     setBusy(true);
     setError(null);
-    /** @type {Record<string, string>} */
-    const inputs = {};
-    for (const input of workflow.inputs) {
-      const v = values[input.name];
-      if (input.type === 'boolean') inputs[input.name] = v === true ? 'true' : 'false';
-      else if (v !== '' && v !== undefined) inputs[input.name] = String(v).trim();
-    }
+    const inputs = inputsToSend(workflow.inputs, values);
     const on = ref.trim() || load.data.branch;
     try {
       const done = await api('github/workflows/run', {
