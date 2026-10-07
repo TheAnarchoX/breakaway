@@ -9,7 +9,18 @@ import {
   planOverlay,
   worstHealth,
 } from '../web/src/lib/topology.js';
-import { STREAM_MAX, agentsAtWork, arrived, runWords, stepsText, streamItems } from '../web/src/lib/env-stream.js';
+import {
+  STREAM_MAX,
+  agentsAtWork,
+  arrived,
+  filterStream,
+  groupStream,
+  runWords,
+  stepsText,
+  streamItems,
+  timelineItems,
+} from '../web/src/lib/env-stream.js';
+import { clampView, fitView, panView, viewBox, zoomOf, zoomView } from '../web/src/lib/pan-zoom.js';
 
 // The environment console (WEB-94): its map's layout and its stream, from made-up resources.
 const now = Date.now();
@@ -259,5 +270,128 @@ describe('the agents at work', () => {
 
   it('is nobody when nothing is claimed', () => {
     expect(agentsAtWork([], { env: {} })).toEqual([]);
+  });
+});
+
+describe('the stream, folded and filtered (WEB-97)', () => {
+  const alert = (/** @type {number} */ id, /** @type {number} */ minutes, extra = {}) => ({
+    id,
+    at: ago(minutes),
+    source: 'cloudflare',
+    kind: 'alert',
+    level: 'warning',
+    resource: null,
+    text: 'Cloudflare alert: acme incidents (major+)',
+    ...extra,
+  });
+
+  it('folds an alert that repeats into its newest row, with a count and when the first came', () => {
+    const items = groupStream(
+      streamItems({
+        signals: [
+          alert(1, 600),
+          alert(2, 300),
+          alert(3, 10),
+          alert(4, 20, { text: 'Cloudflare alert: acme-api errors' }),
+        ],
+        audit: [{ id: 9, at: ago(15), kind: 'freeze', by: 'owner', outcome: 'on', summary: 'Frozen' }],
+      }),
+    );
+    expect(items.map((i) => [i.key, i.count ?? null])).toEqual([
+      ['signal:3', 3],
+      ['audit:9', null],
+      ['signal:4', 1],
+    ]);
+    expect(items[0].firstAt).toBe(Date.parse(ago(600)));
+  });
+
+  it('keeps alerts apart when their level or resource differs', () => {
+    const items = groupStream(
+      streamItems({
+        signals: [alert(1, 5), alert(2, 6, { level: 'critical' }), alert(3, 7, { resource: 'worker:acme-api' })],
+      }),
+    );
+    expect(items).toHaveLength(3);
+  });
+
+  it('filters by kind and by level', () => {
+    const items = streamItems({
+      signals: [alert(1, 5), alert(2, 6, { level: 'info', kind: 'health' }), alert(3, 7, { source: 'deploy' })],
+      audit: [
+        { id: 10, at: ago(8), kind: 'plan', by: 'board', plan: 'plan-1', outcome: 'waiting', summary: 'Plan made' },
+        { id: 11, at: ago(9), kind: 'environment', by: 'agent', agent: 'claude-acme-1', summary: 'Adopted' },
+        { id: 12, at: ago(10), kind: 'apply', by: 'owner', outcome: 'ok', summary: 'Deploy of acme 1.2.0' },
+      ],
+      runs: [{ plan: 'plan-1', phase: 'applying', created: ago(4) }],
+      incidents: [{ id: 3, opened: ago(3), level: 'critical', kind: 'down', signals: 2 }],
+    });
+    const keys = (/** @type {any} */ f) => filterStream(items, f).map((i) => i.key);
+    expect(keys({ kind: 'alert' })).toEqual(['incident:3', 'signal:1', 'signal:2']);
+    expect(keys({ kind: 'deploy' })).toEqual(['signal:3', 'audit:12']);
+    expect(keys({ kind: 'plan' })).toEqual(['run:plan-1', 'audit:10']);
+    expect(keys({ kind: 'agent' })).toEqual(['audit:11']);
+    expect(keys({ level: 'warning' })).toEqual(['incident:3', 'signal:1', 'signal:3']);
+    expect(keys({ kind: 'alert', level: 'critical' })).toEqual(['incident:3']);
+    expect(filterStream(items, {})).toHaveLength(items.length);
+  });
+
+  it('lines up deploys and incidents for the strip, newest first', () => {
+    const items = timelineItems({
+      deploys: [
+        { id: 1, sha: 'abcdef123', state: 'success', created: ago(60), logUrl: 'https://example.com/run/1' },
+        { id: 2, sha: '1234567aa', state: 'failure', created: ago(30), description: 'Rolled back: check failed' },
+        { id: 3, sha: '7654321bb', state: 'in_progress', created: ago(1) },
+      ],
+      incidents: [
+        { id: 7, opened: ago(120), closed: ago(20), level: 'critical', kind: 'down' },
+        { id: 8, opened: ago(5), closed: null, level: 'warning', kind: 'errors' },
+      ],
+    });
+    expect(items.map((i) => [i.key, i.label, i.tone])).toEqual([
+      ['deploy:3', 'Deploying', 'pending'],
+      ['incident:8', 'Incident open', 'warn'],
+      ['incident:7', 'Incident closed', 'ok'],
+      ['deploy:2', 'Rolled back', 'bad'],
+      ['deploy:1', 'Deployed', 'ok'],
+    ]);
+    expect(items.at(-1)?.detail).toBe('abcdef1');
+    expect(timelineItems({}, 3)).toEqual([]);
+  });
+});
+
+describe('pan and zoom (WEB-97)', () => {
+  const bounds = { x: 0, y: 0, w: 400, h: 200 };
+  const box = { w: 800, h: 800 };
+
+  it('fits the drawing to the box’s shape, centred, and no larger than the cap', () => {
+    const fit = fitView(bounds, box);
+    expect(fit.w / fit.h).toBeCloseTo(1);
+    expect(fit.w).toBeCloseTo(800 / 1.4);
+    expect(fit.x + fit.w / 2).toBeCloseTo(200);
+    expect(fit.y + fit.h / 2).toBeCloseTo(100);
+    expect(fitView(bounds, { w: 400, h: 400 })).toEqual({ x: 0, y: -100, w: 400, h: 400 });
+    expect(fitView(bounds, null)).toEqual(bounds);
+  });
+
+  it('zooms about a point that stays put, between fitting and the most', () => {
+    const fit = fitView(bounds, { w: 400, h: 400 });
+    const at = { x: 100, y: 50 };
+    const z = zoomView(fit, 2, at, fit);
+    expect(zoomOf(z, fit)).toBeCloseTo(2);
+    // The point sits the same share of the way across before and after.
+    expect((at.x - z.x) / z.w).toBeCloseTo((at.x - fit.x) / fit.w);
+    expect(zoomOf(zoomView(z, 100, at, fit), fit)).toBeCloseTo(4);
+    expect(zoomView(z, 0.01, at, fit)).toEqual(fit);
+  });
+
+  it('pans with the pointer and stops at the edge', () => {
+    const fit = fitView(bounds, { w: 400, h: 400 });
+    const z = zoomView(fit, 2, null, fit);
+    const moved = panView(z, 20, 0, fit);
+    expect(moved.x).toBeCloseTo(z.x - 20);
+    expect(panView(z, 10_000, 10_000, fit)).toMatchObject({ x: fit.x, y: fit.y });
+    expect(panView(fit, 50, 50, fit)).toEqual(fit);
+    expect(clampView({ x: -999, y: -999, w: 9999, h: 1 }, fit)).toEqual(fit);
+    expect(viewBox({ x: 1, y: 2, w: 3, h: 4 })).toBe('1 2 3 4');
   });
 });
