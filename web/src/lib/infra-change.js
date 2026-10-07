@@ -1,6 +1,6 @@
 // A change from the environment console (WEB-99; docs/specs/BRK-258-plan-from-the-board.md): the owner's edits to one
 // environment's desired state, kept in this browser until they're proposed, as operations (set a setting, add from a
-// template, remove a resource), never as a copy of the file. The board replays them onto the file at the default
+// template or of a kind the provider can create (WEB-107), remove a resource), never as a copy of the file. The board replays them onto the file at the default
 // branch's head (BRK-259). This file keeps them, merges a new edit into the ones before it, words them at once (the
 // board's own preview follows), turns the settings form's values into edits, checks a field the way the provider
 // declares it (BRK-262), and says what the change's card shows. Pure, so the tests can check it.
@@ -29,7 +29,9 @@ const local = () => {
  * @typedef {{ op: 'set', resource: string, path: string, value: unknown }
  *   | { op: 'add', template: string, inputs: Record<string, string> }
  *   | { op: 'remove', resource: string }
- *   | { op: 'rename', resource: string, name: string }} Edit
+ *   | { op: 'rename', resource: string, name: string }
+ *   | { op: 'create', kind: string, name: string, attrs: Record<string, unknown>,
+ *       bindTo?: { worker: string, binding: string } }} Edit
  */
 
 /**
@@ -41,7 +43,7 @@ export function readEdits(envId, storage = local()) {
   try {
     const edits = JSON.parse(storage?.getItem(KEY + envId) ?? '[]');
     return Array.isArray(edits)
-      ? edits.filter((e) => isObject(e) && ['set', 'add', 'remove', 'rename'].includes(e.op))
+      ? edits.filter((e) => isObject(e) && ['set', 'add', 'create', 'remove', 'rename'].includes(e.op))
       : [];
   } catch {
     return [];
@@ -64,8 +66,9 @@ export function writeEdits(envId, edits, storage = local()) {
 
 /**
  * The change with `more` joined to it: a setting set again replaces the earlier edit of the same setting, a resource
- * renamed again replaces its earlier rename, and removing a resource drops the edits that set its settings or rename it.
- * Answers the edits, or why they don't fit.
+ * renamed again replaces its earlier rename, a resource added again under the same kind and name replaces its earlier
+ * add, and removing a resource drops the edits that set its settings or rename it. Answers the edits, or why they don't
+ * fit.
  * @param {Edit[]} edits
  * @param {Edit[]} more
  * @returns {{ edits: Edit[] } | { error: string }}
@@ -75,6 +78,7 @@ export function joinEdits(edits, more) {
   for (const e of more) {
     if (e.op === 'set') out = out.filter((x) => !(x.op === 'set' && x.resource === e.resource && x.path === e.path));
     else if (e.op === 'rename') out = out.filter((x) => !(x.op === 'rename' && x.resource === e.resource));
+    else if (e.op === 'create') out = out.filter((x) => !(x.op === 'create' && x.kind === e.kind && x.name === e.name));
     else if (e.op === 'remove') {
       if (out.some((x) => x.op === 'remove' && x.resource === e.resource)) continue;
       out = out.filter((x) => !((x.op === 'set' || x.op === 'rename') && x.resource === e.resource));
@@ -349,6 +353,8 @@ export function editLines(edits, resources, labels = new Map(), names = new Map(
       const name = e.inputs?.name ?? Object.values(e.inputs ?? {})[0];
       return `+ ${e.template}${name ? ` ${name}` : ''} (from a template)`;
     }
+    if (e.op === 'create')
+      return `+ ${e.kind} ${e.name}${e.bindTo ? `, bound to ${e.bindTo.worker} as ${e.bindTo.binding}` : ''}`;
     const r = byId.get(e.resource);
     const name = r?.name ?? e.resource;
     if (e.op === 'remove') return `− ${r?.kind ?? 'resource'} ${name}`;
@@ -373,6 +379,168 @@ export function editMarks(edits) {
       out.set(e.resource, { op: 'update', effect: /** @type {const} */ ('changes') });
   }
   return out;
+}
+
+/**
+ * A kind the console may add (BRK-270's CreatableKind, from the editable route's `creatable`): its fields are the kind's
+ * own create-only ones first, then its editable ones, each `required` or carrying its `default`.
+ * @typedef {{ label: string, help: string, name: { label: string, help: string, pattern?: string, max?: number },
+ *   fields: Array<EditableField & { required?: boolean, default?: unknown }>,
+ *   bind?: { kind: string, list: string, target: { type: string, label: string, kind: string, field: string,
+ *     by: 'id' | 'name' }, required?: boolean }, needsCode?: string }} CreatableKind
+ */
+
+/** What a binding is called in its Worker's code: upper snake case, like JOBS (BRK-270's BINDING_NAME). */
+export const BINDING_NAME = /^[A-Z][A-Z0-9_]{0,62}$/u;
+
+/**
+ * The binding name the form suggests for a new resource: its name in capitals, with underscores, like ACME_JOBS for
+ * acme-jobs; empty for a name with no letters or digits.
+ * @param {string} name
+ */
+export function bindingFor(name) {
+  const s = String(name ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/gu, '_')
+    .replace(/^_+|_+$/gu, '');
+  if (!s) return '';
+  return (/^[A-Z]/u.test(s) ? s : `R_${s}`).slice(0, 63).replace(/_+$/u, '');
+}
+
+/**
+ * The form a new resource of `kind` starts from: each field's default, as the form shows it.
+ * @param {CreatableKind} kind
+ * @returns {Record<string, unknown>}
+ */
+export function createForm(kind) {
+  return Object.fromEntries(kind.fields.map((f) => [f.path, formValue(f, structuredClone(f.default))]));
+}
+
+/**
+ * What's wrong with a new resource in the form, in words, by where it shows: its name, each field, and its binding.
+ * The board checks it again, with what runs in the account.
+ * @param {string} kindId
+ * @param {CreatableKind} kind
+ * @param {{ name: string, form: Record<string, unknown>, bindTo: { worker: string, binding: string } }} input
+ * @param {{ taken: Array<{ kind: string, name: string }>, declared: Array<{ kind: string, name: string,
+ *   attrs?: Record<string, unknown> }> }} where what the environment has (its file and what runs, and this change's
+ *   adds), and the file's resources, for the binder's bindings
+ * @returns {{ name: string | null, fields: Record<string, string | null>, worker: string | null,
+ *   binding: string | null }}
+ */
+export function createProblems(kindId, kind, { name, form, bindTo }, { taken, declared }) {
+  const text = String(name ?? '').trim();
+  let named = nameProblem(kind.name, text);
+  if (!named && kind.name.max !== undefined && text.length > kind.name.max)
+    named = `${kind.name.label} is at most ${kind.name.max} characters.`;
+  if (!named && taken.some((r) => r.kind === kindId && r.name === text))
+    named = `${text} is taken by another ${kind.label} here: pick another ${kind.name.label.toLowerCase()}.`;
+  /** @type {Record<string, string | null>} */
+  const fields = {};
+  for (const f of kind.fields) {
+    const value = settingValue(f, form[f.path]);
+    fields[f.path] =
+      f.required && (value === null || value === '') ? `${f.label} needs a value.` : fieldProblem(f, form[f.path]);
+  }
+  let worker = null;
+  let binding = null;
+  if (kind.bind) {
+    const by = String(bindTo.worker ?? '').trim();
+    if (!by) {
+      if (kind.bind.required) worker = 'Pick what binds it: it’s made only when something does.';
+    } else {
+      const b = String(bindTo.binding ?? '').trim();
+      const binder = declared.find((r) => r.kind === kind.bind?.kind && r.name === by);
+      const list = binder ? getPath(binder.attrs, kind.bind.list) : undefined;
+      if (!b) binding = 'Give the binding the name its code uses.';
+      else if (!BINDING_NAME.test(b))
+        binding = 'Capital letters, digits, and underscores, starting with a letter, like JOBS.';
+      else if (Array.isArray(list) && list.some((x) => isObject(x) && x.name === b))
+        binding = `${by} already has a binding called ${b}: pick another name.`;
+    }
+  }
+  return { name: named, fields, worker, binding };
+}
+
+/**
+ * The create edit a new resource's form makes: its name, the settings given (the kind's defaults fill the rest on the
+ * board), and its binding when one is picked.
+ * @param {string} kindId
+ * @param {CreatableKind} kind
+ * @param {{ name: string, form: Record<string, unknown>, bindTo: { worker: string, binding: string } }} input
+ * @returns {Edit}
+ */
+export function createEdit(kindId, kind, { name, form, bindTo }) {
+  /** @type {Record<string, unknown>} */
+  const attrs = {};
+  for (const f of kind.fields) {
+    const value = settingValue(f, form[f.path]);
+    if (value === null || value === '') continue;
+    if (Array.isArray(value) && !value.length && f.default === undefined) continue;
+    attrs[f.path] = value;
+  }
+  /** @type {Edit} */
+  const edit = { op: 'create', kind: kindId, name: String(name).trim(), attrs };
+  const worker = String(bindTo.worker ?? '').trim();
+  if (kind.bind && worker) edit.bindTo = { worker, binding: String(bindTo.binding ?? '').trim() };
+  return edit;
+}
+
+/** The kinds the map puts in front: what a Worker serves, not what it uses. */
+const SERVED = new Set(['route', 'custom-domain', 'domain']);
+
+/**
+ * What the change's adds put on the map before the board answers: a dashed node for each, by the ID the board gives it
+ * (`<kind>:<name>`), and a line to what binds or runs it, from the resources the map draws.
+ * @param {Edit[]} edits
+ * @param {Array<{ id: string, kind: string, name: string }>} resources what runs, by the map's IDs
+ * @param {Record<string, CreatableKind>} [creatable] for what binds each kind
+ * @returns {{ adds: any[], relations: Array<{ from: string, to: string, kind: string }> }}
+ */
+export function createOverlay(edits, resources, creatable = {}) {
+  const adds = [];
+  const relations = [];
+  const all = [...resources];
+  for (const e of edits) {
+    if (e.op !== 'create') continue;
+    const id = `${e.kind}:${e.name}`;
+    const node = { id, kind: e.kind, name: e.name, health: null, cost: null, planned: true };
+    adds.push(node);
+    all.push(node);
+    const kind = creatable[e.kind];
+    if (e.bindTo) {
+      const by = all.find((r) => r.kind === (kind?.bind?.kind ?? r.kind) && r.name === e.bindTo?.worker);
+      if (by) relations.push({ from: by.id, to: id, kind: 'uses' });
+    }
+    for (const f of kind?.fields ?? []) {
+      if (f.type !== 'resource' || typeof e.attrs?.[f.path] !== 'string') continue;
+      const to = all.find((r) => (f.kinds ?? []).includes(r.kind) && r.name === e.attrs[f.path]);
+      if (to) relations.push({ from: to.id, to: id, kind: SERVED.has(e.kind) ? 'serves' : 'uses' });
+    }
+  }
+  return { adds, relations };
+}
+
+/**
+ * The prompt Have an agent write it starts with, for a new resource made by code (a Durable Object's class, a
+ * container's image): what to add, and what the console already proposes.
+ * @param {{ name: string, repo: string }} env
+ * @param {CreatableKind} kind
+ * @param {Extract<Edit, { op: 'create' }>} edit
+ */
+export function codePrompt(env, kind, edit) {
+  const settings = kind.fields
+    .filter((f) => edit.attrs[f.path] !== undefined)
+    .map((f) => `- ${f.label}: ${words(edit.attrs[f.path])}`);
+  return [
+    `Write the code for ${edit.name}, a new ${kind.label} in ${env.name} (${env.repo}), by pull request.`,
+    '',
+    `What must exist: ${kind.needsCode}`,
+    ...(settings.length ? ['', 'Its settings, as the console adds it:', ...settings] : []),
+    ...(edit.bindTo ? ['', `${edit.bindTo.worker} binds it as ${edit.bindTo.binding}.`] : []),
+    '',
+    `The console proposes the resource in .github/breakaway-infra/${env.name}.json; its plan applies only once this code is deployed.`,
+  ].join('\n');
 }
 
 /**
