@@ -2,7 +2,7 @@
  * An in-memory Architect provider (BRK-173) for every Architect test: it discovers, plans, applies, observes, prices,
  * and reports events from state held in the test, and never reaches the network. Its kinds: `service` (scales and
  * restarts), `database` (deleting one can't be undone), and `route`. It estimates what a change would cost, too, and
- * says which settings the console may change (`FAKE_EDITABLE`).
+ * says which settings the console may change (`FAKE_EDITABLE`) and which kinds it may add (`FAKE_CREATABLE`).
  *
  * `fakeProvider()` takes the starting state; `provider.state` is live, so a test can change the platform by hand
  * (drift, break-glass) and `provider.calls` records every call, with its environment.
@@ -57,6 +57,33 @@ export const FAKE_EDITABLE = {
   route: {
     name: { label: 'Hostname', help: 'Where it answers.' },
     fields: [{ path: 'path', label: 'Path', type: 'text', help: 'Which paths it sends to the service.' }],
+  },
+};
+
+/**
+ * What the console may add (BRK-270): a service, and a database a service must use, by a binding in its `uses` list.
+ * A route can't be added.
+ */
+export const FAKE_CREATABLE = {
+  service: {
+    label: 'Service',
+    help: 'Runs code.',
+    name: { label: 'Name', pattern: '^[a-z][a-z0-9-]*$', max: 30, help: 'Lowercase letters, digits, and dashes.' },
+    required: ['instances'],
+    defaults: { instances: 1 },
+  },
+  database: {
+    label: 'Database',
+    help: 'Keeps data.',
+    name: { label: 'Name', pattern: '^[a-z][a-z0-9-]*$', max: 30, help: 'Lowercase letters, digits, and dashes.' },
+    fields: [{ path: 'engine', label: 'Engine', type: 'text', help: 'What it runs.' }],
+    defaults: { size: 'small' },
+    bind: {
+      kind: 'service',
+      list: 'uses',
+      target: { type: 'database', label: 'Database', kind: 'database', field: 'resource', by: 'id' },
+      required: true,
+    },
   },
 };
 
@@ -176,6 +203,8 @@ export function fakeProvider({
     kinds: FAKE_KINDS,
     /** @param {string} kind */
     editable: (kind) => FAKE_EDITABLE[kind] ?? null,
+    /** @param {string} kind */
+    creatable: (kind) => structuredClone(FAKE_CREATABLE[kind] ?? null),
     state,
     calls,
     failOn: new Set(failOn),

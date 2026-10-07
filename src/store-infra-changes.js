@@ -18,6 +18,7 @@ import { runsTheBoard } from './infra-environments.js';
 import { DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desired.js';
 import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.js';
 import { planDigest } from './infra-runner.js';
+import { creatableKinds } from './infra-provider.js';
 import { redact } from './redact.js';
 import {
   applyEdits,
@@ -267,13 +268,17 @@ export const infraChangesMethods = {
   async planInfraChange(env, edits, base, github = null) {
     const templates = await this.changeTemplates(env, edits, github ?? {});
     const provider = this.infraProviderFor(env.provider);
+    const creatable = edits.some((e) => e.op === 'create') && provider ? creatableKinds(provider) : {};
     const made = applyEdits({
       file: base.file,
       edits,
       templates,
       environment: env.name,
       names: (kind) => (typeof provider?.editable === 'function' ? provider.editable(kind)?.name : null),
-      seen: edits.some((e) => e.op === 'rename') ? this.inventoryRows('WHERE i.environment = ?', env.id) : [],
+      seen: edits.some((e) => e.op === 'rename' || e.op === 'create')
+        ? this.inventoryRows('WHERE i.environment = ?', env.id)
+        : [],
+      creatable: (kind) => creatable[kind] ?? null,
     });
     const head = { head: base.sha, from: base.from, lines: made.lines, dropped: made.dropped };
     if (made.problems.length) return unfit(made.problems, head);
@@ -618,6 +623,33 @@ export const infraChangesMethods = {
       : null;
     if (!row) throw new AgentError(`no change ${String(ref).slice(0, 20)}`, 404);
     return row;
+  },
+
+  /**
+   * GET /api/infra/changes?repo=&pull=: the latest change whose pull request is `pull` in `repo`, or null, with its
+   * environment's name and freeze, for the pull request page's Approve and Reject (WEB-105).
+   */
+  infraChangeByPullApi({ repo, pull } = {}) {
+    return this.run(async () => {
+      const number = Number(pull);
+      if (!Number.isSafeInteger(number) || number < 1)
+        throw new AgentError('send the pull request’s number as pull', 400);
+      const slug = String(repo || this.defaultRepoSlug())
+        .trim()
+        .toLowerCase();
+      const row = this.sql
+        .exec('SELECT * FROM infra_changes WHERE repo = ? AND pull = ? ORDER BY n DESC LIMIT 1', slug, number)
+        .toArray()[0];
+      if (!row) return { status: 200, body: { change: null, environment: null } };
+      const env = this.environmentRow(String(row.environment), null);
+      return {
+        status: 200,
+        body: {
+          change: this.changeOut(row),
+          environment: { id: Number(env.id), name: env.name, frozen: Boolean(env.frozen) },
+        },
+      };
+    });
   },
 
   /** GET /api/infra/changes/<n>: one change. */

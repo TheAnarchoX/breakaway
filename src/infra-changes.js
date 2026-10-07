@@ -10,6 +10,7 @@
  * Node-safe: no store and no network.
  */
 import { checkDesiredFile, DESIRED_DIR, desiredPath } from './infra-desired.js';
+import { fieldProblem } from './infra-provider.js';
 import { addFromTemplate, inputValues, TEMPLATE_NAME } from './infra-templates.js';
 import { costWords, policyWords } from './infra-pulls.js';
 
@@ -31,7 +32,11 @@ export const LIVE_STATES = ['open', 'approved'];
 export const PROPOSED_LINE =
   'Proposed on the board’s console. Approving its plan on the board merges it; nothing applies before.';
 
+/** What a binding is called in its Worker's code: upper snake case, like JOBS (BRK-270). */
+export const BINDING_NAME = /^[A-Z][A-Z0-9_]{0,62}$/u;
+
 const SEGMENT = /^[A-Za-z_$][A-Za-z0-9_$-]{0,63}$/u;
+const KIND = /^[a-z][a-z0-9-]{0,39}$/u;
 const UNSAFE = new Set(['__proto__', 'prototype', 'constructor']);
 const PATH_DEPTH = 8;
 const VALUE_MAX = 8 * 1024;
@@ -47,11 +52,16 @@ const WORDS_MAX = 60;
  * - `{ op: 'add', template, inputs }`: what the template adds, with these inputs (`infra add`'s);
  * - `{ op: 'remove', resource }`: the resource is gone from the file;
  * - `{ op: 'rename', resource, name }`: the resource is called `name`, for a kind whose provider declares its name
- *   editable (BRK-267: a route's pattern), so the plan updates it in place.
+ *   editable (BRK-267: a route's pattern), so the plan updates it in place;
+ * - `{ op: 'create', kind, name, attrs, bindTo? }`: a new resource of a kind its provider declares creatable (BRK-270),
+ *   with these settings by path (the kind's defaults fill the rest), and with `bindTo` a binding called `binding` on
+ *   `worker`, the resource of the environment that binds it, so it's usable in one change.
  * @typedef {{ op: 'set', resource: string, path: string, value: unknown }
  *   | { op: 'add', template: string, inputs: Record<string, string> }
  *   | { op: 'remove', resource: string }
- *   | { op: 'rename', resource: string, name: string }} Edit
+ *   | { op: 'rename', resource: string, name: string }
+ *   | { op: 'create', kind: string, name: string, attrs: Record<string, unknown>,
+ *       bindTo?: { worker: string, binding: string } }} Edit
  */
 
 /**
@@ -76,7 +86,7 @@ export function checkEdits(edits) {
   /** @type {Edit[]} */
   const out = [];
   for (const [n, e] of edits.entries()) {
-    if (!isObject(e)) return wrong(n, null, 'each edit is an object with an op: set, add, remove, or rename');
+    if (!isObject(e)) return wrong(n, null, 'each edit is an object with an op: set, add, create, remove, or rename');
     const resource = () =>
       typeof e.resource === 'string' && e.resource.trim() && e.resource.length <= ID_MAX ? e.resource : null;
     if (e.op === 'set') {
@@ -114,7 +124,42 @@ export function checkEdits(edits) {
       if (!name || name.length > NAME_MAX || /\p{Cc}/u.test(name))
         return wrong(n, 'name', `name is what the platform calls it, up to ${NAME_MAX} characters`);
       out.push({ op: 'rename', resource: e.resource, name });
-    } else return wrong(n, 'op', 'op is set, add, remove, or rename');
+    } else if (e.op === 'create') {
+      if (typeof e.kind !== 'string' || !KIND.test(e.kind))
+        return wrong(n, 'kind', 'kind is a resource kind, like queue');
+      const name = typeof e.name === 'string' ? e.name.trim() : '';
+      if (!name || name.length > NAME_MAX || /\p{Cc}/u.test(name))
+        return wrong(n, 'name', `name is what the platform calls it, up to ${NAME_MAX} characters`);
+      if (e.attrs !== undefined && !isObject(e.attrs))
+        return wrong(n, 'attrs', 'attrs is an object of settings by path, like { "retention": 86400 }');
+      /** @type {Record<string, unknown>} */
+      const attrs = {};
+      for (const [path, v] of Object.entries(e.attrs ?? {})) {
+        const parts = path.split('.');
+        if (parts.length > PATH_DEPTH || parts.some((p) => !SEGMENT.test(p) || UNSAFE.has(p)))
+          return wrong(n, `attrs.${path}`, 'each setting’s path is names with dots between them');
+        let text;
+        try {
+          text = JSON.stringify(v);
+        } catch {
+          text = undefined;
+        }
+        if (text === undefined) return wrong(n, `attrs.${path}`, `${path} is a JSON value`);
+        if (text.length > VALUE_MAX) return wrong(n, `attrs.${path}`, `${path} is at most ${VALUE_MAX / 1024} KB`);
+        attrs[path] = JSON.parse(text);
+      }
+      /** @type {Extract<Edit, { op: 'create' }>} */
+      const create = { op: 'create', kind: e.kind, name, attrs };
+      if (e.bindTo !== undefined && e.bindTo !== null) {
+        const b = e.bindTo;
+        if (!isObject(b) || typeof b.worker !== 'string' || !b.worker.trim() || b.worker.length > NAME_MAX)
+          return wrong(n, 'bindTo.worker', 'bindTo.worker is the name of what binds it, like acme-api');
+        if (typeof b.binding !== 'string' || !BINDING_NAME.test(b.binding))
+          return wrong(n, 'bindTo.binding', 'bindTo.binding is what its code calls it, in capitals, like JOBS');
+        create.bindTo = { worker: b.worker.trim(), binding: b.binding };
+      }
+      out.push(create);
+    } else return wrong(n, 'op', 'op is set, add, create, remove, or rename');
   }
   return { ok: true, edits: out };
 }
@@ -170,12 +215,24 @@ function writePath(resource, parts, value) {
  * @param {string} args.environment
  * @param {(kind: string) => { label: string, help: string, pattern?: string } | null | undefined} [args.names] the name
  *   a kind's provider lets the console change (its editable `name`, BRK-262), for the renames; none without it
- * @param {Array<{ rid: string, kind: string, name: string }>} [args.seen] what the board sees running in the
- *   environment (its inventory), so a rename never turns a resource matched by its name into a new one
+ * @param {Array<{ rid: string, kind: string, name: string, attrs?: unknown }>} [args.seen] what the board sees running
+ *   in the environment (its inventory), so a rename never turns a resource matched by its name into a new one, a create
+ *   never takes the name of one that runs, and a binding added to a Worker the file doesn't list the bindings of
+ *   starts from the ones it has
+ * @param {(kind: string) => import('./infra-provider.js').CreatableKind | null | undefined} [args.creatable] what a
+ *   kind's provider lets the console add (its `creatableKinds`, BRK-270), for the creates; none without it
  * @returns {{ file: Record<string, any>, files: Array<{ path: string, text: string }>, lines: string[],
  *   dropped: Array<{ edit: number, line: string }>, problems: ChangeProblem[], touched: Map<string, number> }}
  */
-export function applyEdits({ file, edits, templates, environment, names = () => null, seen = [] }) {
+export function applyEdits({
+  file,
+  edits,
+  templates,
+  environment,
+  names = () => null,
+  seen = [],
+  creatable = () => null,
+}) {
   let out = structuredClone(file);
   if (!Array.isArray(out.resources)) out.resources = [];
   /** @type {Array<{ path: string, text: string }>} */
@@ -250,6 +307,15 @@ export function applyEdits({ file, edits, templates, environment, names = () => 
       lines.push(`~ ${r.kind} ${r.name}: ${what} → ${edit.name}`);
       r.name = edit.name;
       touched.set(r.id, n);
+    } else if (edit.op === 'create') {
+      const made = created(out, edit, creatable(edit.kind), { environment, seen });
+      if ('problem' in made) {
+        problems.push({ edit: n, ...made.problem });
+        continue;
+      }
+      touched.set(made.id, n);
+      if (made.binder) touched.set(made.binder, n);
+      lines.push(made.line);
     } else {
       const found = templates.get(edit.template);
       if (!found) {
@@ -299,6 +365,96 @@ export function applyEdits({ file, edits, templates, environment, names = () => 
     }
   }
   return { file: out, files, lines, dropped, problems, touched };
+}
+
+/**
+ * Adds a `create` edit's resource to the file (`out`, changed in place), with the kind's defaults and the edit's
+ * settings, and its binding on the Worker that binds it; or says what's wrong, on the edit's field. Nothing is added
+ * when something is wrong.
+ * @param {Record<string, any>} out
+ * @param {Extract<Edit, { op: 'create' }>} edit
+ * @param {import('./infra-provider.js').CreatableKind | null | undefined} kind
+ * @param {{ environment: string, seen: Array<{ rid: string, kind: string, name: string, attrs?: unknown }> }} ctx
+ * @returns {{ id: string, binder: string | null, line: string } | { problem: { field: string, message: string } }}
+ */
+function created(out, edit, kind, { environment, seen }) {
+  const wrong = (field, message) => ({ problem: { field, message } });
+  if (!kind) return wrong('kind', `a ${edit.kind} can’t be added from the board`);
+  const label = kind.label.toLowerCase();
+  const what = kind.name.label.toLowerCase();
+  if (kind.name.max !== undefined && edit.name.length > kind.name.max)
+    return wrong('name', `a ${label}’s ${what} is at most ${kind.name.max} characters: ${kind.name.help}`);
+  if (kind.name.pattern && !new RegExp(kind.name.pattern, 'u').test(edit.name))
+    return wrong('name', `${edit.name} isn’t a ${label}’s ${what}: ${kind.name.help}`);
+  if (out.resources.some((x) => isObject(x) && x.kind === edit.kind && x.name === edit.name))
+    return wrong('name', `${environment} already has a ${label} called ${edit.name}: pick another ${what}`);
+  if (seen.some((x) => x.kind === edit.kind && x.name === edit.name))
+    return wrong(
+      'name',
+      `a ${label} called ${edit.name} already runs in ${environment}: pick another ${what}, or describe the one that runs as code first`,
+    );
+
+  const given = edit.attrs ?? {};
+  const fields = new Map(kind.fields.map((f) => [f.path, f]));
+  for (const path of Object.keys(given))
+    if (!fields.has(path)) return wrong(`attrs.${path}`, `a new ${label} has no setting ${path}`);
+  /** @type {Record<string, any>} */
+  const resource = { id: '', kind: edit.kind, name: edit.name, attrs: {} };
+  for (const f of kind.fields) {
+    const value = Object.hasOwn(given, f.path) ? given[f.path] : structuredClone(f.default);
+    if (value === undefined || value === null) {
+      if (f.required) return wrong(`attrs.${f.path}`, `a new ${label} needs its ${f.label.toLowerCase()}: ${f.help}`);
+      continue;
+    }
+    const problem = fieldProblem(f, value);
+    if (problem) return wrong(`attrs.${f.path}`, problem);
+    if (f.type === 'resource') {
+      const target = out.resources.find((x) => isObject(x) && f.kinds?.includes(x.kind) && x.name === value);
+      if (!target)
+        return wrong(`attrs.${f.path}`, `${environment} has no ${f.kinds?.join(' or ')} called ${value} in its file`);
+    }
+    writePath(resource, f.path.split('.'), value);
+  }
+  let id = `${edit.kind}:${edit.name}`;
+  for (let i = 2; out.resources.some((x) => isObject(x) && x.id === id); i++) id = `${edit.kind}:${edit.name}-${i}`;
+  resource.id = id;
+
+  let binder = null;
+  let bound = '';
+  const bind = kind.bind;
+  if (edit.bindTo) {
+    if (!bind) return wrong('bindTo', `nothing binds a ${label}`);
+    const { worker, binding } = edit.bindTo;
+    const w = out.resources.find((x) => isObject(x) && x.kind === bind.kind && x.name === worker);
+    if (!w)
+      return wrong(
+        'bindTo.worker',
+        `${environment} has no ${bind.kind} called ${worker} in its file${seen.some((x) => x.kind === bind.kind && x.name === worker) ? ': describe it as code first' : ''}`,
+      );
+    const parts = bind.list.split('.');
+    let list = readPath(w.attrs, parts);
+    if (list === undefined) {
+      // A list the file doesn't give is the platform's: start from what runs, so the plan keeps the rest.
+      const running = seen.find((x) => x.kind === bind.kind && x.name === worker);
+      const attrs = typeof running?.attrs === 'string' ? JSON.parse(running.attrs) : running?.attrs;
+      list = structuredClone(readPath(attrs, parts) ?? []);
+    }
+    if (!Array.isArray(list)) return wrong('bindTo.worker', `${worker}’s ${bind.list} isn’t a list in the file`);
+    if (list.some((b) => isObject(b) && b.name === binding))
+      return wrong('bindTo.binding', `${worker} already has a binding called ${binding}: pick another name`);
+    list.push({
+      name: binding,
+      type: bind.target.type,
+      [bind.target.field]: bind.target.by === 'id' ? id : edit.name,
+    });
+    writePath(w, parts, list);
+    binder = w.id;
+    bound = `, bound to ${worker} as ${binding}`;
+  } else if (bind?.required)
+    return wrong('bindTo', `a new ${label} is made only when a ${bind.kind} binds it: say which, and what it calls it`);
+
+  out.resources.push(resource);
+  return { id, binder, line: `+ ${edit.kind} ${edit.name}${bound}` };
 }
 
 /** The text the board commits for a file: two-space indents and a final newline. */

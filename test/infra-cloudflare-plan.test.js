@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { cloudflare, rid } from '../src/infra-cloudflare.js';
-import { MANAGED, PlanRefused, apply, estimate, plan, rollbackWorker } from '../src/infra-cloudflare-plan.js';
-import { checkApplyResult, checkPlan, desiredFrom } from '../src/infra-provider.js';
+import {
+  MANAGED,
+  PlanRefused,
+  STARTER_MODULE,
+  STARTER_SCRIPT,
+  apply,
+  estimate,
+  plan,
+  rollbackWorker,
+} from '../src/infra-cloudflare-plan.js';
+import { checkApplyResult, checkPlan, creatableKinds, desiredFrom } from '../src/infra-provider.js';
+import { applyEdits } from '../src/infra-changes.js';
 import { keptDiff } from '../src/infra-plans.js';
 import { checkEnvelope, judgeChange } from '../src/infra-envelopes.js';
 import { healthVerdict } from '../src/infra-runs.js';
@@ -53,6 +63,22 @@ function account() {
       answers[`${script(body.name)}/secrets`] = ok([]);
       answers[`${script(body.name)}/schedules`] = ok({ schedules: [] });
       return { id: `id-${body.name}`, name: body.name };
+    },
+    'PUT /workers/scripts/:name': (body, [name]) => {
+      const settings = answers[`${script(name)}/settings`].result;
+      settings.bindings = body.metadata.bindings;
+      settings.compatibility_date = body.metadata.compatibility_date;
+      answers[`${script(name)}/deployments`].result.deployments.unshift({
+        id: `dep-${++n}`,
+        created_on: '2026-10-06T12:00:00Z',
+        versions: [{ version_id: `ver-${name}-${n}`, percentage: 100 }],
+      });
+      return { id: name };
+    },
+    'POST /queues': (body) => {
+      const queue_id = `0000000000000000000000000000c1${String(++n).padStart(2, '0')}`;
+      list(`${a}/queues?page=1&per_page=100`).push({ queue_id, ...body, consumers: [], producers: [] });
+      return { queue_id, queue_name: body.queue_name };
     },
     'PATCH /workers/scripts/:name/settings': (body, [name]) => {
       const settings = answers[`${script(name)}/settings`].result;
@@ -141,7 +167,18 @@ function account() {
       const path = url.pathname.replace(/^\/client\/v4/u, '') + url.search;
       const auth = new Headers(init.headers).get('authorization');
       let body;
-      if (init.body instanceof FormData)
+      if (init.body instanceof FormData && init.body.has('metadata'))
+        body = {
+          metadata: JSON.parse(await /** @type {Blob} */ (init.body.get('metadata')).text()),
+          modules: Object.fromEntries(
+            await Promise.all(
+              [...init.body.entries()]
+                .filter(([k]) => k !== 'metadata')
+                .map(async ([k, v]) => [k, await /** @type {Blob} */ (v).text()]),
+            ),
+          ),
+        };
+      else if (init.body instanceof FormData)
         body = JSON.parse(await /** @type {Blob} */ (init.body.get('settings')).text());
       else if (typeof init.body === 'string') body = JSON.parse(init.body);
       calls.push({ method, path, auth, body });
@@ -634,7 +671,7 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     expect(fetch.writes()).toEqual([`POST ${a}/storage/kv/namespaces`]);
   });
 
-  it('deletes after it unbinds, and a new Worker is the Worker alone', async () => {
+  it('deletes after it unbinds, and a new Worker starts with a script that answers /health', async () => {
     const fetch = account();
     const desired = await current(fetch);
     desired.resources.find((r) => r.id === W('acme-auth')).attrs = { bindings: [] };
@@ -652,12 +689,79 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     expect((await apply(runner(fetch), p)).ok).toBe(true);
     expect(fetch.writes()).toEqual([
       `POST ${a}/workers/workers`,
+      `PUT ${a}/workers/scripts/acme-new`,
       `PUT ${a}/workers/scripts/acme-new/schedules`,
       `PATCH ${a}/workers/scripts/acme-api/settings`,
       `PATCH ${a}/workers/scripts/acme-auth/settings`,
       `DELETE ${a}/storage/kv/namespaces/${KV_SESSIONS}`,
     ]);
-    expect(fetch.calls.find((c) => c.method === 'PUT').body).toEqual([{ cron: '0 * * * *' }]);
+    const [upload, schedules] = fetch.calls.filter((c) => c.method === 'PUT');
+    expect(upload.body.metadata).toMatchObject({
+      main_module: STARTER_MODULE,
+      bindings: [],
+      compatibility_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
+    });
+    expect(upload.body.modules).toEqual({ [STARTER_MODULE]: STARTER_SCRIPT });
+    expect(STARTER_SCRIPT).toContain("'/health'");
+    expect(schedules.body).toEqual([{ cron: '0 * * * *' }]);
+  });
+
+  it('plans and applies what a create edit adds from the console (BRK-270)', async () => {
+    const fetch = account();
+    const kinds = creatableKinds(cloudflare);
+    const made = (edits, desired) =>
+      applyEdits({
+        file: desired,
+        edits,
+        templates: new Map(),
+        environment: 'production',
+        creatable: (kind) => kinds[kind] ?? null,
+      });
+    const queue = made(
+      [
+        {
+          op: 'create',
+          kind: 'queue',
+          name: 'acme-mail',
+          attrs: { retention: 86_400 },
+          bindTo: { worker: 'acme-api', binding: 'MAIL' },
+        },
+      ],
+      await current(fetch),
+    );
+    expect(queue.problems).toEqual([]);
+    const p = checkPlan(cloudflare, await plan(ctxFor(fetch), queue.file));
+    expect(p.changes.map((c) => `${c.op} ${c.resource}`)).toEqual([
+      'create queue:acme-mail',
+      `update ${W('acme-api')}`,
+    ]);
+    expect(p.changes[0].after).toEqual({ deliveryDelay: 0, deliveryPaused: false, retention: 86_400 });
+    expect(p.reversible).toBe(true);
+    expect((await apply(runner(fetch), p)).ok).toBe(true);
+    const [made1, bound] = fetch.calls.filter((c) => c.method !== 'GET');
+    expect(made1).toMatchObject({
+      path: `${a}/queues`,
+      body: {
+        queue_name: 'acme-mail',
+        settings: { delivery_delay: 0, delivery_paused: false, message_retention_period: 86_400 },
+      },
+    });
+    expect(bound.body.bindings).toContainEqual({ name: 'MAIL', type: 'queue', queue_name: 'acme-mail' });
+
+    // A Durable Object is added to the file, but the plan waits for its Worker's code.
+    const counter = made(
+      [
+        {
+          op: 'create',
+          kind: 'durable-object',
+          name: 'acme-api_Ticket',
+          attrs: { class: 'Ticket', script: 'acme-api' },
+        },
+      ],
+      await current(account()),
+    );
+    expect(counter.problems).toEqual([]);
+    await expect(plan(ctxFor(account()), counter.file)).rejects.toThrow(/made by a migration in its Worker’s code/u);
   });
 
   it('rolls a Worker back with a deployment of its earlier versions, forced only when asked', async () => {

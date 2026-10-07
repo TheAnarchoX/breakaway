@@ -1,9 +1,16 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, boardApi } from './helpers.js';
-import { FAKE_EDITABLE, fakeProvider } from './fake-infra-provider.js';
-import { checkEditable, checkProvider, editableKinds, ProviderRegistry } from '../src/infra-provider.js';
-import { cloudflare, EDITABLE, MANAGED } from '../src/infra-cloudflare.js';
+import { FAKE_CREATABLE, FAKE_EDITABLE, fakeProvider } from './fake-infra-provider.js';
+import {
+  checkCreatable,
+  checkEditable,
+  checkProvider,
+  creatableKinds,
+  editableKinds,
+  ProviderRegistry,
+} from '../src/infra-provider.js';
+import { cloudflare, CREATABLE, EDITABLE, MANAGED } from '../src/infra-cloudflare.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
@@ -124,6 +131,106 @@ describe('Cloudflare’s editable settings (BRK-262)', () => {
   });
 });
 
+describe('creatable kinds in the provider interface (BRK-270)', () => {
+  const provider = fakeProvider({ id: 'fake-creatable' });
+  const base = () => structuredClone(FAKE_CREATABLE.database);
+  /** @param {(c: any) => void} change */
+  const one = (change, kind = 'database') => {
+    const c = base();
+    change(c);
+    return () => checkCreatable(provider, kind, c);
+  };
+
+  it('passes the fake’s and Cloudflare’s, and lists each kind with one list of fields', () => {
+    expect(() => checkProvider(provider)).not.toThrow();
+    expect(() => checkProvider(cloudflare)).not.toThrow();
+    const kinds = creatableKinds(provider);
+    expect(Object.keys(kinds)).toEqual(['service', 'database']);
+    expect(kinds.service.fields).toEqual([
+      { ...FAKE_EDITABLE.service.fields[0], required: true, default: 1 },
+      FAKE_EDITABLE.service.fields[1],
+    ]);
+    expect(kinds.database).toMatchObject({
+      label: 'Database',
+      fields: [
+        { path: 'engine', type: 'text' },
+        { path: 'size', type: 'choice', default: 'small' },
+      ],
+      bind: { kind: 'service', list: 'uses', required: true, target: { type: 'database', by: 'id' } },
+    });
+    expect(creatableKinds({ ...provider, creatable: undefined })).toEqual({});
+  });
+
+  it('refuses one without a label, a name rule, or with fields, defaults, or a binding that don’t fit', () => {
+    expect(one((c) => delete c.label)).toThrow(/no label or no help/u);
+    expect(one((c) => delete c.name.help)).toThrow(/name has no label or no help/u);
+    expect(one((c) => (c.name.pattern = '('))).toThrow(/isn't a regular expression/u);
+    expect(one((c) => (c.name.max = 0))).toThrow(/max is not a whole number/u);
+    expect(one((c) => c.fields.push({ path: 'size', label: 'S', type: 'text', help: 'h' }))).toThrow(
+      /size: is editable already/u,
+    );
+    expect(one((c) => (c.required = ['nope']))).toThrow(/requires nope, which isn't one of its fields/u);
+    expect(one((c) => (c.defaults = { size: 'huge' }))).toThrow(/default size: Size is one of small, large/u);
+    expect(one((c) => (c.defaults = { nope: 1 }))).toThrow(/default for nope/u);
+    expect(one((c) => (c.bind.kind = 'gadget'))).toThrow(/bind names no kind/u);
+    expect(one((c) => (c.bind.target.kind = 'service'))).toThrow(/binds service, not database/u);
+    expect(one((c) => (c.bind.required = 'yes'))).toThrow(/required is not true or false/u);
+    expect(one((c) => (c.needsCode = ' '))).toThrow(/needsCode is empty/u);
+    expect(one(() => {}, 'gadget')).toThrow(/doesn't declare gadget/u);
+    expect(() => checkProvider({ ...provider, creatable: {} })).toThrow(/creatable is not a function/u);
+  });
+});
+
+describe('Cloudflare’s creatable kinds (BRK-270)', () => {
+  const kinds = creatableKinds(cloudflare);
+
+  it('covers every kind Architect plans, each with a name rule', () => {
+    expect(Object.keys(CREATABLE).sort()).toEqual(Object.keys(MANAGED).sort());
+    expect(Object.keys(kinds).sort()).toEqual(Object.keys(MANAGED).sort());
+    for (const k of Object.values(kinds)) {
+      expect(k.name.pattern).toBeTruthy();
+      expect(k.name.max).toBeGreaterThan(0);
+    }
+    expect(new RegExp(kinds.queue.name.pattern, 'u').test('acme-jobs')).toBe(true);
+    expect(new RegExp(kinds.queue.name.pattern, 'u').test('Acme_Jobs')).toBe(false);
+    expect(new RegExp(kinds.r2.name.pattern, 'u').test('ab')).toBe(false);
+    expect(new RegExp(kinds['custom-domain'].name.pattern, 'u').test('api.acme.example')).toBe(true);
+    expect(new RegExp(kinds['durable-object'].name.pattern, 'u').test('acme-api_Counter')).toBe(true);
+  });
+
+  it('binds a database, namespace, bucket, and queue to a Worker, required, and a Worker by its name', () => {
+    for (const k of ['d1', 'kv', 'r2', 'queue'])
+      expect(kinds[k].bind).toMatchObject({ kind: 'worker', list: 'bindings', required: true, target: { by: 'id' } });
+    expect(kinds.worker.bind).toEqual({
+      kind: 'worker',
+      list: 'bindings',
+      target: { type: 'service', label: 'Worker', kind: 'worker', field: 'service', by: 'name' },
+    });
+    for (const k of ['route', 'custom-domain', 'durable-object', 'container']) expect(kinds[k].bind).toBeUndefined();
+  });
+
+  it('gives a new Worker today’s compatibility date and says it starts with a script that answers /health', () => {
+    const date = kinds.worker.fields.find((f) => f.path === 'compatibilityDate');
+    expect(date).toMatchObject({ required: true, default: new Date().toISOString().slice(0, 10) });
+    expect(kinds.worker.help).toMatch(/\/health/u);
+    expect(kinds.queue.fields.find((f) => f.path === 'retention')?.default).toBe(345_600);
+  });
+
+  it('asks a route and a custom domain for a zone and a Worker', () => {
+    for (const k of ['route', 'custom-domain'])
+      expect(kinds[k].fields.filter((f) => f.required).map((f) => f.path)).toEqual(['zone', 'worker']);
+  });
+
+  it('says what code a Durable Object and a container need, and nothing else does', () => {
+    expect(kinds['durable-object'].needsCode).toMatch(/exports the class/u);
+    expect(kinds['durable-object'].fields.filter((f) => f.required).map((f) => f.path)).toEqual(['class', 'script']);
+    expect(kinds.container.needsCode).toMatch(/image/u);
+    expect(kinds.container.fields.filter((f) => f.required).map((f) => f.path)).toEqual(['image', 'maxInstances']);
+    for (const k of ['worker', 'queue', 'r2', 'kv', 'd1', 'route', 'custom-domain'])
+      expect(kinds[k].needsCode).toBeUndefined();
+  });
+});
+
 describe('GET /api/infra/environments/<id>/editable (BRK-262)', () => {
   const PROVIDER = 'fake-editable-route';
   /** @type {Record<string, any>} */
@@ -172,7 +279,9 @@ describe('GET /api/infra/environments/<id>/editable (BRK-262)', () => {
         environment: 'editable-staging',
         environmentId: id,
         kinds: FAKE_EDITABLE,
+        creatable: creatableKinds(fakeProvider()),
       });
+      expect(Object.keys(got.editable.creatable)).toEqual(['service', 'database']);
     }
     expect(await count()).toBe(before);
   });
