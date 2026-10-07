@@ -19,6 +19,7 @@
  * marked failed, and sent as a signal, so a production one opens an incident (BRK-197).
  */
 import { AgentError } from './store-agents.js';
+import { historySelect } from './store-infra-audit.js';
 import { GitHubError, appCredentials } from './github.js';
 import { install } from './install.js';
 import { runsTheBoard } from './infra-environments.js';
@@ -42,6 +43,8 @@ import {
 } from './infra-runs.js';
 
 const SELECT = 'SELECT r.*, e.name AS env_name FROM infra_runs r JOIN infra_environments e ON e.id = r.environment';
+/** The same, for the run lists and a run's page: a removed environment's runs stay, named as it was (BRK-265). */
+const SELECT_READ = historySelect('infra_runs', 'r');
 const MINUTE = 60_000;
 /** How long GitHub's OIDC keys are kept before they're read again. */
 const KEYS_MS = 60 * MINUTE;
@@ -633,7 +636,7 @@ export const infraRunsMethods = {
       const envId = environment ? this.environmentRow(environment, slug).id : null;
       const rows = this.sql
         .exec(
-          `${SELECT} WHERE (? IS NULL OR r.repo = ?) AND (? IS NULL OR r.environment = ?) ORDER BY r.n DESC LIMIT 100`,
+          `${SELECT_READ} WHERE (? IS NULL OR r.repo = ?) AND (? IS NULL OR r.environment = ?) ORDER BY r.n DESC LIMIT 100`,
           slug,
           slug,
           envId,
@@ -647,7 +650,9 @@ export const infraRunsMethods = {
   /** GET /api/infra/runs/<plan>, signed in: the plan's run, or a 404 when it has none. */
   runApi(ref) {
     return this.run(async () => {
-      const row = this.runRow(ref);
+      const n = Number(String(ref ?? '').replace(/^plan-/u, ''));
+      const row =
+        Number.isSafeInteger(n) && n > 0 ? this.sql.exec(`${SELECT_READ} WHERE r.n = ?`, n).toArray()[0] : null;
       if (!row) throw new AgentError(`${String(ref ?? '').slice(0, 40)} has no run`, 404);
       return { status: 200, body: { run: runView(row) } };
     });

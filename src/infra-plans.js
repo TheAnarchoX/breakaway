@@ -277,7 +277,7 @@ export function blastRadius(diff, inventory) {
 
 /**
  * A plan's row as the API shows it. The summary (`full` false) leaves out the diff's settings and the blast radius's
- * list, for the list of plans.
+ * list, for the list of plans. `environment.removed` is true when the plan's environment was removed (BRK-265).
  * @param {Record<string, any>} row
  * @param {{ full?: boolean }} [options]
  */
@@ -289,7 +289,7 @@ export function planView(row, { full = true } = {}) {
   return {
     id: planId(Number(row.n)),
     repo: row.repo,
-    environment: { id: Number(row.environment), name: row.env_name },
+    environment: { id: Number(row.environment), name: row.env_name, ...(row.env_gone ? { removed: true } : {}) },
     provider: row.provider,
     target: row.target ?? null,
     desiredSha: row.desired_sha ?? null,

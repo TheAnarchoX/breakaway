@@ -7,6 +7,9 @@
  * A real provider is built a step at a time. `notYet` names the steps it doesn't have yet, each with the task that
  * builds it (`{ plan: 'BRK-192' }`): those steps must refuse, saying they aren't built yet, and the tests that need them
  * show as todo, naming the task. The task that builds a step takes it out of `notYet`.
+ *
+ * A provider that says which settings the console can change (`editable`, BRK-262) has each one checked, and the plan
+ * shown to compare it: a yes or no, a number, or a choice changed on a resource it discovers plans a change to it.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -20,6 +23,7 @@ import {
   checkSignals,
   declares,
   desiredFrom,
+  editableKinds,
   ENVELOPE_CHANGES,
 } from '../src/infra-provider.js';
 
@@ -39,6 +43,22 @@ const NEEDS = {
   cost: ['cost'],
   events: ['events'],
 };
+
+/**
+ * A value for field `f` that isn't `now`, or undefined for a type the contract doesn't try.
+ * @param {import('../src/infra-provider.js').EditableField} f
+ * @param {unknown} now
+ */
+function otherValue(f, now) {
+  if (f.type === 'yesno') return !now;
+  if (f.type === 'choice') return f.options?.find((o) => o.value !== now)?.value;
+  if (f.type === 'number') {
+    const n = typeof now === 'number' ? now : (f.min ?? 0);
+    const next = n + 1;
+    return f.max !== undefined && next > f.max ? n - 1 : next === now ? next + 1 : next;
+  }
+  return undefined;
+}
 
 /**
  * @param {string} name
@@ -93,6 +113,31 @@ export function providerContract(name, setup, { notYet = {} } = {}) {
         if (ENVELOPE_CHANGES.includes(c.op)) expect(declares(provider, c.kind, c.op)).toBe(true);
         if (!c.reversible) expect(c.why).toBeTruthy();
       }
+    });
+
+    step('plan')('says which settings the console can change, each one the plan compares', async () => {
+      const { provider, ctx } = await setup();
+      const kinds = editableKinds(provider);
+      if (typeof provider.editable !== 'function') return expect(kinds).toEqual({});
+      expect(Object.keys(kinds).length).toBeGreaterThan(0);
+      const found = await provider.discover(ctx);
+      let tried = 0;
+      for (const r of found.resources)
+        for (const f of kinds[r.kind]?.fields ?? []) {
+          if (f.path.includes('.')) continue;
+          const value = otherValue(f, r.attrs?.[f.path]);
+          if (value === undefined) continue;
+          const desired = desiredFrom(found);
+          const mine = desired.resources.find((x) => x.id === r.id);
+          mine.attrs = { ...mine.attrs, [f.path]: value };
+          const plan = checkPlan(provider, await provider.plan(ctx, desired), ctx);
+          expect(
+            plan.changes.map((c) => c.resource),
+            `${r.kind} ${f.path}`,
+          ).toContain(r.id);
+          tried++;
+        }
+      expect(tried).toBeGreaterThan(0);
     });
 
     step('apply')('applies a plan and then plans nothing more', async () => {

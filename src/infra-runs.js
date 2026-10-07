@@ -250,7 +250,8 @@ export function stepsSummary(steps) {
 
 /**
  * A run as the API shows it: never its lock's token. `steps` and `rollbackSteps` are what each run reported, one per
- * change it tried, in order: `{ resource, op, ok, error? }`, or null until it reports them.
+ * change it tried, in order: `{ resource, op, ok, error? }`, or null until it reports them. `environment.removed` is
+ * true when the run's environment was removed (BRK-265).
  * @param {Record<string, any>} row
  */
 export function runView(row) {
@@ -258,7 +259,7 @@ export function runView(row) {
   return {
     plan: `plan-${Number(row.n)}`,
     repo: row.repo,
-    environment: { id: Number(row.environment), name: row.env_name },
+    environment: { id: Number(row.environment), name: row.env_name, ...(row.env_gone ? { removed: true } : {}) },
     githubEnvironment: row.github_env ?? row.env_name,
     phase: row.phase,
     rollback:

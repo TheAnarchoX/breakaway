@@ -75,6 +75,247 @@ export const CLOUDFLARE_KINDS = Object.fromEntries(
   ]),
 );
 
+/**
+ * How a Worker's binding names the resource it binds, for the console (BRK-262): by the resource's ID in the desired
+ * state, which the plan resolves, or a Worker by its name.
+ * @type {import('./infra-provider.js').BindingTarget[]}
+ */
+const BINDABLE = [
+  { type: 'd1', label: 'D1 database', kind: 'd1', field: 'resource', by: 'id' },
+  { type: 'kv_namespace', label: 'KV namespace', kind: 'kv', field: 'resource', by: 'id' },
+  { type: 'r2_bucket', label: 'R2 bucket', kind: 'r2', field: 'resource', by: 'id' },
+  { type: 'queue', label: 'Queue', kind: 'queue', field: 'resource', by: 'id' },
+  { type: 'service', label: 'Worker', kind: 'worker', field: 'service', by: 'name' },
+];
+const CRON = '^\\S+( \\S+){4}$';
+const VALUES_ELSEWHERE = 'Set with the Worker’s deploy, never here.';
+
+/**
+ * The settings the console may change, by kind (BRK-262; docs/specs/BRK-258-plan-from-the-board.md): exactly what the
+ * plan manages (MANAGED), and nothing it can't. A Worker's variables and secrets are shown by name and never changed;
+ * a database, a KV namespace, and a Durable Object namespace have no setting Architect changes.
+ * @type {Record<string, import('./infra-provider.js').Editable>}
+ */
+export const EDITABLE = {
+  worker: {
+    fields: [
+      {
+        path: 'compatibilityDate',
+        label: 'Compatibility date',
+        type: 'text',
+        pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+        help: 'The date of the Workers runtime the Worker runs as, like 2026-09-01.',
+      },
+      {
+        path: 'compatibilityFlags',
+        label: 'Compatibility flags',
+        type: 'names',
+        pattern: '^[a-z0-9_]+$',
+        help: 'Runtime features to turn on or off, like nodejs_compat.',
+      },
+      {
+        path: 'usageModel',
+        label: 'Usage model',
+        type: 'choice',
+        optional: true,
+        options: [
+          { value: 'standard', label: 'Standard' },
+          { value: 'bundled', label: 'Bundled' },
+          { value: 'unbound', label: 'Unbound' },
+        ],
+        help: 'How Cloudflare bills its requests. Standard is the one new Workers get.',
+      },
+      {
+        path: 'observability',
+        label: 'Workers Logs',
+        type: 'yesno',
+        help: 'Keep the Worker’s logs on Cloudflare, to read in its dashboard.',
+      },
+      {
+        path: 'placement',
+        label: 'Placement',
+        type: 'choice',
+        optional: true,
+        options: [{ value: 'smart', label: 'Smart' }],
+        help: 'Smart runs it near what it calls most. Unset runs it near whoever sent the request.',
+      },
+      {
+        path: 'crons',
+        label: 'Cron triggers',
+        type: 'names',
+        pattern: CRON,
+        help: 'When Cloudflare runs it on a schedule, in cron’s five fields, in UTC.',
+      },
+      {
+        path: 'bindings',
+        label: 'Bindings',
+        type: 'bindings',
+        targets: BINDABLE,
+        help: 'The environment’s databases, namespaces, buckets, queues, and Workers it reaches, each by a name its code uses. Variables and secrets are kept as they are.',
+      },
+    ],
+    shown: [{ path: 'secrets', label: 'Secrets', help: VALUES_ELSEWHERE }],
+  },
+  // Bounds from Cloudflare's docs: a delivery delay of 0 to 86,400 seconds
+  // (developers.cloudflare.com/queues/configuration/javascript-apis/), retention of 60 seconds to 14 days
+  // (Queues changelog, 14 Feb 2025). Concurrency's 250 is Queues' limit as last read; Cloudflare refuses past its real one.
+  queue: {
+    fields: [
+      {
+        path: 'deliveryDelay',
+        label: 'Delivery delay',
+        type: 'number',
+        integer: true,
+        min: 0,
+        max: 86_400,
+        unit: 'seconds',
+        optional: true,
+        help: 'How long a message waits before its consumer gets it.',
+      },
+      {
+        path: 'deliveryPaused',
+        label: 'Delivery paused',
+        type: 'yesno',
+        help: 'Hold every message in the queue until delivery is turned back on.',
+      },
+      {
+        path: 'retention',
+        label: 'Retention',
+        type: 'number',
+        integer: true,
+        min: 60,
+        max: 1_209_600,
+        unit: 'seconds',
+        optional: true,
+        help: 'How long a message is kept when nothing takes it.',
+      },
+      {
+        path: 'maxConcurrency',
+        label: 'Most consumers at once',
+        type: 'number',
+        integer: true,
+        min: 1,
+        max: 250,
+        optional: true,
+        help: 'How many copies of its consumer Worker run at the same time. Unset lets Cloudflare decide.',
+      },
+    ],
+  },
+  r2: {
+    fields: [
+      {
+        path: 'cors',
+        label: 'CORS rules',
+        type: 'rules',
+        template: { allowed: { origins: [], methods: ['GET'] } },
+        fields: [
+          {
+            path: 'allowed.origins',
+            label: 'Origins',
+            type: 'names',
+            help: 'The sites whose pages may read the bucket, like https://acme.example.',
+          },
+          {
+            path: 'allowed.methods',
+            label: 'Methods',
+            type: 'names',
+            pattern: '^(GET|PUT|POST|DELETE|HEAD)$',
+            help: 'GET, PUT, POST, DELETE, or HEAD.',
+          },
+          { path: 'allowed.headers', label: 'Headers', type: 'names', help: 'Request headers they may send.' },
+          {
+            path: 'exposeHeaders',
+            label: 'Exposed headers',
+            type: 'names',
+            help: 'Response headers their pages may read.',
+          },
+          {
+            path: 'maxAgeSeconds',
+            label: 'Cache for',
+            type: 'number',
+            integer: true,
+            min: 0,
+            unit: 'seconds',
+            optional: true,
+            help: 'How long a browser keeps the answer before it asks again.',
+          },
+        ],
+        help: 'Which other sites’ pages may read the bucket from a browser.',
+      },
+      {
+        path: 'lifecycle',
+        label: 'Lifecycle rules',
+        type: 'rules',
+        template: {
+          enabled: true,
+          conditions: { prefix: '' },
+          deleteObjectsTransition: { condition: { type: 'Age' } },
+        },
+        fields: [
+          { path: 'id', label: 'Name', type: 'text', help: 'A name for the rule, unique in the bucket.' },
+          { path: 'enabled', label: 'On', type: 'yesno', help: 'Whether the rule runs.' },
+          {
+            path: 'conditions.prefix',
+            label: 'Prefix',
+            type: 'text',
+            help: 'The objects it applies to, by the start of their key. Empty is every object.',
+          },
+          {
+            path: 'deleteObjectsTransition.condition.maxAge',
+            label: 'Delete after',
+            type: 'number',
+            integer: true,
+            min: 1,
+            unit: 'seconds',
+            optional: true,
+            help: 'How old an object gets before Cloudflare deletes it.',
+          },
+        ],
+        help: 'When Cloudflare deletes old objects from the bucket.',
+      },
+    ],
+  },
+  container: {
+    fields: [
+      {
+        path: 'maxInstances',
+        label: 'Most instances',
+        type: 'number',
+        integer: true,
+        min: 1,
+        help: 'How many of its containers may run at once: its scale.',
+      },
+    ],
+  },
+  route: {
+    name: {
+      label: 'Pattern',
+      pattern: '^\\S+$',
+      help: 'The hostname and path it sends to its Worker, like api.acme.example/*.',
+    },
+    fields: [
+      {
+        path: 'worker',
+        label: 'Worker',
+        type: 'resource',
+        kinds: ['worker'],
+        help: 'The Worker it sends requests to.',
+      },
+    ],
+  },
+  'custom-domain': {
+    fields: [
+      { path: 'worker', label: 'Worker', type: 'resource', kinds: ['worker'], help: 'The Worker the hostname serves.' },
+    ],
+  },
+};
+
+/**
+ * What the console may change on a resource of `kind` (BRK-262), or null when Architect changes nothing on it.
+ * @param {string} kind
+ */
+export const editable = (kind) => EDITABLE[kind] ?? null;
+
 /** The scheduling policy whose container applications Cloudflare scales and rolls out; any other is the code's. */
 export const DEFAULT_SCHEDULING = 'default';
 
@@ -1421,6 +1662,7 @@ export const cloudflare = {
   },
   refuses,
   outside,
+  editable,
   discover,
   plan: (ctx, desired) => plan(ctx, desired),
   apply: (ctx, p) => apply(ctx, p),
