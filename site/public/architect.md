@@ -30,7 +30,7 @@ A plan that waits for you pushes to your phone. Open it, read it, and press **Ap
 
 ![A plan for staging on a phone: plan-2, from pull request #41, waiting for you: 2 changes, plus 6.40 dollars a month, estimated, touching 1 more resource, and it can be undone. What changes: widgets-exports-staging scales from 3 to 4. At the bottom, Reject and Approve.](https://leavethepack.dev/media/plan-dark.png "A plan that waits for you, on a phone.")
 
-Every plan asks you, in every environment, until you say otherwise. **Freeze** an environment, and every plan there stops, envelopes included, until you unfreeze it.
+Every plan asks you, in every environment, until you say otherwise. **Freeze** an environment, and every plan there stops, envelopes included, until you unfreeze it. Freezing production pauses its deploys too; Roll back still works.
 
 ## 4. Bounds you set once
 
