@@ -75,7 +75,7 @@ Deploy runs on every push to `main` of the install repository, so editing `break
 
 ### Updating
 
-For `stable`, merge the Update workflow’s pull request. For `main`, do nothing. To update by hand, edit `breakaway.json`'s `version` and merge, or run Deploy from the Actions tab.
+For `stable`, merge the Update workflow’s pull request. For `main`, do nothing. Coming from 1.5? [Updating to 2.0.0](/docs/updating-to-2/) says what that update changes. To update by hand, edit `breakaway.json`'s `version` and merge, or run Deploy from the Actions tab.
 
 The board’s **Connections** page has a **Version** row that says what the board runs and the latest release in its channel. If it says a release “isn’t running yet”, open Actions on the install repository: the Deploy run says why it stopped.
 

@@ -3,6 +3,8 @@ import { unknownSubcommand } from './cli.js';
 import { InfraActError, actText, heldRun, infraAct, parseAct } from './infra-act.js';
 
 const AGENT = 'claude-run-7';
+/** A made-up act key, the shape the board hands a run. */
+const KEY = `act_${'0a'.repeat(32)}`;
 
 const run = (fields = {}) => ({
   uuid: '11111111-2222-3333-4444-555555555555',
@@ -70,11 +72,12 @@ describe('infra act', () => {
       ...b,
       repo: 'widgets',
       agent: AGENT,
+      key: KEY,
     });
     expect(b.sent[1]).toEqual([
       'POST',
       'infra/envelopes/production/act',
-      { resource: 'acme-api', change: 'scale', value: 6, task: 'RUN-7', by: AGENT, repo: 'widgets' },
+      { resource: 'acme-api', change: 'scale', value: 6, task: 'RUN-7', by: AGENT, key: KEY, repo: 'widgets' },
     ]);
     expect(result.code).toBe(0);
     expect(result.text).toContain('Scale acme-api to 6 in production: inside its envelope (6 is within 2 to 10).');
@@ -90,7 +93,12 @@ describe('infra act', () => {
         data: { act: { inside: false, why: '3 restarts used today', plan: plan({ id: 'plan-10', state: 'waiting' }) } },
       },
     });
-    const result = await infraAct(['production', 'acme-api', 'restart'], { ...b, repo: 'widgets', agent: AGENT });
+    const result = await infraAct(['production', 'acme-api', 'restart'], {
+      ...b,
+      repo: 'widgets',
+      agent: AGENT,
+      key: KEY,
+    });
     expect(b.sent[1][2]).toMatchObject({ change: 'restart', value: null });
     expect(result.text).toContain('Restart acme-api in production: waits for the owner (3 restarts used today).');
     expect(result.text).toContain('plan-10 · Waiting for you: the owner approves or rejects it on the board.');
@@ -102,6 +110,7 @@ describe('infra act', () => {
       ...b,
       repo: 'widgets',
       agent: AGENT,
+      key: KEY,
       opts: { task: 'RUN-3' },
     });
     expect(b.sent).toHaveLength(1);
@@ -111,7 +120,7 @@ describe('infra act', () => {
   it('refuses before the act when the agent holds no run, or several', async () => {
     const none = board({ tasks: [run({ claim: 'someone-else' }), run({ project: 'board', wid: 'BRK-1' })] });
     await expect(
-      infraAct(['production', 'acme-api', 'restart'], { ...none, repo: 'widgets', agent: AGENT }),
+      infraAct(['production', 'acme-api', 'restart'], { ...none, repo: 'widgets', agent: AGENT, key: KEY }),
     ).rejects.toThrow(/holds no routine run here: only a runbook’s agent acts/u);
     expect(none.sent.filter(([m]) => m === 'POST')).toHaveLength(0);
 
@@ -126,6 +135,26 @@ describe('infra act', () => {
     ).rejects.toBeInstanceOf(InfraActError);
   });
 
+  it('sends the run’s act key from the environment only, and refuses before a request without it (BRK-252)', async () => {
+    const b = board();
+    for (const key of [null, '', '  '])
+      await expect(
+        infraAct(['production', 'acme-api', 'restart'], { ...b, repo: 'widgets', agent: AGENT, key }),
+      ).rejects.toThrow(/set BREAKAWAY_ACT_KEY to the Act key in your payload first/u);
+    await expect(
+      infraAct(['production', 'acme-api', 'restart'], {
+        ...b,
+        repo: 'widgets',
+        agent: AGENT,
+        key: KEY,
+        opts: { key: KEY },
+      }),
+    ).rejects.toThrow(/never goes on the command line/u);
+    expect(b.sent).toEqual([]);
+    await infraAct(['production', 'acme-api', 'restart'], { ...b, repo: 'widgets', agent: AGENT, key: ` ${KEY}\n` });
+    expect(b.sent.at(-1)[2].key).toBe(KEY);
+  });
+
   it('passes the board’s refusal through in its words, and exits 1', async () => {
     const b = board({
       act: {
@@ -134,7 +163,12 @@ describe('infra act', () => {
         data: { error: 'RUN-7 isn’t a runbook’s run: only a runbook’s agent acts in an envelope' },
       },
     });
-    const result = await infraAct(['production', 'acme-api', 'restart'], { ...b, repo: 'widgets', agent: AGENT });
+    const result = await infraAct(['production', 'acme-api', 'restart'], {
+      ...b,
+      repo: 'widgets',
+      agent: AGENT,
+      key: KEY,
+    });
     expect(result.code).toBe(1);
     expect(result.text).toBe(
       'The board refused it: RUN-7 isn’t a runbook’s run: only a runbook’s agent acts in an envelope',
@@ -150,7 +184,7 @@ describe('infra act', () => {
       act: { ok: false, status: 404, data: { error: 'no route for POST /api/infra/envelopes/production/act' } },
     });
     await expect(
-      infraAct(['production', 'acme-api', 'restart'], { ...b, repo: 'widgets', agent: AGENT }),
+      infraAct(['production', 'acme-api', 'restart'], { ...b, repo: 'widgets', agent: AGENT, key: KEY }),
     ).rejects.toThrow(/doesn’t have envelopes yet/u);
   });
 

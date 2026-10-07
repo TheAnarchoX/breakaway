@@ -146,8 +146,8 @@ describe('envelopes on the board (BRK-186)', () => {
     });
   const set = (environment, envelope) =>
     board(`infra/envelopes/${environment.id}`, { method: 'PUT', body: { envelope } }).then(body);
-  const act = (environment, fields, by = AGENT, task = run.wid) =>
-    api(`infra/envelopes/${environment.id}/act`, { method: 'POST', body: { by, task, ...fields } }).then(body);
+  const act = (environment, fields, by = AGENT, task = run.wid, key = run.key) =>
+    api(`infra/envelopes/${environment.id}/act`, { method: 'POST', body: { by, task, key, ...fields } }).then(body);
   const audit = async (environment) =>
     (await body(await api(`infra/audit?environmentId=${environment.id}`))).entries.reverse();
   const queued = (plan) =>
@@ -203,8 +203,10 @@ describe('envelopes on the board (BRK-186)', () => {
         uuid,
         Date.now(),
       );
-      return { uuid, wid: s.tasks.get(uuid).wid };
+      // The key the board hands the run's agent in its payload when it starts it (BRK-252).
+      return { uuid, wid: s.tasks.get(uuid).wid, key: await s.runbookActKey(uuid, AGENT) };
     });
+    expect(run.key).toMatch(/^act_[0-9a-f]{64}$/u);
     expect((await api(`tasks/${run.wid}/claim`, { method: 'POST', body: { agent: AGENT } })).status).toBe(200);
   });
   afterEach(async () => {
@@ -420,6 +422,55 @@ describe('envelopes on the board (BRK-186)', () => {
       s.sql.exec('UPDATE infra_environments SET frozen = 1 WHERE id = ?', staging.id),
     );
     expect((await act(staging, { resource: 'api', change: 'scale', value: 3 })).status).toBe(409);
+  });
+
+  it('takes an act only with the run’s own key, from its latest start, while it’s fresh (BRK-252)', async () => {
+    expect((await set(staging, { scale: [{ kind: 'service', min: 2, max: 10 }] })).status).toBe(200);
+    const ask = { resource: 'api', change: 'scale', value: 4 };
+    const acts = async () => (await body(await api(`infra/envelopes/${staging.id}`))).acts;
+    // Holding the run and naming it isn't enough: every agent holds the same token and can read the claims.
+    expect(await act(staging, ask, AGENT, run.wid, null)).toMatchObject({
+      status: 403,
+      error: expect.stringMatching(/needs the run’s own key: set BREAKAWAY_ACT_KEY/),
+    });
+    expect(await act(staging, ask, AGENT, run.wid, `act_${'ab'.repeat(32)}`)).toMatchObject({
+      status: 403,
+      error: expect.stringMatching(/isn’t this run’s act key/),
+    });
+    expect(await acts()).toEqual([]);
+    // The run's agent, with its key, acts.
+    expect(await act(staging, ask)).toMatchObject({ status: 200, act: { inside: true } });
+
+    // Starting the run again hands out a new key, and the last one stops working.
+    const old = run.key;
+    run.key = await runInDurableObject(store(), (s) => s.runbookActKey(run.uuid, AGENT));
+    expect(run.key).not.toBe(old);
+    expect((await act(staging, { ...ask, value: 5 }, AGENT, run.wid, old)).status).toBe(403);
+    // A key the board made for another agent on the run is refused to this one.
+    const theirs = await runInDurableObject(store(), (s) => s.runbookActKey(run.uuid, 'claude-other'));
+    expect((await act(staging, { ...ask, value: 5 }, AGENT, run.wid, theirs)).status).toBe(403);
+    run.key = await runInDurableObject(store(), (s) => s.runbookActKey(run.uuid, AGENT));
+    // The board keeps only its SHA-256.
+    const kept = await runInDurableObject(store(), (s) =>
+      s.sql.exec('SELECT hash FROM infra_act_keys WHERE task = ?', run.uuid).one(),
+    );
+    expect(kept.hash).toMatch(/^[0-9a-f]{64}$/u);
+    expect(kept.hash).not.toContain(run.key.slice(4));
+    // A key older than ACT_KEY_MS is refused.
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec('UPDATE infra_act_keys SET created = ? WHERE task = ?', Date.now() - 13 * 3_600_000, run.uuid),
+    );
+    expect(await act(staging, { ...ask, value: 5 })).toMatchObject({
+      status: 403,
+      error: expect.stringMatching(/more than 12 hours old/),
+    });
+    expect((await acts()).length).toBe(1);
+    run.key = await runInDurableObject(store(), (s) => s.runbookActKey(run.uuid, AGENT));
+    // A task that isn't a runbook's run gets no key.
+    const made = await body(
+      await api('tasks', { method: 'POST', body: [{ description: 'Not a run', project: 'ops', horizon: 'now' }] }),
+    );
+    expect(await runInDurableObject(store(), (s) => s.runbookActKey(made.tasks[0].uuid, AGENT))).toBeNull();
   });
 
   it('refuses an envelope on an observe-only environment', async () => {
