@@ -103,6 +103,92 @@ export function refuses(r, op) {
 }
 
 /**
+ * What an environment owns of what discovery found (BRK-251). Discovery follows the target's service and Durable
+ * Object bindings to other Workers, so it can reach the install's own Worker (`scope.board`) or another environment's
+ * target (`scope.others`): those are foreign, and so is everything reached only through them. The environment's own
+ * Workers are the target and the Workers it reaches without passing through a foreign one. A database, namespace,
+ * bucket, or queue is its own when one of its Workers binds, sends to, or consumes it; a Durable Object namespace when
+ * its class runs in one of its Workers, and a container application when its namespace is its own; a route or custom
+ * domain when it serves one of its Workers.
+ * @param {import('./infra-provider.js').Discovery} found
+ * @param {Record<string, unknown> | undefined} scope
+ */
+export function ownership(found, scope) {
+  const target = String(scope?.target ?? '');
+  const board = typeof scope?.board === 'string' && scope.board !== target ? scope.board : null;
+  const others = new Set(
+    (Array.isArray(scope?.others) ? scope.others : []).filter((w) => typeof w === 'string' && w && w !== target),
+  );
+  const foreign = (name) => name === board || others.has(name);
+  const byId = new Map(found.resources.map((r) => [r.id, r]));
+  const name = (id) => id.slice(id.indexOf(':') + 1);
+  const from = new Map();
+  for (const rel of found.relations) from.set(rel.from, [...(from.get(rel.from) ?? []), rel]);
+  /** @type {Set<string>} */
+  const workers = new Set();
+  const queue = byId.has(rid('worker', target)) ? [target] : [];
+  while (queue.length) {
+    const w = /** @type {string} */ (queue.shift());
+    if (workers.has(w) || foreign(w)) continue;
+    workers.add(w);
+    for (const rel of from.get(rid('worker', w)) ?? []) {
+      if (rel.kind === 'calls') queue.push(name(rel.to));
+      if (rel.kind === 'uses' && rel.to.startsWith('durable-object:'))
+        for (const runs of from.get(rel.to) ?? []) if (runs.kind === 'runs-in') queue.push(name(runs.to));
+    }
+  }
+  /** @type {Set<string>} */
+  const own = new Set([...workers].map((w) => rid('worker', w)));
+  for (const rel of found.relations) {
+    const r = byId.get(rel.to);
+    if (!r || !own.has(rel.from) || r.kind === 'durable-object' || r.kind === 'worker') continue;
+    own.add(r.id);
+  }
+  for (const rel of found.relations)
+    if (rel.kind === 'runs-in' && own.has(rel.to)) {
+      own.add(rel.from);
+      for (const runs of from.get(rel.from) ?? []) if (runs.kind === 'runs') own.add(runs.to);
+    }
+  return {
+    workers,
+    /** @param {string} w a Worker's name */
+    foreign,
+    /**
+     * Why the environment can't change this resource, in words, or null when it's its own.
+     * @param {string} environment
+     * @param {Resource} r
+     */
+    why(environment, r) {
+      if (r.kind === 'worker' && r.name === board)
+        return `${r.name} is the Worker this board runs on: Architect only observes it, so no plan or act changes it`;
+      if (r.kind === 'worker' && others.has(r.name))
+        return `${r.name} is another environment’s target: change it in that environment, not ${environment}`;
+      if (own.has(r.id)) return null;
+      return `${r.name} is reached only through a Worker outside ${environment} (the install’s own or another environment’s), so it isn’t ${environment}’s to change`;
+    },
+  };
+}
+
+/**
+ * Why an act can't change this resource in the environment (BRK-251): `ownership`'s answer, and for a queue's scale,
+ * the Worker consuming it, whose concurrency it sets, must be the environment's too.
+ * @param {import('./infra-provider.js').ProviderContext} ctx
+ * @param {import('./infra-provider.js').Discovery} found
+ * @param {Resource} r
+ * @returns {string | null}
+ */
+export function outside(ctx, found, r) {
+  const own = ownership(found, ctx.scope);
+  const why = own.why(ctx.environment, r);
+  if (why) return why;
+  const consumers = r.kind === 'queue' ? /** @type {any[]} */ (r.attrs?.consumers ?? []) : [];
+  const consumer = consumers.find((c) => c?.type === 'worker');
+  if (consumer && !own.workers.has(String(consumer.worker ?? '')))
+    return `${r.name} is consumed by ${consumer.worker}, which is outside ${ctx.environment}, so its concurrency isn’t ${ctx.environment}’s to change`;
+  return null;
+}
+
+/**
  * Cloudflare's Workers role the board reads Workers with (BRK-243): Metadata Read-Only at the Workers product scope,
  * which reads settings and never a Worker's code. It replaces the legacy Workers Scripts Read, which Cloudflare maps to
  * Content Read-Only (code included); a token made with that still works.
@@ -314,6 +400,9 @@ export function bindingTarget(b) {
  * @property {string[]} scripts
  * @property {Record<string, Array<Record<string, string>>>} bindings by Worker
  * @property {Record<string, string>} zones zone IDs by name
+ * @property {Array<{ pattern: string, zone: string, worker: string }>} routes every route on those zones, whichever
+ *   Worker it sends to, so a new one can't take a pattern another Worker already has (BRK-251)
+ * @property {Array<{ hostname: string, worker: string }>} domains every custom domain on the account, likewise
  */
 
 /**
@@ -333,7 +422,7 @@ export async function discover(ctx, { live = false } = {}) {
   /** @type {string[]} */
   const missing = [];
   /** @type {LiveAccount} */
-  const seen = { account: '', scripts: [], bindings: {}, zones: {} };
+  const seen = { account: '', scripts: [], bindings: {}, zones: {}, routes: [], domains: [] };
   const add = (r) => resources.set(r.id, r);
   const relate = (from, to, kind) => relations.set(`${from} ${kind} ${to}`, { from, to, kind });
   const done = () => ({
@@ -592,6 +681,7 @@ export async function discover(ctx, { live = false } = {}) {
     const routes =
       (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
     for (const route of routes) {
+      seen.routes.push({ pattern: String(route.pattern), zone: String(zone.name), worker: String(route.script ?? '') });
       if (!workers.has(String(route.script))) continue;
       add({
         id: rid('route', route.id),
@@ -606,6 +696,7 @@ export async function discover(ctx, { live = false } = {}) {
   // Custom domains attached to a Worker in scope.
   const domains = (await cf.get(`/accounts/${a}/workers/domains`, { permission: WORKERS_READ })).result ?? [];
   for (const d of domains) {
+    seen.domains.push({ hostname: String(d.hostname), worker: String(d.service ?? '') });
     if (!workers.has(String(d.service))) continue;
     add({
       id: rid('custom-domain', d.id),
@@ -1207,6 +1298,7 @@ export const cloudflare = {
     check: checkToken,
   },
   refuses,
+  outside,
   discover,
   plan: (ctx, desired) => plan(ctx, desired),
   apply: (ctx, p) => apply(ctx, p),

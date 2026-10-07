@@ -344,6 +344,154 @@ describe('the Cloudflare provider’s plan (BRK-192)', () => {
   });
 });
 
+describe('the Cloudflare provider keeps plans and acts inside the environment’s own resources (BRK-251)', () => {
+  const APP = rid('container', CONTAINER);
+  const scoped = (fetch, scope) => ctxFor(fetch, READ, { scope: { target: 'acme-api', ...scope } });
+  const edit = async (fetch, change) => {
+    const d = await current(fetch);
+    change(d);
+    return d;
+  };
+
+  it('never plans for the install’s Worker, and never changes or deletes it when the target reaches it', async () => {
+    const fetch = account();
+    await expect(plan(scoped(fetch, { board: 'acme-api' }), await current(fetch))).rejects.toThrow(
+      /acme-api is the Worker this board runs on: Architect only observes it/u,
+    );
+    // acme-api calls acme-auth: say acme-auth is the install's Worker.
+    const ctx = scoped(fetch, { board: 'acme-auth' });
+    expect((await plan(ctx, await current(fetch))).changes).toEqual([]);
+    const changeAuth = await edit(fetch, (d) => {
+      d.resources.find((r) => r.id === W('acme-auth')).attrs = { bindings: [] };
+    });
+    await expect(plan(ctx, changeAuth)).rejects.toThrow(/acme-auth is the Worker this board runs on/u);
+    // Left out of the desired state, it and what only it binds aren't deleted: they aren't the environment's.
+    const leftOut = await edit(fetch, (d) => {
+      d.resources = d.resources.filter((r) => r.id !== W('acme-auth') && r.id !== `kv:${KV_SESSIONS}`);
+    });
+    expect((await plan(ctx, leftOut)).changes).toEqual([]);
+    // A namespace only it binds isn't the environment's to change either.
+    await expect(
+      plan(
+        ctx,
+        await edit(fetch, (d) => {
+          d.resources.find((r) => r.id === `kv:${KV_SESSIONS}`).name = 'acme-sessions-2';
+        }),
+      ),
+    ).rejects.toThrow(/acme-sessions is reached only through a Worker outside production/u);
+    expect(fetch.writes()).toEqual([]);
+  });
+
+  it('refuses to delete what a Worker outside the environment still uses', async () => {
+    const fetch = account();
+    // The install's Worker binds the cache namespace too.
+    fetch.answers[`${a}/workers/scripts/acme-auth/settings`].result.bindings.push({
+      type: 'kv_namespace',
+      name: 'CACHE',
+      namespace_id: KV_CACHE,
+    });
+    const desired = await edit(fetch, (d) => {
+      const api = d.resources.find((r) => r.id === W('acme-api'));
+      api.attrs = { bindings: api.attrs.bindings.filter((b) => b.name !== 'CACHE') };
+      // The install's Worker isn't the environment's, so its desired state needn't list it.
+      d.resources = d.resources.filter(
+        (r) => r.id !== `kv:${KV_CACHE}` && r.id !== W('acme-auth') && r.id !== `kv:${KV_SESSIONS}`,
+      );
+    });
+    await expect(plan(scoped(fetch, { board: 'acme-auth' }), desired)).rejects.toThrow(
+      /acme-cache is still used by acme-auth, which is outside production: Architect never deletes what another Worker relies on/u,
+    );
+    expect(fetch.writes()).toEqual([]);
+  });
+
+  it('refuses a change to another environment’s target, or to what only it runs', async () => {
+    const fetch = account();
+    // acme-api binds acme-rooms' Room class: say acme-rooms is another environment's target.
+    const ctx = scoped(fetch, { others: ['acme-rooms'] });
+    expect((await plan(ctx, await current(fetch))).changes).toEqual([]);
+    await expect(
+      plan(
+        ctx,
+        await edit(fetch, (d) => {
+          d.resources.find((r) => r.id === APP).attrs = { maxInstances: 9 };
+        }),
+      ),
+    ).rejects.toThrow(/acme-rooms-sandbox is reached only through a Worker outside production/u);
+    await expect(
+      plan(
+        ctx,
+        await edit(fetch, (d) => {
+          d.resources.find((r) => r.id === W('acme-rooms')).attrs = { compatibilityDate: '2026-10-01' };
+        }),
+      ),
+    ).rejects.toThrow(/acme-rooms is another environment’s target: change it in that environment/u);
+    // Without that, the container is the environment's, through the class its target binds.
+    const own = await plan(
+      scoped(fetch, {}),
+      await edit(fetch, (d) => {
+        d.resources.find((r) => r.id === APP).attrs = { maxInstances: 9 };
+      }),
+    );
+    expect(own.changes.map((c) => `${c.op} ${c.resource}`)).toEqual([`update ${APP}`]);
+  });
+
+  it('sends a route or custom domain only to the environment’s Workers, on a pattern or hostname nobody has', async () => {
+    const fetch = account();
+    const ctx = scoped(fetch, { board: 'acme-auth' });
+    const route = (name, worker, kind = 'route') =>
+      edit(fetch, (d) => {
+        d.resources.push({ id: `${kind}:new`, kind, name, attrs: { zone: 'acme.example', worker } });
+      });
+    // A pattern or hostname another Worker already has.
+    await expect(plan(ctx, await route('other.acme.example/*', 'acme-api'))).rejects.toThrow(
+      /other\.acme\.example\/\* already sends to acme-other: a route can’t take a pattern that’s already in use/u,
+    );
+    await expect(plan(ctx, await route('other.acme.example', 'acme-api', 'custom-domain'))).rejects.toThrow(
+      /already sends to acme-other: a custom-domain can’t take a hostname/u,
+    );
+    // A Worker outside the environment, on the account or the install's own.
+    await expect(plan(ctx, await route('new.acme.example/*', 'acme-other'))).rejects.toThrow(
+      /would send to acme-other, which isn’t one of production’s Workers/u,
+    );
+    await expect(plan(ctx, await route('new.acme.example/*', 'acme-auth'))).rejects.toThrow(
+      /would send to acme-auth, which isn’t one of production’s Workers/u,
+    );
+    // A route already there can't be pointed outside the environment, or renamed onto a pattern in use.
+    const retarget = (worker) =>
+      edit(fetch, (d) => {
+        d.resources.find((r) => r.id === ROUTE).attrs.worker = worker;
+      });
+    await expect(plan(ctx, await retarget('acme-other'))).rejects.toThrow(/isn’t one of production’s Workers/u);
+    await expect(plan(ctx, await retarget('acme-auth'))).rejects.toThrow(/isn’t one of production’s Workers/u);
+    const renamed = await edit(fetch, (d) => {
+      d.resources.find((r) => r.id === ROUTE).name = 'other.acme.example/*';
+    });
+    await expect(plan(ctx, renamed)).rejects.toThrow(/already sends to acme-other/u);
+    // A new pattern, to the target, is fine.
+    const p = await plan(ctx, await route('new.acme.example/*', 'acme-api'));
+    expect(p.changes).toMatchObject([{ op: 'create', resource: 'route:new', after: { worker: 'acme-api' } }]);
+    expect(fetch.writes()).toEqual([]);
+  });
+
+  it('refuses an envelope act on a resource outside the environment', async () => {
+    const fetch = account();
+    const found = await cloudflare.discover(ctxFor(fetch));
+    const app = found.resources.find((r) => r.id === APP);
+    const jobs = found.resources.find((r) => r.id === rid('queue', QUEUE_JOBS));
+    const outside = (scope, r) => cloudflare.outside?.(scoped(fetch, scope), found, r) ?? null;
+    expect(outside({}, app)).toBeNull();
+    expect(outside({}, jobs)).toBeNull();
+    expect(outside({ others: ['acme-rooms'] }, app)).toMatch(/reached only through a Worker outside production/u);
+    expect(outside({ board: 'acme-rooms' }, app)).toMatch(/reached only through a Worker outside production/u);
+    const auth = found.resources.find((r) => r.id === W('acme-auth'));
+    expect(outside({ board: 'acme-auth' }, auth)).toMatch(/the Worker this board runs on/u);
+    // A queue whose Worker consumer is outside: its concurrency is that Worker's.
+    const theirs = structuredClone(jobs);
+    theirs.attrs.consumers = [{ type: 'worker', worker: 'acme-auth' }];
+    expect(outside({ board: 'acme-auth' }, theirs)).toMatch(/consumed by acme-auth, which is outside production/u);
+  });
+});
+
 describe('the Cloudflare provider’s apply (BRK-192)', () => {
   it('calls the expected API sequence with the write token, then plans nothing more', async () => {
     const fetch = account();
