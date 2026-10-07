@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
+  Bot,
   Circle,
   CircleCheck,
   CircleDashed,
   CircleOff,
-  ExternalLink,
-  FolderPlus,
   CirclePause,
+  Cloud,
+  ExternalLink,
+  FolderGit2,
+  FolderPlus,
+  GitBranch,
   Plug,
   RefreshCw,
+  Server,
   Settings,
+  Terminal,
   TriangleAlert,
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
@@ -40,17 +46,78 @@ import { RepoChip } from '../components/ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
-/** The groups the view shows, in order; the CLI, Taskwarrior, and push share one. */
-const GROUPS = [
-  { id: 'repos', label: 'Repositories', of: ['repos'] },
-  { id: 'board', label: 'Board', of: ['board'] },
-  { id: 'cloudflare', label: 'Cloudflare', of: ['cloudflare'] },
-  { id: 'github', label: 'GitHub', of: ['github'] },
-  { id: 'npm', label: 'npm', of: ['npm'] },
-  { id: 'claude', label: 'Claude', of: ['claude'] },
-  { id: 'providers', label: 'Providers', of: ['providers'] },
-  { id: 'sync', label: 'CLI, sync, and push', of: ['cli', 'taskwarrior', 'push'] },
+/**
+ * The sections every repository shares, in order (WEB-109). A row about one repository goes on that repository's
+ * card instead, whatever its group; a group the board adds later that isn't named here gets a section of its own.
+ */
+const SECTIONS = [
+  { id: 'board', label: 'Board', note: 'Where the board runs', Icon: Server, of: ['board', 'cloudflare', 'repos'] },
+  { id: 'github', label: 'GitHub', note: 'The App, its webhook, and GitHub’s status', Icon: GitBranch, of: ['github'] },
+  { id: 'claude', label: 'Agents', note: 'What agents start with and share', Icon: Bot, of: ['claude'] },
+  {
+    id: 'providers',
+    label: 'Infrastructure',
+    note: 'Providers Architect reads, each with a read-only token',
+    Icon: Cloud,
+    of: ['providers'],
+  },
+  {
+    id: 'tools',
+    label: 'Tools',
+    note: 'The CLI, Taskwarrior, push, and npm',
+    Icon: Terminal,
+    of: ['cli', 'taskwarrior', 'push', 'npm'],
+  },
 ];
+
+/** What a group's rows are called on a repository's card. */
+const PART = { github: 'GitHub', claude: 'Agents', providers: 'Infrastructure' };
+
+/** A row's name on its repository's card, which already says which repository it is. */
+const SHORT = {
+  'github.install': 'GitHub App installed',
+  'github.permissions': 'Permissions',
+  'github.pause': 'Deploy pause',
+  'github.automerge': 'Allow auto-merge',
+  'github.branch': 'Default branch',
+  'github.sync': 'Sync with GitHub',
+  'claude.routine': 'Agent routine',
+  'claude.output': 'Live output from sessions',
+};
+
+/** Rows that need attention first, then working, then not connected; otherwise as the board sent them. */
+const RANK = { attention: 0, working: 1, off: 2 };
+const byState = (rows) => [...rows].sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3));
+
+/**
+ * How many rows are in each state, in words, and the worst of them.
+ * @param {Record<string, any>[]} rows
+ */
+function tally(rows) {
+  const count = (state) => rows.filter((c) => c.state === state).length;
+  const attention = count('attention');
+  const working = count('working');
+  const off = count('off');
+  const parts = [];
+  if (attention) parts.push(`${attention} ${attention === 1 ? 'needs' : 'need'} attention`);
+  if (working) parts.push(`${working} working`);
+  if (off) parts.push(`${off} not connected`);
+  // A tile has room for the one that matters most.
+  const short = attention
+    ? parts[0]
+    : working
+      ? off
+        ? parts[0]
+        : working === 1
+          ? 'Working'
+          : `All ${working} working`
+      : parts[0];
+  return {
+    state: attention ? 'attention' : working ? 'working' : 'off',
+    words: parts.join(' · ') || 'Nothing yet',
+    short: short ?? 'Nothing yet',
+  };
+}
 
 export const STATE = {
   working: { label: 'Working', Icon: CircleCheck },
@@ -170,19 +237,22 @@ function StatusOverride({ on }) {
   );
 }
 
-/** @param {Record<string, any>} props */
-function Row({ c }) {
+/**
+ * One connection. On a repository's card (`onCard`) it goes by its short name, since the card names the repository.
+ * @param {Record<string, any>} props
+ */
+function Row({ c, onCard = false }) {
   const reading = c.state === 'working' ? READING[c.reading] : null;
   const { label, Icon } = reading ?? STATE[c.state] ?? STATE.off;
   return (
     <li class={`conn conn-${c.state}`}>
       <div class="conn-head">
+        <h3 class="conn-name">{onCard ? (SHORT[c.id] ?? c.name) : c.name}</h3>
+        {!onCard && rowRepo(c) && <RepoChip slug={rowRepo(c)} />}
         <span class={`conn-state conn-state-${reading && c.reading === 'unverified' ? 'unverified' : c.state}`}>
           <Icon size={15} aria-hidden="true" />
           {label}
         </span>
-        <h3 class="conn-name">{c.name}</h3>
-        {rowRepo(c) && <RepoChip slug={rowRepo(c)} />}
       </div>
       {c.detail && <p class="conn-detail">{c.detail}</p>}
       {c.update?.newer && !c.fix && c.link && (
@@ -251,24 +321,107 @@ function Row({ c }) {
   );
 }
 
-/** Each registered repository the switcher shows, with a link to its settings (WEB-30). */
-function RepoRows() {
-  const list = repos.value.list.filter((r) => inScope(r.slug));
-  if (!list.length) return null;
+/**
+ * One registered repository the switcher shows (WEB-109): its own connections, GitHub's then the agents', and a link
+ * to its settings (WEB-30).
+ * @param {{ repo: Record<string, any>, rows: Record<string, any>[] }} props
+ */
+function RepoCard({ repo, rows }) {
+  const { state, words } = tally(rows);
+  const parts = [...new Set(rows.map((c) => c.group))];
+  const id = `conn-repo-${repo.slug}`;
   return (
-    <ul class="conn-repos">
-      {list.map((r) => (
-        <li key={r.slug}>
-          <span>
-            <strong>{r.name}</strong> <span class="meta">{r.github}</span>
-          </span>
-          <a class="btn btn-outline btn-sm" href={repoSettingsHref(r.slug)}>
-            <Settings size={15} aria-hidden="true" />
-            Settings<span class="visually-hidden"> for {r.name}</span>
-          </a>
-        </li>
+    <section class={`conn-panel conn-repo is-${state}`} aria-labelledby={id}>
+      <header class="conn-panel-head">
+        <FolderGit2 size={18} aria-hidden="true" />
+        <div class="conn-panel-title">
+          <h3 id={id}>{repo.name}</h3>
+          <span class="meta">{repo.github}</span>
+        </div>
+        <a class="btn btn-outline btn-sm" href={repoSettingsHref(repo.slug)}>
+          <Settings size={15} aria-hidden="true" />
+          Settings<span class="visually-hidden"> for {repo.name}</span>
+        </a>
+        <p class={`conn-tally is-${state}`}>{rows.length ? words : 'Nothing to check for it yet'}</p>
+      </header>
+      {parts.map((group) => (
+        <div key={group} class="conn-part">
+          {parts.length > 1 && <h4 class="conn-part-title">{PART[group] ?? group}</h4>}
+          <ul class="conn-list">
+            {byState(rows.filter((c) => c.group === group)).map((c) => (
+              <Row key={`${c.id}:${c.repo ?? ''}`} c={c} onCard />
+            ))}
+          </ul>
+        </div>
       ))}
-    </ul>
+    </section>
+  );
+}
+
+/**
+ * One section the repositories share.
+ * @param {{ section: Record<string, any>, rows: Record<string, any>[] }} props
+ */
+function SharedSection({ section, rows }) {
+  const { state, words } = tally(rows);
+  const Icon = section.Icon ?? Plug;
+  return (
+    <section
+      id={`conn-${section.id}`}
+      tabIndex={-1}
+      class={`conn-panel is-${state}`}
+      aria-labelledby={`conn-${section.id}-title`}
+    >
+      <header class="conn-panel-head">
+        <Icon size={18} aria-hidden="true" />
+        <div class="conn-panel-title">
+          <h3 id={`conn-${section.id}-title`}>{section.label}</h3>
+          {section.note && <span class="meta">{section.note}</span>}
+        </div>
+        <p class={`conn-tally is-${state}`}>{words}</p>
+      </header>
+      <ul class="conn-list">
+        {byState(rows).map((c) => (
+          <Row key={`${c.id}:${c.repo ?? ''}`} c={c} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Each section at a glance, worst first in its colour; pressing one scrolls to it.
+ * @param {{ tiles: { id: string, label: string, Icon?: any, rows: Record<string, any>[] }[] }} props
+ */
+function Overview({ tiles }) {
+  if (tiles.length < 2) return null;
+  const jump = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+    el.focus({ preventScroll: true });
+  };
+  return (
+    <nav class="conn-overview" aria-label="Sections">
+      {tiles.map((t) => {
+        const { state, short } = tally(t.rows);
+        const { Icon: StateIcon } = STATE[state];
+        const Icon = t.Icon ?? Plug;
+        return (
+          <button key={t.id} type="button" class={`conn-tile is-${state}`} onClick={() => jump(`conn-${t.id}`)}>
+            <span class="conn-tile-name">
+              <Icon size={16} aria-hidden="true" />
+              {t.label}
+            </span>
+            <span class="conn-tile-state">
+              <StateIcon size={14} aria-hidden="true" />
+              {short}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -434,6 +587,29 @@ export function ConnectionsView() {
   const scope = repoScope.value;
   // The whole install's count, as the nav shows it; with one repository picked, what's shown here.
   const n = scope ? list.filter((c) => c.state === 'attention').length : (data?.attention ?? 0);
+  // Rows about one repository go on its card; the rest in the sections every repository shares.
+  const repoList = repos.value.list.filter((r) => inScope(r.slug));
+  const onCard = new Set(repoList.map((r) => r.slug));
+  const rest = list.filter((c) => !onCard.has(rowRepo(c)));
+  const named = new Set(SECTIONS.flatMap((x) => x.of));
+  const extra = [...new Set(rest.map((c) => c.group).filter((g) => !named.has(g)))].map((g) => ({
+    id: g,
+    label: g.charAt(0).toUpperCase() + g.slice(1),
+    of: [g],
+  }));
+  const shared = [...SECTIONS, ...extra]
+    .map((section) => ({ section, rows: rest.filter((c) => section.of.includes(c.group)) }))
+    .filter((x) => x.rows.length);
+  const repoTile = repoList.length
+    ? [
+        {
+          id: 'repos',
+          label: repoList.length === 1 ? repoList[0].name : 'Repositories',
+          Icon: FolderGit2,
+          rows: list.filter((c) => onCard.has(rowRepo(c))),
+        },
+      ]
+    : [];
   return (
     <div class="connections-view">
       <div class="conn-top">
@@ -494,25 +670,31 @@ export function ConnectionsView() {
         </p>
       )}
       <Setup setup={data?.setup} />
-      {GROUPS.map((g) => {
-        const rows = list.filter((c) => g.of.includes(c.group));
-        // Repositories always lists the ones registered, each with a link to its settings (WEB-30).
-        const repoRows = g.id === 'repos' && repos.value.list.some((r) => inScope(r.slug));
-        if (!rows.length && !repoRows) return null;
-        return (
-          <section key={g.id} class="conn-group" aria-labelledby={`conn-${g.id}`}>
-            <h2 id={`conn-${g.id}`}>{g.label}</h2>
-            {rows.length > 0 && (
-              <ul class="conn-list">
-                {rows.map((c) => (
-                  <Row key={`${c.id}:${c.repo ?? ''}`} c={c} />
+      {data && (
+        <>
+          <Overview tiles={[...shared.map((x) => ({ ...x.section, rows: x.rows })), ...repoTile]} />
+          {shared.length > 0 && (
+            <section class="conn-group" aria-labelledby="conn-shared">
+              <h2 id="conn-shared">{repoList.length > 1 ? 'Shared by every repository' : 'The board’s connections'}</h2>
+              <div class="conn-grid">
+                {shared.map(({ section, rows }) => (
+                  <SharedSection key={section.id} section={section} rows={rows} />
                 ))}
-              </ul>
-            )}
-            {repoRows && <RepoRows />}
-          </section>
-        );
-      })}
+              </div>
+            </section>
+          )}
+          {repoList.length > 0 && (
+            <section id="conn-repos" tabIndex={-1} class="conn-group" aria-labelledby="conn-repos-title">
+              <h2 id="conn-repos-title">{repoList.length === 1 ? 'Repository' : 'Repositories'}</h2>
+              <div class="conn-grid conn-grid-repos">
+                {repoList.map((r) => (
+                  <RepoCard key={r.slug} repo={r} rows={list.filter((c) => rowRepo(c) === r.slug)} />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
       <p class="muted small">
         Apps you connected through MCP, and how to connect another, are on{' '}
         <a href={hashFor({ view: 'mcp', task: null, pr: null, ping: null })}>MCP</a>.
@@ -520,7 +702,7 @@ export function ConnectionsView() {
       {data?.cannotCheck?.length > 0 && (
         <section class="conn-group" aria-labelledby="conn-cannot">
           <h2 id="conn-cannot">What the board can’t check</h2>
-          <ul class="conn-list">
+          <ul class="conn-list conn-grid">
             {data.cannotCheck.map((x) => (
               <li key={x.name} class="conn conn-unknown">
                 <h3 class="conn-name">{x.name}</h3>
