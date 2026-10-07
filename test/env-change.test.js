@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   CHANGE_MAX_EDITS,
   agentPrompt,
+  bindingFor,
   cardState,
+  codePrompt,
+  createEdit,
+  createForm,
+  createOverlay,
+  createProblems,
   declaredFor,
   editLines,
   editMarks,
@@ -304,6 +310,198 @@ describe('the change in words', () => {
     ]);
     expect(prompt).toContain('.github/breakaway-infra/staging.json in acme/widgets');
     expect(prompt).toContain('- ~ acme-api: usage model standard → bundled');
+  });
+});
+
+describe('adding a resource', () => {
+  const D1_TARGET = {
+    type: 'd1',
+    label: 'D1 database',
+    kind: 'd1',
+    field: 'resource',
+    by: /** @type {const} */ ('id'),
+  };
+  const QUEUE_TARGET = {
+    type: 'queue',
+    label: 'Queue',
+    kind: 'queue',
+    field: 'queue',
+    by: /** @type {const} */ ('name'),
+  };
+  /** @type {Record<string, import('../web/src/lib/infra-change.js').CreatableKind>} */
+  const CREATABLE = {
+    queue: {
+      label: 'Queue',
+      help: 'Holds messages.',
+      name: { label: 'Name', pattern: '^[a-z0-9-]+$', max: 20, help: 'Lowercase, like acme-jobs.' },
+      fields: [
+        {
+          path: 'deliveryDelay',
+          label: 'Delivery delay',
+          type: 'number',
+          integer: true,
+          min: 0,
+          help: 'Wait.',
+          default: 0,
+        },
+        { path: 'deliveryPaused', label: 'Paused', type: 'yesno', help: 'Hold it.', default: false },
+      ],
+      bind: { kind: 'worker', list: 'bindings', target: QUEUE_TARGET, required: true },
+    },
+    d1: {
+      label: 'D1 database',
+      help: 'SQL.',
+      name: { label: 'Name', pattern: '^[a-z0-9-]+$', help: 'Lowercase.' },
+      fields: [],
+      bind: { kind: 'worker', list: 'bindings', target: D1_TARGET },
+    },
+    route: {
+      label: 'Route',
+      help: 'Sends requests.',
+      name: { label: 'Pattern', pattern: '^\\S+$', help: 'The hostname and path.' },
+      fields: [
+        { path: 'zone', label: 'Zone', type: 'text', help: 'The domain.', required: true },
+        { path: 'worker', label: 'Worker', type: 'resource', kinds: ['worker'], help: 'Which.', required: true },
+      ],
+    },
+    'durable-object': {
+      label: 'Durable Object',
+      help: 'State.',
+      name: { label: 'Name', help: 'Worker_Class.' },
+      fields: [{ path: 'class', label: 'Class', type: 'text', help: 'The class.', required: true }],
+      needsCode: 'The Worker exports the class.',
+    },
+  };
+  const where = { taken: [worker, queue, route], declared: [worker, queue, route] };
+
+  it('suggests a binding name from the resource’s name', () => {
+    expect(bindingFor('acme-jobs')).toBe('ACME_JOBS');
+    expect(bindingFor('acme.jobs v2')).toBe('ACME_JOBS_V2');
+    expect(bindingFor('2-fast')).toBe('R_2_FAST');
+    expect(bindingFor('--')).toBe('');
+    expect(bindingFor('a'.repeat(80))).toHaveLength(63);
+  });
+
+  it('starts the form from the kind’s defaults', () => {
+    expect(createForm(CREATABLE.queue)).toEqual({ deliveryDelay: '0', deliveryPaused: false });
+    expect(createForm(CREATABLE.route)).toEqual({ zone: '', worker: '' });
+  });
+
+  it('checks the name, the fields, and the binding as you type', () => {
+    const queueForm = createForm(CREATABLE.queue);
+    const none = { worker: '', binding: '' };
+    expect(
+      createProblems('queue', CREATABLE.queue, { name: 'Acme Jobs', form: queueForm, bindTo: none }, where).name,
+    ).toMatch(/doesn’t look right/);
+    expect(
+      createProblems('queue', CREATABLE.queue, { name: 'a'.repeat(21), form: queueForm, bindTo: none }, where).name,
+    ).toBe('Name is at most 20 characters.');
+    expect(
+      createProblems('queue', CREATABLE.queue, { name: 'acme-jobs', form: queueForm, bindTo: none }, where).name,
+    ).toMatch(/acme-jobs is taken by another Queue here/);
+    const fresh = createProblems('queue', CREATABLE.queue, { name: 'acme-mail', form: queueForm, bindTo: none }, where);
+    expect(fresh.name).toBeNull();
+    expect(fresh.worker).toMatch(/Pick what binds it/);
+    expect(
+      createProblems(
+        'queue',
+        CREATABLE.queue,
+        { name: 'acme-mail', form: queueForm, bindTo: { worker: 'acme-api', binding: 'mail' } },
+        where,
+      ).binding,
+    ).toMatch(/Capital letters/);
+    expect(
+      createProblems(
+        'd1',
+        CREATABLE.d1,
+        { name: 'acme-db2', form: {}, bindTo: { worker: 'acme-api', binding: 'DB' } },
+        where,
+      ).binding,
+    ).toBe('acme-api already has a binding called DB: pick another name.');
+    // A database nothing has to bind can be added unbound.
+    expect(createProblems('d1', CREATABLE.d1, { name: 'acme-db2', form: {}, bindTo: none }, where).worker).toBeNull();
+    const routed = createProblems(
+      'route',
+      CREATABLE.route,
+      { name: 'v2.acme.example/*', form: createForm(CREATABLE.route), bindTo: none },
+      where,
+    );
+    expect(routed.fields).toEqual({ zone: 'Zone needs a value.', worker: 'Worker needs a value.' });
+    expect(
+      createProblems(
+        'queue',
+        CREATABLE.queue,
+        { name: 'acme-mail', form: { ...queueForm, deliveryDelay: '-1' }, bindTo: none },
+        where,
+      ).fields.deliveryDelay,
+    ).toBe('Delivery delay is at least 0.');
+  });
+
+  it('makes the create edit the board takes, and words it like the board', () => {
+    const edit = createEdit('queue', CREATABLE.queue, {
+      name: ' acme-mail ',
+      form: { deliveryDelay: '30', deliveryPaused: false },
+      bindTo: { worker: 'acme-api', binding: 'MAIL' },
+    });
+    expect(edit).toEqual({
+      op: 'create',
+      kind: 'queue',
+      name: 'acme-mail',
+      attrs: { deliveryDelay: 30, deliveryPaused: false },
+      bindTo: { worker: 'acme-api', binding: 'MAIL' },
+    });
+    expect(createEdit('d1', CREATABLE.d1, { name: 'acme-db2', form: {}, bindTo: { worker: '', binding: '' } })).toEqual(
+      {
+        op: 'create',
+        kind: 'd1',
+        name: 'acme-db2',
+        attrs: {},
+      },
+    );
+    expect(editLines([edit], [worker])).toEqual(['+ queue acme-mail, bound to acme-api as MAIL']);
+  });
+
+  it('keeps an add, and a second add of the same name replaces the first', () => {
+    const storage = memory();
+    const one = createEdit('d1', CREATABLE.d1, { name: 'acme-db2', form: {}, bindTo: { worker: '', binding: '' } });
+    const joined = joinEdits([one], [{ ...one, bindTo: { worker: 'acme-api', binding: 'DB2' } }]);
+    expect('edits' in joined && joined.edits).toEqual([{ ...one, bindTo: { worker: 'acme-api', binding: 'DB2' } }]);
+    writeEdits(1, [one], storage);
+    expect(readEdits(1, storage)).toEqual([one]);
+  });
+
+  it('draws each add dashed on the map, with a line to what binds or serves it', () => {
+    const { adds, relations } = createOverlay(
+      [
+        { op: 'create', kind: 'queue', name: 'acme-mail', attrs: {}, bindTo: { worker: 'acme-api', binding: 'MAIL' } },
+        { op: 'create', kind: 'route', name: 'v2.acme.example/*', attrs: { zone: 'acme.example', worker: 'acme-api' } },
+        { op: 'set', resource: worker.id, path: 'observability', value: true },
+      ],
+      [worker, queue],
+      CREATABLE,
+    );
+    expect(adds.map((a) => [a.id, a.planned])).toEqual([
+      ['queue:acme-mail', true],
+      ['route:v2.acme.example/*', true],
+    ]);
+    expect(relations).toEqual([
+      { from: 'worker:acme-api', to: 'queue:acme-mail', kind: 'uses' },
+      { from: 'worker:acme-api', to: 'route:v2.acme.example/*', kind: 'serves' },
+    ]);
+  });
+
+  it('fills in the prompt for an agent to write the code a new resource needs', () => {
+    const edit = /** @type {any} */ (
+      createEdit('durable-object', CREATABLE['durable-object'], {
+        name: 'acme-api_Counter',
+        form: { class: 'Counter' },
+        bindTo: { worker: '', binding: '' },
+      })
+    );
+    const prompt = codePrompt({ name: 'staging', repo: 'acme/widgets' }, CREATABLE['durable-object'], edit);
+    expect(prompt).toContain('acme-api_Counter, a new Durable Object in staging (acme/widgets)');
+    expect(prompt).toContain('What must exist: The Worker exports the class.');
+    expect(prompt).toContain('- Class: Counter');
   });
 });
 

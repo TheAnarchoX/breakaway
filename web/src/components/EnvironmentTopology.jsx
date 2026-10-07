@@ -479,10 +479,11 @@ function TopologyMap({ map, selected, onSelect, drift, ops, mine = false }) {
 
 /**
  * The topology panel: the map (wide) or the list (phones, and anyone who picks it), and the selected node's detail.
- * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[] } | null, headActions?: any, note?: string | null }} props
+ * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[], relations?: any[] } | null, headActions?: any, note?: string | null }} props
  *   `nodeActions` renders the owner's actions for a resource in its detail and its row in the list (WEB-99's Change
  *   and Remove); `change` is the owner's change (WEB-99), whose marks show instead of a plan's while they edit, labelled
- *   "your change"; `headActions` sit in the panel's header (Add from a template); `note` is a line under it.
+ *   "your change", with lines from each add to what binds it (WEB-107); `headActions` sit in the panel's header (Add
+ *   resource), and are the call to action when nothing runs yet; `note` is a line under it.
  */
 export function Topology({
   env,
@@ -513,9 +514,11 @@ export function Topology({
   const driftOf = new Map((drift?.resources ?? []).map((/** @type {any} */ d) => [d.id, d.op]));
   const running = new Set(resources.map((r) => r.id));
   const planned = adds.filter((a) => !running.has(a.id));
-  const shown = collapse([...resources, ...planned], relations, MAP_MAX);
+  const nodes = new Set([...running, ...planned.map((a) => a.id)]);
+  const lines = [...relations, ...(change?.relations ?? []).filter((r) => nodes.has(r.from) && nodes.has(r.to))];
+  const shown = collapse([...resources, ...planned], lines, MAP_MAX);
   const map = layoutTopology(shown.resources, shown.relations, { target: env.target });
-  const all = resourceGroups([...resources, ...planned], relations, env.target);
+  const all = resourceGroups([...resources, ...planned], lines, env.target);
   const byId = new Map(all.flatMap((g) => g.items).map((r) => [r.id, r]));
   const group = shown.resources.find((r) => r.id === selected && r.group);
   const current = selected ? (byId.get(selected) ?? group ?? null) : null;
@@ -531,6 +534,8 @@ export function Topology({
     }
   };
   const count = resources.length;
+  // Something your change adds draws the map even before anything runs.
+  const drawn = count + planned.length;
   return (
     <section class="console-panel topo" aria-labelledby="infra-resources">
       <header class="console-panel-head">
@@ -538,8 +543,8 @@ export function Topology({
           <Boxes size={16} aria-hidden="true" />
           Resources {count > 0 && <span class="count">{count}</span>}
         </h2>
-        {headActions && count > 0 && <div class="topo-head-actions">{headActions}</div>}
-        {count > 0 && (
+        {headActions && drawn > 0 && <div class="topo-head-actions">{headActions}</div>}
+        {drawn > 0 && (
           <div class="segmented segmented-xs" role="group" aria-label="Show resources as">
             <button type="button" aria-pressed={mode === 'map'} onClick={() => onMode('map')}>
               <Network size={14} aria-hidden="true" />
@@ -553,18 +558,22 @@ export function Topology({
         )}
       </header>
       {note && <p class="console-quiet">{note}</p>}
-      {!count ? (
-        <p class="console-quiet">
-          {env.target ? (
-            <>
-              Nothing seen yet: connect its provider on{' '}
-              <a href={hashFor({ view: 'connections', environment: null, task: null })}>Connections</a>, and the board
-              looks at once and every 15 minutes after. Press Refresh above to look now.
-            </>
-          ) : (
-            'No target yet: give it one, like a Worker’s name, and the board maps what it uses.'
-          )}
-        </p>
+      {!drawn ? (
+        <div class="console-quiet topo-empty">
+          <p>
+            {env.target ? (
+              <>
+                Nothing seen yet: connect its provider on{' '}
+                <a href={hashFor({ view: 'connections', environment: null, task: null })}>Connections</a>, and the board
+                looks at once and every 15 minutes after. Press Refresh above to look now.
+              </>
+            ) : (
+              'No target yet: give it one, like a Worker’s name, and the board maps what it uses.'
+            )}
+            {headActions && ' Or start it here: add its first resource, and the board plans it for you to approve.'}
+          </p>
+          {headActions && <div class="topo-empty-actions">{headActions}</div>}
+        </div>
       ) : mode === 'map' ? (
         <>
           <div class="topo-stage">
