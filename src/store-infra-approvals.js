@@ -42,10 +42,21 @@ export const infraApprovalsMethods = {
 
   /**
    * Why a plan can't be approved any more, or null while it's up to date: its environment's desired state has moved to
-   * another commit since it was planned, or it's a drift plan that no longer matches the drift.
+   * another commit since it was planned, it's a drift plan that no longer matches the drift, or the environment's kind,
+   * provider, or target changed since (BRK-253): the policy and the gates were read for what it was.
    * @param {Record<string, any>} row the plan's row (planRow)
    */
   outOfDatePlan(row) {
+    const env = this.sql
+      .exec('SELECT kind, provider, target FROM infra_environments WHERE id = ?', row.environment)
+      .toArray()[0];
+    if (env) {
+      const moved = (what, then, now) =>
+        `${row.env_name}’s ${what} changed from ${then ?? 'none'} to ${now ?? 'none'} since it was planned`;
+      if (row.env_kind && env.kind !== row.env_kind) return moved('kind', row.env_kind, env.kind);
+      if ((env.provider ?? null) !== (row.provider ?? null)) return moved('provider', row.provider, env.provider);
+      if ((env.target ?? null) !== (row.target ?? null)) return moved('target', row.target, env.target);
+    }
     if (row.desired_sha) {
       const now = this.sql
         .exec('SELECT valid_sha FROM infra_desired WHERE repo = ? AND environment = ?', row.repo, row.env_name)

@@ -243,6 +243,25 @@ describe('approving and rejecting a plan (BRK-182)', () => {
     await board(`infra/plans/${drift.id}/reject`, { method: 'POST', body: {} });
   });
 
+  it('refuses a plan once its environment’s kind, provider, or target changed since it was planned (BRK-253)', async () => {
+    const plan = await waiting(5, 'sha-kind');
+    const patch = (b) => board(`infra/environments/${staging.id}`, { method: 'PATCH', body: b });
+    const outOfDate = async () => (await body(await api(`infra/plans/${plan.id}`))).outOfDate;
+    for (const [change, back, why] of [
+      [{ kind: 'production' }, { kind: 'staging', gates: false }, /kind changed from staging to production/u],
+      [{ provider: 'fake' }, { provider: PROVIDER }, new RegExp(`provider changed from ${PROVIDER} to fake`, 'u')],
+      [{ target: 'svc-other' }, { target: 'svc-api' }, /target changed from svc-api to svc-other/u],
+    ]) {
+      expect((await patch(change)).status).toBe(200);
+      expect(await outOfDate()).toMatch(why);
+      const refused = await body(await board(`infra/plans/${plan.id}/approve`, { method: 'POST', body: {} }));
+      expect(refused).toMatchObject({ status: 409, error: /out of date: .*Reject it/u });
+      expect((await patch(back)).status).toBe(200);
+      expect(await outOfDate()).toBeNull();
+    }
+    await board(`infra/plans/${plan.id}/reject`, { method: 'POST', body: {} });
+  });
+
   it('approves a plan the repository’s policy lets through by itself, naming the rule, with no push', async () => {
     const sub = await browser('https://push.example.com/send/policy');
     await board('push/subscriptions', { method: 'POST', body: sub });

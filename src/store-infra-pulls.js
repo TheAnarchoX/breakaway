@@ -158,6 +158,9 @@ export const infraPullsMethods = {
       problems: changed.problems,
       skipped: list.length - planned.length,
     };
+    // A fork's pull request gets a check without the plan's detail (BRK-253): the check is public, the board isn't.
+    const named = (side) => String(side?.repo?.full_name ?? '').toLowerCase();
+    const outside = !named(pull.head) || named(pull.head) !== named(pull.base);
     const conclusion = infraConclusion(check);
     const title = infraTitle(check);
     const home = this.homeUrl();
@@ -173,7 +176,7 @@ export const infraPullsMethods = {
         conclusion,
         completed_at: new Date().toISOString(),
         ...(page ? { details_url: page } : {}),
-        output: { title, summary: infraSummary(check, { page }) },
+        output: { title, summary: infraSummary(check, { page, outside }) },
       });
       posted = { id: run?.id ?? null, url: run?.html_url ?? null };
     } catch (e) {

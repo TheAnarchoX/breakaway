@@ -1,5 +1,6 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { runsTheBoard } from '../src/infra-environments.js';
 import { api, boardApi } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
@@ -202,6 +203,14 @@ describe('environments (BRK-174)', () => {
     expect(back.environment).toMatchObject({ gates: true, observeOnly: false });
   });
 
+  it('knows the board’s Worker by its name, whatever its case or spaces (BRK-253)', () => {
+    for (const target of ['widgets-tasks', 'Widgets-Tasks', ' widgets-tasks ', 'WIDGETS-TASKS\n'])
+      expect(runsTheBoard({ target }, 'widgets-tasks')).toBe(true);
+    expect(runsTheBoard({ target: 'widgets-tasks' }, ' Widgets-Tasks')).toBe(true);
+    for (const target of [null, '', '  ', 'widgets-tasks-2', 'widgets'])
+      expect(runsTheBoard({ target }, 'widgets-tasks')).toBe(false);
+  });
+
   it('the board’s own install is always observe only, and nothing turns that off', async () => {
     // The test install's Worker is widgets-tasks (wrangler.test.jsonc).
     const own = await body(
@@ -243,6 +252,14 @@ describe('environments (BRK-174)', () => {
       await board(`infra/environments/${staging.id}`, { method: 'PATCH', body: { target: 'widgets-staging' } }),
     );
     expect(restored.status).toBe(409);
+
+    // Another spelling of the board's Worker is still the board's (BRK-253).
+    const spelled = await body(
+      await add({ name: 'spelled', kind: 'production', target: 'Widgets-Tasks', observeOnly: false }),
+    );
+    expect(spelled.status).toBe(201);
+    expect(spelled.environment).toMatchObject({ observeOnly: true, runsTheBoard: true });
+    expect((await board(`infra/environments/${spelled.environment.id}`, { method: 'DELETE' })).status).toBe(200);
 
     // Removing it is still the owner's choice; it stays observe only while it exists.
     expect((await board(`infra/environments/${id}`, { method: 'DELETE' })).status).toBe(200);

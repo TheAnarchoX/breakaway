@@ -213,6 +213,11 @@ describe('the Cloudflare provider’s discover (BRK-189)', () => {
       `${a}/workers/scripts/acme-api`,
       `${a}/workers/workers/acme-api/versions/ver-1?include=modules`,
       `${a}/workers/scripts/acme-api/secrets/API_KEY`,
+      `${a}/workers/observability/telemetry/query`,
+      `${a}/workers/observability/telemetry/keys`,
+      `${a}/workers/observability/telemetry/values`,
+      `${a}/workers/observability/destinations`,
+      `${a}/workers/scripts/acme-api/tails`,
     ])
       expect(NEVER_CALLED.some((re) => re.test(path))).toBe(true);
     for (const path of Object.keys(cloudflareAnswers()))
