@@ -344,6 +344,8 @@ export const githubMethods = {
       if (!(error instanceof GitHubError)) throw error;
       automation.errors.push(error.message);
     }
+    // Changes from the console (BRK-259): each one's pull request merged, closed, or taken over, from the same list.
+    this.followInfraChanges(repo.slug, fetched.pulls);
     try {
       await this.refreshFlowCompare(client, repo.slug);
     } catch (error) {
