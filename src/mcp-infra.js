@@ -115,6 +115,7 @@ function environmentText({ environment: env, resources, relations, desired }) {
   for (const r of resources) {
     const state = [];
     if (r.health) state.push(`${r.health.state}${r.health.text ? `: ${r.health.text}` : ''}`);
+    if (r.health?.note) state.push(`not read now (last read ${r.health.at ?? 'never'}): ${r.health.note}`);
     const cost = r.cost ? money(r.cost.amount, r.cost.currency) : null;
     if (cost) state.push(`${cost}, estimated`);
     out.push(`  ${r.kind} ${r.name}${state.length ? `  ${state.join(' · ')}` : ''}`);

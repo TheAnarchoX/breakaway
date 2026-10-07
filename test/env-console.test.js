@@ -132,7 +132,10 @@ describe('the map', () => {
 
   it('reads health worst first', () => {
     expect(worstHealth(['healthy', 'degraded', 'unknown'])).toBe('degraded');
-    expect(worstHealth(['healthy', null])).toBe('unknown');
+    // One resource that couldn't be read doesn't outrank healthy ones (BRK-266); idle ranks with healthy.
+    expect(worstHealth(['healthy', null])).toBe('healthy');
+    expect(worstHealth(['idle', 'unknown'])).toBe('idle');
+    expect(worstHealth([null])).toBe('unknown');
     expect(worstHealth(['healthy'])).toBe('healthy');
   });
 
