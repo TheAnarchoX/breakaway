@@ -79,6 +79,7 @@ import { infraBreakGlassMethods } from './store-infra-break-glass.js';
 import { infraAdoptMethods } from './store-infra-adopt.js';
 import { infraEditableMethods } from './store-infra-editable.js';
 import { infraChangesMethods } from './store-infra-changes.js';
+import { infraChangeApprovalMethods } from './store-infra-change-approval.js';
 import { infraRunsMethods } from './store-infra-runs.js';
 import { infraEnvelopesMethods } from './store-infra-envelopes.js';
 import { infraScalingMethods } from './store-infra-scaling.js';
@@ -1478,6 +1479,7 @@ Object.assign(
   infraAdoptMethods,
   infraEditableMethods,
   infraChangesMethods,
+  infraChangeApprovalMethods,
   infraRunsMethods,
   infraEnvelopesMethods,
   infraScalingMethods,

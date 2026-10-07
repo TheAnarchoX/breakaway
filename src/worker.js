@@ -587,6 +587,11 @@ async function handleApi(request, env, url, ctx) {
       if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can reject a change' });
       return send(await s.infraChangeRejectApi(parts[2], body));
     }
+    // Approve (BRK-260) merges the change's pull request as the owner's action: the signed-in browser only, like Merge.
+    if (parts.length === 4 && parts[3] === 'approve' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can approve a change' });
+      return send(await s.infraChangeApproveApi(parts[2], body));
+    }
   }
   // Environments (BRK-174): anyone signed in reads them; adding, changing, and removing one is the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold (BRK-233). An agent's `by` is refused too.
