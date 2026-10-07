@@ -17,3 +17,5 @@ src/board-files.json
 src/infra-shipped-templates.json
 # The CLI's lockfile, written for the version being published by scripts/release/shrinkwrap.mjs (CLI-21).
 /npm-shrinkwrap.json
+# The film's captures of the launch board (launch/tools/footage.mjs), made again for each render.
+launch/tools/footage/

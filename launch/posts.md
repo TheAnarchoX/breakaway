@@ -222,7 +222,7 @@ Every name in the media is made up (`acme/widgets`, `widgets-render`, `WGT-41`),
 > - Envelopes: bounds you approve once
 > - Incidents: a signal becomes a task
 
-**Alt text (the video):** A 16-second video, no sound. On carbon, one line at a time: "Agents propose it." as a made-up plan for staging arrives below it, from pull request #41, with two changes; "You approve it.", with "approve it." in red, as Approve fills red and the plan reads Approved; "The board applies it.", as it applies and ends Applied, healthy. Then the breakaway logo, the rider snapping off the pack, "Leave the pack.", npx breakaway, and "Free, the source is public".
+**Alt text (the video):** A 16-second video, no sound, on carbon, of a made-up repository on breakaway's board, with one line above each view. Staging's map grows: a KV namespace, a queue, an R2 bucket, and a container arrive, each marked adds, from pull request #41: "Agents propose it." On a phone, the plan waits; Approve is pressed and turns red, and the plan reads Approved: "You approve it." The new resources turn healthy and the stream says the health check passed: "The board applies it." A loop of words goes round once, idea, task, pull request, merge, deploy, plan, approve, apply, what runs, signal, incident, task: "From idea to incident. On one board. You decide." Then the breakaway logo, the rider snapping off the pack, "Leave the pack.", npx breakaway, and "Free, the source is public". The poster is the phone with Approve pressed.
 
 **Alt text (the card):** A card headed "New in 2.0.0." with six lines: The Infrastructure view: health, cost, and drift. Plans you approve, from your phone. Plans in pull requests, as a check. Envelopes: bounds you approve once. Incidents: a signal becomes a task. Freeze, budgets, and npx breakaway infra. At the foot: "Agents propose it. You approve it."
 
@@ -298,14 +298,14 @@ A Show HN, posted by the owner from their own account after the thread, on the d
 >
 > Architect stays off until you connect a provider, and an install keeps its data: no telemetry, and the read token only goes to its provider. Any provider but Cloudflare, and metrics, logs, and traces as signals, aren't in 2.0.0.
 >
-> What it is: https://leavethepack.dev/architect/
+> What it is, with an 84-second film of the whole loop on a made-up repository: https://leavethepack.dev/architect/
 > Release notes: https://github.com/TheAnarchoX/breakaway/releases/tag/v2.0.0
 
 ## 11. 2.0.0 on Reddit
 
 One post, by the owner from their own account, after the thread. Read the subreddit's rules on self-promotion and flair before posting, and post to one subreddit at a time. **r/selfhosted** fits best (recommended): breakaway runs on your own Cloudflare account and keeps its data. Same voice as section 10: first person, no "we", only the claims the thread makes.
 
-**Media:** [`media/17-approve.png`](media/17-approve.png), with its alt text from 9b, if the subreddit allows an image with text.
+**Media:** [`media/2-0-0-film-square.mp4`](media/2-0-0-film-square.mp4), 84 s, 1080 × 1080, no sound, poster [`media/2-0-0-film-square-poster.png`](media/2-0-0-film-square-poster.png), if the subreddit allows video; its alt text is the hero film's, in [`2.0.0.md`](2.0.0.md#the-assets-lch-32). Otherwise [`media/17-approve.png`](media/17-approve.png), with its alt text from 9b, if the subreddit allows an image with text, and the body's last line links https://leavethepack.dev/architect/, where the film is.
 
 **Title:**
 
