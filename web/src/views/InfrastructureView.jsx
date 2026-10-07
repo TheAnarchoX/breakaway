@@ -30,6 +30,7 @@ import {
 import { Dialog } from '../components/ui.jsx';
 import { BudgetLine, CostOverview } from '../components/InfraCosts.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
+import { StaleLine } from '../components/InventoryStale.jsx';
 import { AccountAlerts } from '../components/AccountAlerts.jsx';
 
 /**
@@ -243,8 +244,8 @@ function LiveLine({ env }) {
   );
 }
 
-/** @param {{ env: any, resources: any[], cost: any, onChange: (env: any) => void }} props */
-function EnvironmentCard({ env, resources, cost, onChange }) {
+/** @param {{ env: any, resources: any[], cost: any, stale?: any, onChange: (env: any) => void }} props */
+function EnvironmentCard({ env, resources, cost, stale = null, onChange }) {
   const health = environmentHealth(resources);
   return (
     <li class={`infra-env ${env.frozen ? 'is-frozen' : ''}`}>
@@ -272,6 +273,7 @@ function EnvironmentCard({ env, resources, cost, onChange }) {
         )}
       </p>
       <Health health={env.target ? health : null} />
+      <StaleLine stale={env.target ? stale : null} />
       {cost && cost.cost.resources > 0 && <BudgetLine entry={cost} compact />}
       <LiveLine env={env} />
       <EnvironmentFlags env={env} />
@@ -431,9 +433,10 @@ function ConnectProvider() {
 
 export function InfrastructureView() {
   const [state, setState] = useState(
-    /** @type {{ environments: any[] | null, resources: any[], costs: any, error: string | null, loading: boolean }} */ ({
+    /** @type {{ environments: any[] | null, resources: any[], stale: any[], costs: any, error: string | null, loading: boolean }} */ ({
       environments: null,
       resources: [],
+      stale: [],
       costs: null,
       error: null,
       loading: true,
@@ -443,14 +446,14 @@ export function InfrastructureView() {
   const load = async () => {
     setState((s) => ({ ...s, loading: true }));
     try {
-      const [{ environments }, { resources }, costs] = await Promise.all([
+      const [{ environments }, { resources, stale }, costs] = await Promise.all([
         api('infra/environments'),
         api('infra/inventory'),
         // Cost is an extra: the environments show without it.
         api('infra/costs').catch(() => null),
         loadConnections(),
       ]);
-      setState({ environments, resources, costs, error: null, loading: false });
+      setState({ environments, resources, stale: stale ?? [], costs, error: null, loading: false });
     } catch (error) {
       setState((s) => ({ ...s, error: error.message, loading: false }));
     }
@@ -536,6 +539,7 @@ export function InfrastructureView() {
                     env={env}
                     resources={resourcesOf(env)}
                     cost={costOf(env)}
+                    stale={state.stale.find((s) => s.environmentId === env.id) ?? null}
                     onChange={replace}
                   />
                 ))}

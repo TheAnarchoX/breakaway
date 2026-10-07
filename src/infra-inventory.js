@@ -95,6 +95,43 @@ export function resourceView(row, environment, task) {
   };
 }
 
+/** The longest reason a stale environment keeps. */
+const MAX_STALE_ERROR = 500;
+
+/** @param {string} text */
+export function clipError(text) {
+  const t = String(text ?? '').trim() || 'no reason given';
+  return t.length > MAX_STALE_ERROR ? `${t.slice(0, MAX_STALE_ERROR - 1)}…` : t;
+}
+
+/**
+ * What Connections' discovery row says when some environments failed (BRK-257): how many of them discovery reached,
+ * then each failure, naming its environment.
+ * @param {Array<{ message: string }>} failures
+ * @param {number} total the environments with a target on the provider
+ */
+export function discoveredWords(failures, total) {
+  const reached = total - failures.length;
+  return `${reached} of ${total} ${total === 1 ? 'environment' : 'environments'} discovered; ${failures.map((f) => f.message).join('; ')}`;
+}
+
+/**
+ * A stale environment as the API shows it (BRK-257): its discovery failed, so its inventory is what the board saw at
+ * `seen`, kept until a discovery works again.
+ * @param {{ environment: number, provider: string, at: number, error: string, env_repo: string, env_name: string, seen: number | null }} row
+ */
+export function staleView(row) {
+  return {
+    environmentId: Number(row.environment),
+    repo: row.env_repo,
+    environment: row.env_name,
+    provider: row.provider,
+    at: new Date(Number(row.at)).toISOString(),
+    error: row.error,
+    seen: row.seen === null || row.seen === undefined ? null : new Date(Number(row.seen)).toISOString(),
+  };
+}
+
 /** How often the cron refreshes a provider's inventory by itself (BRK-248). */
 export const REFRESH_EVERY_MS = 15 * 60 * 1000;
 

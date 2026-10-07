@@ -1,14 +1,16 @@
-import { Activity, Bot, Eye, FileDiff, Rocket, Snowflake, Wallet } from 'lucide-preact';
+import { Activity, Bot, Eye, FileDiff, Rocket, ScanSearch, Snowflake, Wallet } from 'lucide-preact';
 import { ago, shortVersion } from '../lib/model.js';
 import { hashFor } from '../lib/store.js';
 import { runWords } from '../lib/env-stream.js';
 import { widClass } from './ui.jsx';
 import { BudgetBadge, costText } from './InfraCosts.jsx';
 import { Health } from '../views/InfrastructureView.jsx';
+import { InventoryFreshness } from './InventoryStale.jsx';
 
 /**
  * The console's status band (WEB-94; docs/specs/WEB-94-environment-console.md): health, freeze, what's live, the plan
- * waiting, the budget used, and the agents at work there now, a tile each, in one row on a wide screen.
+ * waiting, the budget used, and the agents at work there now, a tile each, in one row on a wide screen. With a
+ * target, whether what it shows is up to date (BRK-257).
  */
 
 /** @param {{ iso: string | null | undefined }} props */
@@ -38,9 +40,18 @@ function Tile({ label, Icon, tone = '', children }) {
 
 /**
  * `actions` are the owner's actions on the whole environment, under the band (WEB-95 fills them in).
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], actions?: any }} props
+ * `inventory` is whether what the map shows is up to date: the environment's `stale` entry and when the board last saw it.
+ * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], actions?: any, inventory?: { stale: any, seen: string | null } }} props
  */
-export function StatusBand({ env, health, cost, run, agents, actions = null }) {
+export function StatusBand({
+  env,
+  health,
+  cost,
+  run,
+  agents,
+  actions = null,
+  inventory = { stale: null, seen: null },
+}) {
   const live = env.deploys?.live ?? null;
   const planLink = (/** @type {string} */ plan) =>
     hashFor({ view: 'infrastructure', environment: String(env.id), plan, task: null });
@@ -51,6 +62,11 @@ export function StatusBand({ env, health, cost, run, agents, actions = null }) {
         <Tile label="Health" Icon={Activity}>
           <Health health={env.target ? health : null} />
         </Tile>
+        {env.target && (
+          <Tile label="Inventory" Icon={ScanSearch} tone={inventory.stale ? 'stale' : ''}>
+            <InventoryFreshness stale={inventory.stale} seen={inventory.seen} />
+          </Tile>
+        )}
         <Tile label="Freeze" Icon={env.observeOnly ? Eye : Snowflake} tone={env.frozen ? 'frozen' : ''}>
           {env.frozen ? (
             <span class="band-value">
