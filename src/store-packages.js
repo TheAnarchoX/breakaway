@@ -33,6 +33,8 @@ const OLD_MS = 86_400_000;
 /** Versions kept per repository, and how many the feed shows. */
 const KEEP = 100;
 const SHOWN = 50;
+/** Pre-releases whose Release dialog says what main has since them (WEB-113), newest first. */
+const BEHIND_SHOWN = 10;
 /** How long the read of whether a release workflow builds pre-releases by hand is kept (WEB-113). */
 const RELEASE_MODE_MS = 86_400_000;
 /** How long a registry read may take before it counts as failed. */
@@ -334,7 +336,8 @@ export const packagesMethods = {
       }));
     /** @type {Record<string, any>} */
     const behind = {};
-    for (const p of pres) {
+    // The newest few: an older pre-release's stable is usually out, so Release doesn't offer it.
+    for (const p of pres.slice(0, BEHIND_SHOWN)) {
       const ahead = aheadOfPrerelease({ commits, sha: p.sha, prs });
       if (ahead) behind[p.version] = ahead;
     }
