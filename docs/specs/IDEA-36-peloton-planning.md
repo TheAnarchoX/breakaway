@@ -100,12 +100,12 @@ Each chase's peloton has one plan: the bigger picture, in up to 4,000 characters
 ### 6. What chase agents may do to tasks
 Every agent that holds a task in an open chase gets, for the chase's other tasks, the rights a general agent has today, and one more.
 
-- **Change** the description, done when, area, horizon, tags, and dependencies of any unclaimed, open task of the chase in its own repository. Each change is noted on the task with who made it and why, as for general agents.
+- **Change** the description, done when, area, horizon, priority, tags, and dependencies of any unclaimed, open task of the chase in its own repository, and plan an unclaimed, open idea of the chase by its horizon, priority, feature tags, and dependencies (BRK-274). Each change is noted on the task with who made it and why, as for general agents, and the owner can undo it in one press from Activity.
 - **Add** tasks to the chase, as now: filled in, with the feature's tag, `--depends` on real blockers, and never `--autostart`. The chase starts them within its limits.
 - **Delete** an unclaimed task of the chase that an agent wrote after the chase started. For any other task it proposes deleting in a ping, so ping proposals get a `delete` change that the owner applies in one press.
 - **Never**:
   - a claimed task: it belongs to the agent holding it, who can be asked on the peloton
-  - an idea or a routine run
+  - an idea's description, area, or status, or a routine run
   - a `horizon-*` tag, autostart, or a decision
   - finishing a task: a merged pull request does that
   - a task in another repository

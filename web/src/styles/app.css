@@ -7386,6 +7386,36 @@ fieldset.field {
   font-size: 14px;
 }
 
+/* ---------- agents' changes to the plan, with the owner's undo (BRK-274) ---------- */
+
+.agent-changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.agent-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agent-change.is-undone > span:first-child {
+  color: var(--muted);
+}
+.agent-change-undo {
+  flex: none;
+}
+.change-agent_planned .agent-change-undo {
+  margin-left: 4px;
+  vertical-align: baseline;
+}
+
 /* ---------- the roadmap's timeline (WEB-102) ---------- */
 
 .fr-layout {

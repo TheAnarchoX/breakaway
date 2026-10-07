@@ -11,7 +11,7 @@ export const SUBCOMMANDS = {
   github: ['fix', 'review'],
   repos: ['add', 'init', 'modify', 'remove', 'setup'],
   routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume', 'cap', 'new'],
-  features: ['list', 'add', 'show', 'modify'],
+  features: ['list', 'add', 'show', 'modify', 'pull'],
   horizon: ['close'],
   hook: ['session', 'wait'],
   peloton: [

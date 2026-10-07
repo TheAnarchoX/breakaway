@@ -34,6 +34,7 @@ import { DecisionError, summarize, validateAnswers } from './decision.js';
 import { AgentError, agentsMethods, isRoutineMaker } from './store-agents.js';
 import { routinesMethods } from './store-routines.js';
 import { featuresMethods } from './store-features.js';
+import { planningMethods } from './store-planning.js';
 import { chaseMethods } from './store-chase.js';
 import { attachmentsMethods } from './store-attachments.js';
 import { pingsMethods } from './store-pings.js';
@@ -129,6 +130,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initRoutines();
     this.initFeatures();
     this.initChase();
+    this.initPlanning();
     this.initAttachments();
     this.initPings();
     this.initPush();
@@ -843,6 +845,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       if (changes.addDepends?.includes(uuid)) throw new InputError("a task can't depend on itself");
       const before = this.detail(uuid);
       const task = this.change(uuid, changes);
+      // An agent's change to a task that isn't its own work is kept, for Activity and the owner's undo (BRK-274).
+      const agent = String(input.by ?? '');
+      if (AGENT_NAME.test(agent) && before.claim !== agent && before.briefBy !== agent && changes.status !== 'deleted')
+        this.recordTaskPlanning(agent, uuid, before, task);
       if (general) {
         const fields = CROSS_TASK_FIELDS.filter(([keys]) => keys.some((k) => k in input)).map(([, name]) => name);
         const its = general.wid ?? general.uuid.slice(0, 8);
@@ -1100,10 +1106,12 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * The cross-task rule (IDEA-30 section 2, BRK-104 decision 1): a general agent may change the description,
-   * done when, area, horizon, tags, and dependencies of an unclaimed, open task in its own repository that
-   * isn't an idea. Never a horizon-* tag, autostart, or a decision, and nothing else: that goes to the owner
-   * as a ping proposal. The board notes each change on the edited task (update).
+   * The cross-task rule (IDEA-30 section 2, BRK-104 decision 1, BRK-274): a general agent may change the description,
+   * done when, area, horizon, priority, tags, and dependencies of an unclaimed, open task in its own repository. An
+   * idea, which every repository shares, it plans by its horizon, priority, feature tags, and dependencies only, and
+   * never starts, finishes, or deletes. Never a horizon-* tag, autostart, a decision, or a routine run, and nothing
+   * else: that goes to the owner as a ping proposal. The board notes each change on the edited task and keeps it for
+   * the owner's undo (update).
    *
    * A chase agent has the same rights over its chase's other tasks (IDEA-36 section 6), and one more: it may delete
    * such a task, on its own, when an agent wrote it (`brief_by`) after the chase started. Never finishing one.
@@ -1124,9 +1132,24 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     if ('autostart' in input) refuse(`doesn't change whether ${name} starts by itself`);
     if (map.status !== 'pending') refuse(`changes only open tasks, and ${name} is ${map.status}`);
     if (map.claim) refuse(`changes only unclaimed tasks, and ${map.claim} has ${name}`);
-    if (map.project in SHARED_AREAS) refuse(`doesn't change ${name}, which is an idea or a routine run`);
-    if (repoSlugOf(map, fallback) !== repoSlugOf(ownMap, fallback))
+    const idea = map.project === 'ideas';
+    if (map.project in SHARED_AREAS && !idea) refuse(`doesn't change ${name}, which is a routine run`);
+    // Ideas are every repository's (BRK-274): any agent with the right may plan one.
+    if (!idea && repoSlugOf(map, fallback) !== repoSlugOf(ownMap, fallback))
       refuse(`changes only tasks in its own repository, and ${name} is ${repoSlugOf(map, fallback)}'s`);
+    if (idea) {
+      if ('status' in input) refuse(`doesn't start, finish, or delete ${name}, an idea`);
+      const ideaFields = ['brief', 'done_when', 'project'].filter((k) => k in input);
+      if (ideaFields.length)
+        refuse(
+          `plans an idea by its horizon, priority, feature tags, and dependencies; ${name}'s description, done when, and area are the owner's`,
+        );
+      const features = new Set(this.featureRows().map((r) => r.slug));
+      const other = [...arrayOf(input.addTags ?? []), ...arrayOf(input.removeTags ?? [])]
+        .map(String)
+        .filter((t) => !features.has(t));
+      if (other.length) refuse(`changes only an idea's feature tags, and ${other.join(', ')} isn't a feature`);
+    }
     if ('status' in input) {
       if (own.kind !== 'chase' || input.status !== 'deleted') refuse(`doesn't finish, delete, or reopen ${name}`);
       const other = Object.keys(input).filter((k) => k !== 'status' && k !== 'by');
@@ -1144,7 +1167,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const other = Object.keys(input).filter((k) => !allowed.has(k));
     if (other.length)
       refuse(
-        `changes only the description, done when, area, horizon, tags, and dependencies of another task, not ${other.join(', ')}`,
+        `changes only the description, done when, area, horizon, priority, tags, and dependencies of another task, not ${other.join(', ')}`,
       );
     if (!CROSS_TASK_FIELDS.some(([keys]) => keys.some((k) => k in input))) refuse(`has nothing to change on ${name}`);
   }
@@ -1325,6 +1348,19 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           changes: [{ kind: c.kind, feature: c.slug, detail: c.detail }],
         });
       }
+      // An agent's change to the plan (BRK-274): its name, before and after, and the owner's undo.
+      for (const row of this.planningEvents(after, upTo)) {
+        const change = this.planningView(row);
+        const map = row.kind === 'task' ? this.tasks.get(row.target) : null;
+        events.push({
+          seq: null,
+          id: `pl${row.id}`,
+          at: change.at,
+          source: 'agents',
+          task: map ? brief(row.target, map) : null,
+          changes: [{ ...change, of: change.kind, kind: 'agent_planned', by: row.agent }],
+        });
+      }
       for (const p of this.pingEvents(after, upTo)) {
         const map = this.tasks.get(p.task);
         events.push({
@@ -1462,6 +1498,7 @@ Object.assign(
   agentsMethods,
   routinesMethods,
   featuresMethods,
+  planningMethods,
   chaseMethods,
   attachmentsMethods,
   pingsMethods,
@@ -1792,6 +1829,7 @@ const CROSS_TASK_FIELDS = [
   [['done_when'], 'done when'],
   [['project'], 'area'],
   [['horizon'], 'horizon'],
+  [['priority'], 'priority'],
   [['addTags', 'removeTags'], 'tags'],
   [['addDepends', 'removeDepends'], 'dependencies'],
 ];
