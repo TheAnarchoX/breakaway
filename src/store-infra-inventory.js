@@ -26,7 +26,7 @@ import {
 import { costInCurrency } from './infra-currency.js';
 import { runsTheBoard } from './infra-environments.js';
 import { DAY, SIGNAL_RAW_DAYS, healthSignals } from './infra-signals.js';
-import { keepLastHealth, readHealthUrl, withHealthUrl } from './infra-health.js';
+import { debounceHealthUrl, keepLastHealth, readHealthUrl, withHealthUrl } from './infra-health.js';
 
 /** @typedef {import('./infra-provider.js').ProviderRegistry} ProviderRegistry */
 /** @typedef {import('./infra-provider.js').Resource} Resource */
@@ -69,6 +69,8 @@ export const infraInventoryMethods = {
     if (!columns.includes('cost_note')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN cost_note TEXT');
     // What couldn't be read on the last refresh, while the last known health stays (BRK-266).
     if (!columns.includes('health_note')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN health_note TEXT');
+    // How many health URL checks in a row failed, on the front door it's checked on (BRK-266).
+    if (!columns.includes('health_fails')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN health_fails INTEGER');
   },
 
   /**
@@ -216,8 +218,17 @@ export const infraInventoryMethods = {
         }
       });
       const url = this.environmentHealthUrl(environment);
+      /** @type {number | null} how many health URL checks in a row failed, kept on the front door */
+      let urlFails = null;
       if (health && url) {
-        const check = await readHealthUrl(url, options.fetch ?? fetch);
+        const before = this.sql
+          .exec(
+            "SELECT MAX(health_fails) AS fails FROM infra_inventory WHERE environment = ? AND kind IN ('route', 'custom-domain')",
+            environment.id,
+          )
+          .toArray()[0];
+        const { check, fails } = debounceHealthUrl(await readHealthUrl(url, options.fetch ?? fetch), before?.fails);
+        urlFails = fails;
         health = withHealthUrl(found.resources, health, url, check, new Date().toISOString());
       }
       const costs = await tryCall(async () => checkCosts(provider, await provider.cost(seen)));
@@ -226,7 +237,7 @@ export const infraInventoryMethods = {
       const alerts = await heard('read the alerts of', environment, async () =>
         checkSignals(provider, seen, since, await provider.events(seen, since)),
       );
-      Object.assign(slice, { health, costs, alerts, observeFailed });
+      Object.assign(slice, { health, costs, alerts, observeFailed, urlFails });
     }
     if (targeted.length && !slices.length) {
       for (const failure of failures) this.inventoryStaleSeen(failure.environment, providerId, failure.message, now);
@@ -246,7 +257,7 @@ export const infraInventoryMethods = {
       throw refused;
     }
     let count = 0;
-    for (const { environment, found, health, costs, observeFailed } of slices) {
+    for (const { environment, found, health, costs, observeFailed, urlFails } of slices) {
       // Each environment in its own transaction: one environment's slice is never half written.
       this.ctx.storage.transactionSync(() => {
         const before = new Map(
@@ -269,7 +280,7 @@ export const infraInventoryMethods = {
           const h = keepLastHealth(health ? (healthOf.get(r.id) ?? null) : null, last, health ? null : observeFailed);
           const c = costs ? costOf.get(r.id) : null;
           this.sql.exec(
-            'INSERT INTO infra_inventory (environment, provider, rid, kind, name, attrs, health, health_at, health_text, health_note, cost, currency, cost_note, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO infra_inventory (environment, provider, rid, kind, name, attrs, health, health_at, health_text, health_note, health_fails, cost, currency, cost_note, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             environment.id,
             providerId,
             r.id,
@@ -280,6 +291,7 @@ export const infraInventoryMethods = {
             h.at,
             h.text ? redact(h.text).slice(0, 200) : null,
             h.note ? redact(h.note).slice(0, 300) : null,
+            r.kind === 'route' || r.kind === 'custom-domain' ? urlFails : null,
             costs ? (c?.amount ?? null) : (last?.cost ?? null),
             costs ? (c?.currency ?? null) : (last?.currency ?? null),
             costs ? (c?.note ? redact(c.note).slice(0, 500) : null) : (last?.cost_note ?? null),

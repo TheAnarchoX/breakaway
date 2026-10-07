@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HEALTH_URL_MAX,
   checkHealthField,
+  debounceHealthUrl,
   keepLastHealth,
   readHealthUrl,
   rollUpHealth,
@@ -126,6 +127,24 @@ describe('an environment’s health URL (BRK-266)', () => {
       throw new Error('connection refused');
     };
     expect(await readHealthUrl(url, refuses)).toMatchObject({ state: 'down', text: /couldn’t be reached/u });
+  });
+
+  it('reads one failure degraded and only two in a row down; a pass clears the count', () => {
+    const down = { state: 'down', text: 'The health URL on acme.example answered 502 in 9 ms' };
+    expect(debounceHealthUrl(down, 0)).toEqual({
+      check: {
+        state: 'degraded',
+        text: 'The health URL on acme.example answered 502 in 9 ms; down if the next check fails too',
+      },
+      fails: 1,
+    });
+    expect(debounceHealthUrl(down, 1)).toEqual({
+      check: { state: 'down', text: 'The health URL on acme.example answered 502 in 9 ms, 2 checks in a row' },
+      fails: 2,
+    });
+    expect(debounceHealthUrl(down, null).check.state).toBe('degraded');
+    const ok = { state: 'healthy', text: 'answered 200' };
+    expect(debounceHealthUrl(ok, 3)).toEqual({ check: ok, fails: 0 });
   });
 
   it('puts its answer on the front door whose host it names, or every front door when none does', () => {

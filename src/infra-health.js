@@ -95,6 +95,20 @@ export async function readHealthUrl(url, doFetch, { timeoutMs = HEALTH_URL_TIMEO
 }
 
 /**
+ * One flaky probe never makes the front door down (BRK-266): a failure (down) right after a pass reads degraded, with
+ * the reason, and only a second failure in a row reads down. A pass, or a 4xx, clears the count.
+ * @param {{ state: string, text: string }} check from `readHealthUrl`
+ * @param {number} failsBefore how many checks in a row failed before this one
+ * @returns {{ check: { state: string, text: string }, fails: number }}
+ */
+export function debounceHealthUrl(check, failsBefore) {
+  if (check.state !== 'down') return { check, fails: 0 };
+  const fails = (Number(failsBefore) || 0) + 1;
+  if (fails >= 2) return { check: { state: 'down', text: `${check.text}, ${fails} checks in a row` }, fails };
+  return { check: { state: 'degraded', text: `${check.text}; down if the next check fails too` }, fails };
+}
+
+/**
  * Puts a health URL's answer on the environment's front door: the routes and custom domains whose host is the URL's,
  * or every route and custom domain when none matches. A front door's health is then the worse of its own and the
  * URL's, and a passing check lifts an idle or unknown one to healthy, since it just served a request. With no front

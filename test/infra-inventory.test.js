@@ -268,18 +268,29 @@ describe('inventory (BRK-177)', () => {
     expect(calls[0].init.method).toBe('GET');
     expect(new Headers(calls[0].init.headers).has('authorization')).toBe(false);
     const route = async () => (await inventory({ provider: 'fake-url' })).resources.find((r) => r.id === 'route-api');
+    // One failed probe is degraded, never down: a flaky check doesn't open an incident.
     expect((await route()).health).toMatchObject({
-      state: 'down',
-      text: expect.stringMatching(/^The health URL on api\.acme\.example answered 503 in \d+ ms$/u),
+      state: 'degraded',
+      text: expect.stringMatching(
+        /^The health URL on api\.acme\.example answered 503 in \d+ ms; down if the next check fails too$/u,
+      ),
     });
-    const signals = await body(await api(`infra/signals?environment=url-staging&source=fake-url&kind=health`));
-    expect(signals.signals.filter((x) => x.resource === 'route-api' && x.level === 'critical')).toHaveLength(1);
-    expect(signals.signals[0].environmentId).toBe(staging.id);
+    const healthSignals = async () =>
+      (await body(await api('infra/signals?environment=url-staging&source=fake-url&kind=health'))).signals.filter(
+        (x) => x.resource === 'route-api',
+      );
+    expect((await healthSignals()).map((x) => x.level)).toEqual(['warning']);
+    expect((await healthSignals())[0].environmentId).toBe(staging.id);
+
+    // A second failure in a row is down.
+    await refreshWith();
+    expect((await route()).health).toMatchObject({ state: 'down', text: expect.stringMatching(/2 checks in a row$/u) });
+    expect((await healthSignals()).map((x) => x.level)).toEqual(['critical', 'warning']);
 
     // Answering again: the front door is healthy, and says so once.
     status = 200;
     await refreshWith();
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect((await route()).health).toMatchObject({ state: 'healthy' });
     const again = await body(await api(`infra/signals?environment=url-staging&source=fake-url&kind=health`));
     expect(again.signals.filter((x) => x.resource === 'route-api' && x.level === 'info')).toHaveLength(1);
