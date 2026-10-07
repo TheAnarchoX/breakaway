@@ -761,6 +761,22 @@ describe('changes from the console', () => {
 
     const listed = await body(await board(`infra/environments/${envs['chg-staging'].id}/changes`));
     expect(listed.open.n).toBe(made.n);
+    // The pull request page finds the change by its pull request (WEB-105), with its environment's freeze.
+    const byPull = await body(await board(`infra/changes?repo=widgets&pull=${made.pull.number}`));
+    expect(byPull).toMatchObject({
+      status: 200,
+      change: { n: made.n, state: 'open' },
+      environment: { id: envs['chg-staging'].id, name: 'chg-staging', frozen: false },
+    });
+    expect(await body(await board(`infra/changes?repo=widgets&pull=999999`))).toMatchObject({
+      status: 200,
+      change: null,
+      environment: null,
+    });
+    expect(await body(await board(`infra/changes?repo=other&pull=${made.pull.number}`))).toMatchObject({
+      change: null,
+    });
+    expect((await body(await board('infra/changes?repo=widgets&pull=nope'))).status).toBe(400);
 
     // Proposing again while it's open replaces its commit on the same branch, and its pull request.
     gh.writes = [];

@@ -510,6 +510,13 @@ function progress(p) {
   return `${p.done} of ${p.total} done`;
 }
 
+/** A feature's plan, the owner's dates (WEB-104), as the CLI says it, or null. */
+function plan({ plannedStart, plannedEnd }) {
+  if (plannedStart && plannedEnd) return `${plannedStart} to ${plannedEnd}`;
+  if (plannedEnd) return `by ${plannedEnd}`;
+  return plannedStart ? `from ${plannedStart}` : null;
+}
+
 /**
  * @typedef {{ name: string, title: string, description: string, inputSchema: any, annotations: any,
  *   run: (args: any, ctx: any) => Promise<{ text: string, data: any }> }} Tool
@@ -713,7 +720,7 @@ const READS = [
       if (args.feature) {
         const { feature: f } = body(await ctx.store.featureApi(args.feature.toLowerCase()));
         const text = [
-          `${f.title} (${f.slug}): ${f.release ?? 'unplanned'}, ${f.state}, ${progress(f.progress)}`,
+          `${f.title} (${f.slug}): ${f.release ?? 'unplanned'}${plan(f) ? `, planned ${plan(f)}` : ''}, ${f.state}, ${progress(f.progress)}`,
           ...(f.brief ? ['', f.brief] : []),
           '',
           ...(f.tasks?.length
@@ -726,7 +733,10 @@ const READS = [
       const features = data.features ?? [];
       const text = features.length
         ? features
-            .map((f) => `${f.slug}  ${f.title} · ${f.release ?? 'unplanned'} · ${progress(f.progress)}`)
+            .map(
+              (f) =>
+                `${f.slug}  ${f.title} · ${f.release ?? 'unplanned'}${plan(f) ? ` · planned ${plan(f)}` : ''} · ${progress(f.progress)}`,
+            )
             .join('\n')
         : 'No features yet.';
       return { text, data };

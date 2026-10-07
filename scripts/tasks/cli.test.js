@@ -357,7 +357,14 @@ describe('features (BRK-85)', () => {
           chase: { state: 'on', parallel: 3 },
           conflicts: [],
         },
-        { slug: 'artifacts', title: 'Artifacts', release: null, progress: progress(), conflicts: [{ wid: 'BRK-9' }] },
+        {
+          slug: 'artifacts',
+          title: 'Artifacts',
+          release: null,
+          plannedEnd: '2026-10-19',
+          progress: progress(),
+          conflicts: [{ wid: 'BRK-9' }],
+        },
       ],
       suggestions: [{ slug: 'legacy-free', tasks: 3, open: 2, release: '1.2.0' }],
       releaseTasks: [{ release: '1.2.0', tasks: [{ wid: 'BRK-1' }, { wid: 'WEB-2' }] }],
@@ -367,7 +374,7 @@ describe('features (BRK-85)', () => {
       '  self-update  Self update · 1 of 2 done: 1 ready · chasing, 3 at once in an area',
       '',
       'Unplanned',
-      '  artifacts    Artifacts · no tasks yet · 1 task in two features',
+      '  artifacts    Artifacts · no tasks yet · planned by 2026-10-19 · 1 task in two features',
       '',
       'Tags that could be features (npx breakaway features add <slug>):',
       '  legacy-free (2 open tasks, 1.2.0)',
@@ -400,9 +407,16 @@ describe('features (BRK-85)', () => {
       ],
     }).join('\n');
     expect(text).toContain('  Release     1.3.0');
+    expect(text).toContain('  Planned     no dates yet');
     expect(text).toContain('  Needs you   BRK-50 it waits on your decision');
     expect(text).toContain('    BRK-50    needs-you Pick a channel (it waits on your decision)');
     expect(text).toContain('  Update from the board.');
+    const planned = (plan) => featureLines({ ...base, ...plan, tasks: [] }).find((l) => l.includes('Planned'));
+    expect(planned({ plannedStart: '2026-10-12', plannedEnd: '2026-10-19' })).toBe(
+      '  Planned     2026-10-12 to 2026-10-19',
+    );
+    expect(planned({ plannedStart: null, plannedEnd: '2026-10-19' })).toBe('  Planned     by 2026-10-19');
+    expect(planned({ plannedStart: '2026-10-12', plannedEnd: null })).toBe('  Planned     from 2026-10-12');
     expect(featureLines({ ...base, release: null, tasks: [] }).join('\n')).toMatch(
       /Release {5}unplanned[\s\S]*No tasks yet: tag them with self-update/u,
     );
