@@ -350,7 +350,7 @@ describe('each environment refreshes on its own (BRK-257)', () => {
 
   it('a 403 naming a permission strikes it; the refresh still writes the other', async () => {
     const id = 'fake-split-403';
-    const { registry, good, broken } = await twoEnvironments(
+    const { provider, registry, good, broken } = await twoEnvironments(
       id,
       Object.assign(new Error('Fake platform refused: the token needs Fake Alerts Read'), {
         status: 403,
@@ -364,6 +364,20 @@ describe('each environment refreshes on its own (BRK-257)', () => {
     const row = await runInDurableObject(store(), (s) => s.providerRecord(id));
     expect(row.permissions).toEqual(['Fake Services Read']);
     expect(row.discovery.error).toMatch(/^1 of 2 environments discovered/);
+
+    // When the other environment reached the same permission in this run, the token is scoped, not missing it: it
+    // comes back, and the refused environment is still stale. What the working one skipped stays on the row.
+    const discover = provider.discover;
+    provider.discover = async (ctx) => {
+      const found = await discover(ctx);
+      ctx.reached?.add('Fake Alerts Read');
+      return { ...found, skipped: ['a zone it can’t read routes on'] };
+    };
+    expect((await refresh(id, registry)).ok).toBe(true);
+    const scoped = await runInDurableObject(store(), (s) => s.providerRecord(id));
+    expect(scoped.permissions).toEqual(['Fake Alerts Read', 'Fake Services Read']);
+    expect(scoped.discovery).toMatchObject({ ok: false, skipped: ['a zone it can’t read routes on'] });
+    expect((await inventory({ environment: broken.name })).stale).toMatchObject([{ error: /needs Fake Alerts Read/ }]);
     // One environment's 403 doesn't stop the cron: the refresh as a whole worked.
     const state = await body(await api('infra/inventory/refresh'));
     expect(state.providers.find((p) => p.provider === id).last).toMatchObject({ ok: true });

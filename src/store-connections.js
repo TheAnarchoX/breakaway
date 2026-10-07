@@ -1074,12 +1074,13 @@ export const connectionsMethods = {
    * `missing` names permissions the platform refused (a 403 on what one reads): the row says each by name until a call
    * answers with it again (`reached`), or a new token is pasted, so one old 403 doesn't stick (BRK-254). A platform
    * that can't list a token's permissions shows a missing one only this way. `skipped` says what a discovery went on
-   * without, in words: the row notes it until the next discovery that works.
+   * without, in words: the row notes it until the next discovery that works, or one that reached some environments and
+   * passes its own (BRK-257).
    * @param {string} id
    * @param {'discovery' | 'signal'} what
-   * @param {{ ok: boolean, error?: string | null, missing?: string[], skipped?: string[], reached?: string[] }} outcome
+   * @param {{ ok: boolean, error?: string | null, missing?: string[], skipped?: string[] | null, reached?: string[] }} outcome
    */
-  async infraConnectionSeen(id, what, { ok, error = null, missing = [], skipped = [], reached = [] }) {
+  async infraConnectionSeen(id, what, { ok, error = null, missing = [], skipped = null, reached = [] }) {
     if (what !== 'discovery' && what !== 'signal') throw new Error(`infraConnectionSeen: unknown ${what}`);
     this.infraPermissionsSeen(id, { missing, reached });
     let said = null;
@@ -1095,8 +1096,8 @@ export const connectionsMethods = {
       said,
       id,
     );
-    if (what === 'discovery' && ok) {
-      const kept = skipped.map((g) => clip(String(g))).filter(Boolean);
+    if (what === 'discovery' && (ok || skipped !== null)) {
+      const kept = (skipped ?? []).map((g) => clip(String(g))).filter(Boolean);
       this.sql.exec(
         'UPDATE infra_connections SET discovery_skipped = ? WHERE provider = ?',
         kept.length ? JSON.stringify(kept) : null,

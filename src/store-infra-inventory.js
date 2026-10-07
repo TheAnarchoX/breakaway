@@ -280,7 +280,12 @@ export const infraInventoryMethods = {
         ? {
             ok: false,
             error: discoveredWords(failures, targeted.length),
-            missing: [...missing, ...failures.flatMap((f) => (f.permission ? [f.permission] : []))],
+            // A permission another environment reached in this run stays: the token is scoped, not missing it (BRK-254).
+            missing: [
+              ...missing,
+              ...failures.flatMap((f) => (f.permission && !reached.has(f.permission) ? [f.permission] : [])),
+            ],
+            skipped: [...skipped],
             reached: [...reached],
           }
         : { ok: true, missing: [...missing], skipped: [...skipped], reached: [...reached] },
