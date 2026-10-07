@@ -23,6 +23,7 @@ import { releaseOf } from './build.js';
 import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
 import { RUNNER_HEADER } from './infra-runner.js';
+import { plansDates } from './store-features.js';
 
 export { TaskStore } from './store.js';
 
@@ -780,6 +781,11 @@ async function handleApi(request, env, url, ctx) {
   // Features (IDEA-28): anyone signed in reads them, and agents shaping an idea may add one; aiming one at a
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
+    // A feature's planned dates are the owner's on the board (WEB-104): the CLI's token reads them and can't set them.
+    if ((method === 'POST' || method === 'PATCH') && via !== 'cookie' && plansDates(body))
+      return json(403, {
+        error: 'only the owner plans a feature’s dates, signed in to the web board: the CLI reads them',
+      });
     if (parts.length === 1 && method === 'GET') return send(await s.featuresApi());
     if (parts.length === 1 && method === 'POST') return send(await s.featuresCreateApi(body));
     if (parts.length === 2 && method === 'GET') return send(await s.featureApi(parts[1]));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { api } from './helpers.js';
+import { api, boardApi } from './helpers.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const add = (slug, extra = {}) => api('features', { method: 'POST', body: { slug, ...extra } });
@@ -157,6 +157,78 @@ describe('features', () => {
     expect(res.features[2].progress.total).toBe(0);
     // A release tag on a task with no feature still groups under its release.
     expect(res.releaseTasks).toEqual([{ release: '1.2.0', tasks: [expect.objectContaining({ wid: 'DEBT-3' })] }]);
+  });
+
+  it('is planned by the owner on the board: a start and an end, either cleared, never the start after the end', async () => {
+    const plan = (input) => boardApi('features/legacy-free', { method: 'PATCH', body: input });
+    expect((await feature('legacy-free')).feature).toMatchObject({ plannedStart: null, plannedEnd: null });
+    const planned = await body(await plan({ plannedStart: '2026-10-12', plannedEnd: '2026-10-19' }));
+    expect(planned.status).toBe(200);
+    expect(planned.feature).toMatchObject({ plannedStart: '2026-10-12', plannedEnd: '2026-10-19', editedBy: 'owner' });
+    expect((await list()).features.find((f) => f.slug === 'legacy-free')).toMatchObject({
+      plannedStart: '2026-10-12',
+      plannedEnd: '2026-10-19',
+    });
+    // An end alone is a "done by"; the start the change leaves out stays.
+    expect((await body(await plan({ plannedStart: '' }))).feature).toMatchObject({
+      plannedStart: null,
+      plannedEnd: '2026-10-19',
+    });
+    const after = await body(await plan({ plannedStart: '2026-10-20' }));
+    expect(after.status).toBe(400);
+    expect(after.error).toMatch(/starts on 2026-10-20, after it ends on 2026-10-19/);
+    for (const bad of ['12 Oct', '2026-02-30', '2026-1-5'])
+      expect((await body(await plan({ plannedEnd: bad }))).error).toMatch(/a day like 2026-10-12/);
+    expect((await body(await plan({ plannedStart: '2026-10-19' }))).feature.plannedStart).toBe('2026-10-19');
+    // The CLI's token reads the plan and can't set it, as the owner or as an agent; nor can it make a feature with one.
+    for (const by of [undefined, 'claude-x-1']) {
+      const refused = await body(
+        await api('features/legacy-free', { method: 'PATCH', body: { plannedEnd: '', ...(by ? { by } : {}) } }),
+      );
+      expect(refused.status).toBe(403);
+      expect(refused.error).toMatch(/only the owner plans a feature’s dates, signed in to the web board/);
+    }
+    expect((await body(await add('dated', { plannedEnd: '2026-11-01' }))).status).toBe(403);
+    expect((await feature('legacy-free')).feature.plannedEnd).toBe('2026-10-19');
+    // The rest of a feature still changes from the CLI, and leaves the plan as it was.
+    expect(
+      (await body(await api('features/legacy-free', { method: 'PATCH', body: { title: 'Legacy free' } }))).feature,
+    ).toMatchObject({ title: 'Legacy free', plannedStart: '2026-10-19', plannedEnd: '2026-10-19' });
+    const cleared = await body(await plan({ plannedStart: null, plannedEnd: '' }));
+    expect(cleared.feature).toMatchObject({ plannedStart: null, plannedEnd: null });
+    // Activity says each change of plan, newest first, and nothing for a change that leaves it as it was.
+    const { events } = await body(await api('activity'));
+    expect(
+      events
+        .flatMap((e) => e.changes.map((c) => ({ ...c, source: e.source })))
+        .filter((c) => c.kind === 'feature_planned'),
+    ).toEqual([
+      { kind: 'feature_planned', feature: 'legacy-free', title: 'Legacy free', start: null, end: null, source: 'api' },
+      {
+        kind: 'feature_planned',
+        feature: 'legacy-free',
+        title: 'Legacy free',
+        start: '2026-10-19',
+        end: '2026-10-19',
+        source: 'api',
+      },
+      {
+        kind: 'feature_planned',
+        feature: 'legacy-free',
+        title: 'Legacy free',
+        start: null,
+        end: '2026-10-19',
+        source: 'api',
+      },
+      {
+        kind: 'feature_planned',
+        feature: 'legacy-free',
+        title: 'Legacy free',
+        start: '2026-10-12',
+        end: '2026-10-19',
+        source: 'api',
+      },
+    ]);
   });
 
   it('is changed and deleted only by the owner; deleting leaves the tasks and their tag', async () => {
