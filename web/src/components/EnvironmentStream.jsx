@@ -14,6 +14,7 @@ import { ago } from '../lib/model.js';
 import { hashFor } from '../lib/store.js';
 import { STREAM_KINDS, STREAM_LEVELS, filterStream, groupStream } from '../lib/env-stream.js';
 import { AuditSummary } from './AuditSummary.jsx';
+import { AccountAlerts } from './AccountAlerts.jsx';
 
 /**
  * An environment's stream (WEB-94; docs/specs/WEB-94-environment-console.md): signals, plan moves, runs and their
@@ -120,7 +121,8 @@ function Entry({ item, fresh, env, nameOf, onResource }) {
 }
 
 /**
- * @param {{ items: import('../lib/env-stream.js').StreamItem[], fresh: Set<string>, env: { id: number }, nameOf: (id: string) => string, onResource: (id: string) => void, more: boolean, older: boolean, onOlder: () => void, updated: number | null, error: string | null }} props
+ * The provider's account-wide alerts (BRK-255) sit at the top as one collapsed row, kept once, not in the stream.
+ * @param {{ items: import('../lib/env-stream.js').StreamItem[], fresh: Set<string>, env: { id: number, provider?: string | null }, nameOf: (id: string) => string, onResource: (id: string) => void, more: boolean, older: boolean, onOlder: () => void, updated: number | null, error: string | null }} props
  */
 export function StreamRail({ items, fresh, env, nameOf, onResource, more, older, onOlder, updated, error }) {
   const [all, setAll] = useState(false);
@@ -179,6 +181,7 @@ export function StreamRail({ items, fresh, env, nameOf, onResource, more, older,
           </select>
         </div>
       )}
+      {env.provider && <AccountAlerts source={env.provider} reload={updated} />}
       {items.length && !rows.length ? (
         <p class="console-quiet">
           Nothing here matches.{' '}

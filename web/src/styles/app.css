@@ -10654,3 +10654,15 @@ a.pl-mention {
   align-items: center;
   gap: 8px;
 }
+/* The account-wide alerts (BRK-255) at the top of an environment's stream (WEB-97): one quiet row, opened in place. */
+.stream .infra-account {
+  flex: none;
+  text-align: start;
+  padding: 4px 10px;
+  background: var(--bg-2);
+  font-size: 13px;
+}
+.stream .infra-account ul {
+  max-height: 160px;
+  overflow-y: auto;
+}
