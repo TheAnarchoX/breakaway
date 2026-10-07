@@ -40,7 +40,7 @@ const SHOWN = 50;
 const SHOWN_MAX = 200;
 const SELECT = 'SELECT p.*, e.name AS env_name FROM infra_plans p JOIN infra_environments e ON e.id = p.environment';
 /**
- * The same, for reading one plan: a plan whose environment was removed (a short-lived one, BRK-263) is still there,
+ * The same, for reading plans: a plan whose environment was removed (a short-lived one, BRK-263) is still there,
  * named as the audit last named its environment, so the record of what removed it outlives it.
  */
 const SELECT_READ = `SELECT p.*, COALESCE(e.name, (SELECT a.environment FROM infra_audit a WHERE a.environment_id = p.environment ORDER BY a.id DESC LIMIT 1)) AS env_name, e.id IS NULL AS env_gone
@@ -406,7 +406,7 @@ export const infraPlansMethods = {
       const limit = whole(query.limit, 'limit', 1, SHOWN_MAX) ?? SHOWN;
       const rows = this.sql
         .exec(
-          `${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.n DESC LIMIT ?`,
+          `${SELECT_READ} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY p.n DESC LIMIT ?`,
           ...args,
           limit + 1,
         )
