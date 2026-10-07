@@ -14,6 +14,7 @@ const AUDIT_LABEL = {
   freeze: 'Frozen',
   environment: 'Target changed',
   cleanup: 'Clean up',
+  change: 'Change',
 };
 
 /** An apply's or a rollback's steps, by outcome: what's under way reads as under way. */
