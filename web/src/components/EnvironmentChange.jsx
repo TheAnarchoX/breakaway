@@ -1374,9 +1374,7 @@ function ChangeCard({ ch }) {
       </ul>
       {card.state === 'checking' && <p class="meta">The board’s plan check is running on its pull request.</p>}
       {card.state === 'waiting' && plansNothing(change) && (
-        <p class="meta">
-          It describes {env.name} as it runs, so it plans nothing. Merge keeps it as code; nothing changes.
-        </p>
+        <p class="meta">Nothing changes in {env.name}: merging records it as code.</p>
       )}
       {card.state === 'waiting' && !plansNothing(change) && (
         <p class="meta">

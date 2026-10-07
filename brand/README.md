@@ -133,6 +133,7 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 
 - "Approve this plan for staging? The board merges its pull request, applies the plan, and rolls back if the health check fails." The same for production. When merging deploys (the repository's pipeline deploys on merge), it adds the line Merge's dialog says, like "Merging also deploys staging."
 - "Reject this change? The board closes its pull request. Nothing changes."
+- "Merge #12? Nothing changes in staging: merging records it as code." For a change whose plan has no changes: a file for what runs, or edits that leave it as it runs. Approve says the same line and offers Merge when it finds the plan at the head has no changes. When merging deploys, it adds that line too.
 
 Its lines: "Set with the Worker's deploy, never here." (a variable or secret, by name only) "What runs changed since you looked. Here's the plan now." "The plan changed between your approval and the merge." "Can't merge #12: checks failing." "Staging is frozen: unfreeze it to approve." Proposing doesn't push (you just pressed it); a plan that waits after a mismatch pushes like any plan that waits.
 

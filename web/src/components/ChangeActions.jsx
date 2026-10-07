@@ -7,7 +7,7 @@ import { mergeEffect } from './PullPage.jsx';
 
 /**
  * The owner's buttons on a change the board proposed (BRK-258, BRK-260): Approve, Reject, Propose again, and Merge for
- * a change that plans nothing. The console's card and the board's pull request page (WEB-105) show the same ones, so a
+ * a change that plans nothing, which Approve also offers when it finds the head plans nothing (BRK-286). The console's card and the board's pull request page (WEB-105) show the same ones, so a
  * press does the same thing from either. Apply is never a button: Approve is the owner's press, and the board applies.
  *
  * @param {{
@@ -15,16 +15,23 @@ import { mergeEffect } from './PullPage.jsx';
  *   env: { id: number | string, name: string, frozen?: boolean | number },
  *   card: { approve: boolean, merge: boolean, reject: boolean, again: boolean },
  *   page?: any,
+ *   merges?: boolean,
  *   onChanged: (change: any) => void,
  * }} props `page` is the pull request page's data, when it's at hand; otherwise Approve and Merge read it to say
- *   whether merging deploys. `onChanged` gets the change the board answers with (merged, after a Merge).
+ *   whether merging deploys. `merges` is false where the page's own Merge merges a change that plans nothing. `onChanged` gets the change the board answers with (merged, after a Merge).
  */
-export function ChangeActions({ change, env, card, page = null, onChanged }) {
+export function ChangeActions({ change, env, card, page = null, merges = true, onChanged }) {
   const [busy, setBusy] = useState(/** @type {string | null} */ (null));
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const [moved, setMoved] = useState(/** @type {any} */ (null));
+  const [nothing, setNothing] = useState(false);
   // A plan that moved since the change was proposed can't be approved: proposing again plans it on the current head.
-  const can = moved ? { ...card, approve: false, again: true } : card;
+  // A head that plans nothing has nothing to approve: it merges (BRK-286).
+  const can = moved
+    ? { ...card, approve: false, merge: false, again: true }
+    : nothing
+      ? { ...card, approve: false, merge: merges, again: false }
+      : card;
   const number = change.pull?.number;
 
   // Approve and Merge merge into the default branch: when the repository's pipeline deploys on merge, say so, as Merge does.
@@ -53,8 +60,13 @@ export function ChangeActions({ change, env, card, page = null, onChanged }) {
       onChanged(res.change);
       toast(`Approved: the board merges #${number} and applies the plan.`, 'success');
     } catch (err) {
-      setError(err.message);
-      if (err.data?.preview) setMoved(err.data.preview);
+      if (err.data?.nothing) {
+        setNothing(true);
+        if (err.data.change) onChanged(err.data.change);
+      } else {
+        setError(err.message);
+        if (err.data?.changed && err.data.preview) setMoved(err.data.preview);
+      }
     } finally {
       setBusy(null);
     }
@@ -63,7 +75,7 @@ export function ChangeActions({ change, env, card, page = null, onChanged }) {
     const deploys = await deployLine();
     const ok = await confirmDialog({
       title: `Merge #${number}?`,
-      body: `It describes ${env.name} as it runs, so it plans nothing and nothing changes.${deploys ? ` ${deploys}` : ''}`,
+      body: `Nothing changes in ${env.name}: merging records it as code.${deploys ? ` ${deploys}` : ''}`,
       confirmLabel: 'Merge',
     });
     if (!ok) return;
@@ -76,7 +88,8 @@ export function ChangeActions({ change, env, card, page = null, onChanged }) {
       });
       // The board follows the merge at its next sync; until then the card says it merged.
       onChanged({ ...change, state: 'merged', updated: new Date().toISOString() });
-      toast(`Merged #${number}: ${env.name} is described as code.`, 'success');
+      setNothing(false);
+      toast(`Merged #${number}: ${env.name} is recorded as code.`, 'success');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -112,8 +125,13 @@ export function ChangeActions({ change, env, card, page = null, onChanged }) {
         body: { edits: change.edits, propose: true },
       });
       setMoved(null);
+      setNothing(false);
       onChanged(res.change);
-      toast(`Proposed again on the current head: the new plan needs your approval.`);
+      toast(
+        res.change?.changes === 0
+          ? `Proposed again on the current head: it plans nothing, so merge it.`
+          : `Proposed again on the current head: the new plan needs your approval.`,
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -134,6 +152,7 @@ export function ChangeActions({ change, env, card, page = null, onChanged }) {
           <PlanPreview preview={moved} />
         </div>
       )}
+      {nothing && <p class="meta">{`Nothing changes in ${env.name}: merging #${number} records it as code.`}</p>}
       {error && !moved && (
         <p class="field-error" role="alert">
           {error}

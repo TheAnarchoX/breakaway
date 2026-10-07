@@ -23,6 +23,7 @@ import {
   formValue,
   getPath,
   idleEdits,
+  plansNothing,
   joinEdits,
   nameAfter,
   nameEdits,
@@ -624,6 +625,23 @@ describe('the change’s card', () => {
       approve: true,
       merge: false,
     });
+  });
+
+  it('offers Merge for edits whose plan has no changes, and Approve once it has one (BRK-286)', () => {
+    const edits = [{ op: 'set', resource: 'acme-api', path: 'bindings', value: [] }];
+    expect(plansNothing({ ...change, edits, changes: 0 })).toBe(true);
+    expect(cardState({ ...change, edits, changes: 0 }, { checks: 'success' })).toMatchObject({
+      state: 'waiting',
+      approve: false,
+      merge: true,
+      reject: true,
+    });
+    expect(cardState({ ...change, edits, changes: 2 }, { checks: 'success' })).toMatchObject({
+      approve: true,
+      merge: false,
+    });
+    // A change proposed before the board kept its plan's size asks for an approval, as it did.
+    expect(cardState({ ...change, edits, changes: null }, { checks: 'success' })).toMatchObject({ approve: true });
   });
 
   it('merges once approved, or says it can’t with Propose again', () => {
