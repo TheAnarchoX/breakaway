@@ -11323,6 +11323,85 @@ a.pl-mention {
   font-size: 13px;
   color: var(--muted);
 }
+/* Add resource (WEB-107): the kinds the provider can create, then the templates, a button each. */
+.change-kinds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.change-kind {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.change-kind:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+.change-kind:focus-visible {
+  border-color: var(--accent);
+}
+.change-kind svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.change-kind:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.change-kind-tag {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.change-add-sub {
+  margin: 6px 0 0;
+}
+.change-needs-code {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-xs);
+}
+.change-needs-code p {
+  margin: 0;
+  font-size: 13px;
+}
+.change-lines li > .change-line-code {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font: 400 12.5px / 1.45 var(--font-sans, inherit);
+  color: var(--muted);
+}
+.topo-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.topo-empty p {
+  margin: 0;
+}
 .change-lines li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
