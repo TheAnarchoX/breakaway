@@ -600,6 +600,35 @@ function writer(ctx) {
   };
 }
 
+/** The module a new Worker starts with (BRK-270): it answers /health until the repository's deploy puts its code on it. */
+export const STARTER_MODULE = 'starter.js';
+export const STARTER_SCRIPT = `// Made by breakaway's Architect. The repository's deploy replaces it.
+export default {
+  fetch(request) {
+    if (new URL(request.url).pathname === '/health') return Response.json({ ok: true, starter: true });
+    return new Response('This Worker has no code yet: its deploy puts it here.', { status: 503 });
+  },
+};
+`;
+
+/**
+ * A new Worker's first upload: the starter module, with the change's settings and bindings. A Durable Object binding
+ * waits for the deploy, since its class is in the Worker's own code.
+ */
+function starterUpload(after, resolve) {
+  const { keep_bindings: _, ...settings } = workerSettings(after, [], resolve);
+  const metadata = {
+    ...settings,
+    main_module: STARTER_MODULE,
+    bindings: settings.bindings.filter((b) => b.type !== 'durable_object_namespace'),
+    compatibility_date: settings.compatibility_date ?? new Date().toISOString().slice(0, 10),
+  };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append(STARTER_MODULE, new Blob([STARTER_SCRIPT], { type: 'application/javascript+module' }), STARTER_MODULE);
+  return form;
+}
+
 /** A Worker's settings, as `PATCH …/settings` takes them, from a change's `after` and its live bindings. */
 function workerSettings(after, live, resolve) {
   const byName = new Map(live.map((b) => [b.name, b]));
@@ -689,8 +718,9 @@ async function applyChange(c, { call, a, live, have, made, resolve }) {
       const perm = { permission: WORKERS_WRITE.edit };
       if (c.op === 'delete') return call('DELETE', p, { permission: WORKERS_WRITE.delete });
       if (c.op === 'create') {
-        // The Worker alone: its first version, with its code, comes from its deploy.
+        // The Worker, then a starter version that answers /health, with its settings: its deploy replaces the code.
         await call('POST', `${a}/workers/workers`, { permission: WORKERS_WRITE.create, json: { name: c.name } });
+        await call('PUT', p, { permission: WORKERS_WRITE.create, form: starterUpload(after, resolve) });
         if (Array.isArray(after.crons) && after.crons.length)
           await call('PUT', `${p}/schedules`, { ...perm, json: after.crons.map((cron) => ({ cron })) });
         return;

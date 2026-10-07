@@ -18,6 +18,7 @@ import { runsTheBoard } from './infra-environments.js';
 import { DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desired.js';
 import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.js';
 import { planDigest } from './infra-runner.js';
+import { creatableKinds } from './infra-provider.js';
 import { redact } from './redact.js';
 import {
   applyEdits,
@@ -267,13 +268,17 @@ export const infraChangesMethods = {
   async planInfraChange(env, edits, base, github = null) {
     const templates = await this.changeTemplates(env, edits, github ?? {});
     const provider = this.infraProviderFor(env.provider);
+    const creatable = edits.some((e) => e.op === 'create') && provider ? creatableKinds(provider) : {};
     const made = applyEdits({
       file: base.file,
       edits,
       templates,
       environment: env.name,
       names: (kind) => (typeof provider?.editable === 'function' ? provider.editable(kind)?.name : null),
-      seen: edits.some((e) => e.op === 'rename') ? this.inventoryRows('WHERE i.environment = ?', env.id) : [],
+      seen: edits.some((e) => e.op === 'rename' || e.op === 'create')
+        ? this.inventoryRows('WHERE i.environment = ?', env.id)
+        : [],
+      creatable: (kind) => creatable[kind] ?? null,
     });
     const head = { head: base.sha, from: base.from, lines: made.lines, dropped: made.dropped };
     if (made.problems.length) return unfit(made.problems, head);

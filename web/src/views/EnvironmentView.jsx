@@ -34,8 +34,8 @@ import {
  * trail, BRK-175), all kept live by polling the routes it reads, with a panel each for deploys (WEB-88), plans
  * (WEB-62), incidents (WEB-63), nobody owns, cost (WEB-65), and the desired state with Describe it as code (WEB-92).
  * On a wide screen it fills the window (WEB-97), balanced 2:8:2 (WEB-100): the status band on top of the map in the
- * middle, admin on the left (the owner's actions, plans, desired state, cost, nobody owns, and what's live), and ops on
- * the right (the stream, incidents, and recent deploys), each column scrolling on its own and every panel shown in
+ * middle, admin on the left (the owner's actions, plans, desired state, cost, and nobody owns), and ops on the right
+ * (the stream, incidents, what's live, and recent deploys: WEB-108), each column scrolling on its own and every panel shown in
  * full. Narrower, it stacks: status, map, ops, admin. The owner changes the environment from the map (WEB-99): Change
  * and Remove on a node's detail, Add from a template on the map, and the change with its plan beside the map.
  */
@@ -455,6 +455,7 @@ export function EnvironmentView() {
               error={state.error}
             />
             <IncidentsSection env={env} tick={state.tick} />
+            <DeploysSection env={env} />
             <RecentDeploys env={env} />
           </aside>
 
@@ -464,7 +465,6 @@ export function EnvironmentView() {
             <Drift env={env} desired={state.desired} error={state.desiredError} />
             <CostSection env={env} tick={state.tick} />
             <UnownedSection env={env} />
-            <DeploysSection env={env} />
           </aside>
         </div>
       </div>
