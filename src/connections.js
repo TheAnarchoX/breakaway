@@ -238,8 +238,9 @@ export function keptPermissions(provider, check) {
 }
 
 /**
- * What the board last saw from a provider with its token.
- * @typedef {{ at: string, ok: boolean, error: string | null }} ProviderSeen
+ * What the board last saw from a provider with its token; a discovery's `skipped` says, in words, what it went on
+ * without (BRK-254).
+ * @typedef {{ at: string, ok: boolean, error: string | null, skipped?: string[] }} ProviderSeen
  */
 
 /**
@@ -287,10 +288,13 @@ export function providerRow(provider, record) {
   const seen = [record.discovery, record.signal].filter(Boolean).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const at = seen[0]?.at ?? null;
   const missing = items.filter((i) => !i.ok).map((i) => i.label);
+  // What the platform said too, from whichever read failed, since a refusal isn't always the permission the board
+  // guessed (BRK-254).
+  const refused = seen.find((s) => !s.ok && s.error);
   if (missing.length)
     return {
       state: 'attention',
-      detail: `connected, but the token doesn’t have ${missing.join(', ')}`,
+      detail: `connected, but the token doesn’t have ${missing.join(', ')}${refused ? `; the last ${refused === record.discovery ? 'discovery' : 'signal'} failed: ${clip(refused.error)}` : ''}`,
       fix: `${name} needs more than when the token was made: make a new read-only token with ${list}, and replace it here.`,
       at,
       items,
@@ -308,6 +312,8 @@ export function providerRow(provider, record) {
   }
   const parts = [];
   if (!record.discovery) parts.push('no discovery yet');
+  // What the last discovery skipped is a note, not a problem: an account-owned token is listed zones it can't read.
+  if (record.discovery?.ok) parts.push(...(record.discovery.skipped ?? []));
   if (!record.checked)
     parts.push(
       `${name} can’t list a token’s permissions, so the board can’t see extras: make sure it has only these, all read`,

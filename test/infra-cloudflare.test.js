@@ -41,6 +41,7 @@ import {
   KV_SESSIONS,
   NEVER_KEPT,
   QUEUE_JOBS,
+  ZONE,
   cloudflareAnswers,
   cloudflareApi,
   cloudflareUsage,
@@ -53,6 +54,25 @@ const TOKEN = 'cf-read-token-for-tests-only';
 function context(answers = cloudflareAnswers(), extra = {}) {
   const fetch = cloudflareApi(answers);
   return { fetch, ctx: { environment: 'production', scope: { target: 'acme-api' }, token: TOKEN, fetch, ...extra } };
+}
+
+const ZONE_TWO = '0000000000000000000000000000f002';
+
+/** The made-up account with a second zone, acme-two.example, whose one route sends to acme-api. */
+function withSecondZone(answers) {
+  answers[`/zones?account.id=${ACCOUNT}&page=1&per_page=50`] = {
+    success: true,
+    result: [
+      { id: ZONE, name: 'acme.example' },
+      { id: ZONE_TWO, name: 'acme-two.example' },
+    ],
+    result_info: { page: 1, total_pages: 1 },
+  };
+  answers[`/zones/${ZONE_TWO}/workers/routes`] = {
+    success: true,
+    result: [{ id: '0000000000000000000000000000d103', pattern: 'two.acme-two.example/*', script: 'acme-api' }],
+  };
+  return answers;
 }
 
 // The provider contract runs in infra-cloudflare-plan.test.js, against an account that answers writes.
@@ -252,12 +272,45 @@ describe('the Cloudflare provider’s discover (BRK-189)', () => {
     workers[`/accounts/${ACCOUNT}/workers/scripts`] = 403;
     const refused = await discover(context(workers).ctx).catch((e) => e);
     expect(refused.message).toMatch(
-      /the token needs Workers Metadata Read-Only \(or the legacy Workers Scripts Read\)$/u,
+      /the token needs Workers Metadata Read-Only \(or the legacy Workers Scripts Read\) \(Cloudflare said 403: refused\)$/u,
     );
     expect(refused.permission).toBe('Workers Metadata Read-Only');
 
     found = await discover(context(cloudflareAnswers()).ctx);
     expect(found.missing).toEqual([]);
+  });
+
+  it('skips a zone whose routes the token can’t read, names it, and fails only when no zone answers (BRK-254)', async () => {
+    const answers = withSecondZone(cloudflareAnswers());
+    answers[`/zones/${ZONE_TWO}/workers/routes`] = 403;
+    const found = checkDiscovery(cloudflare, await discover(context(answers).ctx, { live: true }));
+    expect(found.missing).toEqual([]);
+    expect(found.resources.filter((r) => r.kind === 'route').map((r) => r.name)).toEqual(['api.acme.example/*']);
+    expect(found.skipped).toEqual([
+      'routes on acme-two.example aren’t readable with this token, so discovery skipped it',
+    ]);
+    expect(found.live.zones).toMatchObject({ 'acme.example': ZONE, 'acme-two.example': ZONE_TWO });
+
+    // Both zones answer: nothing skipped, and the second zone's route is found.
+    const both = await discover(context(withSecondZone(cloudflareAnswers())).ctx);
+    expect(both.skipped).toBeUndefined();
+    expect(both.resources.filter((r) => r.kind === 'route').map((r) => r.name)).toEqual([
+      'api.acme.example/*',
+      'two.acme-two.example/*',
+    ]);
+
+    // No zone answers: the permission is missing, with Cloudflare's own code and message.
+    answers[`/zones/${ZONE}/workers/routes`] = 403;
+    const failed = await discover(context(answers).ctx).catch((e) => e);
+    expect(failed.permission).toBe('Workers Routes Read');
+    expect(failed.message).toBe(
+      `Cloudflare refused GET /zones/${ZONE}/workers/routes: the token needs Workers Routes Read (Cloudflare said 403: refused)`,
+    );
+
+    // Anything but a 403 still stops discovery.
+    const broken = withSecondZone(cloudflareAnswers());
+    broken[`/zones/${ZONE_TWO}/workers/routes`] = 500;
+    await expect(discover(context(broken).ctx)).rejects.toThrow(/answered 500/u);
   });
 
   it('finds the account from the token, or takes it from the scope, and refuses a token that reaches several', async () => {
@@ -592,6 +645,60 @@ describe('discovering into the inventory (BRK-189)', () => {
     expect(row.provider.discovery).toMatchObject({ ok: true });
     expect(row.items.find((i) => i.name === 'Containers Read')).toMatchObject({ ok: false });
     expect(row.items.find((i) => i.name === 'D1 Read')).toMatchObject({ ok: true });
+  });
+
+  it('puts back a permission a later discovery reaches, and notes a zone it skipped on a working row (BRK-254)', async () => {
+    const answers = withSecondZone(cloudflareAnswers());
+    answers[`/zones/${ZONE_TWO}/workers/routes`] = 403;
+    const cf = cloudflareApi(answers);
+    spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith('https://api.cloudflare.com/')) return cf(url, init);
+      return new Response('{}', { status: 404 });
+    });
+    const put = await SELF.fetch(`${ORIGIN}/api/infra/connections/cloudflare`, {
+      method: 'PUT',
+      headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    expect(put.status).toBeLessThan(300);
+    const made = await boardApi('infra/environments', {
+      method: 'POST',
+      body: { repo: 'widgets', name: 'production', kind: 'production', provider: 'cloudflare', target: 'acme-api' },
+    });
+    expect([201, 409]).toContain(made.status);
+
+    const row = () => inStore(async (s) => (await s.providerConnections()).find((c) => c.id === 'provider.cloudflare'));
+
+    // No zone answers: discovery fails, the permission is struck, and the row says what Cloudflare said.
+    answers[`/zones/${ZONE}/workers/routes`] = 403;
+    const failed = await inStore((s) => s.refreshInventory('cloudflare').catch((e) => e));
+    expect(failed.message).toMatch(/needs Workers Routes Read \(Cloudflare said 403: refused\)/u);
+    let seen = await row();
+    expect(seen.items.find((i) => i.name === 'Workers Routes Read')).toMatchObject({ ok: false, has: 'none' });
+    expect(seen.detail).toMatch(
+      /^connected, but the token doesn’t have Workers Routes Read; the last discovery failed: .*Cloudflare said 403: refused/u,
+    );
+
+    // One zone answers: the permission comes back, and the zone it doesn't cover is named.
+    answers[`/zones/${ZONE}/workers/routes`] = cloudflareAnswers()[`/zones/${ZONE}/workers/routes`];
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    const inventory = await (await api('infra/inventory?provider=cloudflare')).json();
+    expect(inventory.resources.filter((r) => r.kind === 'route').map((r) => r.name)).toEqual(['api.acme.example/*']);
+
+    seen = await row();
+    expect(seen.provider.discovery).toMatchObject({ ok: true });
+    expect(seen.items.find((i) => i.name === 'Workers Routes Read')).toMatchObject({ ok: true, has: 'read' });
+    expect(seen).toMatchObject({
+      state: 'working',
+      detail: 'connected; routes on acme-two.example aren’t readable with this token, so discovery skipped it',
+    });
+
+    // Once the token reads the zone, the next discovery drops the note.
+    withSecondZone(answers);
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    seen = await row();
+    expect(seen).toMatchObject({ state: 'working', detail: 'connected' });
   });
 });
 
@@ -1011,6 +1118,33 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     expect(row.provider.signal).toMatchObject({ ok: false });
     expect(row.items.find((i) => i.name === 'Notifications Read')).toMatchObject({ ok: false });
     expect(JSON.stringify(row)).not.toContain(TOKEN);
+
+    // The next refresh whose alert history answers puts it back, and the analytics' permission stays (BRK-254).
+    answers[`/accounts/${ACCOUNT}/alerting/v3/history?*`] =
+      cloudflareAnswers()[`/accounts/${ACCOUNT}/alerting/v3/history?*`];
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    const back = (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
+    expect(back.provider.signal).toMatchObject({ ok: true });
+    expect(back.items.find((i) => i.name === 'Notifications Read')).toMatchObject({ ok: true });
+    expect(back.items.every((i) => i.ok)).toBe(true);
+  });
+
+  it('puts Account Analytics Read back once the analytics answer again, and says what Cloudflare said (BRK-254)', async () => {
+    const answers = cloudflareAnswers();
+    const usage = answers['/graphql'];
+    answers['/graphql'] = 403;
+    await onCloudflare(answers);
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    const row = async () => (await inStore((s) => s.providerConnections())).find((c) => c.id === 'provider.cloudflare');
+    let seen = await row();
+    expect(seen.items.find((i) => i.name === 'Account Analytics Read')).toMatchObject({ ok: false });
+    expect(seen.detail).toMatch(/the last signal failed: .*Cloudflare said 403: refused/u);
+
+    answers['/graphql'] = usage;
+    await inStore((s) => s.refreshInventory('cloudflare'));
+    seen = await row();
+    expect(seen.items.find((i) => i.name === 'Account Analytics Read')).toMatchObject({ ok: true });
+    expect(seen).toMatchObject({ state: 'working' });
   });
 
   it('says which alerts reach the board on GET /api/infra/alerts, read only', async () => {
@@ -1041,5 +1175,16 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     const said = await res.json();
     expect(said).toMatchObject({ error: /couldn’t say which alerts are set up/u, missing: ['Notifications Read'] });
     expect(JSON.stringify(said)).not.toContain(TOKEN);
+    const item = async () =>
+      (await inStore((s) => s.providerConnections()))
+        .find((c) => c.id === 'provider.cloudflare')
+        .items.find((i) => i.name === 'Notifications Read');
+    expect(await item()).toMatchObject({ ok: false });
+
+    // Once the read answers, the permission is back without pasting the token again (BRK-254).
+    answers[`/accounts/${ACCOUNT}/alerting/v3/policies`] =
+      cloudflareAnswers()[`/accounts/${ACCOUNT}/alerting/v3/policies`];
+    expect((await api('infra/alerts?provider=cloudflare')).status).toBe(200);
+    expect(await item()).toMatchObject({ ok: true, has: 'read' });
   });
 });

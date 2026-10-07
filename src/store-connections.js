@@ -181,6 +181,15 @@ export const connectionsMethods = {
         signal_at INTEGER, signal_ok INTEGER, signal_error TEXT
       );
     `);
+    // What the last discovery that worked went on without, in words (BRK-254).
+    const infraColumns = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_connections)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!infraColumns.has('discovery_skipped'))
+      this.sql.exec('ALTER TABLE infra_connections ADD COLUMN discovery_skipped TEXT');
   },
 
   // ---- what the rest of the board records for this view ----------------------------------
@@ -1062,28 +1071,17 @@ export const connectionsMethods = {
   /**
    * What discovery or signals saw with provider `id`'s token, for its Connections row: when, whether it worked, and
    * what the platform said when it didn't, redacted, with the token itself taken out in case the platform echoed it.
-   * `missing` names permissions the platform refused (a 403 on what one reads): the row says each by name until a new
-   * token is pasted. A platform that can't list a token's permissions shows a missing one only this way.
+   * `missing` names permissions the platform refused (a 403 on what one reads): the row says each by name until a call
+   * answers with it again (`reached`), or a new token is pasted, so one old 403 doesn't stick (BRK-254). A platform
+   * that can't list a token's permissions shows a missing one only this way. `skipped` says what a discovery went on
+   * without, in words: the row notes it until the next discovery that works.
    * @param {string} id
    * @param {'discovery' | 'signal'} what
-   * @param {{ ok: boolean, error?: string | null, missing?: string[] }} outcome
+   * @param {{ ok: boolean, error?: string | null, missing?: string[], skipped?: string[], reached?: string[] }} outcome
    */
-  async infraConnectionSeen(id, what, { ok, error = null, missing = [] }) {
+  async infraConnectionSeen(id, what, { ok, error = null, missing = [], skipped = [], reached = [] }) {
     if (what !== 'discovery' && what !== 'signal') throw new Error(`infraConnectionSeen: unknown ${what}`);
-    if (missing.length) {
-      const row = this.sql.exec('SELECT permissions FROM infra_connections WHERE provider = ?', id).toArray()[0];
-      const gone = new Set(missing.map(String));
-      // A permission refused is refused under its older names too, so a token kept with one of them shows it missing.
-      const registry = this.infraRegistry();
-      for (const p of (registry.has(id) ? registry.get(id) : null)?.readToken?.permissions ?? [])
-        if (gone.has(p.name)) for (const old of p.legacy ?? []) gone.add(old);
-      if (row)
-        this.sql.exec(
-          'UPDATE infra_connections SET permissions = ? WHERE provider = ?',
-          JSON.stringify(JSON.parse(row.permissions).filter((p) => !gone.has(p))),
-          id,
-        );
-    }
+    this.infraPermissionsSeen(id, { missing, reached });
     let said = null;
     if (!ok) {
       const token = await this.providerReadToken(id);
@@ -1097,6 +1095,42 @@ export const connectionsMethods = {
       said,
       id,
     );
+    if (what === 'discovery' && ok) {
+      const kept = skipped.map((g) => clip(String(g))).filter(Boolean);
+      this.sql.exec(
+        'UPDATE infra_connections SET discovery_skipped = ? WHERE provider = ?',
+        kept.length ? JSON.stringify(kept) : null,
+        id,
+      );
+    }
+  },
+
+  /**
+   * Provider `id`'s permissions as its calls just showed them: each in `missing` (refused) is struck off, with its
+   * older names, and each in `reached` (a call answered with it) that an earlier refusal struck is put back (BRK-254).
+   * @param {string} id
+   * @param {{ missing?: string[], reached?: string[] }} seen
+   */
+  infraPermissionsSeen(id, { missing = [], reached = [] }) {
+    if (!missing.length && !reached.length) return;
+    const row = this.sql.exec('SELECT permissions FROM infra_connections WHERE provider = ?', id).toArray()[0];
+    const gone = new Set(missing.map(String));
+    const registry = this.infraRegistry();
+    const declared = (registry.has(id) ? registry.get(id) : null)?.readToken?.permissions ?? [];
+    // A permission refused is refused under its older names too, so a token kept with one of them shows it missing.
+    for (const p of declared) if (gone.has(p.name)) for (const old of p.legacy ?? []) gone.add(old);
+    if (row) {
+      const kept = JSON.parse(row.permissions).filter((p) => !gone.has(p));
+      // Only a permission the provider declares comes back, under its own name, and never one refused just now.
+      for (const p of declared)
+        if (
+          reached.includes(p.name) &&
+          !gone.has(p.name) &&
+          ![p.name, ...(p.legacy ?? [])].some((n) => kept.includes(n))
+        )
+          kept.push(p.name);
+      this.sql.exec('UPDATE infra_connections SET permissions = ? WHERE provider = ?', JSON.stringify(kept.sort()), id);
+    }
   },
 
   /** Provider `id`'s token as Connections knows it: never its value. */
@@ -1108,11 +1142,13 @@ export const connectionsMethods = {
       row[`${what}_at`]
         ? { at: iso(row[`${what}_at`]), ok: Boolean(row[`${what}_ok`]), error: row[`${what}_error`] ?? null }
         : null;
+    const discovery = seen('discovery');
+    if (discovery) discovery.skipped = row.discovery_skipped ? JSON.parse(row.discovery_skipped) : [];
     return {
       permissions: JSON.parse(row.permissions),
       checked: Boolean(row.checked),
       connected: iso(row.edited),
-      discovery: seen('discovery'),
+      discovery,
       signal: seen('signal'),
     };
   },
@@ -1186,7 +1222,7 @@ export const connectionsMethods = {
         `INSERT INTO infra_connections (provider, sealed, permissions, checked, created, edited) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (provider) DO UPDATE SET sealed = excluded.sealed, permissions = excluded.permissions,
            checked = excluded.checked, edited = excluded.edited, discovery_at = NULL, discovery_ok = NULL,
-           discovery_error = NULL, signal_at = NULL, signal_ok = NULL, signal_error = NULL`,
+           discovery_error = NULL, discovery_skipped = NULL, signal_at = NULL, signal_ok = NULL, signal_error = NULL`,
         provider.id,
         sealed,
         JSON.stringify(keptPermissions(provider, check)),

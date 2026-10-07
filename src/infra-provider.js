@@ -53,6 +53,8 @@ export const COST_NOTE_MAX = 500;
  * @property {Relation[]} relations
  * @property {string[]} [missing] permissions the token lacks for a kind the provider skipped instead of failing, by
  *   name, for the provider's Connections row
+ * @property {string[]} [skipped] what the token couldn't read and discovery went on without, in words, as a quiet note
+ *   on the Connections row (a zone whose routes it can't read)
  */
 
 /**
@@ -139,6 +141,8 @@ export const COST_NOTE_MAX = 500;
  * @property {typeof fetch} [fetch] the fetch to call the platform with; tests pass a mock
  * @property {Resource[]} [resources] what `discover` just found in the environment's scope: the store passes it to
  *   `observe` and `cost` so they needn't discover again
+ * @property {Set<string>} [reached] the store's collector: the provider adds a permission's name when a call answers
+ *   with it, so Connections puts back one an earlier refusal struck (BRK-254)
  */
 
 /**
@@ -350,6 +354,8 @@ export function checkDiscovery(provider, discovery) {
   }
   if (discovery.missing !== undefined && (!Array.isArray(discovery.missing) || !discovery.missing.every(text)))
     fail(what, 'missing is not a list of permission names');
+  if (discovery.skipped !== undefined && (!Array.isArray(discovery.skipped) || !discovery.skipped.every(text)))
+    fail(what, 'skipped is not a list of sentences');
   return discovery;
 }
 

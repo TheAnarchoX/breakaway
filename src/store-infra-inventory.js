@@ -85,6 +85,10 @@ export const infraInventoryMethods = {
     const slices = [];
     /** @type {Set<string>} */
     const missing = new Set();
+    /** @type {Set<string>} what discovery went on without, in words (BRK-254) */
+    const skipped = new Set();
+    /** @type {Set<string>} permissions a call answered with, put back on Connections if an older refusal struck them */
+    const reached = new Set();
     const now = Date.now();
     /** @type {Map<number, Map<string, string | null>>} each environment's last health, by resource */
     const lastHealth = new Map();
@@ -119,11 +123,13 @@ export const infraInventoryMethods = {
         scope: { target: environment.target },
         observeOnly: Boolean(environment.observe_only) || runsTheBoard(environment, worker),
         token,
+        reached,
       };
       let found;
       try {
         const discovered = checkDiscovery(provider, await provider.discover(ctx));
         for (const name of discovered.missing ?? []) missing.add(name);
+        for (const note of discovered.skipped ?? []) skipped.add(redact(note));
         found = scopeDiscovery(discovered, environment.target);
       } catch (error) {
         const message = `${provider.name} couldn’t discover ${environment.repo}’s ${environment.name}: ${redact(error?.message ?? error)}`;
@@ -200,7 +206,12 @@ export const infraInventoryMethods = {
           );
       }
     });
-    await this.infraConnectionSeen(providerId, 'discovery', { ok: true, missing: [...missing] });
+    await this.infraConnectionSeen(providerId, 'discovery', {
+      ok: true,
+      missing: [...missing],
+      skipped: [...skipped],
+      reached: [...reached],
+    });
     for (const { environment, found, health, alerts } of slices) {
       const where = { source: providerId, environment: environment.name, environmentId: environment.id };
       const ids = new Set(found.resources.map((r) => r.id));
@@ -230,8 +241,9 @@ export const infraInventoryMethods = {
               ok: false,
               error: signalFailed.message,
               missing: signalFailed.permission ? [signalFailed.permission] : [],
+              reached: [...reached],
             }
-          : { ok: true },
+          : { ok: true, reached: [...reached] },
       );
     return { provider: providerId, environments: slices.length, resources: count, at: new Date(now).toISOString() };
   },
