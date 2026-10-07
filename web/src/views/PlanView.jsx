@@ -15,9 +15,10 @@ import {
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
-import { auditActor, auditWords } from '../lib/infra-audit.js';
+import { auditActor, auditSummary, auditWords } from '../lib/infra-audit.js';
 import { confirmDialog, environmentId, hashFor, navOrder, planRef, repoName, toast } from '../lib/store.js';
 import { rateWords } from '../../../src/infra-currency.js';
+import { AuditSummary } from '../components/AuditSummary.jsx';
 
 /**
  * A plan's page (WEB-62; docs/specs/IDEA-19-architect.md, "Views" and "Approvals"), at
@@ -329,7 +330,7 @@ function Reach({ blast, names }) {
 }
 
 /** The run's steps once the executor applies it (BRK-183), and the plan's moves in the audit trail, oldest first. */
-function Steps({ run, audit, names }) {
+function Steps({ run, audit, names, envId }) {
   const lists = run
     ? [
         { title: 'Steps', steps: run.steps },
@@ -383,7 +384,7 @@ function Steps({ run, audit, names }) {
                     <When iso={new Date(e.at).toISOString()} />
                   </span>
                 </div>
-                {e.summary && <p class="infra-audit-summary">{e.summary}</p>}
+                <AuditSummary parts={auditSummary(e)} environment={envId} class="infra-audit-summary" />
                 <p class="meta">By {auditActor(e)}</p>
               </li>
             );
@@ -723,7 +724,7 @@ export function PlanView() {
       <Cost cost={plan.cost} />
       <Reach blast={plan.blastRadius} names={state.names} />
       <Answer plan={plan} env={env} outOfDate={state.outOfDate} onChange={load} />
-      <Steps run={state.run} audit={state.audit} names={state.names} />
+      <Steps run={state.run} audit={state.audit} names={state.names} envId={envId} />
     </div>
   );
 }

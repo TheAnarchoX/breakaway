@@ -12,6 +12,7 @@ import {
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { hashFor } from '../lib/store.js';
+import { AuditSummary } from './AuditSummary.jsx';
 
 /**
  * An environment's stream (WEB-94; docs/specs/WEB-94-environment-console.md): signals, plan moves, runs and their
@@ -40,9 +41,11 @@ function Icon({ item }) {
  */
 function Entry({ item, fresh, env, nameOf, onResource }) {
   const iso = new Date(item.at).toISOString();
-  const planLink = item.plan
-    ? hashFor({ view: 'infrastructure', environment: String(env.id), plan: item.plan, task: null })
-    : null;
+  // A summary that already links its plan (WEB-96) doesn't link it again.
+  const planLink =
+    item.plan && !item.parts?.some((p) => typeof p !== 'string')
+      ? hashFor({ view: 'infrastructure', environment: String(env.id), plan: item.plan, task: null })
+      : null;
   return (
     <li
       class={`stream-entry stream-${item.type} ${item.level ? `stream-level-${item.level}` : ''} ${fresh ? 'is-new' : ''} ${item.live ? 'is-live' : ''}`}
@@ -61,7 +64,11 @@ function Entry({ item, fresh, env, nameOf, onResource }) {
             </time>
           </span>
         </p>
-        {item.text && <p class="stream-text">{item.text}</p>}
+        {item.parts ? (
+          <AuditSummary parts={item.parts} environment={env.id} class="stream-text" />
+        ) : (
+          item.text && <p class="stream-text">{item.text}</p>
+        )}
         <p class="meta stream-from">
           {item.who && <>By {item.who}</>}
           {item.resource && (

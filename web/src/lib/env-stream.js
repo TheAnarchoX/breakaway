@@ -1,7 +1,7 @@
 // An environment's stream (WEB-94; docs/specs/WEB-94-environment-console.md): what's happening there, newest first, from
 // the routes the board already has: signals (BRK-190), the audit trail (BRK-175), the executor's runs (BRK-183), and
 // incidents (BRK-197). Pure, so the tests can check it; the console polls and hands it what came back.
-import { auditActor, auditWords } from './infra-audit.js';
+import { auditActor, auditSummary, auditWords, summaryText } from './infra-audit.js';
 
 /** The most entries the stream keeps; older audit entries page in with Show older. */
 export const STREAM_MAX = 60;
@@ -61,7 +61,7 @@ export function runWords(run) {
 /**
  * @typedef {{
  *   key: string, at: number, type: 'signal' | 'audit' | 'run' | 'incident', label: string, outcome?: string,
- *   text?: string, level?: string, who?: string, plan?: string | null, envelope?: string | null,
+ *   text?: string, parts?: (string | { plan: string })[], level?: string, who?: string, plan?: string | null, envelope?: string | null,
  *   resource?: string | null, task?: { uuid: string, wid: string | null, description: string } | null, live?: boolean,
  * }} StreamItem
  */
@@ -90,13 +90,15 @@ export function streamItems({ signals = [], audit = [], runs = [], incidents = [
     });
   for (const e of audit) {
     const { label, outcome } = auditWords(e);
+    const parts = auditSummary(e);
     items.push({
       key: `audit:${e.id}`,
       at: ms(e.at),
       type: 'audit',
       label,
       outcome,
-      text: e.summary ?? '',
+      text: summaryText(parts),
+      parts,
       who: auditActor(e),
       plan: e.plan ?? null,
       envelope: e.envelope ?? null,
