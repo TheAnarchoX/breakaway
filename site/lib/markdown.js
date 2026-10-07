@@ -40,6 +40,17 @@ export function frontMatter(source) {
   return { meta, body: source.slice(match[0].length) };
 }
 
+/**
+ * A film (LCH-38), written like an image whose file is an MP4: it plays only when pressed, muted, with its poster (the
+ * same name with `-poster.png`) first, and nothing loads before the press. With reduced motion, the poster shows
+ * instead, linking to the film. What it shows is in words under it, for anyone who doesn't watch it.
+ * @param {string} alt @param {string} src @param {string} [caption]
+ */
+function film(alt, src, caption) {
+  const poster = src.replace(/\.mp4$/u, '-poster.png');
+  return `<figure class="shot film"><video controls muted playsinline preload="none" poster="${escape(poster)}" aria-label="${escape(caption ?? 'The film')}"><source src="${escape(src)}" type="video/mp4"></video><a class="film-still" href="${escape(src)}"><img src="${escape(poster)}" alt="${escape(alt)}" loading="lazy" decoding="async"></a>${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}<details class="film-words"><summary>What the film shows</summary><p>${escape(alt)}</p></details></figure>`;
+}
+
 /** An image on a line of its own: `![alt](src "caption")`, the caption optional. */
 const IMAGE = /^!\[([^\]]+)\]\((\S+?)(?: "([^"]*)")?\)\s*$/u;
 
@@ -49,6 +60,7 @@ const IMAGE = /^!\[([^\]]+)\]\((\S+?)(?: "([^"]*)")?\)\s*$/u;
  * @param {string} alt @param {string} src @param {string} [caption]
  */
 function figure(alt, src, caption) {
+  if (/\.mp4$/u.test(src)) return film(alt, src, caption);
   const img = (file, cls) =>
     `<img${cls ? ` class="${cls}"` : ''} src="${escape(file)}" alt="${escape(alt)}" loading="lazy" decoding="async">`;
   const both = /-dark\.png$/u.test(src);
