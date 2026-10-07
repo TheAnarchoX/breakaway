@@ -1558,6 +1558,99 @@ a code {
 .arrow-head {
   fill: var(--muted);
 }
+/* WEB-98: the path to a group's last task stands out, the other open tasks step back a little, and finished
+   work folds into one card a step. */
+.edge-path {
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+.node-path .card-task {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+.node-aside {
+  opacity: 0.72;
+}
+.node-aside:hover,
+.node-aside:focus-within {
+  opacity: 1;
+}
+.node-yours {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+/* The gap a long arrow passes through on a step it skips. */
+.node-pass {
+  height: 6px;
+}
+.fold-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-s);
+  /* Two more edges behind it, so it reads as several cards. */
+  box-shadow:
+    3px 3px 0 -1px var(--surface),
+    3px 3px 0 0 var(--line),
+    6px 6px 0 -1px var(--surface),
+    6px 6px 0 0 var(--line);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.fold-card:hover {
+  border-color: var(--faint);
+}
+.fold-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+.fold-ids {
+  font: 12px / 1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fold-show {
+  font-size: 12px;
+  text-decoration: underline;
+}
+.node-refold {
+  display: flex;
+  justify-content: center;
+}
+.graph-show-done {
+  display: inline-flex;
+  margin-top: 6px;
+  margin-left: -8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .node,
+  .edge,
+  .fold-card {
+    transition: none;
+  }
+}
+:root[data-motion="reduce"] .node,
+:root[data-motion="reduce"] .edge,
+:root[data-motion="reduce"] .fold-card {
+  transition: none;
+}
 
 /* ---------- activity ---------- */
 

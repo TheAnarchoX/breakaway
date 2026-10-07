@@ -63,6 +63,9 @@ export const keepUpdated = signal(pref('keepUpdated', 'off') === 'on');
 export const mergeWhenGreen = signal(pref('mergeWhenGreen', 'off') === 'on');
 effect(() => savePref('keepUpdated', keepUpdated.value ? 'on' : 'off'));
 effect(() => savePref('mergeWhenGreen', mergeWhenGreen.value ? 'on' : 'off'));
+/** The Dependencies view shows every finished task instead of folding them into one card a step (WEB-98). */
+export const graphShowDone = signal(pref('graphShowDone', 'off') === 'on');
+effect(() => savePref('graphShowDone', graphShowDone.value ? 'on' : 'off'));
 /**
  * Pull requests the owner turned merge when green off on: the setting leaves them alone. The default
  * repository's are numbers, as they always were; another repository's are "<slug>#<number>".
