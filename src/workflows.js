@@ -97,6 +97,46 @@ export function dispatchOf(source) {
   return { readable: true, inputs };
 }
 
+/** The empty entry an optional choice without a default offers, in Run workflow…'s form. */
+export const NOT_SET = 'Not set (the workflow decides)';
+
+/**
+ * How Run workflow…'s form shows an input (WEB-114): the value it starts at, and the label of the empty entry a choice
+ * offers, or null when it offers none. A choice with a default (one of its options) starts there and offers only its
+ * options; a required one without a default starts at its first; only an optional one without a default can be left
+ * empty, which sends nothing so the workflow decides.
+ * @param {WorkflowInput} input
+ * @returns {{ start: string | boolean, empty: string | null }}
+ */
+export function fieldOf(input) {
+  if (input.type === 'boolean') return { start: input.default === true, empty: null };
+  const fallback = input.default === null || input.default === undefined ? null : String(input.default);
+  if (input.type !== 'choice') return { start: fallback ?? '', empty: null };
+  const options = input.options ?? [];
+  if (fallback !== null && options.includes(fallback)) return { start: fallback, empty: null };
+  if (input.required) return { start: options[0] ?? '', empty: null };
+  return { start: '', empty: NOT_SET };
+}
+
+/**
+ * What Run workflow…'s form sends for `values`: nothing for an optional input left as it started, so the workflow's
+ * own default applies; else each value as the string GitHub takes, without an empty one.
+ * @param {WorkflowInput[]} wanted
+ * @param {Record<string, string | boolean | undefined>} values
+ * @returns {Record<string, string>}
+ */
+export function inputsToSend(wanted, values) {
+  /** @type {Record<string, string>} */
+  const inputs = {};
+  for (const input of wanted) {
+    const value = values[input.name];
+    if (value === undefined || (!input.required && value === fieldOf(input).start)) continue;
+    if (input.type === 'boolean') inputs[input.name] = value === true ? 'true' : 'false';
+    else if (value !== '') inputs[input.name] = String(value).trim();
+  }
+  return inputs;
+}
+
 /** A branch or tag a run may start on: GitHub's ref characters, never `..`, a leading `-` or `/`, or more than 255. */
 export function validRef(ref) {
   return (

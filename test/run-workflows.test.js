@@ -1,6 +1,14 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkInputs, dispatchOf, validRef, workflowsChanged } from '../src/workflows.js';
+import {
+  NOT_SET,
+  checkInputs,
+  dispatchOf,
+  fieldOf,
+  inputsToSend,
+  validRef,
+  workflowsChanged,
+} from '../src/workflows.js';
 import { YamlError, parseYaml } from '../src/yaml.js';
 import { ORIGIN, TEST_API_TOKEN, TEST_GITHUB_WEBHOOK_SECRET } from './constants.js';
 import { api } from './helpers.js';
@@ -149,6 +157,44 @@ describe('which workflows run by hand', () => {
     expect(checkInputs(wanted, 'tag=x')).toMatchObject({ error: expect.any(String) });
     expect(['main', 'v1.6.0', 'feature/x', 'a_b-c.d'].every(validRef)).toBe(true);
     expect(['', 'a b', 'a..b', '-x', '/x', 'x/', 'a;b', 'x'.repeat(256), 7].some(validRef)).toBe(false);
+  });
+
+  it('shows a choice with a default without an empty entry, and sends nothing for an optional input left alone', () => {
+    const wanted = dispatchOf(`on:
+  workflow_dispatch:
+    inputs:
+      next:
+        description: For a stable, what main works toward next
+        required: false
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+      level: { type: choice, options: [patch, minor] }
+      env: { type: choice, required: true, options: [staging, production] }
+      odd: { type: choice, options: [a, b], default: c }
+      tag: { required: true, default: main }
+      dry: { type: boolean }
+`).inputs;
+    const [next, level, env, odd, tag, dry] = wanted;
+    expect(next.description).toBe('For a stable, what main works toward next');
+    expect(fieldOf(next)).toEqual({ start: 'patch', empty: null });
+    expect(fieldOf(level)).toEqual({ start: '', empty: NOT_SET });
+    expect(NOT_SET).toBe('Not set (the workflow decides)');
+    expect(fieldOf(env)).toEqual({ start: 'staging', empty: null });
+    expect(fieldOf(odd)).toEqual({ start: '', empty: NOT_SET });
+    expect(fieldOf(tag)).toEqual({ start: 'main', empty: null });
+    expect(fieldOf(dry)).toEqual({ start: false, empty: null });
+
+    const start = Object.fromEntries(wanted.map((w) => [w.name, fieldOf(w).start]));
+    expect(inputsToSend(wanted, start)).toEqual({ env: 'staging', tag: 'main' });
+    expect(inputsToSend(wanted, { ...start, next: 'minor', level: 'minor', dry: true, tag: ' v2 ' })).toEqual({
+      next: 'minor',
+      level: 'minor',
+      env: 'staging',
+      tag: 'v2',
+      dry: 'true',
+    });
+    expect(checkInputs(wanted, inputsToSend(wanted, start))).toEqual({ inputs: { env: 'staging', tag: 'main' } });
   });
 
   it('drops the list when a push to the default branch changes a workflow', () => {
