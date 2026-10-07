@@ -94,3 +94,26 @@ export function resourceView(row, environment, task) {
     seen: new Date(row.seen).toISOString(),
   };
 }
+
+/** How often the cron refreshes a provider's inventory by itself (BRK-248). */
+export const REFRESH_EVERY_MS = 15 * 60 * 1000;
+
+/** At most this many providers refresh on one cron tick, the longest-waiting first, so they stagger. */
+export const REFRESH_PER_TICK = 2;
+
+/** A platform's answers that mean the token can't read: the cron stops trying until a new token is pasted. */
+const REFUSED = new Set([401, 403]);
+
+/**
+ * Whether the cron refreshes a provider now (BRK-248): never refreshed, or not in the last 15 minutes. One whose last
+ * refresh the platform refused (401 or 403) waits for a new token instead: Connections already says why.
+ * @param {{ at: number, ok: boolean, status: number | null } | null} last the provider's last refresh
+ * @param {number} now
+ * @param {number | null} [tokenEdited] when the provider's token was last pasted
+ */
+export function refreshDue(last, now, tokenEdited = null) {
+  if (!last) return true;
+  if (!last.ok && last.status !== null && REFUSED.has(last.status) && !(tokenEdited !== null && tokenEdited > last.at))
+    return false;
+  return now - last.at >= REFRESH_EVERY_MS;
+}

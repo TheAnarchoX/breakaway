@@ -15,6 +15,7 @@ import { StatusBand } from '../components/EnvironmentStatus.jsx';
 import { Topology } from '../components/EnvironmentTopology.jsx';
 import { StreamRail } from '../components/EnvironmentStream.jsx';
 import { EnvironmentActions } from '../components/EnvironmentActions.jsx';
+import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>, as a console
@@ -370,6 +371,7 @@ export function EnvironmentView() {
           </p>
         </div>
         <div class="conn-buttons">
+          {env.provider && env.target && <InventoryRefresh provider={env.provider} onDone={() => load()} />}
           <button
             type="button"
             class="btn btn-quiet btn-sm"

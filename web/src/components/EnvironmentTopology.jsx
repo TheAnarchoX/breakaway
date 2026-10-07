@@ -399,8 +399,8 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
           {env.target ? (
             <>
               Nothing seen yet: connect its provider on{' '}
-              <a href={hashFor({ view: 'connections', environment: null, task: null })}>Connections</a>, then give it a
-              minute.
+              <a href={hashFor({ view: 'connections', environment: null, task: null })}>Connections</a>, and the board
+              looks at once and every 15 minutes after. Press Refresh above to look now.
             </>
           ) : (
             'No target yet: give it one, like a Worker’s name, and the board maps what it uses.'

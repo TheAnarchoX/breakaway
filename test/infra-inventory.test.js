@@ -229,15 +229,189 @@ describe('inventory (BRK-177)', () => {
     expect(both.error).toMatch(/say which with \?environment=/);
   });
 
-  it('a refresh through the API is the owner’s, and names the provider', async () => {
+  it('a refresh through the API is the signed-in owner’s, and names the provider', async () => {
+    const token = await body(await api('infra/inventory/refresh', { method: 'POST', body: { provider: 'fake' } }));
+    expect(token).toMatchObject({ status: 403, error: /only the signed-in web board can refresh the inventory/ });
     const agent = await body(
-      await api('infra/inventory/refresh', { method: 'POST', body: { provider: 'fake', by: 'claude-x' } }),
+      await boardApi('infra/inventory/refresh', { method: 'POST', body: { provider: 'fake', by: 'claude-x' } }),
     );
     expect(agent.status).toBe(403);
-    const none = await body(await api('infra/inventory/refresh', { method: 'POST', body: {} }));
-    expect(none.status).toBe(400);
-    const unknown = await body(await api('infra/inventory/refresh', { method: 'POST', body: { provider: 'nowhere' } }));
+    const unknown = await body(
+      await boardApi('infra/inventory/refresh', { method: 'POST', body: { provider: 'nowhere' } }),
+    );
     expect(unknown.status).toBe(404);
     expect(unknown.error).toMatch(/no provider nowhere/);
+  });
+});
+
+/** Pastes `token` for `id` on Connections, as the owner would. */
+const connect = (id, token = 'fake-read-token') =>
+  boardApi(`infra/connections/${id}`, { method: 'PUT', body: { token } });
+
+describe('the inventory refreshes by itself (BRK-248)', () => {
+  const MINUTE = 60 * 1000;
+
+  it('the cron refreshes a connected provider, skips one that isn’t, and waits 15 minutes between', async () => {
+    const a = platform('fake-cron-a');
+    const b = platform('fake-cron-b');
+    const registry = new ProviderRegistry();
+    registry.register(a.provider);
+    registry.register(b.provider);
+    await addEnvironment({ name: 'cron-a', kind: 'staging', provider: 'fake-cron-a', target: 'api' });
+    await addEnvironment({ name: 'cron-b', kind: 'staging', provider: 'fake-cron-b', target: 'api' });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = registry;
+    });
+    expect((await connect('fake-cron-a')).status).toBe(201);
+    a.provider.calls.length = 0;
+
+    const now = Date.now();
+    await runInDurableObject(store(), async (s) => {
+      s.inventoryRefreshSeen('fake-cron-a', { ok: true, source: 'connect' });
+      s.sql.exec("UPDATE infra_inventory_refresh SET at = ? WHERE provider = 'fake-cron-a'", now - 16 * MINUTE);
+    });
+    const ran = await runInDurableObject(store(), (s) => s.inventoryTick(now));
+    expect(ran.map((r) => r.provider)).toEqual(['fake-cron-a']);
+    expect(a.provider.calls.filter((c) => c.method === 'discover')).toHaveLength(1);
+    expect(b.provider.calls).toEqual([]);
+    expect((await inventory({ provider: 'fake-cron-a' })).resources).toHaveLength(3);
+    expect((await inventory({ provider: 'fake-cron-b' })).resources).toEqual([]);
+
+    // Too soon for another look; 15 minutes on, it looks again.
+    expect(await runInDurableObject(store(), (s) => s.inventoryTick(Date.now() + 5 * MINUTE))).toEqual([]);
+    const later = await runInDurableObject(store(), (s) => s.inventoryTick(Date.now() + 16 * MINUTE));
+    expect(later.map((r) => r.provider)).toEqual(['fake-cron-a']);
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = undefined;
+    });
+  });
+
+  it('pasting a token fills the inventory at once', async () => {
+    const { provider, registry } = platform('fake-connect');
+    await addEnvironment({ name: 'connect-staging', kind: 'staging', provider: 'fake-connect', target: 'api' });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = registry;
+    });
+    const res = await body(await connect('fake-connect'));
+    expect(res).toMatchObject({ status: 201, connected: true, inventory: { ok: true, resources: 3 } });
+    expect(provider.calls.filter((c) => c.method === 'discover')).toHaveLength(1);
+    expect((await inventory({ provider: 'fake-connect' })).resources).toHaveLength(3);
+    const state = await body(await api('infra/inventory/refresh'));
+    expect(state.providers.find((p) => p.provider === 'fake-connect')).toMatchObject({
+      connected: true,
+      targets: 1,
+      running: false,
+      last: { ok: true, error: null, source: 'connect' },
+    });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = undefined;
+    });
+  });
+
+  it('keeps an error and shows it; a refused token waits for a new one', async () => {
+    const { provider, registry } = platform('fake-refused');
+    await addEnvironment({ name: 'refused-staging', kind: 'staging', provider: 'fake-refused', target: 'api' });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = registry;
+    });
+    const discover = provider.discover;
+    provider.discover = async () => {
+      throw Object.assign(new Error('Fake platform answered 403: not allowed'), { status: 403 });
+    };
+    const connected = await body(await connect('fake-refused'));
+    expect(connected).toMatchObject({ status: 201, inventory: { ok: false } });
+    expect(connected.inventory.error).toMatch(
+      /couldn’t discover widgets’s refused-staging: Fake platform answered 403/,
+    );
+
+    const state = await body(await api('infra/inventory/refresh'));
+    const row = state.providers.find((p) => p.provider === 'fake-refused');
+    expect(row).toMatchObject({ last: { ok: false, source: 'connect' }, next: null });
+    expect(row.last.error).toMatch(/answered 403/);
+
+    // The cron doesn't try the refused token again, however long it waits.
+    provider.discover = discover;
+    provider.calls.length = 0;
+    expect(await runInDurableObject(store(), (s) => s.inventoryTick(Date.now() + 60 * MINUTE))).toEqual([]);
+    expect(provider.calls).toEqual([]);
+
+    // A new token, and the board looks again at once.
+    const again = await body(await connect('fake-refused'));
+    expect(again).toMatchObject({ status: 200, inventory: { ok: true, resources: 3 } });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = undefined;
+    });
+  });
+
+  it('one refresh per provider at a time', async () => {
+    // A platform that needs no token, so it's connected as it stands.
+    const provider = fakeProvider({ id: 'fake-busy', readToken: false });
+    const registry = new ProviderRegistry();
+    registry.register(provider);
+    await addEnvironment({ name: 'busy-staging', kind: 'staging', provider: 'fake-busy', target: 'api' });
+    const discover = provider.discover;
+    /** @type {(() => void) | null} */
+    let go = null;
+    provider.discover = async (ctx) => {
+      await new Promise((resolve) => {
+        go = () => resolve(undefined);
+      });
+      return discover(ctx);
+    };
+    const out = await runInDurableObject(store(), async (s) => {
+      const first = s.refreshInventoryNow('fake-busy', { registry });
+      await Promise.resolve();
+      const second = await s.refreshInventoryNow('fake-busy', { registry }).then(
+        () => ({ ok: true }),
+        (error) => ({ ok: false, status: error.status, error: error.message }),
+      );
+      const skipped = await s.inventoryTick(Date.now(), { registry });
+      // The first refresh is at the platform now.
+      while (!go) await new Promise((resolve) => setTimeout(resolve, 1));
+      go();
+      return { second, skipped, first: await first };
+    });
+    expect(out.second).toMatchObject({ ok: false, status: 409, error: /looking at fake-busy already/ });
+    expect(out.skipped).toEqual([]);
+    expect(out.first).toMatchObject({ provider: 'fake-busy', resources: 3 });
+  });
+
+  it('refuses to look at a provider with no token yet, and keeps nothing', async () => {
+    const { provider, registry } = platform('fake-unconnected');
+    await addEnvironment({ name: 'unconnected-staging', kind: 'staging', provider: 'fake-unconnected', target: 'api' });
+    const out = await runInDurableObject(store(), (s) =>
+      s.refreshInventoryNow('fake-unconnected', { registry }).then(
+        () => ({ ok: true }),
+        (error) => ({
+          ok: false,
+          status: error.status,
+          error: error.message,
+          row: s.inventoryRefreshRow('fake-unconnected'),
+        }),
+      ),
+    );
+    expect(out).toMatchObject({
+      ok: false,
+      status: 409,
+      error: /connect Fake platform on Connections first/,
+      row: null,
+    });
+    expect(provider.calls).toEqual([]);
+  });
+
+  it('the owner’s Refresh with no provider looks at every connected one', async () => {
+    const { registry } = platform('fake-all');
+    await addEnvironment({ name: 'all-staging', kind: 'staging', provider: 'fake-all', target: 'api' });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = registry;
+    });
+    await connect('fake-all');
+    const res = await body(await boardApi('infra/inventory/refresh', { method: 'POST', body: {} }));
+    expect(res.status).toBe(200);
+    expect(res.refreshed).toEqual([expect.objectContaining({ ok: true, provider: 'fake-all', resources: 3 })]);
+    expect(res.providers.find((p) => p.provider === 'fake-all').last).toMatchObject({ ok: true, source: 'owner' });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = undefined;
+    });
   });
 });
