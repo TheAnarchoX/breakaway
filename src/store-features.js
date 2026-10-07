@@ -517,11 +517,28 @@ export const featuresMethods = {
 
   featureDetail(slug) {
     const row = this.featureRow(slug);
+    const membership = this.featureMembership();
     // Agents' changes to its plan (BRK-274), newest first, each with the owner's undo.
     return {
-      ...this.featureView(row, this.featureMembership(), { full: true }),
+      ...this.featureView(row, membership, { full: true }),
       planning: this.featurePlanning(row.slug, row.release),
+      riders: this.featureRiders(membership.members.get(row.slug) ?? []),
     };
+  },
+
+  /**
+   * The agents riding a feature (WEB-118): the holder of each of its open tasks, in dependency order, with its
+   * last post on any peloton about that task, or null.
+   * @param {{ task: any }[]} members
+   */
+  featureRiders(members) {
+    const held = dependencyOrder(members.map((m) => m.task)).filter((t) => t.status === 'pending' && t.claim);
+    return held.map((t) => {
+      const last = this.sql
+        .exec('SELECT * FROM peloton_posts WHERE task = ? AND agent = ? ORDER BY id DESC LIMIT 1', t.uuid, t.claim)
+        .toArray()[0];
+      return { uuid: t.uuid, wid: t.wid, agent: t.claim, last: last ? this.postView(last) : null };
+    });
   },
 
   /**
