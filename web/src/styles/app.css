@@ -8935,10 +8935,6 @@ a.pl-mention {
   flex-wrap: wrap;
   gap: 8px 16px;
 }
-.infra-deploys-recent {
-  margin: 4px 0 0;
-  font-size: 15px;
-}
 .infra-env-foot {
   display: flex;
   justify-content: flex-end;
@@ -9972,8 +9968,9 @@ a.pl-mention {
 }
 /* The environment console (WEB-94; docs/specs/WEB-94-environment-console.md): a status band, the map, the stream, and
    a panel each. Flat, hard-edged, tokens only; motion only on arrival and for what's live. On a wide screen (WEB-97)
-   it fills the window under the top bar, 2:8:2: its state on the left, the map in the middle, the stream on the
-   right, each scrolling on its own. Narrower, it stacks, map first. */
+   it fills the window under the top bar, 2:8:2 (WEB-100): admin on the left, the status band on top of the map in the
+   middle, ops on the right, each column scrolling on its own. Every panel shows all it has, wrapped, never behind a
+   hover. Narrower, it stacks: status, map, ops, admin. */
 .infra-page.console {
   max-width: none;
   gap: 0;
@@ -10022,9 +10019,15 @@ a.pl-mention {
   font-size: 13.5px;
   color: var(--muted);
 }
+/* A panel with nothing in it yet (WEB-100): "None yet", then how it fills, in full. */
+.console-empty strong {
+  font-weight: 600;
+  color: var(--text);
+}
+/* The status band's own card, above the map: its tiles fill each row they take, in one row once they fit. */
 .console-band {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1px;
   margin: 0;
   overflow: hidden;
@@ -10034,6 +10037,7 @@ a.pl-mention {
   background: var(--line);
 }
 .band-tile {
+  flex: 1 1 128px;
   display: grid;
   align-content: start;
   gap: 6px;
@@ -10068,6 +10072,8 @@ a.pl-mention {
 }
 .band-value .infra-budget {
   margin-top: 4px;
+  max-width: 100%;
+  white-space: normal;
 }
 .band-frozen {
   background: var(--surface-2);
@@ -10134,114 +10140,10 @@ a.pl-mention {
   letter-spacing: 0;
   text-transform: none;
 }
-/* A panel with nothing to show yet is one line: its name, then why, cut to fit until it's pointed at. */
-.console-side > .infra-section:has(> .console-quiet:nth-child(2):last-child) {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 8px 12px;
-}
-.console-side > .infra-section:has(> .console-quiet:nth-child(2):last-child) > h2 {
-  flex: none;
-}
-.console-side > .infra-section > .console-quiet:nth-child(2):last-child {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 13px;
-}
-.console-side > .infra-section:hover > .console-quiet:nth-child(2):last-child,
-.console-side > .infra-section:focus-within > .console-quiet:nth-child(2):last-child {
-  white-space: normal;
-}
 .console-side .infra-res,
 .console-side .infra-facts,
 .console .topo .infra-res {
   background: var(--bg-2);
-}
-/* Recent deploys and incidents, one thin line under the map: a thread through them, newest first. */
-.console-timeline {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 8px 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-s);
-}
-.console-timeline h2 {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font: 600 11px / 1.2 var(--font-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.timeline-list {
-  flex: 1;
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  padding: 2px 0;
-  list-style: none;
-  overflow-x: auto;
-  background: linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat;
-}
-.timeline-item {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 0 4px;
-  background: var(--surface);
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-.timeline-item > a,
-.timeline-item > span:last-child {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  color: inherit;
-  text-decoration: none;
-}
-.timeline-item > a:hover .timeline-label {
-  text-decoration: underline;
-}
-.timeline-item > a svg {
-  align-self: center;
-  color: var(--muted);
-}
-.timeline-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--faint);
-}
-.timeline-ok .timeline-dot {
-  background: var(--success);
-}
-.timeline-warn .timeline-dot {
-  background: var(--warn);
-}
-.timeline-bad .timeline-dot {
-  background: var(--danger);
-}
-.timeline-pending .timeline-dot {
-  background: var(--accent);
-}
-.timeline-label {
-  font-weight: 600;
-}
-.timeline-detail {
-  font: 500 11.5px var(--font-mono);
-  color: var(--muted);
 }
 /* The map: a dot grid, three columns, a line per relation, filling its box; it zooms and pans (WEB-97). */
 .topo-stage {
@@ -10470,6 +10372,7 @@ a.pl-mention {
 }
 /* The stream: newest first, what's new slides in from the left, repeats folded, filtered by kind and level. */
 .console-panel.stream {
+  max-width: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -10615,24 +10518,13 @@ a.pl-mention {
     stroke-dashoffset: -12;
   }
 }
-@container console (min-width: 560px) {
-  .console-band {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
 @container console (min-width: 720px) {
   .console-side {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
-  .console-side > .console-band,
-  .console-side > .console-band-actions {
+  .console-side > .console-panel.stream {
     grid-column: 1 / -1;
-  }
-}
-@container console (min-width: 900px) and (max-width: 1099.98px) {
-  .console-band {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 /* Wide: the console fills the window, and each column scrolls on its own. */
@@ -10653,30 +10545,35 @@ a.pl-mention {
   .console-grid {
     grid-template-columns: minmax(240px, 2fr) minmax(0, 8fr) minmax(260px, 2fr);
     grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: "side centre stream";
+    grid-template-areas: "admin centre ops";
     min-height: 0;
   }
   .console-centre {
     grid-area: centre;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
   }
   .console-side {
-    grid-area: side;
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+  .console-admin {
+    grid-area: admin;
+  }
   .console-band {
-    grid-template-columns: minmax(0, 1fr);
+    flex-wrap: nowrap;
   }
-  .console-panel.stream {
-    grid-area: stream;
-    min-height: 0;
+  .band-tile {
+    flex: 1 1 0;
   }
-  .stream-list {
-    flex: 1 1 auto;
+  .console-ops {
+    grid-area: ops;
+  }
+  /* The stream leads the ops column and scrolls within it, so the incidents and deploys under it stay in reach. */
+  .console-ops .stream-list {
+    max-height: 60dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -10729,18 +10626,20 @@ a.pl-mention {
     padding: 12px;
   }
 }
-/* Where the owner's actions go (WEB-95): under the band, and under a selected node's detail. */
-.console-band-actions,
+/* Where the owner's actions go (WEB-95): the admin column's first panel (WEB-100), and under a selected node's detail. */
+.env-actions,
 .topo-detail-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-.console-band-actions {
-  justify-content: flex-end;
+.env-actions {
   align-items: center;
 }
-/* A fact beside its action under the band (WEB-95): who holds the lock, or the break-glass mark. */
+.env-actions:empty {
+  display: none;
+}
+/* A fact beside its action (WEB-95): who holds the lock, or the break-glass mark. */
 .env-action-line {
   display: inline-flex;
   flex-wrap: wrap;

@@ -10,7 +10,8 @@ import { InventoryFreshness } from './InventoryStale.jsx';
 /**
  * The console's status band (WEB-94; docs/specs/WEB-94-environment-console.md): health, freeze, what's live, the plan
  * waiting, the budget used, and the agents at work there now, a tile each, in one row on a wide screen. With a
- * target, whether what it shows is up to date (BRK-257).
+ * target, whether what it shows is up to date (BRK-257). Its own card at the top of the centre column, above the map
+ * (WEB-100).
  */
 
 /** @param {{ iso: string | null | undefined }} props */
@@ -39,25 +40,16 @@ function Tile({ label, Icon, tone = '', children }) {
 }
 
 /**
- * `actions` are the owner's actions on the whole environment, under the band (WEB-95 fills them in).
  * `inventory` is whether what the map shows is up to date: the environment's `stale` entry and when the board last saw it.
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], actions?: any, inventory?: { stale: any, seen: string | null } }} props
+ * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null } }} props
  */
-export function StatusBand({
-  env,
-  health,
-  cost,
-  run,
-  agents,
-  actions = null,
-  inventory = { stale: null, seen: null },
-}) {
+export function StatusBand({ env, health, cost, run, agents, inventory = { stale: null, seen: null } }) {
   const live = env.deploys?.live ?? null;
   const planLink = (/** @type {string} */ plan) =>
     hashFor({ view: 'infrastructure', environment: String(env.id), plan, task: null });
   const used = cost && cost.budget?.amount > 0 ? Math.round((cost.cost.amount / cost.budget.amount) * 100) : null;
   return (
-    <>
+    <section class="console-status" aria-label={`${env.name}’s status`}>
       <dl class="console-band">
         <Tile label="Health" Icon={Activity}>
           <Health health={env.target ? health : null} />
@@ -145,7 +137,6 @@ export function StatusBand({
           )}
         </Tile>
       </dl>
-      {actions && <div class="console-band-actions">{actions}</div>}
-    </>
+    </section>
   );
 }

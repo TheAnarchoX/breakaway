@@ -4,6 +4,7 @@ import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { hashFor } from '../lib/store.js';
 import { planHref } from './EnvironmentPlans.jsx';
+import { NoneYet } from './ui.jsx';
 
 /**
  * Incidents on the board (WEB-63; docs/specs/IDEA-19-architect.md, "Incidents" and "Views"): an incident is a task
@@ -440,7 +441,7 @@ export function IncidentsSection({ env, tick = 0 }) {
           )}
         </>
       ) : (
-        !state.error && <p class="console-quiet">None: a critical signal here opens one, in your inbox.</p>
+        !state.error && <NoneYet>A critical signal here opens one, in your inbox.</NoneYet>
       )}
     </section>
   );

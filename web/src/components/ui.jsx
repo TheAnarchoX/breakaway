@@ -315,6 +315,18 @@ export function RepoChip({ slug }) {
   );
 }
 
+/**
+ * A console panel with nothing in it yet (WEB-100): "None yet", then one line of how it fills, shown in full.
+ * @param {Record<string, any>} props
+ */
+export function NoneYet({ children }) {
+  return (
+    <p class="console-quiet console-empty">
+      <strong>None yet.</strong> {children}
+    </p>
+  );
+}
+
 /** @param {Record<string, any>} props */
 export function Kbd({ children }) {
   return <kbd class="kbd">{children}</kbd>;
