@@ -7,6 +7,7 @@ import {
   isRateLimited,
   pullDetailsQuery,
 } from '../src/github.js';
+import { budgetAfterSync, budgetWords, countsOf, restBudget } from '../src/github-budget.js';
 
 // The client's rate limits (BRK-269): conditional reads, each budget's state, and backing off. Nothing here
 // reaches GitHub: fetch is stubbed, and the cache holds a token so no JWT is made.
@@ -225,5 +226,98 @@ describe('pull request details over GraphQL', () => {
     expect(details.get(7)).toMatchObject({ mergeable: null, mergeableState: null, checks: { state: 'none' } });
     // Closed: no merge state, as REST (which doesn't read a closed one's) has none.
     expect(details.get(3)).toMatchObject({ mergeable: null, mergeableState: null });
+  });
+});
+
+describe('what a sync spends (BRK-271)', () => {
+  it('counts calls per budget, free 304s apart, and keeps each budget’s limit', async () => {
+    const left = { core: 4900, graphql: 4990 };
+    stub((path, headers) => {
+      const resource = path === '/graphql' ? 'graphql' : 'core';
+      const free = headers.get('If-None-Match') === '"v1"';
+      if (!free) left[resource] -= 1;
+      const rate = {
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': String(left[resource]),
+        'x-ratelimit-reset': reset(),
+        'x-ratelimit-resource': resource,
+      };
+      return free ? json(null, 304, rate) : json({ data: {} }, 200, { ETag: '"v1"', ...rate });
+    });
+    const c = client();
+    await c.get('/pulls');
+    await c.get('/pulls');
+    await c.get('/pulls');
+    await c.graphql('query { viewer { login } }', {});
+    expect(c.cache.calls).toEqual({ core: 1, graphql: 1 });
+    expect(c.cache.free).toBe(2);
+    expect(c.cache.limits.core).toMatchObject({ remaining: 4899, limit: 5000 });
+    expect(c.cache.limits.graphql).toMatchObject({ remaining: 4989, limit: 5000 });
+  });
+
+  it('keeps a used-up budget’s limit', async () => {
+    stub(() =>
+      json({ message: 'API rate limit exceeded for installation ID 1.' }, 403, {
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-reset': reset(),
+        'x-ratelimit-resource': 'core',
+      }),
+    );
+    const c = client();
+    await c.get('/pulls').catch(() => null);
+    expect(c.cache.limits.core).toMatchObject({ remaining: 0, limit: 5000 });
+    expect(c.cache.calls).toEqual({ core: 1 });
+  });
+
+  it('keeps what the sync spent, and a budget it didn’t touch as it was', () => {
+    const before = countsOf({ calls: { core: 10, graphql: 2 }, free: 5 });
+    const previous = {
+      at: '2026-10-07T18:00:00.000Z',
+      limits: { graphql: { remaining: 4000, limit: 5000, reset: '2026-10-07T19:00:00.000Z' } },
+      calls: { core: 3, graphql: 1 },
+      free: 0,
+    };
+    const cache = {
+      calls: { core: 16 },
+      free: 14,
+      limits: { core: { remaining: 4812, reset: Date.UTC(2026, 9, 7, 20) } },
+    };
+    expect(budgetAfterSync(previous, cache, before, Date.UTC(2026, 9, 7, 19, 30))).toEqual({
+      at: '2026-10-07T19:30:00.000Z',
+      limits: {
+        core: { remaining: 4812, reset: '2026-10-07T20:00:00.000Z' },
+        graphql: { remaining: 4000, limit: 5000, reset: '2026-10-07T19:00:00.000Z' },
+      },
+      calls: { core: 6, graphql: 0 },
+      free: 9,
+    });
+    // A fresh client (the Durable Object restarted) counts from nothing.
+    expect(budgetAfterSync(null, { calls: { core: 2 } }, countsOf(undefined)).calls).toEqual({ core: 2, graphql: 0 });
+  });
+
+  it('says it in one line', () => {
+    const now = Date.UTC(2026, 9, 7, 19, 30);
+    const budget = {
+      at: '2026-10-07T19:30:00.000Z',
+      limits: {
+        core: { remaining: 4812, limit: 5000, reset: '2026-10-07T20:00:00.000Z' },
+        graphql: { remaining: 4990, limit: 5000, reset: '2026-10-07T20:10:00.000Z' },
+      },
+      calls: { core: 4, graphql: 2 },
+      free: 9,
+    };
+    expect(budgetWords(budget, now)).toBe(
+      'REST 4,812 of 5,000 left · GraphQL 4,990 of 5,000 left · resets 20:00 UTC · last sync 6 calls (4 REST, 2 GraphQL), 9 free',
+    );
+    // A reset that has passed isn't named; one budget's calls, or none, read plainly.
+    expect(budgetWords({ ...budget, calls: { core: 1, graphql: 0 } }, Date.UTC(2026, 9, 7, 20, 5))).toBe(
+      'REST 4,812 of 5,000 left · GraphQL 4,990 of 5,000 left · resets 20:10 UTC · last sync 1 REST call, 9 free',
+    );
+    expect(budgetWords({ at: budget.at, limits: {}, calls: { core: 0, graphql: 0 }, free: 0 }, now)).toBe(
+      'last sync made no calls',
+    );
+    expect(budgetWords(null)).toBeNull();
+    expect(restBudget(budget)).toEqual({ remaining: 4812, limit: 5000, reset: '2026-10-07T20:00:00.000Z' });
   });
 });

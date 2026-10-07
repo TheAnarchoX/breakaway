@@ -61,10 +61,14 @@ describe('the GitHub view per repository', () => {
       ...one,
       flows: [one],
       empties: [],
+      rates: [],
       nextVersions: [],
       pipelinesFound: [],
       moves: [],
     });
+    // GitHub's rate limits after the last sync (BRK-271): the view says what's left.
+    const rated = { ...one, rate: { at: '2026-10-07T19:30:00.000Z', limits: {}, calls: {}, free: 0 } };
+    expect(scopeGitHub(rated, null).rates).toEqual([rated]);
     // Deploy with breakaway (WEB-12): a repository without a pipeline shows the card; one with commits only.
     const offered = { ...one, flow: null, pipeline: null, move: { stage: 'start' } };
     expect(scopeGitHub(offered, null).moves).toEqual([offered]);
@@ -108,6 +112,10 @@ describe('the GitHub view per repository', () => {
         null,
       ).empties.map((r) => r.slug),
     ).toEqual(['scratch']);
+    // Each repository's rate limits (BRK-271), under All and for the one the switcher picks.
+    const rated = { ...all, repos: all.repos.map((r) => ({ ...r, rate: { limits: {}, calls: {}, free: 0 } })) };
+    expect(scopeGitHub(rated, null).rates.map((r) => r.slug)).toEqual(all.repos.map((r) => r.slug));
+    expect(scopeGitHub(rated, 'scratch').rates.map((r) => r.slug)).toEqual(['scratch']);
 
     const scratch = scopeGitHub(all, 'scratch');
     expect(scratch).toMatchObject({

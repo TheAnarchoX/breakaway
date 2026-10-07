@@ -276,7 +276,21 @@ const gh = {
   prompt: null, // tools/tasks/routine-prompt.md on main
   queries: [], // the GraphQL reads the board sent (BRK-269)
   graphqlError: null, // what GraphQL answers every read with, when set: the board reads over REST instead
+  rate: null, // { core, graphql }: the calls left, sent as x-ratelimit-* headers and counted down (BRK-271)
+  etags: false, // when true, reads carry an ETag and an unchanged one comes back as a free 304
 };
+
+/** GitHub's headers for the budget a call spends from, counting it down unless it's a free 304 (BRK-271). */
+function rateHeaders(resource, free) {
+  if (!gh.rate) return {};
+  if (!free) gh.rate[resource] -= 1;
+  return {
+    'x-ratelimit-limit': '5000',
+    'x-ratelimit-remaining': String(gh.rate[resource]),
+    'x-ratelimit-reset': String(Math.floor(Date.UTC(2099, 0, 1, 20) / 1000)),
+    'x-ratelimit-resource': resource,
+  };
+}
 
 /** GitHub's GraphQL answer for one pull request's details, from the same pretend state REST answers from (BRK-269). */
 function graphqlPull(number) {
@@ -419,9 +433,20 @@ function mockGitHub() {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     const auth = new Headers(init.headers).get('Authorization') ?? '';
-    const reply = (data, status = 200, headers = {}) =>
-      new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
     const path = url.pathname;
+    const reply = (data, status = 200, headers = {}) => {
+      const text = JSON.stringify(data);
+      const read = (init.method ?? 'GET') === 'GET' && status === 200;
+      const etag =
+        gh.etags && read ? `"${text.length}:${[...text].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)}"` : null;
+      const free = etag !== null && new Headers(init.headers).get('If-None-Match') === etag;
+      const rate = rateHeaders(path === '/graphql' ? 'graphql' : 'core', free);
+      if (free) return new Response(null, { status: 304, headers: { ETag: etag, ...rate } });
+      return new Response(text, {
+        status,
+        headers: { 'Content-Type': 'application/json', ...(etag ? { ETag: etag } : {}), ...rate, ...headers },
+      });
+    };
     gh.calls.push(path);
     // A GraphQL query is a read: a sync's pull request details, for acme/widgets only (another repository's
     // are refused, so it reads them over REST).
@@ -1602,6 +1627,55 @@ describe('GitHub per repository (CLD-124)', () => {
       (c) => c.id === 'claude.routine' && c.repo === 'scratch',
     );
     expect(routineAfter.state).toBe('attention');
+  });
+
+  it('keeps each budget GitHub reports and what the last sync spent, through a restart (BRK-271)', async () => {
+    gh.pulls = [pr(71, { title: 'Count the calls', sha: 'sw71' })];
+    gh.rate = { core: 4900, graphql: 4990 };
+    gh.etags = true;
+    try {
+      const first = await body(await api('github/sync', { method: 'POST' }));
+      expect(first.status).toBe(200);
+      const once = (await body(await api('github'))).rate;
+      expect(once.limits.core).toMatchObject({ limit: 5000, reset: '2099-01-01T20:00:00.000Z' });
+      expect(once.limits.graphql).toMatchObject({ limit: 5000, reset: '2099-01-01T20:00:00.000Z' });
+      expect(once.limits.core.remaining).toBeLessThan(4900);
+      expect(once.calls.core).toBeGreaterThan(0);
+      expect(once.calls.graphql).toBe(1); // the open pull request's details, in one query
+      expect(once.free).toBe(0);
+
+      // Nothing changed on GitHub: the second sync's reads come back as free 304s.
+      const core = gh.rate.core;
+      await api('github/sync', { method: 'POST' });
+      const twice = (await body(await api('github'))).rate;
+      expect(twice.free).toBeGreaterThan(0);
+      expect(twice.calls.core).toBe(core - gh.rate.core);
+      expect(twice.calls.core).toBeLessThan(once.calls.core);
+      expect(twice.limits.core.remaining).toBe(gh.rate.core);
+      expect(twice.at >= once.at).toBe(true);
+
+      // Connections says the same, on the repository's sync row.
+      const sync = (await body(await api('connections'))).connections.find(
+        (c) => c.id === 'github.sync' && c.repo === 'widgets',
+      );
+      const left = (n) => n.toLocaleString('en-US');
+      expect(sync.detail).toContain(`REST ${left(twice.limits.core.remaining)} of 5,000 left`);
+      expect(sync.detail).toContain(`GraphQL ${left(twice.limits.graphql.remaining)} of 5,000 left`);
+      expect(sync.detail).toContain('resets 20:00 UTC');
+      expect(sync.detail).toContain(`, ${twice.free} free`);
+
+      // The Durable Object restarting drops the client's memory, not what the last sync kept.
+      await runInDurableObject(stub(), (store) => {
+        store.ghCache = {};
+      });
+      expect((await body(await api('github'))).rate).toEqual(twice);
+      // Every repository at once carries each one's budgets too.
+      const all = await body(await api('github?repo=all'));
+      expect(all.repos.find((r) => r.slug === 'widgets').rate).toEqual(twice);
+    } finally {
+      gh.rate = null;
+      gh.etags = false;
+    }
   });
 });
 
