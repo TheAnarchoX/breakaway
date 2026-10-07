@@ -10,7 +10,15 @@ import { AgentError } from './store-agents.js';
 import { install } from './install.js';
 import { redact } from './redact.js';
 import { checkCosts, checkDiscovery, checkHealth, checkSignals } from './infra-provider.js';
-import { MAX_RESOURCES, redactAttrs, resourceView, scopeDiscovery } from './infra-inventory.js';
+import {
+  MAX_RESOURCES,
+  REFRESH_EVERY_MS,
+  REFRESH_PER_TICK,
+  redactAttrs,
+  refreshDue,
+  resourceView,
+  scopeDiscovery,
+} from './infra-inventory.js';
 import { costInCurrency } from './infra-currency.js';
 import { runsTheBoard } from './infra-environments.js';
 import { DAY, SIGNAL_RAW_DAYS, healthSignals } from './infra-signals.js';
@@ -41,6 +49,9 @@ export const infraInventoryMethods = {
         kind TEXT NOT NULL, PRIMARY KEY (environment, from_rid, to_rid, kind)
       );
       CREATE INDEX IF NOT EXISTS infra_inventory_relations_provider ON infra_inventory_relations (provider);
+      CREATE TABLE IF NOT EXISTS infra_inventory_refresh (
+        provider TEXT PRIMARY KEY, at INTEGER NOT NULL, ok INTEGER NOT NULL, status INTEGER, error TEXT, source TEXT
+      );
     `);
     const columns = this.sql
       .exec('PRAGMA table_info(infra_inventory)')
@@ -121,7 +132,10 @@ export const infraInventoryMethods = {
           error: message,
           missing: typeof error?.permission === 'string' ? [error.permission] : [],
         });
-        throw new AgentError(`${message}. Nothing changed; try again once the provider answers.`, 502);
+        const refused = new AgentError(`${message}. Nothing changed; try again once the provider answers.`, 502);
+        // What the platform answered, so the cron stops trying a token it refused (BRK-248).
+        if (typeof error?.status === 'number') Object.assign(refused, { providerStatus: error.status });
+        throw refused;
       }
       if (found.resources.length > MAX_RESOURCES)
         throw new AgentError(
@@ -338,14 +352,198 @@ export const infraInventoryMethods = {
     });
   },
 
-  /** POST /api/infra/inventory/refresh { provider }: the owner's or the board's; an agent's `by` is refused. */
+  /**
+   * The providers a refresh can look at (BRK-248), each with whether it's connected (a provider that takes no token
+   * always is), when its token was pasted, and how many of its environments have a target to look for.
+   * @param {ProviderRegistry} registry
+   */
+  async inventoryProviders(registry) {
+    const out = [];
+    for (const provider of registry.list()) {
+      const count = (where) =>
+        Number(
+          this.sql.exec(`SELECT COUNT(*) AS n FROM infra_environments WHERE provider = ? ${where}`, provider.id).one()
+            .n,
+        );
+      const row = provider.readToken
+        ? this.sql.exec('SELECT edited FROM infra_connections WHERE provider = ?', provider.id).toArray()[0]
+        : null;
+      out.push({
+        id: provider.id,
+        name: provider.name,
+        connected: provider.readToken ? Boolean(row) && (await this.providerReadToken(provider.id)) !== null : true,
+        edited: row ? Number(row.edited) : null,
+        environments: count(''),
+        targets: count("AND target IS NOT NULL AND target != ''"),
+      });
+    }
+    return out;
+  },
+
+  /** A provider's last refresh, or null before its first. */
+  inventoryRefreshRow(providerId) {
+    const row = this.sql.exec('SELECT * FROM infra_inventory_refresh WHERE provider = ?', providerId).toArray()[0];
+    return row
+      ? {
+          at: Number(row.at),
+          ok: Boolean(row.ok),
+          status: row.status === null ? null : Number(row.status),
+          error: row.error ?? null,
+          source: row.source ?? null,
+        }
+      : null;
+  },
+
+  /**
+   * Refreshes one provider's inventory and keeps how it went (BRK-248), whoever asked: the cron, a token just pasted,
+   * or the owner's Refresh. One refresh per provider at a time; a second while one runs is refused.
+   * @param {string} providerId
+   * @param {{ registry?: ProviderRegistry, source?: 'cron' | 'connect' | 'owner' }} [options]
+   */
+  async refreshInventoryNow(providerId, options = {}) {
+    const registry = options.registry ?? this.infraRegistry();
+    const source = options.source ?? 'owner';
+    if (!this.inventoryRefreshing) this.inventoryRefreshing = new Set();
+    /** @type {Set<string>} */
+    const running = this.inventoryRefreshing;
+    if (running.has(providerId))
+      throw new AgentError(`the board is looking at ${providerId} already: give it a minute, then reload`, 409);
+    const provider = registry.has(providerId) ? registry.get(providerId) : null;
+    if (provider?.readToken && (await this.providerReadToken(providerId)) === null)
+      throw new AgentError(
+        `connect ${provider.name} on Connections first: the board has no read-only token for it`,
+        409,
+      );
+    running.add(providerId);
+    try {
+      const result = await this.refreshInventory(providerId, { registry });
+      this.inventoryRefreshSeen(providerId, { ok: true, source });
+      return result;
+    } catch (error) {
+      if (registry.has(providerId))
+        this.inventoryRefreshSeen(providerId, {
+          ok: false,
+          status: typeof error?.providerStatus === 'number' ? error.providerStatus : null,
+          error: redact(String(error?.message ?? error)).slice(0, 500),
+          source,
+        });
+      throw error;
+    } finally {
+      running.delete(providerId);
+    }
+  },
+
+  /** Keeps how a provider's refresh went, for Last looked and the cron. */
+  inventoryRefreshSeen(providerId, { ok, status = null, error = null, source }) {
+    this.sql.exec(
+      `INSERT INTO infra_inventory_refresh (provider, at, ok, status, error, source) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (provider) DO UPDATE SET at = excluded.at, ok = excluded.ok, status = excluded.status,
+         error = excluded.error, source = excluded.source`,
+      providerId,
+      Date.now(),
+      ok ? 1 : 0,
+      status,
+      error,
+      source,
+    );
+  },
+
+  /**
+   * The cron's refresh (BRK-248): each connected provider with an environment to look at, every 15 minutes, at most
+   * two a tick, the longest-waiting first. It skips one being refreshed and one whose platform refused its token, until
+   * a new one is pasted. A failure is kept for Last looked and never fails the tick.
+   * @param {number} [now]
+   * @param {{ registry?: ProviderRegistry }} [options]
+   */
+  async inventoryTick(now = Date.now(), options = {}) {
+    const registry = options.registry ?? this.infraRegistry();
+    const due = [];
+    for (const p of await this.inventoryProviders(registry)) {
+      if (!p.connected || !p.targets || this.inventoryRefreshing?.has(p.id)) continue;
+      const last = this.inventoryRefreshRow(p.id);
+      if (refreshDue(last, now, p.edited)) due.push({ id: p.id, at: last?.at ?? 0 });
+    }
+    const refreshed = [];
+    for (const { id } of due.sort((a, b) => a.at - b.at).slice(0, REFRESH_PER_TICK)) {
+      try {
+        refreshed.push(await this.refreshInventoryNow(id, { registry, source: 'cron' }));
+      } catch {
+        /* kept for Last looked; the next tick tries again */
+      }
+    }
+    return refreshed;
+  },
+
+  /**
+   * A token just pasted on Connections (BRK-194) fills the inventory at once when an environment points at what it
+   * reads. What happened goes in the answer; a failed refresh never fails the connect.
+   * @param {string} providerId
+   */
+  async inventoryAfterConnect(providerId) {
+    const registry = this.infraRegistry();
+    const p = (await this.inventoryProviders(registry)).find((x) => x.id === providerId);
+    if (!p?.connected || !p.targets) return null;
+    try {
+      const done = await this.refreshInventoryNow(providerId, { registry, source: 'connect' });
+      return { ok: true, at: done.at, resources: done.resources };
+    } catch (error) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  },
+
+  /** Each provider's refresh as Last looked shows it: when, how it went, and when the cron looks next. */
+  async inventoryRefreshState(now = Date.now()) {
+    const out = [];
+    for (const p of await this.inventoryProviders(this.infraRegistry())) {
+      if (!p.environments && !p.connected) continue;
+      const last = this.inventoryRefreshRow(p.id);
+      const waits = p.connected && p.targets > 0;
+      const refused = waits && last && !refreshDue(last, last.at + REFRESH_EVERY_MS, p.edited);
+      out.push({
+        provider: p.id,
+        name: p.name,
+        connected: p.connected,
+        environments: p.environments,
+        targets: p.targets,
+        running: Boolean(this.inventoryRefreshing?.has(p.id)),
+        last: last
+          ? { at: new Date(last.at).toISOString(), ok: last.ok, error: last.error, source: last.source }
+          : null,
+        next: waits && !refused ? new Date(Math.max(now, (last?.at ?? 0) + REFRESH_EVERY_MS)).toISOString() : null,
+      });
+    }
+    return { everyMinutes: REFRESH_EVERY_MS / 60000, providers: out };
+  },
+
+  /** GET /api/infra/inventory/refresh: when the board last looked at each provider, and what went wrong. */
+  inventoryRefreshStateApi() {
+    return this.run(async () => ({ status: 200, body: await this.inventoryRefreshState() }));
+  },
+
+  /**
+   * POST /api/infra/inventory/refresh { provider? } (the signed-in owner; the Worker refuses the bearer token, and an
+   * agent's `by` is refused): one provider, or every connected one with an environment to look at.
+   */
   inventoryRefreshApi(body = {}) {
     return this.run(async () => {
       if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
         throw new AgentError('only the owner or the board refreshes the inventory; agents read it', 403);
       const provider = String(body.provider ?? '').trim();
-      if (!provider) throw new AgentError('say which provider to refresh, like {"provider": "cloudflare"}', 400);
-      return { status: 200, body: { refreshed: await this.refreshInventory(provider) } };
+      if (provider) {
+        const refreshed = await this.refreshInventoryNow(provider);
+        return { status: 200, body: { refreshed, ...(await this.inventoryRefreshState()) } };
+      }
+      const registry = this.infraRegistry();
+      const results = [];
+      for (const p of await this.inventoryProviders(registry)) {
+        if (!p.connected || !p.targets) continue;
+        try {
+          results.push({ ok: true, ...(await this.refreshInventoryNow(p.id, { registry })) });
+        } catch (error) {
+          results.push({ ok: false, provider: p.id, error: String(error?.message ?? error) });
+        }
+      }
+      return { status: 200, body: { refreshed: results, ...(await this.inventoryRefreshState()) } };
     });
   },
 };

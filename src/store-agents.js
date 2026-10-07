@@ -2118,6 +2118,12 @@ export const agentsMethods = {
     this.archiveStats();
     this.pruneAgentLogs();
     if (source === 'cron') {
+      // The inventory (BRK-248): each connected provider, every 15 minutes, before drift reads it.
+      try {
+        await this.inventoryTick();
+      } catch (error) {
+        errors.push(error.message); /* the next cron looks again */
+      }
       // Drift (BRK-184): each environment's desired state against what runs, on the cron only.
       try {
         await this.driftTick();
