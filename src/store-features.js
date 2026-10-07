@@ -4,7 +4,7 @@
  * computed from the tasks, never typed. Tags on open tasks that aren't features yet are suggested,
  * and nothing is made until someone presses for it. Tasks gain no field, so Taskwarrior carries
  * membership as it is. Adding a feature is anyone's (agents shaping an idea add theirs); aiming it
- * at a release, changing it, and deleting it are the owner's.
+ * at a release, planning its dates, changing it, and deleting it are the owner's.
  */
 import { AgentError } from './store-agents.js';
 import { featureIdea } from './feature-prompt.js';
@@ -20,6 +20,13 @@ const BOARD_TAGS = new Set(['agent', 'owner', 'decide', 'idea', 'general', 'rout
 const STATES = ['open', 'shipped'];
 /** The horizons the owner may give an idea's tasks: `auto` lets its agent choose. */
 const IDEA_HORIZONS = ['auto', 'now', 'next', 'later'];
+/** A planned day (WEB-104): a whole UTC day. */
+const DAY = /^\d{4}-\d{2}-\d{2}$/u;
+/** The planned dates, as the API names them and as the table does. */
+const PLANNED = [
+  ['plannedStart', 'planned_start'],
+  ['plannedEnd', 'planned_end'],
+];
 const MAX_TITLE = 200;
 const MAX_BRIEF = 4000;
 
@@ -48,6 +55,23 @@ export function byRelease(a, b) {
   const y = b.split('.').map(Number);
   return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
 }
+
+/**
+ * A planned day from the API: `YYYY-MM-DD` that names a real day, or null for empty (cleared).
+ * @param {unknown} value
+ * @param {string} what
+ * @returns {string | null}
+ */
+export function plannedDay(value, what) {
+  const day = String(value ?? '').trim();
+  if (!day) return null;
+  if (!DAY.test(day) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day)
+    throw new InputError(`the planned ${what} is a day like 2026-10-12, or empty to clear it (not "${day}")`);
+  return day;
+}
+
+/** Whether `input` sets either planned date. */
+export const plansDates = (input) => PLANNED.some(([key]) => key in (input ?? {}));
 
 /** `self-update` → `Self update`. */
 const titleOf = (slug) => {
@@ -153,6 +177,13 @@ export const featuresMethods = {
         created_by TEXT NOT NULL, created INTEGER NOT NULL, edited_by TEXT NOT NULL, edited_at INTEGER NOT NULL
       );
     `);
+    // The owner's plan (WEB-104): two whole days, either may be empty.
+    const columns = this.sql
+      .exec('PRAGMA table_info(features)')
+      .toArray()
+      .map((c) => c.name);
+    for (const [, column] of PLANNED)
+      if (!columns.includes(column)) this.sql.exec(`ALTER TABLE features ADD COLUMN ${column} TEXT`);
   },
 
   featureRows() {
@@ -193,6 +224,12 @@ export const featuresMethods = {
       if (!STATES.includes(input.state)) throw new InputError(`the state is ${STATES.join(' or ')}`);
       out.state = input.state;
     }
+    if ('plannedStart' in input) out.plannedStart = plannedDay(input.plannedStart, 'start');
+    if ('plannedEnd' in input) out.plannedEnd = plannedDay(input.plannedEnd, 'end');
+    if (out.plannedStart && out.plannedEnd && out.plannedStart > out.plannedEnd)
+      throw new InputError(
+        `the plan starts on ${out.plannedStart}, after it ends on ${out.plannedEnd}: move the start earlier or the end later`,
+      );
     return out;
   },
 
@@ -204,12 +241,20 @@ export const featuresMethods = {
     if (!owner && 'release' in input && input.release)
       throw new AgentError('only the owner aims a feature at a release; add it without one', 403);
     if (!owner && 'state' in input) throw new AgentError('only the owner marks a feature shipped', 403);
+    if (!owner && plansDates(input)) throw new AgentError('only the owner plans a feature’s dates', 403);
     const by = owner ? 'owner' : String(input.by).trim();
     if (!/^[\w.@:/-]{1,64}$/u.test(by))
       throw new InputError('say who is adding it: a name of letters, digits, and . _ - @ : / (up to 64)');
     if (this.sql.exec('SELECT 1 FROM features WHERE slug = ?', slug).toArray().length)
       throw new AgentError(`the feature "${slug}" already exists`);
-    const f = this.featureFields(input, { title: titleOf(slug), brief: null, release: null, state: 'open' });
+    const f = this.featureFields(input, {
+      title: titleOf(slug),
+      brief: null,
+      release: null,
+      state: 'open',
+      plannedStart: null,
+      plannedEnd: null,
+    });
     const picked = this.featurePick(input, owner);
     const shape = this.featureShape(input, owner, picked, f);
     // Made from a suggestion or a group: the release its tasks' tags share, unless the owner said otherwise.
@@ -236,17 +281,20 @@ export const featuresMethods = {
     }
     const now = Date.now();
     this.sql.exec(
-      'INSERT INTO features (slug, title, brief, release, state, created_by, created, edited_by, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO features (slug, title, brief, release, state, planned_start, planned_end, created_by, created, edited_by, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       slug,
       f.title,
       f.brief,
       f.release,
       f.state,
+      f.plannedStart,
+      f.plannedEnd,
       by,
       now,
       by,
       now,
     );
+    if (f.plannedStart || f.plannedEnd) this.featurePlanned(slug, f);
     if (picked) {
       const at = new Date();
       this.commit(
@@ -336,18 +384,35 @@ export const featuresMethods = {
   modifyFeature(slug, input) {
     this.ownerOnlyFeatures(input.by, 'change a feature');
     const row = this.featureRow(slug);
-    const f = this.featureFields(input, row);
+    const f = this.featureFields(input, {
+      ...row,
+      plannedStart: row.planned_start ?? null,
+      plannedEnd: row.planned_end ?? null,
+    });
     this.sql.exec(
-      'UPDATE features SET title = ?, brief = ?, release = ?, state = ?, edited_by = ?, edited_at = ? WHERE slug = ?',
+      'UPDATE features SET title = ?, brief = ?, release = ?, state = ?, planned_start = ?, planned_end = ?, edited_by = ?, edited_at = ? WHERE slug = ?',
       f.title,
       f.brief,
       f.release,
       f.state,
+      f.plannedStart,
+      f.plannedEnd,
       'owner',
       Date.now(),
       row.slug,
     );
+    if (f.plannedStart !== (row.planned_start ?? null) || f.plannedEnd !== (row.planned_end ?? null))
+      this.featurePlanned(row.slug, f);
     return this.featureDetail(row.slug);
+  },
+
+  /** A change of plan, for Activity: kept with the feature's chase events, with its title then and both days. */
+  featurePlanned(slug, f) {
+    this.chaseEvent(
+      slug,
+      'feature_planned',
+      JSON.stringify({ title: f.title, start: f.plannedStart ?? null, end: f.plannedEnd ?? null }),
+    );
   },
 
   deleteFeature(slug, input) {
@@ -412,6 +477,8 @@ export const featuresMethods = {
       title: row.title,
       brief: row.brief ?? null,
       release: row.release ?? null,
+      plannedStart: row.planned_start ?? null,
+      plannedEnd: row.planned_end ?? null,
       state: row.state,
       createdBy: row.created_by,
       created: new Date(row.created).toISOString(),

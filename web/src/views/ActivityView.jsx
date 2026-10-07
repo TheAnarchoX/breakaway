@@ -25,6 +25,7 @@ import {
   ThumbsUp,
   MessageSquareWarning,
   Bot,
+  CalendarRange,
   Play,
 } from 'lucide-preact';
 import { TRIGGER_LABEL } from '../components/Agents.jsx';
@@ -109,6 +110,7 @@ const ICONS = {
   chase_stopped: Bot,
   chase_stalled: CircleAlert,
   chase_ended: CircleCheck,
+  feature_planned: CalendarRange,
 };
 
 const SOURCES = {
@@ -118,6 +120,23 @@ const SOURCES = {
   routines: { icon: Repeat, text: 'From the board’s routines' },
   api: { icon: Globe, text: 'From the board or the API' },
 };
+
+/** A planned day (`2026-10-12`, a whole UTC day) as "12 Oct 2026", the same everywhere. */
+const plannedDay = (d) =>
+  new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+/** The owner's change of a feature's plan (WEB-104), in words. */
+function planned({ title, start, end }) {
+  if (start && end) return `You planned ${title} for ${plannedDay(start)} to ${plannedDay(end)}`;
+  if (end) return `You planned ${title} to be done by ${plannedDay(end)}`;
+  if (start) return `You planned ${title} to start on ${plannedDay(start)}`;
+  return `You cleared the plan for ${title}`;
+}
 
 function list(words) {
   if (words.length < 2) return words.join('');
@@ -177,6 +196,8 @@ function describe(change) {
       return change.detail ?? `The chase on ${change.feature} waits for you`;
     case 'chase_ended':
       return `The chase on ${change.feature} ended: ${change.detail ?? 'every task is done or in review'}`;
+    case 'feature_planned':
+      return planned(change);
     case 'pr_opened':
       return `${change.draft ? 'Draft pull request' : 'Pull request'} #${change.number} opened${change.by ? ` by ${change.by}` : ''}`;
     case 'pr_ready':
