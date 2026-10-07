@@ -10,7 +10,6 @@ import { areasOf, prefixFor, repoSlugOf } from './repos.js';
 import {
   BOARD_PING_KINDS,
   PINGS_PER_AGENT_PER_DAY,
-  PINGS_PER_TASK_PER_DAY,
   PUSH_KINDS,
   checkPing,
   summarizeProposal,
@@ -151,19 +150,14 @@ export const pingsMethods = {
         )
         .toArray()[0];
       if (twin) return { status: 200, body: { ping: view(twin, map.wid), dropped: 'duplicate' } };
-      const onTask = this.sql
-        .exec('SELECT COUNT(*) AS n FROM pings WHERE task = ? AND created > ?', uuid, since)
-        .one().n;
-      if (onTask >= PINGS_PER_TASK_PER_DAY)
-        throw new AgentError(
-          `${map.wid} has had ${PINGS_PER_TASK_PER_DAY} pings in a day; add a comment instead, the owner is already looking`,
-          429,
-        );
       const byAgent = this.sql
         .exec('SELECT COUNT(*) AS n FROM pings WHERE agent = ? AND created > ?', by, since)
         .one().n;
       if (byAgent >= PINGS_PER_AGENT_PER_DAY)
-        throw new AgentError(`${by} has sent ${PINGS_PER_AGENT_PER_DAY} pings in a day; add a comment instead`, 429);
+        throw new AgentError(
+          `${by} has sent ${PINGS_PER_AGENT_PER_DAY} pings in a day, which looks like a loop; stop and add a comment instead`,
+          429,
+        );
 
       let proposal = null;
       let warnings = [];
