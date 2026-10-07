@@ -266,7 +266,7 @@ No media.
 >
 > Free, and the source is public. Update your board, then start here:
 >
-> https://leavethepack.dev/architect
+> https://leavethepack.dev/architect/
 
 The post links the Architect page rather than the walk-through: the page ends with the walk-through and the manual's Architect section, and its address is settled where the walk-through's isn't yet.
 
@@ -298,7 +298,7 @@ A Show HN, posted by the owner from their own account after the thread, on the d
 >
 > Architect stays off until you connect a provider, and an install keeps its data: no telemetry, and the read token only goes to its provider. Any provider but Cloudflare, and metrics, logs, and traces as signals, aren't in 2.0.0.
 >
-> What it is: https://leavethepack.dev/architect
+> What it is: https://leavethepack.dev/architect/
 > Release notes: https://github.com/TheAnarchoX/breakaway/releases/tag/v2.0.0
 
 ## 11. 2.0.0 on Reddit
