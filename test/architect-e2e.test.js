@@ -946,6 +946,8 @@ describe('Architect’s whole loop (BRK-228)', () => {
     expect(await approveAndApply(removal.id, short, platform.short)).toBe('applied');
     await shortTick();
     expect(await shortRequest()).toMatchObject({ state: 'removed', environment: null });
+    // The plan that removed it outlives it: approveAndApply reads it whether or not the alarm removed it first (BRK-263).
+    expect(await plan(removal.id)).toMatchObject({ state: 'applied', environment: { id: short.id, name } });
     expect(platform.short.state.resources).toEqual([]);
     const environments = (await body(await api('infra/environments?repo=widgets'))).environments;
     expect(environments.find((e) => e.name === name)).toBeUndefined();
