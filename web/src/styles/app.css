@@ -9837,11 +9837,52 @@ a.pl-mention {
     justify-content: center;
   }
 }
-/* The environment console (WEB-94; docs/specs/WEB-94-environment-console.md): a status band, the map and the stream
-   side by side, then a panel each. Flat, hard-edged, tokens only; motion only on arrival and for what's live. */
+/* The environment console (WEB-94; docs/specs/WEB-94-environment-console.md): a status band, the map, the stream, and
+   a panel each. Flat, hard-edged, tokens only; motion only on arrival and for what's live. On a wide screen (WEB-97)
+   it fills the window under the top bar, 2:8:2: its state on the left, the map in the middle, the stream on the
+   right, each scrolling on its own. Narrower, it stacks, map first. */
 .infra-page.console {
-  max-width: var(--maxw);
+  max-width: none;
+  gap: 0;
+  container: console / inline-size;
+}
+.console-frame {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.console-top {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.console .console-top .fr-back {
+  margin: 0;
+}
+.console .view-intro {
+  margin-bottom: 0;
+}
+.console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
+}
+.console-centre,
+.console-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+/* Each panel as tall as it needs: the column scrolls, its panels never squeeze. Positioned, so what's hidden for
+   screen readers scrolls with it rather than lengthening the page. */
+.console-side,
+.stream-list {
+  position: relative;
+}
+.console-side {
+  grid-auto-rows: max-content;
 }
 .console-quiet {
   margin: 0;
@@ -9850,11 +9891,14 @@ a.pl-mention {
 }
 .console-band {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
   margin: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-s);
-  background: var(--surface);
+  /* The gaps between the tiles are the lines, whatever the columns. */
+  background: var(--line);
 }
 .band-tile {
   display: grid;
@@ -9862,10 +9906,7 @@ a.pl-mention {
   gap: 6px;
   min-width: 0;
   padding: 10px 12px;
-  border-left: 1px solid var(--line);
-}
-.band-tile:first-child {
-  border-left: 0;
+  background: var(--surface);
 }
 .band-tile dt {
   display: flex;
@@ -9921,14 +9962,8 @@ a.pl-mention {
   font: 500 12.5px / 1.3 var(--font-mono);
   color: var(--muted);
 }
-.console-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-  gap: 16px;
-  align-items: start;
-}
 .console-panel,
-.console-panels > .infra-section {
+.console-side > .infra-section {
   display: grid;
   gap: 12px;
   min-width: 0;
@@ -9945,7 +9980,7 @@ a.pl-mention {
   gap: 8px 12px;
 }
 .console-panel-head h2,
-.console-panels > .infra-section > h2 {
+.console-side > .infra-section > h2 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -9956,40 +9991,177 @@ a.pl-mention {
   color: var(--muted);
 }
 .console-panel-head h2 svg,
-.console-panels > .infra-section > h2 svg {
+.console-side > .infra-section > h2 svg {
   width: 16px;
   height: 16px;
   color: var(--muted);
 }
 .console-panel-head h2 .count,
-.console-panels > .infra-section > h2 .count {
+.console-side > .infra-section > h2 .count {
   letter-spacing: 0;
   text-transform: none;
 }
-.console-panels {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-items: start;
+/* A panel with nothing to show yet is one line: its name, then why, cut to fit until it's pointed at. */
+.console-side > .infra-section:has(> .console-quiet:nth-child(2):last-child) {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
 }
-.console-panels .infra-res,
-.console-panels .infra-facts,
+.console-side > .infra-section:has(> .console-quiet:nth-child(2):last-child) > h2 {
+  flex: none;
+}
+.console-side > .infra-section > .console-quiet:nth-child(2):last-child {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.console-side > .infra-section:hover > .console-quiet:nth-child(2):last-child,
+.console-side > .infra-section:focus-within > .console-quiet:nth-child(2):last-child {
+  white-space: normal;
+}
+.console-side .infra-res,
+.console-side .infra-facts,
 .console .topo .infra-res {
   background: var(--bg-2);
 }
-/* The map: a dot grid, three columns, a line per relation. */
-.topo-map-wrap {
+/* Recent deploys and incidents, one thin line under the map: a thread through them, newest first. */
+.console-timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.console-timeline h2 {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font: 600 11px / 1.2 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.timeline-list {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
   overflow-x: auto;
+  background: linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat;
+}
+.timeline-item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  background: var(--surface);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.timeline-item > a,
+.timeline-item > span:last-child {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+.timeline-item > a:hover .timeline-label {
+  text-decoration: underline;
+}
+.timeline-item > a svg {
+  align-self: center;
+  color: var(--muted);
+}
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.timeline-ok .timeline-dot {
+  background: var(--success);
+}
+.timeline-warn .timeline-dot {
+  background: var(--warn);
+}
+.timeline-bad .timeline-dot {
+  background: var(--danger);
+}
+.timeline-pending .timeline-dot {
+  background: var(--accent);
+}
+.timeline-label {
+  font-weight: 600;
+}
+.timeline-detail {
+  font: 500 11.5px var(--font-mono);
+  color: var(--muted);
+}
+/* The map: a dot grid, three columns, a line per relation, filling its box; it zooms and pans (WEB-97). */
+.topo-stage {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+}
+.topo-map-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: var(--map-ratio);
+  max-height: 70vh;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-xs);
   background: var(--bg-2);
+  touch-action: pan-y;
+}
+.topo-map-wrap.is-zoomed {
+  touch-action: none;
 }
 .topo-map {
   display: block;
   width: 100%;
-  height: auto;
-  margin: 0 auto;
+  height: 100%;
   font-family: var(--font-body);
+  user-select: none;
+}
+.topo-map-wrap.is-zoomed .topo-map {
+  cursor: grab;
+}
+.topo-map-wrap.is-zoomed .topo-map:active {
+  cursor: grabbing;
+}
+.topo-zoom {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+}
+.topo-zoom-level {
+  min-width: 40px;
+  text-align: center;
+  font: 500 11.5px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 .topo-dot {
   fill: var(--line-strong);
@@ -10163,12 +10335,33 @@ a.pl-mention {
 .topo-signal-critical .topo-signal-level {
   color: var(--danger);
 }
-/* The stream: newest first, what's new slides in from the left. */
-.stream {
-  position: sticky;
-  top: calc(var(--topbar-h) + 12px);
-  max-height: calc(100vh - var(--topbar-h) - 24px);
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+/* The stream: newest first, what's new slides in from the left, repeats folded, filtered by kind and level. */
+.console-panel.stream {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.stream-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.stream-filters .segmented-xs button {
+  padding: 0 7px;
+}
+.select-xs {
+  min-height: 28px;
+  padding: 2px 6px;
+  font-size: 12.5px;
+  border-radius: var(--radius-xs);
+}
+.stream-count {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font: 600 11.5px var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .stream-live {
   display: inline-flex;
@@ -10289,46 +10482,117 @@ a.pl-mention {
     stroke-dashoffset: -12;
   }
 }
-@media (max-width: 1100px) {
+@container console (min-width: 560px) {
   .console-band {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .band-tile:nth-child(4) {
-    border-left: 0;
+}
+@container console (min-width: 720px) {
+  .console-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
   }
-  .band-tile:nth-child(n + 4) {
-    border-top: 1px solid var(--line);
+  .console-side > .console-band,
+  .console-side > .console-band-actions {
+    grid-column: 1 / -1;
   }
 }
-@media (max-width: 900px) {
-  .console-grid,
-  .console-panels {
+@container console (min-width: 900px) and (max-width: 1099.98px) {
+  .console-band {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+/* Wide: the console fills the window, and each column scrolls on its own. */
+@container console (min-width: 1100px) {
+  .console-frame {
+    /* The window, less the top bar and its line, and the view's padding above and below. */
+    height: calc(100dvh - var(--topbar-h) - 1px - 32px);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .console-top {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 16px;
+  }
+  .console-top .view-intro h1 {
+    font-size: 26px;
+  }
+  .console-grid {
+    grid-template-columns: minmax(240px, 2fr) minmax(0, 8fr) minmax(260px, 2fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "side centre stream";
+    min-height: 0;
+  }
+  .console-centre {
+    grid-area: centre;
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-height: 0;
+  }
+  .console-side {
+    grid-area: side;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .console-band {
     grid-template-columns: minmax(0, 1fr);
   }
-  .stream {
-    position: static;
-    max-height: none;
+  .console-panel.stream {
+    grid-area: stream;
+    min-height: 0;
   }
   .stream-list {
-    overflow: visible;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .console-panel.topo {
+    min-height: 0;
+    align-content: start;
+    overflow-y: auto;
+  }
+  .console-panel.topo:has(> .topo-stage) {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-content: stretch;
+    overflow: hidden;
+  }
+  .topo-stage {
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .topo-map-wrap {
+    height: 100%;
+    max-height: none;
+    aspect-ratio: auto;
+    touch-action: none;
+  }
+  /* A node's detail opens over the map, from the bottom, and scrolls on its own. */
+  .topo-detail {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 2;
+    max-height: 55%;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
   }
 }
-@media (max-width: 560px) {
-  .console-band {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="reduce"]) .topo-detail {
+    animation: detail-up var(--dur) var(--ease) both;
   }
-  .band-tile:nth-child(n) {
-    border-left: 1px solid var(--line);
-    border-top: 1px solid var(--line);
+}
+@keyframes detail-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-  .band-tile:nth-child(odd) {
-    border-left: 0;
-  }
-  .band-tile:nth-child(-n + 2) {
-    border-top: 0;
-  }
+}
+@container console (max-width: 559.98px) {
   .console-panel,
-  .console-panels > .infra-section {
+  .console-side > .infra-section {
     padding: 12px;
   }
 }

@@ -1,9 +1,10 @@
-import { useState } from 'preact/hooks';
-import { Boxes, List, Network, Target, X } from 'lucide-preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { Boxes, List, Maximize2, Network, Target, X, ZoomIn, ZoomOut } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { hashFor, repoName } from '../lib/store.js';
 import { MAP_MAX, NODE, collapse, fitName, layoutTopology, planOverlay } from '../lib/topology.js';
 import { LEVEL } from '../lib/env-stream.js';
+import { ZOOM_MAX, ZOOM_STEP, clampView, fitView, panView, viewBox, zoomOf, zoomView } from '../lib/pan-zoom.js';
 import { amountText } from './InfraCosts.jsx';
 import { planHref } from './EnvironmentPlans.jsx';
 import { HEALTH } from '../views/InfrastructureView.jsx';
@@ -12,8 +13,13 @@ import { HEALTH } from '../views/InfrastructureView.jsx';
  * An environment's topology (WEB-94; docs/specs/WEB-94-environment-console.md): its resources as a map, what's in front,
  * what runs, and what it holds, each node coloured by health with its cost, its drift, and what a waiting plan does to
  * it, and the same resources as a list, which a keyboard and a screen reader read in full. Selecting a node opens its
- * detail. The list keeps everything WEB-61's Resources section showed.
+ * detail. The list keeps everything WEB-61's Resources section showed. On the console (WEB-97) the map fills the space
+ * it's given, zooms and pans (the wheel where the page doesn't scroll, or with Ctrl; a drag; the buttons), and the
+ * selected node's detail opens over it.
  */
+
+/** How far a pointer moves before a press on the map is a drag, not a click, in pixels. */
+const DRAG_PX = 4;
 
 /** Space above the nodes for the columns' names. */
 const LABEL_H = 26;
@@ -232,116 +238,236 @@ function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h
 }
 
 /**
- * The map: plain SVG, three columns, a line per relation. Each node is a button; the list view says the same in text.
+ * The map: plain SVG, three columns, a line per relation, filling its box. Each node is a button; the list view says
+ * the same in text.
  * @param {{ map: ReturnType<typeof layoutTopology>, selected: string | null, onSelect: (id: string | null) => void, drift: Map<string, string>, ops: Map<string, any> }} props
  */
 function TopologyMap({ map, selected, onSelect, drift, ops }) {
+  const wrap = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const svg = useRef(/** @type {SVGSVGElement | null} */ (null));
+  const drag = useRef(/** @type {{ x: number, y: number, moved: boolean } | null} */ (null));
+  const dragged = useRef(false);
+  const [box, setBox] = useState(/** @type {{ w: number, h: number } | null} */ (null));
+  const [view, setView] = useState(/** @type {import('../lib/pan-zoom.js').View | null} */ (null));
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el || typeof ResizeObserver !== 'function') return;
+    const watch = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setBox(width > 0 && height > 0 ? { w: width, h: height } : null);
+    });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
   const near = new Set(
     selected
       ? map.edges.flatMap((e) => (e.from === selected || e.to === selected ? [e.from, e.to] : [])).concat(selected)
       : [],
   );
   const height = map.height + LABEL_H;
+  const fit = fitView({ x: 0, y: 0, w: map.width, h: height }, box);
+  const v = view ? clampView(view, fit) : fit;
+  const zoom = zoomOf(v, fit);
+  /** A pointer's place in the map's units: the view has the box's shape, so it maps straight across. */
+  const at = (/** @type {{ clientX: number, clientY: number }} */ e) => {
+    const r = svg.current?.getBoundingClientRect();
+    if (!r?.width) return null;
+    return { x: v.x + ((e.clientX - r.left) / r.width) * v.w, y: v.y + ((e.clientY - r.top) / r.height) * v.h };
+  };
+  const zoomBy = (/** @type {number} */ factor, /** @type {{ x: number, y: number } | null} */ p = null) =>
+    setView((cur) => zoomView(cur ? clampView(cur, fit) : fit, factor, p, fit));
+  /** @param {WheelEvent} e */
+  const onWheel = (e) => {
+    // The wheel zooms where the page doesn't scroll (the console on a wide screen); elsewhere only with Ctrl, so the
+    // page still scrolls past the map.
+    const page = document.scrollingElement;
+    const scrolls = page ? page.scrollHeight > page.clientHeight + 1 : false;
+    if (scrolls && !e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomBy(ZOOM_STEP ** (-Math.sign(e.deltaY) * Math.min(2, Math.abs(e.deltaY) / 60 || 1)), at(e));
+  };
+  /** @param {PointerEvent} e */
+  const onPointerDown = (e) => {
+    if (e.button !== 0) return;
+    drag.current = { x: e.clientX, y: e.clientY, moved: false };
+  };
+  /** @param {PointerEvent} e */
+  const onPointerMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (!d.moved) {
+      if (Math.hypot(dx, dy) < DRAG_PX) return;
+      d.moved = true;
+      svg.current?.setPointerCapture(e.pointerId);
+    }
+    const r = svg.current?.getBoundingClientRect();
+    const k = r?.width ? v.w / r.width : 1;
+    d.x = e.clientX;
+    d.y = e.clientY;
+    setView((cur) => panView(cur ? clampView(cur, fit) : fit, dx * k, dy * k, fit));
+  };
+  /** @param {PointerEvent} e */
+  const onPointerUp = (e) => {
+    const moved = Boolean(drag.current?.moved);
+    dragged.current = moved;
+    // A press on the map's ground, not a drag, puts the detail away.
+    if (drag.current && !moved && /** @type {Element} */ (e.target).classList?.contains('topo-ground')) onSelect(null);
+    drag.current = null;
+  };
   return (
-    <div class="topo-map-wrap">
-      <svg
-        class={`topo-map ${selected ? 'has-selection' : ''}`}
-        viewBox={`0 0 ${map.width} ${height}`}
-        style={{ maxWidth: `${Math.round(map.width * 1.15)}px` }}
-        role="group"
-        aria-label={`Map of ${map.nodes.length} ${map.nodes.length === 1 ? 'resource' : 'resources'}: select one for its detail`}
+    <>
+      <div
+        class={`topo-map-wrap ${zoom > 1.001 ? 'is-zoomed' : ''}`}
+        ref={wrap}
+        style={{ '--map-ratio': `${map.width} / ${height}` }}
       >
-        <defs>
-          <pattern id="topo-dots" width="16" height="16" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="1" class="topo-dot" />
-          </pattern>
-        </defs>
-        <rect width={map.width} height={height} fill="url(#topo-dots)" />
-        <g>
-          {map.columns.map((c) => (
-            <text key={c.id} x={c.x} y={16} class="topo-col-label">
-              {c.label}
-            </text>
-          ))}
-        </g>
-        <g transform={`translate(0 ${LABEL_H})`}>
+        <svg
+          ref={svg}
+          class={`topo-map ${selected ? 'has-selection' : ''}`}
+          viewBox={viewBox(v)}
+          role="group"
+          aria-label={`Map of ${map.nodes.length} ${map.nodes.length === 1 ? 'resource' : 'resources'}: select one for its detail`}
+          onWheel={onWheel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClickCapture={(e) => {
+            // A drag ends with a click on whatever it ended over: that one doesn't select anything.
+            if (!dragged.current) return;
+            dragged.current = false;
+            e.stopPropagation();
+          }}
+        >
+          <defs>
+            <pattern id="topo-dots" width="16" height="16" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="1" class="topo-dot" />
+            </pattern>
+          </defs>
+          <rect x={fit.x} y={fit.y} width={fit.w} height={fit.h} fill="url(#topo-dots)" class="topo-ground" />
           <g>
-            {map.edges.map((e) => {
-              const on = selected && (e.from === selected || e.to === selected);
+            {map.columns.map((c) => (
+              <text key={c.id} x={c.x} y={16} class="topo-col-label">
+                {c.label}
+              </text>
+            ))}
+          </g>
+          <g transform={`translate(0 ${LABEL_H})`}>
+            <g>
+              {map.edges.map((e) => {
+                const on = selected && (e.from === selected || e.to === selected);
+                return (
+                  <path
+                    key={`${e.from} ${e.to} ${e.kind}`}
+                    d={e.path}
+                    class={`topo-edge topo-edge-${e.kind} ${on ? 'is-on' : selected ? 'is-dim' : ''}`}
+                  />
+                );
+              })}
+            </g>
+            {map.nodes.map((n) => {
+              const state = n.planned ? 'planned' : healthOf(n);
+              const o = ops.get(n.id);
+              const d = drift.get(n.id);
+              const cost = n.cost?.amount > 0 ? amountText(n.cost.amount, n.cost.currency) : '';
+              const mark = o ? `${EFFECT[o.effect].sign} ${o.effect}` : d ? 'drift' : '';
+              const words = [
+                n.name,
+                n.group ? `${n.group.members.length} ${n.kind}` : n.kind,
+                n.planned ? 'not running yet' : HEALTH[state]?.label.toLowerCase(),
+                n.target ? 'the target' : '',
+                cost ? `${cost} a month, estimated` : '',
+                o ? EFFECT[o.effect].label.toLowerCase() : '',
+                d ? 'drift' : '',
+              ].filter(Boolean);
+              const pick = () => onSelect(selected === n.id ? null : n.id);
               return (
-                <path
-                  key={`${e.from} ${e.to} ${e.kind}`}
-                  d={e.path}
-                  class={`topo-edge topo-edge-${e.kind} ${on ? 'is-on' : selected ? 'is-dim' : ''}`}
-                />
+                // biome-ignore lint/a11y/useSemanticElements: an SVG group can't be a <button>; it takes the role instead.
+                <g
+                  key={n.id}
+                  class={`topo-node topo-health-${state} ${o ? `topo-plan-${o.effect}` : ''} ${d ? 'has-drift' : ''} ${n.target ? 'is-target' : ''} ${selected === n.id ? 'is-selected' : ''} ${selected && !near.has(n.id) ? 'is-dim' : ''}`}
+                  transform={`translate(${n.x} ${n.y})`}
+                  role="button"
+                  // Lowercase: SVG keeps an attribute’s case, and only `tabindex` makes it focusable.
+                  tabindex={0}
+                  aria-pressed={selected === n.id}
+                  aria-label={words.join(', ')}
+                  onClick={pick}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      pick();
+                    } else if (e.key === 'Escape') onSelect(null);
+                  }}
+                >
+                  <title>{words.join(', ')}</title>
+                  <rect class="topo-node-box" width={NODE.w} height={NODE.h} rx="6" />
+                  <rect class="topo-node-bar" width="4" height={NODE.h - 12} x="6" y="6" rx="2" />
+                  <text x="18" y="20" class="topo-node-name">
+                    {fitName(n.name, cost ? 14 : 19)}
+                  </text>
+                  <text x="18" y="37" class="topo-node-sub">
+                    {n.group ? `kind × ${n.group.members.length}` : fitName(n.kind, 12)}
+                  </text>
+                  {cost && (
+                    <text x={NODE.w - 8} y="20" class="topo-node-cost" text-anchor="end">
+                      {cost}
+                    </text>
+                  )}
+                  {mark && (
+                    <text
+                      x={NODE.w - 8}
+                      y="37"
+                      class={`topo-node-mark ${o ? `is-${o.effect}` : 'is-drift'}`}
+                      text-anchor="end"
+                    >
+                      {mark}
+                    </text>
+                  )}
+                </g>
               );
             })}
           </g>
-          {map.nodes.map((n) => {
-            const state = n.planned ? 'planned' : healthOf(n);
-            const o = ops.get(n.id);
-            const d = drift.get(n.id);
-            const cost = n.cost?.amount > 0 ? amountText(n.cost.amount, n.cost.currency) : '';
-            const mark = o ? `${EFFECT[o.effect].sign} ${o.effect}` : d ? 'drift' : '';
-            const words = [
-              n.name,
-              n.group ? `${n.group.members.length} ${n.kind}` : n.kind,
-              n.planned ? 'not running yet' : HEALTH[state]?.label.toLowerCase(),
-              n.target ? 'the target' : '',
-              cost ? `${cost} a month, estimated` : '',
-              o ? EFFECT[o.effect].label.toLowerCase() : '',
-              d ? 'drift' : '',
-            ].filter(Boolean);
-            const pick = () => onSelect(selected === n.id ? null : n.id);
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: an SVG group can't be a <button>; it takes the role instead.
-              <g
-                key={n.id}
-                class={`topo-node topo-health-${state} ${o ? `topo-plan-${o.effect}` : ''} ${d ? 'has-drift' : ''} ${n.target ? 'is-target' : ''} ${selected === n.id ? 'is-selected' : ''} ${selected && !near.has(n.id) ? 'is-dim' : ''}`}
-                transform={`translate(${n.x} ${n.y})`}
-                role="button"
-                // Lowercase: SVG keeps an attribute’s case, and only `tabindex` makes it focusable.
-                tabindex={0}
-                aria-pressed={selected === n.id}
-                aria-label={words.join(', ')}
-                onClick={pick}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    pick();
-                  } else if (e.key === 'Escape') onSelect(null);
-                }}
-              >
-                <title>{words.join(', ')}</title>
-                <rect class="topo-node-box" width={NODE.w} height={NODE.h} rx="6" />
-                <rect class="topo-node-bar" width="4" height={NODE.h - 12} x="6" y="6" rx="2" />
-                <text x="18" y="20" class="topo-node-name">
-                  {fitName(n.name, cost ? 14 : 19)}
-                </text>
-                <text x="18" y="37" class="topo-node-sub">
-                  {n.group ? `kind × ${n.group.members.length}` : fitName(n.kind, 12)}
-                </text>
-                {cost && (
-                  <text x={NODE.w - 8} y="20" class="topo-node-cost" text-anchor="end">
-                    {cost}
-                  </text>
-                )}
-                {mark && (
-                  <text
-                    x={NODE.w - 8}
-                    y="37"
-                    class={`topo-node-mark ${o ? `is-${o.effect}` : 'is-drift'}`}
-                    text-anchor="end"
-                  >
-                    {mark}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </g>
-      </svg>
-    </div>
+        </svg>
+      </div>
+      <div class="topo-zoom" role="group" aria-label="Zoom the map">
+        <button
+          type="button"
+          class="btn btn-quiet btn-icon btn-sm"
+          onClick={() => zoomBy(ZOOM_STEP)}
+          disabled={zoom >= ZOOM_MAX - 0.001}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <ZoomIn size={16} aria-hidden="true" />
+        </button>
+        <span class="topo-zoom-level" aria-live="polite">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          class="btn btn-quiet btn-icon btn-sm"
+          onClick={() => zoomBy(1 / ZOOM_STEP)}
+          disabled={zoom <= 1.001}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <ZoomOut size={16} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-quiet btn-icon btn-sm"
+          onClick={() => setView(null)}
+          disabled={zoom <= 1.001}
+          aria-label="Fit the map"
+          title="Fit the map"
+        >
+          <Maximize2 size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -352,6 +478,15 @@ function TopologyMap({ map, selected, onSelect, drift, ops }) {
  */
 export function Topology({ env, resources, relations, plan, drift, signals, mode, onMode, nodeActions }) {
   const [selected, setSelected] = useState(/** @type {string | null} */ (null));
+  // Escape puts a node's detail away, wherever focus is, unless a dialog is open over the page.
+  useEffect(() => {
+    if (!selected) return;
+    const close = (/** @type {KeyboardEvent} */ e) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('dialog[open]')) setSelected(null);
+    };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [selected]);
   const { ops, adds } = planOverlay(plan?.diff);
   const driftOf = new Map((drift?.resources ?? []).map((/** @type {any} */ d) => [d.id, d.op]));
   const running = new Set(resources.map((r) => r.id));
@@ -408,7 +543,51 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
         </p>
       ) : mode === 'map' ? (
         <>
-          <TopologyMap map={map} selected={selected} onSelect={setSelected} drift={driftOf} ops={ops} />
+          <div class="topo-stage">
+            <TopologyMap map={map} selected={selected} onSelect={setSelected} drift={driftOf} ops={ops} />
+            {current && (
+              <article class="topo-detail" aria-labelledby="topo-detail-name">
+                <button
+                  type="button"
+                  class="btn btn-quiet btn-icon btn-sm topo-detail-close"
+                  onClick={() => setSelected(null)}
+                  aria-label="Close the detail"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+                {current.group ? (
+                  <>
+                    <h3 id="topo-detail-name" class="infra-res-name">
+                      {current.name}
+                    </h3>
+                    <ul class="infra-rel-list">
+                      {current.group.members.map((/** @type {string} */ m) => (
+                        <li key={m}>
+                          <button type="button" class="infra-rel-link" onClick={() => setSelected(m)}>
+                            {byId.get(m)?.name ?? m}
+                          </button>
+                          <span class="meta"> {HEALTH[healthOf(byId.get(m))].label.toLowerCase()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <Resource
+                    r={current}
+                    env={env}
+                    drift={driftOf}
+                    ops={ops}
+                    plan={plan}
+                    onPick={setSelected}
+                    signals={signals.filter((s) => s.resource === current.id).slice(0, 5)}
+                    headingLevel="h3"
+                    headingId="topo-detail-name"
+                  />
+                )}
+                {!current.group && nodeActions && <div class="topo-detail-actions">{nodeActions(current)}</div>}
+              </article>
+            )}
+          </div>
           <p class="meta topo-legend">
             {shown.grouped && `Over ${MAP_MAX} resources, so each kind is one node; the list has every one. `}
             {plan && ops.size > 0 && (
@@ -420,48 +599,6 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
             )}
             Select a node for its detail.
           </p>
-          {current && (
-            <article class="topo-detail" aria-labelledby="topo-detail-name">
-              <button
-                type="button"
-                class="btn btn-quiet btn-icon btn-sm topo-detail-close"
-                onClick={() => setSelected(null)}
-                aria-label="Close the detail"
-              >
-                <X size={16} aria-hidden="true" />
-              </button>
-              {current.group ? (
-                <>
-                  <h3 id="topo-detail-name" class="infra-res-name">
-                    {current.name}
-                  </h3>
-                  <ul class="infra-rel-list">
-                    {current.group.members.map((/** @type {string} */ m) => (
-                      <li key={m}>
-                        <button type="button" class="infra-rel-link" onClick={() => setSelected(m)}>
-                          {byId.get(m)?.name ?? m}
-                        </button>
-                        <span class="meta"> {HEALTH[healthOf(byId.get(m))].label.toLowerCase()}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <Resource
-                  r={current}
-                  env={env}
-                  drift={driftOf}
-                  ops={ops}
-                  plan={plan}
-                  onPick={setSelected}
-                  signals={signals.filter((s) => s.resource === current.id).slice(0, 5)}
-                  headingLevel="h3"
-                  headingId="topo-detail-name"
-                />
-              )}
-              {!current.group && nodeActions && <div class="topo-detail-actions">{nodeActions(current)}</div>}
-            </article>
-          )}
         </>
       ) : (
         all.map((g) => (
