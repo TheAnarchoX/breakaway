@@ -384,6 +384,8 @@ export const infraChangesMethods = {
           summary: `#${live.pull} is gone from GitHub; nothing changes`,
         });
       if (!pull || this.followInfraChange(live, pull)) live = null;
+      // Replacing resets an approval (BRK-260): auto-merge it turned on must not merge the new commit.
+      else if (pull.auto_merge) await this.stopChangeAutoMerge(client, pull);
     }
 
     const head = (await client.get(`/git/ref/heads/${refPath(branchOf)}`))?.object?.sha;

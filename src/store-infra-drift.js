@@ -26,6 +26,7 @@ import { redact } from './redact.js';
 import { runsTheBoard } from './infra-environments.js';
 import { checkDesired, checkPlan } from './infra-provider.js';
 import { keptDiff, planNumber } from './infra-plans.js';
+import { keepsChange } from './infra-change-approval.js';
 import {
   DRIFT_PER_TICK,
   DRIFT_PLAN_SOURCES,
@@ -160,10 +161,19 @@ export const infraDriftMethods = {
     const brokenGlass = await this.settleBreakGlass(env, diff);
     // What runs but isn't in the desired state is clean up's (BRK-201): flagged now, proposed for removal later.
     await this.settleUnowned(env, diff);
+    const merged = desiredMoved(last, desiredHash, Boolean(added));
+    // A change the owner approved on the console before it merged (BRK-260): its plan also keeps the deletes it asked
+    // for, and is approved on that press when it's exactly what was approved (store-infra-change-approval.js).
+    const approved = merged ? this.approvedMergedChange(env.id) : null;
+    const keep = approved ? keepsChange(JSON.parse(approved.edits)) : isDrift;
+    const removals = diff.changes.filter((c) => !isDrift(c) && keep(c)).length;
+    /** What a plan of this comparison holds, as one fingerprint: the drift, and the approved change's deletes. */
+    const planned = async (/** @type {any} */ d) => driftFingerprint({ ...d, changes: d.changes.filter(keep) });
+    const wanted = await planned(diff);
     diff = driftChanges(diff);
     const fingerprint = await driftFingerprint(diff);
     const resources = JSON.stringify(driftResources(diff));
-    if (diff.changes.length === 0)
+    if (diff.changes.length === 0 && !removals)
       return this.keepDrift(env, {
         desiredSha,
         count: 0,
@@ -182,7 +192,7 @@ export const infraDriftMethods = {
       )
       .toArray();
     for (const p of open)
-      if ((await driftFingerprint(driftChanges(JSON.parse(p.diff)))) === fingerprint)
+      if ((await planned(JSON.parse(p.diff))) === wanted)
         return this.keepDrift(env, {
           desiredSha,
           count: diff.changes.length,
@@ -216,7 +226,6 @@ export const infraDriftMethods = {
         planMatches: false,
         desiredHash: unsettled,
       });
-    const merged = desiredMoved(last, desiredHash, Boolean(added));
     const pull = merged ? this.mergedPullAt(env.repo, desiredSha) : null;
     let plan = null;
     let planMatches = false;
@@ -227,13 +236,14 @@ export const infraDriftMethods = {
         source: merged ? 'pull-request' : 'drift',
         sourceRef: pull ? `#${pull}` : null,
         by: 'board',
-        only: isDrift,
+        only: keep,
       });
       plan = planNumber(made.id);
-      planMatches = (await driftFingerprint(made.diff)) === fingerprint;
+      planMatches = (await driftFingerprint(driftChanges(made.diff))) === fingerprint;
       settled = desiredHash;
       // A merged change waits for the owner, with one push, unless the policy let it through (approved already).
-      if (merged && made.state === 'draft' && made.policy?.outcome !== 'refused')
+      if (approved) made = await this.settleChangeApproval(approved, made);
+      else if (merged && made.state === 'draft' && made.policy?.outcome !== 'refused')
         made = await this.waitForOwner(made.id, {
           by: 'board',
           summary: pull
