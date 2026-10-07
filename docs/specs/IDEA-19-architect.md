@@ -58,7 +58,7 @@ What actually exists, from each provider's `discover`, scoped to what the board'
 
 ### Desired state
 
-What should exist, as code, read from the repository's default branch once per new commit, the way `.github/breakaway-pipeline.json` is read (BRK-180). One file per environment, `.github/breakaway-infra/<environment>.json` (BRK-169). A file for an environment that doesn't exist shows as one to add; one for an observe-only environment is refused. An invalid file shows its error and keeps the last valid copy. `npx breakaway infra check` validates it locally and asks for the plan it would make (CLI-14).
+What should exist, as code, read from the repository's default branch once per new commit, the way `.github/breakaway-pipeline.json` is read (BRK-180). One file per environment, `.github/breakaway-infra/<environment>.json` (BRK-169). A file for an environment that doesn't exist shows as one to add; one for an observe-only environment is refused. An invalid file shows its error and keeps the last valid copy. `npx breakaway infra check` validates it locally and asks for the plan it would make (CLI-14). A file may name the environment's own health address, `"health": { "url": "https://staging.example/health" }` (BRK-266): https, no credentials in it, and the owner's own service, which the board GETs once per refresh as an active check of the front door (see [Health and alerts, as built](#health-and-alerts-as-built-brk-191)).
 
 Nobody has to write the first file by hand (BRK-240): `GET /api/infra/environments/<id>/draft` writes it from the environment's slice of the inventory, valid as written, with only the settings the provider manages (never what the platform reports by itself, like versions and sizes) and never a secret's value, and notes saying what it left out. Agents read it with the token as well as the owner; `infra adopt` (CLI-23) writes it into a checkout. An environment with no inventory yet gets a 409 saying to connect the provider and refresh. On the environment page, an environment with no file shows the draft, read only with Copy, under **Describe it as code** (WEB-92), with one press, **Have an agent open the pull request**: the owner's only, it adds `Describe <environment> as code` (+agent +general, never autostart) in the environment's repository and starts its agent there, which runs `infra adopt`, then `infra check`, and opens the pull request. One is open at a time per environment; the page shows it and its pull request instead of the button. Without the repository's agent routine connected it adds nothing and points to Connections. The board opens no pull request itself, and nothing is applied.
 
@@ -236,7 +236,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Plan | Diff only: the desired bindings, compatibility date and flags, cron triggers, and routes against what discover found | none beyond discover |
 | Apply | `POST /accounts/{a}/workers/workers/{id}/versions` (a new version with the changed bindings, carrying the live version's modules), then `POST /accounts/{a}/workers/scripts/{name}/deployments` (`strategy: percentage`, the new version at 100); cron triggers `PUT …/scripts/{name}/schedules`; delete `DELETE …/scripts/{name}` (irreversible). BRK-192 checked: the versions endpoint needs the version's `modules` (the code), and the provider never reads a Worker's code, so it uses the fallback, `PATCH …/scripts/{name}/settings` (see "Plan and apply, as built") | Workers Editor on the environment's Workers (legacy: Workers Scripts Write, which the dashboard may call Edit). Making a Worker (`POST /accounts/{a}/workers/workers`) or deleting one needs Workers Admin at the Workers product scope, which Editor doesn't have |
 | Roll back | `POST …/scripts/{name}/deployments` with the previous version at 100 | Workers Editor on the Worker (legacy: Workers Scripts Write) |
-| Observe | GraphQL `workersInvocationsAdaptive` by `scriptName`: requests and errors over the last 15 minutes give healthy, degraded, or down; a Worker with no deployment is down | Account Analytics Read |
+| Observe | GraphQL `workersInvocationsAdaptive` by `scriptName`: requests and errors over the last 15 minutes, ending 5 minutes back for Cloudflare's lag, give healthy, degraded, or down; with none, an hour and then a day are read before it's idle; a Worker with no deployment is down, and one with a version at 100% says so when idle | Account Analytics Read |
 | Cost | The same dataset's requests and CPU time, times the price table | Account Analytics Read |
 | Scale or restart | Neither | |
 
@@ -247,7 +247,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/workers/durable_objects/namespaces` (class, script, SQLite or not); the Worker's settings give the binding | Workers Metadata Read-Only (legacy: Workers Scripts Read): Durable Objects have no role of their own and follow the Worker that implements them |
 | Plan | Diff only; a new class or a deleted one is a migration on the Worker's next version | none beyond discover |
 | Apply | The Worker's version and deployment above, with the migration in the version | Workers Editor on the Worker (legacy: Workers Scripts Write) |
-| Observe | GraphQL `durableObjectsInvocationsAdaptiveGroups` by namespace: requests and errors | Account Analytics Read |
+| Observe | GraphQL `durableObjectsInvocationsAdaptiveGroups` by namespace: requests and errors, the same windows; none in a day is idle | Account Analytics Read |
 | Cost | `durableObjectsInvocationsAdaptiveGroups` (requests, duration), `durableObjectsStorageGroups` (stored bytes), times the price table | Account Analytics Read |
 | Scale or restart | Neither | |
 
@@ -258,7 +258,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/d1/database`, `GET …/d1/database/{id}` (size, tables count, read replication) | D1 Read |
 | Plan | Diff only | none beyond discover |
 | Apply | `POST /accounts/{a}/d1/database`; `DELETE …/d1/database/{id}` | D1 Write |
-| Observe | GraphQL `d1AnalyticsAdaptiveGroups` by `databaseId`: queries and `queryBatchTimeMs` (slow is degraded; the dataset has no error count) | Account Analytics Read |
+| Observe | GraphQL `d1AnalyticsAdaptiveGroups` by `databaseId`: queries and `queryBatchTimeMs` (slow is degraded; the dataset has no error count), the same windows; none in a day is idle, since discover just read the database | Account Analytics Read |
 | Cost | `d1AnalyticsAdaptiveGroups` (`rowsRead`, `rowsWritten`), `d1StorageAdaptiveGroups` (size), times the price table | Account Analytics Read |
 | Scale or restart | Neither | |
 
@@ -269,7 +269,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/storage/kv/namespaces` (never keys or values) | Workers KV Storage Read |
 | Plan | Diff only | none beyond discover |
 | Apply | `POST …/storage/kv/namespaces`; `PUT …/namespaces/{id}` (rename); `DELETE …/namespaces/{id}` | Workers KV Storage Write |
-| Observe | GraphQL `kvOperationsAdaptiveGroups` by `namespaceId`: operations and latency (the dataset has no error count, so KV is healthy or unknown) | Account Analytics Read |
+| Observe | GraphQL `kvOperationsAdaptiveGroups` by `namespaceId`: operations (the dataset has no error count, so KV is healthy or idle), the same windows | Account Analytics Read |
 | Cost | `kvOperationsAdaptiveGroups` (`requests` by `actionType`: read, write, delete, list), `kvStorageAdaptiveGroups` (`byteCount`), times the price table | Account Analytics Read |
 | Scale or restart | Neither | |
 
@@ -280,7 +280,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/r2/buckets`; per bucket `GET …/buckets/{name}/cors`, `…/lifecycle`, `…/domains/custom` (never objects) | Workers R2 Storage Read |
 | Plan | Diff only | none beyond discover |
 | Apply | `POST …/r2/buckets`; `PUT …/buckets/{name}/cors`, `…/lifecycle`; `POST`/`DELETE …/domains/custom`; `DELETE …/buckets/{name}` | Workers R2 Storage Write |
-| Observe | GraphQL `r2OperationsAdaptiveGroups` by `bucketName`: operations by response status | Account Analytics Read |
+| Observe | GraphQL `r2OperationsAdaptiveGroups` by `bucketName`: operations by response status, the same windows; none in a day is idle | Account Analytics Read |
 | Cost | `r2OperationsAdaptiveGroups` (class A and B operations), `r2StorageAdaptiveGroups` (stored bytes), times the price table; egress is free | Account Analytics Read |
 | Scale or restart | Neither | |
 
@@ -291,7 +291,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/queues`; per queue `GET …/queues/{id}/consumers` (the consuming Worker, batch size, retries, dead-letter queue, concurrency) | Queues Read |
 | Plan | Diff only | none beyond discover |
 | Apply | `POST …/queues`; `PATCH …/queues/{id}` (settings; `PUT` replaces them all); `POST`/`PUT`/`DELETE …/queues/{id}/consumers/{consumer}`; `DELETE …/queues/{id}` | Queues Write |
-| Observe | `GET …/queues/{id}/metrics` (the backlog now: `backlog_count`, `oldest_message_timestamp_ms`), and GraphQL `queuesBacklogAdaptiveGroups` and `queueMessageOperationsAdaptiveGroups` (`retryCount`, `lagTime`) for the trend; a backlog that keeps growing, or an old oldest message, is degraded | Queues Read, Account Analytics Read |
+| Observe | `GET …/queues/{id}/metrics` (the backlog now: `backlog_count`, `oldest_message_timestamp_ms`), and GraphQL `queuesBacklogAdaptiveGroups` and `queueMessageOperationsAdaptiveGroups` (`retryCount`, `lagTime`) for the trend; a backlog that keeps growing, or an old oldest message, is degraded; no consumer attached is degraded; no backlog figures (a 404) with a consumer is idle; a refused metrics call is unknown, naming Queues Read | Queues Read, Account Analytics Read |
 | Cost | `queueMessageOperationsAdaptiveGroups` (operations), times the price table | Account Analytics Read |
 | Scale | `PUT …/queues/{id}/consumers/{consumer}` with `settings.max_concurrency` inside the envelope's bounds | Queues Write |
 | Restart | None | |
@@ -303,7 +303,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/containers/applications` (scheduling policy, instance type, `max_instances`, the Durable Object it belongs to, instance counts); `GET …/applications/{id}/instances-v2` for each instance's state | Containers Read |
 | Plan | Diff only | none beyond discover |
 | Apply | `PATCH …/containers/applications/{id}` (`max_instances`, constraints, observability, rollout grace period); `DELETE …/applications/{id}` | Containers Write |
-| Observe | The application's instance counts (`active` against `assigned`) and each instance's state; none active when some are assigned is down | Containers Read |
+| Observe | The application's instance counts (`active` against `assigned`) and each instance's state; none active when some are assigned is down; none assigned is idle; no counts is unknown | Containers Read |
 | Cost | Active instances, their instance type, and the time they ran, times the price table (vCPU, memory, and disk by the second). A rougher estimate than the others: **verify** against the dashboard in BRK-193 | Containers Read |
 | Scale | `PATCH …/applications/{id}` with `max_instances` inside the envelope's bounds | Containers Write |
 | Restart | `POST …/applications/{id}/rollouts` with the current configuration: every instance is replaced, step by step, after `SIGTERM` and up to 15 minutes to drain. The documentation shows the endpoint but not its body; BRK-227 sends the body Wrangler sends for a deploy's rollout (`description`, `strategy: rolling`, `kind: full_auto`, `step_percentage`, `target_configuration` from `GET …/applications/{id}`), which the docs don't confirm: **verify** in BRK-207's staging run | Containers Write |
@@ -315,7 +315,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /zones/{z}/workers/routes` for each zone in the environment's scope; `GET /zones?account.id={a}` once, to name the zones | Workers Routes Read (zone), Zone Read (zone) |
 | Plan | Diff only | none beyond discover |
 | Apply | `POST /zones/{z}/workers/routes`; `PUT …/routes/{id}`; `DELETE …/routes/{id}` | Workers Routes Write (zone) |
-| Observe | A route's health is its Worker's | |
+| Observe | A route's health is its Worker's, or the environment's health URL's answer when it names one (BRK-266) | |
 | Cost | None of its own | |
 | Scale or restart | Neither | |
 
@@ -326,7 +326,7 @@ The provider's kinds, as BRK-173's `kinds` declares them: `worker`, `durable-obj
 | Discover | `GET /accounts/{a}/workers/domains` (hostname, zone, Worker) | Workers Metadata Read-Only (legacy: Workers Scripts Read) |
 | Plan | Diff only | none beyond discover |
 | Apply | `PUT /accounts/{a}/workers/domains`; `DELETE …/workers/domains/{id}`. BRK-192 checked Cloudflare's Workers authorization page: adding, changing, or removing a custom domain needs Workers Routes Write on every zone it touches, as routes do | Workers Editor at the Workers product scope, since custom domains have no per-Worker role yet (legacy: Workers Scripts Write), and Workers Routes Write (zone) |
-| Observe | Its Worker's health | |
+| Observe | Its Worker's health, or the environment's health URL's answer when it names one (BRK-266) | |
 | Cost | None of its own | |
 | Scale or restart | Neither | |
 
@@ -362,9 +362,13 @@ To show which alerts reach the board, the provider reads the account's alert set
 
 ### Health and alerts, as built (BRK-191)
 
-`observe` reads what discover found (`ctx.resources`) from the same analytics reader, one query per dataset for the whole environment over the last 15 minutes (`HEALTH_DATASETS` in `src/infra-cloudflare-analytics.js`): `workersInvocationsAdaptive` and `durableObjectsInvocationsAdaptiveGroups` (`requests`, `errors`: 5% failing is degraded, half is down, a Worker with no deployment is down), `d1AnalyticsAdaptiveGroups` (queries, and `queryBatchTimeMs` on average: over a second is degraded), `kvOperationsAdaptiveGroups` (operations), `r2OperationsAdaptiveGroups` (`requests` by `responseStatusCode`: 5xx count as failed), and `queuesBacklogAdaptiveGroups` (the backlog on average), plus `GET …/queues/{id}/metrics` for the backlog now (an oldest message older than 15 minutes, or a backlog over 1,000 and twice its average, is degraded; paused delivery too). A container application is down when none of its assigned instances is active, and degraded when some aren't. A route or custom domain takes its Worker's health. No traffic in the window is **unknown**, not healthy, and so is a dataset the analytics won't answer, saying which; a 429 or a 403 stops it, and the store keeps the last health. The limits are `HEALTH_LIMITS` in `src/infra-cloudflare.js`.
+`observe` reads what discover found (`ctx.resources`) from the same analytics reader, one query per dataset for the whole environment over the last 15 minutes (`HEALTH_DATASETS` in `src/infra-cloudflare-analytics.js`): `workersInvocationsAdaptive` and `durableObjectsInvocationsAdaptiveGroups` (`requests`, `errors`: 5% failing is degraded, half is down, a Worker with no deployment is down), `d1AnalyticsAdaptiveGroups` (queries, and `queryBatchTimeMs` on average: over a second is degraded), `kvOperationsAdaptiveGroups` (operations), `r2OperationsAdaptiveGroups` (`requests` by `responseStatusCode`: 5xx count as failed), and `queuesBacklogAdaptiveGroups` (the backlog on average), plus `GET …/queues/{id}/metrics` for the backlog now (an oldest message older than 15 minutes, or a backlog over 1,000 and twice its average, is degraded; paused delivery too). A container application is down when none of its assigned instances is active, and degraded when some aren't. A route or custom domain takes its Worker's health. The limits are `HEALTH_LIMITS` in `src/infra-cloudflare.js`.
 
-When the inventory refreshes, a resource that's degraded (warning) or down (critical) becomes a `health` signal, and one that's healthy again after it wasn't becomes an `info` signal; staying healthy or unknown adds nothing. `events` reads the alert history since the last refresh (at most the 7 days the stream keeps) and reports each alert as an `alert` signal, cut down by `alertFields` exactly as the webhook's are, so the two read the same: the store keeps one signal for an alert heard both ways (the same environment, resource, and text, within 2 minutes). The webhook's alert lands on the Worker it names in every environment whose inventory has it, or else on the routine's repository's Cloudflare environments as a whole; it's recorded before the routine's caps are checked, so it's in the stream whether or not a run starts. Connections shows the last signal read as the provider's **signal**: a refused alert history marks Notifications Read missing.
+**Health you can trust (BRK-266).** Each window ends `HEALTH_LAG_MINUTES` (5) back, since Cloudflare's analytics arrive minutes late and a window ending now would see a busy resource fall quiet. A resource with no traffic in the 15 minutes is read again over an hour, then a day (`HEALTH_WINDOWS`), only for the quiet ones, and its text names the window its verdict came from. No traffic in any of them is **idle** (`Idle: no requests in the last day`): deployed and reachable, with no errors seen. Idle counts as healthy, never as unknown: discover just read the resource, which is the metadata read that says it exists, a Worker's deployment with a version at 100% says it serves, a queue has a consumer attached, and a container application has no instances assigned. **Unknown** is only for what the board couldn't read, and its text says which call and what to do: a dataset the analytics won't answer on the 15-minute window (a longer one that won't answer only stops the look back), a queue's backlog the token can't read, a container application with no instance counts. The inventory then keeps the resource's last known health and its time, so its age shows, with a `note` of what failed (`health.note` on the API, "not read now" in `infra show`); observe failing altogether does the same for every resource. A 429 or a 403 on the analytics still stops it. An environment's health is its worst resource's, except that unknown counts only when no resource is healthy or idle: its tile reads `Healthy, 1 not read` rather than Unknown (`rollUpHealth` in `src/infra-health.js`).
+
+An environment whose desired state names a health URL has it checked once per refresh (`readHealthUrl`): a GET with no credentials, no redirect followed, and 5 seconds at most. Under 400 is healthy, a 4xx degraded, a 5xx, a timeout, or no answer down, and its text names the host, so the owner sees what the board calls. The answer goes on the routes and custom domains on the URL's host, or on every one when none matches (`withHealthUrl`): a front door's health is then the worse of its Worker's and the URL's, and a passing check lifts an idle one to healthy. An apply whose touched resources are only idle stays `unverified`, as before, since nothing has shown them serving the change.
+
+When the inventory refreshes, a resource that's degraded (warning) or down (critical) becomes a `health` signal, and one that's healthy (or idle) again after it wasn't becomes an `info` signal; staying healthy, going idle, or unknown adds nothing, so traffic stopping never makes a signal. `events` reads the alert history since the last refresh (at most the 7 days the stream keeps) and reports each alert as an `alert` signal, cut down by `alertFields` exactly as the webhook's are, so the two read the same: the store keeps one signal for an alert heard both ways (the same environment, resource, and text, within 2 minutes). The webhook's alert lands on the Worker it names in every environment whose inventory has it, or else on the routine's repository's Cloudflare environments as a whole; it's recorded before the routine's caps are checked, so it's in the stream whether or not a run starts. Connections shows the last signal read as the provider's **signal**: a refused alert history marks Notifications Read missing.
 
 `GET /api/infra/alerts?provider=cloudflare` reads which alerts reach the board, live with the read token: each alert type the account can have (from `available_alerts`) with how many policies use it and whether one is on and sends to a webhook that fires a routine on the board, each policy by name, and how many webhooks point at the board. It keeps names only: no webhook URL, no email, and no other destination.
 

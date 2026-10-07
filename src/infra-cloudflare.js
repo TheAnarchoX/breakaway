@@ -13,14 +13,22 @@
  * (src/infra-cloudflare-analytics.js, one query per dataset for the whole environment), times PRICES, a price table kept
  * as data with where and when it was read. Plan and apply (BRK-192) are in infra-cloudflare-plan.js.
  *
- * Observe (BRK-191) reads each resource's health from the same analytics over the last few minutes, plus a queue's
- * backlog and a container application's instance counts; a route or custom domain takes its Worker's health. Events
+ * Observe (BRK-191, BRK-266) reads each resource's health from the same analytics over the last few minutes, allowing
+ * for their lag and looking further back for a quiet resource before it calls it idle, plus a queue's backlog and a
+ * container application's instance counts; a route or custom domain takes its Worker's health. Events
  * (BRK-191) reads the account's alert history and reports each alert as a signal on the Worker it names, the same way
  * the board's alert webhook does (`alertFields`), and `alertSetup` reads which alerts are set up and which reach the
  * board. Alerts need Notifications Read; the token never has Notifications Write. Pure apart from `fetch`, so the CLI
  * can import it.
  */
-import { COST_DATASETS, HEALTH_DATASETS, HEALTH_WINDOW_MINUTES, readDataset } from './infra-cloudflare-analytics.js';
+import {
+  COST_DATASETS,
+  HEALTH_DATASETS,
+  HEALTH_LAG_MINUTES,
+  HEALTH_WINDOWS,
+  HEALTH_WINDOW_MINUTES,
+  readDataset,
+} from './infra-cloudflare-analytics.js';
 import { apply, estimate, plan } from './infra-cloudflare-plan.js';
 
 /** @typedef {import('./infra-provider.js').Provider} Provider */
@@ -1245,11 +1253,16 @@ export const HEALTH_LIMITS = {
 
 const MINUTE = 60_000;
 const pct = (n) => `${Math.round(n * 100)}%`;
-const since = `in the last ${HEALTH_WINDOW_MINUTES} minutes`;
+/** A health window in words: "in the last 15 minutes", "in the last hour", "in the last day". */
+const sinceWords = (minutes) =>
+  minutes === 60 ? 'in the last hour' : minutes === 24 * 60 ? 'in the last day' : `in the last ${minutes} minutes`;
 
-/** Health from requests and the ones that failed: unknown with no requests, then by HEALTH_LIMITS. */
-function byErrors(requests, errors, noun = 'requests') {
-  if (!requests) return { state: 'unknown', text: `No ${noun} ${since}` };
+/**
+ * Health from requests and the ones that failed over a window: idle with none (BRK-266: deployed, no traffic, no
+ * errors seen), then by HEALTH_LIMITS.
+ */
+function byErrors(requests, errors, since, noun = 'requests', alive = '') {
+  if (!requests) return { state: 'idle', text: `Idle: no ${noun} ${since}${alive}` };
   const share = errors / requests;
   const said = `${pct(share)} of ${requests} ${noun} failed ${since}`;
   if (share >= HEALTH_LIMITS.downErrors) return { state: 'down', text: said };
@@ -1258,23 +1271,31 @@ function byErrors(requests, errors, noun = 'requests') {
 }
 
 /**
- * One resource's health from what the analytics and the APIs said.
+ * One resource's health from what the analytics and the APIs said. A quiet resource is idle, never unknown: discover
+ * just found it, which is the metadata read that says it exists, and a Worker's deployment says it serves (BRK-266).
+ * Unknown is only for what the board couldn't read, and says which call.
  * @param {Resource} r
  * @param {Record<string, number> | undefined} u its usage over the window
- * @param {{ backlog_count?: number, oldest_message_timestamp_ms?: number } | undefined} backlog a queue's, now
+ * @param {{ result?: any, refused?: string, missing?: boolean } | undefined} backlog a queue's backlog now, or why not
  * @param {number} now
+ * @param {number} minutes the window its usage came from
  * @returns {{ state: string, text: string }}
  */
-function judge(r, u = {}, backlog, now) {
+function judge(r, u = {}, backlog, now, minutes = HEALTH_WINDOW_MINUTES) {
   const n = (k) => Number(u[k] ?? 0) || 0;
   const attrs = /** @type {Record<string, any>} */ (r.attrs ?? {});
+  const since = sinceWords(minutes);
   switch (r.kind) {
-    case 'worker':
+    case 'worker': {
       if (Array.isArray(attrs.versions) && attrs.versions.length === 0)
         return { state: 'down', text: 'No deployment: it serves nothing' };
-      return byErrors(n('requests'), n('errors'));
+      const live = Array.isArray(attrs.versions)
+        ? attrs.versions.reduce((sum, v) => sum + (Number(v?.percentage) || 0), 0)
+        : 0;
+      return byErrors(n('requests'), n('errors'), since, 'requests', live >= 100 ? '; deployed and serving' : '');
+    }
     case 'durable-object':
-      return byErrors(n('requests'), n('errors'));
+      return byErrors(n('requests'), n('errors'), since);
     case 'r2': {
       let all = 0;
       let failed = 0;
@@ -1283,11 +1304,11 @@ function judge(r, u = {}, backlog, now) {
         all += v;
         if (Number(k.slice('requests:'.length)) >= 500) failed += v;
       }
-      return byErrors(all, failed, 'operations');
+      return byErrors(all, failed, since, 'operations');
     }
     case 'd1': {
       const queries = n('readQueries') + n('writeQueries');
-      if (!queries) return { state: 'unknown', text: `No queries ${since}` };
+      if (!queries) return { state: 'idle', text: `Idle: no queries ${since}` };
       const ms = Math.round(n('queryBatchTimeMs'));
       if (ms > HEALTH_LIMITS.slowQueryMs)
         return { state: 'degraded', text: `Queries took ${ms} ms on average ${since}` };
@@ -1296,12 +1317,22 @@ function judge(r, u = {}, backlog, now) {
     case 'kv':
       return n('requests')
         ? { state: 'healthy', text: `${n('requests')} operations ${since}` }
-        : { state: 'unknown', text: `No operations ${since}` };
+        : { state: 'idle', text: `Idle: no operations ${since}` };
     case 'queue': {
       if (attrs.deliveryPaused) return { state: 'degraded', text: 'Delivery is paused' };
-      if (!backlog) return { state: 'unknown', text: 'Its backlog couldn’t be read' };
-      const count = Number(backlog.backlog_count ?? 0) || 0;
-      const oldest = Number(backlog.oldest_message_timestamp_ms ?? 0) || 0;
+      const consumers = Array.isArray(attrs.consumers) ? attrs.consumers : null;
+      if (consumers && consumers.length === 0)
+        return { state: 'degraded', text: 'No consumer is attached, so nothing reads its messages' };
+      if (backlog?.refused) return { state: 'unknown', text: backlog.refused };
+      if (!backlog?.result)
+        return {
+          state: 'idle',
+          text: consumers
+            ? 'Idle: a consumer is attached, and Cloudflare has no backlog figures for it'
+            : 'Idle: Cloudflare has no backlog figures for it',
+        };
+      const count = Number(backlog.result.backlog_count ?? 0) || 0;
+      const oldest = Number(backlog.result.oldest_message_timestamp_ms ?? 0) || 0;
       const waited = count && oldest ? Math.floor((now - oldest) / MINUTE) : 0;
       if (waited > HEALTH_LIMITS.staleQueueMinutes)
         return { state: 'degraded', text: `The oldest message has waited ${waited} minutes; ${count} in the backlog` };
@@ -1314,23 +1345,32 @@ function judge(r, u = {}, backlog, now) {
       const active = attrs.active;
       const assigned = attrs.assigned;
       if (typeof active !== 'number' || typeof assigned !== 'number')
-        return { state: 'unknown', text: 'Its instance counts aren’t known' };
+        return {
+          state: 'unknown',
+          text: 'Cloudflare gave no instance counts when its application was read (GET …/containers/applications): try again at the next refresh',
+        };
+      if (assigned === 0 && active === 0) return { state: 'idle', text: 'Idle: no instances are assigned' };
       if (assigned > 0 && active === 0) return { state: 'down', text: `None of ${assigned} instances is running` };
       if (active < assigned) return { state: 'degraded', text: `${active} of ${assigned} instances are running` };
       return { state: 'healthy', text: `${active} of ${assigned} instances are running` };
     }
     default:
-      return { state: 'unknown', text: 'Cloudflare reports no health for it' };
+      return { state: 'unknown', text: 'Cloudflare reports no health for its kind' };
   }
 }
 
 /**
- * Each resource's health now (BRK-188's "Observe" rows): errors and slowness over the last HEALTH_WINDOW_MINUTES from
- * the analytics, one query per dataset for the whole environment; a queue's backlog now; a container application's
- * instance counts as discover found them; and a route's or custom domain's from the Worker it serves. A dataset
- * Cloudflare won't answer leaves its resources unknown, saying so; anything else (a 429, a 403, Cloudflare out of
- * reach) stops it, so the store keeps the last health. Uses `ctx.resources` when the store passes what discover just
- * found, and discovers otherwise.
+ * Each resource's health now (BRK-188's "Observe" rows; BRK-266): errors and slowness from the analytics, one query
+ * per dataset for the whole environment, over a window that ends HEALTH_LAG_MINUTES back, since Cloudflare's analytics
+ * arrive late. A resource with no traffic in the first of HEALTH_WINDOWS is read again over the next (an hour, then a
+ * day) before it's idle, and its text names the window its verdict came from. A queue's backlog now; a container
+ * application's instance counts as discover found them; and a route's or custom domain's from the Worker it serves.
+ *
+ * Unknown only when the board couldn't read: a dataset Cloudflare won't answer, or a queue's backlog the token may not
+ * read, says which call and what to do, and the store keeps the last health with its age. A longer window Cloudflare
+ * won't answer only stops the fallback. Anything else (a 429, a 403 on the analytics, Cloudflare out of reach) stops
+ * it, so the store keeps the last health. Uses `ctx.resources` when the store passes what discover just found, and
+ * discovers otherwise.
  * @param {ProviderContext} ctx
  * @returns {Promise<import('./infra-provider.js').Health[]>}
  */
@@ -1340,35 +1380,53 @@ export async function observe(ctx) {
   const cf = reader(ctx);
   const account = await accountOf(cf, ctx);
   const now = Date.now();
-  const to = new Date(now);
-  const from = new Date(now - HEALTH_WINDOW_MINUTES * MINUTE);
+  const to = new Date(now - HEALTH_LAG_MINUTES * MINUTE);
   /** @type {Map<string, Record<string, number>>} usage by resource ID */
   const usage = new Map();
+  /** @type {Map<string, number>} the window each resource's verdict comes from, in minutes */
+  const windowOf = new Map();
   /** @type {Map<string, string>} what the analytics didn't answer, by resource ID */
   const unread = new Map();
   for (const d of Object.values(HEALTH_DATASETS)) {
     const mine = resources.filter((r) => r.kind === d.kind);
     if (!mine.length) continue;
     const byKey = new Map(mine.map((r) => [usageKey(r), r.id]));
-    let found;
-    try {
-      found = await readDataset(ctx, { account, dataset: d, keys: [...byKey.keys()], from, to });
-    } catch (error) {
-      if (error?.status !== 400) throw error;
-      for (const r of mine) unread.set(r.id, d.label);
-      continue;
+    let quiet = [...byKey.keys()];
+    for (const [i, minutes] of (d.busy ? HEALTH_WINDOWS : HEALTH_WINDOWS.slice(0, 1)).entries()) {
+      if (!quiet.length) break;
+      const from = new Date(to.getTime() - minutes * MINUTE);
+      let found;
+      try {
+        found = await readDataset(ctx, { account, dataset: d, keys: quiet, from, to });
+      } catch (error) {
+        if (error?.status !== 400) throw error;
+        // The first window unanswered leaves them unread; a longer one only stops looking further back.
+        if (i === 0)
+          for (const r of mine)
+            unread.set(
+              r.id,
+              `Couldn’t read its health: Cloudflare’s analytics didn’t answer for its ${d.label} (${d.dataset}). The last health is kept; if it lasts, check the token has Account Analytics Read`,
+            );
+        break;
+      }
+      for (const key of quiet) windowOf.set(/** @type {string} */ (byKey.get(key)), minutes);
+      for (const [key, u] of found) usage.set(/** @type {string} */ (byKey.get(key)), u);
+      quiet = d.busy ? quiet.filter((key) => !d.busy?.(found.get(key) ?? {})) : [];
     }
-    for (const [key, u] of found) usage.set(/** @type {string} */ (byKey.get(key)), u);
   }
-  /** @type {Map<string, any>} a queue's backlog now, by resource ID */
+  /** @type {Map<string, { result?: any, refused?: string }>} a queue's backlog now, or why it couldn't be read */
   const backlogs = new Map();
   for (const r of resources.filter((q) => q.kind === 'queue')) {
     const path = `/accounts/${enc(account)}/queues/${enc(r.id.slice('queue:'.length))}/metrics`;
     try {
       const json = await cf.get(path, { permission: 'Queues Read', missingOk: true });
-      if (json?.result) backlogs.set(r.id, json.result);
+      backlogs.set(r.id, json?.result ? { result: json.result } : {});
     } catch (error) {
       if (error?.status !== 403) throw error;
+      backlogs.set(r.id, {
+        refused:
+          'Couldn’t read its backlog: Cloudflare refused GET …/queues/<id>/metrics. Give the read-only token Queues Read on Connections',
+      });
     }
   }
 
@@ -1376,12 +1434,12 @@ export async function observe(ctx) {
   const health = new Map();
   for (const r of resources) {
     if (r.kind === 'route' || r.kind === 'custom-domain') continue;
-    const label = unread.get(r.id);
+    const said = unread.get(r.id);
     health.set(
       r.id,
-      label
-        ? { state: 'unknown', text: `Cloudflare’s analytics didn’t answer for its ${label}` }
-        : judge(r, usage.get(r.id), backlogs.get(r.id), now),
+      said
+        ? { state: 'unknown', text: said }
+        : judge(r, usage.get(r.id), backlogs.get(r.id), now, windowOf.get(r.id) ?? HEALTH_WINDOW_MINUTES),
     );
   }
   for (const r of resources) {
@@ -1392,10 +1450,10 @@ export async function observe(ctx) {
       r.id,
       its
         ? { state: its.state, text: `Its Worker, ${worker}: ${its.text}` }
-        : { state: 'unknown', text: 'Its Worker isn’t in this environment' },
+        : { state: 'unknown', text: 'Its Worker isn’t in this environment, so the board can’t read its health' },
     );
   }
-  const at = to.toISOString();
+  const at = new Date(now).toISOString();
   return resources.map((r) => {
     const h = /** @type {{ state: string, text: string }} */ (health.get(r.id));
     return { resource: r.id, state: h.state, at, text: h.text };

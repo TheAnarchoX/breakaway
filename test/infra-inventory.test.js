@@ -185,6 +185,102 @@ describe('inventory (BRK-177)', () => {
     expect((await inventory({ provider: 'fake-fail' })).stale).toEqual([]);
   });
 
+  it('keeps the last known health with its age when a read fails, and notes what failed (BRK-266)', async () => {
+    const { provider, registry } = platform('fake-keep');
+    await addEnvironment({ name: 'keep-staging', kind: 'staging', provider: 'fake-keep', target: 'api' });
+    await refresh('fake-keep', registry);
+    const first = (await inventory({ provider: 'fake-keep' })).resources.find((r) => r.id === 'svc-api').health;
+    expect(first).toEqual({ state: 'healthy', at: '2026-10-06T12:00:00.000Z' });
+
+    // The provider couldn't read it this time: unknown, saying which call.
+    const observe = provider.observe;
+    provider.observe = async (ctx) =>
+      (await observe(ctx)).map((h) =>
+        h.resource === 'svc-api'
+          ? { ...h, at: '2026-10-06T13:00:00Z', state: 'unknown', text: 'Couldn’t read its health: GET /metrics failed' }
+          : { ...h, at: '2026-10-06T13:00:00Z' },
+      );
+    expect((await refresh('fake-keep', registry)).ok).toBe(true);
+    const kept = (await inventory({ provider: 'fake-keep' })).resources;
+    expect(kept.find((r) => r.id === 'svc-api').health).toEqual({
+      state: 'healthy',
+      at: '2026-10-06T12:00:00.000Z',
+      note: 'Couldn’t read its health: GET /metrics failed',
+    });
+    expect(kept.find((r) => r.id === 'db-main').health).toEqual({ state: 'healthy', at: '2026-10-06T13:00:00.000Z' });
+
+    // observe failing altogether keeps every resource's last health, noting why.
+    provider.observe = async () => {
+      throw new Error('the analytics are out of reach');
+    };
+    expect((await refresh('fake-keep', registry)).ok).toBe(true);
+    const db = (await inventory({ provider: 'fake-keep' })).resources.find((r) => r.id === 'db-main').health;
+    expect(db).toEqual({
+      state: 'healthy',
+      at: '2026-10-06T13:00:00.000Z',
+      note: 'Couldn’t read its health: the analytics are out of reach',
+    });
+
+    // Read again: the note goes.
+    provider.observe = observe;
+    await refresh('fake-keep', registry);
+    expect((await inventory({ provider: 'fake-keep' })).resources.find((r) => r.id === 'db-main').health).toEqual({
+      state: 'healthy',
+      at: '2026-10-06T12:00:00.000Z',
+    });
+  });
+
+  it('checks the health URL the desired state names on each refresh, on the front door (BRK-266)', async () => {
+    const { provider, registry } = platform('fake-url');
+    const staging = await addEnvironment({ name: 'url-staging', kind: 'staging', provider: 'fake-url', target: 'api' });
+    provider.state.health['route-api'] = 'unknown';
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec(
+        'INSERT OR REPLACE INTO infra_desired (repo, file, environment, provider, sha, read_at, desired, valid_sha, valid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'widgets',
+        'url-staging.json',
+        'url-staging',
+        'fake-url',
+        'abc',
+        Date.now(),
+        JSON.stringify({ resources: [], health: { url: 'https://api.acme.example/health' } }),
+        'abc',
+        Date.now(),
+      ),
+    );
+    /** @type {Array<{ url: string, init: any }>} */
+    const calls = [];
+    let status = 503;
+    const fetch = async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response('', { status });
+    };
+    const refreshWith = () =>
+      runInDurableObject(store(), (s) => s.refreshInventory('fake-url', { registry, fetch }));
+
+    await refreshWith();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://api.acme.example/health');
+    expect(calls[0].init.method).toBe('GET');
+    expect(new Headers(calls[0].init.headers).has('authorization')).toBe(false);
+    const route = async () => (await inventory({ provider: 'fake-url' })).resources.find((r) => r.id === 'route-api');
+    expect((await route()).health).toMatchObject({
+      state: 'down',
+      text: expect.stringMatching(/^The health URL on api\.acme\.example answered 503 in \d+ ms$/u),
+    });
+    const signals = await body(await api(`infra/signals?environment=url-staging&source=fake-url&kind=health`));
+    expect(signals.signals.filter((x) => x.resource === 'route-api' && x.level === 'critical')).toHaveLength(1);
+    expect(signals.signals[0].environmentId).toBe(staging.id);
+
+    // Answering again: the front door is healthy, and says so once.
+    status = 200;
+    await refreshWith();
+    expect(calls).toHaveLength(2);
+    expect((await route()).health).toMatchObject({ state: 'healthy' });
+    const again = await body(await api(`infra/signals?environment=url-staging&source=fake-url&kind=health`));
+    expect(again.signals.filter((x) => x.resource === 'route-api' && x.level === 'info')).toHaveLength(1);
+  });
+
   it('redacts a token a platform echoes back before it’s stored', async () => {
     const { provider, registry } = platform('fake-redact');
     provider.state.resources.find((r) => r.id === 'svc-api').attrs.vars = {

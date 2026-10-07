@@ -62,7 +62,7 @@ export function redactAttrs(value) {
 
 /**
  * A resource as the API shows it.
- * @param {{ provider: string, rid: string, kind: string, name: string, attrs: string | null, health: string | null, health_at: number | null, health_text: string | null, cost: number | null, currency: string | null, cost_note?: string | null, seen: number }} row
+ * @param {{ provider: string, rid: string, kind: string, name: string, attrs: string | null, health: string | null, health_at: number | null, health_text: string | null, health_note?: string | null, cost: number | null, currency: string | null, cost_note?: string | null, seen: number }} row
  * @param {{ id: number, repo: string, name: string }} environment
  * @param {{ uuid: string, wid: string | null, description: string } | null} task the task that owns a short-lived environment
  */
@@ -74,13 +74,16 @@ export function resourceView(row, environment, task) {
     name: row.name,
     attrs: row.attrs ? JSON.parse(row.attrs) : {},
     owner: { repo: environment.repo, environment: environment.name, environmentId: environment.id, task },
-    health: row.health
-      ? {
-          state: row.health,
-          at: row.health_at ? new Date(row.health_at).toISOString() : null,
-          ...(row.health_text ? { text: row.health_text } : {}),
-        }
-      : null,
+    // `note` is what couldn't be read on the last refresh, while the last known health, and its time, stay (BRK-266).
+    health:
+      row.health || row.health_note
+        ? {
+            state: row.health ?? 'unknown',
+            at: row.health_at ? new Date(row.health_at).toISOString() : null,
+            ...(row.health_text ? { text: row.health_text } : {}),
+            ...(row.health_note ? { note: row.health_note } : {}),
+          }
+        : null,
     cost:
       row.cost === null || row.cost === undefined
         ? null

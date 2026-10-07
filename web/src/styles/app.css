@@ -9375,6 +9375,10 @@ a.pl-mention {
   color: var(--warn);
   background: var(--warn-bg);
 }
+/* Idle is fine, only quiet: healthy's colour on the plain chip. */
+.infra-health-idle {
+  color: var(--success);
+}
 /* No red text below display size: the icon carries the red. */
 .infra-health-down {
   color: var(--text);
@@ -10612,6 +10616,7 @@ a.pl-mention {
 }
 /* A health or budget state's colour, on its words; never colour alone. */
 .band-state-healthy,
+.band-state-idle,
 .band-state-inside {
   color: var(--success);
 }
@@ -10793,7 +10798,8 @@ a.pl-mention {
 .topo-node-bar {
   fill: var(--faint);
 }
-.topo-health-healthy .topo-node-bar {
+.topo-health-healthy .topo-node-bar,
+.topo-health-idle .topo-node-bar {
   fill: var(--success);
 }
 .topo-health-degraded .topo-node-bar {
