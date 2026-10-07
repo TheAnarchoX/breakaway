@@ -623,7 +623,10 @@ export const infraChangesMethods = {
       .toArray()[0];
     if (!read) return [];
     return this.sql
-      .exec("SELECT * FROM infra_changes WHERE environment = ? AND state = 'merged' AND outcome IS NULL", Number(env.id))
+      .exec(
+        "SELECT * FROM infra_changes WHERE environment = ? AND state = 'merged' AND outcome IS NULL",
+        Number(env.id),
+      )
       .toArray()
       .filter((row) =>
         readHasMerge(

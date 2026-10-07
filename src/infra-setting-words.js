@@ -46,7 +46,9 @@ export function valueWords(value, { unset = 'unset', max = WORDS_MAX } = {}) {
       if (!entries.length) return 'none';
       // A setting kept as `{ enabled }` reads as on or off, with anything else it carries.
       return entries
-        .map(([k, x]) => (k === 'enabled' && typeof x === 'boolean' ? (x ? 'on' : 'off') : `${keyWords(k)} ${inner(x)}`))
+        .map(([k, x]) =>
+          k === 'enabled' && typeof x === 'boolean' ? (x ? 'on' : 'off') : `${keyWords(k)} ${inner(x)}`,
+        )
         .join(', ');
     }
     return String(v);
