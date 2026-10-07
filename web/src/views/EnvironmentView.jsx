@@ -16,6 +16,7 @@ import { Topology } from '../components/EnvironmentTopology.jsx';
 import { StreamRail } from '../components/EnvironmentStream.jsx';
 import { ActionsSection } from '../components/EnvironmentActions.jsx';
 import { NoneYet } from '../components/ui.jsx';
+import { EMPTY_START } from '../lib/infra-change.js';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 import {
   AddResourceButton,
@@ -86,10 +87,20 @@ function Drift({ env, desired, error }) {
             <p class="console-quiet">Observe only: the board never changes it, so it takes no desired state.</p>
           ) : (
             <NoneYet>
-              Add <code>{file}</code> by pull request.
+              {env.target ? (
+                <>
+                  Add <code>{file}</code> by pull request.
+                </>
+              ) : (
+                // A new environment (BRK-291): its first change from the console writes the file.
+                <>
+                  {EMPTY_START}. Your first change writes <code>{file}</code>.
+                </>
+              )}
             </NoneYet>
           )}
-          <DescribeAsCode env={env} />
+          {/* With no target, nothing runs to describe: the console's first change writes the file (BRK-291). */}
+          {(env.target || env.observeOnly) && <DescribeAsCode env={env} />}
         </>
       ) : (
         <dl class="infra-facts">

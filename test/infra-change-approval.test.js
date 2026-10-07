@@ -2,7 +2,7 @@ import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
-import { fakeProvider } from './fake-infra-provider.js';
+import { fakeProvider, fakeState } from './fake-infra-provider.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
 import { planDigest } from '../src/infra-runner.js';
 import {
@@ -21,6 +21,8 @@ const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
 const inStore = (fn) => runInDurableObject(store(), fn);
 const PROVIDER = 'fakeapproval';
+/** A platform with nothing on it yet, for an environment built from nothing (BRK-291). */
+const EMPTY = 'fakeapprovalnew';
 const encoder = new TextEncoder();
 const b64 = (text) => btoa(String.fromCharCode(...encoder.encode(text)));
 
@@ -201,6 +203,8 @@ function mockGitHub() {
 describe('approving a change from the console', () => {
   let cookie;
   let provider;
+  /** @type {ReturnType<typeof fakeProvider>} */
+  let empty;
   let spy;
   /** @type {Record<string, any>} */
   const envs = {};
@@ -285,10 +289,24 @@ describe('approving a change from the console', () => {
       );
       envs[name] = made.environment;
     }
+    // A new environment with nothing running and no target yet.
+    envs['apv-new'] = (
+      await body(
+        await board('infra/environments', {
+          method: 'POST',
+          body: { repo: 'widgets', provider: EMPTY, name: 'apv-new', kind: 'production' },
+        }),
+      )
+    ).environment;
     provider = fakeProvider({ id: PROVIDER });
+    empty = fakeProvider({
+      id: EMPTY,
+      state: { ...fakeState(), resources: [], relations: [], health: {}, costs: {}, events: [] },
+    });
     await inStore(async (s) => {
       s.infraProviders = new ProviderRegistry();
       s.infraProviders.register(provider);
+      s.infraProviders.register(empty);
       await s.refreshInventory(PROVIDER);
     });
   });
@@ -368,6 +386,138 @@ describe('approving a change from the console', () => {
     expect(
       await inStore((s) => s.sql.exec("SELECT COUNT(*) AS n FROM infra_runs WHERE phase = 'queued'").one().n),
     ).toBe(1);
+  });
+
+  it('builds an environment with no target from nothing, and the Worker it adds becomes its target on approve', async () => {
+    const id = envs['apv-new'].id;
+    const NEW = '.github/breakaway-infra/apv-new.json';
+    /** The target each plan of the empty platform was asked for. */
+    const asked = [];
+    const plan = empty.plan;
+    empty.plan = async (ctx, desired) => {
+      asked.push(ctx.scope?.target ?? null);
+      return plan(ctx, desired);
+    };
+    const changes = (b) => board(`infra/environments/${id}/changes`, { method: 'POST', body: b });
+    const app = { op: 'create', kind: 'service', name: 'acme-app', attrs: {} };
+    const db = {
+      op: 'create',
+      kind: 'database',
+      name: 'acme-db',
+      attrs: {},
+      bindTo: { worker: 'acme-app', binding: 'DB' },
+    };
+    try {
+      // The preview plans against nothing: everything in the change is an add, for the target the change gives it.
+      const preview = await body(await changes({ edits: [app, db] }));
+      expect(preview).toMatchObject({
+        status: 200,
+        head: null,
+        from: 'empty',
+        lines: [
+          '+ service acme-app',
+          '+ database acme-db, bound to acme-app as DB',
+          '→ apv-new’s target becomes acme-app',
+        ],
+        target: { name: 'acme-app', choices: ['acme-app'] },
+        preview: { changes: 2 },
+      });
+      expect(preview.preview.diff.changes.map((c) => [c.op, c.name])).toEqual([
+        ['create', 'acme-app'],
+        ['create', 'acme-db'],
+      ]);
+      expect(asked).toEqual(['acme-app']);
+
+      // Two services: the owner picks which one is the target.
+      const web = { op: 'create', kind: 'service', name: 'acme-web', attrs: {} };
+      const two = await body(await changes({ edits: [app, web] }));
+      expect(two).toMatchObject({
+        status: 422,
+        target: { name: null, choices: ['acme-app', 'acme-web'] },
+        problems: [
+          { edit: null, field: 'target', message: 'The change adds 2 Services: pick which one is apv-new’s target' },
+        ],
+      });
+      const picked = await body(await changes({ edits: [app, web], target: 'acme-web' }));
+      expect(picked).toMatchObject({ status: 200, target: { name: 'acme-web' } });
+      expect(picked.lines.at(-1)).toBe('→ apv-new’s target becomes acme-web');
+      // A change with nothing to be the target says what to do.
+      const alone = await body(await changes({ edits: [{ ...db, bindTo: undefined }] }));
+      expect(alone.status).toBe(422);
+
+      // Proposing writes the environment's first file from the change alone.
+      const proposed = await body(await changes({ edits: [app, db], propose: true }));
+      expect(proposed.status).toBe(201);
+      const change = proposed.change;
+      expect(change).toMatchObject({ target: 'acme-app', lines: preview.lines });
+      expect(change.digest).toBe(preview.preview.digest);
+      const file = JSON.parse(gh.commits[change.commit][NEW]);
+      expect(file).toMatchObject({ version: 1, provider: EMPTY });
+      expect(file.resources.map((r) => r.id)).toEqual(['service:acme-app', 'database:acme-db']);
+      const pull = gh.writes.find((w) => w.path === '/pulls').body;
+      expect(pull.title).toBe('Change apv-new: service acme-app, and 2 more');
+      expect(pull.body).toMatch(/^Starts apv-new from nothing: its first desired state/u);
+      expect(pull.body).toContain('- → apv-new’s target becomes acme-app');
+      // Nothing is the target until the owner approves.
+      expect((await body(await board(`infra/environments/${id}`))).environment.target).toBeNull();
+
+      // Approving merges it and gives the environment its target, with an audit entry.
+      const approved = await body(await approve(change));
+      expect(approved).toMatchObject({ status: 200, change: { state: 'merged' } });
+      expect((await body(await board(`infra/environments/${id}`))).environment.target).toBe('acme-app');
+      const given = await inStore((s) =>
+        s.sql
+          .exec(
+            "SELECT by, summary, environment_id FROM infra_audit WHERE kind = 'environment' AND environment = 'apv-new' AND summary LIKE '%target is%'",
+          )
+          .toArray(),
+      );
+      expect(given).toEqual([
+        {
+          by: 'owner',
+          summary: `apv-new’s target is acme-app, from #${change.pull.number}, approved by the owner`,
+          environment_id: id,
+        },
+      ]);
+
+      // The plan from the merge is made for that target, and is the one approved. The sync reads the new file as added.
+      gh.files[NEW] = gh.commits[change.commit][NEW];
+      await inStore((s) => {
+        s.sql.exec(
+          `INSERT INTO infra_desired (repo, file, environment, provider, sha, read_at, desired, valid_sha, valid_at, error, added)
+           VALUES ('widgets', 'apv-new.json', 'apv-new', ?, ?, ?, ?, ?, ?, NULL, 1)`,
+          EMPTY,
+          `merge-${change.pull.number}`,
+          Date.now(),
+          JSON.stringify({ resources: file.resources }),
+          `merge-${change.pull.number}`,
+          Date.now(),
+        );
+      });
+      await inStore(async (s) => {
+        const github = await s.changeGitHub(s.environmentRow(String(id), null));
+        await s.advanceInfraChanges(github.client, github.repo);
+      });
+      const after = (await body(await board(`infra/changes/${change.n}`))).change;
+      expect(after.approval).toMatchObject({ settled: 'approved' });
+      const made = (await body(await board(`infra/plans/${after.approval.plan}`))).plan;
+      expect(made).toMatchObject({ state: 'approved', changes: 2 });
+      expect(asked.at(-1)).toBe('acme-app');
+
+      // Once it's applied, the next refresh finds both from the target.
+      empty.state.resources.push(
+        { id: 'service:acme-app', kind: 'service', name: 'acme-app', attrs: { instances: 1 } },
+        { id: 'database:acme-db', kind: 'database', name: 'acme-db', attrs: { size: 'small' } },
+      );
+      empty.state.relations.push({ from: 'service:acme-app', to: 'database:acme-db', kind: 'uses' });
+      const seen = await inStore(async (s) => {
+        await s.refreshInventory(EMPTY);
+        return s.inventoryRows('WHERE i.environment = ?', id).map((r) => r.rid);
+      });
+      expect(seen.sort()).toEqual(['database:acme-db', 'service:acme-app']);
+    } finally {
+      empty.plan = plan;
+    }
   });
 
   it('is the owner’s alone: the bearer token and an agent’s by are refused, and observe only says so', async () => {

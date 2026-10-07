@@ -817,3 +817,6 @@ export function agentPrompt(env, lines) {
   out.push('', 'What the console couldn’t do: ');
   return out.join('\n');
 }
+
+/** What an environment with no target and nothing running says where it would show what runs (BRK-291). */
+export const EMPTY_START = 'Add a resource to start, or point it at what runs';

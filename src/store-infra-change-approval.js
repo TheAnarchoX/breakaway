@@ -96,17 +96,20 @@ export const infraChangeApprovalMethods = {
   /**
    * The plan a desired state's text makes, with its digest: the one computation a change's preview at propose time and
    * at its pull request's head share (BRK-286), so the plan proposed and the plan approved only differ when the head or
-   * what runs moved. The policy is the default branch's. Answers `{ error }` when the text doesn't check.
+   * what runs moved. The policy is the default branch's. Answers `{ error }` when the text doesn't check. An
+   * environment with no target is planned with the one the change gives it (BRK-291).
    * @param {Record<string, any>} env
    * @param {string} text the file's text, exactly as committed
+   * @param {string | null} [target] the change's target, for an environment that has none
    */
-  async changePreviewOf(env, text) {
+  async changePreviewOf(env, text, target = null) {
     const checked = checkDesiredFile(text, {
       provider: this.infraProviderFor(env.provider),
       expectProvider: env.provider,
     });
     if ('error' in checked) return { error: checked.error };
-    const planned = await this.previewInfraPlan(env, checked.desired, this.infraPolicyFor(env.repo));
+    const at = target && !env.target ? { ...env, target } : env;
+    const planned = await this.previewInfraPlan(at, checked.desired, this.infraPolicyFor(env.repo));
     return { desired: checked.desired, preview: { ...planned, digest: await planDigest(planned.diff) } };
   },
 
@@ -121,7 +124,7 @@ export const infraChangeApprovalMethods = {
       return { refused: refuse(409, `#${row.pull} has no ${path} at its head: propose again`) };
     if (Number(got.size ?? 0) > DESIRED_MAX_BYTES)
       return { refused: refuse(409, `${path} is over ${DESIRED_MAX_BYTES / 1024} KB at #${row.pull}’s head`) };
-    const at = await this.changePreviewOf(env, fromBase64(got.content));
+    const at = await this.changePreviewOf(env, fromBase64(got.content), row.target ?? null);
     if (at.error)
       return {
         refused: refuse(409, `${path} doesn’t check at #${row.pull}’s head: ${at.error.message}. Propose again.`),
@@ -236,6 +239,8 @@ export const infraChangeApprovalMethods = {
         outcome: 'approved',
         summary: `approved by the owner at ${sha.slice(0, 7)}; digest ${preview.digest.slice(0, 12)}. The board merges #${row.pull}`,
       });
+      // A new environment takes the target its change adds now, so the plan from the merge is made for it (BRK-291).
+      this.giveChangeTarget(row, 'owner');
       await this.mergeInfraChange(this.changeRow(row.n), env, { client, repo }, pull);
       return { status: 200, body: { change: this.changeOut(this.changeRow(row.n)), preview } };
     } catch (error) {

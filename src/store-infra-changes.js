@@ -14,10 +14,10 @@
 import { AgentError } from './store-agents.js';
 import { GitHubError, appCredentials, fromBase64 } from './github.js';
 import { install } from './install.js';
-import { runsTheBoard } from './infra-environments.js';
+import { checkTarget, runsTheBoard } from './infra-environments.js';
 import { DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desired.js';
 import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.js';
-import { creatableKinds } from './infra-provider.js';
+import { creatableKinds, targetKinds } from './infra-provider.js';
 import { planView } from './infra-plans.js';
 import { redact } from './redact.js';
 import {
@@ -25,6 +25,7 @@ import {
   changeBody,
   changeBranch,
   changeCommitMessage,
+  changeTarget,
   changeTitle,
   checkChangedFile,
   checkEdits,
@@ -98,6 +99,8 @@ export const infraChangesMethods = {
     if (!have.has('outcome')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN outcome TEXT');
     // How many changes its plan has (BRK-286): none, and it merges instead of asking for an approval.
     if (!have.has('changes')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN changes INTEGER');
+    // The target it gives an environment that has none (BRK-291), set when the owner approves it or it merges.
+    if (!have.has('target')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN target TEXT');
   },
 
   /** Environment `ref`'s row, when the board may change it from the console; else a 409 saying why not. */
@@ -140,6 +143,7 @@ export const infraChangesMethods = {
       pull: row.pull ? { number: Number(row.pull), url: row.pull_url ?? null } : null,
       digest: row.digest ?? null,
       changes: row.changes ?? null,
+      target: row.target ?? null,
       policy: row.policy ? JSON.parse(row.policy) : null,
       approval: row.approval ? JSON.parse(row.approval) : null,
       state: row.state,
@@ -172,15 +176,25 @@ export const infraChangesMethods = {
   },
 
   /**
+   * Where an environment with no file yet starts: the board's draft of what runs (BRK-240), or, with no target and so
+   * nothing the board could see running, an empty file, so the change builds it from nothing (BRK-291).
+   * @returns {{ file: Record<string, any>, from: 'draft' | 'empty' }}
+   */
+  changeStart(env) {
+    if (!env.target) return { file: { version: 1, provider: env.provider, resources: [] }, from: 'empty' };
+    return { file: JSON.parse(this.infraDraftOf(env).json), from: 'draft' };
+  },
+
+  /**
    * The file a preview replays the edits onto: the last valid copy the sync read from the default branch, at its
-   * commit, or the board's draft (BRK-240) when the environment has no file yet. A file that doesn't check at the
-   * head is refused: the console changes a file that checks.
+   * commit, or where an environment with no file yet starts (changeStart). A file that doesn't check at the head is
+   * refused: the console changes a file that checks.
    */
   changeBaseKept(env) {
     const row = this.sql
       .exec('SELECT * FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
       .toArray()[0];
-    if (!row) return { file: JSON.parse(this.infraDraftOf(env).json), sha: null, from: 'draft' };
+    if (!row) return { ...this.changeStart(env), sha: null };
     if (row.error || !row.desired) {
       const error = row.error ? JSON.parse(row.error) : null;
       throw new AgentError(
@@ -284,12 +298,14 @@ export const infraChangesMethods = {
    * The plan a change makes from `base`, the edits replayed onto it: the preview of the file's text (changePreviewOf,
    * the same computation the approval makes at the pull request's head) and its digest, or a 422 with the problems on
    * their edits, or a 429 with `retryAfter`. The same edits on the same head come from a minute-long cache, unless
-   * `fresh`: a proposal plans what it commits as it is now, so its digest is the one Approve finds at the head.
+   * `fresh`: a proposal plans what it commits as it is now, so its digest is the one Approve finds at the head. An
+   * environment with no target gets the one the change adds (BRK-291), or the one of several the owner `chose`, and
+   * is planned as if it had it.
    * @returns {Promise<{ status: number, body: Record<string, any> } | { ok: true, preview: Record<string, any>,
    *   desired: any, text: string, files: Array<{ path: string, text: string }>, lines: string[],
-   *   dropped: Array<{ edit: number, line: string }> }>}
+   *   dropped: Array<{ edit: number, line: string }>, target: { name: string | null, choices: string[] } }>}
    */
-  async planInfraChange(env, edits, base, github = null, { fresh = false } = {}) {
+  async planInfraChange(env, edits, base, github = null, { fresh = false, chose = null } = {}) {
     const templates = await this.changeTemplates(env, edits, github ?? {});
     const provider = this.infraProviderFor(env.provider);
     const creatable = edits.some((e) => e.op === 'create') && provider ? creatableKinds(provider) : {};
@@ -315,9 +331,21 @@ export const infraChangesMethods = {
       file: made.file,
     });
     if ('problem' in checked) return unfit([checked.problem], head);
+    const kinds = provider ? targetKinds(provider) : [];
+    const target = changeTarget({
+      target: env.target ?? null,
+      file: made.file,
+      kinds,
+      environment: env.name,
+      chose,
+      label: (provider ? creatableKinds(provider)[kinds[0]]?.label : null) ?? kinds[0],
+    });
+    const named = { name: target.name, choices: target.choices };
+    if (target.problem) return unfit([target.problem], { ...head, target: named });
+    const lines = target.line ? [...made.lines, target.line] : made.lines;
 
     this.infraChangeCache ??= new Map();
-    const key = `${env.id}\n${base.sha ?? base.from}\n${text}\n${JSON.stringify(made.files)}`;
+    const key = `${env.id}\n${base.sha ?? base.from}\n${target.name ?? ''}\n${text}\n${JSON.stringify(made.files)}`;
     const kept = this.infraChangeCache.get(key);
     let preview = !fresh && kept && Date.now() - kept.at < PREVIEW_CACHE_MS ? kept.preview : null;
     if (!preview) {
@@ -331,7 +359,7 @@ export const infraChangesMethods = {
             ...head,
           },
         };
-      const planned = await this.changePreviewOf(env, text);
+      const planned = await this.changePreviewOf(env, text, target.name);
       if (planned.error)
         return unfit([{ edit: null, field: planned.error.field, message: planned.error.message }], head);
       preview = planned.preview;
@@ -345,15 +373,17 @@ export const infraChangesMethods = {
       desired: checked.desired,
       text,
       files: made.files,
-      lines: made.lines,
+      lines,
       dropped: made.dropped,
+      target: named,
     };
   },
 
   /**
    * POST /api/infra/environments/<id>/changes: the owner's, from the signed-in board. `{ edits }` answers `{ preview,
-   * head, from, lines, dropped, files }` and writes nothing; `{ edits, propose: true }` opens (or replaces) the
-   * change's pull request and answers `{ change, preview }`.
+   * head, from, lines, dropped, files, target }` and writes nothing; `{ edits, propose: true }` opens (or replaces)
+   * the change's pull request and answers `{ change, preview }`. `target` is the owner's pick of the new environment's
+   * target when the change adds several (BRK-291); the answer's `target` names the one it gets and the choices.
    */
   infraChangesApi(ref, body = {}) {
     return this.run(async () => {
@@ -361,10 +391,11 @@ export const infraChangesMethods = {
       const env = this.changeEnvironment(ref, body.repo ?? null);
       const checked = checkEdits(body.edits);
       if ('problem' in checked) return unfit([checked.problem]);
-      if (body.propose === true) return this.proposeInfraChange(env, checked.edits);
+      const chose = checkTarget(body.target);
+      if (body.propose === true) return this.proposeInfraChange(env, checked.edits, chose);
       const github = checked.edits.some((e) => e.op === 'add') ? await this.changeGitHub(env) : null;
       const base = this.changeBaseKept(env);
-      const planned = await this.planInfraChange(env, checked.edits, base, github);
+      const planned = await this.planInfraChange(env, checked.edits, base, github, { chose });
       if (!('ok' in planned)) return planned;
       return {
         status: 200,
@@ -374,6 +405,7 @@ export const infraChangesMethods = {
           lines: planned.lines,
           dropped: planned.dropped,
           files: planned.files.map((f) => f.path),
+          target: planned.target,
           preview: planned.preview,
         },
       };
@@ -381,7 +413,7 @@ export const infraChangesMethods = {
   },
 
   /** Propose the change: one at a time per environment. */
-  async proposeInfraChange(env, edits) {
+  async proposeInfraChange(env, edits, chose = null) {
     this.infraProposing ??= new Set();
     const id = Number(env.id);
     if (this.infraProposing.has(id))
@@ -394,7 +426,7 @@ export const infraChangesMethods = {
           `Connect GitHub on Connections first: the board proposes ${env.name}’s change as a pull request`,
           409,
         );
-      return await this.openInfraChange(env, edits, github);
+      return await this.openInfraChange(env, edits, github, chose);
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       return {
@@ -409,7 +441,7 @@ export const infraChangesMethods = {
     }
   },
 
-  async openInfraChange(env, edits, { client, repo }) {
+  async openInfraChange(env, edits, { client, repo }, chose = null) {
     const branchOf = repo.defaultBranch || 'main';
     let live = this.liveChangeRow(env.id);
     // The change already open: still the board's? Merged, closed, or pushed to by someone else, it isn't.
@@ -431,11 +463,11 @@ export const infraChangesMethods = {
     if (!head) throw new AgentError(`${branchOf} has no commit yet: push one first`, 409);
     const path = desiredPath(env.name);
     const got = await orNull(client.get(`/contents/${refPath(path)}?ref=${encodeURIComponent(head)}`));
-    /** @type {{ file: Record<string, any>, sha: string, from: 'file' | 'draft' }} */
+    /** @type {{ file: Record<string, any>, sha: string, from: 'file' | 'draft' | 'empty' }} */
     let base;
     let before = null;
     if (!got || Array.isArray(got) || got.type !== 'file') {
-      base = { file: JSON.parse(this.infraDraftOf(env).json), sha: head, from: 'draft' };
+      base = { ...this.changeStart(env), sha: head };
     } else {
       if (Number(got.size ?? 0) > DESIRED_MAX_BYTES)
         throw new AgentError(`${path} is over ${DESIRED_MAX_BYTES / 1024} KB: trim it first`, 409);
@@ -449,7 +481,7 @@ export const infraChangesMethods = {
       base = { file: JSON.parse(before), sha: head, from: 'file' };
     }
 
-    const planned = await this.planInfraChange(env, edits, base, { client, repo, ref: head }, { fresh: true });
+    const planned = await this.planInfraChange(env, edits, base, { client, repo, ref: head }, { fresh: true, chose });
     if (!('ok' in planned)) return planned;
     if (before !== null && planned.text === desiredText(base.file) && !planned.files.length)
       throw new AgentError(
@@ -515,6 +547,7 @@ export const infraChangesMethods = {
       preview: planned.preview,
       page,
       created,
+      empty: base.from === 'empty',
     });
     const pull = live
       ? await client.send('PATCH', `/pulls/${live.pull}`, { title, body: description })
@@ -525,7 +558,7 @@ export const infraChangesMethods = {
     if (live)
       this.sql.exec(
         `UPDATE infra_changes SET edits = ?, lines = ?, base_sha = ?, commit_sha = ?, digest = ?, changes = ?, policy = ?,
-           approval = NULL, state = 'open', why = NULL, updated = ? WHERE n = ?`,
+           target = ?, approval = NULL, state = 'open', why = NULL, updated = ? WHERE n = ?`,
         JSON.stringify(edits),
         JSON.stringify(planned.lines),
         head,
@@ -533,14 +566,15 @@ export const infraChangesMethods = {
         planned.preview.digest,
         Number(planned.preview.changes ?? 0),
         policy,
+        planned.target.name,
         now,
         n,
       );
     else
       this.sql.exec(
         `INSERT INTO infra_changes (n, environment, repo, name, edits, lines, base_sha, commit_sha, branch, pull, pull_url,
-           digest, changes, policy, approval, state, why, created, updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
+           digest, changes, policy, target, approval, state, why, created, updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
         n,
         Number(env.id),
         env.repo,
@@ -555,6 +589,7 @@ export const infraChangesMethods = {
         planned.preview.digest,
         Number(planned.preview.changes ?? 0),
         policy,
+        planned.target.name,
         now,
         now,
       );
@@ -591,6 +626,8 @@ export const infraChangesMethods = {
     if (pull.merged_at || pull.merged) {
       this.moveInfraChange(row, 'merged', { by: 'board', outcome: 'merged', summary: `${ref} merged on GitHub` });
       this.keepChangeMerge(row.n, pull.merge_commit_sha ?? null, pull.merged_at ? Date.parse(pull.merged_at) : null);
+      // Merged on GitHub without an approval on the board: its plan still needs the target it gives.
+      this.giveChangeTarget(row, 'board');
       return true;
     }
     if (pull.state === 'closed') {
@@ -612,6 +649,34 @@ export const infraChangesMethods = {
       return true;
     }
     return false;
+  },
+
+  /**
+   * Gives a change's environment the target the change adds (BRK-291), when it still has none: on the owner's
+   * approval, or when the change merges on GitHub without one. The plan made from the merge, discovery, and health
+   * follow it from then on. A target that would be the board's own Worker is never given.
+   * @param {Record<string, any>} row the change's row
+   * @param {'owner' | 'board'} by
+   */
+  giveChangeTarget(row, by) {
+    if (!row.target) return;
+    const env = this.sql.exec('SELECT * FROM infra_environments WHERE id = ?', Number(row.environment)).toArray()[0];
+    if (!env || env.target || runsTheBoard({ target: row.target }, install(this.env).worker)) return;
+    this.sql.exec(
+      "UPDATE infra_environments SET target = ?, edited = ? WHERE id = ? AND (target IS NULL OR target = '')",
+      row.target,
+      Date.now(),
+      env.id,
+    );
+    this.appendInfraAudit({
+      kind: 'environment',
+      repo: env.repo,
+      environment: env.name,
+      environmentId: Number(env.id),
+      by,
+      outcome: 'changed',
+      summary: `${env.name}’s target is ${row.target}, from ${row.pull ? `#${row.pull}` : `change ${row.n}`}${by === 'owner' ? ', approved by the owner' : ', merged on GitHub'}`,
+    });
   },
 
   /** Keeps what GitHub says of a change's merge: its commit and when (WEB-110). */

@@ -140,6 +140,8 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
   const [held, setHeld] = useState(/** @type {{ open: any, changes: any[] } | null} */ (null));
   const [plan, setPlan] = useState(/** @type {any} */ (null));
   const [dismissed, setDismissed] = useState(/** @type {number | null} */ (null));
+  // Which Worker becomes the target of a new environment when the change adds several (BRK-291).
+  const [target, setTarget] = useState(/** @type {string | null} */ (null));
   const [preview, setPreview] = useState(
     /** @type {{ busy: boolean, key: string | null, data: any, problems: any[], error: string | null, wait: number | null }} */ ({
       busy: false,
@@ -152,7 +154,7 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
   );
   const asking = useRef(false);
   const again = useRef(false);
-  const latest = useRef(/** @type {any[]} */ ([]));
+  const latest = useRef(/** @type {{ edits: any[], target: string | null }} */ ({ edits: [], target: null }));
 
   // Each environment starts from what this browser kept for it.
   useEffect(() => {
@@ -164,6 +166,7 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     setCreatable(null);
     setDraft(null);
     setHeld(null);
+    setTarget(null);
     setDismissed(readDismissed(id));
     setPreview({ busy: false, key: null, data: null, problems: [], error: null, wait: null });
     api(`infra/environments/${enc(id)}/editable`)
@@ -218,8 +221,8 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
   const starting = edits.length > 0 || Boolean(editing) || adding;
 
   const declared = desired?.desired?.resources ?? draft ?? [];
-  const key = JSON.stringify(edits);
-  latest.current = edits;
+  const key = JSON.stringify({ edits, target });
+  latest.current = { edits, target };
 
   // An edit kept in this browser that changes nothing now (the same bindings in another order, or the file moved to
   // it) leaves the change, with a line saying so (WEB-110).
@@ -239,14 +242,17 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     }
     const sent = latest.current;
     const sentKey = JSON.stringify(sent);
-    if (!sent.length && !fromDraft) {
+    if (!sent.edits.length && !fromDraft) {
       setPreview({ busy: false, key: sentKey, data: null, problems: [], error: null, wait: null });
       return;
     }
     asking.current = true;
     setPreview((p) => ({ ...p, busy: true, wait: null }));
     try {
-      const data = await api(`infra/environments/${enc(id)}/changes`, { method: 'POST', body: { edits: sent } });
+      const data = await api(`infra/environments/${enc(id)}/changes`, {
+        method: 'POST',
+        body: { edits: sent.edits, ...(sent.target ? { target: sent.target } : {}) },
+      });
       setPreview({ busy: false, key: sentKey, data, problems: [], error: null, wait: null });
     } catch (err) {
       const body = err.data ?? {};
@@ -260,7 +266,9 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
         setPreview({
           busy: false,
           key: sentKey,
-          data: body.lines ? { lines: body.lines, dropped: body.dropped ?? [], head: body.head } : null,
+          data: body.lines
+            ? { lines: body.lines, dropped: body.dropped ?? [], head: body.head, target: body.target ?? null }
+            : null,
           problems: body.problems ?? [],
           error: body.problems ? null : err.message,
           wait: null,
@@ -300,6 +308,9 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     editing,
     adding,
     preview,
+    /** The owner's pick of the new environment's target, of the Workers the change adds (BRK-291). */
+    target,
+    pickTarget: (/** @type {string | null} */ name) => setTarget(name || null),
     held: where === 'card' ? latestChange : null,
     /** The open change and the recent ones, as the board holds them, for the Plans panel (WEB-115). */
     board: held,
@@ -329,6 +340,7 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     drop: (/** @type {number} */ n) => save(edits.filter((_, i) => i !== n)),
     discard: () => {
       save([]);
+      setTarget(null);
       setEditing(null);
       setAdding(false);
     },
@@ -344,6 +356,7 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     /** After a propose: the change is the board's now, so this browser forgets it. */
     proposed(/** @type {any} */ change) {
       save([]);
+      setTarget(null);
       setEditing(null);
       setAdding(false);
       setHeld((h) => ({ open: change, changes: [change, ...(h?.changes ?? []).filter((c) => c.n !== change.n)] }));
@@ -374,6 +387,48 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
 }
 
 /** @typedef {ReturnType<typeof useChange>} Change */
+
+/**
+ * A new environment's target, under Your change (BRK-291): the line saying which Worker the change makes its target,
+ * or, when it adds several, the pick of which one.
+ * @param {{ ch: Change }} props
+ */
+function NewTarget({ ch }) {
+  const t = ch.preview.data?.target;
+  if (!t || (!t.name && t.choices.length < 2)) return null;
+  const env = ch.env;
+  if (t.choices.length > 1)
+    return (
+      <div class="field change-field change-target">
+        <label class="field-label" for="change-target">
+          {env.name}’s target
+        </label>
+        <select
+          id="change-target"
+          class="select input-sm"
+          value={ch.target ?? ''}
+          onChange={(e) => ch.pickTarget(/** @type {HTMLSelectElement} */ (e.currentTarget).value)}
+          aria-describedby="change-target-help"
+        >
+          <option value="">Pick one</option>
+          {t.choices.map((/** @type {string} */ name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <span class="field-hint" id="change-target-help">
+          The change adds several. The one you pick becomes the environment’s target when you approve it, and discovery
+          and health follow it.
+        </span>
+      </div>
+    );
+  return (
+    <p class="meta change-target">
+      {env.name}’s target becomes <strong>{t.name}</strong> when you approve it: discovery and health follow it.
+    </p>
+  );
+}
 
 /** Why the console can't change this environment, in a line, or null when it can. */
 export function cantChange(/** @type {any} */ env) {
@@ -1501,7 +1556,7 @@ export function ChangePanel({ ch, cant }) {
     try {
       const res = await api(`infra/environments/${enc(env.id)}/changes`, {
         method: 'POST',
-        body: { edits, propose: true },
+        body: { edits, propose: true, ...(ch.target ? { target: ch.target } : {}) },
       });
       ch.proposed(res.change);
       toast(
@@ -1574,6 +1629,7 @@ export function ChangePanel({ ch, cant }) {
               ))}
             </ul>
           )}
+          <NewTarget ch={ch} />
           {p.data?.dropped?.map((/** @type {any} */ d) => (
             <p key={d.line} class="meta">
               Dropped: {d.line}.

@@ -5,6 +5,7 @@ import { plansPanel } from '../lib/env-plans.js';
 import { PlanState, amount } from '../views/PlanView.jsx';
 import { CHANGE_CARD_ID, ChangeState } from './EnvironmentChange.jsx';
 import { NoneYet } from './ui.jsx';
+import { EMPTY_START } from '../lib/infra-change.js';
 
 /** A plan's page (WEB-62), under its environment: the address a waiting plan's push links to. */
 export const planHref = (/** @type {{ id: string, environment: { id: number } }} */ plan) =>
@@ -119,7 +120,7 @@ function PlanRow({ row, ended = false }) {
  * console still waiting for you, merging, or not compared yet (linking to its card); the open plans, applying first
  * with the run's progress, then approved, waiting, and drafts (each linking to its page, where the owner approves or
  * rejects it); and the last few that ended. Empty only when there's none of it.
- * @param {{ env: { id: number, name: string, observeOnly?: boolean }, plans: any[], runs: any[],
+ * @param {{ env: { id: number, name: string, observeOnly?: boolean, target?: string | null }, plans: any[], runs: any[],
  *   changes: { open: any, changes: any[] } | null, card: number | null, error?: string | null }} props
  *   `card` is the number of the change whose card shows beside the map
  */
@@ -173,8 +174,14 @@ export function EnvironmentPlans({ env, plans, runs, changes, card, error = null
       )}
       {!current && !rows.recent.length && !error && (
         <NoneYet>
-          A change you propose from the console, a pull request to <code>.github/breakaway-infra/{env.name}.json</code>,
-          or drift makes one.
+          {!env.target && !env.observeOnly ? (
+            `${EMPTY_START}.`
+          ) : (
+            <>
+              A change you propose from the console, a pull request to{' '}
+              <code>.github/breakaway-infra/{env.name}.json</code>, or drift makes one.
+            </>
+          )}
         </NoneYet>
       )}
     </section>
