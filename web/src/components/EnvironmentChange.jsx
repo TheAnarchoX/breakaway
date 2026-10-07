@@ -96,6 +96,24 @@ const PLAN_LINE = {
   draft: ' is refused by your policy, so nothing applies.',
 };
 
+/**
+ * A change's card state as a pill, coloured like a plan's: on its card, and in the Plans panel (WEB-115).
+ * @param {{ state: string, live?: boolean }} props `live` makes it a status that screen readers announce
+ */
+export function ChangeState({ state, live = false }) {
+  return (
+    <span
+      class={`infra-plan-state infra-plan-${PILL[/** @type {keyof typeof PILL} */ (state)] ?? state.replace(' ', '-')}`}
+      role={live ? 'status' : undefined}
+    >
+      {STATE_WORDS[/** @type {keyof typeof STATE_WORDS} */ (state)] ?? state}
+    </span>
+  );
+}
+
+/** The change card's element ID, so the Plans panel can bring it into view. */
+export const CHANGE_CARD_ID = 'change-card';
+
 const short = (/** @type {string | null | undefined} */ sha) => (sha ? sha.slice(0, 7) : '');
 /** A line from the board, starting with a capital. */
 const sentence = (/** @type {string} */ text) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -283,6 +301,8 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     adding,
     preview,
     held: where === 'card' ? latestChange : null,
+    /** The open change and the recent ones, as the board holds them, for the Plans panel (WEB-115). */
+    board: held,
     /** The last change, folded to a line, until it's dismissed or a new change starts. */
     last: where === 'line' && !starting ? latestChange : null,
     plan: followed,
@@ -1345,14 +1365,18 @@ function ChangeCard({ ch }) {
       )
     : null;
   const card = cardState(change, { checks: pull?.checks?.state ?? null, plan: ch.plan });
-  const word = STATE_WORDS[card.state] ?? card.state;
   const pullHref = change.pull
     ? hashFor({ view: 'github', task: null, pr: pullParam(change.pull.number, change.repo) })
     : null;
 
   const review = /review/iu.test(change.why ?? '');
   return (
-    <article class={`change-card change-card-${card.state.replace(' ', '-')}`} aria-labelledby="change-card-title">
+    <article
+      id={CHANGE_CARD_ID}
+      tabIndex={-1}
+      class={`change-card change-card-${card.state.replace(' ', '-')}`}
+      aria-labelledby="change-card-title"
+    >
       <header class="change-card-head">
         <h3 id="change-card-title">
           {change.pull ? (
@@ -1363,9 +1387,7 @@ function ChangeCard({ ch }) {
             `Change ${change.n}`
           )}
         </h3>
-        <span class={`infra-plan-state infra-plan-${PILL[card.state] ?? card.state.replace(' ', '-')}`} role="status">
-          {word}
-        </span>
+        <ChangeState state={card.state} live />
       </header>
       <ul class="change-lines">
         {change.lines.map((/** @type {string} */ l) => (
