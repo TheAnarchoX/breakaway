@@ -1017,6 +1017,8 @@ An install whose config names its `installRepository` knows its version and chan
 - **`stable`**: a newer release waits for you. The install repository's update workflow opens the pull request; merging it deploys. The board adds a note to the inbox (no push), once per release, and clears it when the board runs that release.
 - **`main`**: the board starts the install repository's **Deploy** workflow on its default branch when there's a newer pre-release, so a merge to breakaway reaches the board within minutes. That needs the board's GitHub App installed on the install repository with read and write on Actions. It doesn't start the same release twice in 30 minutes, leaves a release that needs steps by hand (or one this version can't update from) to you, and the row needs attention if a started deploy isn't running after 45 minutes. The install repository's hourly update run is the fallback.
 
+Updating from 1.5 to 2.0.0 has its own page: [Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2/).
+
 An install with no `installRepository` makes no call and shows only what it runs. `install init` writes `installRepository` (from `origin` or `--install-repository`) and `channel` in `breakaway.config.json`, the same channel as `breakaway.json`.
 
 ## Secrets
