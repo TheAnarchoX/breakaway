@@ -64,7 +64,14 @@ describe('a change’s edits', () => {
       return 'problem' in got ? got.problem : null;
     };
     expect(bad('nope')).toMatchObject({ edit: null, field: 'edits' });
-    expect(bad([{ op: 'rename' }])).toMatchObject({ edit: 0, field: 'op' });
+    expect(bad([{ op: 'move' }])).toMatchObject({ edit: 0, field: 'op' });
+    expect(bad([{ op: 'rename', resource: 'x' }])).toMatchObject({ edit: 0, field: 'name' });
+    expect(bad([{ op: 'rename', resource: 'x', name: '  ' }])).toMatchObject({ field: 'name' });
+    expect(bad([{ op: 'rename', resource: 'x', name: 'a\nb' }])).toMatchObject({ field: 'name' });
+    expect(checkEdits([{ op: 'rename', resource: 'x', name: ' v2.acme.example/* ' }])).toEqual({
+      ok: true,
+      edits: [{ op: 'rename', resource: 'x', name: 'v2.acme.example/*' }],
+    });
     expect(bad([{ op: 'set', resource: 'x', path: '__proto__.polluted', value: 1 }])).toMatchObject({ field: 'path' });
     expect(bad([{ op: 'set', resource: 'x', path: 'a..b', value: 1 }])).toMatchObject({ field: 'path' });
     expect(bad([{ op: 'set', resource: 'x', path: 'a' }])).toMatchObject({ field: 'value' });
@@ -143,6 +150,75 @@ describe('a change’s edits', () => {
       { edit: 0, field: 'inputs', message: expect.stringMatching(/^give worker=/u) },
       { edit: 1, field: 'inputs', message: expect.stringMatching(/has no worker acme-nope/u) },
       { edit: 2, field: 'template', message: 'there’s no template called cron' },
+    ]);
+  });
+
+  it('rename a resource whose provider declares its name, keeping its ID, and refuse what would make another', () => {
+    const file = {
+      ...cloudflareFile(),
+      resources: [
+        ...cloudflareFile().resources,
+        { id: 'route:r1', kind: 'route', name: 'api.acme.example/*', attrs: { worker: 'acme-api' } },
+        { id: 'route:r2', kind: 'route', name: 'www.acme.example/*', attrs: { worker: 'acme-api' } },
+      ],
+    };
+    const pattern = { label: 'Pattern', pattern: '^\\S+$', help: 'The hostname and path, like api.acme.example/*.' };
+    const names = (kind) => (kind === 'route' ? pattern : null);
+    const seen = file.resources.map((r) => ({ rid: r.id, kind: r.kind, name: r.name }));
+    const rename = (edits, more = {}) =>
+      applyEdits({ file, environment: 'acme-staging', templates: new Map(), edits, names, seen, ...more });
+
+    const got = rename([
+      { op: 'rename', resource: 'route:r1', name: 'v2.acme.example/*' },
+      { op: 'set', resource: 'route:r1', path: 'worker', value: 'acme-api' },
+      { op: 'rename', resource: 'route:gone', name: 'x.acme.example/*' },
+      { op: 'rename', resource: 'route:r2', name: 'www.acme.example/*' },
+    ]);
+    expect(got.problems).toEqual([]);
+    expect(got.lines).toEqual([
+      '~ route api.acme.example/*: pattern → v2.acme.example/*',
+      '~ v2.acme.example/*: worker acme-api → acme-api',
+    ]);
+    expect(got.dropped).toEqual([{ edit: 2, line: 'route:gone is gone from the file, so renaming it was dropped' }]);
+    expect(got.file.resources[2]).toEqual({
+      id: 'route:r1',
+      kind: 'route',
+      name: 'v2.acme.example/*',
+      attrs: { worker: 'acme-api' },
+    });
+    expect(got.touched.get('route:r1')).toBe(1);
+    expect(file.resources[2].name).toBe('api.acme.example/*');
+
+    expect(
+      rename([
+        { op: 'rename', resource: 'worker:acme-api', name: 'acme-web' },
+        { op: 'rename', resource: 'route:r1', name: 'has space/*' },
+        { op: 'rename', resource: 'route:r1', name: 'www.acme.example/*' },
+      ]).problems,
+    ).toEqual([
+      { edit: 0, field: 'name', message: 'a worker’s name can’t be changed from the board' },
+      {
+        edit: 1,
+        field: 'name',
+        message: 'has space/* isn’t a pattern: The hostname and path, like api.acme.example/*.',
+      },
+      { edit: 2, field: 'name', message: 'another route already has the pattern www.acme.example/*' },
+    ]);
+    // Without the provider's word, nothing is renamed.
+    expect(
+      rename([{ op: 'rename', resource: 'route:r1', name: 'v2.acme.example/*' }], { names: undefined }).problems,
+    ).toEqual([{ edit: 0, field: 'name', message: 'a route’s name can’t be changed from the board' }]);
+    // A route the file names by a made-up ID is matched by its pattern: renaming it would make another.
+    const byName = rename([{ op: 'rename', resource: 'route:r1', name: 'v2.acme.example/*' }], {
+      seen: [{ rid: 'route:cf-1', kind: 'route', name: 'api.acme.example/*' }],
+    });
+    expect(byName.problems).toEqual([
+      {
+        edit: 0,
+        field: 'name',
+        message:
+          'route:r1 isn’t the ID the board sees for api.acme.example/* (route:cf-1), so a new pattern would make another route: give it that ID in the file first',
+      },
     ]);
   });
 
@@ -384,6 +460,33 @@ describe('changes from the console', () => {
     });
     expect(await kept()).toEqual(before);
     expect(gh.writes).toEqual([]);
+  });
+
+  it('changes a route’s name where the provider declares it, planning an update of the same route', async () => {
+    const edits = [{ op: 'rename', resource: 'route-api', name: 'v2.acme.example' }];
+    const res = await body(await change(envs['chg-staging'].id, { edits }));
+    expect(res).toMatchObject({ status: 200, lines: ['~ route api.acme.example: hostname → v2.acme.example'] });
+    expect(res.preview.changes).toBe(1);
+    expect(res.preview.diff.changes).toEqual([
+      expect.objectContaining({ op: 'update', resource: 'route-api', name: 'v2.acme.example' }),
+    ]);
+    const service = await body(
+      await change(envs['chg-staging'].id, { edits: [{ op: 'rename', resource: 'svc-api', name: 'api-2' }] }),
+    );
+    expect(service).toMatchObject({
+      status: 422,
+      problems: [{ edit: 0, field: 'name', message: 'a service’s name can’t be changed from the board' }],
+    });
+
+    const proposed = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(proposed.status).toBe(201);
+    const tree = gh.writes.find((w) => w.path === '/git/trees');
+    expect(JSON.parse(tree.body.tree[0].content).resources.find((r) => r.id === 'route-api').name).toBe(
+      'v2.acme.example',
+    );
+    expect(
+      (await body(await board(`infra/changes/${proposed.change.n}/reject`, { method: 'POST', body: {} }))).status,
+    ).toBe(200);
   });
 
   it('is the owner’s alone: the bearer token and an agent’s by are refused, and observe only says so', async () => {
