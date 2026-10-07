@@ -123,7 +123,7 @@ export const approvalWords = {
   moved: (n) => `#${n} changed since you looked. Read it again.`,
   changed: 'What runs changed since you looked. Here’s the plan now.',
   between: 'The plan changed between your approval and the merge.',
-  nothing: (n) => `It plans nothing: merge #${n} instead.`,
+  nothing: (env, n) => `Nothing changes in ${env}: merging #${n} records it as code.`,
   conflicts: (n) => `Can’t merge #${n}: it has conflicts.`,
   failing: (n) => `Can’t merge #${n}: checks failing.`,
   refused: (n, reason) => `Can’t merge #${n}: GitHub says “${reason}”. Look at it on GitHub.`,

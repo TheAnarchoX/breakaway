@@ -17,7 +17,6 @@ import { install } from './install.js';
 import { runsTheBoard } from './infra-environments.js';
 import { DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desired.js';
 import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.js';
-import { planDigest } from './infra-runner.js';
 import { creatableKinds } from './infra-provider.js';
 import { planView } from './infra-plans.js';
 import { redact } from './redact.js';
@@ -97,6 +96,8 @@ export const infraChangesMethods = {
     if (!have.has('merge_sha')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN merge_sha TEXT');
     if (!have.has('merged_at')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN merged_at INTEGER');
     if (!have.has('outcome')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN outcome TEXT');
+    // How many changes its plan has (BRK-286): none, and it merges instead of asking for an approval.
+    if (!have.has('changes')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN changes INTEGER');
   },
 
   /** Environment `ref`'s row, when the board may change it from the console; else a 409 saying why not. */
@@ -138,6 +139,7 @@ export const infraChangesMethods = {
       branch: row.branch,
       pull: row.pull ? { number: Number(row.pull), url: row.pull_url ?? null } : null,
       digest: row.digest ?? null,
+      changes: row.changes ?? null,
       policy: row.policy ? JSON.parse(row.policy) : null,
       approval: row.approval ? JSON.parse(row.approval) : null,
       state: row.state,
@@ -147,6 +149,11 @@ export const infraChangesMethods = {
       created: new Date(row.created).toISOString(),
       updated: new Date(row.updated).toISOString(),
     };
+  },
+
+  /** Keeps how many changes the plan at a change's head has, as the board last made it. */
+  keepChangePlan(n, preview) {
+    this.sql.exec('UPDATE infra_changes SET changes = ? WHERE n = ?', Number(preview.changes ?? 0), Number(n));
   },
 
   /** Moves a change to `state`, with why, and its audit entry. */
@@ -274,14 +281,15 @@ export const infraChangesMethods = {
   },
 
   /**
-   * The plan a change makes from `base`, the edits replayed onto it: the preview (previewInfraPlan, with the policy at
-   * the default branch) and its digest, or a 422 with the problems on their edits, or a 429 with `retryAfter`. The
-   * same edits on the same head come from a minute-long cache.
+   * The plan a change makes from `base`, the edits replayed onto it: the preview of the file's text (changePreviewOf,
+   * the same computation the approval makes at the pull request's head) and its digest, or a 422 with the problems on
+   * their edits, or a 429 with `retryAfter`. The same edits on the same head come from a minute-long cache, unless
+   * `fresh`: a proposal plans what it commits as it is now, so its digest is the one Approve finds at the head.
    * @returns {Promise<{ status: number, body: Record<string, any> } | { ok: true, preview: Record<string, any>,
    *   desired: any, text: string, files: Array<{ path: string, text: string }>, lines: string[],
    *   dropped: Array<{ edit: number, line: string }> }>}
    */
-  async planInfraChange(env, edits, base, github = null) {
+  async planInfraChange(env, edits, base, github = null, { fresh = false } = {}) {
     const templates = await this.changeTemplates(env, edits, github ?? {});
     const provider = this.infraProviderFor(env.provider);
     const creatable = edits.some((e) => e.op === 'create') && provider ? creatableKinds(provider) : {};
@@ -311,7 +319,7 @@ export const infraChangesMethods = {
     this.infraChangeCache ??= new Map();
     const key = `${env.id}\n${base.sha ?? base.from}\n${text}\n${JSON.stringify(made.files)}`;
     const kept = this.infraChangeCache.get(key);
-    let preview = kept && Date.now() - kept.at < PREVIEW_CACHE_MS ? kept.preview : null;
+    let preview = !fresh && kept && Date.now() - kept.at < PREVIEW_CACHE_MS ? kept.preview : null;
     if (!preview) {
       const wait = this.countChangePreview(Number(env.id));
       if (wait !== null)
@@ -323,9 +331,10 @@ export const infraChangesMethods = {
             ...head,
           },
         };
-      const policy = this.infraPolicyFor(env.repo);
-      const planned = await this.previewInfraPlan(env, checked.desired, policy);
-      preview = { ...planned, digest: await planDigest(planned.diff) };
+      const planned = await this.changePreviewOf(env, text);
+      if (planned.error)
+        return unfit([{ edit: null, field: planned.error.field, message: planned.error.message }], head);
+      preview = planned.preview;
       for (const [k, v] of this.infraChangeCache)
         if (Date.now() - v.at >= PREVIEW_CACHE_MS) this.infraChangeCache.delete(k);
       this.infraChangeCache.set(key, { at: Date.now(), preview });
@@ -440,7 +449,7 @@ export const infraChangesMethods = {
       base = { file: JSON.parse(before), sha: head, from: 'file' };
     }
 
-    const planned = await this.planInfraChange(env, edits, base, { client, repo, ref: head });
+    const planned = await this.planInfraChange(env, edits, base, { client, repo, ref: head }, { fresh: true });
     if (!('ok' in planned)) return planned;
     if (before !== null && planned.text === desiredText(base.file) && !planned.files.length)
       throw new AgentError(
@@ -515,13 +524,14 @@ export const infraChangesMethods = {
     const policy = planned.preview.policy ? JSON.stringify(planned.preview.policy) : null;
     if (live)
       this.sql.exec(
-        `UPDATE infra_changes SET edits = ?, lines = ?, base_sha = ?, commit_sha = ?, digest = ?, policy = ?,
+        `UPDATE infra_changes SET edits = ?, lines = ?, base_sha = ?, commit_sha = ?, digest = ?, changes = ?, policy = ?,
            approval = NULL, state = 'open', why = NULL, updated = ? WHERE n = ?`,
         JSON.stringify(edits),
         JSON.stringify(planned.lines),
         head,
         made.sha,
         planned.preview.digest,
+        Number(planned.preview.changes ?? 0),
         policy,
         now,
         n,
@@ -529,8 +539,8 @@ export const infraChangesMethods = {
     else
       this.sql.exec(
         `INSERT INTO infra_changes (n, environment, repo, name, edits, lines, base_sha, commit_sha, branch, pull, pull_url,
-           digest, policy, approval, state, why, created, updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
+           digest, changes, policy, approval, state, why, created, updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
         n,
         Number(env.id),
         env.repo,
@@ -543,6 +553,7 @@ export const infraChangesMethods = {
         Number(pull.number),
         pull.html_url ?? null,
         planned.preview.digest,
+        Number(planned.preview.changes ?? 0),
         policy,
         now,
         now,

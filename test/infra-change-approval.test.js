@@ -147,7 +147,12 @@ function mockGitHub() {
       return reply({ sha }, 201);
     }
     if (method === 'POST' && local === '/git/refs') return reply({ ref: sent.ref }, 201);
-    if (method === 'PATCH' && local.startsWith('/git/refs/heads/')) return reply({ object: { sha: sent.sha } });
+    if (method === 'PATCH' && local.startsWith('/git/refs/heads/')) {
+      // Proposing again moves the board's branch, and its pull request's head with it.
+      const branch = decodeURIComponent(local.slice('/git/refs/heads/'.length));
+      for (const p of Object.values(gh.pulls)) if (p.head.ref === branch) p.head.sha = sent.sha;
+      return reply({ object: { sha: sent.sha } });
+    }
     if (method === 'DELETE' && local.startsWith('/git/refs/heads/')) return new Response(null, { status: 204 });
     if (method === 'POST' && local === '/pulls') {
       const number = 500 + Object.keys(gh.pulls).length;
@@ -270,6 +275,7 @@ describe('approving a change from the console', () => {
     for (const [name, extra] of [
       ['apv-staging', {}],
       ['apv-watched', { observeOnly: true }],
+      ['apv-first', {}],
     ]) {
       const made = await body(
         await board('infra/environments', {
@@ -414,6 +420,98 @@ describe('approving a change from the console', () => {
     expect(pushed).toMatchObject({ status: 409, change: { state: 'taken over' } });
     expect(merges()).toEqual([]);
     expect((await audit()).slice(before).map((a) => a.outcome)).toEqual(['taken over']);
+  });
+
+  it('approves what it proposed when nothing moved in between, even when what runs moved just before (BRK-286)', async () => {
+    const edits = [{ op: 'set', resource: 'svc-api', path: 'instances', value: 7 }];
+    const first = await propose(edits);
+    // What runs moves by hand, and the owner proposes the same edits again on the same head: the board plans what it
+    // commits as it is now, never from an earlier look, so Approve finds the plan it proposed.
+    provider.state.resources[0].attrs.version = '1.0.2';
+    try {
+      const again = await body(
+        await board(`infra/environments/${envs['apv-staging'].id}/changes`, {
+          method: 'POST',
+          body: { edits, propose: true },
+        }),
+      );
+      expect(again.status).toBe(200);
+      expect(again.change.digest).not.toBe(first.digest);
+      expect(again.change.changes).toBe(1);
+      const res = await body(await approve(again.change));
+      expect(res.status).toBe(200);
+      expect(res.change).toMatchObject({ state: 'merged', approval: { digest: again.change.digest } });
+    } finally {
+      provider.state.resources[0].attrs.version = '1.0.0';
+    }
+  });
+
+  it('offers Merge for a first file whose binding edits leave it as it runs, and merging applies nothing (BRK-286)', async () => {
+    const FIRST = '.github/breakaway-infra/apv-first.json';
+    const svc = provider.state.resources[0];
+    const was = structuredClone(svc.attrs);
+    svc.attrs.uses = [{ name: 'DB', resource: 'db-main' }];
+    await inStore((s) => s.refreshInventory(PROVIDER));
+    // Changed by hand since the inventory last looked: the console's edits say what already runs.
+    svc.attrs.instances = 3;
+    svc.attrs.uses = [
+      { name: 'DB', resource: 'db-main' },
+      { name: 'CACHE', resource: 'db-main' },
+    ];
+    try {
+      const res = await body(
+        await board(`infra/environments/${envs['apv-first'].id}/changes`, {
+          method: 'POST',
+          body: {
+            edits: [
+              { op: 'set', resource: 'svc-api', path: 'instances', value: 3 },
+              { op: 'set', resource: 'svc-api', path: 'uses', value: structuredClone(svc.attrs.uses) },
+            ],
+            propose: true,
+          },
+        }),
+      );
+      expect(res.status).toBe(201);
+      expect(res.change).toMatchObject({ state: 'open', changes: 0 });
+      expect(res.change.lines).toHaveLength(2);
+      expect(res.preview).toMatchObject({ changes: 0 });
+      const committed = JSON.parse(gh.commits[res.change.commit][FIRST]);
+      expect(committed.resources.find((r) => r.id === 'svc-api').attrs).toMatchObject({
+        instances: 3,
+        uses: svc.attrs.uses,
+      });
+
+      // Approve finds nothing to apply at the head: it says merge instead, and merges nothing.
+      const number = res.change.pull.number;
+      const approved = await body(await approve(res.change));
+      expect(approved).toMatchObject({
+        status: 409,
+        nothing: true,
+        error: approvalWords.nothing('apv-first', number),
+        preview: { changes: 0 },
+        change: { state: 'open', changes: 0 },
+      });
+      expect(approved.changed).toBeUndefined();
+      expect(merges()).toEqual([]);
+
+      // Merge is the owner's, at the head they saw, and applies nothing.
+      const merged = await body(
+        await board(`github/pulls/${number}/merge`, {
+          method: 'POST',
+          body: { sha: res.change.commit, method: 'squash', repo: 'widgets' },
+        }),
+      );
+      expect(merged.status).toBe(200);
+      expect(merges()).toEqual([
+        { method: 'PUT', path: `/pulls/${number}/merge`, body: expect.objectContaining({ sha: res.change.commit }) },
+      ]);
+      expect(
+        await inStore((s) => s.sql.exec("SELECT COUNT(*) AS n FROM infra_runs WHERE phase = 'queued'").one().n),
+      ).toBe(0);
+    } finally {
+      svc.attrs = was;
+      await inStore((s) => s.refreshInventory(PROVIDER));
+    }
   });
 
   it('turns on auto-merge while checks run, or merges at the first green sync without it', async () => {

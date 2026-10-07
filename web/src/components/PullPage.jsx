@@ -1066,8 +1066,8 @@ const liveChange = (/** @type {any} */ found) => Boolean(found && ['open', 'appr
 
 /**
  * Approve and Reject on the board's change pull request (WEB-105), the same buttons as the change's card on the
- * environment's console. A change that plans nothing merges with Merge, as any pull request does, so only Reject is
- * here for it.
+ * environment's console. A change that plans nothing merges with the page's Merge, as any pull request does, so only
+ * Reject is here for it; Approve finding the head plans nothing reloads the change, and the page's Merge shows.
  * @param {{ page: any, found: any, reload: () => void }} props
  */
 function BoardChange({ page, found, reload }) {
@@ -1086,7 +1086,7 @@ function BoardChange({ page, found, reload }) {
         </a>
         : {word.toLowerCase()}.{' '}
         {nothing
-          ? `It describes ${env.name} as it runs, so it plans nothing: merge it to keep it as code.`
+          ? `Nothing changes in ${env.name}: merging records it as code.`
           : card.state === 'merging'
             ? change.approval?.merge === 'auto' || change.approval?.merge === 'sync'
               ? 'Approved: it merges once its checks pass, then the board applies the plan.'
@@ -1105,6 +1105,7 @@ function BoardChange({ page, found, reload }) {
         env={env}
         card={{ ...card, merge: false }}
         page={page}
+        merges={false}
         onChanged={() => {
           reload();
           loadGitHub();

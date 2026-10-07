@@ -659,11 +659,14 @@ export const CARD = {
 };
 
 /**
- * Whether a change plans nothing: the board's draft of an environment with no file, proposed with no edits (BRK-258,
- * "Describe it as code"). A change from a file always has an edit: the board refuses one that leaves the file as it is.
- * @param {{ edits?: unknown[] }} change
+ * Whether a change plans nothing, so it merges instead of asking for an approval: the board's draft of an environment
+ * with no file, proposed with no edits (BRK-258, "Describe it as code"), or any change whose plan has no changes, like
+ * a first file with edits that leave it as it runs (BRK-286). The board keeps the plan's size when it proposes, and
+ * again when Approve finds the head plans nothing.
+ * @param {{ edits?: unknown[], changes?: number | null }} change
  */
-export const plansNothing = (change) => Array.isArray(change.edits) && change.edits.length === 0;
+export const plansNothing = (change) =>
+  (Array.isArray(change.edits) && change.edits.length === 0) || change.changes === 0;
 
 /**
  * The plan a merged change's card follows: the one the first compare after its merge found (WEB-110), or the one
@@ -679,7 +682,8 @@ export const changePlanId = (change) =>
  * in what the compare after its merge found (WEB-110): Nothing to apply, Refused by your policy, Waiting for you (its
  * plan, or the environment holds it), or its plan's own state (Applied, Failed, Rolled back).
  * @param {{ state: string, why?: string | null, approval?: { plan?: string | null } | null, digest?: string | null,
- *   commit?: string | null, edits?: unknown[], outcome?: { kind: string, plan?: string | null } | null }} change
+ *   commit?: string | null, edits?: unknown[], changes?: number | null,
+ *   outcome?: { kind: string, plan?: string | null } | null }} change
  * @param {{ checks?: string | null, plan?: { state: string } | null }} [seen] the pull request's checks (from the board's
  *   GitHub data: `pending`, `success`, `failure`) and the plan the merge made, when the console has them
  * @returns {{ state: string, plan: boolean, approve: boolean, merge: boolean, reject: boolean, again: boolean }}
@@ -687,7 +691,7 @@ export const changePlanId = (change) =>
 export function cardState(change, { checks = null, plan = null } = {}) {
   const none = { plan: false, approve: false, merge: false, reject: false, again: false };
   if (change.state === 'open') {
-    // The board's draft with no edits matches what runs, so it plans nothing: it merges, as any pull request does.
+    // A change whose plan has no changes (the board's draft with no edits, or edits that leave it as it runs): it merges.
     const nothing = plansNothing(change);
     return {
       ...none,
