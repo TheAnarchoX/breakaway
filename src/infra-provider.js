@@ -123,6 +123,8 @@ export const COST_NOTE_MAX = 500;
  * @property {number | null} value
  * @property {string} at ISO 8601
  * @property {string} text short, at most SIGNAL_TEXT_MAX characters
+ * @property {boolean} [account] true for an alert about the provider's account or platform as a whole, not this
+ *   environment (BRK-255): its resource is null, and the board keeps one per provider, not one per environment
  */
 
 /**
@@ -495,6 +497,10 @@ export function checkSignals(provider, ctx, since, signals) {
     if (s.source !== provider.id) fail(what, `a signal is from ${s.source}, not ${provider.id}`);
     if (s.environment !== ctx.environment) fail(what, `a signal is for ${s.environment}, not ${ctx.environment}`);
     if (s.resource !== null && !text(s.resource)) fail(what, 'a signal has a resource that is neither an id nor null');
+    if (s.account !== undefined && typeof s.account !== 'boolean')
+      fail(what, 'a signal has an account that isn’t true or false');
+    if (s.account && (s.resource !== null || s.kind !== 'alert'))
+      fail(what, 'an account signal is an alert on no resource');
     if (!SIGNAL_KINDS.includes(s.kind)) fail(what, `a signal has unknown kind "${s.kind}"`);
     if (!SIGNAL_LEVELS.includes(s.level)) fail(what, `a signal has unknown level "${s.level}"`);
     if (s.value !== null && (typeof s.value !== 'number' || !Number.isFinite(s.value)))

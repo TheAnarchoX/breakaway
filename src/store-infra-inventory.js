@@ -227,7 +227,7 @@ export const infraInventoryMethods = {
         );
       if (alerts?.length)
         await heard('record the alerts of', environment, () =>
-          this.recordAlertSignals(alerts.map((a) => ({ ...a, environmentId: environment.id }))),
+          this.recordAlertSignals(this.keepAccountAlerts(alerts.map((a) => ({ ...a, environmentId: environment.id })))),
         );
     }
     // Cost by environment and its budget (BRK-199): a failure here never fails the refresh.

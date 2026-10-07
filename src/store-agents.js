@@ -1807,6 +1807,7 @@ export const agentsMethods = {
     this.prunePeloton();
     this.pruneInfraAudit();
     this.foldInfraSignals();
+    this.pruneInfraAccountAlerts();
   },
 
   /** Per task: its latest run and when its session last said something (for cards). */
