@@ -324,6 +324,193 @@ export const EDITABLE = {
  */
 export const editable = (kind) => EDITABLE[kind] ?? null;
 
+/**
+ * How a Worker binds each kind the console adds, by the new resource's ID in the desired state or its name; `required`
+ * when the plan makes one only if a Worker binds it.
+ */
+const bindAs = (kind, required = false) => {
+  const target = BINDABLE.find((t) => t.kind === kind);
+  return target ? { bind: { kind: 'worker', list: 'bindings', target, ...(required ? { required } : {}) } } : {};
+};
+/** Names Cloudflare gives Workers, queues, and containers: lowercase letters, digits, and dashes, up to 63. */
+const DNS_LABEL = '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$';
+const HOSTNAME = '^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$';
+const ZONE_FIELD = {
+  path: 'zone',
+  label: 'Zone',
+  type: 'text',
+  pattern: HOSTNAME,
+  help: 'The domain on Cloudflare it’s on, like acme.example: one the environment’s token reaches.',
+};
+
+/**
+ * The kinds the console may add (BRK-270), every kind Architect plans. Name rules are Cloudflare's as last read
+ * (developers.cloudflare.com: Workers, Queues, R2, KV, and D1 limits). A database, namespace, bucket, or queue is made
+ * only when a Worker in the environment binds it, so each says how one binds it. A Durable Object class and a container
+ * application are made by their Worker's code and deploy, so the plan won't make one: the console adds it to the file,
+ * `needsCode` says what code must exist, and the plan finds it by name once the deploy has made it.
+ * @type {Record<string, Omit<import('./infra-provider.js').Creatable, 'defaults'> & { defaults?: () => Record<string, unknown> }>}
+ */
+export const CREATABLE = {
+  worker: {
+    label: 'Worker',
+    help: 'Runs the code that answers requests. It starts with a script that answers /health, until the repository’s deploy puts its own code on it.',
+    name: {
+      label: 'Name',
+      pattern: DNS_LABEL,
+      max: 63,
+      help: 'Lowercase letters, digits, and dashes, up to 63, unique in the account, like acme-jobs.',
+    },
+    required: ['compatibilityDate'],
+    defaults: () => ({ compatibilityDate: new Date().toISOString().slice(0, 10), observability: true }),
+    ...bindAs('worker'),
+  },
+  queue: {
+    label: 'Queue',
+    help: 'Holds messages one Worker sends until another takes them, one batch at a time.',
+    name: {
+      label: 'Name',
+      pattern: DNS_LABEL,
+      max: 63,
+      help: 'Lowercase letters, digits, and dashes, up to 63, unique in the account, like acme-jobs.',
+    },
+    defaults: () => ({ deliveryDelay: 0, deliveryPaused: false, retention: 345_600 }),
+    ...bindAs('queue', true),
+  },
+  r2: {
+    label: 'R2 bucket',
+    help: 'Keeps files (objects) by key: uploads, images, exports.',
+    name: {
+      label: 'Name',
+      pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$',
+      max: 63,
+      help: 'Lowercase letters, digits, and dashes, 3 to 63, unique in the account, like acme-uploads.',
+    },
+    fields: [
+      {
+        path: 'location',
+        label: 'Location',
+        type: 'choice',
+        optional: true,
+        options: [
+          { value: 'wnam', label: 'Western North America' },
+          { value: 'enam', label: 'Eastern North America' },
+          { value: 'weur', label: 'Western Europe' },
+          { value: 'eeur', label: 'Eastern Europe' },
+          { value: 'apac', label: 'Asia-Pacific' },
+          { value: 'oc', label: 'Oceania' },
+        ],
+        help: 'Where Cloudflare keeps it, as a hint. Unset puts it near whoever makes it. It can’t move later.',
+      },
+    ],
+    ...bindAs('r2', true),
+  },
+  kv: {
+    label: 'KV namespace',
+    help: 'Keeps small values by key, read often and written now and then: settings, flags, sessions.',
+    name: {
+      label: 'Title',
+      pattern: '^\\S(?:.*\\S)?$',
+      max: 512,
+      help: 'Up to 512 characters, unique in the account, like acme-flags.',
+    },
+    ...bindAs('kv', true),
+  },
+  d1: {
+    label: 'D1 database',
+    help: 'A SQL database (SQLite) for the Worker’s data.',
+    name: {
+      label: 'Name',
+      pattern: '^[a-z0-9][a-z0-9_-]{0,63}$',
+      max: 64,
+      help: 'Lowercase letters, digits, dashes, and underscores, up to 64, unique in the account, like acme-db.',
+    },
+    ...bindAs('d1', true),
+  },
+  route: {
+    label: 'Route',
+    help: 'Sends the requests that match a pattern on one of your domains to a Worker.',
+    name: { ...EDITABLE.route.name, label: 'Pattern', max: 255 },
+    fields: [ZONE_FIELD],
+    required: ['zone', 'worker'],
+  },
+  'custom-domain': {
+    label: 'Custom domain',
+    help: 'Makes a hostname answer with a Worker, with its DNS record and certificate.',
+    name: {
+      label: 'Hostname',
+      pattern: HOSTNAME,
+      max: 253,
+      help: 'A hostname on one of your zones, like api.acme.example, that no other Worker has.',
+    },
+    fields: [ZONE_FIELD],
+    required: ['zone', 'worker'],
+  },
+  'durable-object': {
+    label: 'Durable Object',
+    help: 'One object per ID that keeps its own state, made from a class in a Worker’s code: a counter, a room, a lock.',
+    name: {
+      label: 'Name',
+      pattern: '^[a-z0-9][a-z0-9-]{0,62}_[A-Za-z_$][A-Za-z0-9_$]*$',
+      max: 128,
+      help: 'Its Worker’s name and its class’s, joined by _, like acme-api_Counter.',
+    },
+    fields: [
+      {
+        path: 'class',
+        label: 'Class',
+        type: 'text',
+        pattern: '^[A-Za-z_$][A-Za-z0-9_$]*$',
+        help: 'The class in the Worker’s code that each object is, like Counter.',
+      },
+      {
+        path: 'script',
+        label: 'Worker',
+        type: 'resource',
+        kinds: ['worker'],
+        help: 'The Worker whose code has the class.',
+      },
+    ],
+    required: ['class', 'script'],
+    needsCode:
+      'The Worker’s code exports the class, its wrangler config binds it and adds it in a migration, and the Worker is deployed. Until then, the plan won’t apply.',
+  },
+  container: {
+    label: 'Container',
+    help: 'Runs a container image next to a Durable Object, for code that can’t run in a Worker.',
+    name: {
+      label: 'Name',
+      pattern: DNS_LABEL,
+      max: 63,
+      help: 'Lowercase letters, digits, and dashes, up to 63, unique in the account, like acme-render.',
+    },
+    fields: [
+      {
+        path: 'image',
+        label: 'Image',
+        type: 'text',
+        help: 'What it runs: the Dockerfile in the repository, like ./Dockerfile, or an image’s address.',
+      },
+    ],
+    required: ['image', 'maxInstances'],
+    defaults: () => ({ maxInstances: 1 }),
+    needsCode:
+      'The image, the Durable Object class that starts it, and the container in the Worker’s wrangler config, and the Worker is deployed. Until then, the plan won’t apply.',
+  },
+};
+
+/**
+ * Whether the console may add a resource of `kind` (BRK-270), what a new one is given, and its name's rule.
+ * @param {string} kind
+ * @returns {import('./infra-provider.js').Creatable | null}
+ */
+export function creatable(kind) {
+  const c = CREATABLE[kind];
+  if (!c) return null;
+  const { defaults, ...rest } = c;
+  return { ...structuredClone(rest), ...(defaults ? { defaults: defaults() } : {}) };
+}
+
 /** The scheduling policy whose container applications Cloudflare scales and rolls out; any other is the code's. */
 export const DEFAULT_SCHEDULING = 'default';
 
@@ -1721,6 +1908,7 @@ export const cloudflare = {
   refuses,
   outside,
   editable,
+  creatable,
   discover,
   plan: (ctx, desired) => plan(ctx, desired),
   apply: (ctx, p) => apply(ctx, p),

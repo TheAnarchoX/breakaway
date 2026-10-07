@@ -222,6 +222,8 @@ export const COST_NOTE_MAX = 500;
  *   month once `change` is applied, or null when the provider can't say; a plan's cost change uses it (BRK-178)
  * @property {(kind: string) => Editable | null} [editable] the settings the console may change on resources of `kind`,
  *   or null for a kind it changes nothing on; checked by `checkEditable` (BRK-262)
+ * @property {(kind: string) => Creatable | null} [creatable] whether the console may add a resource of `kind`, its
+ *   name's rule, and what a new one is given, or null for a kind it can't add; checked by `checkCreatable` (BRK-270)
  * @property {(ctx: ProviderContext, options: { board: string[] }) => Promise<AlertSetup>} [alerts] reads which of the
  *   platform's alerts are set up and which reach the board (`board` is its https origins), for a provider whose
  *   platform sends alerts to the board
@@ -289,6 +291,39 @@ const PATH = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$/u;
  */
 
 /**
+ * A resource kind the console may add (BRK-270), from the provider's `creatable(kind)`. A new one is the kind's
+ * editable fields (BRK-262) and `fields`, with `defaults` filled in and `required` given; a `create` edit
+ * (src/infra-changes.js) checks them, and the plan says what it makes.
+ * @typedef {object} Creatable
+ * @property {string} label what one is called, like `Queue`
+ * @property {string} help one line on what it's for, in plain words
+ * @property {{ label: string, help: string, pattern?: string, max?: number }} name its name's rule: a regular
+ *   expression and a length, and help saying them. A name is unique among the kind in the environment's file and what
+ *   runs there; the plan checks the rest of the platform's account.
+ * @property {EditableField[]} [fields] what only a new one is given (like a route's zone), beyond its editable fields:
+ *   the plan reads them when it makes it, and never compares them
+ * @property {string[]} [required] the paths, of `fields` or the editable fields, a new one must be given
+ * @property {Record<string, unknown>} [defaults] what a new one starts with, by path
+ * @property {{ kind: string, list: string, target: BindingTarget, required?: boolean }} [bind] how a resource of another
+ *   kind (`kind`, like a Worker) binds a new one: a binding in its `list` setting, as `target` says; `required` when the
+ *   plan makes one only if something binds it, so a `create` edit must bind it. None for a kind nothing binds.
+ * @property {string} [needsCode] what code must exist before the plan can make one (a class, an image), in words: the
+ *   console adds it to the file, and the plan waits until the code's deploy has made it
+ */
+
+/**
+ * A kind the console may add, as the board answers it (BRK-270): one list of fields, the kind's editable ones after
+ * its own, each marked `required` or carrying its `default`.
+ * @typedef {object} CreatableKind
+ * @property {string} label
+ * @property {string} help
+ * @property {{ label: string, help: string, pattern?: string, max?: number }} name
+ * @property {Array<EditableField & { required?: boolean, default?: unknown }>} fields
+ * @property {{ kind: string, list: string, target: BindingTarget, required?: boolean }} [bind]
+ * @property {string} [needsCode]
+ */
+
+/**
  * Which of a platform's alerts are set up, and which reach the board: each alert type with how many policies use it
  * and whether one sends to the board, each policy (on or off, the routines on the board it fires), and how many
  * webhooks point at the board. Names only: never an address or a destination's URL.
@@ -344,6 +379,10 @@ export function checkProvider(provider) {
   if (provider.editable !== undefined) {
     if (typeof provider.editable !== 'function') fail(what, 'editable is not a function');
     for (const kind of Object.keys(provider.kinds)) checkEditable(provider, kind, provider.editable(kind));
+  }
+  if (provider.creatable !== undefined) {
+    if (typeof provider.creatable !== 'function') fail(what, 'creatable is not a function');
+    for (const kind of Object.keys(provider.kinds)) checkCreatable(provider, kind, provider.creatable(kind));
   }
   return provider;
 }
@@ -468,6 +507,127 @@ export function editableKinds(provider) {
   for (const kind of Object.keys(provider.kinds)) {
     const e = checkEditable(provider, kind, provider.editable(kind));
     if (e && (e.fields.length || e.name || e.shown?.length)) out[kind] = e;
+  }
+  return out;
+}
+
+/**
+ * What's wrong with a value for one of the console's fields (BRK-262's types), in words, or null when it fits. A
+ * `resource` field's value is a name: whether the environment has it is the caller's to check.
+ * @param {EditableField} field
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function fieldProblem(field, value) {
+  const label = field.label;
+  const fits = (pattern, v) => !pattern || new RegExp(pattern, 'u').test(v);
+  switch (field.type) {
+    case 'number': {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return `${label} is a number`;
+      if (field.integer && !Number.isInteger(value)) return `${label} is a whole number`;
+      const unit = field.unit ? ` ${field.unit}` : '';
+      if (field.min !== undefined && value < field.min) return `${label} is at least ${field.min}${unit}`;
+      if (field.max !== undefined && value > field.max) return `${label} is at most ${field.max}${unit}`;
+      return null;
+    }
+    case 'yesno':
+      return typeof value === 'boolean' ? null : `${label} is yes or no (true or false)`;
+    case 'choice':
+      return field.options?.some((o) => o.value === value)
+        ? null
+        : `${label} is one of ${(field.options ?? []).map((o) => o.value).join(', ')}`;
+    case 'text':
+    case 'resource':
+      if (typeof value !== 'string' || !value.trim()) return `${label} is text`;
+      return fits(field.pattern, value) ? null : `${value} doesn’t fit ${label}: ${field.help}`;
+    case 'names':
+      if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) return `${label} is a list of names`;
+      for (const v of value) if (!fits(field.pattern, v)) return `${v} doesn’t fit ${label}: ${field.help}`;
+      return null;
+    default:
+      return Array.isArray(value) ? null : `${label} is a list`;
+  }
+}
+
+/**
+ * Checks what a provider's `creatable(kind)` returned, or throws saying what's wrong: a label, help, and a name's rule;
+ * its own fields are well formed and none is also editable; what's required or defaulted is one of the fields; each
+ * default fits its field; and a binding names a kind the provider declares, binding this one.
+ * @param {Provider} provider
+ * @param {string} kind
+ * @param {Creatable | null} creatable
+ * @returns {Creatable | null}
+ */
+export function checkCreatable(provider, kind, creatable) {
+  const what = `${provider.id} creatable ${kind}`;
+  if (creatable === null) return null;
+  if (!provider.kinds[kind]) fail(what, `${provider.id} doesn't declare ${kind}`);
+  if (!isObject(creatable) || !text(creatable.label) || !text(creatable.help)) fail(what, 'has no label or no help');
+  const name = creatable.name;
+  if (!isObject(name) || !text(name.label) || !text(name.help)) fail(what, 'name has no label or no help');
+  if (name.pattern !== undefined) checkPattern(what, 'name', name.pattern);
+  if (name.max !== undefined && (!Number.isInteger(name.max) || name.max < 1))
+    fail(what, 'name’s max is not a whole number of characters');
+  const own = creatable.fields ?? [];
+  checkFields(provider, what, own, undefined);
+  const editable = typeof provider.editable === 'function' ? (provider.editable(kind)?.fields ?? []) : [];
+  for (const f of own) if (editable.some((e) => e.path === f.path)) fail(`${what} ${f.path}`, 'is editable already');
+  const byPath = new Map([...own, ...editable].map((f) => [f.path, f]));
+  if (creatable.required !== undefined) {
+    if (!Array.isArray(creatable.required)) fail(what, 'required is not a list');
+    for (const p of creatable.required) if (!byPath.has(p)) fail(what, `requires ${p}, which isn't one of its fields`);
+  }
+  if (creatable.defaults !== undefined) {
+    if (!isObject(creatable.defaults)) fail(what, 'defaults is not an object');
+    for (const [p, v] of Object.entries(creatable.defaults)) {
+      const f = byPath.get(p);
+      if (!f) fail(what, `has a default for ${p}, which isn't one of its fields`);
+      const problem = fieldProblem(/** @type {EditableField} */ (f), v);
+      if (problem) fail(`${what} default ${p}`, problem);
+    }
+  }
+  if (creatable.bind !== undefined) {
+    const b = creatable.bind;
+    if (!isObject(b) || !provider.kinds[b.kind]) fail(what, 'bind names no kind the provider declares');
+    if (!text(b.list) || !PATH.test(b.list)) fail(what, 'bind names no list');
+    const t = b.target;
+    if (!isObject(t) || !text(t.type) || !text(t.label) || !text(t.field))
+      fail(what, 'bind’s target has no type, label, or field');
+    if (t.kind !== kind) fail(what, `bind’s target binds ${t.kind}, not ${kind}`);
+    if (t.by !== 'id' && t.by !== 'name') fail(what, 'bind’s target names its resource by neither id nor name');
+    if (b.required !== undefined && typeof b.required !== 'boolean') fail(what, 'bind’s required is not true or false');
+  }
+  if (creatable.needsCode !== undefined && !text(creatable.needsCode)) fail(what, 'needsCode is empty');
+  return creatable;
+}
+
+/**
+ * The kinds the console may add (BRK-270), checked, each with one list of fields: its own, then its editable ones,
+ * marked `required` or carrying their `default`. A provider without `creatable` adds nothing from the console.
+ * @param {Provider} provider
+ * @returns {Record<string, CreatableKind>}
+ */
+export function creatableKinds(provider) {
+  if (typeof provider.creatable !== 'function') return {};
+  /** @type {Record<string, CreatableKind>} */
+  const out = {};
+  for (const kind of Object.keys(provider.kinds)) {
+    const c = checkCreatable(provider, kind, provider.creatable(kind));
+    if (!c) continue;
+    const editable = typeof provider.editable === 'function' ? (provider.editable(kind)?.fields ?? []) : [];
+    const fields = [...(c.fields ?? []), ...editable].map((f) => ({
+      ...f,
+      ...(c.required?.includes(f.path) ? { required: true } : {}),
+      ...(c.defaults && Object.hasOwn(c.defaults, f.path) ? { default: structuredClone(c.defaults[f.path]) } : {}),
+    }));
+    out[kind] = {
+      label: c.label,
+      help: c.help,
+      name: { ...c.name },
+      fields,
+      ...(c.bind ? { bind: structuredClone(c.bind) } : {}),
+      ...(c.needsCode ? { needsCode: c.needsCode } : {}),
+    };
   }
   return out;
 }
