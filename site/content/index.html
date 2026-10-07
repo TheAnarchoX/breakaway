@@ -1,5 +1,5 @@
 ---
-description: breakaway is a task board for you and your coding agents: they claim the work, you merge it. Free, fair source, and self-hosted on your own Cloudflare account.
+description: breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs the infrastructure too, and you still decide. Free, fair source, and self-hosted on your own Cloudflare account.
 ---
 <main id="main" tabindex="-1">
 <section class="hero" aria-labelledby="hero-title">
@@ -66,6 +66,35 @@ description: breakaway is a task board for you and your coding agents: they clai
       <article class="card"><h3>Deploys and releases</h3><p>An agent moves a repository to breakaway’s deploy flow in a pull request you merge. Then promote, roll back, and release its npm package from the board.</p></article>
       <article class="card"><h3>Updates you control</h3><p>Releases never deploy themselves. Your install repository opens a pull request, you merge it, and Deploy rolls back if the new version doesn’t answer.</p></article>
     </div>
+  </div>
+</section>
+
+<section aria-labelledby="architect-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="label">Architect · new in 2.0</p>
+      <h2 id="architect-title" class="section-title">Agents propose it. You approve it.</h2>
+      <p class="muted">From the idea to what it runs on, one board. Connect Cloudflare with a read-only token, and the board shows each repository’s environments: what runs, its health, and what it costs. Agents change what should exist in a pull request, and the plan waits for you on your phone. You approve; the board applies it, checks health, and rolls back if the check fails.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot">
+        <img class="shot-dark" src="/media/infra-dark.png" width="2880" height="1200" loading="lazy" decoding="async" alt="The Infrastructure view, with made-up environments of a repository called widgets on Cloudflare: production is down, 1 of 7 resources, at 24.30 dollars a month inside its 60 dollar budget; staging is healthy, at 13.50 dollars a month inside its 20 dollar budget, and plan-2 waits for you.">
+        <img class="shot-light" src="/media/infra-light.png" width="2880" height="1200" loading="lazy" decoding="async" alt="The Infrastructure view, with made-up environments of a repository called widgets on Cloudflare: production is down, 1 of 7 resources, at 24.30 dollars a month inside its 60 dollar budget; staging is healthy, at 13.50 dollars a month inside its 20 dollar budget, and plan-2 waits for you.">
+        <figcaption>The Infrastructure view, with made-up environments.</figcaption>
+      </figure>
+      <figure class="shot phone">
+        <img class="shot-dark" src="/media/plan-dark.png" width="780" height="1688" loading="lazy" decoding="async" alt="A plan for staging on a phone: plan-2, from pull request #41, waiting for you: 2 changes, plus 6.40 dollars a month, estimated, touching 1 more resource, and it can be undone. What changes: widgets-exports-staging scales from 3 to 4. At the bottom, Reject and Approve.">
+        <img class="shot-light" src="/media/plan-light.png" width="780" height="1688" loading="lazy" decoding="async" alt="A plan for staging on a phone: plan-2, from pull request #41, waiting for you: 2 changes, plus 6.40 dollars a month, estimated, touching 1 more resource, and it can be undone. What changes: widgets-exports-staging scales from 3 to 4. At the bottom, Reject and Approve.">
+        <figcaption>A plan that waits for you.</figcaption>
+      </figure>
+    </div>
+    <ul class="checks checks-row">
+      <li><strong>Agents never apply.</strong> They propose by pull request, hold no write credentials, and can’t press Approve.</li>
+      <li><strong>Bounds you set once.</strong> An envelope lets the board scale and restart inside limits you approved. Anything outside waits for you.</li>
+      <li><strong>When it breaks, it’s a task.</strong> A signal that crosses a rule opens an incident in the repository that owns what broke.</li>
+      <li><strong>It only watches its own install.</strong> The board’s own environment is observe only.</li>
+    </ul>
+    <p class="actions"><a class="btn" href="/architect/">See how Architect works</a></p>
   </div>
 </section>
 
@@ -191,6 +220,7 @@ npx breakaway init-secrets</code></pre></div>
       <li><strong>Self-hosted.</strong> There is no hosted breakaway, and no accounts, teams, or pricing.</li>
       <li><strong>Your data stays.</strong> No analytics, telemetry, or tracking, and no call to a service you didn’t connect.</li>
       <li><strong>You decide.</strong> Agents claim, build, and open pull requests. People merge and deploy. Nothing merges or deploys on an agent’s word.</li>
+      <li><strong>Infrastructure too.</strong> Agents propose infrastructure changes and never apply them. Nothing changes without your approval, or inside bounds you approved once.</li>
       <li><strong>Taskwarrior stays a first-class way in.</strong> The sync protocol is Taskwarrior’s.</li>
       <li><strong>Free and fair source.</strong> The licence is FSL-1.1-Apache-2.0. The source is public, and each release becomes Apache 2.0 two years after it ships.</li>
     </ul>

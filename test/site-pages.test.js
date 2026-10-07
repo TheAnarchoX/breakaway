@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildLlms, buildPages, DOCS, SITE } from '../site/lib/site.js';
+import { ARCHITECT, buildLlms, buildPages, DOCS, MEDIA, SITE } from '../site/lib/site.js';
 import { frontMatter, render, slug } from '../site/lib/markdown.js';
 import { lint } from '../scripts/lib/brand-lint.js';
 import TOKENS from '../brand/tokens.css?raw';
 import SITE_TOKENS from '../site/public/tokens.css?raw';
 import INDEX from '../site/content/index.html?raw';
+import ARCHITECT_SOURCE from '../site/content/architect.md?raw';
+import ARCHITECT_MD from '../site/public/architect.md?raw';
 import INSTALL_PROMPT from '../prompts/install.md?raw';
 import SITE_INSTALL_PROMPT from '../site/public/install.md?raw';
 import LLMS from '../site/public/llms.txt?raw';
@@ -25,7 +27,8 @@ const STATIC = import.meta.glob(['../site/public/**/*', '!../site/public/**/*.ht
 const docs = Object.fromEntries(
   Object.entries(DOC_SOURCES).map(([path, text]) => [path.replace(/^.*\/(.+)\.md$/u, '$1'), text]),
 );
-const built = buildPages({ landing: INDEX, docs });
+const content = { landing: INDEX, architect: ARCHITECT_SOURCE, docs };
+const built = buildPages(content);
 const published = (path) => `/${path}`.replace(/index\.html$/u, '');
 const known = new Set([...built.keys()].map(published));
 const assets = new Set(Object.keys(STATIC).map((path) => path.replace('../site/public', '')));
@@ -73,29 +76,41 @@ describe('the site', () => {
   });
 
   it('serves llms.txt, llms-full.txt, and each page as Markdown, built from the docs (LCH-10)', () => {
-    const llms = buildLlms({ landing: INDEX, docs });
+    const llms = buildLlms(content);
     expect(llms.get('llms.txt')).toBe(LLMS);
     expect(llms.get('llms-full.txt')).toBe(LLMS_FULL);
-    const pages = [...llms].filter(([path]) => path.endsWith('.md'));
+    expect(llms.get('architect.md')).toBe(ARCHITECT_MD);
+    const pages = [...llms].filter(([path]) => path.startsWith('docs/'));
     for (const [path, text] of pages) expect(DOCS_MD[`../site/public/${path}`], path).toBe(text);
     expect(Object.keys(DOCS_MD).length).toBe(pages.length);
     // The llmstxt.org shape: the name, a one-line summary, then sections of links. Every page and the install prompt.
     expect(LLMS).toMatch(/^# breakaway\n\n> \S/u);
     for (const name of Object.keys(docs)) expect(LLMS).toContain(`${SITE.url}/docs/${name}.md)`);
     expect(LLMS).toContain(`${SITE.url}/install.md`);
+    expect(LLMS).toContain(`${SITE.url}/architect.md)`);
+    expect(LLMS_FULL).toContain(`Source: ${SITE.url}${ARCHITECT.path}`);
     // Read away from the site, so every link of the site's own is absolute.
     expect(LLMS_FULL).not.toMatch(/\]\(\/(?!\/)/u);
+    expect(ARCHITECT_MD).not.toMatch(/\]\(\/(?!\/)/u);
     expect(
       lint([
         { path: 'site/public/llms.txt', text: LLMS },
         { path: 'site/public/llms-full.txt', text: LLMS_FULL },
+        { path: 'site/public/architect.md', text: ARCHITECT_MD },
       ]),
     ).toEqual([]);
   });
 
-  it('shows the social card when a page is shared (LCH-12)', () => {
-    expect(assets.has('/social.png')).toBe(true);
+  it('shows the social card when a page is shared (LCH-12), and the Architect page its own (LCH-33)', () => {
+    expect(assets.has('/social.png') && assets.has('/social-architect.png')).toBe(true);
+    const architect = built.get(ARCHITECT.file);
+    expect(architect).toContain(`<meta property="og:image" content="${SITE.url}/social-architect.png">`);
+    expect(architect).toMatch(
+      /<meta property="og:image:alt" content="breakaway: Agents propose it\. You approve it\. [^"]+">/u,
+    );
+    expect(architect).toContain('<meta name="twitter:card" content="summary_large_image">');
     for (const [path, html] of built) {
+      if (path === ARCHITECT.file) continue;
       expect(html, path).toContain(`<meta property="og:image" content="${SITE.url}/social.png">`);
       expect(html, path).toContain('<meta property="og:image:width" content="2560">');
       expect(html, path).toContain('<meta property="og:image:height" content="1280">');
@@ -107,6 +122,38 @@ describe('the site', () => {
   it('is committed as it builds (run node site/build.mjs)', () => {
     for (const [path, html] of built) expect(BUILT[`../site/public/${path}`], path).toBe(html);
     expect(Object.keys(BUILT).length).toBe(built.size);
+  });
+
+  it('tells Architect’s story on its own page, with LCH-32’s screenshots in both themes (LCH-33)', () => {
+    const page = built.get(ARCHITECT.file);
+    const text = visible(page);
+    for (const step of [
+      'The board sees what runs',
+      'Agents propose by pull request',
+      'You approve. The board applies.',
+      'Bounds you set once',
+      'When something breaks, it’s a task',
+    ])
+      expect(text).toContain(step);
+    expect(text).toContain('Cloudflare first');
+    expect(text).toContain('It only watches its own install.');
+    // Apply is never a button: the page's buttons are links to read on, never an action.
+    expect(page).not.toMatch(/<button[^>]*>\s*Apply/u);
+    for (const name of MEDIA) {
+      expect(assets.has(`/media/${name}`), name).toBe(true);
+      // The landing page or the Architect page shows each one.
+      expect(page + built.get('index.html'), name).toContain(`/media/${name}`);
+    }
+    for (const [tag] of page.matchAll(/<img\b[^>]*src="\/media\/[^>]*>/gu)) expect(tag).toMatch(/\salt="[^"]{20,}"/u);
+    expect(built.get('index.html')).toContain(`href="${ARCHITECT.path}"`);
+  });
+
+  it('renders an image on its own line as a figure, in both themes when it’s a carbon screenshot', () => {
+    const { html } = render('![A plan.](/media/plan-dark.png "On a phone.")\n\n![A logo.](/logo.svg)');
+    expect(html).toContain('<img class="shot-dark" src="/media/plan-dark.png" alt="A plan."');
+    expect(html).toContain('<img class="shot-light" src="/media/plan-light.png" alt="A plan."');
+    expect(html).toContain('<figcaption>On a phone.</figcaption>');
+    expect(html).toContain('<figure class="shot"><img src="/logo.svg" alt="A logo."');
   });
 
   it('wears the brand’s tokens exactly', () => {
@@ -157,6 +204,7 @@ describe('the site', () => {
   it('passes the brand lint', () => {
     const files = [
       { path: 'site/content/index.html', text: INDEX },
+      { path: 'site/content/architect.md', text: ARCHITECT_SOURCE },
       ...Object.entries(docs).map(([name, text]) => ({ path: `site/content/docs/${name}.md`, text })),
     ];
     expect(lint(files)).toEqual([]);
