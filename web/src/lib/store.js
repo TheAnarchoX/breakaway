@@ -66,6 +66,11 @@ effect(() => savePref('mergeWhenGreen', mergeWhenGreen.value ? 'on' : 'off'));
 /** The Dependencies view shows every finished task instead of folding them into one card a step (WEB-98). */
 export const graphShowDone = signal(pref('graphShowDone', 'off') === 'on');
 effect(() => savePref('graphShowDone', graphShowDone.value ? 'on' : 'off'));
+/** The roadmap on a wide screen (WEB-102): a timeline, or the release list of cards; and the timeline's zoom. */
+export const roadmapLayout = signal(pref('roadmapLayout', 'timeline') === 'list' ? 'list' : 'timeline');
+export const roadmapZoom = signal(pref('roadmapZoom', 'weeks') === 'months' ? 'months' : 'weeks');
+effect(() => savePref('roadmapLayout', roadmapLayout.value));
+effect(() => savePref('roadmapZoom', roadmapZoom.value));
 /**
  * Pull requests the owner turned merge when green off on: the setting leaves them alone. The default
  * repository's are numbers, as they always were; another repository's are "<slug>#<number>".
@@ -795,16 +800,18 @@ export function startPolling() {
 export const toasts = signal([]);
 let toastId = 0;
 
-/** A short message; the toast region is a polite live region, so it's read out once. */
-export function toast(text, tone = 'info') {
+/**
+ * A short message; the toast region is a polite live region, so it's read out once. With `action`
+ * (`{ label, run }`, like Undo), it carries a button and stays longer.
+ */
+export function toast(text, tone = 'info', action = null) {
   const id = (toastId += 1);
-  toasts.value = [...toasts.value.slice(-2), { id, text, tone }];
-  setTimeout(
-    () => {
-      toasts.value = toasts.value.filter((t) => t.id !== id);
-    },
-    tone === 'error' ? 8000 : 4500,
-  );
+  toasts.value = [...toasts.value.slice(-2), { id, text, tone, action }];
+  setTimeout(() => dismissToast(id), tone === 'error' || action ? 8000 : 4500);
+}
+
+export function dismissToast(id) {
+  toasts.value = toasts.value.filter((t) => t.id !== id);
 }
 
 export const confirmState = signal(null);
@@ -1572,6 +1579,29 @@ export const actions = {
       loadFeature(result.feature.slug); // with its chase's queue, which a save doesn't return
     }
     return result?.feature ?? null;
+  },
+  /**
+   * Aims feature `f` at another release, or none, from the roadmap's timeline (WEB-102): the owner's change, the
+   * same one Edit makes, with Undo in the toast that says so.
+   */
+  async moveFeature(f, release, { undo = true } = {}) {
+    const from = f.release ?? null;
+    const to = release ?? null;
+    if (from === to) return null;
+    const where = (r) => (r ? `aimed at ${r}` : 'unplanned');
+    // The toast below says it, with Undo, so the change itself says nothing.
+    const result = await change(
+      () => api(`features/${enc(f.slug)}`, { method: 'PATCH', body: { release: to ?? '' } }),
+      null,
+    );
+    if (!result) return null;
+    await loadFeatures();
+    toast(
+      `+${f.slug} is ${where(to)}${undo ? '' : ' again'}.`,
+      'success',
+      undo ? { label: 'Undo', run: () => actions.moveFeature({ ...f, release: to }, from, { undo: false }) } : null,
+    );
+    return result.feature ?? null;
   },
   /**
    * Adds a feature and shapes it as an idea (WEB-42): the board makes an idea from its brief, tagged with it, and
