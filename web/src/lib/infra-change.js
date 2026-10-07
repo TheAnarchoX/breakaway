@@ -28,7 +28,8 @@ const local = () => {
  * One edit, as BRK-259 takes it.
  * @typedef {{ op: 'set', resource: string, path: string, value: unknown }
  *   | { op: 'add', template: string, inputs: Record<string, string> }
- *   | { op: 'remove', resource: string }} Edit
+ *   | { op: 'remove', resource: string }
+ *   | { op: 'rename', resource: string, name: string }} Edit
  */
 
 /**
@@ -39,7 +40,9 @@ const local = () => {
 export function readEdits(envId, storage = local()) {
   try {
     const edits = JSON.parse(storage?.getItem(KEY + envId) ?? '[]');
-    return Array.isArray(edits) ? edits.filter((e) => isObject(e) && ['set', 'add', 'remove'].includes(e.op)) : [];
+    return Array.isArray(edits)
+      ? edits.filter((e) => isObject(e) && ['set', 'add', 'remove', 'rename'].includes(e.op))
+      : [];
   } catch {
     return [];
   }
@@ -60,8 +63,9 @@ export function writeEdits(envId, edits, storage = local()) {
 }
 
 /**
- * The change with `more` joined to it: a setting set again replaces the earlier edit of the same setting, and removing
- * a resource drops the edits that set its settings. Answers the edits, or why they don't fit.
+ * The change with `more` joined to it: a setting set again replaces the earlier edit of the same setting, a resource
+ * renamed again replaces its earlier rename, and removing a resource drops the edits that set its settings or rename it.
+ * Answers the edits, or why they don't fit.
  * @param {Edit[]} edits
  * @param {Edit[]} more
  * @returns {{ edits: Edit[] } | { error: string }}
@@ -70,9 +74,10 @@ export function joinEdits(edits, more) {
   let out = [...edits];
   for (const e of more) {
     if (e.op === 'set') out = out.filter((x) => !(x.op === 'set' && x.resource === e.resource && x.path === e.path));
+    else if (e.op === 'rename') out = out.filter((x) => !(x.op === 'rename' && x.resource === e.resource));
     else if (e.op === 'remove') {
       if (out.some((x) => x.op === 'remove' && x.resource === e.resource)) continue;
-      out = out.filter((x) => !(x.op === 'set' && x.resource === e.resource));
+      out = out.filter((x) => !((x.op === 'set' || x.op === 'rename') && x.resource === e.resource));
     }
     out.push(e);
   }
@@ -284,6 +289,44 @@ export function settingEdits(resource, fields, form) {
   return out;
 }
 
+/**
+ * A resource's name as the provider lets the console change it (BRK-262's `name`: a route's pattern).
+ * @typedef {{ label: string, help: string, pattern?: string }} EditableName
+ */
+
+/**
+ * What's wrong with a new name in the form, in words, or null.
+ * @param {EditableName} name
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+export function nameProblem(name, raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return `${name.label} needs a value.`;
+  return name.pattern && !new RegExp(name.pattern, 'u').test(text)
+    ? `${name.label} doesn’t look right: ${name.help}`
+    : null;
+}
+
+/**
+ * The rename the form makes, or none when the name stays the resource's.
+ * @param {{ id: string, name: string }} resource as the desired state has it
+ * @param {unknown} raw the form's name
+ * @returns {Edit[]}
+ */
+export function nameEdits(resource, raw) {
+  const name = String(raw ?? '').trim();
+  return name && name !== resource.name ? [{ op: 'rename', resource: resource.id, name }] : [];
+}
+
+/**
+ * The name a resource has with this change's edits on it.
+ * @param {Edit[]} edits
+ * @param {{ id: string, name: string }} resource
+ */
+export const nameAfter = (edits, resource) =>
+  edits.reduce((name, e) => (e.op === 'rename' && e.resource === resource.id ? e.name : name), resource.name);
+
 /** A value in a line of words: short, and plain where it can be. */
 function words(/** @type {unknown} */ value) {
   if (value === undefined || value === null) return 'unset';
@@ -296,9 +339,10 @@ function words(/** @type {unknown} */ value) {
  * @param {Edit[]} edits
  * @param {{ id: string, name: string, kind: string, attrs?: Record<string, unknown> }[]} resources the desired state's
  * @param {Map<string, EditableField[]>} [labels] each kind's fields, for the settings' names
+ * @param {Map<string, EditableName>} [names] each kind's name, where the console may change it
  * @returns {string[]}
  */
-export function editLines(edits, resources, labels = new Map()) {
+export function editLines(edits, resources, labels = new Map(), names = new Map()) {
   const byId = new Map(resources.map((r) => [r.id, r]));
   return edits.map((e) => {
     if (e.op === 'add') {
@@ -308,6 +352,8 @@ export function editLines(edits, resources, labels = new Map()) {
     const r = byId.get(e.resource);
     const name = r?.name ?? e.resource;
     if (e.op === 'remove') return `− ${r?.kind ?? 'resource'} ${name}`;
+    if (e.op === 'rename')
+      return `~ ${r?.kind ?? 'resource'} ${name}: ${(r && names.get(r.kind)?.label.toLowerCase()) ?? 'name'} → ${e.name}`;
     const field = r ? labels.get(r.kind)?.find((f) => f.path === e.path) : null;
     const label = field?.label.toLowerCase() ?? e.path;
     return `~ ${name}: ${label} ${words(getPath(r?.attrs, e.path))} → ${words(e.value)}`;
@@ -323,7 +369,7 @@ export function editMarks(edits) {
   const out = new Map();
   for (const e of edits) {
     if (e.op === 'remove') out.set(e.resource, { op: 'delete', effect: /** @type {const} */ ('removes') });
-    else if (e.op === 'set' && !out.has(e.resource))
+    else if ((e.op === 'set' || e.op === 'rename') && !out.has(e.resource))
       out.set(e.resource, { op: 'update', effect: /** @type {const} */ ('changes') });
   }
   return out;

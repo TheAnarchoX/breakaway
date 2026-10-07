@@ -10,6 +10,9 @@ import {
   formValue,
   getPath,
   joinEdits,
+  nameAfter,
+  nameEdits,
+  nameProblem,
   readEdits,
   recentChange,
   sameValue,
@@ -46,6 +49,8 @@ const worker = {
   },
 };
 const queue = { id: 'queue:acme-jobs', kind: 'queue', name: 'acme-jobs', attrs: { deliveryDelay: 0 } };
+const route = { id: 'route:r1', kind: 'route', name: 'api.acme.example/*', attrs: { worker: 'acme-api' } };
+const PATTERN = { label: 'Pattern', pattern: '^\\S+$', help: 'The hostname and path.' };
 
 const FIELDS = [
   {
@@ -112,6 +117,19 @@ describe('keeping a change', () => {
     });
     // Removing twice is one removal.
     expect(joinEdits(/** @type {any} */ (r).edits, [{ op: 'remove', resource: worker.id }])).toEqual(r);
+  });
+
+  it('keeps one rename per resource, and a removal drops it', () => {
+    const rename = (/** @type {string} */ name) => ({ op: 'rename', resource: route.id, name });
+    const storage = memory();
+    writeEdits(7, [rename('v2.acme.example/*')], storage);
+    expect(readEdits(7, storage)).toEqual([rename('v2.acme.example/*')]);
+    expect(joinEdits([rename('v2.acme.example/*')], [rename('v3.acme.example/*')])).toEqual({
+      edits: [rename('v3.acme.example/*')],
+    });
+    expect(joinEdits([rename('v2.acme.example/*')], [{ op: 'remove', resource: route.id }])).toEqual({
+      edits: [{ op: 'remove', resource: route.id }],
+    });
   });
 
   it(`holds at most ${CHANGE_MAX_EDITS} edits`, () => {
@@ -220,6 +238,22 @@ describe('the settings form', () => {
   });
 });
 
+describe('the name field', () => {
+  it('renames only when the name changes, says what’s wrong, and starts from the change’s rename', () => {
+    expect(nameEdits(route, ' api.acme.example/* ')).toEqual([]);
+    expect(nameEdits(route, 'v2.acme.example/*')).toEqual([
+      { op: 'rename', resource: route.id, name: 'v2.acme.example/*' },
+    ]);
+    expect(nameProblem(PATTERN, 'v2.acme.example/*')).toBeNull();
+    expect(nameProblem(PATTERN, '')).toBe('Pattern needs a value.');
+    expect(nameProblem(PATTERN, 'has space/*')).toBe('Pattern doesn’t look right: The hostname and path.');
+    expect(nameAfter([], route)).toBe('api.acme.example/*');
+    expect(nameAfter([{ op: 'rename', resource: route.id, name: 'v2.acme.example/*' }], route)).toBe(
+      'v2.acme.example/*',
+    );
+  });
+});
+
 describe('the change in words', () => {
   const labels = new Map([['worker', FIELDS]]);
 
@@ -231,9 +265,11 @@ describe('the change in words', () => {
         { op: 'add', template: 'queue', inputs: { name: 'acme-mail' } },
         { op: 'remove', resource: queue.id },
         { op: 'remove', resource: 'queue:gone' },
+        { op: 'rename', resource: route.id, name: 'v2.acme.example/*' },
       ],
-      [worker, queue],
+      [worker, queue, route],
       labels,
+      new Map([['route', PATTERN]]),
     );
     expect(lines).toEqual([
       '~ acme-api: usage model standard → bundled',
@@ -241,6 +277,7 @@ describe('the change in words', () => {
       '+ queue acme-mail (from a template)',
       '− queue acme-jobs',
       '− resource queue:gone',
+      '~ route api.acme.example/*: pattern → v2.acme.example/*',
     ]);
   });
 
@@ -248,7 +285,9 @@ describe('the change in words', () => {
     const marks = editMarks([
       { op: 'set', resource: worker.id, path: 'usageModel', value: 'bundled' },
       { op: 'remove', resource: queue.id },
+      { op: 'rename', resource: route.id, name: 'v2.acme.example/*' },
     ]);
+    expect(marks.get(route.id)?.effect).toBe('changes');
     expect(marks.get(worker.id)?.effect).toBe('changes');
     expect(marks.get(queue.id)?.effect).toBe('removes');
   });

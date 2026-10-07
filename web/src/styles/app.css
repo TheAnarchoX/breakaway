@@ -6884,7 +6884,9 @@ fieldset.field {
 .fr-pulls {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
 }
 .fr-release h2 .mono {
   font: 700 18px / 1 var(--font-mono);
@@ -7263,6 +7265,8 @@ fieldset.field {
   background: var(--state-ready);
 }
 .tl-scroll {
+  /* A lane's head spans what's in view (100cqi), so its Pull into buttons sit on the right however far it scrolls. */
+  container-type: inline-size;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   border: 1px solid var(--line);
@@ -7345,6 +7349,8 @@ fieldset.field {
   padding: 0 14px;
 }
 .tl-lane-head {
+  width: 100cqi;
+  max-width: none;
   background: var(--bg-2);
   border-radius: var(--radius-xs);
   display: flex;
