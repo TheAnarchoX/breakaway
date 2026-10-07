@@ -13,6 +13,7 @@ import { checkDesiredFile, DESIRED_DIR, desiredPath } from './infra-desired.js';
 import { fieldProblem } from './infra-provider.js';
 import { addFromTemplate, inputValues, TEMPLATE_NAME } from './infra-templates.js';
 import { costWords, policyWords } from './infra-pulls.js';
+import { bindingLabels, sameSetting, sameWords, settingWords } from './infra-setting-words.js';
 
 /** At most this many edits in one change. */
 export const CHANGE_MAX_EDITS = 50;
@@ -43,7 +44,6 @@ const VALUE_MAX = 8 * 1024;
 const ID_MAX = 200;
 const NAME_MAX = 200;
 const SUMMARY_MAX = 100;
-const WORDS_MAX = 60;
 
 /**
  * One edit, checked:
@@ -164,13 +164,6 @@ export function checkEdits(edits) {
   return { ok: true, edits: out };
 }
 
-/** A value in a line of words: short, and plain where it can be. */
-function words(value) {
-  if (value === undefined) return 'the platform’s';
-  const s = typeof value === 'string' ? value : JSON.stringify(value);
-  return s.length > WORDS_MAX ? `${s.slice(0, WORDS_MAX - 1)}…` : s;
-}
-
 /** The value at a dotted path inside `attrs`, or undefined. */
 function readPath(attrs, parts) {
   let at = attrs;
@@ -221,6 +214,9 @@ function writePath(resource, parts, value) {
  *   starts from the ones it has
  * @param {(kind: string) => import('./infra-provider.js').CreatableKind | null | undefined} [args.creatable] what a
  *   kind's provider lets the console add (its `creatableKinds`, BRK-270), for the creates; none without it
+ * @param {(kind: string) => import('./infra-provider.js').EditableField[] | null | undefined} [args.fields] the
+ *   settings a kind's provider lets the console change (its editable `fields`, BRK-262), so a set edit's line names
+ *   the setting as the console does and reads its bindings one at a time
  * @returns {{ file: Record<string, any>, files: Array<{ path: string, text: string }>, lines: string[],
  *   dropped: Array<{ edit: number, line: string }>, problems: ChangeProblem[], touched: Map<string, number> }}
  */
@@ -232,6 +228,7 @@ export function applyEdits({
   names = () => null,
   seen = [],
   creatable = () => null,
+  fields = () => null,
 }) {
   let out = structuredClone(file);
   if (!Array.isArray(out.resources)) out.resources = [];
@@ -256,10 +253,20 @@ export function applyEdits({
       const r = out.resources[at];
       const parts = edit.path.split('.');
       const before = readPath(r.attrs, parts);
+      const field = fields(r.kind)?.find((f) => f.path === edit.path);
+      const label = field?.label.toLowerCase() ?? edit.path;
+      // An edit that leaves the setting as it is (the same bindings in another order) changes nothing: it's dropped.
+      if (sameSetting(before ?? null, edit.value ?? null)) {
+        dropped.push({
+          edit: n,
+          line: `${sameWords(r.name, label, before)}, so that edit changes nothing`,
+        });
+        continue;
+      }
       writePath(r, parts, edit.value);
       touched.set(r.id, n);
       lines.push(
-        `~ ${r.name}: ${edit.path} ${before === undefined ? '' : `${words(before)} `}→ ${words(edit.value === null ? undefined : edit.value)}`,
+        `~ ${r.name}: ${settingWords({ label, before, after: edit.value ?? undefined, labels: bindingLabels(field), unset: 'the platform’s' })}`,
       );
     } else if (edit.op === 'remove') {
       const at = find(edit.resource);
@@ -546,3 +553,60 @@ export function changeBody({ environment, lines, dropped = [], files = [], previ
 
 /** Whether a path is one a change may write a code file at: not in the desired-state folder or the workflows. */
 export const writablePath = (path) => !path.startsWith(`${DESIRED_DIR}/`) && !path.startsWith('.github/workflows/');
+
+/**
+ * How long after GitHub says a pull request merged the board trusts that a read of the default branch includes it,
+ * when the read's commit isn't the merge's own (a later commit landed, or the merge commit isn't known): GitHub's
+ * clock and the board's may differ by a little.
+ */
+export const MERGE_READ_MARGIN_MS = 60_000;
+
+/**
+ * Whether the desired state the board last read from the default branch includes a merged change: read at the
+ * merge's own commit, or read a while after the merge.
+ * @param {{ sha?: string | null, readAt?: number | null }} read infra_desired's `sha` and `read_at`
+ * @param {{ mergeSha?: string | null, mergedAt?: number | null }} merge the change's
+ */
+export function readHasMerge(read, merge) {
+  if (merge.mergeSha && read.sha && read.sha === merge.mergeSha) return true;
+  if (!merge.mergedAt || !read.readAt) return false;
+  return read.readAt >= merge.mergedAt + MERGE_READ_MARGIN_MS;
+}
+
+/**
+ * What a merged change became, found by the first compare of what runs with a desired state that includes it
+ * (WEB-110): `nothing` (what runs already matches it, or the merge left the desired state as it was), `planned` (its
+ * plan is approved, being applied, or done: the card follows the plan), `waits` (its plan waits for the owner, or the
+ * environment holds it: frozen, or a break-glass change), or `refused` (the policy refuses its plan).
+ * @typedef {{ kind: 'nothing' | 'planned' | 'waits' | 'refused', plan: string | null, why: string | null,
+ *   at: string }} ChangeOutcome
+ */
+
+/**
+ * A merged change's outcome from one compare.
+ * @param {{ moved: boolean, empty: boolean, plan?: { id: string, state: string, policy?: { outcome?: string } | null }
+ *   | null, held?: string | null, now?: number }} compare `moved`: the desired state changed since the last compare
+ *   that settled; `empty`: nothing differs from what runs; `plan`: the open plan that covers it, or the one made for
+ *   it; `held`: why the environment holds it without a plan
+ * @returns {ChangeOutcome}
+ */
+export function mergeOutcome({ moved, empty, plan = null, held = null, now = Date.now() }) {
+  const at = new Date(now).toISOString();
+  if (empty) return { kind: 'nothing', plan: null, why: null, at };
+  if (!moved) return { kind: 'nothing', plan: null, why: 'the merge left the desired state as it was', at };
+  if (!plan) return { kind: 'waits', plan: null, why: held, at };
+  if (plan.state === 'draft' && plan.policy?.outcome === 'refused')
+    return { kind: 'refused', plan: plan.id, why: null, at };
+  if (plan.state === 'draft' || plan.state === 'waiting') return { kind: 'waits', plan: plan.id, why: null, at };
+  return { kind: 'planned', plan: plan.id, why: null, at };
+}
+
+/** The outcome in the audit trail's words, for change `ref` (#253). */
+export function outcomeSummary(/** @type {string} */ ref, /** @type {ChangeOutcome} */ outcome) {
+  if (outcome.kind === 'nothing')
+    return outcome.why ? `${ref}: ${outcome.why}, so nothing applies` : `${ref}: what runs already matches it`;
+  if (outcome.kind === 'refused') return `${ref}: your policy refuses ${outcome.plan}`;
+  if (outcome.kind === 'waits')
+    return outcome.plan ? `${ref}: ${outcome.plan} waits for you` : `${ref} waits for you: ${outcome.why}`;
+  return `${ref}: ${outcome.plan} is approved; the board applies it`;
+}

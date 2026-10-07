@@ -4,6 +4,8 @@ import {
   agentPrompt,
   bindingFor,
   cardState,
+  changePlanId,
+  changeShows,
   codePrompt,
   createEdit,
   createForm,
@@ -12,18 +14,23 @@ import {
   declaredFor,
   editLines,
   editMarks,
+  endedWords,
+  FOLD_MS,
   fieldProblem,
   formValue,
   getPath,
+  idleEdits,
   joinEdits,
   nameAfter,
   nameEdits,
   nameProblem,
+  readDismissed,
   readEdits,
   recentChange,
   sameValue,
   setPath,
   settingEdits,
+  writeDismissed,
   writeEdits,
 } from '../web/src/lib/infra-change.js';
 
@@ -279,12 +286,34 @@ describe('the change in words', () => {
     );
     expect(lines).toEqual([
       '~ acme-api: usage model standard → bundled',
-      '~ acme-api: cron triggers unset → ["0 3 * * *"]',
+      '~ acme-api: cron triggers unset → 0 3 * * *',
       '+ queue acme-mail (from a template)',
       '− queue acme-jobs',
       '− resource queue:gone',
       '~ route api.acme.example/*: pattern → v2.acme.example/*',
     ]);
+  });
+
+  it('words bindings one at a time, never as JSON, and finds the edits that change nothing (WEB-110)', () => {
+    const labels = new Map([['worker', FIELDS]]);
+    const [db, key] = worker.attrs.bindings;
+    const chat = { name: 'CHAT', type: 'durable_object_namespace', class_name: 'Chat' };
+    const edits = [
+      { op: 'set', resource: worker.id, path: 'bindings', value: [key, db, chat] },
+      { op: 'set', resource: worker.id, path: 'bindings', value: [key, db] },
+      { op: 'set', resource: worker.id, path: 'usageModel', value: 'standard' },
+      { op: 'set', resource: worker.id, path: 'observability', value: true },
+    ];
+    const lines = editLines(edits, [worker], labels);
+    expect(lines[0]).toBe('~ acme-api: bindings + CHAT (durable object namespace); API_KEY, DB unchanged');
+    expect(lines[3]).toBe('~ acme-api: workers logs no → yes');
+    expect(lines.join('\n')).not.toMatch(/[[{"]/u);
+    expect([...idleEdits(edits, [worker], labels)]).toEqual([
+      [1, 'acme-api’s bindings are the same in another order, so it changes nothing'],
+      [2, 'acme-api’s usage model is already standard, so it changes nothing'],
+    ]);
+    // The settings form makes no edit for the same bindings in another order.
+    expect(settingEdits(worker, FIELDS, { bindings: [key, db] })).toEqual([]);
   });
 
   it('marks what it changes and removes on the map', () => {
@@ -551,6 +580,53 @@ describe('the change’s card', () => {
       plan: true,
     });
     expect(cardState({ ...change, state: 'taken over' })).toMatchObject({ state: 'taken over', approve: false });
+  });
+
+  it('ends a merged change in what the compare after its merge found (WEB-110)', () => {
+    const merged = { ...change, state: 'merged', updated: new Date().toISOString() };
+    const outcome = (kind, plan = null, why = null) => ({ kind, plan, why, at: new Date().toISOString() });
+    expect(cardState({ ...merged, outcome: outcome('nothing') })).toMatchObject({ state: 'nothing', plan: false });
+    expect(cardState({ ...merged, outcome: outcome('refused', 'plan-3') })).toMatchObject({ state: 'refused' });
+    expect(cardState({ ...merged, outcome: outcome('waits', null, 'staging is frozen') })).toMatchObject({
+      state: 'waiting',
+    });
+    const waits = { ...merged, outcome: outcome('waits', 'plan-3') };
+    expect(changePlanId(waits)).toBe('plan-3');
+    expect(changePlanId({ ...merged, approval: { plan: 'plan-2' } })).toBe('plan-2');
+    expect(changePlanId({ ...change, outcome: outcome('waits', 'plan-3') })).toBeNull();
+    for (const state of ['waiting', 'applying', 'applied', 'failed', 'rolled back'])
+      expect(cardState(waits, { plan: { state } })).toMatchObject({ state, plan: true });
+    expect(endedWords({ n: 4, pull: { number: 253 } }, { state: 'applied' })).toBe('#253 applied');
+    expect(endedWords({ n: 4, pull: null }, { state: 'nothing' })).toBe('Change 4 nothing to apply');
+  });
+
+  it('shows the card while it follows something, then folds it to a line you can dismiss (WEB-110)', () => {
+    const now = Date.now();
+    const iso = (/** @type {number} */ ms) => new Date(now - ms).toISOString();
+    const merged = { ...change, state: 'merged', updated: iso(60_000) };
+    const nothing = (/** @type {number} */ ms) => ({
+      ...merged,
+      outcome: { kind: 'nothing', plan: null, why: null, at: iso(ms) },
+    });
+    expect(changeShows({ ...change, updated: iso(3 * 3_600_000) }, { now })).toBe('card');
+    expect(changeShows(nothing(60_000), { now })).toBe('card');
+    expect(changeShows(nothing(FOLD_MS + 1), { now })).toBe('line');
+    expect(changeShows(nothing(FOLD_MS + 1), { now, dismissed: true })).toBeNull();
+    expect(changeShows(nothing(25 * 3_600_000), { now })).toBeNull();
+    // A plan being applied keeps the card; once it's applied, it folds a while later.
+    const planned = { ...merged, outcome: { kind: 'planned', plan: 'plan-3', why: null, at: iso(3_600_000) } };
+    expect(changeShows(planned, { now, plan: { state: 'applying', updated: iso(3_600_000) } })).toBe('card');
+    expect(changeShows(planned, { now, plan: { state: 'applied', updated: iso(60_000) } })).toBe('card');
+    expect(changeShows(planned, { now, plan: { state: 'applied', updated: iso(FOLD_MS + 1) } })).toBe('line');
+    // A merge the board hasn't compared yet never says so for long: after an hour it folds.
+    expect(changeShows(merged, { now })).toBe('card');
+    expect(changeShows({ ...merged, updated: iso(3_600_000 + 1) }, { now })).toBe('line');
+
+    const storage = memory();
+    expect(readDismissed(7, storage)).toBeNull();
+    writeDismissed(7, 12, storage);
+    expect(readDismissed(7, storage)).toBe(12);
+    expect(readDismissed(8, storage)).toBeNull();
   });
 
   it('shows a finished change for a day', () => {

@@ -20,6 +20,7 @@ import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 import {
   AddResourceButton,
   ChangePanel,
+  LastChange,
   NodeChange,
   cantChange,
   changeTile,
@@ -442,6 +443,7 @@ export function EnvironmentView() {
               nodeActions={cant ? undefined : (r) => <NodeChange r={r} ch={ch} />}
               headActions={cant ? null : <AddResourceButton ch={ch} />}
               note={env.observeOnly ? cant : null}
+              lead={<LastChange ch={ch} />}
             />
             <ChangePanel ch={ch} cant={cant} />
           </div>

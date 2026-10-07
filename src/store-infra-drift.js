@@ -162,6 +162,10 @@ export const infraDriftMethods = {
     // What runs but isn't in the desired state is clean up's (BRK-201): flagged now, proposed for removal later.
     await this.settleUnowned(env, diff);
     const merged = desiredMoved(last, desiredHash, Boolean(added));
+    // Changes from the console that merged into this desired state get their outcome from this compare (WEB-110).
+    const settling = this.changesToSettle(env);
+    const settle = (/** @type {{ empty?: boolean, plan?: number | null, held?: string | null }} */ found) =>
+      this.settleMergedChanges(settling, { moved: merged, empty: false, ...found });
     // A change the owner approved on the console before it merged (BRK-260): its plan also keeps the deletes it asked
     // for, and is approved on that press when it's exactly what was approved (store-infra-change-approval.js).
     const approved = merged ? this.approvedMergedChange(env.id) : null;
@@ -173,7 +177,8 @@ export const infraDriftMethods = {
     diff = driftChanges(diff);
     const fingerprint = await driftFingerprint(diff);
     const resources = JSON.stringify(driftResources(diff));
-    if (diff.changes.length === 0 && !removals)
+    if (diff.changes.length === 0 && !removals) {
+      settle({ empty: true });
       return this.keepDrift(env, {
         desiredSha,
         count: 0,
@@ -183,6 +188,7 @@ export const infraDriftMethods = {
         planMatches: false,
         desiredHash,
       });
+    }
 
     const open = this.sql
       .exec(
@@ -192,7 +198,8 @@ export const infraDriftMethods = {
       )
       .toArray();
     for (const p of open)
-      if ((await planned(JSON.parse(p.diff))) === wanted)
+      if ((await planned(JSON.parse(p.diff))) === wanted) {
+        settle({ plan: Number(p.n) });
         return this.keepDrift(env, {
           desiredSha,
           count: diff.changes.length,
@@ -202,8 +209,10 @@ export const infraDriftMethods = {
           planMatches: true,
           desiredHash,
         });
+      }
     const stale = open.find((p) => DRIFT_PLAN_SOURCES.includes(p.source));
-    if (stale)
+    if (stale) {
+      settle({ plan: Number(stale.n) });
       return this.keepDrift(env, {
         desiredSha,
         count: diff.changes.length,
@@ -213,10 +222,16 @@ export const infraDriftMethods = {
         planMatches: false,
         desiredHash: unsettled,
       });
+    }
 
     // A frozen environment's drift is kept and shown, but planned only once it's unfrozen. Drift with a change marked
     // as break-glass is kept and shown, and planned only once the file says what runs (or the change is gone).
-    if (env.frozen || brokenGlass)
+    if (env.frozen || brokenGlass) {
+      settle({
+        held: env.frozen
+          ? `${env.name} is frozen: it’s planned once you unfreeze it`
+          : 'a break-glass change holds it: it’s planned once the file says what runs',
+      });
       return this.keepDrift(env, {
         desiredSha,
         count: diff.changes.length,
@@ -226,6 +241,7 @@ export const infraDriftMethods = {
         planMatches: false,
         desiredHash: unsettled,
       });
+    }
     const pull = merged ? this.mergedPullAt(env.repo, desiredSha) : null;
     let plan = null;
     let planMatches = false;
@@ -250,6 +266,7 @@ export const infraDriftMethods = {
             ? `pull request #${pull} merged a change to ${env.name}’s desired state`
             : `${env.name}’s desired state changed on the default branch`,
         });
+      settle({ plan });
     } catch (e) {
       error = `the drift couldn’t become a plan: ${redact(e?.message ?? e)}`;
     }
