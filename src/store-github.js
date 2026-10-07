@@ -13,16 +13,19 @@
 import {
   GitHubClient,
   GitHubError,
+  MERGE_INFO_PREVIEW,
   appCredentials,
   isEmptyRepo,
   appManifest,
   byInbox,
   deployFrom,
+  detailsFromGraphql,
   linkedWids,
   ownLinks,
   prNumberOf,
   prState,
   prVerdict,
+  pullDetailsQuery,
   repoRef,
   reviewDecision,
   rollupChecks,
@@ -376,7 +379,7 @@ export const githubMethods = {
   async fetchGitHub(client, repo) {
     const optional = (promise) =>
       promise.catch((error) => {
-        if (error instanceof GitHubError && [403, 404].includes(error.status)) return null; // not permitted or not enabled
+        if (error instanceof GitHubError && [403, 404].includes(error.status)) return null; // not permitted or not enabled (a rate limit is 429)
         throw error;
       });
     const [pulls, runs, commits, alerts, deployments, releases, tags] = await Promise.all([
@@ -399,23 +402,7 @@ export const githubMethods = {
       .filter((p) => p.state === 'open' || !stored.has(p.number) || stored.get(p.number).updated !== p.updated_at)
       .sort((a, b) => (a.state === 'open' ? 0 : 1) - (b.state === 'open' ? 0 : 1))
       .slice(0, MAX_DETAILS);
-    const details = new Map();
-    await Promise.all(
-      needDetails.map(async (p) => {
-        const [checks, status, reviews, full] = await Promise.all([
-          client.get(`/commits/${p.head.sha}/check-runs?per_page=100`),
-          client.get(`/commits/${p.head.sha}/status`),
-          client.get(`/pulls/${p.number}/reviews?per_page=100`),
-          p.state === 'open' ? client.get(`/pulls/${p.number}`) : null, // the list doesn't carry mergeable_state
-        ]);
-        details.set(p.number, {
-          checks: rollupChecks(checks.check_runs, status.statuses),
-          review: reviewDecision(reviews),
-          mergeable: full?.mergeable ?? null,
-          mergeableState: full?.mergeable_state ?? null,
-        });
-      }),
-    );
+    const details = await this.fetchDetails(client, needDetails);
     const deploys = await this.fetchDeploys(client, deployments ?? [], repo.slug);
     // Also the merged pull requests that aged out of the latest 50 before their files were read,
     // where the repository's deploy paths are known (the legacy install's are built in; see deployPatterns).
@@ -443,6 +430,46 @@ export const githubMethods = {
       workers,
       patterns,
     };
+  },
+
+  /**
+   * Each pull request's checks, reviews, and merge state (BRK-269): one GraphQL query for all of them while
+   * GraphQL's budget lasts, and REST (four calls each) for any it leaves out, when it fails, or when it's used up.
+   */
+  async fetchDetails(client, pulls) {
+    let details = new Map();
+    if (pulls.length && !client.limitedUntil('graphql')) {
+      try {
+        const { owner, repo: name } = client.repo;
+        const data = await client.graphql(
+          pullDetailsQuery(pulls.map((p) => p.number)),
+          { owner, name },
+          { accept: MERGE_INFO_PREVIEW },
+        );
+        details = detailsFromGraphql(data, new Set(pulls.filter((p) => p.state === 'open').map((p) => p.number)));
+      } catch {
+        // Whatever went wrong (a refusal, a used-up budget, a network failure), REST reads them below.
+      }
+    }
+    await Promise.all(
+      pulls
+        .filter((p) => !details.has(p.number))
+        .map(async (p) => {
+          const [checks, status, reviews, full] = await Promise.all([
+            client.get(`/commits/${p.head.sha}/check-runs?per_page=100`),
+            client.get(`/commits/${p.head.sha}/status`),
+            client.get(`/pulls/${p.number}/reviews?per_page=100`),
+            p.state === 'open' ? client.get(`/pulls/${p.number}`) : null, // the list doesn't carry mergeable_state
+          ]);
+          details.set(p.number, {
+            checks: rollupChecks(checks.check_runs, status.statuses),
+            review: reviewDecision(reviews),
+            mergeable: full?.mergeable ?? null,
+            mergeableState: full?.mergeable_state ?? null,
+          });
+        }),
+    );
+    return details;
   },
 
   /**

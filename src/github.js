@@ -82,12 +82,105 @@ export async function appJwt(appId, pkcs8Pem, now = Date.now()) {
 }
 
 export class GitHubError extends Error {
-  /** `reason` is GitHub's own message, to show as it is. */
-  constructor(message, status, reason = null) {
+  /**
+   * `reason` is GitHub's own message, to show as it is. A rate limit is always status 429 (GitHub sends 403 or
+   * 429), so a read that treats 403 as "not permitted" never mistakes a used-up limit for a missing permission,
+   * and `resetAt` says when GitHub takes calls again (ms).
+   * @param {string} message
+   * @param {number} status
+   * @param {string | null} [reason]
+   * @param {number | null} [resetAt]
+   */
+  constructor(message, status, reason = null, resetAt = null) {
     super(message);
     this.status = status;
     this.reason = reason;
+    this.resetAt = resetAt;
   }
+}
+
+/** Whether GitHub refused because a rate limit is used up (BRK-269). */
+export const isRateLimited = (error) => error instanceof GitHubError && error.status === 429;
+
+// ---- rate limits (BRK-269) ---------------------------------------------------------------
+//
+// An installation has two budgets: REST calls (`core`) and GraphQL points (`graphql`). The board spends
+// less of both without any setting: reads are conditional (a 304 for an unchanged answer costs nothing),
+// a sync reads its pull requests' details in one GraphQL query instead of four REST calls each, falling
+// back to REST when GraphQL fails or is used up, and once GitHub says a budget is used up, the client
+// stops calling it until it resets instead of spending more refusals.
+
+/** How many answers a client remembers for conditional reads; the least recently used goes first. */
+export const ETAG_ENTRIES = 300;
+/** How long to wait after a secondary rate limit that names no time. */
+const SECONDARY_WAIT_MS = 60_000;
+
+/**
+ * What a client remembers between calls: the installation token, the answers it can ask about again, and
+ * each budget's last known state.
+ * @typedef {{
+ *   installationId?: number,
+ *   token?: string,
+ *   expires?: number,
+ *   etags?: Map<string, { etag: string, text: string }>,
+ *   limits?: Record<string, { remaining: number, reset: number }>,
+ *   pausedUntil?: number,
+ * }} GitHubCache
+ */
+
+const clock = (ms) => new Date(ms).toISOString().slice(11, 16);
+
+/** A refusal for a budget that's used up, without calling GitHub. */
+function limitError(resource, resetAt) {
+  const what = resource === 'graphql' ? "GitHub's GraphQL rate limit" : "GitHub's API rate limit";
+  return new GitHubError(
+    `${what} is used up until ${clock(resetAt)} UTC: the board reads again after that.`,
+    429,
+    'rate limit exceeded',
+    resetAt,
+  );
+}
+
+/**
+ * When `resource` can't be called yet (ms), or null when it can: its budget is used up, or GitHub asked
+ * for a pause (a secondary limit), and that time hasn't come.
+ * @param {GitHubCache | null} cache
+ * @param {string} resource
+ */
+export function limitedUntil(cache, resource, now = Date.now()) {
+  if (!cache) return null;
+  const until = Math.max(
+    cache.pausedUntil ?? 0,
+    cache.limits?.[resource]?.remaining === 0 ? cache.limits[resource].reset : 0,
+  );
+  return until > now ? until : null;
+}
+
+/** Keeps what GitHub's headers say about the budget a response came from. */
+function noteLimits(cache, headers) {
+  const remaining = headers.get('x-ratelimit-remaining');
+  const reset = headers.get('x-ratelimit-reset');
+  if (remaining === null || reset === null) return;
+  cache.limits ??= {};
+  cache.limits[headers.get('x-ratelimit-resource') ?? 'core'] = {
+    remaining: Number(remaining),
+    reset: Number(reset) * 1000,
+  };
+}
+
+/**
+ * When a refusal is a rate limit, when GitHub takes calls again (ms); null when it isn't one. A primary limit
+ * says so with no calls remaining; a secondary one with Retry-After, or only in its message.
+ */
+function rateLimitReset(res, message, now = Date.now()) {
+  if (res.status !== 403 && res.status !== 429) return null;
+  const retryAfter = Number(res.headers.get('retry-after'));
+  if (retryAfter > 0) return now + retryAfter * 1000;
+  if (res.headers.get('x-ratelimit-remaining') === '0') {
+    const reset = Number(res.headers.get('x-ratelimit-reset')) * 1000;
+    return reset > now ? reset : now + SECONDARY_WAIT_MS;
+  }
+  return res.status === 429 || /rate limit/iu.test(message ?? '') ? now + SECONDARY_WAIT_MS : null;
 }
 
 /** UTF-8 text as base64, for the contents API's writes. */
@@ -109,31 +202,64 @@ export const isEmptyRepo = (error) =>
   error instanceof GitHubError && error.status === 409 && /repository is empty/iu.test(error.reason ?? error.message);
 
 /**
+ * One call to GitHub. With a client's `cache`, a read is conditional (an unchanged answer comes back as a 304,
+ * which GitHub doesn't count, and is served from the cache), the budget's state is kept from the headers, and a
+ * budget known to be used up is refused here, without a call.
  * @param {string} path
  * @param {string} token
- * @param {{ method?: string, scheme?: string, base?: string, body?: any }} [options]
+ * @param {{ method?: string, scheme?: string, base?: string, body?: any, cache?: GitHubCache | null, resource?: string, accept?: string | null }} [options]
  */
-async function request(path, token, { method = 'GET', scheme = 'Bearer', base = API, body } = {}) {
+async function request(
+  path,
+  token,
+  { method = 'GET', scheme = 'Bearer', base = API, body, cache = null, resource = 'core', accept = null } = {},
+) {
+  const waiting = limitedUntil(cache, resource);
+  if (waiting) throw limitError(resource, waiting);
+  if (cache && method === 'GET') cache.etags ??= new Map();
+  const etags = cache && method === 'GET' ? cache.etags : null;
+  const known = etags?.get(path);
   const res = await fetch(`${base}${path}`, {
     method,
     headers: {
-      Accept: 'application/vnd.github+json',
+      Accept: accept ?? 'application/vnd.github+json',
       Authorization: `${scheme} ${token}`,
       'User-Agent': 'breakaway',
       'X-GitHub-Api-Version': '2022-11-28',
+      ...(known ? { 'If-None-Match': known.etag } : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (cache) noteLimits(cache, res.headers);
+  if (res.status === 304 && known) {
+    etags.delete(path); // most recently used goes last
+    etags.set(path, known);
+    return JSON.parse(known.text);
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new GitHubError(
-      `GitHub ${res.status} on ${path.split('?')[0]}: ${data.message ?? res.statusText}`,
-      res.status,
-      data.message ?? res.statusText,
-    );
+    const message = data.message ?? res.statusText;
+    const resetAt = rateLimitReset(res, message);
+    if (resetAt === null)
+      throw new GitHubError(`GitHub ${res.status} on ${path.split('?')[0]}: ${message}`, res.status, message);
+    if (cache) {
+      if (res.headers.get('x-ratelimit-remaining') === '0') {
+        cache.limits ??= {};
+        cache.limits[res.headers.get('x-ratelimit-resource') ?? resource] = { remaining: 0, reset: resetAt };
+      } else cache.pausedUntil = resetAt;
+    }
+    throw limitError(res.headers.get('x-ratelimit-resource') ?? resource, resetAt);
   }
-  return res.status === 204 ? null : res.json();
+  if (res.status === 204) return null;
+  const text = await res.text();
+  const etag = res.headers.get('etag');
+  if (etags && etag) {
+    etags.delete(path);
+    etags.set(path, { etag, text });
+    if (etags.size > ETAG_ENTRIES) etags.delete(etags.keys().next().value);
+  }
+  return text ? JSON.parse(text) : null;
 }
 
 /** A read as the App itself (its JWT): the App, its installations, and its webhook deliveries (Connections). */
@@ -168,8 +294,9 @@ export class GitHubClient {
     return token;
   }
 
+  /** A read on the repository, conditional when GitHub gave the last answer an ETag. */
   async get(path) {
-    return request(`/repos/${this.repo.full}${path}`, await this.token(), { base: this.base });
+    return request(`/repos/${this.repo.full}${path}`, await this.token(), { base: this.base, cache: this.cache });
   }
 
   /** A write (PUT, POST) on the repository; only the owner's buttons call it. */
@@ -178,19 +305,128 @@ export class GitHubClient {
       method,
       base: this.base,
       body: body ?? {},
+      cache: this.cache,
     });
   }
 
-  /** GraphQL, which auto-merge needs (the REST API has no endpoint for it). */
-  async graphql(query, variables) {
+  /**
+   * GraphQL: what auto-merge needs (the REST API has no endpoint for it), and a sync's pull request details.
+   * `accept` is the media type to ask for, when a field once needed a preview's.
+   */
+  async graphql(query, variables, { accept = null } = {}) {
     const data = await request('/graphql', await this.token(), {
       method: 'POST',
       base: this.base,
       body: { query, variables },
+      cache: this.cache,
+      resource: 'graphql',
+      accept,
     });
-    if (data.errors?.length) throw new GitHubError(`GitHub: ${data.errors[0].message}`, 422, data.errors[0].message);
-    return data.data;
+    const [first] = data?.errors ?? [];
+    if (first?.type === 'RATE_LIMITED') {
+      const until = limitedUntil(this.cache, 'graphql') ?? Date.now() + SECONDARY_WAIT_MS;
+      this.cache.limits ??= {};
+      this.cache.limits.graphql = { remaining: 0, reset: until };
+      throw limitError('graphql', until);
+    }
+    if (first) throw new GitHubError(`GitHub: ${first.message}`, 422, first.message);
+    return data?.data;
   }
+
+  /** When `resource` (`core` or `graphql`) can be called again (ms), or null when it can now. */
+  limitedUntil(resource) {
+    return limitedUntil(this.cache, resource);
+  }
+}
+
+// ---- a sync's pull request details in one query (BRK-269) --------------------------------
+
+const DETAILS_FIELDS = `
+  number
+  mergeable
+  mergeStateStatus
+  reviews(first: 100) { nodes { state author { login } } }
+  commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          contexts(first: 100) {
+            nodes {
+              __typename
+              ... on CheckRun { databaseId name status conclusion permalink detailsUrl startedAt }
+              ... on StatusContext { context state targetUrl createdAt }
+            }
+          }
+        }
+      }
+    }
+  }`;
+
+/** `mergeStateStatus` began behind this preview: asking for it costs nothing where it has graduated. */
+export const MERGE_INFO_PREVIEW = 'application/vnd.github.merge-info-preview+json, application/vnd.github+json';
+
+/**
+ * One GraphQL query for the details a sync reads per pull request (checks, reviews, and whether it can merge):
+ * about one point of the GraphQL budget for up to 20 pull requests, where REST spends four calls on each.
+ * @param {number[]} numbers
+ */
+export function pullDetailsQuery(numbers) {
+  const pulls = numbers.map((n) => `pr${Number(n)}: pullRequest(number: ${Number(n)}) { ...details }`).join('\n    ');
+  return `query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    ${pulls}
+  }
+}
+fragment details on PullRequest {${DETAILS_FIELDS}
+}`;
+}
+
+const lower = (value) => (value == null ? null : String(value).toLowerCase());
+
+/**
+ * The query's answer → the same details the REST calls give (rollupChecks, reviewDecision, mergeable, and
+ * mergeable_state), by pull request number. A pull request the answer leaves out isn't in the map, so the
+ * caller reads it over REST. `open` is the numbers of open pull requests: only those carry a merge state.
+ * @param {any} data
+ * @param {Set<number>} open
+ */
+export function detailsFromGraphql(data, open) {
+  /** @type {Map<number, { checks: any, review: any, mergeable: boolean | null, mergeableState: string | null }>} */
+  const details = new Map();
+  for (const pr of Object.values(data?.repository ?? {})) {
+    if (!pr || typeof pr !== 'object' || !Number.isInteger(pr.number)) continue;
+    const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
+    const runs = contexts
+      .filter((c) => c?.__typename === 'CheckRun')
+      .map((c) => ({
+        id: c.databaseId,
+        name: c.name,
+        status: lower(c.status),
+        conclusion: lower(c.conclusion),
+        html_url: c.permalink ?? null,
+        details_url: c.detailsUrl ?? null,
+        started_at: c.startedAt ?? null,
+      }));
+    const statuses = contexts
+      .filter((c) => c?.__typename === 'StatusContext')
+      .map((c) => ({
+        context: c.context,
+        // GraphQL has EXPECTED (a required status that hasn't reported yet): REST shows it as pending.
+        state: c.state === 'EXPECTED' ? 'pending' : lower(c.state),
+        target_url: c.targetUrl ?? null,
+        created_at: c.createdAt ?? null,
+      }));
+    const reviews = (pr.reviews?.nodes ?? []).map((r) => ({ state: r?.state, user: r?.author ?? null }));
+    const isOpen = open.has(pr.number);
+    details.set(pr.number, {
+      checks: rollupChecks(runs, statuses),
+      review: reviewDecision(reviews),
+      mergeable: !isOpen ? null : pr.mergeable === 'MERGEABLE' ? true : pr.mergeable === 'CONFLICTING' ? false : null,
+      // UNKNOWN is GitHub still working it out, which REST says with null.
+      mergeableState: isOpen && pr.mergeStateStatus !== 'UNKNOWN' ? lower(pr.mergeStateStatus) : null,
+    });
+  }
+  return details;
 }
 
 // ---- linking pull requests to tasks ------------------------------------------------------
