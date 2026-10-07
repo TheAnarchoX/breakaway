@@ -121,7 +121,17 @@ Claude Code asks for your board’s address and its token, which it keeps in you
 
 ## Architect
 
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/architect-light.png">
+  <img alt="Agents propose it. You approve it. In three steps: 1, an agent changes staging in a pull request, #41, to staging.json. 2, the plan waits for you: 2 changes, 6.40 dollars more a month, estimated, and it can be undone. 3, you press Approve, and the board applies it and checks its health." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/architect-dark.png" width="100%">
+</picture>
+
 **In the 2.0.0 pre-releases.** The board can run what your repositories run on too: environments, plans you approve, and incidents, in an **Infrastructure** view, pushes, and `npx breakaway infra`. Code still ships through the deploy flow; Architect looks after what exists around it.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/infra-light.png">
+  <img alt="The Infrastructure view, with made-up environments of a repository called widgets on Cloudflare: production is down, 1 of 7 resources, at 24.30 dollars a month inside its 60 dollar budget; staging is healthy, at 13.50 dollars a month inside its 20 dollar budget, and plan-2 waits for you." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/infra-dark.png" width="100%">
+</picture>
 
 - **Changed by pull request.** What should exist is a file per environment in `.github/breakaway-infra/`, started from what already runs. A pull request that changes one shows its plan as a check: what changes, what it costs, what else it touches, and whether it can be undone.
 - **You approve, the board applies.** Every plan waits for you by default, and you approve it from your phone. A workflow in the repository applies it, with its write token in a GitHub environment: the board holds only a read-only token, and agents never apply anything. Bounds you approve once on an environment (an envelope) let it scale and restart inside them.

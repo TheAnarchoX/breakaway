@@ -23,7 +23,7 @@ const DEFAULT = [
   'SECURITY.md',
 ];
 const KINDS = new Set(['.md', '.html', '.js', '.jsx', '.mjs', '.css', '.json']);
-const SKIP = new Set(['node_modules', '.git', 'dist', 'previews', 'logo', 'package-lock.json']);
+const SKIP = new Set(['node_modules', '.git', '.wrangler', 'dist', 'previews', 'logo', 'package-lock.json']);
 
 function walk(path, out) {
   if (!existsSync(path)) return;

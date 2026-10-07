@@ -2,6 +2,7 @@
 // the one that matches the reader's theme. Each is a wide scene drawn from the brand's own tokens, fonts, and logo,
 // with made-up tasks. It also builds the social card (LCH-12), site/public/social.png: the hero at 1280 by 640, carbon only,
 // which the site names as og:image and the owner uploads as the repository's social preview. Run: node readme.mjs [name ...]
+import { readFileSync } from 'node:fs';
 import { logoOnDark, logoOnLight, page, still, withBrowser } from './kit.mjs';
 
 const OUT = new URL('../../docs/media/', import.meta.url);
@@ -78,6 +79,15 @@ html,body{width:${WIDTH}px;height:auto;overflow:hidden}
 .term .dim{color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chips span{font:600 14px var(--font-mono);padding:5px 9px;border-radius:var(--radius-xs);border:1px solid var(--surface-3);color:var(--text)}
+
+/* Architect's social card (LCH-32): the headline beside the plan page on a phone, a screenshot of the real view. */
+.stage.social .arch-social{display:grid;grid-template-columns:1.5fr 1fr;gap:40px;align-items:center;margin:auto 0}
+.arch-social .display{font-size:62px;white-space:nowrap}
+.arch-social .lede{font-size:24px;margin-top:22px;color:var(--muted)}
+.arch-social .lede b{color:var(--text);font-weight:600}
+.phone{justify-self:center;width:300px;height:520px;overflow:hidden;border-radius:28px;border:2px solid var(--surface-3);background:var(--surface)}
+.phone img{display:block;width:100%}
+.approve{display:inline-block;padding:3px 10px;border-radius:var(--radius-xs);background:var(--red);color:var(--on-red);font:700 15px var(--font-mono)}
 `;
 
 const logo = (theme) => (theme === 'dark' ? logoOnDark : logoOnLight);
@@ -101,6 +111,9 @@ const hero = (theme) => `
     </div>
   </div>`;
 
+/** A screenshot from screens.mjs, inlined, so a scene can show the real view. */
+const shot = (name) => `data:image/png;base64,${readFileSync(new URL(`${name}.png`, OUT)).toString('base64')}`;
+
 const SCENES = {
   hero: {
     alt: 'breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it. Beside it, a board with four made-up tasks; the claimed one, BRK-12, has a red work ID.',
@@ -112,6 +125,36 @@ const SCENES = {
     out: new URL('../../site/public/social.png', import.meta.url),
     size: { width: WIDTH, height: 640 },
     html: (theme) => `<div class="stage social">${hero(theme)}</div>`,
+  },
+  architect: {
+    alt: 'Agents propose it. You approve it. In three steps: 1, an agent changes staging in a pull request, #41, to staging.json. 2, the plan waits for you: 2 changes, 6.40 dollars more a month, estimated, and it can be undone. 3, you press Approve, and the board applies it and checks its health.',
+    html: (theme) => `
+<div class="stage">
+  ${top(theme, 'Architect · new in 2.0')}
+  <div class="title">Agents propose it. You approve it.</div>
+  <div class="steps">
+    <div class="step"><span class="n">1</span><h2>An agent changes staging.</h2><p class="proof">PR #41 · staging.json</p></div>
+    <div class="step"><span class="n">2</span><h2>The plan waits for you.</h2><p class="proof">2 changes · +$6.40 a month, est. · can be undone</p></div>
+    <div class="step"><span class="n">3</span><h2>You approve. The board applies it.</h2><p class="proof"><span class="approve">Approve</span> · then a health check</p></div>
+  </div>
+</div>`,
+  },
+  'social-architect': {
+    alt: 'breakaway: Agents propose it. You approve it. The board runs the infrastructure too, and you still decide. Beside it, a plan for staging on a phone, waiting for you, with Approve.',
+    themes: ['dark'],
+    out: new URL('../../site/public/social-architect.png', import.meta.url),
+    size: { width: WIDTH, height: 640 },
+    html: (theme) => `
+<div class="stage social">
+  ${top(theme, 'Architect · new in 2.0')}
+  <div class="arch-social">
+    <div>
+      <h1 class="display">Agents propose it.<br><span class="red">You approve it.</span></h1>
+      <p class="lede">The board runs the infrastructure too, <b>and you still decide.</b></p>
+    </div>
+    <div class="phone"><img src="${shot('plan-dark')}" alt=""></div>
+  </div>
+</div>`,
   },
   how: {
     alt: 'Agents claim the work. You merge it. In three steps: 1, an agent, claude-brk-12, claims the task BRK-12. 2, it opens a pull request that says Closes BRK-12. 3, you merge, and the task is done.',

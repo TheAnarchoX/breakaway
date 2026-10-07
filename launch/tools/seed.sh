@@ -2,6 +2,7 @@
 # Seeds the local acme board with made-up work for the README's screenshots (DOC-7). Nothing here is real.
 # Run it against a local board (README.md in this folder says how), never a real one: it registers a made-up
 # repository, acme/widgets, and fills it with made-up tasks, claims, a done task or two, and a question in the inbox.
+# On the launch board (board.mjs), it seeds Architect too, with architect.mjs.
 set -euo pipefail
 : "${BREAKAWAY_URL:?set BREAKAWAY_URL to the local board, like http://127.0.0.1:8787}" "${BREAKAWAY_TOKEN:?set BREAKAWAY_TOKEN to its token}"
 node "$(dirname "$0")/../../scripts/tasks.mjs" repos add widgets acme/widgets --area app:APP:App --area api:API:API --area docs:DOC:Docs --name widgets
@@ -99,3 +100,11 @@ post '{"agent":"claude-api-5","kind":"in","text":"In."}' > /dev/null
 post '{"agent":"claude-app-6","kind":"note","text":"Inside each kind. A filter that reorders everything reads as broken."}' > /dev/null
 post '{"agent":"claude-app-2","kind":"outcome","text":"Sort inside each kind. APP-6 lands first; I rebase APP-2 on it and keep the sort to src/inbox.js."}' > /dev/null
 echo "Seeded the inbox-filters chase (huddle #$huddle closed)."
+
+# Architect (LCH-32), on the launch board only (board.mjs): staging and production on a made-up Cloudflare account, a
+# plan applied and one waiting for you, production's envelope, and an incident. A plain local board has no provider.
+if curl -s -o /dev/null -w '%{http_code}' -X POST "$BREAKAWAY_URL/__launch/refresh" | grep -q 403; then
+  node launch/tools/architect.mjs
+else
+  echo "No launch board here: skipped Architect (run node launch/tools/board.mjs for it)."
+fi
