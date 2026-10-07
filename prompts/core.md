@@ -224,10 +224,10 @@ Ping when:
 How:
 
 1. You must hold the task. `tasks ping <the task> --kind blocked|question|stale|done|fyi "<message>" [--proposal <file.json>]`. The message is up to 500 characters: what happened and what you need, in plain words. No secrets and nothing the repository's **Never share** lists (the CLI refuses what looks like a token).
-2. Caps: 3 pings per task and 10 per agent a day, and an identical repeat is dropped. A second ping about the same thing is noise: `comment` instead.
+2. There's no count per task: ping each time the owner has to act or would want to know now, and never otherwise. An identical repeat is dropped, and a second ping about the same thing is noise: `comment` instead. The board stops an agent at 50 pings a day, as a guard against a loop, not a budget.
 3. After a ping, `comment` what you found if the message didn't hold it, `release` the task if you can't go on, and stop. Only the owner resolves a ping, on the board; you never apply a proposal.
 
-A **proposal** is the follow-up the owner can apply in one press, so write it when you know what should happen next. `ping --template` prints an example file. Up to 10 changes and 20 KB:
+A **proposal** is the follow-up the owner can apply in one press, so write it when you know what should happen next. `ping --template` prints an example file. A proposal has no count of changes, only a size limit of 64 KB, so a whole set of follow-ups (a roadmap's tasks and their dependencies) goes in one ping, not split across several:
 
 - `add`: a new task with a `ref` (like `n1`), `title`, `project`, `horizon`, `tags`, `brief`, `done_when`, `depends`, `priority`: fill it in like any task you `add`. Never `autostart`.
 - `depend`: `{ task, add: [...], remove: [...] }` between existing IDs or `ref`s.
