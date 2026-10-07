@@ -33,6 +33,7 @@ import {
   widsIn,
 } from './github.js';
 import BOARD_FILES from './board-files.json' with { type: 'json' };
+import { budgetAfterSync, countsOf } from './github-budget.js';
 import { install } from './install.js';
 import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
@@ -270,12 +271,14 @@ export const githubMethods = {
     }
     const results = {};
     for (const repo of repos) {
+      const before = countsOf(this.ghCache[repo.slug]);
       try {
         results[repo.slug] = await this.reconcileRepo(credentials, repo);
       } catch (error) {
         this.setGhMeta('gh_error', repo.slug, error.message);
         results[repo.slug] = { connected: true, error: error.message };
       }
+      this.keepGitHubBudget(repo, before);
     }
     const several = this.repos().length > 1;
     const errors = Object.entries(results)
@@ -283,6 +286,20 @@ export const githubMethods = {
       .map(([slug, r]) => (several ? `${slug}: ${r.error}` : r.error));
     const own = results[this.defaultRepoSlug()] ?? {};
     return { connected: true, ...own, error: errors.length ? errors.join('; ') : own.error, repos: results };
+  },
+
+  /**
+   * What the sync just spent of GitHub's rate limits (BRK-271), in meta so it survives a restart: each budget's
+   * last known state, and the calls and free 304s since `before`, the client's counts when the sync started.
+   */
+  keepGitHubBudget(repo, before) {
+    const previous = JSON.parse(this.ghMeta('gh_rate', repo.slug) ?? 'null');
+    this.setGhMeta('gh_rate', repo.slug, JSON.stringify(budgetAfterSync(previous, this.ghCache[repo.slug], before)));
+  },
+
+  /** A repository's budgets after its last sync, or null before one. */
+  githubBudget(slug) {
+    return JSON.parse(this.ghMeta('gh_rate', slug) ?? 'null');
   },
 
   /** One repository's reconcile: fetch, then store and move its tasks. */
@@ -1273,6 +1290,8 @@ export const githubMethods = {
       branch: repo.defaultBranch || 'main',
       isDefault: repo.slug === fallback,
       lastSync: lastSync ? iso(lastSync) : null,
+      // GitHub's rate limits after the last sync, and what it spent (BRK-271).
+      rate: this.githubBudget(repo.slug),
       error: this.ghMeta('gh_error', repo.slug),
       // No commits yet (CLD-191): a neutral state, with `npx breakaway repos init <slug>` as the next step.
       empty: Boolean(this.ghMeta('gh_empty', repo.slug)),

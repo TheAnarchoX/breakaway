@@ -21,7 +21,7 @@ A pull request **closes** a task when a sentence or line of its title or descrip
 
 ### How it stays current
 
-Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, Dependabot alerts, deployments, and releases schedule a sync 5 seconds later (a burst becomes one). A cron syncs every registered repository every 5 minutes in case one went missing, each on its own, so one repository’s failure or rate limit never stops another. **Sync now** in the GitHub view, or `npx breakaway github --sync`, does it at once.
+Webhooks for pull requests, reviews, checks, workflow runs, statuses, pushes, Dependabot alerts, deployments, and releases schedule a sync 5 seconds later (a burst becomes one). A cron syncs every registered repository every 5 minutes in case one went missing, each on its own, so one repository’s failure or rate limit never stops another. **Sync now** in the GitHub view, or `npx breakaway github --sync`, does it at once. After each sync, the GitHub view and the repository’s sync on Connections show what’s left of GitHub's rate limits (REST and GraphQL), when they reset, and how many calls the last sync made and how many came back free because nothing had changed.
 
 ## The GitHub view
 
