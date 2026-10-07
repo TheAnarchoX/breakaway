@@ -593,6 +593,34 @@ figcaption {
 .shot .shot-light {
   display: none;
 }
+/* The hero film (LCH-38): played on a press; with reduced motion, its poster links to it instead. */
+.film video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.film .film-still {
+  display: none;
+}
+.film-words {
+  margin-top: 8px;
+  color: var(--muted);
+}
+.film-words summary {
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .film video {
+    display: none;
+  }
+  .film .film-still {
+    display: block;
+  }
+}
 .shots {
   display: grid;
   gap: 24px;

@@ -11,7 +11,7 @@ import { install } from '../../../src/install.js';
 import { ProviderRegistry } from '../../../src/infra-provider.js';
 import { DRIFT_EVERY_MS } from '../../../src/infra-drift.js';
 import { commit, gh, pull } from './github.js';
-import { launchProvider, minutesAgo, platformOf, platforms } from './provider.js';
+import { filmPlatformOf, launchProvider, minutesAgo, platformOf, platforms } from './provider.js';
 
 export class TaskStore extends Store {
   constructor(ctx, env) {
@@ -28,9 +28,11 @@ export class TaskStore extends Store {
   async launch(action, body) {
     switch (action) {
       case 'platform': {
-        // An environment's platform, from scratch, or a change to one: health, events, refusals, attributes.
-        const { environment, fresh, health, events, failOn, attrs } = body;
-        if (fresh || !platforms[environment]) platforms[environment] = platformOf(environment, fresh ?? {});
+        // An environment's platform, from scratch (the README's world, or the film's with `film`), or a change to one:
+        // health, events, refusals, attributes.
+        const { environment, fresh, film, health, events, failOn, attrs } = body;
+        if (film) platforms[environment] = filmPlatformOf(environment, film);
+        else if (fresh || !platforms[environment]) platforms[environment] = platformOf(environment, fresh ?? {});
         const p = platforms[environment];
         if (health) Object.assign(p.health, health);
         if (events)
@@ -41,12 +43,14 @@ export class TaskStore extends Store {
         return { resources: p.resources };
       }
       case 'github': {
-        const { files, sha, message, pulls, pullFiles, heads, keys } = body;
+        const { files, sha, message, pulls, pullFiles, heads, keys, checks, deployments } = body;
         if (files) commit(files, sha, message);
         if (pulls) gh.pulls = pulls.map((p) => pull(p.number, p.title, p.sha, p));
         if (pullFiles) Object.assign(gh.pullFiles, pullFiles);
         if (heads) Object.assign(gh.heads, heads);
         if (keys) gh.keys = keys;
+        if (checks) Object.assign(gh.checks, checks);
+        if (deployments) gh.deployments = deployments;
         return { ok: true };
       }
       case 'refresh':
@@ -56,6 +60,10 @@ export class TaskStore extends Store {
       case 'tick':
         await this.infraRunsTick();
         this.sql.exec('UPDATE infra_runs SET next_try = NULL');
+        return { ok: true };
+      case 'shortlived':
+        // The cron's look at short-lived environments (BRK-200): tasks that ask get one, closed ones lose theirs.
+        await this.shortLivedTick();
         return { ok: true };
       case 'signals':
         await this.recordSignals(

@@ -3,8 +3,8 @@
  * Builds the landing page and the docs: site/content (Markdown and one HTML page) into site/public, and copies the
  * install prompt (prompts/install.md) to /install.md, where Claude Code reads it from the site (DOC-8), and writes
  * /llms.txt, /llms-full.txt, and each docs page as Markdown (LCH-10). The Architect page (LCH-33) shows LCH-32's
- * screenshots, so they're copied from docs/media to /media. The landing page's road ahead is site/content/roadmap.json
- * (LCH-39), which scripts/site-roadmap.mjs writes from the board.
+ * screenshots, so they're copied from docs/media to /media, and LCH-38's hero film from launch/media. The landing
+ * page's road ahead is site/content/roadmap.json (LCH-39), which scripts/site-roadmap.mjs writes from the board.
  *   node site/build.mjs           write the pages
  *   node site/build.mjs --check   exit 1 when a written page differs from what the content builds
  * The pages are committed, so deploying the site needs no build step; test/site-pages.test.js runs the check.
@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildLlms, buildPages, MEDIA } from './lib/site.js';
+import { buildLlms, buildPages, FILM, MEDIA } from './lib/site.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +39,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   files.set('install.md', readFileSync(join(here, '../prompts/install.md'), 'utf8'));
   // The screenshots, as LCH-32's kit wrote them: bytes, compared as bytes.
   for (const name of MEDIA) files.set(`media/${name}`, readFileSync(join(here, '../docs/media', name)));
+  // And the hero film with its poster, as LCH-38's kit wrote them, for the Architect page.
+  for (const name of FILM) files.set(`media/${name}`, readFileSync(join(here, '../launch/media', name)));
   const stale = [];
   for (const [path, html] of files) {
     const target = join(here, 'public', path);

@@ -89,6 +89,88 @@ export function platformOf(environment, { render = 2, consumers = 2, worker = 'w
   };
 }
 
+/**
+ * The film's world (LCH-38; launch/2.0.0.md, piece 6): acme/widgets's web app, `widgets-web`, one Worker behind two
+ * custom domains, holding two Durable Objects and a D1 database (scale S). Scale M adds a queue, a container, an R2
+ * bucket, and a KV namespace; staging gets them through a plan, so `scale` here is what runs before it. A short-lived
+ * environment is empty until its plan makes it. Prices are made up, in USD a month: a container's per instance.
+ * @param {string} environment
+ * @param {{ scale?: 's' | 'm' | 'empty', render?: number }} [options]
+ */
+export function filmPlatformOf(environment, { scale = 's', render = 3 } = {}) {
+  const production = environment === 'production';
+  const name = (base) => (production ? base : `${base}-${environment}`);
+  const worker = name('widgets-web');
+  const host = production ? 'widgets.example' : `${environment}.widgets.example`;
+  const prices = { container: 2.4, queue: 0.8, r2: 0.3, kv: 0.5, d1: 0.4, 'durable-object': 0.3, worker: 0.9 };
+  /** @type {any[]} */
+  const resources = [];
+  /** @type {any[]} */
+  const relations = [];
+  const add = (kind, base, attrs = {}, relation = 'uses') => {
+    const id = `${kind}:${kind === 'custom-domain' ? base : name(base)}`;
+    resources.push({ id, kind, name: kind === 'custom-domain' ? base : name(base), attrs });
+    if (kind === 'custom-domain') relations.push({ from: `worker:${worker}`, to: id, kind: 'serves' });
+    else if (kind !== 'worker') relations.push({ from: `worker:${worker}`, to: id, kind: relation });
+  };
+  if (scale !== 'empty') {
+    add('custom-domain', host, { worker, environment: 'production' });
+    add('custom-domain', `www.${host}`, { worker, environment: 'production' });
+    add('worker', 'widgets-web', {
+      compatibilityDate: '2026-09-01',
+      usageModel: 'standard',
+      observability: { enabled: true },
+      placement: null,
+      bindings: ['ROOMS', 'COUNTERS', 'DB'],
+      crons: [],
+    });
+    add('durable-object', 'WidgetRoom');
+    add('durable-object', 'WidgetCounter');
+    add('d1', 'widgets-db');
+  }
+  if (scale === 'm') {
+    add(
+      'queue',
+      'widgets-exports',
+      {
+        deliveryDelay: 0,
+        deliveryPaused: false,
+        retention: 345600,
+        maxConcurrency: 2,
+        consumers: [{ type: 'worker', script: worker }],
+      },
+      'produces',
+    );
+    add('container', 'widgets-render', { maxInstances: render, schedulingPolicy: 'default' });
+    add('r2', 'widgets-files', { cors: null, lifecycle: null });
+    add('kv', 'widgets-cache');
+  }
+  /** @type {Record<string, number>} */
+  const costs = {};
+  for (const r of resources)
+    costs[r.id] =
+      r.kind === 'container'
+        ? prices.container * r.attrs.maxInstances
+        : r.kind === 'custom-domain'
+          ? 0
+          : r.kind === 'worker' && production
+            ? 1.2
+            : (prices[r.kind] ?? 0);
+  return {
+    resources,
+    relations,
+    /** @type {Record<string, string>} */
+    health: {},
+    costs,
+    prices,
+    worker,
+    /** @type {Array<{ resource: string | null, kind: string, level: string, value: number | null, at: string, text: string }>} */
+    events: [],
+    /** @type {Set<string>} */
+    failOn: new Set(),
+  };
+}
+
 /** Every environment's slice, by name. The launch board fills it before the first refresh. */
 export const platforms = /** @type {Record<string, ReturnType<typeof platformOf>>} */ ({});
 
@@ -187,14 +269,27 @@ export const launchProvider = {
         steps.push({ resource: c.resource, op: c.op, ok: false, error: `Cloudflare refused to ${c.op} ${c.name}` });
         return { ok: false, steps };
       }
-      if (c.op === 'create') p.resources.push({ id: c.resource, kind: c.kind, name: c.name, attrs: clone(c.after) });
-      else if (c.op === 'delete') p.resources = p.resources.filter((r) => r.id !== c.resource);
-      else if (c.op !== 'restart')
+      if (c.op === 'create') {
+        p.resources.push({ id: c.resource, kind: c.kind, name: c.name, attrs: clone(c.after) });
+        // What the film's Worker binds: a new resource joins the map behind it, at the slice's price.
+        if (p.worker && c.kind !== 'worker' && p.resources.some((r) => r.id === `worker:${p.worker}`))
+          p.relations.push({
+            from: `worker:${p.worker}`,
+            to: c.resource,
+            kind: c.kind === 'custom-domain' ? 'serves' : c.kind === 'queue' ? 'produces' : 'uses',
+          });
+        if (p.prices && c.kind !== 'container') p.costs[c.resource] = p.prices[c.kind] ?? 0;
+      } else if (c.op === 'delete') {
+        p.resources = p.resources.filter((r) => r.id !== c.resource);
+        p.relations = p.relations.filter((r) => r.from !== c.resource && r.to !== c.resource);
+        delete p.costs[c.resource];
+      } else if (c.op !== 'restart')
         Object.assign(
           p.resources.find((r) => r.id === c.resource),
           { attrs: clone(c.after) },
         );
-      if (c.kind === 'container' && c.after?.maxInstances) p.costs[c.resource] = 3.2 * Number(c.after.maxInstances);
+      if (c.kind === 'container' && c.after?.maxInstances)
+        p.costs[c.resource] = (p.prices?.container ?? 3.2) * Number(c.after.maxInstances);
       steps.push({ resource: c.resource, op: c.op, ok: true });
     }
     return { ok: true, steps };
@@ -211,18 +306,28 @@ export const launchProvider = {
     return p.resources.map((r) => ({ resource: r.id, amount: p.costs[r.id] ?? 0, currency: 'USD', estimate: true }));
   },
 
-  /** A container costs 3.20 a month an instance and a queue's concurrency nothing more; anything else it can't say. */
+  /**
+   * A container costs 3.20 a month an instance (the film's 1.60) and a queue's concurrency nothing more; the film's
+   * world prices a new resource of any kind from its table; anything else it can't say.
+   */
   async estimate(ctx, change) {
     const p = slice(ctx);
     if (change.kind === 'container')
       return {
         resource: change.resource,
-        amount: 3.2 * Number(change.after?.maxInstances ?? 1),
+        amount: (p.prices?.container ?? 3.2) * Number(change.after?.maxInstances ?? 1),
         currency: 'USD',
         estimate: true,
       };
     if (change.kind === 'queue')
-      return { resource: change.resource, amount: p.costs[change.resource] ?? 0.8, currency: 'USD', estimate: true };
+      return {
+        resource: change.resource,
+        amount: p.costs[change.resource] ?? p.prices?.queue ?? 0.8,
+        currency: 'USD',
+        estimate: true,
+      };
+    if (p.prices && change.op === 'create' && change.kind in p.prices)
+      return { resource: change.resource, amount: p.prices[change.kind], currency: 'USD', estimate: true };
     return null;
   },
 
