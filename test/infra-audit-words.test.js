@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { auditActor, auditWords } from '../web/src/lib/infra-audit.js';
+import { auditActor, auditSummary, auditWords, summaryText } from '../web/src/lib/infra-audit.js';
+import { streamItems } from '../web/src/lib/env-stream.js';
 
 // How the environment page and the plan page word an audit entry (WEB-87): one label for what happened, and the
 // outcome only when it adds something.
@@ -84,5 +85,44 @@ describe('auditActor', () => {
     expect(auditActor({ by: 'executor' })).toBe('the executor');
     expect(auditActor({ by: 'agent', agent: 'claude-acme-1' })).toBe('claude-acme-1');
     expect(auditActor({ by: 'agent' })).toBe('an agent');
+  });
+});
+
+// A lock release reads in words, never as its raw holder (WEB-96): the plan the lock was for links to its page.
+describe('auditSummary', () => {
+  const release = (by, outcome, summary, plan = 'plan-1') => ({ kind: 'lock-release', by, outcome, summary, plan });
+
+  it('says the executor released the lock after its plan', () => {
+    const e = release('executor', 'released', 'executor:plan-1 released the lock');
+    expect(auditSummary(e)).toEqual(['The executor released the lock after ', { plan: 'plan-1' }]);
+    expect(auditWords(e)).toEqual({ label: 'Lock released', outcome: '' });
+    expect(auditSummary({ ...e, plan: null })).toEqual(['The executor released the lock']);
+  });
+
+  it('says you released it when the owner forced it', () => {
+    const e = release('owner', 'forced', 'the owner released executor:plan-1’s lock');
+    expect(auditSummary(e)).toEqual(['You released the lock held for ', { plan: 'plan-1' }]);
+    expect(auditSummary({ ...e, plan: null })).toEqual(['You released the lock']);
+  });
+
+  it('says the lock expired when the next take found it unreleased', () => {
+    const e = release('board', 'expired', 'executor:plan-1’s lock expired unreleased; executor:plan-2 took it');
+    expect(auditSummary(e)).toEqual(['The lock held for ', { plan: 'plan-1' }, ' expired']);
+    expect(summaryText(auditSummary({ ...e, plan: null }))).toBe('The lock expired');
+  });
+
+  it('keeps any other entry’s summary as it was recorded', () => {
+    expect(auditSummary({ kind: 'approve', by: 'owner', summary: 'Approved plan-1' })).toEqual(['Approved plan-1']);
+    expect(auditSummary({ kind: 'approve', by: 'owner', summary: null })).toEqual([]);
+  });
+
+  it('never shows the raw holder in the stream', () => {
+    const now = Date.now();
+    const [item] = streamItems({
+      audit: [{ id: 1, at: now, ...release('executor', 'released', 'executor:plan-1 released the lock') }],
+    });
+    expect(item.text).toBe('The executor released the lock after plan-1');
+    expect(item.parts).toEqual(['The executor released the lock after ', { plan: 'plan-1' }]);
+    expect(item.text).not.toContain('executor:plan-1');
   });
 });
