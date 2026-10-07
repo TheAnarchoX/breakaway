@@ -149,9 +149,10 @@ function InventoryTile({ stale, seen }) {
 
 /**
  * `inventory` is whether what the map shows is up to date: the environment's `stale` entry and when the board last saw it.
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null } }} props
+ * `change` is the owner's change from the console (WEB-99), in words, shown on the Plan tile when no plan runs or waits.
+ * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null }, change?: { value: string, detail: string } | null }} props
  */
-export function StatusBand({ env, health, cost, run, agents, inventory = { stale: null, seen: null } }) {
+export function StatusBand({ env, health, cost, run, agents, inventory = { stale: null, seen: null }, change = null }) {
   const live = env.deploys?.live ?? null;
   const planLink = (/** @type {string} */ plan) =>
     hashFor({ view: 'infrastructure', environment: String(env.id), plan, task: null });
@@ -229,6 +230,8 @@ export function StatusBand({ env, health, cost, run, agents, inventory = { stale
             }
             detailTitle={`${env.waitingPlan} waits for you`}
           />
+        ) : change ? (
+          <Tile label="Plan" Icon={FileDiff} tone="waiting" value={change.value} detail={change.detail} />
         ) : env.observeOnly ? (
           <Tile label="Plan" Icon={FileDiff} value="Never" muted detail="Observe only" />
         ) : (
