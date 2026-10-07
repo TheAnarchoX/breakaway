@@ -36,6 +36,7 @@ import {
   writeEdits,
 } from '../lib/infra-change.js';
 import { PLAN_STATE, amount, settingChanges } from '../views/PlanView.jsx';
+import { mergeEffect } from './PullPage.jsx';
 
 /**
  * Plan from the console (WEB-99; docs/specs/BRK-258-plan-from-the-board.md): the owner changes an environment where
@@ -957,9 +958,14 @@ function ChangeCard({ ch }) {
     : null;
 
   const approve = async () => {
+    // Approve merges into the default branch: when the repository's pipeline deploys on merge, say so, as Merge does.
+    const page = change.pull
+      ? await api(`github/pulls/${enc(change.pull.number)}?repo=${enc(change.repo)}`).catch(() => null)
+      : null;
+    const deploys = page && page.deploys ? mergeEffect(page) : null;
     const ok = await confirmDialog({
       title: `Approve this plan for ${env.name}?`,
-      body: `The board merges its pull request, applies the plan, and rolls back if the health check fails.`,
+      body: `The board merges its pull request, applies the plan, and rolls back if the health check fails.${deploys ? ` ${deploys}` : ''}`,
       confirmLabel: 'Approve',
     });
     if (!ok) return;
