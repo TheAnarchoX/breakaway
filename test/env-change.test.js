@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bindChoice,
+  bindingChoices,
+  boundChoice,
   CHANGE_MAX_EDITS,
   agentPrompt,
   bindingFor,
@@ -339,6 +342,70 @@ describe('the change in words', () => {
     ]);
     expect(prompt).toContain('.github/breakaway-infra/staging.json in acme/widgets');
     expect(prompt).toContain('- ~ acme-api: usage model standard → bundled');
+  });
+});
+
+describe('what a binding binds (BRK-285)', () => {
+  const D1 = { type: 'd1', label: 'D1 database', kind: 'd1', field: 'id', by: /** @type {const} */ ('id') };
+  const R2 = {
+    type: 'r2_bucket',
+    label: 'R2 bucket',
+    kind: 'r2',
+    field: 'bucket_name',
+    by: /** @type {const} */ ('name'),
+  };
+  const declared = [
+    { id: 'd1:acme-db', kind: 'd1', name: 'acme-db' },
+    { id: 'd1:acme-db-2', kind: 'd1', name: 'acme-db-2' },
+    { id: 'r2:acme-media', kind: 'r2', name: 'acme-media' },
+  ];
+  const running = [{ id: 'd1:0000-acme-uuid', kind: 'd1', name: 'acme-db' }];
+
+  it('binds one that runs by its platform ID, one still to be made by its ID in the file, and a bucket by name', () => {
+    expect(bindingChoices(D1, declared, running)).toEqual([
+      { key: 'd1:acme-db', label: 'acme-db', binds: { id: '0000-acme-uuid' } },
+      { key: 'd1:acme-db-2', label: 'acme-db-2', binds: { resource: 'd1:acme-db-2' } },
+    ]);
+    expect(bindingChoices(R2, declared, running)).toEqual([
+      { key: 'r2:acme-media', label: 'acme-media', binds: { bucket_name: 'acme-media' } },
+    ]);
+  });
+
+  it('reads either shape back, keeps what no choice is, and reads a binding with no target from what runs', () => {
+    const choices = bindingChoices(D1, declared, running);
+    expect(boundChoice(D1, { name: 'DB', type: 'd1', id: '0000-acme-uuid' }, choices)).toEqual({
+      key: 'd1:acme-db',
+      other: null,
+      kept: false,
+    });
+    expect(boundChoice(D1, { name: 'DB', type: 'd1', resource: 'd1:acme-db-2' }, choices).key).toBe('d1:acme-db-2');
+    expect(boundChoice(D1, { name: 'DB', type: 'd1', id: 'elsewhere' }, choices)).toEqual({
+      key: null,
+      other: 'elsewhere',
+      kept: false,
+    });
+    const live = [{ name: 'DB', type: 'd1', id: '0000-acme-uuid' }];
+    expect(boundChoice(D1, { name: 'DB', type: 'd1' }, choices, live)).toEqual({
+      key: 'd1:acme-db',
+      other: null,
+      kept: true,
+    });
+    expect(boundChoice(D1, { name: 'DB', type: 'd1' }, choices)).toEqual({ key: null, other: null, kept: true });
+  });
+
+  it('a pick replaces what it bound, and a new row needs one', () => {
+    const [, later] = bindingChoices(D1, declared, running);
+    expect(bindChoice(D1, { name: 'DB', type: 'd1', id: '0000-acme-uuid' }, later)).toEqual({
+      name: 'DB',
+      type: 'd1',
+      resource: 'd1:acme-db-2',
+    });
+    const field = { path: 'bindings', label: 'Bindings', type: 'bindings', help: '', targets: [D1] };
+    expect(fieldProblem(field, [bindChoice(D1, { name: 'DB', type: 'd1' }, null)])).toBe(
+      'Pick the d1 database DB binds.',
+    );
+    expect(fieldProblem(field, [{ name: 'DB', type: 'd1' }])).toBeNull();
+    expect(fieldProblem(field, [{ name: 'DB', type: 'd1', resource: 'd1:acme-db-2' }])).toBeNull();
   });
 });
 

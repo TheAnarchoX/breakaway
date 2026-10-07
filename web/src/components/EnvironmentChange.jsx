@@ -21,7 +21,10 @@ import {
   CARD,
   PREVIEW_DELAY_MS,
   agentPrompt,
+  bindChoice,
+  bindingChoices,
   bindingFor,
+  boundChoice,
   cardState,
   changePlanId,
   changeShows,
@@ -120,10 +123,11 @@ const sentence = (/** @type {string} */ text) => text.charAt(0).toUpperCase() + 
  * being changed or the Add resource picker, what the provider lets the console change and create, and the change the
  * board holds.
  * @param {any} env
- * @param {{ desired: any, tick: number, plans: any[], seen?: number }} options `seen` is how many resources the board
- *   sees running: an environment with none and no file has no draft to propose until something is added
+ * @param {{ desired: any, tick: number, plans: any[], running?: any[] }} options `running` is what the board sees
+ *   running: an environment with none and no file has no draft to propose until something is added
  */
-export function useChange(env, { desired, tick, plans, seen = 1 }) {
+export function useChange(env, { desired, tick, plans, running = [] }) {
+  const seen = running.length;
   const id = env?.id;
   const [edits, setEdits] = useState(/** @type {import('../lib/infra-change.js').Edit[]} */ ([]));
   const [editing, setEditing] = useState(/** @type {string | null} */ (null));
@@ -289,6 +293,7 @@ export function useChange(env, { desired, tick, plans, seen = 1 }) {
     env,
     edits,
     declared,
+    running,
     fromDraft,
     editable,
     creatable,
@@ -539,13 +544,14 @@ function FieldInput({ field, value, onChange, id, resources, problem = null }) {
 
 /**
  * A Worker's bindings: each one the provider lets the console change, by its name and what it binds; any other (a
- * variable, a secret) by its name and type, kept as it is.
- * @param {{ field: import('../lib/infra-change.js').EditableField, value: any, onChange: (v: any[]) => void, id: string, resources: any[], problem: string | null }} props
+ * variable, a secret) by its name and type, kept as it is. What each binds is read back as the plan reads it (BRK-285):
+ * Cloudflare's own field, a resource the plan still makes, or, for one the file gives without a target, what runs.
+ * @param {{ field: import('../lib/infra-change.js').EditableField, value: any, onChange: (v: any[]) => void, id: string, resources: any[], running?: any[], live?: unknown, problem: string | null }} props
  */
-function BindingsInput({ field, value, onChange, id, resources, problem }) {
+function BindingsInput({ field, value, onChange, id, resources, running = [], live = [], problem }) {
   const targets = field.targets ?? [];
-  const set = (/** @type {number} */ n, /** @type {Record<string, any>} */ patch) =>
-    onChange(value.map((b, i) => (i === n ? { ...b, ...patch } : b)));
+  const put = (/** @type {number} */ n, /** @type {Record<string, any>} */ b) =>
+    onChange(value.map((x, i) => (i === n ? b : x)));
   return (
     <fieldset class="field change-field change-group" aria-describedby={`${id}-help`}>
       <legend class="field-label">{field.label}</legend>
@@ -562,14 +568,23 @@ function BindingsInput({ field, value, onChange, id, resources, problem }) {
                 <span class="meta">{b.type}, kept as it is</span>
               </li>
             );
-          const choices = resources.filter((r) => r.kind === target.kind);
+          const choices = bindingChoices(target, resources, running);
+          const now = boundChoice(target, b, choices, live);
           return (
             <li key={n} class="change-row">
               <input
                 class="input input-sm"
                 aria-label={`Binding ${n + 1}: name`}
                 value={b.name ?? ''}
-                onInput={(e) => set(n, { name: /** @type {HTMLInputElement} */ (e.currentTarget).value })}
+                onInput={(e) => {
+                  const name = /** @type {HTMLInputElement} */ (e.currentTarget).value;
+                  // A binding that keeps what it binds now is found by its name: renamed, it says what it binds.
+                  if (!now.kept) put(n, { ...b, name });
+                  else {
+                    const c = choices.find((x) => x.key === now.key) ?? null;
+                    put(n, { ...bindChoice(target, b, c), name });
+                  }
+                }}
                 spellcheck={false}
               />
               <select
@@ -578,10 +593,7 @@ function BindingsInput({ field, value, onChange, id, resources, problem }) {
                 value={b.type}
                 onChange={(e) => {
                   const t = targets.find((x) => x.type === /** @type {HTMLSelectElement} */ (e.currentTarget).value);
-                  if (t) {
-                    const { [target.field]: _old, ...rest } = b;
-                    onChange(value.map((x, i) => (i === n ? { ...rest, type: t.type, [t.field]: '' } : x)));
-                  }
+                  if (t) put(n, bindChoice(t, { name: b.name, type: t.type }, null));
                 }}
               >
                 {targets.map((t) => (
@@ -593,16 +605,20 @@ function BindingsInput({ field, value, onChange, id, resources, problem }) {
               <select
                 class="select input-sm"
                 aria-label={`Binding ${n + 1}: which ${target.label.toLowerCase()}`}
-                value={b[target.field] ?? ''}
-                onChange={(e) => set(n, { [target.field]: /** @type {HTMLSelectElement} */ (e.currentTarget).value })}
+                value={now.key ?? (now.other !== null ? OTHER : '')}
+                onChange={(e) => {
+                  const key = /** @type {HTMLSelectElement} */ (e.currentTarget).value;
+                  if (key === OTHER) return;
+                  put(n, bindChoice(target, b, choices.find((x) => x.key === key) ?? null));
+                }}
               >
-                <option value="">Pick one</option>
-                {b[target.field] && !choices.some((r) => (target.by === 'id' ? r.id : r.name) === b[target.field]) && (
-                  <option value={b[target.field]}>{b[target.field]}</option>
-                )}
-                {choices.map((r) => (
-                  <option key={r.id} value={target.by === 'id' ? r.id : r.name}>
-                    {r.name}
+                <option value="">
+                  {now.kept && now.key === null && now.other === null ? 'As it runs now' : 'Pick one'}
+                </option>
+                {now.other !== null && <option value={OTHER}>{now.other}</option>}
+                {choices.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -622,7 +638,7 @@ function BindingsInput({ field, value, onChange, id, resources, problem }) {
         <button
           type="button"
           class="btn btn-quiet btn-sm"
-          onClick={() => onChange([...value, { name: '', type: targets[0].type, [targets[0].field]: '' }])}
+          onClick={() => onChange([...value, bindChoice(targets[0], { name: '', type: targets[0].type }, null)])}
         >
           <Plus size={14} aria-hidden="true" />
           Add a binding
@@ -632,6 +648,17 @@ function BindingsInput({ field, value, onChange, id, resources, problem }) {
     </fieldset>
   );
 }
+/** A resource's settings as an object, however the inventory sent them. */
+const attrsOf = (/** @type {any} */ r) => {
+  if (typeof r?.attrs !== 'string') return r?.attrs ?? {};
+  try {
+    return JSON.parse(r.attrs);
+  } catch {
+    return {};
+  }
+};
+/** The option for what a binding names that isn't among the file's resources: kept until another is picked. */
+const OTHER = '\u0000other';
 
 /**
  * A list of rules (a bucket's CORS or lifecycle): each with the fields the provider offers, every other key kept; a
@@ -707,6 +734,8 @@ function SettingsForm({ ch }) {
   // Its name, where the provider lets the console change it (a route's pattern), with any rename this change has.
   const [name, setName] = useState(() => (d ? nameAfter(ch.edits, d) : ''));
   const [error, setError] = useState(/** @type {string | null} */ (null));
+  // What runs for it, so a binding the file gives without a target shows what it binds now (BRK-285).
+  const runs = d ? declaredFor(ch.running, d) : null;
   const first = useRef(/** @type {HTMLHeadingElement | null} */ (null));
   useEffect(() => {
     setForm(start());
@@ -776,7 +805,8 @@ function SettingsForm({ ch }) {
           problem: problems[f.path],
           onChange: (/** @type {any} */ v) => setForm((s) => ({ ...s, [f.path]: v })),
         };
-        if (f.type === 'bindings') return <BindingsInput key={f.path} {...props} />;
+        if (f.type === 'bindings')
+          return <BindingsInput key={f.path} {...props} running={ch.running} live={getPath(attrsOf(runs), f.path)} />;
         if (f.type === 'rules') return <RulesInput key={f.path} {...props} />;
         return <FieldInput key={f.path} {...props} />;
       })}
@@ -1022,7 +1052,7 @@ function CreateForm({ ch, kindId, kind, onBack }) {
             setError(null);
           },
         };
-        if (f.type === 'bindings') return <BindingsInput key={f.path} {...props} />;
+        if (f.type === 'bindings') return <BindingsInput key={f.path} {...props} running={ch.running} />;
         if (f.type === 'rules') return <RulesInput key={f.path} {...props} />;
         return <FieldInput key={f.path} {...props} />;
       })}

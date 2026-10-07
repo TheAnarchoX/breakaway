@@ -199,8 +199,14 @@ describe('Cloudflare’s creatable kinds (BRK-270)', () => {
   });
 
   it('binds a database, namespace, bucket, and queue to a Worker, required, and a Worker by its name', () => {
-    for (const k of ['d1', 'kv', 'r2', 'queue'])
-      expect(kinds[k].bind).toMatchObject({ kind: 'worker', list: 'bindings', required: true, target: { by: 'id' } });
+    // In Cloudflare's own field, the one the plan compares (BRK-285): a database and a namespace by ID, the rest by name.
+    for (const [k, field, by] of [
+      ['d1', 'id', 'id'],
+      ['kv', 'namespace_id', 'id'],
+      ['r2', 'bucket_name', 'name'],
+      ['queue', 'queue_name', 'name'],
+    ])
+      expect(kinds[k].bind).toMatchObject({ kind: 'worker', list: 'bindings', required: true, target: { field, by } });
     expect(kinds.worker.bind).toEqual({
       kind: 'worker',
       list: 'bindings',

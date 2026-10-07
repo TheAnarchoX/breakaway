@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { cloudflare, rid } from '../src/infra-cloudflare.js';
+import { EDITABLE, cloudflare, rid } from '../src/infra-cloudflare.js';
+import { draftDesired } from '../src/infra-adopt.js';
+import { bindingChanges } from '../src/infra-setting-words.js';
+import {
+  bindChoice,
+  bindingChoices,
+  boundChoice,
+  fieldProblem,
+  formValue,
+  settingEdits,
+} from '../web/src/lib/infra-change.js';
 import {
   MANAGED,
   PlanRefused,
@@ -762,6 +772,122 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     );
     expect(counter.problems).toEqual([]);
     await expect(plan(ctxFor(account()), counter.file)).rejects.toThrow(/made by a migration in its Worker’s code/u);
+  });
+
+  it('reads a drafted Worker’s bindings back in the console: unchanged plans nothing, one change plans that binding (BRK-285)', async () => {
+    const fetch = account();
+    // The bindings a real Worker carries besides its resources: kept as they are, never compared or changed.
+    fetch.answers[`${a}/workers/scripts/acme-api/settings`].result.bindings.push(
+      { type: 'assets', name: 'ASSETS' },
+      { type: 'version_metadata', name: 'CF_VERSION' },
+      { type: 'images', name: 'IMAGES' },
+    );
+    const found = await cloudflare.discover(ctxFor(fetch));
+    // The inventory keeps what each binding binds by ID or name, and never a variable's text.
+    expect(JSON.stringify(found.resources)).not.toMatch(/hello-from-acme-vars|acme-json-config-value/u);
+    const draft = draftDesired({
+      environment: { name: 'production', provider: 'cloudflare' },
+      resources: found.resources,
+      provider: cloudflare,
+    });
+    const desired = JSON.parse(draft.json);
+    const api = desired.resources.find((r) => r.id === W('acme-api'));
+    expect(api.attrs.bindings).toContainEqual({ name: 'DB', type: 'd1', id: D1_ID });
+    expect(api.attrs.bindings).toContainEqual({ name: 'FILES', type: 'r2_bucket', bucket_name: 'acme-files' });
+    expect(api.attrs.bindings).toContainEqual({ name: 'ASSETS', type: 'assets' });
+    expect(checkPlan(cloudflare, await plan(ctxFor(fetch), desired)).changes).toEqual([]);
+
+    // Opened in Change, each binding shows the resource it binds, with no problem.
+    const field = EDITABLE.worker.fields.find((f) => f.path === 'bindings');
+    const targets = field?.targets ?? [];
+    const running = found.resources.map(({ id, kind, name }) => ({ id, kind, name }));
+    const form = { bindings: formValue(field, api.attrs.bindings) };
+    const shown = (name) => {
+      const b = form.bindings.find((x) => x.name === name);
+      const t = targets.find((x) => x.type === b.type);
+      return boundChoice(t, b, bindingChoices(t, desired.resources, running)).key;
+    };
+    expect(shown('DB')).toBe(`d1:${D1_ID}`);
+    expect(shown('FILES')).toBe('r2:acme-files');
+    expect(shown('CACHE')).toBe(`kv:${KV_CACHE}`);
+    expect(shown('JOBS')).toBe(`queue:${QUEUE_JOBS}`);
+    expect(shown('AUTH')).toBe(W('acme-auth'));
+    expect(fieldProblem(field, form.bindings)).toBeNull();
+    // Saved with no edits, it adds nothing to the change.
+    expect(settingEdits(api, [field], form)).toEqual([]);
+
+    // Rebinding CACHE to the other namespace plans that binding alone.
+    const kv = targets.find((t) => t.type === 'kv_namespace');
+    const sessions = bindingChoices(kv, desired.resources, running).find((c) => c.key === `kv:${KV_SESSIONS}`) ?? null;
+    const rebound = form.bindings.map((b) => (b.name === 'CACHE' ? bindChoice(kv, b, sessions) : b));
+    const edits = settingEdits(api, [field], { bindings: rebound });
+    expect(edits).toHaveLength(1);
+    const { file } = applyEdits({ file: desired, edits, templates: new Map(), environment: 'production' });
+    const p = checkPlan(cloudflare, await plan(ctxFor(fetch), file));
+    expect(p.changes.map((c) => `${c.op} ${c.resource}`)).toEqual([`update ${W('acme-api')}`]);
+    expect(bindingChanges(p.changes[0].before.bindings, p.changes[0].after.bindings)).toMatchObject({
+      added: [],
+      removed: [],
+      changed: ['~ CACHE (kv namespace)'],
+    });
+    expect(p.changes[0].after.bindings).toContainEqual({
+      name: 'CACHE',
+      type: 'kv_namespace',
+      namespace_id: KV_SESSIONS,
+    });
+
+    // A file written before the inventory kept targets ({ name, type }) still opens with what runs, and still plans nothing.
+    const old = structuredClone(desired);
+    const oldApi = old.resources.find((r) => r.id === W('acme-api'));
+    oldApi.attrs.bindings = oldApi.attrs.bindings.map(({ name, type }) => ({ name, type }));
+    expect(checkPlan(cloudflare, await plan(ctxFor(fetch), old)).changes).toEqual([]);
+    const d1 = targets.find((t) => t.type === 'd1');
+    const live = found.resources.find((r) => r.id === W('acme-api'))?.attrs?.bindings;
+    expect(boundChoice(d1, { name: 'DB', type: 'd1' }, bindingChoices(d1, old.resources, running), live)).toEqual({
+      key: `d1:${D1_ID}`,
+      other: null,
+      kept: true,
+    });
+    expect(fieldProblem(field, formValue(field, oldApi.attrs.bindings))).toBeNull();
+    expect(settingEdits(oldApi, [field], { bindings: formValue(field, oldApi.attrs.bindings) })).toEqual([]);
+  });
+
+  it('binds what create adds in the shape the console reads back: a D1 by its ID in the file until it runs (BRK-285)', async () => {
+    const fetch = account();
+    fetch.answers[`${a}/d1/database?name=acme-db-2&page=1&per_page=100`] = ok([]);
+    const kinds = creatableKinds(cloudflare);
+    const { file, problems } = applyEdits({
+      file: await current(fetch),
+      edits: [
+        { op: 'create', kind: 'd1', name: 'acme-db-2', attrs: {}, bindTo: { worker: 'acme-api', binding: 'DB2' } },
+        {
+          op: 'create',
+          kind: 'r2',
+          name: 'acme-files-2',
+          attrs: {},
+          bindTo: { worker: 'acme-api', binding: 'ARCHIVE' },
+        },
+      ],
+      templates: new Map(),
+      environment: 'production',
+      creatable: (kind) => kinds[kind] ?? null,
+    });
+    expect(problems).toEqual([]);
+    const bindings = file.resources.find((r) => r.id === W('acme-api')).attrs.bindings;
+    expect(bindings).toContainEqual({ name: 'DB2', type: 'd1', resource: 'd1:acme-db-2' });
+    expect(bindings).toContainEqual({ name: 'ARCHIVE', type: 'r2_bucket', bucket_name: 'acme-files-2' });
+    const field = EDITABLE.worker.fields.find((f) => f.path === 'bindings');
+    const running = (await cloudflare.discover(ctxFor(fetch))).resources;
+    for (const [name, key] of [
+      ['DB2', 'd1:acme-db-2'],
+      ['ARCHIVE', 'r2:acme-files-2'],
+    ]) {
+      const b = bindings.find((x) => x.name === name);
+      const t = field?.targets?.find((x) => x.type === b.type);
+      expect(boundChoice(t, b, bindingChoices(t, file.resources, running)).key).toBe(key);
+    }
+    const p = checkPlan(cloudflare, await plan(ctxFor(fetch), file));
+    expect(p.changes.map((c) => `${c.op} ${c.kind}`).sort()).toEqual(['create d1', 'create r2', 'update worker']);
   });
 
   it('rolls a Worker back with a deployment of its earlier versions, forced only when asked', async () => {
