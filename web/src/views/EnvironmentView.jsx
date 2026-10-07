@@ -15,6 +15,7 @@ import { StatusBand } from '../components/EnvironmentStatus.jsx';
 import { Topology } from '../components/EnvironmentTopology.jsx';
 import { StreamRail } from '../components/EnvironmentStream.jsx';
 import { EnvironmentActions } from '../components/EnvironmentActions.jsx';
+import { Timeline } from '../components/EnvironmentTimeline.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 
 /**
@@ -22,8 +23,10 @@ import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
  * (WEB-94; docs/specs/WEB-94-environment-console.md): a status band (health, freeze, what's live, the plan waiting, the
  * budget, the agents at work), its resources as a map or a list (BRK-177's inventory, with drift from BRK-184 and a
  * waiting plan's changes on the nodes), and a stream of what happens there (signals, runs, incidents, and the audit
- * trail, BRK-175), all kept live by polling the routes it reads. Under them, a panel each: deploys (WEB-88), plans
+ * trail, BRK-175), all kept live by polling the routes it reads, with a panel each for deploys (WEB-88), plans
  * (WEB-62), incidents (WEB-63), nobody owns, cost (WEB-65), and the desired state with Describe it as code (WEB-92).
+ * On a wide screen it fills the window (WEB-97): its state on the left, the map in the middle with recent deploys and
+ * incidents under it, and the stream on the right, each scrolling on its own; narrower, it stacks, map first.
  */
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
@@ -343,92 +346,106 @@ export function EnvironmentView() {
   };
   return (
     <div class="infra-view infra-page console">
-      {back}
-      <div class="conn-top">
-        <div class="view-intro">
-          <div class="infra-env-head">
-            <h1>{env.name}</h1>
-            <span class="infra-kind">{KIND_LABEL[env.kind] ?? env.kind}</span>
-          </div>
-          <p class="meta infra-env-where">
-            {repoName(env.repo)}
-            {' · '}
-            {env.provider ?? 'No provider'}
-            {env.target ? (
-              <>
+      <div class="console-frame">
+        <div class="console-top">
+          {back}
+          <div class="conn-top">
+            <div class="view-intro">
+              <div class="infra-env-head">
+                <h1>{env.name}</h1>
+                <span class="infra-kind">{KIND_LABEL[env.kind] ?? env.kind}</span>
+              </div>
+              <p class="meta infra-env-where">
+                {repoName(env.repo)}
                 {' · '}
-                <code>{env.target}</code>
-              </>
-            ) : (
-              ' · no target yet'
-            )}
-            {env.task && (
-              <>
-                {' · for '}
-                <a href={hashFor({ task: env.task.wid ?? env.task.uuid })}>{env.task.wid ?? env.task.description}</a>
-              </>
-            )}
-          </p>
+                {env.provider ?? 'No provider'}
+                {env.target ? (
+                  <>
+                    {' · '}
+                    <code>{env.target}</code>
+                  </>
+                ) : (
+                  ' · no target yet'
+                )}
+                {env.task && (
+                  <>
+                    {' · for '}
+                    <a href={hashFor({ task: env.task.wid ?? env.task.uuid })}>
+                      {env.task.wid ?? env.task.description}
+                    </a>
+                  </>
+                )}
+              </p>
+            </div>
+            <div class="conn-buttons">
+              {env.provider && env.target && <InventoryRefresh provider={env.provider} onDone={() => load()} />}
+              <button
+                type="button"
+                class="btn btn-quiet btn-sm"
+                onClick={() => load()}
+                disabled={state.loading}
+                aria-busy={state.loading}
+              >
+                <RefreshCw size={16} aria-hidden="true" class={state.loading ? 'spin' : ''} />
+                Reload
+              </button>
+              <FreezeButton env={env} onChange={(updated) => setState((s) => ({ ...s, env: updated }))} />
+            </div>
+          </div>
         </div>
-        <div class="conn-buttons">
-          {env.provider && env.target && <InventoryRefresh provider={env.provider} onDone={() => load()} />}
-          <button
-            type="button"
-            class="btn btn-quiet btn-sm"
-            onClick={() => load()}
-            disabled={state.loading}
-            aria-busy={state.loading}
-          >
-            <RefreshCw size={16} aria-hidden="true" class={state.loading ? 'spin' : ''} />
-            Reload
-          </button>
-          <FreezeButton env={env} onChange={(updated) => setState((s) => ({ ...s, env: updated }))} />
+
+        <div class="console-grid">
+          <div class="console-centre">
+            <Topology
+              env={env}
+              resources={state.resources}
+              relations={state.relations}
+              plan={state.plan}
+              drift={state.drift}
+              signals={state.signals}
+              mode={mode}
+              onMode={setMode}
+            />
+            <Timeline env={env} incidents={state.incidents} />
+          </div>
+
+          <aside class="console-side console-state" aria-label={`${env.name}’s state`}>
+            <StatusBand
+              env={env}
+              health={health}
+              cost={state.cost}
+              run={run}
+              agents={agents}
+              actions={
+                <EnvironmentActions
+                  env={env}
+                  drift={state.drift}
+                  tick={state.tick}
+                  onChange={() => load({ quiet: true })}
+                />
+              }
+            />
+            <EnvironmentPlans env={env} tick={state.tick} />
+            <DeploysSection env={env} />
+            <IncidentsSection env={env} tick={state.tick} />
+            <Drift env={env} desired={state.desired} error={state.desiredError} />
+            <CostSection env={env} tick={state.tick} />
+            <UnownedSection env={env} />
+          </aside>
+
+          <StreamRail
+            items={items}
+            fresh={fresh}
+            env={env}
+            nameOf={(rid) => names.get(rid) ?? rid}
+            onResource={showResource}
+            more={olderMore ?? state.more}
+            older={olderBusy}
+            onOlder={loadOlder}
+            updated={state.updated}
+            error={state.error}
+          />
         </div>
-      </div>
-
-      <StatusBand
-        env={env}
-        health={health}
-        cost={state.cost}
-        run={run}
-        agents={agents}
-        actions={
-          <EnvironmentActions env={env} drift={state.drift} tick={state.tick} onChange={() => load({ quiet: true })} />
-        }
-      />
-
-      <div class="console-grid">
-        <Topology
-          env={env}
-          resources={state.resources}
-          relations={state.relations}
-          plan={state.plan}
-          drift={state.drift}
-          signals={state.signals}
-          mode={mode}
-          onMode={setMode}
-        />
-        <StreamRail
-          items={items}
-          fresh={fresh}
-          env={env}
-          nameOf={(rid) => names.get(rid) ?? rid}
-          onResource={showResource}
-          more={olderMore ?? state.more}
-          older={olderBusy}
-          onOlder={loadOlder}
-          updated={state.updated}
-          error={state.error}
-        />
-      </div>
-
-      <div class="console-panels">
-        <DeploysSection env={env} />
-        <EnvironmentPlans env={env} tick={state.tick} />
-        <IncidentsSection env={env} tick={state.tick} />
-        <UnownedSection env={env} />
-        <CostSection env={env} tick={state.tick} />
-        <Drift env={env} desired={state.desired} error={state.desiredError} />
       </div>
     </div>
   );

@@ -12,13 +12,16 @@ import {
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { hashFor } from '../lib/store.js';
+import { STREAM_KINDS, STREAM_LEVELS, filterStream, groupStream } from '../lib/env-stream.js';
 import { AuditSummary } from './AuditSummary.jsx';
+import { AccountAlerts } from './AccountAlerts.jsx';
 
 /**
  * An environment's stream (WEB-94; docs/specs/WEB-94-environment-console.md): signals, plan moves, runs and their
  * steps, agents' and envelopes' acts, and every audit entry, newest first, each linking to its source. The console
  * polls; what's new since the last poll slides in from the left. The audit trail pages back with Show older, so every
- * entry WEB-61's Recent changes showed is still here.
+ * entry WEB-61's Recent changes showed is still here. An alert that repeats folds into one row with a count and when
+ * it was last seen, and the stream filters by kind and level (WEB-97).
  */
 
 /** Entries a phone shows before Show more. */
@@ -41,6 +44,7 @@ function Icon({ item }) {
  */
 function Entry({ item, fresh, env, nameOf, onResource }) {
   const iso = new Date(item.at).toISOString();
+  const repeats = (item.count ?? 1) > 1;
   // A summary that already links its plan (WEB-96) doesn't link it again.
   const planLink =
     item.plan && !item.parts?.some((p) => typeof p !== 'string')
@@ -58,7 +62,13 @@ function Entry({ item, fresh, env, nameOf, onResource }) {
           <span class="stream-label">{item.label}</span>
           {item.outcome && item.outcome !== 'now' && <span class="stream-outcome">{item.outcome}</span>}
           {item.live && <span class="stream-outcome stream-now">now</span>}
+          {repeats && (
+            <span class="stream-count" title={`${item.count} times`}>
+              ×{item.count}
+            </span>
+          )}
           <span class="meta stream-when">
+            {repeats && 'last '}
             <time dateTime={iso} title={new Date(item.at).toLocaleString()}>
               {ago(iso)}
             </time>
@@ -71,6 +81,13 @@ function Entry({ item, fresh, env, nameOf, onResource }) {
         )}
         <p class="meta stream-from">
           {item.who && <>By {item.who}</>}
+          {repeats && item.firstAt && (
+            <>
+              {item.who ? ' · ' : ''}
+              {'first '}
+              <time dateTime={new Date(item.firstAt).toISOString()}>{ago(new Date(item.firstAt).toISOString())}</time>
+            </>
+          )}
           {item.resource && (
             <>
               {item.who ? ' · ' : ''}
@@ -104,12 +121,16 @@ function Entry({ item, fresh, env, nameOf, onResource }) {
 }
 
 /**
- * @param {{ items: import('../lib/env-stream.js').StreamItem[], fresh: Set<string>, env: { id: number }, nameOf: (id: string) => string, onResource: (id: string) => void, more: boolean, older: boolean, onOlder: () => void, updated: number | null, error: string | null }} props
+ * The provider's account-wide alerts (BRK-255) sit at the top as one collapsed row, kept once, not in the stream.
+ * @param {{ items: import('../lib/env-stream.js').StreamItem[], fresh: Set<string>, env: { id: number, provider?: string | null }, nameOf: (id: string) => string, onResource: (id: string) => void, more: boolean, older: boolean, onOlder: () => void, updated: number | null, error: string | null }} props
  */
 export function StreamRail({ items, fresh, env, nameOf, onResource, more, older, onOlder, updated, error }) {
   const [all, setAll] = useState(false);
+  const [kind, setKind] = useState(/** @type {keyof typeof STREAM_KINDS | 'all'} */ ('all'));
+  const [level, setLevel] = useState(/** @type {keyof typeof STREAM_LEVELS} */ ('all'));
   const phone = typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches;
-  const shown = phone && !all ? items.slice(0, PHONE_SHOWN) : items;
+  const rows = groupStream(filterStream(items, { kind, level }));
+  const shown = phone && !all ? rows.slice(0, PHONE_SHOWN) : rows;
   const newCount = items.filter((i) => fresh.has(i.key)).length;
   return (
     <section class="console-panel stream" aria-labelledby="infra-stream">
@@ -137,7 +158,45 @@ export function StreamRail({ items, fresh, env, nameOf, onResource, more, older,
           {error}
         </p>
       )}
-      {items.length ? (
+      {items.length > 0 && (
+        <div class="stream-filters">
+          <div class="segmented segmented-xs" role="group" aria-label="Show in the stream">
+            {[['all', 'All'], ...Object.entries(STREAM_KINDS)].map(([k, label]) => (
+              <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(/** @type {any} */ (k))}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <select
+            class="select select-xs"
+            aria-label="Level"
+            value={level}
+            onChange={(e) => setLevel(/** @type {any} */ (e.currentTarget.value))}
+          >
+            {Object.entries(STREAM_LEVELS).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {env.provider && <AccountAlerts source={env.provider} reload={updated} />}
+      {items.length && !rows.length ? (
+        <p class="console-quiet">
+          Nothing here matches.{' '}
+          <button
+            type="button"
+            class="infra-rel-link"
+            onClick={() => {
+              setKind('all');
+              setLevel('all');
+            }}
+          >
+            Show everything
+          </button>
+        </p>
+      ) : items.length ? (
         <>
           <ol class="stream-list">
             {shown.map((item) => (
@@ -151,7 +210,7 @@ export function StreamRail({ items, fresh, env, nameOf, onResource, more, older,
               />
             ))}
           </ol>
-          {shown.length < items.length ? (
+          {shown.length < rows.length ? (
             <button type="button" class="btn btn-quiet btn-sm stream-more" onClick={() => setAll(true)}>
               Show more
               <ArrowRight size={14} aria-hidden="true" />
