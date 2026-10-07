@@ -1162,38 +1162,83 @@ export async function observe(ctx) {
 }
 
 /**
- * A Cloudflare alert, cut down to three fields: its name, when it fired, and the Worker it names. Everything else
- * (its text, data, account and policy IDs) is left out. The board's alert webhook (src/store-routines.js) and the
- * alert history (`events`) both read alerts with this, so an alert heard both ways reads the same.
+ * A Cloudflare alert, cut down to what places it: its name, when it fired, and the Worker, zone, or hostname it names.
+ * Everything else (its text, the rest of its data, account and policy IDs) is left out. The board's alert webhook
+ * (src/store-routines.js) and the alert history (`events`) both read alerts with this, so an alert heard both ways
+ * reads the same. `zoneId` is only for finding the zone's name; it's never stored.
  * @param {any} body a notification webhook's body, or an alert history entry's `alert_body`
- * @returns {{ alert: string | null, at: string | null, worker: string | null }}
+ * @returns {{ alert: string | null, at: string | null, worker: string | null, zone: string | null,
+ *   zoneId: string | null, hostname: string | null }}
  */
 export function alertFields(body) {
-  const pick = (...values) => values.find((v) => typeof v === 'string' && v.trim()) ?? null;
+  const pick = (...values) => values.find((v) => typeof v === 'string' && v.trim())?.trim() ?? null;
+  const first = (v) => (Array.isArray(v) ? v.find((x) => typeof x === 'string') : v);
   const data = body?.data && typeof body.data === 'object' && !Array.isArray(body.data) ? body.data : {};
   const ts = Number(body?.ts);
   const at =
     Number.isFinite(ts) && ts > 0
       ? new Date(ts < 1e11 ? ts * 1000 : ts)
       : new Date(pick(body?.timestamp, body?.time) ?? Number.NaN);
+  const host = pick(data.hostname, data.host, data.domain, first(data.hostnames), first(data.hosts));
   return {
     alert: pick(body?.alert_name, body?.policy_name, body?.name, body?.alert_type),
     at: Number.isNaN(at.getTime()) ? null : at.toISOString(),
     worker: pick(data.script_name, data.worker_name, data.worker, data.service, data.script),
+    zone: pick(data.zone_name, data.zone)?.toLowerCase() ?? null,
+    zoneId: pick(data.zone_tag, data.zone_id),
+    hostname: host ? host.toLowerCase().replace(/^\*\./u, '').replace(/\.$/u, '') : null,
   };
 }
 
-/** An alert signal's text: the alert's name and the Worker it names. */
-export function alertText(alert, worker) {
+/** An alert signal's text: the alert's name and what it's on (a Worker, a zone, or a hostname). */
+export function alertText(alert, on) {
   const name = String(alert ?? '').slice(0, 200) || 'unnamed alert';
-  return `Cloudflare alert: ${name}${worker ? ` on ${String(worker).slice(0, 100)}` : ''}`;
+  return `Cloudflare alert: ${name}${on ? ` on ${String(on).slice(0, 100)}` : ''}`;
+}
+
+/** The zones an environment's resources use: the zone of each of its routes and custom domains. */
+export function zonesOf(resources) {
+  const zones = new Set();
+  for (const r of resources ?? []) {
+    if (r.kind !== 'route' && r.kind !== 'custom-domain') continue;
+    const zone = /** @type {any} */ (r.attrs)?.zone;
+    if (typeof zone === 'string' && zone) zones.add(zone.toLowerCase());
+  }
+  return zones;
+}
+
+/**
+ * Where an alert goes in one environment (BRK-255), from its fields and the environment's resources: on the Worker it
+ * names when that Worker is the environment's; on the whole environment when the zone it names (or its hostname's
+ * zone) is one the environment's routes or custom domains use; `account` when it names no Worker, zone, or hostname
+ * (it's about the account or the platform, and the board keeps one per provider, not one per environment); or null
+ * when it's another environment's, or no environment's.
+ * @param {ReturnType<typeof alertFields>} fields
+ * @param {Array<{ kind: string, name: string, attrs?: Record<string, unknown> }>} resources
+ * @returns {{ resource: string | null, account: boolean, on: string | null } | null}
+ */
+export function alertPlace(fields, resources) {
+  if (fields.worker) {
+    const mine = (resources ?? []).some((r) => r.kind === 'worker' && r.name === fields.worker);
+    return mine ? { resource: rid('worker', fields.worker), account: false, on: fields.worker } : null;
+  }
+  if (!fields.zone && !fields.hostname && !fields.zoneId) return { resource: null, account: true, on: null };
+  const zones = zonesOf(resources);
+  const host = fields.hostname;
+  const zone =
+    (fields.zone && zones.has(fields.zone) ? fields.zone : null) ??
+    (host ? [...zones].find((z) => host === z || host.endsWith(`.${z}`)) : null) ??
+    null;
+  return zone ? { resource: null, account: false, on: host ?? zone } : null;
 }
 
 /**
  * The account's alerts since `since`, from its alert history (`GET …/alerting/v3/history`, Notifications Read), as
- * `alert` signals: each on the Worker it names when that Worker is in the environment, or on the whole environment
- * when it names none; an alert about a Worker outside the environment is another environment's. Oldest first. The
- * board's alert webhook reports the same alerts as they fire; the store keeps one of each.
+ * `alert` signals placed by `alertPlace` (BRK-255): on the Worker it names when that Worker is in the environment, on
+ * the whole environment when it names a zone or hostname the environment uses, and marked `account` when it names
+ * none of them; an alert about another environment's Worker or zone is left out. A zone named only by its ID is
+ * looked up in the account's zones (Zone Read). Oldest first. The board's alert webhook reports the same alerts as
+ * they fire; the store keeps one of each, and one of each account-wide alert across the provider's environments.
  * @param {ProviderContext} ctx
  * @param {string} since ISO 8601
  * @returns {Promise<import('./infra-provider.js').Signal[]>}
@@ -1204,11 +1249,25 @@ export async function events(ctx, since) {
   const now = Date.now();
   if (from > now) return [];
   const resources = ctx.resources ?? (await discover(ctx)).resources;
-  const workers = new Set(resources.filter((r) => r.kind === 'worker').map((r) => r.name));
   const cf = reader(ctx);
-  const a = enc(await accountOf(cf, ctx));
+  const account = await accountOf(cf, ctx);
+  const a = enc(account);
   const window = `since=${enc(new Date(from).toISOString())}&before=${enc(new Date(now).toISOString())}`;
   const history = await cf.all(`/accounts/${a}/alerting/v3/history?${window}`, { permission: 'Notifications Read' });
+  /** @type {Map<string, string> | null} zone names by ID, read only when an alert names a zone by its ID alone */
+  let zoneNames = null;
+  const zoneName = async (id) => {
+    if (!zoneNames) {
+      zoneNames = new Map();
+      try {
+        for (const z of await cf.all(`/zones?account.id=${a}`, { permission: 'Zone Read' }, 50))
+          zoneNames.set(String(z.id), String(z.name).toLowerCase());
+      } catch (error) {
+        if (error?.status !== 403) throw error;
+      }
+    }
+    return zoneNames.get(id) ?? null;
+  };
   /** @type {import('./infra-provider.js').Signal[]} */
   const signals = [];
   for (const entry of history) {
@@ -1222,16 +1281,20 @@ export async function events(ctx, since) {
     const fields = alertFields(body);
     const at = fields.at ?? (Number.isNaN(Date.parse(entry?.sent)) ? null : new Date(entry.sent).toISOString());
     if (!at || Date.parse(at) < from) continue;
-    if (fields.worker && !workers.has(fields.worker)) continue;
+    if (!fields.worker && !fields.zone && !fields.hostname && fields.zoneId)
+      fields.zone = await zoneName(fields.zoneId);
+    const place = alertPlace(fields, resources);
+    if (!place) continue;
     signals.push({
       source: 'cloudflare',
       environment: ctx.environment,
-      resource: fields.worker ? rid('worker', fields.worker) : null,
+      resource: place.resource,
       kind: 'alert',
       level: 'warning',
       value: null,
       at,
-      text: alertText(fields.alert ?? entry?.name ?? entry?.alert_type, fields.worker),
+      text: alertText(fields.alert ?? entry?.name ?? entry?.alert_type, place.on),
+      ...(place.account ? { account: true } : {}),
     });
   }
   return signals.sort((x, y) => Date.parse(x.at) - Date.parse(y.at));

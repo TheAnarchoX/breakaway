@@ -234,14 +234,14 @@ export const infraSignalsMethods = {
 
   /**
    * Asks a provider for its signals in one environment since `since`, checks them against the provider contract,
-   * and stores them.
+   * and stores them: account-wide alerts once per provider (BRK-255), the rest in the stream.
    * @param {import('./infra-provider.js').Provider} provider
    * @param {import('./infra-provider.js').ProviderContext} ctx
    * @param {string} since ISO 8601
    */
   async pullProviderSignals(provider, ctx, since) {
     const signals = checkSignals(provider, ctx, since, await provider.events(ctx, since));
-    return this.recordAlertSignals(signals);
+    return this.recordAlertSignals(this.keepAccountAlerts(signals));
   },
 
   /**
@@ -286,47 +286,46 @@ export const infraSignalsMethods = {
   },
 
   /**
-   * A platform's alert, heard by its webhook (src/store-routines.js), as an `alert` signal: on `resource` in each of the
-   * provider's environments whose inventory has it, or, when it names none or no inventory has it, on each of the
-   * provider's environments in `repo` as a whole. An environment that isn't on the board hears nothing. Returns the
-   * signals stored.
+   * A platform's alert, heard by its webhook (src/store-routines.js), placed the way the provider's alert history
+   * places it (BRK-255). With `account`, it's about the account, not any environment, and is kept once
+   * (`recordAccountAlert`). Otherwise `place` says, for each of the provider's environments in `repo`, from the
+   * resources its inventory holds, where the alert goes there: on a resource, on the whole environment (`resource`
+   * null), or nowhere (null). An environment it places nothing in hears nothing, and neither does one that isn't on
+   * the board. Returns the signals stored in the stream.
    * @param {string} providerId
    * @param {string} repo the repository whose routine the alert fired
-   * @param {{ at: string | null, resource: string | null, text: string }} alert
+   * @param {{ at: string | null, text: string, account?: boolean,
+   *   place?: (resources: Array<{ kind: string, name: string, attrs: Record<string, unknown> }>) =>
+   *     { resource: string | null } | null }} alert
    */
-  async recordProviderAlert(providerId, repo, { at, resource, text }) {
+  async recordProviderAlert(providerId, repo, { at, text, account = false, place }) {
     const now = Date.now();
     const t = at ? Date.parse(at) : Number.NaN;
     const when = new Date(Number.isNaN(t) || t > now + DAY ? now : t).toISOString();
-    let on = resource;
-    let environments = resource
-      ? this.sql
-          .exec(
-            'SELECT DISTINCT e.id, e.name FROM infra_inventory i JOIN infra_environments e ON e.id = i.environment WHERE i.provider = ? AND i.rid = ? ORDER BY e.id',
-            providerId,
-            resource,
-          )
-          .toArray()
-      : [];
-    if (!environments.length) {
-      on = null;
-      environments = this.sql
-        .exec('SELECT id, name FROM infra_environments WHERE provider = ? AND repo = ? ORDER BY id', providerId, repo)
-        .toArray();
+    const signal = { source: providerId, resource: null, kind: 'alert', level: 'warning', value: null, at: when, text };
+    if (account) {
+      this.recordAccountAlert({ ...signal, environment: 'account' });
+      return [];
     }
-    return this.recordAlertSignals(
-      environments.map((e) => ({
-        source: providerId,
+    const environments = this.sql
+      .exec('SELECT id, name FROM infra_environments WHERE provider = ? AND repo = ? ORDER BY id', providerId, repo)
+      .toArray();
+    const signals = [];
+    for (const e of environments) {
+      const resources = this.sql
+        .exec('SELECT kind, name, attrs FROM infra_inventory WHERE provider = ? AND environment = ?', providerId, e.id)
+        .toArray()
+        .map((r) => ({ kind: r.kind, name: r.name, attrs: JSON.parse(r.attrs || '{}') }));
+      const where = place?.(resources);
+      if (!where) continue;
+      signals.push({
+        ...signal,
         environment: e.name,
         environmentId: Number(e.id),
-        resource: on,
-        kind: 'alert',
-        level: 'warning',
-        value: null,
-        at: when,
-        text,
-      })),
-    );
+        resource: where.resource,
+      });
+    }
+    return this.recordAlertSignals(signals);
   },
 
   /**
