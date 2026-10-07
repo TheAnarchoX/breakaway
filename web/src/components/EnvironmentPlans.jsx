@@ -4,6 +4,7 @@ import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { hashFor } from '../lib/store.js';
 import { PlanState, amount } from '../views/PlanView.jsx';
+import { NoneYet } from './ui.jsx';
 
 /** Plans an environment's page lists, newest first. */
 const SHOWN = 10;
@@ -76,9 +77,9 @@ export function EnvironmentPlans({ env, tick = 0 }) {
           ))}
         </ul>
       ) : (
-        <p class="console-quiet">
-          No plan yet: a pull request to <code>.github/breakaway-infra/{env.name}.json</code>, or drift, makes one.
-        </p>
+        <NoneYet>
+          A pull request to <code>.github/breakaway-infra/{env.name}.json</code>, or drift, makes one.
+        </NoneYet>
       )}
     </section>
   );

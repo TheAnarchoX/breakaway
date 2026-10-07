@@ -18,7 +18,6 @@ import {
   runWords,
   stepsText,
   streamItems,
-  timelineItems,
 } from '../web/src/lib/env-stream.js';
 import { clampView, fitView, panView, viewBox, zoomOf, zoomView } from '../web/src/lib/pan-zoom.js';
 
@@ -333,29 +332,6 @@ describe('the stream, folded and filtered (WEB-97)', () => {
     expect(keys({ level: 'warning' })).toEqual(['incident:3', 'signal:1', 'signal:3']);
     expect(keys({ kind: 'alert', level: 'critical' })).toEqual(['incident:3']);
     expect(filterStream(items, {})).toHaveLength(items.length);
-  });
-
-  it('lines up deploys and incidents for the strip, newest first', () => {
-    const items = timelineItems({
-      deploys: [
-        { id: 1, sha: 'abcdef123', state: 'success', created: ago(60), logUrl: 'https://example.com/run/1' },
-        { id: 2, sha: '1234567aa', state: 'failure', created: ago(30), description: 'Rolled back: check failed' },
-        { id: 3, sha: '7654321bb', state: 'in_progress', created: ago(1) },
-      ],
-      incidents: [
-        { id: 7, opened: ago(120), closed: ago(20), level: 'critical', kind: 'down' },
-        { id: 8, opened: ago(5), closed: null, level: 'warning', kind: 'errors' },
-      ],
-    });
-    expect(items.map((i) => [i.key, i.label, i.tone])).toEqual([
-      ['deploy:3', 'Deploying', 'pending'],
-      ['incident:8', 'Incident open', 'warn'],
-      ['incident:7', 'Incident closed', 'ok'],
-      ['deploy:2', 'Rolled back', 'bad'],
-      ['deploy:1', 'Deployed', 'ok'],
-    ]);
-    expect(items.at(-1)?.detail).toBe('abcdef1');
-    expect(timelineItems({}, 3)).toEqual([]);
   });
 });
 

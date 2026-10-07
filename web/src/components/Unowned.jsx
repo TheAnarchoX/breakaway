@@ -1,6 +1,7 @@
 import { UserRoundX } from 'lucide-preact';
 import { ago, day } from '../lib/model.js';
 import { enc } from '../lib/api.js';
+import { NoneYet } from './ui.jsx';
 
 /**
  * What nobody owns on an environment's page (WEB-93; docs/specs/IDEA-19-architect.md, "Clean up"): what runs in its
@@ -113,7 +114,7 @@ export function UnownedSection({ env }) {
           </ul>
         </>
       ) : (
-        <p class="console-quiet">Nothing flagged: everything here is declared or owned.</p>
+        <NoneYet>The board flags what runs here that the file doesn’t declare and no task owns.</NoneYet>
       )}
     </section>
   );
