@@ -1,17 +1,30 @@
 import { useEffect } from 'preact/hooks';
-import { ExternalLink, Rocket } from 'lucide-preact';
+import { ExternalLink, History, Rocket } from 'lucide-preact';
 import { ago, shortVersion } from '../lib/model.js';
 import { repoFacts } from '../lib/github-scope.js';
 import { github, hashFor, loadGitHub, loadPipelineEnvironments, pipelineEnvironments, repoName } from '../lib/store.js';
 import { chooseTab } from '../views/GitHubView.jsx';
 import { Card, DeployRow, PromoteButton, RollbackButton, deployWord } from './Release.jsx';
+import { NoneYet } from './ui.jsx';
 
 /*
  * A pipeline environment's deploys on its page (WEB-88; docs/specs/IDEA-19-architect.md, "The first instance"): the
  * deploy flow and the environment as one place. What's live there and who put it there, its recent deploys with their
  * logs, and on production the release flow's own Promote and Roll back, the same buttons with the same checks. The
- * release flow's cards link here, and this links back.
+ * release flow's cards link here, and this links back. What's live sits in the console's admin column, and the recent
+ * deploys in its ops column, under the incidents (WEB-100).
  */
+
+/** Recent deploys the ops column lists. */
+const RECENT = 8;
+
+/**
+ * The environment's deploys from the GitHub view's data, newest first.
+ * @param {any} data the GitHub view's data
+ * @param {{ repo: string, target?: string | null }} env
+ */
+const deploysOf = (data, env) =>
+  (data?.deploys ?? []).filter((/** @type {any} */ d) => (d.repo ?? data.slug) === env.repo && d.env === env.target);
 
 /** @param {{ iso: string | null }} props */
 function When({ iso }) {
@@ -135,9 +148,6 @@ export function DeploysSection({ env }) {
   const branch = view?.branch ?? 'the default branch';
   const card = view?.flow?.[role] ?? null;
   const live = env.deploys?.live ?? null;
-  const recent = (data?.deploys ?? [])
-    .filter((d) => (d.repo ?? data.slug) === env.repo && d.env === env.target)
-    .slice(0, 8);
   const production = pipelineEnvironments.value[env.repo]?.production;
   const name = role === 'production' ? 'Production' : 'Staging';
   return (
@@ -184,15 +194,45 @@ export function DeploysSection({ env }) {
           </>
         )}
       </p>
-      {recent.length > 0 && (
-        <>
-          <h3 class="infra-deploys-recent">Recent deploys</h3>
-          <ul class="gh-runs">
-            {recent.map((d) => (
-              <DeployRow key={d.id} d={d} showEnv={false} />
-            ))}
-          </ul>
-        </>
+    </section>
+  );
+}
+
+/**
+ * Recent deploys, each with its run's log: only on a pipeline's environment. The Deploys section loads the data.
+ * @param {{ env: any }} props
+ */
+export function RecentDeploys({ env }) {
+  const role = env.pipeline;
+  if (!role) return null;
+  const { loaded, data, error } = github.value;
+  const recent = deploysOf(data, env).slice(0, RECENT);
+  const facts = repoFacts(data, env.repo);
+  const branch = (facts?.slug === env.repo ? facts.branch : null) ?? 'the default branch';
+  return (
+    <section class="infra-section" aria-labelledby="infra-deploys-recent">
+      <h2 id="infra-deploys-recent">
+        <History size={16} aria-hidden="true" />
+        Recent deploys
+      </h2>
+      {error && !recent.length ? (
+        <p class="console-quiet">Couldn’t read them from GitHub: {error}</p>
+      ) : !loaded ? (
+        <p class="muted" aria-busy="true">
+          Loading the deploys…
+        </p>
+      ) : recent.length ? (
+        <ul class="gh-runs">
+          {recent.map((d) => (
+            <DeployRow key={d.id} d={d} showEnv={false} />
+          ))}
+        </ul>
+      ) : (
+        <NoneYet>
+          {role === 'staging'
+            ? `Each merge to ${branch} deploys here, and its run shows in this list.`
+            : 'Each Promote and Roll back shows here, with its run.'}
+        </NoneYet>
       )}
     </section>
   );
