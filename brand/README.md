@@ -106,6 +106,7 @@ Architect is the board running infrastructure too: environments, plans you appro
 | **environment** | A named place a repository runs: **production**, **staging**, or **short-lived** (one task's own) | stack, stage (it collides with the cycling word), resource group, cluster, deployment target |
 | **provider** | A platform you connect so the board can see what runs there, like Cloudflare | vendor, cloud, integration, backend |
 | **plan** | The exact change the board would make to one environment: what changes, what it costs, what else it touches, and whether it can be undone | changeset, proposal, diff (on its own), deployment, blast radius (write "what else it touches") |
+| **change** | What you edit on an environment's console before it becomes a plan: settings, a template, a removal. The board opens its pull request, and you approve its plan. | proposal (it's ruled out for a plan), draft (that's a plan's status), edit set, changeset |
 | **approve** / **reject** | Your answer to a plan that waits for you. Only you can, and only from the board. | accept, sign off, LGTM, OK, apply (as your action) |
 | **apply** | What the board does to a plan you approved: a status, never a button | deploy (that's the deploy flow's), execute, run, push |
 | **envelope** | Bounds you approve once on one environment ("2 to 10 instances", "3 restarts a day"); the board scales and restarts inside them without asking you again | autopilot, guardrail, auto-approve, standing approval |
@@ -127,6 +128,13 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 - "Reject this plan? Nothing changes."
 - "Freeze production? Freezing production pauses deploys and plans; Roll back still works."
 - "Freeze staging? Freezing staging stops plans; merges still deploy here."
+
+**A change from the console.** On an environment's console you change what you see, the plan forms beside the map as you edit, and one press proposes it; the board opens the pull request, so you never have to. Its buttons are **Change** (on a resource's detail), **Add from a template**, **Remove**, **Discard**, **Propose the change** (or **Propose it**, for an environment with no file yet), **Approve**, **Reject**, **Propose again**, **Merge** (for a change that plans nothing), and **Have an agent do it** (for what the console can't change). Never Apply. The change's card reads **Checking**, **Waiting for you**, **Merging**, or **Can't merge**, then the plan's own status. Its confirm dialogs:
+
+- "Approve this plan for staging? The board merges its pull request, applies the plan, and rolls back if the health check fails." The same for production. When merging deploys (the repository's pipeline deploys on merge), it adds the line Merge's dialog says, like "Merging also deploys staging."
+- "Reject this change? The board closes its pull request. Nothing changes."
+
+Its lines: "Set with the Worker's deploy, never here." (a variable or secret, by name only) "What runs changed since you looked. Here's the plan now." "The plan changed between your approval and the merge." "Can't merge #12: checks failing." "Staging is frozen: unfreeze it to approve." Proposing doesn't push (you just pressed it); a plan that waits after a mismatch pushes like any plan that waits.
 
 **A plan's status** reads **Draft**, **Waiting for you**, **Approved**, **Rejected**, **Applying**, **Applied**, **Failed**, or **Rolled back**. A plan says why it waits in words, one rule a line: "Production needs you." "Can't be undone: it deletes the `widgets` database." "Adds €6 a month, over your €5 limit."
 
@@ -296,7 +304,7 @@ Two open-source families (SIL Open Font License), self-hosted from `@fontsource-
 Before handing back anything people see or read:
 
 - [ ] "breakaway" is lowercase, and the terms match [the word list](#words-breakaway-uses).
-- [ ] Infrastructure copy uses [its words](#infrastructure-words): Approve, Reject, Freeze, and Unfreeze on buttons, never Apply; pushes only for a production incident or a plan that waits; amounts marked as estimates, with the rate when converted.
+- [ ] Infrastructure copy uses [its words](#infrastructure-words): Approve, Reject, Freeze, and Unfreeze on buttons (and a change's own, like Propose the change), never Apply; pushes only for a production incident or a plan that waits; amounts marked as estimates, with the rate when converted.
 - [ ] Headlines are short and end in a full stop; no exclamation marks, no words from the never list.
 - [ ] Every claim is one from [Claims that must stay true](#claims-that-must-stay-true), and nothing counts what someone shipped with it.
 - [ ] Buttons, statuses, and errors are plain; cycling words only in headlines, one per screen at most.
