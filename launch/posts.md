@@ -203,3 +203,129 @@ A thread of three posts. Post it when 1.5.0 is published and its plugin job has 
 > No tool merges. You do.
 
 **Alt text:** A card headed "Every board is an MCP server." Three steps: 1, add your board's /mcp as a connector; 2, approve it on your board, for one repository; 3, revoke it under Connections. At the foot: "No tool merges."
+
+## 9. 2.0.0: what's new, Architect, and how to update
+
+A thread of five posts, for 2.0.0, Architect. Its plan, the story, and the claims it leans on are in [`2.0.0.md`](2.0.0.md); the release's own notes are [`docs/releases/v2.0.0.md`](../docs/releases/v2.0.0.md). Post it once 2.0.0 is published and `leavethepack.dev/architect` shows it: 9e links there. Each post replies to the one before it. Pin 9a for launch week, in place of the launch post.
+
+Every name in the media is made up (`acme/widgets`, `widgets-render`, `WGT-41`), and every apply shown is staging. Before posting, `DOC-41` reads each line against what shipped, and a line that didn't ship comes out.
+
+### 9a. What's new
+
+**Media:** [`media/2-0-0.mp4`](media/2-0-0.mp4), 16 s, 1080 × 1080, no sound. Poster frame: [`media/2-0-0-poster.png`](media/2-0-0-poster.png). If the video won't post, use the card [`media/16-new-in-2-0-0.png`](media/16-new-in-2-0-0.png) and its alt text below.
+
+> breakaway 2.0.0 is out. The board runs the infrastructure too, and you still decide.
+>
+> - The Infrastructure view: health, cost, drift
+> - Plans you approve from your phone
+> - Plans in pull requests, as a check
+> - Envelopes: bounds you approve once
+> - Incidents: a signal becomes a task
+
+**Alt text (the video):** A 16-second video, no sound. On carbon, one line at a time: "Agents propose it." as a made-up plan for staging arrives below it, from pull request #41, with two changes; "You approve it.", with "approve it." in red, as Approve fills red and the plan reads Approved; "The board applies it.", as it applies and ends Applied, healthy. Then the breakaway logo, the rider snapping off the pack, "Leave the pack.", npx breakaway, and "Free, the source is public".
+
+**Alt text (the card):** A card headed "New in 2.0.0." with six lines: The Infrastructure view: health, cost, and drift. Plans you approve, from your phone. Plans in pull requests, as a check. Envelopes: bounds you approve once. Incidents: a signal becomes a task. Freeze, budgets, and npx breakaway infra. At the foot: "Agents propose it. You approve it."
+
+### 9b. Agents propose it. You approve it.
+
+**Media:** [`media/17-approve.png`](media/17-approve.png)
+
+> Agents propose it. You approve it.
+>
+> An agent changes what should exist in a pull request, and the plan shows as a check: what changes, the cost, what else it touches.
+>
+> You approve from your phone, and only you can. The board applies it, checks health, and rolls back if it fails.
+
+**Alt text:** A card headed "Agents propose it. You approve it." Three steps: 1, an agent changes staging, in a pull request; 2, the plan waits for you, plus 6.40 dollars a month, estimated; 3, you press Approve, shown in red, and the board applies it and checks its health. At the foot: "No agent can press Approve."
+
+### 9c. Envelopes
+
+**Media:** [`media/18-envelope.png`](media/18-envelope.png)
+
+> Bounds you set once. An envelope on an environment says "2 to 10 instances" or "3 restarts a day", and you approve it.
+>
+> The board scales and restarts inside it, and tells you after. Anything outside waits for you. Freeze an environment, and no plan runs there.
+
+**Alt text:** A card headed "Bounds you set once." Below it: "The board scales and restarts inside them, and tells you after. Anything outside waits for you." An envelope on production: widgets-render, 2 to 10 instances, now 3; 3 restarts a day; up to 60 dollars a month.
+
+### 9d. Incidents
+
+**Media:** [`media/19-incident.png`](media/19-incident.png)
+
+> When it breaks, it's a task. A signal that crosses a rule opens an incident in the repository that owns what broke.
+>
+> A production incident pushes to your phone; the rest waits in the inbox. An agent works it when you start one, or from a runbook you turned on.
+
+**Alt text:** A card headed "When it breaks, it's a task." A made-up push: WGT-41, incident in production: widgets-render is down, 3 of 3 instances failed their health check. Below it, the incident's steps: diagnose, which is now, then propose, approve, apply, and verify.
+
+### 9e. Update, and what it isn't
+
+No media.
+
+> Cloudflare first, with a read-only token. Architect stays off until you connect a provider, and the board only watches its own install.
+>
+> Free, and the source is public. Update your board, then start here:
+>
+> https://leavethepack.dev/architect/
+
+The post links the Architect page rather than the walk-through: the page ends with the walk-through and the manual's Architect section, and its address is settled where the walk-through's isn't yet.
+
+## 10. 2.0.0 on Hacker News
+
+A Show HN, posted by the owner from their own account after the thread, on the day of the release ([`2.0.0.md`](2.0.0.md), Posted in). Hacker News wants a link and a first comment from the person who made it, so this one speaks as the owner, in the first person, and keeps to the same claims as the thread. No media, no "we", and nothing about what anyone shipped with it. Answer questions in the thread with what the board does, never with promises.
+
+**Title** (80 characters at most):
+
+> Show HN: breakaway 2.0 – agents propose infrastructure changes, you approve them
+
+**Link:** https://github.com/TheAnarchoX/breakaway
+
+**First comment:**
+
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, and it's free, with the source public (FSL-1.1-Apache-2.0: fair source, and each release becomes Apache 2.0 two years after it ships).
+>
+> Until now the board stopped at the pull request and the deploy. 2.0.0 adds Architect, which takes the same rule to what the code runs on: agents propose, you decide.
+>
+> - You connect a provider (Cloudflare first) with a read-only token. The Infrastructure view shows each repository's environments: what runs, its health, and an estimated cost.
+> - What should exist is a file in the repository. An agent changes it in an ordinary pull request, and the plan shows on that pull request as a check: what changes, what it costs, what else it touches, and whether it can be undone.
+> - A plan waits for you and pushes to your phone. You press Approve; then a workflow in your repository applies it with a write token held in a GitHub environment, checks health, and rolls back if the check fails. The board itself only holds read-only tokens, and no agent can approve.
+> - An envelope is bounds you approve once on an environment ("2 to 10 instances", "3 restarts a day"). The board scales and restarts inside it and tells you after; anything outside waits for you.
+> - A signal that crosses a rule opens an incident as a task in the repository that owns what broke. Only a production incident pushes.
+>
+> The board's own install is observe only: Architect watches it and never changes it.
+>
+> With 2.0.0 the board covers the whole way from an idea to what it runs on: an idea shaped into a spec and tasks, agents that claim and build them, the pull requests you merge, deploys you promote and roll back, and now the infrastructure, planned and approved on the same board.
+>
+> Architect stays off until you connect a provider, and an install keeps its data: no telemetry, and the read token only goes to its provider. Any provider but Cloudflare, and metrics, logs, and traces as signals, aren't in 2.0.0.
+>
+> What it is: https://leavethepack.dev/architect/
+> Release notes: https://github.com/TheAnarchoX/breakaway/releases/tag/v2.0.0
+
+## 11. 2.0.0 on Reddit
+
+One post, by the owner from their own account, after the thread. Read the subreddit's rules on self-promotion and flair before posting, and post to one subreddit at a time. **r/selfhosted** fits best (recommended): breakaway runs on your own Cloudflare account and keeps its data. Same voice as section 10: first person, no "we", only the claims the thread makes.
+
+**Media:** [`media/17-approve.png`](media/17-approve.png), with its alt text from 9b, if the subreddit allows an image with text.
+
+**Title:**
+
+> breakaway 2.0: a self-hosted task board where coding agents propose infrastructure changes and you approve them
+
+**Body:**
+
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. Each install runs on its owner's own Cloudflare account, and it's free, with the source public (fair source: FSL-1.1-Apache-2.0).
+>
+> 2.0.0 adds Architect: the board runs the infrastructure too, and you still decide.
+>
+> - **See what runs.** Connect Cloudflare with a read-only token, and the Infrastructure view shows each repository's environments, their health, and an estimated cost, with budgets.
+> - **Agents propose by pull request.** What should exist is a file in the repository. The plan shows on the pull request as a check: what changes, what it costs, what else it touches, and whether it can be undone.
+> - **You approve, from your phone.** A workflow in your repository applies it with a write token in a GitHub environment, checks health, and rolls back if that fails. The board holds no write credentials, and no agent can approve.
+> - **Envelopes**: bounds you approve once ("2 to 10 instances", "3 restarts a day"). Inside them the board scales and restarts and tells you after; anything outside waits for you.
+> - **Incidents**: a signal that crosses a rule opens a task. Only a production incident pushes.
+> - **Freeze** an environment, and no plan runs there until you unfreeze it, envelopes included.
+>
+> Your install keeps its data: no analytics or telemetry, and Architect stays off until you connect a provider. The board's own install is observe only.
+>
+> Cloudflare is the first provider, and the only one in 2.0.0.
+>
+> https://github.com/TheAnarchoX/breakaway
