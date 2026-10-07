@@ -234,7 +234,7 @@ export const FILM_STEPS = {
         'Accounts',
         '1.0.0',
         [
-          'Sign in with a magic link',
+          'Sign in with a link sent by email',
           'Keep each person’s widgets apart',
           'A room per widget, with its Durable Object',
           'Count views with a Durable Object',
