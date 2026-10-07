@@ -137,9 +137,9 @@ function HealthPill({ state }) {
 
 /**
  * What the console knows about a resource besides the inventory: its drift, what the waiting plan does to it.
- * @param {{ r: any, drift: Map<string, string>, ops: Map<string, { op: string, effect: string }>, plan: any }} props
+ * @param {{ r: any, drift: Map<string, string>, ops: Map<string, { op: string, effect: string }>, plan: any, mine?: boolean }} props
  */
-function Marks({ r, drift, ops, plan }) {
+function Marks({ r, drift, ops, plan, mine = false }) {
   const d = drift.get(r.id);
   const o = ops.get(r.id);
   if (!d && !o && !(r.cost?.amount > 0)) return null;
@@ -152,7 +152,12 @@ function Marks({ r, drift, ops, plan }) {
         </li>
       )}
       {d && <li class="topo-mark topo-mark-drift">Drift: {DRIFT_OP[d] ?? d}</li>}
-      {o && plan && (
+      {o && mine && (
+        <li class={`topo-mark topo-mark-${o.effect}`}>
+          Your change {o.effect === 'adds' ? 'adds it' : o.effect === 'removes' ? 'removes it' : 'changes it'}
+        </li>
+      )}
+      {o && plan && !mine && (
         <li class={`topo-mark topo-mark-${o.effect}`}>
           <a href={planHref(plan)}>{plan.id}</a>{' '}
           {o.effect === 'adds' ? 'adds it' : o.effect === 'removes' ? 'removes it' : `${o.op}s it`}
@@ -165,9 +170,9 @@ function Marks({ r, drift, ops, plan }) {
 
 /**
  * One resource, as a card: the list view's row and the map's detail.
- * @param {{ r: any, env: any, drift: Map<string, string>, ops: Map<string, any>, plan: any, onPick: (id: string) => void, signals?: any[], headingLevel?: 'h3' | 'h4', headingId?: string }} props
+ * @param {{ r: any, env: any, drift: Map<string, string>, ops: Map<string, any>, plan: any, onPick: (id: string) => void, signals?: any[], headingLevel?: 'h3' | 'h4', headingId?: string, mine?: boolean }} props
  */
-function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h4', headingId }) {
+function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h4', headingId, mine = false }) {
   const isTarget = env.target && (r.id === env.target || r.name === env.target);
   const state = healthOf(r);
   const task = r.owner?.task;
@@ -210,7 +215,7 @@ function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h
         {(r.health?.at || r.seen) && (r.health?.at ? ' · checked ' : ' · seen ')}
         <When iso={r.health?.at ?? r.seen} />
       </p>
-      <Marks r={r} drift={drift} ops={ops} plan={plan} />
+      <Marks r={r} drift={drift} ops={ops} plan={plan} mine={mine} />
       {(r.uses?.length > 0 || r.usedBy?.length > 0) && (
         <dl class="infra-rels">
           <Relations label="Uses" links={r.uses} onPick={onPick} />
@@ -240,9 +245,10 @@ function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h
 /**
  * The map: plain SVG, three columns, a line per relation, filling its box. Each node is a button; the list view says
  * the same in text.
- * @param {{ map: ReturnType<typeof layoutTopology>, selected: string | null, onSelect: (id: string | null) => void, drift: Map<string, string>, ops: Map<string, any> }} props
+ * @param {{ map: ReturnType<typeof layoutTopology>, selected: string | null, onSelect: (id: string | null) => void, drift: Map<string, string>, ops: Map<string, any>, mine?: boolean }} props
+ *   `mine`: the marks are the owner's change, not a plan's.
  */
-function TopologyMap({ map, selected, onSelect, drift, ops }) {
+function TopologyMap({ map, selected, onSelect, drift, ops, mine = false }) {
   const wrap = useRef(/** @type {HTMLDivElement | null} */ (null));
   const svg = useRef(/** @type {SVGSVGElement | null} */ (null));
   const drag = useRef(/** @type {{ x: number, y: number, moved: boolean } | null} */ (null));
@@ -379,7 +385,7 @@ function TopologyMap({ map, selected, onSelect, drift, ops }) {
                 n.planned ? 'not running yet' : HEALTH[state]?.label.toLowerCase(),
                 n.target ? 'the target' : '',
                 cost ? `${cost} a month, estimated` : '',
-                o ? EFFECT[o.effect].label.toLowerCase() : '',
+                o ? (mine ? `your change ${o.effect} it` : EFFECT[o.effect].label.toLowerCase()) : '',
                 d ? 'drift' : '',
               ].filter(Boolean);
               const pick = () => onSelect(selected === n.id ? null : n.id);
@@ -473,10 +479,25 @@ function TopologyMap({ map, selected, onSelect, drift, ops }) {
 
 /**
  * The topology panel: the map (wide) or the list (phones, and anyone who picks it), and the selected node's detail.
- * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any }} props
- *   `nodeActions` renders the owner's actions for the selected resource in its detail (WEB-95 fills it in).
+ * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[] } | null, headActions?: any, note?: string | null }} props
+ *   `nodeActions` renders the owner's actions for a resource in its detail and its row in the list (WEB-99's Change
+ *   and Remove); `change` is the owner's change (WEB-99), whose marks show instead of a plan's while they edit, labelled
+ *   "your change"; `headActions` sit in the panel's header (Add from a template); `note` is a line under it.
  */
-export function Topology({ env, resources, relations, plan, drift, signals, mode, onMode, nodeActions }) {
+export function Topology({
+  env,
+  resources,
+  relations,
+  plan,
+  drift,
+  signals,
+  mode,
+  onMode,
+  nodeActions,
+  change = null,
+  headActions = null,
+  note = null,
+}) {
   const [selected, setSelected] = useState(/** @type {string | null} */ (null));
   // Escape puts a node's detail away, wherever focus is, unless a dialog is open over the page.
   useEffect(() => {
@@ -487,7 +508,8 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
   }, [selected]);
-  const { ops, adds } = planOverlay(plan?.diff);
+  const mine = Boolean(change);
+  const { ops, adds } = change ?? planOverlay(plan?.diff);
   const driftOf = new Map((drift?.resources ?? []).map((/** @type {any} */ d) => [d.id, d.op]));
   const running = new Set(resources.map((r) => r.id));
   const planned = adds.filter((a) => !running.has(a.id));
@@ -516,6 +538,7 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
           <Boxes size={16} aria-hidden="true" />
           Resources {count > 0 && <span class="count">{count}</span>}
         </h2>
+        {headActions && count > 0 && <div class="topo-head-actions">{headActions}</div>}
         {count > 0 && (
           <div class="segmented segmented-xs" role="group" aria-label="Show resources as">
             <button type="button" aria-pressed={mode === 'map'} onClick={() => onMode('map')}>
@@ -529,6 +552,7 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
           </div>
         )}
       </header>
+      {note && <p class="console-quiet">{note}</p>}
       {!count ? (
         <p class="console-quiet">
           {env.target ? (
@@ -544,7 +568,7 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
       ) : mode === 'map' ? (
         <>
           <div class="topo-stage">
-            <TopologyMap map={map} selected={selected} onSelect={setSelected} drift={driftOf} ops={ops} />
+            <TopologyMap map={map} selected={selected} onSelect={setSelected} drift={driftOf} ops={ops} mine={mine} />
             {current && (
               <article class="topo-detail" aria-labelledby="topo-detail-name">
                 <button
@@ -582,6 +606,7 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
                     signals={signals.filter((s) => s.resource === current.id).slice(0, 5)}
                     headingLevel="h3"
                     headingId="topo-detail-name"
+                    mine={mine}
                   />
                 )}
                 {!current.group && nodeActions && <div class="topo-detail-actions">{nodeActions(current)}</div>}
@@ -590,7 +615,13 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
           </div>
           <p class="meta topo-legend">
             {shown.grouped && `Over ${MAP_MAX} resources, so each kind is one node; the list has every one. `}
-            {plan && ops.size > 0 && (
+            {mine && ops.size > 0 && (
+              <>
+                Your change:{' '}
+                {[...new Set([...ops.values()].map((o) => o.effect))].map((e) => `${EFFECT[e].sign} ${e}`).join(', ')}.{' '}
+              </>
+            )}
+            {plan && !mine && ops.size > 0 && (
               <>
                 <a href={planHref(plan)}>{plan.id}</a>
                 {plan.state === 'waiting' ? ' waits for you: ' : ' is applying: '}
@@ -614,7 +645,8 @@ export function Topology({ env, resources, relations, plan, drift, signals, mode
                   id={`infra-res-${r.id}`}
                   tabIndex={-1}
                 >
-                  <Resource r={r} env={env} drift={driftOf} ops={ops} plan={plan} onPick={pick} />
+                  <Resource r={r} env={env} drift={driftOf} ops={ops} plan={plan} onPick={pick} mine={mine} />
+                  {nodeActions && !r.planned && <div class="topo-detail-actions">{nodeActions(r)}</div>}
                 </li>
               ))}
             </ul>

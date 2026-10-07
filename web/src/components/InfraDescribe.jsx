@@ -10,7 +10,8 @@ import { hashFor, loadAgents, loadTasks, pullParam, repoName, toast } from '../l
  * with Copy, and one press, Have an agent open the pull request, which adds a task in the environment's repository and
  * starts its agent there: it runs `infra adopt` (CLI-23), then `infra check`, and opens the pull request. The board
  * opens none itself, and nothing is applied; you merge as always. Once the task is open, it shows here with its pull
- * request, instead of the button.
+ * request, instead of the button. Propose it, on the console's change beside the map (WEB-99), is the board's own
+ * pull request of the same draft.
  */
 
 /** The open task describing the environment, with its agent or its pull request, in words. */
@@ -118,8 +119,9 @@ export function DescribeAsCode({ env }) {
     <div class="infra-describe">
       <h3>Describe it as code</h3>
       <p class="muted">
-        The board drafted this file from what runs. An agent writes it into {repoName(env.repo)} with{' '}
-        <code>infra adopt</code>, checks it, and opens a pull request for you to merge. Nothing is applied.
+        The board drafted this file from what runs. Propose it, beside the map, and the board opens the pull request
+        itself, with any changes you make there. Or have an agent write it into {repoName(env.repo)} with{' '}
+        <code>infra adopt</code>, check it, and open one. Nothing is applied.
       </p>
       <div class="infra-describe-file">
         <div class="infra-describe-head">
