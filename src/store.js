@@ -77,6 +77,7 @@ import { infraDriftMethods } from './store-infra-drift.js';
 import { infraCleanupMethods } from './store-infra-cleanup.js';
 import { infraBreakGlassMethods } from './store-infra-break-glass.js';
 import { infraAdoptMethods } from './store-infra-adopt.js';
+import { infraEditableMethods } from './store-infra-editable.js';
 import { infraChangesMethods } from './store-infra-changes.js';
 import { infraRunsMethods } from './store-infra-runs.js';
 import { infraEnvelopesMethods } from './store-infra-envelopes.js';
@@ -1475,6 +1476,7 @@ Object.assign(
   infraCleanupMethods,
   infraBreakGlassMethods,
   infraAdoptMethods,
+  infraEditableMethods,
   infraChangesMethods,
   infraRunsMethods,
   infraEnvelopesMethods,

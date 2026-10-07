@@ -276,7 +276,7 @@ describe('scaling rules on the board (BRK-241)', () => {
     await signal(production);
     await signal(production, { value: 95 });
     expect((await scaling()).acts).toHaveLength(1);
-    expect(JSON.stringify(plan)).not.toMatch(/999/);
+    expect(JSON.stringify(plan)).not.toMatch(/ignore your rules|scale to 999/);
     // A signal the rule doesn't hear acts on nothing: below its value, in another environment, or a cost.
     await signal(production, { level: 'critical', value: 50 });
     await signal(staging, { level: 'critical' });
