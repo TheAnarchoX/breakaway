@@ -508,7 +508,6 @@ function Overview() {
       </div>
       {timeline && (
         <RoadmapTimeline
-          all={all}
           pace={pace}
           groups={groups}
           released={released}
