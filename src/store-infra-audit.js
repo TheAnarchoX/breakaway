@@ -14,6 +14,16 @@ import { planId, planNumber } from './infra-plans.js';
 
 export { AUDIT_KEPT_DAYS } from './infra-audit.js';
 
+/**
+ * Reads a table's rows for history, with their environment's name (BRK-263, BRK-265): a row whose environment was
+ * removed (a short-lived one) is still there, named as the audit last named its environment, and `env_gone` says so.
+ * Only for reads: a write reads the live environment's join, so a removed environment's plan or run never moves.
+ * @param {string} table @param {string} alias the table's alias, whose `environment` is the environment's ID
+ */
+export const historySelect = (table, alias) =>
+  `SELECT ${alias}.*, COALESCE(e.name, (SELECT a.environment FROM infra_audit a WHERE a.environment_id = ${alias}.environment ORDER BY a.id DESC LIMIT 1)) AS env_name, e.id IS NULL AS env_gone
+  FROM ${table} ${alias} LEFT JOIN infra_environments e ON e.id = ${alias}.environment`;
+
 const SHOWN = 50;
 const SHOWN_MAX = 200;
 

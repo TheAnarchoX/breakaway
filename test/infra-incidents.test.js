@@ -328,6 +328,21 @@ describe('incidents from the signals stream (BRK-197)', () => {
     });
   });
 
+  it('keeps an incident’s plans once their environment is removed, named and marked removed (BRK-265)', async () => {
+    const gone = await addEnvironment({ name: 'in-gone', kind: 'staging', provider: 'fake' });
+    await record([signal({ environment: 'in-gone', text: 'gone is down' })]);
+    const [incident] = await incidents(`?environment=${gone.id}&open=true`);
+    const id = await plan(gone.id, incident.task.wid, 'waiting');
+    expect((await boardApi(`infra/environments/${gone.id}`, { method: 'DELETE', body: {} })).status).toBe(200);
+    const shown = (await body(await api(`infra/incidents/${incident.task.wid}`))).incident;
+    expect(shown.plans).toEqual([
+      expect.objectContaining({ id, state: 'waiting', environment: { id: gone.id, name: 'in-gone', removed: true } }),
+    ]);
+    // The write path still refuses it: approving needs its environment.
+    const refused = await boardApi(`infra/plans/${id}/approve`, { method: 'POST', body: {} });
+    expect(refused.status).toBe(404);
+  });
+
   it('starts no agent, even with a runbook off, and reads only', async () => {
     expect((await record([signal({ resource: 'svc-other' })])).started).toBe(0);
     expect((await body(await api('infra/incidents', { method: 'POST', body: {} }))).status).toBe(404);

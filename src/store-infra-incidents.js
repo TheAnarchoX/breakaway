@@ -12,6 +12,7 @@
  * task's work ID, and the incident's steps follow that plan. The API reads only.
  */
 import { AgentError } from './store-agents.js';
+import { historySelect } from './store-infra-audit.js';
 import { planView } from './infra-plans.js';
 import { signalSubscribers } from './store-infra-signals.js';
 import {
@@ -215,14 +216,11 @@ export const infraIncidentsMethods = {
     return Number(id);
   },
 
-  /** The plans linked to an incident's task, newest first: source `incident`, ref its work ID. */
+  /** The plans linked to an incident's task, newest first: source `incident`, ref its work ID, a removed environment's too. */
   incidentPlans(wid) {
     if (!wid) return [];
     return this.sql
-      .exec(
-        "SELECT p.*, e.name AS env_name FROM infra_plans p JOIN infra_environments e ON e.id = p.environment WHERE p.source = 'incident' AND p.ref = ? ORDER BY p.n DESC",
-        wid,
-      )
+      .exec(`${historySelect('infra_plans', 'p')} WHERE p.source = 'incident' AND p.ref = ? ORDER BY p.n DESC`, wid)
       .toArray()
       .map((row) => planView(row, { full: false }));
   },

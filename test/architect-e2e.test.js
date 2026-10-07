@@ -954,6 +954,32 @@ describe('Architect’s whole loop (BRK-228)', () => {
     );
     expect(listed.map((p) => p.id)).toEqual([removal.id, request.createPlan]);
     expect(listed.every((p) => p.environment.name === name)).toBe(true);
+    // Its runs too, by repository and unfiltered, marked removed, and so is its plan (BRK-265).
+    expect(listed.every((p) => p.environment.removed === true)).toBe(true);
+    for (const query of ['?repo=widgets', '']) {
+      const ran = (await body(await api(`infra/runs${query}`))).runs.filter((r) => r.environment.id === short.id);
+      expect(ran.map((r) => [r.plan, r.outcome, r.environment])).toEqual([
+        [removal.id, 'applied', { id: short.id, name, removed: true }],
+        [request.createPlan, 'unverified', { id: short.id, name, removed: true }],
+      ]);
+    }
+    expect(await run(removal.id)).toMatchObject({ outcome: 'applied', environment: { name, removed: true } });
+    // A live environment's runs aren't marked.
+    const live = (await body(await api('infra/runs?repo=widgets'))).runs.filter((r) => r.environment.id !== short.id);
+    expect(live.length).toBeGreaterThan(0);
+    expect(live.every((r) => !('removed' in r.environment))).toBe(true);
+    // The writes still read the live join, so nothing moves a removed environment's run or plan again.
+    expect(await inStore((s) => s.runRow(removal.id))).toBeNull();
+    expect(
+      await inStore((s) => {
+        try {
+          return s.planRow(removal.id);
+        } catch (error) {
+          return error.status;
+        }
+      }),
+    ).toBe(404);
+    expect((await runner(removal.id, short, { runId: '1' })).status).toBe(404);
     expect(platform.short.state.resources).toEqual([]);
     const environments = (await body(await api('infra/environments?repo=widgets'))).environments;
     expect(environments.find((e) => e.name === name)).toBeUndefined();

@@ -14,6 +14,7 @@
  * hash is `planDigest(diff)` (src/infra-runner.js), stored on approval.
  */
 import { AgentError } from './store-agents.js';
+import { historySelect } from './store-infra-audit.js';
 import { install } from './install.js';
 import { redact } from './redact.js';
 import { runsTheBoard } from './infra-environments.js';
@@ -39,12 +40,8 @@ import {
 const SHOWN = 50;
 const SHOWN_MAX = 200;
 const SELECT = 'SELECT p.*, e.name AS env_name FROM infra_plans p JOIN infra_environments e ON e.id = p.environment';
-/**
- * The same, for reading plans: a plan whose environment was removed (a short-lived one, BRK-263) is still there,
- * named as the audit last named its environment, so the record of what removed it outlives it.
- */
-const SELECT_READ = `SELECT p.*, COALESCE(e.name, (SELECT a.environment FROM infra_audit a WHERE a.environment_id = p.environment ORDER BY a.id DESC LIMIT 1)) AS env_name, e.id IS NULL AS env_gone
-  FROM infra_plans p LEFT JOIN infra_environments e ON e.id = p.environment`;
+/** The same, for reading plans: a removed environment's stay, named as it was (BRK-263). */
+const SELECT_READ = historySelect('infra_plans', 'p');
 
 /** The moves a frozen environment refuses: rejecting a plan, finishing an apply, and rolling back still go. */
 const FORWARD = ['waiting', 'approved', 'applying'];
