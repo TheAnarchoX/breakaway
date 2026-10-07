@@ -17,6 +17,14 @@ import { StreamRail } from '../components/EnvironmentStream.jsx';
 import { ActionsSection } from '../components/EnvironmentActions.jsx';
 import { NoneYet } from '../components/ui.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
+import {
+  AddFromTemplate,
+  ChangePanel,
+  NodeChange,
+  cantChange,
+  changeTile,
+  useChange,
+} from '../components/EnvironmentChange.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>, as a console
@@ -28,7 +36,8 @@ import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
  * On a wide screen it fills the window (WEB-97), balanced 2:8:2 (WEB-100): the status band on top of the map in the
  * middle, admin on the left (the owner's actions, plans, desired state, cost, nobody owns, and what's live), and ops on
  * the right (the stream, incidents, and recent deploys), each column scrolling on its own and every panel shown in
- * full. Narrower, it stacks: status, map, ops, admin.
+ * full. Narrower, it stacks: status, map, ops, admin. The owner changes the environment from the map (WEB-99): Change
+ * and Remove on a node's detail, Add from a template on the map, and the change with its plan beside the map.
  */
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
@@ -183,6 +192,7 @@ export function EnvironmentView() {
   const [fresh, setFresh] = useState(/** @type {Set<string>} */ (new Set()));
   const shownKeys = useRef(/** @type {Set<string> | null} */ (null));
   const busy = useRef(false);
+  const ch = useChange(state.env, { desired: state.desired, tick: state.tick, plans: state.plans });
 
   const load = async (/** @type {{ quiet?: boolean }} */ { quiet = false } = {}) => {
     if (busy.current) return;
@@ -342,6 +352,7 @@ export function EnvironmentView() {
   const run = state.runs.find((r) => r.phase !== 'done') ?? null;
   const agents = agentsAtWork(tasks.value, { env, incidents: state.incidents, plans: state.plans });
   const names = new Map(state.resources.map((r) => [r.id, r.name]));
+  const cant = cantChange(env, state.resources.length);
   const showResource = (/** @type {string} */ rid) => {
     setMode('list');
     requestAnimationFrame(() => {
@@ -401,7 +412,9 @@ export function EnvironmentView() {
         </div>
 
         <div class="console-grid">
-          <div class="console-centre">
+          <div
+            class={`console-centre ${!cant && (ch.held || ch.edits.length || ch.editing || ch.adding || ch.fromDraft) ? 'has-change' : ''}`}
+          >
             <StatusBand
               env={env}
               health={health}
@@ -409,6 +422,7 @@ export function EnvironmentView() {
               run={run}
               agents={agents}
               inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
+              change={changeTile(ch)}
             />
             <Topology
               env={env}
@@ -419,7 +433,12 @@ export function EnvironmentView() {
               signals={state.signals}
               mode={mode}
               onMode={setMode}
+              change={ch.overlay()}
+              nodeActions={cant ? undefined : (r) => <NodeChange r={r} ch={ch} />}
+              headActions={cant ? null : <AddFromTemplate ch={ch} />}
+              note={env.observeOnly ? cant : null}
             />
+            <ChangePanel ch={ch} cant={cant} />
           </div>
 
           <aside class="console-side console-ops" aria-label={`What happens in ${env.name}`}>

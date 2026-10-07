@@ -1,0 +1,399 @@
+// A change from the environment console (WEB-99; docs/specs/BRK-258-plan-from-the-board.md): the owner's edits to one
+// environment's desired state, kept in this browser until they're proposed, as operations (set a setting, add from a
+// template, remove a resource), never as a copy of the file. The board replays them onto the file at the default
+// branch's head (BRK-259). This file keeps them, merges a new edit into the ones before it, words them at once (the
+// board's own preview follows), turns the settings form's values into edits, checks a field the way the provider
+// declares it (BRK-262), and says what the change's card shows. Pure, so the tests can check it.
+
+/** At most this many edits in one change (BRK-259's CHANGE_MAX_EDITS). */
+export const CHANGE_MAX_EDITS = 50;
+/** The console asks the board for a preview this long after the last edit. */
+export const PREVIEW_DELAY_MS = 1_500;
+
+const KEY = 'breakaway.change.';
+const WORDS_MAX = 60;
+
+const isObject = (/** @type {unknown} */ v) => v != null && typeof v === 'object' && !Array.isArray(v);
+
+/** The storage a change lives in, or null when the browser blocks it (then a change lasts until the page closes). */
+const local = () => {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * One edit, as BRK-259 takes it.
+ * @typedef {{ op: 'set', resource: string, path: string, value: unknown }
+ *   | { op: 'add', template: string, inputs: Record<string, string> }
+ *   | { op: 'remove', resource: string }} Edit
+ */
+
+/**
+ * The edits kept for environment `envId`, or none.
+ * @param {string | number} envId
+ * @returns {Edit[]}
+ */
+export function readEdits(envId, storage = local()) {
+  try {
+    const edits = JSON.parse(storage?.getItem(KEY + envId) ?? '[]');
+    return Array.isArray(edits) ? edits.filter((e) => isObject(e) && ['set', 'add', 'remove'].includes(e.op)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Keeps environment `envId`'s edits, or forgets them when there are none.
+ * @param {string | number} envId
+ * @param {Edit[]} edits
+ */
+export function writeEdits(envId, edits, storage = local()) {
+  try {
+    if (edits.length) storage?.setItem(KEY + envId, JSON.stringify(edits));
+    else storage?.removeItem(KEY + envId);
+  } catch {
+    /* storage full or blocked: the change lasts until the page closes */
+  }
+}
+
+/**
+ * The change with `more` joined to it: a setting set again replaces the earlier edit of the same setting, and removing
+ * a resource drops the edits that set its settings. Answers the edits, or why they don't fit.
+ * @param {Edit[]} edits
+ * @param {Edit[]} more
+ * @returns {{ edits: Edit[] } | { error: string }}
+ */
+export function joinEdits(edits, more) {
+  let out = [...edits];
+  for (const e of more) {
+    if (e.op === 'set') out = out.filter((x) => !(x.op === 'set' && x.resource === e.resource && x.path === e.path));
+    else if (e.op === 'remove') {
+      if (out.some((x) => x.op === 'remove' && x.resource === e.resource)) continue;
+      out = out.filter((x) => !(x.op === 'set' && x.resource === e.resource));
+    }
+    out.push(e);
+  }
+  if (out.length > CHANGE_MAX_EDITS)
+    return { error: `A change holds at most ${CHANGE_MAX_EDITS} edits: propose this one, then change more.` };
+  return { edits: out };
+}
+
+/**
+ * The value at a dotted path inside an object, or undefined.
+ * @param {unknown} obj
+ * @param {string} path
+ */
+export function getPath(obj, path) {
+  let at = obj;
+  for (const p of path.split('.')) {
+    if (!isObject(at) || !Object.hasOwn(/** @type {object} */ (at), p)) return undefined;
+    at = /** @type {Record<string, unknown>} */ (at)[p];
+  }
+  return at;
+}
+
+/**
+ * A copy of `obj` with the value at a dotted path set, or removed when it's null or undefined; objects on the way are
+ * made.
+ * @param {Record<string, any>} obj
+ * @param {string} path
+ * @param {unknown} value
+ */
+export function setPath(obj, path, value) {
+  const out = structuredClone(obj ?? {});
+  const parts = path.split('.');
+  let at = out;
+  for (const p of parts.slice(0, -1)) {
+    if (!isObject(at[p])) at[p] = {};
+    at = at[p];
+  }
+  const last = parts[parts.length - 1];
+  if (value === null || value === undefined) delete at[last];
+  else at[last] = value;
+  return out;
+}
+
+/** Whether two settings are the same, whatever the order of an object's keys. */
+export function sameValue(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+  const norm = (/** @type {unknown} */ v) =>
+    v === undefined
+      ? null
+      : Array.isArray(v)
+        ? v.map(norm)
+        : isObject(v)
+          ? Object.fromEntries(
+              Object.entries(/** @type {object} */ (v))
+                .sort(([x], [y]) => x.localeCompare(y))
+                .map(([k, x]) => [k, norm(x)]),
+            )
+          : v;
+  return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
+}
+
+/**
+ * One setting the console may change, as the provider declares it (BRK-262; EditableField in src/infra-provider.js).
+ * @typedef {{ path: string, label: string, type: string, help: string, optional?: boolean, min?: number, max?: number,
+ *   integer?: boolean, unit?: string, pattern?: string, options?: { value: string, label: string }[], kinds?: string[],
+ *   targets?: { type: string, label: string, kind: string, field: string, by: 'id' | 'name' }[],
+ *   fields?: EditableField[], template?: Record<string, unknown> }} EditableField
+ */
+
+/**
+ * A field's value as the form starts it from the resource's settings: names as lines, a number as text.
+ * @param {EditableField} field
+ * @param {unknown} value
+ */
+export function formValue(field, value) {
+  if (field.type === 'names') return Array.isArray(value) ? value.map(String).join('\n') : '';
+  if (field.type === 'number') return typeof value === 'number' ? String(value) : '';
+  if (field.type === 'yesno') return isObject(value) ? Boolean(/** @type {any} */ (value).enabled) : Boolean(value);
+  if (field.type === 'text' || field.type === 'choice' || field.type === 'resource')
+    return typeof value === 'string' ? value : '';
+  if (field.type === 'bindings' || field.type === 'rules')
+    return Array.isArray(value)
+      ? value.map((item) =>
+          field.type === 'rules' && isObject(item)
+            ? ruleForm(/** @type {EditableField[]} */ (field.fields ?? []), item)
+            : structuredClone(item),
+        )
+      : [];
+  return value;
+}
+
+/** A rule's fields as the form edits them, every other key kept. */
+function ruleForm(/** @type {EditableField[]} */ fields, /** @type {Record<string, any>} */ rule) {
+  let out = structuredClone(rule);
+  for (const f of fields) out = setPath(out, f.path, formValue(f, getPath(rule, f.path)));
+  return out;
+}
+
+/**
+ * What's wrong with a field's value in the form, in words, or null.
+ * @param {EditableField} field
+ * @param {unknown} raw the form's value (formValue's shape)
+ * @returns {string | null}
+ */
+export function fieldProblem(field, raw) {
+  const pattern = field.pattern ? new RegExp(field.pattern, 'u') : null;
+  if (field.type === 'number') {
+    const text = String(raw ?? '').trim();
+    if (!text) return field.optional ? null : `${field.label} needs a number.`;
+    const n = Number(text);
+    if (!Number.isFinite(n)) return `${field.label} is a number.`;
+    if (field.integer && !Number.isInteger(n)) return `${field.label} is a whole number.`;
+    if (field.min !== undefined && n < field.min) return `${field.label} is at least ${field.min}.`;
+    if (field.max !== undefined && n > field.max) return `${field.label} is at most ${field.max}.`;
+    return null;
+  }
+  if (field.type === 'text' || field.type === 'resource' || field.type === 'choice') {
+    const text = String(raw ?? '').trim();
+    if (!text) return field.optional || field.type === 'text' ? null : `Pick a ${field.label.toLowerCase()}.`;
+    if (field.type === 'choice' && field.options && !field.options.some((o) => o.value === text))
+      return `${field.label} is one of ${field.options.map((o) => o.label).join(', ')}.`;
+    return pattern && !pattern.test(text) ? `${field.label} doesn’t look right: ${field.help}` : null;
+  }
+  if (field.type === 'names') {
+    const bad = names(raw).find((n) => pattern && !pattern.test(n));
+    return bad ? `${bad} doesn’t fit ${field.label.toLowerCase()}: ${field.help}` : null;
+  }
+  if (field.type === 'bindings') {
+    const list = Array.isArray(raw) ? raw : [];
+    const types = new Set((field.targets ?? []).map((t) => t.type));
+    const seen = new Set();
+    for (const b of list) {
+      if (!isObject(b)) continue;
+      const name = String(b.name ?? '').trim();
+      if (!name) return 'Every binding needs a name its code uses.';
+      if (seen.has(name)) return `Two bindings are called ${name}: give each its own name.`;
+      seen.add(name);
+      const target = (field.targets ?? []).find((t) => t.type === b.type);
+      if (types.has(b.type) && target && !String(b[target.field] ?? '').trim())
+        return `Pick the ${target.label.toLowerCase()} ${name} binds.`;
+    }
+    return null;
+  }
+  if (field.type === 'rules') {
+    for (const rule of Array.isArray(raw) ? raw : [])
+      for (const f of field.fields ?? []) {
+        const problem = fieldProblem(f, getPath(rule, f.path));
+        if (problem) return problem;
+      }
+    return null;
+  }
+  return null;
+}
+
+/** The lines of a names field, trimmed, without the empty ones. */
+const names = (/** @type {unknown} */ raw) =>
+  String(raw ?? '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/**
+ * A field's value as the desired state keeps it, from the form's: null where it's left unset.
+ * @param {EditableField} field
+ * @param {unknown} raw
+ * @param {unknown} [before] the value the resource has now, so a yes or no kept as `{ enabled }` stays that shape
+ */
+export function settingValue(field, raw, before = undefined) {
+  if (field.type === 'number') {
+    const text = String(raw ?? '').trim();
+    return text ? Number(text) : null;
+  }
+  if (field.type === 'names') return names(raw);
+  if (field.type === 'yesno')
+    return isObject(before) ? { .../** @type {object} */ (before), enabled: Boolean(raw) } : Boolean(raw);
+  if (field.type === 'text' || field.type === 'choice' || field.type === 'resource') {
+    const text = String(raw ?? '').trim();
+    return text ? text : field.optional || field.type !== 'text' ? null : '';
+  }
+  if (field.type === 'bindings')
+    return (Array.isArray(raw) ? raw : []).map((b) => (isObject(b) ? { ...b, name: String(b.name ?? '').trim() } : b));
+  if (field.type === 'rules')
+    return (Array.isArray(raw) ? raw : []).map((rule) => {
+      let out = structuredClone(rule);
+      for (const f of field.fields ?? []) out = setPath(out, f.path, settingValue(f, getPath(rule, f.path), undefined));
+      return out;
+    });
+  return raw;
+}
+
+/**
+ * The set edits a resource's settings form makes: one for each field whose value differs from the resource's.
+ * @param {{ id: string, attrs?: Record<string, unknown> }} resource as the desired state has it
+ * @param {EditableField[]} fields
+ * @param {Record<string, unknown>} form the form's values, by path
+ * @returns {Edit[]}
+ */
+export function settingEdits(resource, fields, form) {
+  /** @type {Edit[]} */
+  const out = [];
+  for (const f of fields) {
+    if (!Object.hasOwn(form, f.path)) continue;
+    const before = getPath(resource.attrs, f.path);
+    const value = settingValue(f, form[f.path], before);
+    if (sameValue(before ?? null, value)) continue;
+    // An empty list where nothing was set changes nothing either.
+    if (before === undefined && Array.isArray(value) && !value.length) continue;
+    out.push({ op: 'set', resource: resource.id, path: f.path, value });
+  }
+  return out;
+}
+
+/** A value in a line of words: short, and plain where it can be. */
+function words(/** @type {unknown} */ value) {
+  if (value === undefined || value === null) return 'unset';
+  const s = typeof value === 'string' ? value : JSON.stringify(value);
+  return s.length > WORDS_MAX ? `${s.slice(0, WORDS_MAX - 1)}…` : s;
+}
+
+/**
+ * The change as words, an edit a line, from what this browser knows: the board's preview says it again from the file.
+ * @param {Edit[]} edits
+ * @param {{ id: string, name: string, kind: string, attrs?: Record<string, unknown> }[]} resources the desired state's
+ * @param {Map<string, EditableField[]>} [labels] each kind's fields, for the settings' names
+ * @returns {string[]}
+ */
+export function editLines(edits, resources, labels = new Map()) {
+  const byId = new Map(resources.map((r) => [r.id, r]));
+  return edits.map((e) => {
+    if (e.op === 'add') {
+      const name = e.inputs?.name ?? Object.values(e.inputs ?? {})[0];
+      return `+ ${e.template}${name ? ` ${name}` : ''} (from a template)`;
+    }
+    const r = byId.get(e.resource);
+    const name = r?.name ?? e.resource;
+    if (e.op === 'remove') return `− ${r?.kind ?? 'resource'} ${name}`;
+    const field = r ? labels.get(r.kind)?.find((f) => f.path === e.path) : null;
+    const label = field?.label.toLowerCase() ?? e.path;
+    return `~ ${name}: ${label} ${words(getPath(r?.attrs, e.path))} → ${words(e.value)}`;
+  });
+}
+
+/**
+ * What the change does to each resource the console knows of before the board answers: changes or removes it.
+ * @param {Edit[]} edits
+ * @returns {Map<string, { op: string, effect: 'adds' | 'changes' | 'removes' }>}
+ */
+export function editMarks(edits) {
+  const out = new Map();
+  for (const e of edits) {
+    if (e.op === 'remove') out.set(e.resource, { op: 'delete', effect: /** @type {const} */ ('removes') });
+    else if (e.op === 'set' && !out.has(e.resource))
+      out.set(e.resource, { op: 'update', effect: /** @type {const} */ ('changes') });
+  }
+  return out;
+}
+
+/**
+ * The desired state's resource behind a resource of the inventory: the same ID, else the same kind and name.
+ * @template {{ id: string, kind: string, name: string }} R
+ * @param {R[]} declared
+ * @param {{ id: string, kind: string, name: string }} r
+ * @returns {R | null}
+ */
+export function declaredFor(declared, r) {
+  return declared.find((d) => d.id === r.id) ?? declared.find((d) => d.kind === r.kind && d.name === r.name) ?? null;
+}
+
+/** The change's card, in the brand's words (BRK-258, "The words"). */
+export const CARD = {
+  checking: 'Checking',
+  waiting: 'Waiting for you',
+  merging: 'Merging',
+  cant: 'Can’t merge',
+  merged: 'Merged',
+  'taken over': 'Taken over',
+  rejected: 'Rejected',
+  closed: 'Closed',
+};
+
+/**
+ * What a change's card shows: the state's key (CARD's, or a plan's once the merged change has one) and whether the
+ * owner can approve, reject, or propose it again from here.
+ * @param {{ state: string, why?: string | null, approval?: { plan?: string | null } | null, digest?: string | null,
+ *   commit?: string | null }} change
+ * @param {{ checks?: string | null, plan?: { state: string } | null }} [seen] the pull request's checks (from the board's
+ *   GitHub data: `pending`, `success`, `failure`) and the plan the merge made, when the console has them
+ * @returns {{ state: string, plan: boolean, approve: boolean, reject: boolean, again: boolean }}
+ */
+export function cardState(change, { checks = null, plan = null } = {}) {
+  const none = { plan: false, approve: false, reject: false, again: false };
+  if (change.state === 'open')
+    return {
+      ...none,
+      state: checks === 'pending' ? 'checking' : 'waiting',
+      approve: Boolean(change.digest && change.commit),
+      reject: true,
+      again: checks === 'failure',
+    };
+  if (change.state === 'approved')
+    return change.why
+      ? { ...none, state: 'cant', reject: true, again: true }
+      : { ...none, state: 'merging', reject: false };
+  if (change.state === 'merged')
+    return plan ? { ...none, state: plan.state, plan: true } : { ...none, state: 'merged' };
+  return { ...none, state: change.state };
+}
+
+/** Whether a finished change's card still shows: a day after it last moved, it goes. */
+export const recentChange = (/** @type {{ updated: string }} */ change, now = Date.now()) =>
+  now - Date.parse(change.updated) < 24 * 60 * 60 * 1000;
+
+/**
+ * The prompt Have an agent do it starts with: the environment, and what the owner was changing, for them to finish.
+ * @param {{ name: string, repo: string }} env
+ * @param {string[]} lines the change so far, in words
+ */
+export function agentPrompt(env, lines) {
+  const out = [
+    `Change ${env.name}'s desired state (.github/breakaway-infra/${env.name}.json in ${env.repo}) by pull request, with infra check passing first.`,
+  ];
+  if (lines.length) out.push('', 'What I was changing on the console:', ...lines.map((l) => `- ${l}`));
+  out.push('', 'What the console couldn’t do: ');
+  return out.join('\n');
+}
