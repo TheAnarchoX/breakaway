@@ -133,6 +133,8 @@ export function environmentsText({ environments }, repo) {
 function resourceState(r) {
   const bits = [];
   if (r.health) bits.push(`${r.health.state}${r.health.text ? `: ${r.health.text}` : ''}`);
+  // The last known health stays when a read fails; the note says what failed (BRK-266).
+  if (r.health?.note) bits.push(`not read now (last read ${r.health.at ?? 'never'}): ${r.health.note}`);
   const cost = r.cost ? money(r.cost.amount, r.cost.currency) : null;
   if (cost) bits.push(`${cost}, estimated`);
   return bits.join(' · ');

@@ -5,6 +5,7 @@ import {
   CircleX,
   Eye,
   FileDiff,
+  Moon,
   Plug,
   Plus,
   RefreshCw,
@@ -13,6 +14,7 @@ import {
   TriangleAlert,
 } from 'lucide-preact';
 import { ago, shortVersion } from '../lib/model.js';
+import { rollUpHealth } from '../../../src/infra-health.js';
 import { api, enc } from '../lib/api.js';
 import {
   confirmDialog,
@@ -46,29 +48,46 @@ const KINDS = [
 ];
 export const KIND_LABEL = Object.fromEntries(KINDS);
 
-/** Worst first: an environment's health is its worst resource's. */
+/** Worst first. Idle (deployed, no traffic) ranks with healthy, never as unknown (BRK-266). */
 export const HEALTH = {
   down: { label: 'Down', Icon: CircleX },
   degraded: { label: 'Degraded', Icon: TriangleAlert },
   unknown: { label: 'Unknown', Icon: CircleDashed },
   healthy: { label: 'Healthy', Icon: CircleCheck },
+  idle: { label: 'Idle', Icon: Moon },
 };
-const WORST = Object.keys(HEALTH);
 
 /**
- * An environment's health from its resources: the worst state, how many resources share it, and how many there are.
+ * An environment's health from its resources (BRK-266): down and degraded win; otherwise healthy (or idle, when
+ * every readable one is quiet) with how many couldn't be read; unknown only when none could. `count` is how many
+ * resources share the state, `notRead` how many couldn't be read, and `at` the newest check.
  * @param {any[]} resources
  */
 export function environmentHealth(resources) {
-  if (!resources.length) return null;
-  const states = resources.map((r) => r.health?.state ?? 'unknown');
-  const state = WORST.find((s) => states.includes(s)) ?? 'unknown';
+  const rolled = rollUpHealth(resources.map((r) => r.health));
+  if (!rolled) return null;
   const at = resources
     .map((r) => r.health?.at)
     .filter(Boolean)
     .sort()
     .at(-1);
-  return { state, count: states.filter((s) => s === state).length, total: resources.length, at: at ?? null };
+  return { ...rolled, at: at ?? null };
+}
+
+/**
+ * How many resources an environment's health covers, in words: "all 4 resources", "2 of 5 resources", and how many
+ * couldn't be read.
+ * @param {{ state: string, count: number, total: number, notRead?: number }} health
+ */
+export function healthOfWords(health) {
+  const n = (/** @type {number} */ k) => `${k} ${k === 1 ? 'resource' : 'resources'}`;
+  const of =
+    health.count === health.total
+      ? health.total === 1
+        ? '1 resource'
+        : `all ${health.total} resources`
+      : `${health.count} of ${n(health.total)}`;
+  return health.notRead && health.state !== 'unknown' ? `${of}, ${health.notRead} not read` : of;
 }
 
 /** The providers on Connections (BRK-194): a row each, connected or not. */
@@ -83,11 +102,8 @@ export function Health({ health }) {
         Not seen yet
       </span>
     );
-  const { label, Icon } = HEALTH[health.state];
-  const of =
-    health.state === 'healthy'
-      ? `${health.total === 1 ? '1 resource' : `all ${health.total} resources`}`
-      : `${health.count} of ${health.total} ${health.total === 1 ? 'resource' : 'resources'}`;
+  const { label, Icon } = HEALTH[health.state] ?? HEALTH.unknown;
+  const of = healthOfWords(health);
   return (
     <span class="infra-health-line">
       <span class={`infra-health infra-health-${health.state}`}>
