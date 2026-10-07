@@ -19,6 +19,7 @@ import { auditActor, auditSummary, auditWords } from '../lib/infra-audit.js';
 import { confirmDialog, environmentId, hashFor, navOrder, planRef, repoName, toast } from '../lib/store.js';
 import { rateWords } from '../../../src/infra-currency.js';
 import { AuditSummary } from '../components/AuditSummary.jsx';
+import { bindingWords, keyWords, namedList, sameSetting, valueWords } from '../../../src/infra-setting-words.js';
 
 /**
  * A plan's page (WEB-62; docs/specs/IDEA-19-architect.md, "Views" and "Approvals"), at
@@ -91,16 +92,23 @@ export function amount(amount, currency, { signed = false } = {}) {
 }
 
 /**
- * What one change does to a resource's settings: each setting it adds, changes, or removes, with before and after.
+ * What one change does to a resource's settings: each setting it adds, changes, or removes, in words (WEB-110): a
+ * value as text, never JSON, and a list of bindings one binding at a time ('+ CHAT (Durable Object), − OLD_QUEUE;
+ * ASSETS unchanged') in `list`. The same bindings in another order aren't a change.
  * @param {{ before: Record<string, unknown> | null, after: Record<string, unknown> | null }} change
- * @returns {{ key: string, before: string | null, after: string | null }[]}
+ * @returns {{ key: string, label: string, before: string | null, after: string | null, list: string | null }[]}
  */
 export function settingChanges({ before, after }) {
-  const show = (/** @type {unknown} */ v) => (v === undefined ? null : typeof v === 'string' ? v : JSON.stringify(v));
+  const show = (/** @type {unknown} */ v) => (v === undefined ? null : valueWords(v, { max: 200 }));
   const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].sort();
   return keys
-    .map((key) => ({ key, before: show(before?.[key]), after: show(after?.[key]) }))
-    .filter((c) => c.before !== c.after);
+    .filter((key) => !sameSetting(before?.[key] ?? null, after?.[key] ?? null))
+    .map((key) => {
+      const was = before?.[key];
+      const now = after?.[key];
+      const list = namedList(was) || namedList(now) ? bindingWords(was, now) : null;
+      return { key, label: keyWords(key), before: show(was), after: show(now), list };
+    });
 }
 
 /** @param {{ iso: string | null }} props */
@@ -223,9 +231,13 @@ function Change({ c, cost, currency }) {
                 <code>{s.key}</code>
               </dt>
               <dd>
-                {s.before !== null && <del>{s.before}</del>}
-                {s.before !== null && s.after !== null && <span aria-hidden="true"> → </span>}
-                {s.after !== null && <ins>{s.after}</ins>}
+                {s.list ?? (
+                  <>
+                    {s.before !== null && <del>{s.before}</del>}
+                    {s.before !== null && s.after !== null && <span aria-hidden="true"> → </span>}
+                    {s.after !== null && <ins>{s.after}</ins>}
+                  </>
+                )}
               </dd>
             </div>
           ))}

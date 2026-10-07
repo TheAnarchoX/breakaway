@@ -15,6 +15,7 @@ import {
 import { api, enc } from '../lib/api.js';
 import { writeDraft } from '../lib/drafts.js';
 import { confirmDialog, github, hashFor, newAgent, pullParam, repoName, toast } from '../lib/store.js';
+import { ago } from '../lib/model.js';
 import { planOverlay } from '../lib/topology.js';
 import {
   CARD,
@@ -22,6 +23,8 @@ import {
   agentPrompt,
   bindingFor,
   cardState,
+  changePlanId,
+  changeShows,
   codePrompt,
   createEdit,
   createForm,
@@ -30,18 +33,22 @@ import {
   declaredFor,
   editLines,
   editMarks,
+  endedWords,
   fieldProblem,
   formValue,
   getPath,
+  idleEdits,
   joinEdits,
   nameAfter,
   nameEdits,
   nameProblem,
   plansNothing,
   readEdits,
+  readDismissed,
   recentChange,
   setPath,
   settingEdits,
+  writeDismissed,
   writeEdits,
 } from '../lib/infra-change.js';
 import { PLAN_STATE, amount, settingChanges } from '../views/PlanView.jsx';
@@ -65,9 +72,30 @@ import { ChangeActions } from './ChangeActions.jsx';
 const STATE_WORDS = { ...PLAN_STATE, ...CARD };
 
 /** The card's own states, coloured like a plan's. */
-const PILL = { waiting: 'waiting', merging: 'approved', cant: 'failed', merged: 'approved' };
+const PILL = {
+  waiting: 'waiting',
+  merging: 'approved',
+  cant: 'failed',
+  merged: 'approved',
+  nothing: 'applied',
+  refused: 'failed',
+  'rolled back': 'failed',
+};
+
+/** What the plan a merged change follows says on its card, after its ID. */
+const PLAN_LINE = {
+  approved: ' is approved: the board applies it.',
+  applying: ' is being applied.',
+  applied: ' is applied.',
+  failed: ' failed: open it to see what happened and what to do.',
+  'rolled back': ' was rolled back: open it to see why.',
+  rejected: ' was rejected, so nothing changed.',
+  draft: ' is refused by your policy, so nothing applies.',
+};
 
 const short = (/** @type {string | null | undefined} */ sha) => (sha ? sha.slice(0, 7) : '');
+/** A line from the board, starting with a capital. */
+const sentence = (/** @type {string} */ text) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /**
  * The change's state for one environment: the edits kept in this browser, the board's preview of them, the resource
@@ -89,6 +117,7 @@ export function useChange(env, { desired, tick, plans, seen = 1 }) {
   const [draft, setDraft] = useState(/** @type {any[] | null} */ (null));
   const [held, setHeld] = useState(/** @type {{ open: any, changes: any[] } | null} */ (null));
   const [plan, setPlan] = useState(/** @type {any} */ (null));
+  const [dismissed, setDismissed] = useState(/** @type {number | null} */ (null));
   const [preview, setPreview] = useState(
     /** @type {{ busy: boolean, key: string | null, data: any, problems: any[], error: string | null, wait: number | null }} */ ({
       busy: false,
@@ -113,6 +142,7 @@ export function useChange(env, { desired, tick, plans, seen = 1 }) {
     setCreatable(null);
     setDraft(null);
     setHeld(null);
+    setDismissed(readDismissed(id));
     setPreview({ busy: false, key: null, data: null, problems: [], error: null, wait: null });
     api(`infra/environments/${enc(id)}/editable`)
       .then((d) => {
@@ -143,8 +173,8 @@ export function useChange(env, { desired, tick, plans, seen = 1 }) {
       .catch(() => {});
   }, [id, tick]);
 
-  const shown = held?.open ?? held?.changes?.find((c) => c.state !== 'rejected' && recentChange(c)) ?? null;
-  const planId = shown?.state === 'merged' ? (shown.approval?.plan ?? null) : null;
+  const latestChange = held?.open ?? held?.changes?.find((c) => c.state !== 'rejected' && recentChange(c)) ?? null;
+  const planId = latestChange ? changePlanId(latestChange) : null;
   useEffect(() => {
     if (!planId) {
       setPlan(null);
@@ -158,9 +188,27 @@ export function useChange(env, { desired, tick, plans, seen = 1 }) {
         .catch(() => {});
   }, [planId, tick]);
 
+  // Its card while it's the board's or just ended, then a line above the map until dismissed (WEB-110).
+  const followed = plan && plan.id === planId ? plan : null;
+  const where = latestChange
+    ? changeShows(latestChange, { plan: followed, dismissed: dismissed === latestChange.n })
+    : null;
+  const starting = edits.length > 0 || Boolean(editing) || adding;
+
   const declared = desired?.desired?.resources ?? draft ?? [];
   const key = JSON.stringify(edits);
   latest.current = edits;
+
+  // An edit kept in this browser that changes nothing now (the same bindings in another order, or the file moved to
+  // it) leaves the change, with a line saying so (WEB-110).
+  useEffect(() => {
+    if (id == null || !editable || !edits.length) return;
+    const labels = new Map(Object.entries(editable).map(([k, v]) => [k, v.fields ?? []]));
+    const idle = idleEdits(edits, declared, labels);
+    if (!idle.size) return;
+    save(edits.filter((_, n) => !idle.has(n)));
+    for (const line of idle.values()) toast(`Dropped from your change: ${line}.`, 'info');
+  }, [id, key, editable, desired, draft]);
 
   const ask = async () => {
     if (asking.current) {
@@ -229,8 +277,16 @@ export function useChange(env, { desired, tick, plans, seen = 1 }) {
     editing,
     adding,
     preview,
-    held: shown,
-    plan,
+    held: where === 'card' ? latestChange : null,
+    /** The last change, folded to a line, until it's dismissed or a new change starts. */
+    last: where === 'line' && !starting ? latestChange : null,
+    plan: followed,
+    /** Puts the folded line away for this change. */
+    dismissLast() {
+      if (!latestChange) return;
+      writeDismissed(id, latestChange.n);
+      setDismissed(latestChange.n);
+    },
     current: preview.key === key && !preview.busy,
     /** Joins edits to the change; answers why not when they don't fit. */
     add(
@@ -650,9 +706,29 @@ function SettingsForm({ ch }) {
       return;
     }
     const renamed = kind.name ? nameEdits(d, name) : [];
-    const why = ch.add([...renamed, ...settingEdits(d, fields, form)], { replacing: d.id });
+    const made = [...renamed, ...settingEdits(d, fields, form)];
+    // A field you changed that ends as it is (the same bindings in another order) adds no edit: say so (WEB-110).
+    const was = start();
+    const idle = fields.filter(
+      (f) =>
+        JSON.stringify(form[f.path]) !== JSON.stringify(was[f.path]) &&
+        !made.some((e) => e.op === 'set' && e.path === f.path),
+    );
+    const why = ch.add(made, { replacing: d.id });
     if (why) setError(why);
-    else ch.edit(null);
+    else {
+      const line = idle.length
+        ? idleEdits(
+            idle.map((f) => ({ op: 'set', resource: d.id, path: f.path, value: getPath(d.attrs, f.path) })),
+            [d],
+            new Map([[d.kind, fields]]),
+          )
+            .values()
+            .next().value
+        : null;
+      if (line) toast(`${line}.`, 'info');
+      ch.edit(null);
+    }
   };
   return (
     <form class="change-form" onSubmit={done} noValidate aria-labelledby="change-form-title">
@@ -1205,7 +1281,7 @@ export function PlanPreview({ preview }) {
                     <span class="change-diff-settings">
                       {settings.map((s) => (
                         <span key={s.key}>
-                          {s.key}: {s.before ?? 'unset'} → {s.after ?? 'unset'}
+                          {s.label} {s.list ?? `${s.before ?? 'unset'} → ${s.after ?? 'unset'}`}
                         </span>
                       ))}
                     </span>
@@ -1285,7 +1361,21 @@ function ChangeCard({ ch }) {
             : 'Approved: the board is merging it, then applies the plan.'}
         </p>
       )}
-      {card.state === 'merged' && <p class="meta">Merged: the board is making its plan from the merge.</p>}
+      {card.state === 'merged' && (
+        <p class="meta">
+          Merged: the board compares it with what runs at its next check, and says here what it became.
+        </p>
+      )}
+      {card.state === 'nothing' && (
+        <p class="meta">
+          {change.outcome?.why
+            ? `${sentence(change.outcome.why)}, so nothing changes.`
+            : `What runs already matches ${change.pull ? `#${change.pull.number}` : 'it'}, so nothing changes.`}
+        </p>
+      )}
+      {card.state === 'waiting' && change.state === 'merged' && !change.outcome?.plan && change.outcome?.why && (
+        <p class="meta">{sentence(change.outcome.why)}.</p>
+      )}
       {card.state === 'taken over' && (
         <p class="meta">
           Someone else pushed to it, so it’s an ordinary pull request now. Merge it from its page when it reads right;
@@ -1297,7 +1387,11 @@ function ChangeCard({ ch }) {
           <a href={hashFor({ view: 'infrastructure', environment: String(env.id), plan: ch.plan.id, task: null })}>
             {ch.plan.id}
           </a>
-          {ch.plan.state === 'waiting' ? ' waits for you: the plan changed between your approval and the merge.' : ''}
+          {ch.plan.state === 'waiting'
+            ? change.approval?.settled === 'waits'
+              ? ' waits for you: the plan changed between your approval and the merge.'
+              : ' waits for you: approve or reject it on its page.'
+            : (PLAN_LINE[/** @type {keyof typeof PLAN_LINE} */ (ch.plan.state)] ?? '')}
         </p>
       )}
       {change.why && card.state !== 'merging' && (
@@ -1333,6 +1427,9 @@ export function ChangePanel({ ch, cant }) {
   const names = new Map(Object.entries(ch.editable ?? {}).flatMap(([k, v]) => (v.name ? [[k, v.name]] : [])));
   const local = editLines(edits, ch.declared, labels, names);
   const p = ch.preview;
+  // Propose waits for an edit that changes something: the board drops the rest, with a line saying why (WEB-110).
+  const droppedByBoard = new Set((ch.current ? (p.data?.dropped ?? []) : []).map((/** @type {any} */ d) => d.edit));
+  const changing = edits.filter((_, n) => !droppedByBoard.has(n)).length;
   const fresh = ch.current && p.data;
   const problemsOf = (/** @type {number} */ n) => p.problems.filter((x) => x.edit === n);
   const general = p.problems.filter((x) => x.edit === null);
@@ -1486,7 +1583,7 @@ export function ChangePanel({ ch, cant }) {
               type="button"
               class="btn btn-primary btn-sm"
               onClick={propose}
-              disabled={busy || !fresh || p.problems.length > 0 || Boolean(p.error)}
+              disabled={busy || !fresh || p.problems.length > 0 || Boolean(p.error) || (!changing && !ch.fromDraft)}
               aria-busy={busy}
             >
               <Send size={14} aria-hidden="true" />
@@ -1521,6 +1618,42 @@ function NeedsCode({ ch, edit }) {
         Have an agent write it
       </button>
     </span>
+  );
+}
+
+/**
+ * The last change, once its card folds (WEB-110): one line above the map, "Last change: #253 applied, 51 min ago",
+ * with its plan or pull request, until the owner dismisses it or starts a new change.
+ * @param {{ ch: Change }} props
+ */
+export function LastChange({ ch }) {
+  const change = ch.last;
+  if (!change) return null;
+  const card = cardState(change, { plan: ch.plan });
+  const when = change.outcome?.at ?? change.updated;
+  const href = ch.plan
+    ? hashFor({ view: 'infrastructure', environment: String(ch.env.id), plan: ch.plan.id, task: null })
+    : change.pull
+      ? hashFor({ view: 'github', task: null, pr: pullParam(change.pull.number, change.repo) })
+      : null;
+  return (
+    <p class="change-last" role="status">
+      <span class="change-last-text">
+        Last change: {href ? <a href={href}>{endedWords(change, card)}</a> : endedWords(change, card)},{' '}
+        <time dateTime={when} title={new Date(when).toLocaleString()}>
+          {ago(when)}
+        </time>
+      </span>
+      <button
+        type="button"
+        class="btn btn-quiet btn-icon btn-sm"
+        onClick={() => ch.dismissLast()}
+        aria-label="Dismiss the last change"
+        title="Dismiss"
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
+    </p>
   );
 }
 

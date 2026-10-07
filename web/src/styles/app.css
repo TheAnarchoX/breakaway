@@ -11348,6 +11348,10 @@ a.pl-mention {
     overflow: hidden;
     scrollbar-gutter: auto;
   }
+  /* The last change's line (WEB-110) sits between the header and the map. */
+  .console-panel.topo:has(> .topo-stage):has(> .change-last) {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
   .topo-stage {
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 6px;
@@ -11717,6 +11721,24 @@ a.pl-mention {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+/* The last change, folded to a line above the map once its card ends (WEB-110). */
+.change-last {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 4px 4px 12px;
+  font-size: 13.5px;
+  color: var(--muted);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+}
+.change-last-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .change-moved {
   padding: 10px;

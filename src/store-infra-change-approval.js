@@ -290,13 +290,14 @@ export const infraChangeApprovalMethods = {
   /** Merges the change's pull request at `sha`, as the owner's action, and asks for a sync to compare what merged. */
   async mergeChangeNow(row, { client, repo }, sha, method) {
     const approval = /** @type {ChangeApproval} */ (this.changeApproval(row));
-    await client.send('PUT', `/pulls/${row.pull}/merge`, { sha, merge_method: method });
+    const merged = await client.send('PUT', `/pulls/${row.pull}/merge`, { sha, merge_method: method });
     this.setChangeApproval(row.n, { ...approval, merge: approval.merge ?? 'now' });
     this.moveInfraChange(this.changeRow(row.n), 'merged', {
       by: 'owner',
       outcome: 'merged',
       summary: `#${row.pull} merged on the owner’s approval (${method}); the board plans from the merge`,
     });
+    this.keepChangeMerge(row.n, typeof merged?.sha === 'string' ? merged.sha : null, Date.now());
     this.sql.exec(
       'INSERT INTO gh_events (at, data, repo) VALUES (?, ?, ?)',
       Date.now(),
