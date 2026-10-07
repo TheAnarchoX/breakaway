@@ -852,7 +852,7 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
 });
 
 describe('the Cloudflare provider’s events and alerts (BRK-191)', () => {
-  it('reports the alert history as alert signals on the Worker each names, or the whole environment', async () => {
+  it('reports the alert history as alert signals on the Worker each names, or marked account-wide (BRK-255)', async () => {
     const { ctx, fetch } = context();
     const since = '2026-10-01T00:00:00Z';
     const signals = checkSignals(cloudflare, ctx, since, await events(ctx, since));
@@ -876,6 +876,7 @@ describe('the Cloudflare provider’s events and alerts (BRK-191)', () => {
         value: null,
         at: ALERT_TIMES[2],
         text: 'Cloudflare alert: Usage based billing',
+        account: true,
       },
     ]);
     const stored = JSON.stringify(signals);
@@ -1027,23 +1028,30 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     expect(await signals('kind=health&resource=worker:acme-api')).toHaveLength(2);
   });
 
-  it('adds the alert history once, on the Worker it names or the whole environment, and nothing it leaves out', async () => {
+  it('adds the alert history once, on the Worker it names or once for the account, and nothing it leaves out', async () => {
     const { production } = await onCloudflare(cloudflareAnswers());
     await inStore((s) => s.refreshInventory('cloudflare'));
     const alerts = await signals('kind=alert');
     expect(alerts.filter((a) => a.at === ALERT_TIMES[0] || a.at === ALERT_TIMES[2])).toEqual([
       expect.objectContaining({
-        resource: null,
-        environmentId: production.id,
-        text: 'Cloudflare alert: Usage based billing',
-      }),
-      expect.objectContaining({
         resource: 'worker:acme-api',
+        environmentId: production.id,
         level: 'warning',
         text: 'Cloudflare alert: Worker error rate on acme-api',
       }),
     ]);
-    const stored = JSON.stringify(alerts);
+    // The billing alert names no Worker or zone: it's the account's, kept once, outside the stream (BRK-255).
+    const account = (await (await api('infra/account-alerts?source=cloudflare')).json()).alerts;
+    expect(account).toEqual([
+      {
+        id: expect.any(Number),
+        source: 'cloudflare',
+        level: 'warning',
+        at: ALERT_TIMES[2],
+        text: 'Cloudflare alert: Usage based billing',
+      },
+    ]);
+    const stored = JSON.stringify([alerts, account]);
     for (const value of [...ALERT_NEVER_KEPT, 'acme-other']) expect(stored).not.toContain(value);
 
     // The same history again (as after a refresh that failed half way) adds nothing.
@@ -1051,10 +1059,11 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     const history = await events(ctx, new Date(Date.parse(ALERT_TIMES[0]) - 1).toISOString());
     expect(history).toHaveLength(2);
     const again = await inStore((s) =>
-      s.recordAlertSignals(history.map((a) => ({ ...a, environmentId: production.id }))),
+      s.recordAlertSignals(s.keepAccountAlerts(history.map((a) => ({ ...a, environmentId: production.id })))),
     );
     expect(again).toEqual([]);
     expect(await signals('kind=alert')).toHaveLength(alerts.length);
+    expect((await (await api('infra/account-alerts')).json()).alerts).toHaveLength(1);
   });
 
   it('records a Cloudflare webhook’s alert as a signal on its Worker, once, and the routine still starts', async () => {
@@ -1101,9 +1110,26 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
       }),
     ]);
 
-    // An alert naming no Worker is about the whole environment.
-    expect((await fire({ alert_name: 'Zone traffic anomaly', ts: Math.floor(Date.now() / 1000) })).status).toBe(202);
-    const whole = (await signals('kind=alert')).find((s) => s.text === 'Cloudflare alert: Zone traffic anomaly');
+    // An alert naming no Worker or zone is the account's: kept once, not in the environment's stream (BRK-255).
+    const incident = { alert_name: 'Cloudflare incident', ts: Math.floor(Date.now() / 1000) };
+    expect((await fire(incident)).status).toBe(202);
+    expect((await fire(incident)).status).toBe(202);
+    expect(
+      (await signals('kind=alert')).find((s) => s.text === 'Cloudflare alert: Cloudflare incident'),
+    ).toBeUndefined();
+    const account = (await (await api('infra/account-alerts')).json()).alerts;
+    expect(account.filter((a) => a.text === 'Cloudflare alert: Cloudflare incident')).toHaveLength(1);
+
+    // An alert on the zone production's routes use is about the whole environment.
+    const zone = {
+      alert_name: 'Universal SSL',
+      ts: Math.floor(Date.now() / 1000),
+      data: { zone_name: 'acme.example' },
+    };
+    expect((await fire(zone)).status).toBe(202);
+    const whole = (await signals('kind=alert')).find(
+      (s) => s.text === 'Cloudflare alert: Universal SSL on acme.example',
+    );
     expect(whole).toMatchObject({ resource: null, environmentId: production.id });
     expect(JSON.stringify(await signals('kind=alert'))).not.toContain('oncall@example.com');
   });

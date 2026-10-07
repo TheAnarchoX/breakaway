@@ -13,7 +13,7 @@ import { sameSecret } from './auth.js';
 import { ROUTINE_GITHUB_EVENTS, routineEventOf } from './github.js';
 import { planOf } from './plans.js';
 import { repoSlugOf } from './repos.js';
-import { alertFields, alertText, rid } from './infra-cloudflare.js';
+import { alertFields, alertPlace, alertText } from './infra-cloudflare.js';
 
 const MAX_TRIGGER_BODY = 16 * 1024;
 const MAX_NOTE = 1000;
@@ -666,12 +666,17 @@ export const routinesMethods = {
     }
     if (source === 'cloudflare') {
       // The alert joins Architect's signals too (BRK-191), whether or not the routine starts a run.
+      // Placed the way the alert history places it (BRK-255): on its Worker's environment, on the environments using
+      // its zone, or once for the account when it names neither.
       const fields = alertFields(body);
+      const account = Boolean(alertPlace(fields, [])?.account);
+      const on = fields.worker ?? fields.hostname ?? fields.zone;
       try {
         await this.recordProviderAlert('cloudflare', routine.repo || this.defaultRepoSlug(), {
           at: fields.at,
-          resource: fields.worker ? rid('worker', fields.worker) : null,
-          text: alertText(fields.alert, fields.worker),
+          text: alertText(fields.alert, on),
+          account,
+          place: (resources) => alertPlace(fields, resources),
         });
       } catch (error) {
         console.error(`the alert for ${routine.slug} didn’t become a signal: ${error.message}`);

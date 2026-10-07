@@ -8685,6 +8685,46 @@ a.pl-mention {
   margin: 0;
   font-size: 14px;
 }
+.infra-account {
+  padding: 8px 14px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 14px;
+}
+.infra-account summary {
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+}
+.infra-account summary svg {
+  flex: none;
+  color: var(--warn);
+}
+.infra-account p {
+  margin: 6px 0;
+  font-size: 13.5px;
+}
+.infra-account ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.infra-account li {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+.infra-account li time {
+  flex: none;
+  font-size: 13px;
+}
 .infra-repo {
   display: grid;
   gap: 10px;

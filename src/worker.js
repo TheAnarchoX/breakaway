@@ -818,6 +818,14 @@ async function handleApi(request, env, url, ctx) {
       }),
     );
   }
+  // A provider's account-wide alerts (BRK-255): kept once per provider, not in each environment's stream. Read only.
+  if (parts[0] === 'infra' && parts[1] === 'account-alerts' && parts.length === 2) {
+    if (method !== 'GET') return json(405, { error: 'account-wide alerts are read only here: providers report them' });
+    const q = url.searchParams;
+    return send(
+      await s.infraAccountAlertsApi({ source: q.get('source') ?? undefined, limit: q.get('limit') ?? undefined }),
+    );
+  }
   // Which of a provider's alerts reach the board (BRK-191): a live read with its read-only token, for the token and the
   // cookie alike. The alerts themselves are signals (kind=alert).
   if (parts[0] === 'infra' && parts[1] === 'alerts' && parts.length === 2) {
