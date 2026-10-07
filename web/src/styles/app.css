@@ -10729,6 +10729,31 @@ a.pl-mention {
   grid-row: 1 / span 2;
   color: var(--muted);
 }
+/* The Plans panel (WEB-115): a console change whose card shows beside the map is a button that brings it into view;
+   the run's progress under an applying plan; and the plans that ended, under Recent. */
+button.infra-plan-row {
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.infra-plan-row .infra-plan-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.infra-plan-row .infra-plan-progress {
+  color: var(--text);
+}
+.infra-plan-row-go {
+  grid-row: 1 / -1;
+}
+.infra-plan-recent {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
 .infra-env-plan {
   display: inline-flex;
   align-items: center;

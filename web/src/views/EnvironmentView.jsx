@@ -33,7 +33,7 @@ import {
  * budget, the agents at work), its resources as a map or a list (BRK-177's inventory, with drift from BRK-184 and a
  * waiting plan's changes on the nodes), and a stream of what happens there (signals, runs, incidents, and the audit
  * trail, BRK-175), all kept live by polling the routes it reads, with a panel each for deploys (WEB-88), plans
- * (WEB-62), incidents (WEB-63), nobody owns, cost (WEB-65), and the desired state with Describe it as code (WEB-92).
+ * (WEB-62; with the console's change, the one applying, and recent ones: WEB-115), incidents (WEB-63), nobody owns, cost (WEB-65), and the desired state with Describe it as code (WEB-92).
  * On a wide screen it fills the window (WEB-97), balanced 2:8:2 (WEB-100): the status band on top of the map in the
  * middle, admin on the left (the owner's actions, plans, desired state, cost, and nobody owns), and ops on the right
  * (the stream, incidents, what's live, and recent deploys: WEB-108), each column scrolling on its own and every panel shown in
@@ -156,7 +156,8 @@ const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width:
 
 /**
  * @typedef {{ env: any, resources: any[], relations: any[], stale: any, desired: any, desiredError: string | null, drift: any,
- *   audit: any[], more: boolean, signals: any[], runs: any[], incidents: any[], plans: any[], plan: any, cost: any,
+ *   audit: any[], more: boolean, signals: any[], runs: any[], incidents: any[], plans: any[], plansError: string | null, plan: any,
+ *   cost: any,
  *   error: string | null, notFound: boolean, loading: boolean, updated: number | null, tick: number }} ConsoleState
  */
 
@@ -177,6 +178,7 @@ export function EnvironmentView() {
       runs: [],
       incidents: [],
       plans: [],
+      plansError: null,
       plan: null,
       cost: null,
       error: null,
@@ -220,7 +222,10 @@ export function EnvironmentView() {
         optional(api(`infra/signals?environmentId=${enc(id)}&limit=${SIGNALS_READ}`), { signals: [] }),
         optional(api(`infra/runs?environment=${enc(id)}`), { runs: [] }),
         optional(api(`infra/incidents?environment=${enc(id)}&limit=10`), { incidents: [] }),
-        optional(api(`infra/plans?environment=${enc(id)}&limit=10`), { plans: [] }),
+        api(`infra/plans?environment=${enc(id)}&limit=10`).then(
+          (d) => ({ plans: d.plans, error: null }),
+          (err) => ({ plans: [], error: err.message }),
+        ),
         optional(api(`infra/costs?environment=${enc(id)}`), null),
       ]);
       // The plan whose changes the map shows: one applying now, else the one waiting for you.
@@ -246,6 +251,7 @@ export function EnvironmentView() {
         runs: runs.runs,
         incidents: incidents.incidents,
         plans: plans.plans,
+        plansError: plans.error,
         plan,
         cost: costs?.environments?.find((/** @type {any} */ e) => e.environmentId === environment.id) ?? null,
         error: null,
@@ -468,7 +474,14 @@ export function EnvironmentView() {
 
           <aside class="console-side console-admin" aria-label={`Manage ${env.name}`}>
             <ActionsSection env={env} drift={state.drift} tick={state.tick} onChange={() => load({ quiet: true })} />
-            <EnvironmentPlans env={env} tick={state.tick} />
+            <EnvironmentPlans
+              env={env}
+              plans={state.plans}
+              runs={state.runs}
+              changes={ch.board}
+              card={cant ? null : (ch.held?.n ?? null)}
+              error={state.plansError}
+            />
             <Drift env={env} desired={state.desired} error={state.desiredError} />
             <CostSection env={env} tick={state.tick} />
             <UnownedSection env={env} />
