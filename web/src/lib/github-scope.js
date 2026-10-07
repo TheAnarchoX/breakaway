@@ -17,6 +17,7 @@ export function scopeGitHub(data, scope = null) {
       ...data,
       flows: data.flow ? [data] : [],
       empties: data.empty ? [data] : [],
+      rates: data.rate ? [data] : [],
       nextVersions: data.nextVersion ? [data] : [],
       pipelinesFound: data.pipelineFound ? [data] : [],
       moves: isMoving(data) ? [data] : [],
@@ -45,6 +46,8 @@ export function scopeGitHub(data, scope = null) {
     flows: shown.filter((r) => r.flow),
     // Repositories with no commits yet (CLD-191): each says to run repos init.
     empties: shown.filter((r) => r.empty),
+    // GitHub's rate limits after each repository's last sync (BRK-271).
+    rates: shown.filter((r) => r.rate),
     // Repositories whose pre-releases count from package.json (BRK-100): each offers its next minor and major.
     nextVersions: shown.filter((r) => r.nextVersion),
     // Repositories whose move to the deploy flow merged, not on yet (WEB-13): each offers Turn on deploys.

@@ -116,14 +116,17 @@ export const ETAG_ENTRIES = 300;
 const SECONDARY_WAIT_MS = 60_000;
 
 /**
- * What a client remembers between calls: the installation token, the answers it can ask about again, and
- * each budget's last known state.
+ * What a client remembers between calls: the installation token, the answers it can ask about again, each
+ * budget's last known state, and how many calls it has made per budget and how many came back as free 304s
+ * (BRK-271: a sync keeps the difference, so Connections shows what it spent).
  * @typedef {{
  *   installationId?: number,
  *   token?: string,
  *   expires?: number,
  *   etags?: Map<string, { etag: string, text: string }>,
- *   limits?: Record<string, { remaining: number, reset: number }>,
+ *   limits?: Record<string, { remaining: number, limit?: number, reset: number }>,
+ *   calls?: Record<string, number>,
+ *   free?: number,
  *   pausedUntil?: number,
  * }} GitHubCache
  */
@@ -161,11 +164,30 @@ function noteLimits(cache, headers) {
   const remaining = headers.get('x-ratelimit-remaining');
   const reset = headers.get('x-ratelimit-reset');
   if (remaining === null || reset === null) return;
+  const limit = Number(headers.get('x-ratelimit-limit'));
   cache.limits ??= {};
   cache.limits[headers.get('x-ratelimit-resource') ?? 'core'] = {
     remaining: Number(remaining),
+    ...(limit > 0 ? { limit } : {}),
     reset: Number(reset) * 1000,
   };
+}
+
+/** Counts a call GitHub answered: a 304 is free, anything else is spent from its budget (BRK-271). */
+function countCall(cache, res, resource) {
+  if (res.status === 304) {
+    cache.free = (cache.free ?? 0) + 1;
+    return;
+  }
+  const spent = res.headers.get('x-ratelimit-resource') ?? resource;
+  cache.calls ??= {};
+  cache.calls[spent] = (cache.calls[spent] ?? 0) + 1;
+}
+
+/** A budget GitHub says is used up until `reset`, keeping its limit. */
+function usedUp(cache, resource, reset) {
+  cache.limits ??= {};
+  cache.limits[resource] = { ...cache.limits[resource], remaining: 0, reset };
 }
 
 /**
@@ -231,7 +253,10 @@ async function request(
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (cache) noteLimits(cache, res.headers);
+  if (cache) {
+    noteLimits(cache, res.headers);
+    countCall(cache, res, resource);
+  }
   if (res.status === 304 && known) {
     etags.delete(path); // most recently used goes last
     etags.set(path, known);
@@ -244,10 +269,9 @@ async function request(
     if (resetAt === null)
       throw new GitHubError(`GitHub ${res.status} on ${path.split('?')[0]}: ${message}`, res.status, message);
     if (cache) {
-      if (res.headers.get('x-ratelimit-remaining') === '0') {
-        cache.limits ??= {};
-        cache.limits[res.headers.get('x-ratelimit-resource') ?? resource] = { remaining: 0, reset: resetAt };
-      } else cache.pausedUntil = resetAt;
+      if (res.headers.get('x-ratelimit-remaining') === '0')
+        usedUp(cache, res.headers.get('x-ratelimit-resource') ?? resource, resetAt);
+      else cache.pausedUntil = resetAt;
     }
     throw limitError(res.headers.get('x-ratelimit-resource') ?? resource, resetAt);
   }
@@ -325,8 +349,7 @@ export class GitHubClient {
     const [first] = data?.errors ?? [];
     if (first?.type === 'RATE_LIMITED') {
       const until = limitedUntil(this.cache, 'graphql') ?? Date.now() + SECONDARY_WAIT_MS;
-      this.cache.limits ??= {};
-      this.cache.limits.graphql = { remaining: 0, reset: until };
+      usedUp(this.cache, 'graphql', until);
       throw limitError('graphql', until);
     }
     if (first) throw new GitHubError(`GitHub: ${first.message}`, 422, first.message);

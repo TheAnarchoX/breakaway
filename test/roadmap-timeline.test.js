@@ -4,12 +4,22 @@ import {
   OWNER_RATE,
   STEP_DAYS,
   explain,
+  explainPlan,
+  fitPx,
   history,
+  lanePlanEnd,
   membership,
   neighbour,
+  ordered,
+  planDays,
+  planOf,
+  planStatus,
   project,
   scale,
+  shiftPlan,
   span,
+  statusWords,
+  suggest,
 } from '../web/src/lib/roadmap-timeline.js';
 
 // The roadmap's timeline (WEB-102), on made-up tasks.
@@ -204,18 +214,141 @@ describe('the scale', () => {
     expect(range.to).toBeGreaterThanOrEqual(NOW + 40 * DAY + 7 * DAY);
   });
 
-  it('ticks each Monday in weeks and each month in months', () => {
+  it('takes in the plans, to the end of their last day', () => {
+    const range = span([{ start: NOW, likely: NOW + 3 * DAY }], NOW, [
+      { start: Date.parse('2026-09-01T00:00:00Z'), end: Date.parse('2026-12-31T00:00:00Z') },
+      null,
+    ]);
+    expect(new Date(range.from).toISOString()).toBe('2026-08-31T00:00:00.000Z');
+    expect(range.to).toBeGreaterThan(Date.parse('2027-01-01T00:00:00Z'));
+  });
+
+  it('ticks each Monday when a week has room, and each month when it hasn’t', () => {
     const range = { from: Date.parse('2026-09-28T00:00:00Z'), to: Date.parse('2027-01-11T00:00:00Z') };
-    const weeks = scale(range, 'weeks', NOW);
+    const weeks = scale(range, 28, NOW);
     expect(weeks.ticks[0]).toMatchObject({ x: 0, label: '28 Sept' });
     expect(weeks.ticks[1].x).toBe(7 * 28);
-    const months = scale(range, 'months', NOW);
+    const months = scale(range, 7, NOW);
     expect(months.ticks.map((t) => t.label)).toEqual(['Oct', 'Nov', 'Dec', 'Jan 2027']);
     expect(months.width).toBe(105 * 7);
+  });
+
+  it('fits a week before today to a week past the last end in the width', () => {
+    expect(fitPx(1400, NOW, NOW + 56 * DAY)).toBe(20);
+    // Never less than a week ahead, and never wider than a day can be.
+    expect(fitPx(1050, NOW, NOW + DAY)).toBe(50);
+    expect(fitPx(100_000, NOW, null)).toBe(60);
+    expect(fitPx(100, NOW, NOW + 400 * DAY)).toBe(2);
   });
 
   it('finds the lane before and after', () => {
     expect(neighbour(['1.0.0', '1.1.0', null], '1.1.0', 1)).toBeNull();
     expect(neighbour(['1.0.0', '1.1.0', null], '1.0.0', -1)).toBeUndefined();
+  });
+});
+
+describe('the plan', () => {
+  const pace = finished(28, 'web'); // web: one a day
+  const TODAY = '2026-10-07';
+  /** A feature with `open` open web tasks, its projection, and a plan. */
+  function planned(open, plan, extra = []) {
+    const tasks = [...pace, ...Array.from({ length: open }, () => task({ tags: ['a'] })), ...extra];
+    const p = project([{ slug: 'a' }], tasks, NOW).get('a');
+    return { f: { slug: 'a', title: 'A', ...plan }, p };
+  }
+
+  it('reads the days as midnights UTC, and nothing without them', () => {
+    expect(planOf({ plannedStart: null, plannedEnd: null })).toBeNull();
+    expect(planOf({ plannedStart: null, plannedEnd: '2026-10-19' })).toEqual({
+      start: null,
+      end: Date.parse('2026-10-19T00:00:00Z'),
+    });
+  });
+
+  it('suggests the pace’s start and likely end, and nothing without an estimate', () => {
+    const { p } = planned(5, {});
+    expect(suggest(p, NOW)).toEqual({ plannedStart: TODAY, plannedEnd: '2026-10-12' });
+    expect(suggest(project([{ slug: 'a' }], [task({ tags: ['a'] })], NOW).get('a'), NOW)).toBeNull();
+  });
+
+  it('is on plan when the likely end is on or before the planned end', () => {
+    const { f, p } = planned(5, { plannedStart: TODAY, plannedEnd: '2026-10-12' });
+    expect(planStatus(f, p, NOW)).toEqual({ kind: 'on', days: 0 });
+    expect(statusWords(planStatus(f, p, NOW))).toBe('On plan');
+  });
+
+  it('is behind by the days the likely end is past the planned end, when even its best is late', () => {
+    const { f, p } = planned(5, { plannedStart: TODAY, plannedEnd: '2026-10-08' });
+    expect(p.optimistic).toBeGreaterThan(Date.parse('2026-10-09T00:00:00Z'));
+    expect(planStatus(f, p, NOW)).toEqual({ kind: 'behind', days: 4 });
+    expect(statusWords(planStatus(f, p, NOW))).toBe('Behind by 4 days');
+    expect(explainPlan(f, p, NOW)).toBe('Planned 7 to 8 Oct: behind by 4 days, even at the pace’s best.');
+  });
+
+  it('could slip when the planned end is between the pace’s best and its likely end', () => {
+    // One open task and one of the owner's: the agents' work is done in a day, the owner's step after it.
+    const { f, p } = planned(1, { plannedEnd: '2026-10-08' }, [task({ tags: ['a', 'owner'] })]);
+    expect(p.likely).toBeGreaterThan(Date.parse('2026-10-09T00:00:00Z'));
+    expect(planStatus(f, p, NOW)).toEqual({ kind: 'slip', days: 0 });
+    expect(statusWords(planStatus(f, p, NOW))).toBe('Could slip');
+  });
+
+  it('is not started when the planned start has passed and nothing in it is claimed', () => {
+    const { f, p } = planned(2, { plannedStart: '2026-10-01', plannedEnd: '2026-10-30' });
+    expect(planStatus(f, p, NOW)).toEqual({ kind: 'not-started', days: 0 });
+    const claimed = planned(2, { plannedStart: '2026-10-01', plannedEnd: '2026-10-30' }, [
+      task({ tags: ['a'], start: 1 }),
+    ]);
+    expect(planStatus(claimed.f, claimed.p, NOW).kind).toBe('on');
+    expect(explainPlan(f, p, NOW)).toMatch(/not started, though the plan started on 1 Oct\./u);
+  });
+
+  it('draws only the plan when the pace can’t estimate, and says how a done feature went', () => {
+    const unknown = project([{ slug: 'a' }], [task({ tags: ['a'] })], NOW).get('a');
+    expect(planStatus({ plannedStart: '2026-10-20', plannedEnd: '2026-10-30' }, unknown, NOW).kind).toBe('planned');
+    const done = project([{ slug: 'a' }], [task({ tags: ['a'], done: 2 })], NOW).get('a');
+    expect(planStatus({ plannedEnd: '2026-10-02' }, done, NOW)).toEqual({ kind: 'done', days: 3 });
+    expect(statusWords({ kind: 'done', days: 0 })).toBe('Done on plan');
+    expect(planStatus({ plannedStart: null, plannedEnd: null }, done, NOW)).toBeNull();
+  });
+
+  it('says the days in words', () => {
+    expect(planDays({ plannedStart: '2026-10-12', plannedEnd: '2026-10-19' }, NOW)).toBe('12 to 19 Oct');
+    expect(planDays({ plannedStart: '2026-10-30', plannedEnd: '2026-11-02' }, NOW)).toBe('30 Oct to 2 Nov');
+    expect(planDays({ plannedStart: null, plannedEnd: '2026-10-19' }, NOW)).toBe('by 19 Oct');
+    expect(planDays({ plannedStart: '2026-10-12', plannedEnd: null }, NOW)).toBe('from 12 Oct');
+  });
+
+  it('moves either end a day at a time, never past the other', () => {
+    const f = { plannedStart: '2026-10-12', plannedEnd: '2026-10-14' };
+    expect(shiftPlan(f, 'end', 1)).toEqual({ plannedStart: '2026-10-12', plannedEnd: '2026-10-15' });
+    expect(shiftPlan(f, 'start', -1)).toEqual({ plannedStart: '2026-10-11', plannedEnd: '2026-10-14' });
+    expect(shiftPlan(f, 'end', -5)).toEqual({ plannedStart: '2026-10-09', plannedEnd: '2026-10-09' });
+    expect(shiftPlan(f, 'start', 4)).toEqual({ plannedStart: '2026-10-16', plannedEnd: '2026-10-16' });
+    expect(shiftPlan({ plannedStart: null, plannedEnd: '2026-10-14' }, 'start', -2)).toEqual({
+      plannedStart: '2026-10-12',
+      plannedEnd: '2026-10-14',
+    });
+  });
+
+  it('orders a lane by planned start, then the pace’s start', () => {
+    const projections = new Map([
+      ['a', { start: NOW }],
+      ['b', { start: NOW + 5 * DAY }],
+      ['c', { start: NOW + 2 * DAY }],
+    ]);
+    const features = [
+      { slug: 'a', title: 'A', plannedStart: null },
+      { slug: 'b', title: 'B', plannedStart: '2026-10-01' },
+      { slug: 'c', title: 'C', plannedStart: null },
+    ];
+    expect(ordered(features, projections, NOW).map((f) => f.slug)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('gives a lane the latest planned end in it', () => {
+    expect(lanePlanEnd([{ plannedEnd: '2026-10-19' }, { plannedEnd: null }, { plannedEnd: '2026-11-02' }])).toBe(
+      Date.parse('2026-11-02T00:00:00Z'),
+    );
+    expect(lanePlanEnd([{ plannedEnd: null }])).toBeNull();
   });
 });

@@ -67,6 +67,13 @@ export function FeatureForm({ feature, pick, onDone }) {
     if (feature) {
       body.release = release;
       body.state = f.get('released') ? 'shipped' : 'open';
+      // The plan (WEB-106): an empty day clears it.
+      body.plannedStart = String(f.get('plannedStart') ?? '');
+      body.plannedEnd = String(f.get('plannedEnd') ?? '');
+      if (body.plannedStart && body.plannedEnd && body.plannedStart > body.plannedEnd) {
+        setProblem('The plan starts after it ends: move the start earlier or the end later.');
+        return;
+      }
     } else {
       body.slug = String(f.get('slug') ?? '').trim();
       // Left out, the board aims a new feature at the release its tasks' tags share.
@@ -148,6 +155,24 @@ export function FeatureForm({ feature, pick, onDone }) {
           {feature ? '.' : ', or to use the release its tasks’ tags share.'}
         </span>
       </label>
+      {feature && (
+        <fieldset class="field">
+          <legend class="field-label">Plan</legend>
+          <div class="check-inline">
+            <label class="ff-day">
+              <span class="field-hint">Start</span>
+              <input class="input" type="date" name="plannedStart" defaultValue={feature.plannedStart ?? ''} />
+            </label>
+            <label class="ff-day">
+              <span class="field-hint">End</span>
+              <input class="input" type="date" name="plannedEnd" defaultValue={feature.plannedEnd ?? ''} />
+            </label>
+          </div>
+          <span class="field-hint">
+            When you want it started and done. The roadmap holds the pace against it. Leave both empty for no plan.
+          </span>
+        </fieldset>
+      )}
       <label class="field">
         <span class="field-label">Brief</span>
         <Dictate>

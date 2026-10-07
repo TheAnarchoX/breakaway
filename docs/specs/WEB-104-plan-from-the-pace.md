@@ -27,14 +27,14 @@ A feature without a plan shows the pace's bar and, on hover or focus, **Plan it:
 How the pace compares to the plan is said in words on the bar and in its explanation:
 
 - **On plan**: the likely end is on or before the planned end.
-- **Could slip**: the planned end is inside the range the pace could run to.
-- **Behind by 4 days**: the likely end is after the planned end. The frame's end is marked, and the feature card says it too.
-- **Not started**: the planned start has passed and no task in it has been claimed.
+- **Could slip**: the planned end is inside the range the pace could run to: its best end makes it, its likely end doesn't.
+- **Behind by 4 days**: even the pace's best end is after the planned end; the days count from the likely end. The frame's end is marked, and the feature card says it too.
+- **Not started**: the planned start has passed and no task in it has been claimed. It's said before On plan and Could slip, since it's the one to act on.
 
 A feature the pace can't estimate yet ("no estimate yet") draws only its plan, so a new feature can be planned before it has history.
 
 ### The axis
-Calendar days stay, because a plan is dates. The Months zoom goes; in its place, **Fit** scales the axis so today and the last planned or likely end in view fit the screen. Weeks stays the default. A lane's head shows its release's planned end (the latest in it) beside the pace's "Likely by".
+Calendar days stay, because a plan is dates. The Months zoom goes; in its place, **Fit** scales the axis so a week before today to a week past the last planned or likely end in view fits the screen. Weeks stays the default. A lane's head shows its release's planned end (the latest in it) beside the pace's "Likely by".
 
 ### Ordering
 Features in a lane sort by planned start, then by the pace's start, so planning a feature also places it. The projection keeps queuing features in each area in the roadmap's order (release, then title), so the suggestions don't move when the owner plans; using the plan's order in the projection is an open question.
@@ -69,6 +69,6 @@ The spec's answer stands unless the owner says otherwise in review.
 ## How to check it
 1. Open the Roadmap with the timeline showing, on a wide screen.
 2. Point at a feature's bar: it offers **Plan it** with two dates. Press it: a frame appears around the bar with those dates.
-3. Drag the frame's end a few days earlier than the bar's likely end: the bar now says **Behind by** that many days.
+3. Drag the frame's end a few days earlier than the bar's likely end, past where it could end at best: the bar now says **Behind by** that many days.
 4. Press **Plan from the pace** on a release: every feature in it without a plan gets one, and Undo takes them back.
 5. Press **Fit**: everything from today to the last planned end fits the screen.

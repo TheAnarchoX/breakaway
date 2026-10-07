@@ -9,6 +9,7 @@
  */
 import { PAUSE_PERMISSION } from './infra-pause.js';
 import { GitHubClient, GitHubError, appCredentials, appGet } from './github.js';
+import { budgetWords, restBudget } from './github-budget.js';
 import { AgentError, connectCommand } from './store-agents.js';
 import { promptPathOf, repoSlugOf } from './repos.js';
 import { firstResult } from './wizard.js';
@@ -981,17 +982,26 @@ export const connectionsMethods = {
     return out;
   },
 
-  /** The sync with GitHub, per repository: last success, last error, and the rate limit left. */
+  /**
+   * The sync with GitHub, per repository: last success, last error, and the rate limit left: each budget as the
+   * last sync left it and what it spent (BRK-271), else REST's from the last live check.
+   */
   githubSyncConnections(live = null) {
     return this.repos().map((repo) => {
       const last = num(this.ghMeta('gh_last_sync', repo.slug));
       const error = this.ghMeta('gh_error', repo.slug);
-      const rate = live?.repos?.[repo.slug]?.rate ?? null;
+      const budget = this.githubBudget(repo.slug);
+      const rate = restBudget(budget) ?? live?.repos?.[repo.slug]?.rate ?? null;
+      const left = budget
+        ? `; ${budgetWords(budget)}`
+        : rate
+          ? `; ${rate.remaining} of ${rate.limit} requests left`
+          : '';
       // No commits yet (CLD-191): neutral, never "needs attention", with the step that fixes it.
       if (this.ghMeta('gh_empty', repo.slug) && !error && last && Date.now() - last <= SYNC_LATE_MS) {
         return entry('github.sync', 'github', `Sync with ${repo.github}`, 'off', {
           repo: repo.slug,
-          detail: `no commits yet, so there’s nothing to sync${rate ? `; ${rate.remaining} of ${rate.limit} requests left` : ''}`,
+          detail: `no commits yet, so there’s nothing to sync${left}`,
           at: iso(last),
           fix: `Run npx breakaway repos init ${repo.slug} in a terminal: it pushes the files the board’s agents need as the repository’s first commit.`,
           link: doc(this.env, 'adding-a-repository'),
@@ -1014,11 +1024,11 @@ export const connectionsMethods = {
         fix = 'No sync in the last 15 minutes: press Sync on the GitHub view, and check the cron above.';
       } else if (low) {
         state = 'attention';
-        fix = `Only ${rate.remaining} of ${rate.limit} GitHub requests are left this hour; it refills at ${rate.reset}. Nothing to do unless it keeps happening.`;
+        fix = `Only ${rate.remaining} of ${rate.limit} GitHub requests are left this hour; it refills at ${String(rate.reset).slice(11, 16)} UTC. Nothing to do unless it keeps happening.`;
       }
       return entry('github.sync', 'github', `Sync with ${repo.github}`, state, {
         repo: repo.slug,
-        detail: `${last ? 'last synced' : 'never synced'}${error ? `; last error: ${clip(error)}` : ''}${rate ? `; ${rate.remaining} of ${rate.limit} requests left` : ''}`,
+        detail: `${last ? 'last synced' : 'never synced'}${error ? `; last error: ${clip(error)}` : ''}${left}`,
         at: iso(last),
         fix,
         link: doc(this.env, 'github'),
