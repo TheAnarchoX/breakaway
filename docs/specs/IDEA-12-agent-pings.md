@@ -22,7 +22,7 @@ A ping is a comment with a kind, plus a place in the owner's inbox.
 
 - CLI: `ping <ID> --kind <kind> "<message>" [--proposal <file.json>]` (`ping --template` prints an example). API: `POST /api/tasks/:id/pings`, bearer or cookie.
 - A ping also writes a normal comment (`Ping (blocked): …`) so the thread is complete and `show` prints it. The comment is the record; the inbox entry is how it's found.
-- **Quiet by default.** At most 3 pings per task per day and 10 per agent per day, and a repeat of the same `kind` and `message` on a task is dropped. Only `blocked`, `question`, `stale`, and `done` send a push; `fyi` shows in the inbox only. The routine prompt tells agents to ping only when the owner has to act or would want to know now, never for progress.
+- **Quiet by default.** A ping is for when the owner has to act or would want to know now (BRK-261 dropped the per-task cap; 50 pings per agent per day stays as a guard against a loop), and a repeat of the same `kind` and `message` on a task is dropped. Only `blocked`, `question`, `stale`, and `done` send a push; `fyi` shows in the inbox only. The routine prompt tells agents to ping only when the owner has to act or would want to know now, never for progress.
 - A ping is open until the owner **resolves** it (applies its proposal, marks it handled, or dismisses it) or the task is finished, which resolves it by itself.
 
 ### A proposal
@@ -39,7 +39,7 @@ A proposal is a list of changes the owner can apply in one press. Every change i
 Rules the board enforces:
 - **Fewest relations.** A dependency that is already implied by another path (A needs B, B needs C, so A needs C is refused) and one that creates a cycle are rejected when proposed, with the path named. A proposal may remove such redundant dependencies as part of the same change.
 - **Needed relations stay.** A new task that is the reason the pinged task waits gets a dependency from the pinged task to it; the board doesn't let a proposal drop the last blocker of a task that has one without saying so in the preview.
-- Up to 10 changes and 20 KB per proposal. `horizon-*` tags set by the owner are never changed, `--autostart` can't be set, and `done` can't target a task in review (merging finishes it).
+- Up to 64 KB per proposal, with no count of changes (BRK-261; it was 10 changes and 20 KB). `horizon-*` tags set by the owner are never changed, `--autostart` can't be set, and `done` can't target a task in review (merging finishes it).
 - **Preview and apply.** The owner sees the change list as a diff (tasks to add, edges to add or remove, tasks to finish), can untick changes and edit an `add`'s fields, and presses **Apply**. Apply is one atomic, cookie-only call (`POST /api/pings/:id/apply`, with the chosen changes); the bearer token gets a 403. If the board changed in between so a change no longer holds, nothing is applied and the preview reloads with the reason. Each applied change is logged in Activity as by the owner, and the ping's comment gets a `board` follow-up ("Applied: added CLD-121, CLD-122; CLD-110 now waits for CLD-121").
 - **Dismiss** resolves without applying. **Handled** resolves a ping that had no proposal.
 

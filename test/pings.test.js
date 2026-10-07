@@ -80,26 +80,24 @@ describe('pings', () => {
     expect(looksLikeSecret('See CLD-111 and docs/specs/IDEA-12-agent-pings.md please')).toBe(false);
   });
 
-  it('drops a repeat, then caps pings at 3 per task and 10 per agent a day', async () => {
+  it('drops a repeat, lets a task have as many pings as it needs, and stops a looping agent at 50 a day', async () => {
     const wid = await held('Chatty', 'claude-chatty');
     const first = await (await ping(wid, { kind: 'question', message: 'One' }, 'claude-chatty')).json();
     const again = await ping(wid, { kind: 'question', message: 'One' }, 'claude-chatty');
     expect(again.status).toBe(200);
     expect(await again.json()).toMatchObject({ dropped: 'duplicate', ping: { id: first.ping.id } });
-    expect((await ping(wid, { kind: 'question', message: 'Two' }, 'claude-chatty')).status).toBe(201);
-    expect((await ping(wid, { kind: 'question', message: 'Three' }, 'claude-chatty')).status).toBe(201);
-    const fourth = await ping(wid, { kind: 'question', message: 'Four' }, 'claude-chatty');
-    expect(fourth.status).toBe(429);
-    expect((await fourth.json()).error).toMatch(/3 pings in a day/);
-    // 3 used on this task; the agent has 7 more across other tasks, then the agent cap applies.
-    for (let i = 0; i < 7; i++) {
-      const other = await held(`Other ${i}`, 'claude-chatty');
-      expect((await ping(other, { kind: 'fyi', message: `n${i}` }, 'claude-chatty')).status).toBe(201);
-    }
-    const last = await held('One too many', 'claude-chatty');
-    const capped = await ping(last, { kind: 'fyi', message: 'late' }, 'claude-chatty');
+    // No cap per task: a fourth (and fifth) ping about the same task goes through.
+    for (const message of ['Two', 'Three', 'Four', 'Five'])
+      expect((await ping(wid, { kind: 'question', message }, 'claude-chatty')).status).toBe(201);
+    // 5 sent; the agent's runaway guard stops it at 50 a day, wherever they go.
+    for (let i = 0; i < 45; i++)
+      expect((await ping(wid, { kind: 'fyi', message: `n${i}` }, 'claude-chatty')).status).toBe(201);
+    const capped = await ping(wid, { kind: 'fyi', message: 'late' }, 'claude-chatty');
     expect(capped.status).toBe(429);
-    expect((await capped.json()).error).toMatch(/10 pings in a day/);
+    expect((await capped.json()).error).toMatch(/50 pings in a day.*loop/);
+    // Another agent isn't held up by it.
+    const calm = await held('Calm', 'claude-calm');
+    expect((await ping(calm, { kind: 'fyi', message: 'fine' }, 'claude-calm')).status).toBe(201);
   });
 
   it('resolves a ping when its task is finished', async () => {
@@ -188,17 +186,8 @@ describe('proposals', () => {
     await refused([newTask('n1', { brief: 'Use ghp_abcdefghijklmnopqrstuvwxyz0123456789' })], /token or key/, wid);
     await refused([], /no changes/, wid);
     await refused(
-      Array.from({ length: 11 }, (_, i) => newTask(`n${i}`)),
-      /up to 10 changes/,
-      wid,
-    );
-    await refused(
-      [
-        newTask('n1', { brief: 'x'.repeat(10_000) }),
-        newTask('n2', { brief: 'x'.repeat(10_000) }),
-        newTask('n3', { brief: 'x'.repeat(1_000) }),
-      ],
-      /up to 20 KB/,
+      Array.from({ length: 7 }, (_, i) => newTask(`n${i}`, { brief: 'x'.repeat(10_000) })),
+      /up to 64 KB/,
       wid,
     );
     await refused([newTask('n1'), newTask('n1')], /used twice/, wid);
@@ -312,6 +301,24 @@ describe('applying, dismissing, and handling a ping', () => {
       events.flatMap((e) => e.task?.wid ?? []).filter((w) => [first, second, wid, other].includes(w)).length,
     ).toBeGreaterThanOrEqual(4);
     expect((await owner(`pings/${id}/apply`)).status).toBe(409);
+  });
+
+  it('takes a roadmap in one proposal: 30 changes, applied in one press', async () => {
+    const wid = await held('Files a roadmap', `claude-own-${agents++}`);
+    const changes = [
+      ...Array.from({ length: 20 }, (_, i) => newTask(`n${i}`, i ? { depends: [`n${i - 1}`] } : {})),
+      ...(await Promise.all(Array.from({ length: 10 }, (_, i) => make(`Retag ${i}`)))).map((other) => ({
+        type: 'modify',
+        task: other,
+        addTags: ['roadmap'],
+      })),
+    ];
+    const { id } = await proposed(changes, wid);
+    const res = await owner(`pings/${id}/apply`);
+    expect(res.status).toBe(200);
+    const { created } = await res.json();
+    expect(created).toHaveLength(20);
+    expect((await task(created[19])).dependsOn.map((d) => d.wid)).toEqual([created[18]]);
   });
 
   it('applies only the ticked changes, with an edited new task', async () => {

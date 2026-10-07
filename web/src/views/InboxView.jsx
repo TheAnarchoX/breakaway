@@ -33,14 +33,16 @@ const list = (items) =>
   ));
 
 /**
- * One change as the owner reads it: what applying it would do.
+ * One change as the owner reads it: what applying it would do. `bare` leaves out what its group's heading
+ * already says (an added task's "Add a task:").
  * @param {Record<string, any>} props
  */
-function Describe({ change: c }) {
+function Describe({ change: c, bare = false }) {
   if (c.type === 'add') {
     return (
       <>
-        <strong>Add a task:</strong> {c.title}
+        {!bare && <strong>Add a task: </strong>}
+        {c.title}
         <span class="meta">
           {' '}
           · {c.project}, {c.horizon}, +{c.tags.join(' +')}
@@ -103,6 +105,68 @@ function Describe({ change: c }) {
   );
 }
 
+/**
+ * The kinds of change, in the order a proposal reads best, with each group's heading (BRK-261).
+ * @type {[string, (n: number) => string][]}
+ */
+const CHANGE_GROUPS = [
+  ['add', (n) => (n === 1 ? 'Add a task' : `Add ${n} tasks`)],
+  ['depend', (n) => (n === 1 ? 'Change a dependency' : `Change ${n} dependencies`)],
+  ['modify', (n) => (n === 1 ? 'Edit a task' : `Edit ${n} tasks`)],
+  ['done', (n) => (n === 1 ? 'Finish a task' : `Finish ${n} tasks`)],
+  ['delete', (n) => (n === 1 ? 'Delete a task' : `Delete ${n} tasks`)],
+  ['release', (n) => (n === 1 ? 'Release a claim' : `Release ${n} claims`)],
+];
+/** A proposal this short reads as one plain list; a longer one is grouped by kind. */
+const FLAT_UP_TO = 3;
+/** How many changes a group shows on the inbox card before the rest fold away. */
+const CARD_SHOWN = 3;
+
+/**
+ * A proposal's changes grouped by kind, each keeping its number in the proposal (which apply sends back). A short
+ * one is a single group with no heading.
+ * @param {any[]} proposal
+ * @returns {{ type: string, heading: string | null, items: { c: any, i: number }[] }[]}
+ */
+const groupChanges = (proposal) =>
+  proposal.length <= FLAT_UP_TO
+    ? [{ type: 'all', heading: null, items: proposal.map((c, i) => ({ c, i })) }]
+    : CHANGE_GROUPS.map(([type, heading]) => {
+        const items = proposal.flatMap((c, i) => (c.type === type ? [{ c, i }] : []));
+        return { type, heading: heading(items.length), items };
+      }).filter((g) => g.items.length);
+
+/**
+ * A proposal on the inbox card: grouped by kind, a long group folded after its first few (BRK-261).
+ * @param {{ proposal: any[] }} props
+ */
+function ProposalSummary({ proposal }) {
+  return groupChanges(proposal).map((g) => (
+    <section key={g.type} class="changes-group">
+      {g.heading && <h4 class="changes-group-title">{g.heading}</h4>}
+      <ul class="changes-list">
+        {g.items.slice(0, CARD_SHOWN).map(({ c, i }) => (
+          <li key={i}>
+            <Describe change={c} bare={Boolean(g.heading)} />
+          </li>
+        ))}
+      </ul>
+      {g.items.length > CARD_SHOWN && (
+        <details class="changes-more">
+          <summary>Show {g.items.length - CARD_SHOWN} more</summary>
+          <ul class="changes-list">
+            {g.items.slice(CARD_SHOWN).map(({ c, i }) => (
+              <li key={i}>
+                <Describe change={c} bare />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  ));
+}
+
 /** @param {Record<string, any>} props */
 function ApplyDialog({ ping, onClose }) {
   const proposal = ping.proposal;
@@ -115,6 +179,14 @@ function ApplyDialog({ ping, onClose }) {
     const next = new Set(chosen);
     if (next.has(i)) next.delete(i);
     else next.add(i);
+    setChosen(next);
+  };
+  const toggleAll = (numbers, include) => {
+    const next = new Set(chosen);
+    for (const i of numbers) {
+      if (include) next.add(i);
+      else next.delete(i);
+    }
     setChosen(next);
   };
   const apply = async (e) => {
@@ -159,70 +231,97 @@ function ApplyDialog({ ping, onClose }) {
           ))}
         </ul>
       )}
-      <ol class="changes-list">
-        {proposal.map((c, i) => (
-          <li key={i} class={chosen.has(i) ? '' : 'is-off'}>
-            <label class="check-row">
-              <input type="checkbox" checked={chosen.has(i)} onChange={() => toggle(i)} />
-              <span>
-                <span class="visually-hidden">
-                  {chosen.has(i) ? 'Include' : 'Skip'} change {i + 1}:{' '}
-                </span>
-                <Describe change={c} />
-              </span>
-            </label>
-            {c.type === 'add' && chosen.has(i) && (
-              <details class="change-edit">
-                <summary>Edit this task before adding it</summary>
-                <label class="field">
-                  <span class="field-label">Title</span>
-                  <input
-                    class="input input-sm"
-                    value={edits[i]?.title ?? c.title}
-                    onInput={(e) => edit(i, 'title', e.currentTarget.value)}
-                  />
-                </label>
-                <label class="field">
-                  <span class="field-label">Horizon</span>
-                  <select
-                    class="select select-sm"
-                    value={edits[i]?.horizon ?? c.horizon}
-                    onChange={(e) => edit(i, 'horizon', e.currentTarget.value)}
+      {groupChanges(proposal).map((g) => {
+        const on = g.items.filter(({ i }) => chosen.has(i)).length;
+        return (
+          <section key={g.type} class="changes-group">
+            {g.heading && (
+              <div class="changes-group-head">
+                <h3 class="changes-group-title">{g.heading}</h3>
+                {g.items.length > 1 && (
+                  <button
+                    type="button"
+                    class="btn btn-quiet btn-sm"
+                    onClick={() =>
+                      toggleAll(
+                        g.items.map(({ i }) => i),
+                        on < g.items.length,
+                      )
+                    }
                   >
-                    {HORIZONS.filter((h) => ['now', 'next', 'later'].includes(h.id)).map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">Description</span>
-                  <Dictate>
-                    <textarea
-                      class="input"
-                      rows={3}
-                      value={edits[i]?.brief ?? c.brief}
-                      onInput={(e) => edit(i, 'brief', e.currentTarget.value)}
-                    />
-                  </Dictate>
-                </label>
-                <label class="field">
-                  <span class="field-label">Done when</span>
-                  <Dictate>
-                    <textarea
-                      class="input"
-                      rows={2}
-                      value={edits[i]?.done_when ?? c.done_when}
-                      onInput={(e) => edit(i, 'done_when', e.currentTarget.value)}
-                    />
-                  </Dictate>
-                </label>
-              </details>
+                    {on < g.items.length ? 'Include all' : 'Skip all'}
+                    <span class="visually-hidden"> ({g.heading})</span>
+                  </button>
+                )}
+              </div>
             )}
-          </li>
-        ))}
-      </ol>
+            <ol class="changes-list">
+              {g.items.map(({ c, i }) => (
+                <li key={i} class={chosen.has(i) ? '' : 'is-off'}>
+                  <label class="check-row">
+                    <input type="checkbox" checked={chosen.has(i)} onChange={() => toggle(i)} />
+                    <span>
+                      <span class="visually-hidden">
+                        {chosen.has(i) ? 'Include' : 'Skip'} change {i + 1}:{' '}
+                      </span>
+                      <Describe change={c} bare={Boolean(g.heading)} />
+                    </span>
+                  </label>
+                  {c.type === 'add' && chosen.has(i) && (
+                    <details class="change-edit">
+                      <summary>Edit this task before adding it</summary>
+                      <label class="field">
+                        <span class="field-label">Title</span>
+                        <input
+                          class="input input-sm"
+                          value={edits[i]?.title ?? c.title}
+                          onInput={(e) => edit(i, 'title', e.currentTarget.value)}
+                        />
+                      </label>
+                      <label class="field">
+                        <span class="field-label">Horizon</span>
+                        <select
+                          class="select select-sm"
+                          value={edits[i]?.horizon ?? c.horizon}
+                          onChange={(e) => edit(i, 'horizon', e.currentTarget.value)}
+                        >
+                          {HORIZONS.filter((h) => ['now', 'next', 'later'].includes(h.id)).map((h) => (
+                            <option key={h.id} value={h.id}>
+                              {h.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span class="field-label">Description</span>
+                        <Dictate>
+                          <textarea
+                            class="input"
+                            rows={3}
+                            value={edits[i]?.brief ?? c.brief}
+                            onInput={(e) => edit(i, 'brief', e.currentTarget.value)}
+                          />
+                        </Dictate>
+                      </label>
+                      <label class="field">
+                        <span class="field-label">Done when</span>
+                        <Dictate>
+                          <textarea
+                            class="input"
+                            rows={2}
+                            value={edits[i]?.done_when ?? c.done_when}
+                            onInput={(e) => edit(i, 'done_when', e.currentTarget.value)}
+                          />
+                        </Dictate>
+                      </label>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        );
+      })}
       {error && (
         <p class="field-error" role="alert">
           {error}
@@ -305,14 +404,8 @@ function PingCard({ ping, focused, onApply, incident = null }) {
         {ping.kind === 'incident' && <IncidentLine ping={ping} incident={incident} />}
         {ping.proposal && (
           <div class="ping-proposal">
-            <h3 class="kicker">Proposal</h3>
-            <ul class="changes-list">
-              {ping.proposal.map((c, i) => (
-                <li key={i}>
-                  <Describe change={c} />
-                </li>
-              ))}
-            </ul>
+            <h3 class="kicker">Proposal{ping.proposal.length > 1 ? `: ${ping.proposal.length} changes` : ''}</h3>
+            <ProposalSummary proposal={ping.proposal} />
             {ping.warnings.map((w) => (
               <p key={w} class="foot-warn small">
                 <TriangleAlert size={14} aria-hidden="true" /> {w}
