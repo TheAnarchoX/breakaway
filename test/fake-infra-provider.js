@@ -1,7 +1,8 @@
 /**
  * An in-memory Architect provider (BRK-173) for every Architect test: it discovers, plans, applies, observes, prices,
  * and reports events from state held in the test, and never reaches the network. Its kinds: `service` (scales and
- * restarts), `database` (deleting one can't be undone), and `route`. It estimates what a change would cost, too.
+ * restarts), `database` (deleting one can't be undone), and `route`. It estimates what a change would cost, too, and
+ * says which settings the console may change (`FAKE_EDITABLE`).
  *
  * `fakeProvider()` takes the starting state; `provider.state` is live, so a test can change the platform by hand
  * (drift, break-glass) and `provider.calls` records every call, with its environment.
@@ -20,6 +21,43 @@ export const FAKE_KINDS = {
   service: { changes: ['create', 'update', 'delete', 'scale', 'restart'], scales: 'instances' },
   database: { changes: ['create', 'update', 'delete'] },
   route: { changes: ['create', 'update', 'delete'] },
+};
+
+/** What the console may change on each fake kind (BRK-262). The fake compares every attr, so any path is one it plans. */
+export const FAKE_EDITABLE = {
+  service: {
+    fields: [
+      {
+        path: 'instances',
+        label: 'Instances',
+        type: 'number',
+        integer: true,
+        min: 1,
+        max: 10,
+        help: 'How many copies run.',
+      },
+      { path: 'version', label: 'Version', type: 'text', help: 'The version it runs.' },
+    ],
+    shown: [{ path: 'secrets', label: 'Secrets', help: 'Set with its deploy, never here.' }],
+  },
+  database: {
+    fields: [
+      {
+        path: 'size',
+        label: 'Size',
+        type: 'choice',
+        options: [
+          { value: 'small', label: 'Small' },
+          { value: 'large', label: 'Large' },
+        ],
+        help: 'How big a machine it runs on.',
+      },
+    ],
+  },
+  route: {
+    name: { label: 'Hostname', help: 'Where it answers.' },
+    fields: [{ path: 'path', label: 'Path', type: 'text', help: 'Which paths it sends to the service.' }],
+  },
 };
 
 /** Tokens the fake platform knows, and the permissions each carries. Plainly fake values. */
@@ -136,6 +174,8 @@ export function fakeProvider({
     id,
     name: 'Fake platform',
     kinds: FAKE_KINDS,
+    /** @param {string} kind */
+    editable: (kind) => FAKE_EDITABLE[kind] ?? null,
     state,
     calls,
     failOn: new Set(failOn),

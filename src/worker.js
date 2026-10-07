@@ -541,6 +541,15 @@ async function handleApi(request, env, url, ctx) {
     method === 'GET'
   )
     return send(await s.infraDraftApi(parts[2], { repo: url.searchParams.get('repo') }));
+  // What the console may change on an environment (BRK-262): read only, like the draft.
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'environments' &&
+    parts[3] === 'editable' &&
+    parts.length === 4 &&
+    method === 'GET'
+  )
+    return send(await s.infraEditableApi(parts[2], { repo: url.searchParams.get('repo') }));
   // Describe it as code (WEB-92): anyone signed in reads the open task; starting one is the owner's press, from the
   // signed-in browser only, since it starts an agent.
   if (parts[0] === 'infra' && parts[1] === 'environments' && parts[3] === 'describe' && parts.length === 4) {

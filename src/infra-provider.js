@@ -215,9 +215,72 @@ export const COST_NOTE_MAX = 500;
  * @property {(ctx: ProviderContext, since: string) => Promise<Signal[]>} events
  * @property {(ctx: ProviderContext, change: Change) => Promise<Cost | null>} [estimate] what a resource would cost a
  *   month once `change` is applied, or null when the provider can't say; a plan's cost change uses it (BRK-178)
+ * @property {(kind: string) => Editable | null} [editable] the settings the console may change on resources of `kind`,
+ *   or null for a kind it changes nothing on; checked by `checkEditable` (BRK-262)
  * @property {(ctx: ProviderContext, options: { board: string[] }) => Promise<AlertSetup>} [alerts] reads which of the
  *   platform's alerts are set up and which reach the board (`board` is its https origins), for a provider whose
  *   platform sends alerts to the board
+ */
+
+/** The kinds of field the console draws for a setting it may change (BRK-262). */
+export const EDITABLE_TYPES = ['text', 'number', 'yesno', 'choice', 'names', 'resource', 'bindings', 'rules'];
+
+/** A path into a resource's attrs: names joined by dots, with no `attrs.` prefix (like `observability` or `allowed.origins`). */
+const PATH = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$/u;
+
+/**
+ * One setting the console may change (BRK-262): where it is, what kind of field it is, and a line of help. The console
+ * draws its fields from these and never names a vendor.
+ * @typedef {object} EditableField
+ * @property {string} path where it is in the resource's attrs, as PATH; its first name is one of the kind's `settings`
+ *   (what the plan compares), when the kind lists them. Inside a `rules` field's `fields`, the path is inside one rule.
+ * @property {string} label what the field is called, in a few words
+ * @property {string} type one of EDITABLE_TYPES: `text`; `number`; `yesno`; `choice` (one of `options`); `names` (a list
+ *   of strings, like flags or schedules); `resource` (another resource of the environment, by its name: one of `kinds`);
+ *   `bindings` (a list of named bindings, each to a resource of the environment, as `targets` says); `rules` (a list of
+ *   objects, each with the `fields` the console offers: it keeps every other key of a rule as it is, and starts a new one
+ *   from `template`)
+ * @property {string} help one line, in plain words
+ * @property {boolean} [optional] whether it can be left unset (null: the platform decides)
+ * @property {number} [min] a number's least value
+ * @property {number} [max] a number's greatest value
+ * @property {boolean} [integer] a number must be whole
+ * @property {string} [unit] what a number counts, like `seconds`
+ * @property {string} [pattern] a text's, or each name's, regular expression (without slashes)
+ * @property {Array<{ value: string, label: string }>} [options] a choice's options
+ * @property {string[]} [kinds] the kinds a `resource` may name
+ * @property {BindingTarget[]} [targets] the binding types a `bindings` field changes: a binding of any other type (a
+ *   variable, a secret) is shown by its name and type, and kept as it is
+ * @property {EditableField[]} [fields] a `rules` field's fields, inside one rule
+ * @property {Record<string, unknown>} [template] what a new rule starts from
+ */
+
+/**
+ * One type of binding a `bindings` field changes, and how it names its resource: a binding is `{ name, type, [field]: … }`,
+ * with the resource's ID in the desired state (`by: 'id'`) or its name (`by: 'name'`).
+ * @typedef {object} BindingTarget
+ * @property {string} type the binding's type, as the platform calls it
+ * @property {string} label what people call it
+ * @property {string} kind the kind of resource it binds
+ * @property {string} field the binding's key that names the resource
+ * @property {'id' | 'name'} by
+ */
+
+/**
+ * A setting the console shows by name and never changes, like a Worker's secrets.
+ * @typedef {object} ShownSetting
+ * @property {string} path
+ * @property {string} label
+ * @property {string} help why it's read only, and where it's set instead
+ */
+
+/**
+ * What the console may change on resources of one kind (BRK-262), from the provider's `editable(kind)`.
+ * @typedef {object} Editable
+ * @property {EditableField[]} fields
+ * @property {{ label: string, help: string, pattern?: string }} [name] the resource's name, when the plan compares it
+ *   (a kind the platform names by what it does, like a route's pattern)
+ * @property {ShownSetting[]} [shown] settings shown by name, read only
  */
 
 /**
@@ -273,7 +336,135 @@ export function checkProvider(provider) {
   if (provider.outside !== undefined && typeof provider.outside !== 'function') fail(what, 'outside is not a function');
   if (provider.estimate !== undefined && typeof provider.estimate !== 'function')
     fail(what, 'estimate is not a function');
+  if (provider.editable !== undefined) {
+    if (typeof provider.editable !== 'function') fail(what, 'editable is not a function');
+    for (const kind of Object.keys(provider.kinds)) checkEditable(provider, kind, provider.editable(kind));
+  }
   return provider;
+}
+
+/**
+ * Checks what a provider's `editable(kind)` returned, or throws saying what's wrong: every field has a path, a label, a
+ * type, and help; its path is one the plan compares (its first name is one of the kind's `settings`, when the kind lists
+ * them); nothing is editable twice or both editable and shown; and each type carries what the console needs to draw it.
+ * @param {Provider} provider
+ * @param {string} kind
+ * @param {Editable | null} editable
+ * @returns {Editable | null}
+ */
+export function checkEditable(provider, kind, editable) {
+  const what = `${provider.id} editable ${kind}`;
+  if (editable === null) return null;
+  if (!provider.kinds[kind]) fail(what, `${provider.id} doesn't declare ${kind}`);
+  if (!isObject(editable) || !Array.isArray(editable.fields)) fail(what, 'fields is not a list');
+  const settings = provider.kinds[kind].settings;
+  const paths = checkFields(provider, what, editable.fields, settings);
+  if (editable.name !== undefined) {
+    if (!isObject(editable.name) || !text(editable.name.label) || !text(editable.name.help))
+      fail(what, 'name has no label or no help');
+    if (editable.name.pattern !== undefined) checkPattern(what, 'name', editable.name.pattern);
+  }
+  if (editable.shown !== undefined) {
+    if (!Array.isArray(editable.shown)) fail(what, 'shown is not a list');
+    for (const s of editable.shown) {
+      if (!isObject(s) || !text(s.path) || !PATH.test(s.path)) fail(what, 'a shown setting has no path');
+      if (!text(s.label) || !text(s.help)) fail(what, `shown ${s.path} has no label or no help`);
+      if (paths.has(s.path)) fail(what, `${s.path} is both editable and shown`);
+    }
+  }
+  return editable;
+}
+
+/**
+ * @param {Provider} provider
+ * @param {string} what
+ * @param {any} fields
+ * @param {string[] | undefined} settings the names a top-level path may start with; undefined inside a rule
+ */
+function checkFields(provider, what, fields, settings) {
+  if (!Array.isArray(fields)) fail(what, 'fields is not a list');
+  const paths = new Set();
+  for (const f of fields) {
+    if (!isObject(f) || !text(f.path) || !PATH.test(f.path))
+      fail(what, 'a field has no path, or one that isn’t names joined by dots');
+    const at = `${what} ${f.path}`;
+    if (paths.has(f.path)) fail(at, 'is listed twice');
+    paths.add(f.path);
+    if (settings && !settings.includes(f.path.split('.')[0])) fail(at, "isn't a setting the plan compares");
+    if (!text(f.label) || !text(f.help)) fail(at, 'has no label or no help');
+    if (!EDITABLE_TYPES.includes(f.type)) fail(at, `has unknown type "${f.type}"`);
+    if (f.optional !== undefined && typeof f.optional !== 'boolean') fail(at, 'optional is not true or false');
+    if (f.pattern !== undefined) {
+      if (f.type !== 'text' && f.type !== 'names') fail(at, 'only text and names take a pattern');
+      checkPattern(at, 'pattern', f.pattern);
+    }
+    for (const k of ['min', 'max'])
+      if (f[k] !== undefined && (f.type !== 'number' || typeof f[k] !== 'number' || !Number.isFinite(f[k])))
+        fail(at, `${k} is not a number, or the field isn't one`);
+    if (f.min !== undefined && f.max !== undefined && f.min > f.max) fail(at, 'min is more than max');
+    if (f.integer !== undefined && (f.type !== 'number' || typeof f.integer !== 'boolean'))
+      fail(at, 'integer is not true or false, or the field isn’t a number');
+    if (f.unit !== undefined && (f.type !== 'number' || !text(f.unit))) fail(at, 'only a number has a unit');
+    if (f.type === 'choice') {
+      if (!Array.isArray(f.options) || f.options.length === 0) fail(at, 'a choice has no options');
+      const values = new Set();
+      for (const o of f.options) {
+        if (!isObject(o) || !text(o.value) || !text(o.label)) fail(at, 'an option has no value or no label');
+        if (values.has(o.value)) fail(at, `option ${o.value} is listed twice`);
+        values.add(o.value);
+      }
+    } else if (f.options !== undefined) fail(at, 'only a choice has options');
+    if (f.type === 'resource') {
+      if (!Array.isArray(f.kinds) || f.kinds.length === 0) fail(at, 'a resource field names no kinds');
+      for (const k of f.kinds)
+        if (!provider.kinds[k]) fail(at, `names kind ${k}, which ${provider.id} doesn't declare`);
+    } else if (f.kinds !== undefined) fail(at, 'only a resource field has kinds');
+    if (f.type === 'bindings') {
+      if (!Array.isArray(f.targets) || f.targets.length === 0) fail(at, 'a bindings field has no targets');
+      const types = new Set();
+      for (const t of f.targets) {
+        if (!isObject(t) || !text(t.type) || !text(t.label) || !text(t.field))
+          fail(at, 'a target has no type, label, or field');
+        if (types.has(t.type)) fail(at, `binding type ${t.type} is listed twice`);
+        types.add(t.type);
+        if (!provider.kinds[t.kind]) fail(at, `binds kind ${t.kind}, which ${provider.id} doesn't declare`);
+        if (t.by !== 'id' && t.by !== 'name') fail(at, `${t.type} names its resource by neither id nor name`);
+      }
+    } else if (f.targets !== undefined) fail(at, 'only a bindings field has targets');
+    if (f.type === 'rules') {
+      if (!Array.isArray(f.fields) || f.fields.length === 0) fail(at, 'a rules field has no fields');
+      checkFields(provider, at, f.fields, undefined);
+      if (f.template !== undefined && !isObject(f.template)) fail(at, 'template is not an object');
+    } else if (f.fields !== undefined || f.template !== undefined) fail(at, 'only a rules field has fields');
+  }
+  return paths;
+}
+
+/** @param {string} what @param {string} key @param {unknown} pattern */
+function checkPattern(what, key, pattern) {
+  if (!text(pattern)) fail(what, `${key} is empty`);
+  try {
+    new RegExp(/** @type {string} */ (pattern), 'u');
+  } catch {
+    fail(what, `${key} isn't a regular expression`);
+  }
+}
+
+/**
+ * What the console may change on each of a provider's kinds (BRK-262): only the kinds it changes something on, checked.
+ * A provider without `editable` changes nothing from the console.
+ * @param {Provider} provider
+ * @returns {Record<string, Editable>}
+ */
+export function editableKinds(provider) {
+  if (typeof provider.editable !== 'function') return {};
+  /** @type {Record<string, Editable>} */
+  const out = {};
+  for (const kind of Object.keys(provider.kinds)) {
+    const e = checkEditable(provider, kind, provider.editable(kind));
+    if (e && (e.fields.length || e.name || e.shown?.length)) out[kind] = e;
+  }
+  return out;
 }
 
 /** @param {string} what @param {ReadToken} token */
