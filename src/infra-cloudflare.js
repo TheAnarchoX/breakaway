@@ -225,8 +225,8 @@ const MAX_WORKERS = 50;
 const MAX_PAGES = 20;
 
 /**
- * Paths discover must never call: a KV value, an R2 object, or a Worker's code (BRK-188). Every call is checked against
- * these before it's made, so a bug can't turn a read of settings into a read of data.
+ * Paths discover must never call: a KV value, an R2 object, a Worker's code (BRK-188), or its logs (BRK-253). Every
+ * call is checked against these before it's made, so a bug can't turn a read of settings into a read of data.
  */
 export const NEVER_CALLED = [
   /\/storage\/kv\/namespaces\/[^/]+\/(values|keys|bulk)/u,
@@ -235,6 +235,9 @@ export const NEVER_CALLED = [
   /\/workers\/scripts\/[^/]+$/u,
   /\/versions\/[^/?]+\?.*include=modules/u,
   /\/secrets\/[^/]+$/u,
+  // Workers Observability's logs and telemetry, and a Worker's live tail: what its requests carried (BRK-253).
+  /\/workers\/observability\//u,
+  /\/workers\/scripts\/[^/]+\/tails/u,
 ];
 
 /** A permission as a 403 names it: with its legacy names in parentheses, for a token made before Cloudflare renamed it. */

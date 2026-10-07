@@ -213,12 +213,34 @@ function section(/** @type {EnvironmentCheck} */ e) {
 }
 
 /**
- * The check's summary, in Markdown: each environment's plan and policy, then what merging does.
- * @param {PullCheck} check
- * @param {{ page?: string | null }} [links] the board's page for the pull request, when the board has an address
+ * One environment's section for a pull request from outside the repository (BRK-253): what happened, never what the
+ * environment holds. The resource names, the blast radius, and the provider's words stay on the board's page, so a
+ * fork can't push `{ resources: [] }` to read every resource in scope, or a provider's refusal, off a public check.
  */
-export function infraSummary(check, { page = null } = {}) {
+function brief(/** @type {EnvironmentCheck} */ e) {
+  const lines = [`### ${e.environment}`, ''];
+  if (e.state === 'planned')
+    lines.push(e.preview?.changes ? `${upper(plural(e.preview.changes, 'change'))}.` : 'Nothing to change.');
+  else lines.push(`${upper(shortLine(e) ?? `${e.environment} wasn’t planned`)}.`);
+  const policy = e.preview?.policy ? policyWords(e.preview.policy) : null;
+  if (policy) lines.push('', `**Policy:** ${policy}`);
+  return lines;
+}
+
+/**
+ * The check's summary, in Markdown: each environment's plan and policy, then what merging does. For a pull request
+ * from outside the repository (`outside`, a fork's), each environment's section is brief: the check is public.
+ * @param {PullCheck} check
+ * @param {{ page?: string | null, outside?: boolean }} [links] the board's page for the pull request, when the board
+ *   has an address
+ */
+export function infraSummary(check, { page = null, outside = false } = {}) {
   const lines = [];
+  if (outside)
+    lines.push(
+      'This pull request comes from outside the repository, so the plan’s detail (what it changes, and what the provider said) is only on the board.',
+      '',
+    );
   for (const p of check.problems) lines.push(`\`${p.path}\`: ${p.message}`, '');
   if (check.policy && !check.policy.ok) {
     const e = check.policy.error;
@@ -228,7 +250,7 @@ export function infraSummary(check, { page = null } = {}) {
       '',
     );
   }
-  for (const e of check.environments) lines.push(...section(e), '');
+  for (const e of check.environments) lines.push(...(outside ? brief(e) : section(e)), '');
   if (check.skipped)
     lines.push(`${plural(check.skipped, 'more environment')} not planned: split the pull request to see them.`, '');
   lines.push(

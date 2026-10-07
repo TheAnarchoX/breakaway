@@ -121,7 +121,8 @@ describe('a pull request’s plan as a check', () => {
     },
   };
   const repo = { slug: 'widgets', defaultBranch: 'main' };
-  const pull = (number, sha) => ({ number, state: 'open', head: { sha } });
+  const inside = { repo: { full_name: 'acme/widgets' } };
+  const pull = (number, sha, head = inside) => ({ number, state: 'open', head: { sha, ...head }, base: inside });
   const check = (pulls, r = repo) => inStore((s) => s.checkInfraPulls(client, r, pulls));
   const shown = (number) => inStore((s) => s.infraPullOut('widgets', number));
 
@@ -228,6 +229,54 @@ describe('a pull request’s plan as a check', () => {
     expect(gh.calls).toEqual([]);
     await check([pull(11, 'sha-11b')]);
     expect(gh.posted.map((p) => p.head_sha)).toEqual(['sha-11a', 'sha-11b']);
+  });
+
+  it('keeps a fork’s check to what happened, not what the environment holds (BRK-253)', async () => {
+    gh.files = changes('pulls-staging.json');
+    // Emptying the file would delete every resource in scope: a fork mustn't read them off the public check.
+    gh.at[`${DESIRED_DIR}/pulls-staging.json`] = JSON.stringify({ version: 1, provider: PROVIDER, resources: [] });
+    const names = provider.state.resources.map((r) => r.name);
+    for (const [number, head] of [
+      [41, { repo: { full_name: 'someone/widgets' } }],
+      [42, { repo: null }],
+    ]) {
+      await check([pull(number, `sha-${number}`, head)]);
+      const run = gh.posted.at(-1);
+      expect(run.head_sha).toBe(`sha-${number}`);
+      expect(run.output.summary).toMatch(/comes from outside the repository/u);
+      expect(run.output.summary).toMatch(/### pulls-staging\n\n\d+ changes\./u);
+      expect(run.output.summary).toMatch(/\*\*Policy:\*\*/u);
+      for (const name of names) expect(run.output.summary).not.toContain(name);
+      expect(run.output.summary).not.toMatch(/\| Change \|/u);
+      // The board's own page keeps the detail.
+      expect((await shown(number)).environments[0].preview.diff.changes.length).toBe(names.length);
+    }
+    // The same file from a branch of the repository shows its detail.
+    await check([pull(43, 'sha-43')]);
+    expect(gh.posted.at(-1).output.summary).toMatch(/\| Change \| Name \| Kind \|/u);
+  });
+
+  it('keeps a provider’s words off a fork’s check', () => {
+    const result = {
+      environments: [
+        {
+          environment: 'staging',
+          environmentId: 1,
+          path: `${DESIRED_DIR}/staging.json`,
+          state: 'failed',
+          problem: 'Cloudflare refused: the token reaches acme.example and acme-internal.example',
+          error: null,
+          preview: null,
+        },
+      ],
+      policy: null,
+      problems: [],
+      skipped: 0,
+    };
+    const text = infraSummary(result, { outside: true });
+    expect(text).toMatch(/### staging\n\nStaging couldn’t be planned\./u);
+    expect(text).not.toMatch(/acme/u);
+    expect(infraSummary(result)).toMatch(/acme-internal\.example/u);
   });
 
   it('reads only the files of a pull request that doesn’t change the folder, and posts nothing', async () => {

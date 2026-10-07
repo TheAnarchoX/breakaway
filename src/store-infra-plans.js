@@ -97,6 +97,8 @@ export const infraPlansMethods = {
         .map((c) => c.name),
     );
     if (!have.has('policy')) this.sql.exec('ALTER TABLE infra_plans ADD COLUMN policy TEXT');
+    // The environment's kind when it was planned (BRK-253), so a plan is out of date once it changes.
+    if (!have.has('env_kind')) this.sql.exec('ALTER TABLE infra_plans ADD COLUMN env_kind TEXT');
   },
 
   /** A plan's row with its environment's name, by its ID (`plan-12`), or a 404. */
@@ -276,12 +278,13 @@ export const infraPlansMethods = {
       n = Number(
         this.sql
           .exec(
-            `INSERT INTO infra_plans (environment, repo, provider, target, desired_sha, source, ref, state, diff, cost, blast, reversible, policy, by, agent, created, updated)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING n`,
+            `INSERT INTO infra_plans (environment, repo, provider, target, env_kind, desired_sha, source, ref, state, diff, cost, blast, reversible, policy, by, agent, created, updated)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING n`,
             env.id,
             env.repo,
             env.provider,
             env.target ?? null,
+            env.kind,
             desired || diff ? null : (kept?.valid_sha ?? null),
             from.source,
             from.ref,
