@@ -429,6 +429,17 @@ function chaseWords(chase) {
 }
 
 /**
+ * A feature's plan in a few words (WEB-104): "2026-10-12 to 2026-10-19", "by 2026-10-19", "from 2026-10-12", or null.
+ * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
+ */
+export function planWords({ plannedStart, plannedEnd }) {
+  if (plannedStart && plannedEnd) return `${plannedStart} to ${plannedEnd}`;
+  if (plannedEnd) return `by ${plannedEnd}`;
+  if (plannedStart) return `from ${plannedStart}`;
+  return null;
+}
+
+/**
  * What `npx breakaway features` prints: features by release, then unplanned, then the tags that could be features
  * and the tasks with a release tag and no feature.
  * @param {{ features: any[], suggestions?: any[], releaseTasks?: any[] }} data
@@ -448,6 +459,7 @@ export function featureListLines({ features, suggestions = [], releaseTasks = []
     }
     const notes = [
       progressLine(f.progress),
+      planWords(f) ? `planned ${planWords(f)}` : null,
       f.shipped ? 'shipped' : null,
       chaseWords(f.chase),
       f.conflicts?.length ? `${plural(f.conflicts.length, 'task')} in two features` : null,
@@ -508,6 +520,7 @@ export function featureLines(f) {
   const out = [`${f.title} (${f.slug})`, ''];
   const row = (k, v) => v && out.push(`  ${k.padEnd(11)} ${v}`);
   row('Release', f.release ?? 'unplanned');
+  row('Planned', planWords(f) ?? 'no dates yet');
   row('State', f.shipped && f.state !== 'shipped' ? 'shipped (every task is done and live)' : f.state);
   row('Progress', progressLine(f.progress));
   out.push(...chaseLines(f.chase, f.slug));

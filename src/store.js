@@ -1289,7 +1289,33 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         });
       }
       // A chase started, stopped, stalled, or ended (IDEA-28 section 3.9); its starts are agent runs above.
+      // The owner's change of a feature's plan (WEB-104) is kept with them, and is the board's own.
       for (const c of this.chaseEvents(after, upTo)) {
+        if (c.kind === 'feature_planned') {
+          let plan = {};
+          try {
+            plan = JSON.parse(c.detail ?? '{}');
+          } catch {
+            /* a detail cut short at 500 characters: the slug stands in for its title */
+          }
+          events.push({
+            seq: null,
+            id: `ch${c.id}`,
+            at: new Date(c.at).toISOString(),
+            source: 'api',
+            task: null,
+            changes: [
+              {
+                kind: c.kind,
+                feature: c.slug,
+                title: plan.title ?? c.slug,
+                start: plan.start ?? null,
+                end: plan.end ?? null,
+              },
+            ],
+          });
+          continue;
+        }
         events.push({
           seq: null,
           id: `ch${c.id}`,
