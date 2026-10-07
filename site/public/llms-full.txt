@@ -180,7 +180,7 @@ npx breakaway install init
 
 It asks for the board’s name, the Worker’s name, an address on your own domain (blank is fine: the board answers on workers.dev), and a Secrets Store ID (blank is fine: the secrets go on the Worker). It writes the settings, the Deploy and Update workflows, and a README. It never overwrites a file.
 
-Then open `breakaway.config.json` and add one line, so the board can look for updates on its own: `"installRepository": "<you>/my-board"`. Keep `channel` the same as in `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows every merge to breakaway.
+Then open `breakaway.config.json` and add one line, so the board can look for updates on its own: `"installRepository": "<you>/my-board"`. Keep `channel` the same as in `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows breakaway’s pre-releases.
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 
@@ -1775,12 +1775,12 @@ breakaway **publishes releases and never deploys an install**. Every install, th
 ## The shape of it
 
 ```text
-merge to breakaway's main
-        |
-        v
-CI passes -> a pre-release vX.Y.Z-main.N is published (the main channel)
+merge to breakaway's main, CI passes
         |
         v   (the maintainer runs the Release workflow)
+a pre-release vX.Y.Z-main.N (the main channel)
+        |
+        v   (the maintainer runs the Release workflow with it)
 a stable release vX.Y.Z (the stable channel)
 
 your install repository ──reads── the update feed (/releases.json)
@@ -1795,9 +1795,9 @@ Deploy -> checks -> wrangler deploy -> /api/ping -> keep it, or go back
 
 ## Releases
 
-- **Every merge to `main`**, once CI passes, publishes a GitHub pre-release `vX.Y.Z-main.N` on the **main** channel. It carries the bundle (`breakaway-bundle.tar.gz`: the Worker’s files and the web app’s `dist`), a `manifest.json`, and `SHA256SUMS`. The notes list the merged pull requests by title.
-- **A stable release** `vX.Y.Z` is the maintainer’s: they run the **Release** workflow with the pre-release to promote. The bundle is that pre-release’s, unchanged, and the notes cover everything since the last stable, under the release’s own words from [`docs/releases/vX.Y.Z.md`](https://github.com/TheAnarchoX/breakaway/tree/main/docs/releases) when it’s there.
-- **The next version.** After a stable, pre-releases count patches from it by themselves. When the maintainer runs the **Release** workflow they also pick **next**: patch, the default, changes nothing; minor or major opens a pull request, once the stable is out, that sets `package.json` to the next minor or major after it (1.3.0 becomes 1.4.0 or 2.0.0), so the next merge publishes `v1.4.0-main.1`.
+- **A pre-release** `vX.Y.Z-main.N` on the **main** channel is the maintainer’s: merging publishes nothing, and they run the **Release** workflow on `main` with **prerelease** left empty to publish one of `main`’s latest commit, once CI has passed on it. It carries the bundle (`breakaway-bundle.tar.gz`: the Worker’s files and the web app’s `dist`), a `manifest.json`, and `SHA256SUMS`. The notes list the pull requests merged since the last release by title.
+- **A stable release** `vX.Y.Z` is the maintainer’s: they run the **Release** workflow with the pre-release to promote as **prerelease**. The bundle is that pre-release’s, unchanged, and the notes cover everything since the last stable, under the release’s own words from [`docs/releases/vX.Y.Z.md`](https://github.com/TheAnarchoX/breakaway/tree/main/docs/releases) when it’s there.
+- **The next version.** After a stable, pre-releases count patches from it by themselves. When the maintainer runs the **Release** workflow they also pick **next**: patch, the default, changes nothing; minor or major opens a pull request, once the stable is out, that sets `package.json` to the next minor or major after it (1.3.0 becomes 1.4.0 or 2.0.0), so the next pre-release is `v1.4.0-main.1`.
 - **The CLI** is on npm as [`breakaway`](https://www.npmjs.com/package/breakaway), staged on npm by the same workflow, with provenance, and live once breakaway’s owner approves it there with 2FA. npm’s trusted publishing can’t yet read the OIDC identity of a repository as new as breakaway’s ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so until it can, a token that can stage but never publish by itself stands in, in an environment only `main` can use. Every pre-release goes out under the `next` dist-tag, and a stable release as `latest`.
 - **The version** is what `GET /api/ping` and `GET /api/health` report as `release`.
 
@@ -1812,7 +1812,7 @@ A **major release** is one where an install has to do something by hand: a confi
 | Channel | What you get | How it reaches you |
 | --- | --- | --- |
 | `stable` | A release the maintainer promoted. | The Update workflow looks hourly and opens a pull request that moves `breakaway.json`, with the release’s notes. You merge it, and Deploy runs. The board adds a note to your inbox, once per release. |
-| `main` | The latest pre-release, one per merge. | The board starts your Deploy workflow by itself when there’s a newer one, so the GitHub App needs read and write on Actions on the install repository. The hourly Update run is the fallback. |
+| `main` | The latest pre-release, published whenever the maintainer runs one. | The board starts your Deploy workflow by itself when there’s a newer one, so the GitHub App needs read and write on Actions on the install repository. The hourly Update run is the fallback. |
 
 Keep `channel` in `breakaway.config.json` the same as in `breakaway.json`: `install init` writes both. An install with no `installRepository` makes no call and shows only what it runs.
 
@@ -1846,7 +1846,7 @@ For `stable`, merge the Update workflow’s pull request. For `main`, do nothing
 
 The board’s **Connections** page has a **Version** row that says what the board runs and the latest release in its channel. If it says a release “isn’t running yet”, open Actions on the install repository: the Deploy run says why it stopped.
 
-Once the board runs a newer release, it says what changed the next time you open it. A stable release opens a short list of what’s new since the last stable; a pre-release on `main`, which comes with every merge, shows a small note in a corner that you can open or dismiss. The list comes with the release itself, so the board asks no one for it. **See what’s new** in Settings opens it again, and a browser opening the board for the first time shows nothing.
+Once the board runs a newer release, it says what changed the next time you open it. A stable release opens a short list of what’s new since the last stable; a pre-release on `main` shows a small note in a corner that you can open or dismiss. The list comes with the release itself, so the board asks no one for it. **See what’s new** in Settings opens it again, and a browser opening the board for the first time shows nothing.
 
 ### Doing a manual step
 

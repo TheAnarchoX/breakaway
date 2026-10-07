@@ -26,7 +26,7 @@ The board answers at {{address}}.
 ## How it updates
 
 - **`stable`** (the default): `breakaway.json` pins a release. The update workflow opens a pull request that bumps it, with the release notes. Merging it deploys it. Nothing deploys until you merge.
-- **`main`**: the board follows the latest pre-release, one per merge to breakaway. The update workflow starts a deploy when there is a newer one.
+- **`main`**: the board follows the latest pre-release, which breakaway's owner publishes from `main` when they choose. The update workflow starts a deploy when there is a newer one.
 
 Both workflows run breakaway's CLI from the release's own source on GitHub, with Node. Apart from `wrangler`, nothing comes from npm.
 

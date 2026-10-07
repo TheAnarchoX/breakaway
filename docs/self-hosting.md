@@ -50,7 +50,7 @@ npx breakaway install init
 
 It asks for the board's name, the Worker's name, an address on your own domain (blank is fine: the board answers on workers.dev), a Secrets Store ID (blank is fine: the secrets go on the Worker), and the install repository's `owner/name`. It writes the settings, the Deploy and Update workflows, and a README. It never overwrites a file.
 
-It also writes `installRepository` (the repository's `origin`, or what you type) so the board can look for updates on its own. `channel` starts the same in `breakaway.config.json` and `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows every merge to breakaway. Add `origin` first (`git remote add origin …`) to have it filled in without asking.
+It also writes `installRepository` (the repository's `origin`, or what you type) so the board can look for updates on its own. `channel` starts the same in `breakaway.config.json` and `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows breakaway's pre-releases. Add `origin` first (`git remote add origin …`) to have it filled in without asking.
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 
@@ -190,7 +190,7 @@ The board takes secrets and never gives them back, so a few files on your machin
 The Version row on Connections says what the board runs, and the latest release in its channel.
 
 - **`stable`**: the install repository's Update workflow looks for a newer release every hour and opens a pull request that moves `breakaway.json` to it, with the release's notes. Merge it and Deploy runs. Nothing deploys until you merge. The board adds a note to your inbox, once per release.
-- **`main`**: the board follows the latest pre-release, one for each merge to breakaway. It starts the Deploy workflow by itself when there's a newer one, so the App needs read and write on Actions on the install repository. The hourly Update run is the fallback.
+- **`main`**: the board follows the latest pre-release, which breakaway's owner publishes from `main` when they choose. It starts the Deploy workflow by itself when there's a newer one, so the App needs read and write on Actions on the install repository. The hourly Update run is the fallback.
 
 **A release that asks for your hands.** A release that changes the Durable Object classes, a route, a cron, or a binding is a major release, and its notes have a **Manual steps** section. Deploy stops on it and deploys nothing, and the Version row needs attention. Do the steps, then deploy with `wrangler`: `npx breakaway install config` makes the Worker's config.
 
