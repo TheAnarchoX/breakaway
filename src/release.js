@@ -10,6 +10,8 @@ import { shippedPrs } from './github.js';
 import { isPackageName } from './packages.js';
 import { compareVersions } from './versions.js';
 import { FROZEN_PROMOTE } from './infra-pause.js';
+import { dispatchOf } from './workflows.js';
+import { YamlError, parseYaml } from './yaml.js';
 
 const NAME = /^[\w.-]{1,100}$/u;
 const name = (value) => (typeof value === 'string' && NAME.test(value) ? value : null);
@@ -356,3 +358,149 @@ export function compareFacts(compare) {
     config: files.some((f) => /^wrangler(\.[a-z]+)?\.jsonc$/u.test(f.filename)),
   };
 }
+
+/**
+ * Whether a release workflow builds its pre-releases only by hand (WEB-113, BRK-273): it runs on `workflow_dispatch`
+ * with a `prerelease` input that may be left empty (empty builds a pre-release of the default branch, a tag promotes
+ * that one), and nothing else starts it, no `workflow_run` after CI and no `push`. Then a merge publishes nothing, and
+ * the GitHub view offers Build a pre-release. A file the board can't read builds nothing by hand, as far as it knows.
+ * @param {string} source
+ */
+export function prereleaseByHand(source) {
+  const found = dispatchOf(source);
+  if (!found || !('inputs' in found)) return false;
+  const input = found.inputs.find((i) => i.name === 'prerelease');
+  if (!input || input.required || input.type !== 'string' || (input.default ?? '') !== '') return false;
+  let doc;
+  try {
+    doc = parseYaml(source);
+  } catch (error) {
+    if (!(error instanceof YamlError)) throw error;
+    return false;
+  }
+  const on = doc?.on;
+  if (on === 'workflow_dispatch') return true;
+  const triggers = Array.isArray(on) ? on : on && typeof on === 'object' ? Object.keys(on) : [];
+  return triggers.every((t) => t === 'workflow_dispatch');
+}
+
+/**
+ * What main has that a pre-release doesn't (WEB-113): the default branch's commits after the pre-release's commit,
+ * each a merged pull request (its title and the work IDs it closes) or, for a commit no pull request is known for,
+ * the commit itself. `commits` are the default branch's stored commits, newest first (`{ sha, message, pr, wids }`),
+ * `sha` the pre-release's commit, and `prs` the stored pull requests with their tasks. `atLeast` when the pre-release's
+ * commit is older than every stored commit: then main has at least `merges`. Null when either commit is unknown.
+ * @param {{ commits: any[], sha: string | null | undefined, prs?: any[] }} input
+ */
+export function aheadOfPrerelease({ commits, sha, prs = [] }) {
+  if (!sha || !commits?.length) return null;
+  const at = commits.findIndex((c) => c.sha === sha);
+  const newer = (at < 0 ? commits : commits.slice(0, at)).filter(
+    (c) => !/^Merge (remote-tracking )?branch /u.test(c.message ?? ''),
+  );
+  const merged = shippedPrs(prs, newer);
+  const items = [];
+  const listed = new Set();
+  for (const c of newer) {
+    const pr = merged.find((p) => (c.pr && p.number === Number(c.pr)) || (p.mergeSha && p.mergeSha === c.sha));
+    if (pr && listed.has(pr.number)) continue;
+    if (pr) {
+      listed.add(pr.number);
+      const closes = [...(pr.closes ?? []), ...(pr.tasks ?? []).filter((t) => t.closes).map((t) => t.wid)];
+      items.push({
+        number: pr.number,
+        title: pr.title,
+        url: pr.url ?? null,
+        wids: [...new Set(closes.length ? closes : (c.wids ?? []))],
+      });
+    } else {
+      items.push({
+        number: c.pr ? Number(c.pr) : null,
+        title: c.message ?? '',
+        url: c.url ?? null,
+        sha7: short(c.sha),
+        wids: c.wids ?? [],
+      });
+    }
+  }
+  return { merges: items.length, atLeast: at < 0, head: short(commits[0].sha), prs: items };
+}
+
+/** A CI run on main's latest commit, as the release workflow checks it: its push run of ci.yml (or one named CI). */
+const isCi = (r) => /(^|\/)ci\.ya?ml$/u.test(String(r.path ?? '')) || r.name === 'CI';
+
+/**
+ * Build a pre-release on the GitHub view (WEB-113): whether the owner may press it, and the run it started.
+ *
+ * - `ahead`: aheadOfPrerelease for the latest pre-release, or null when either commit is unknown.
+ * - `ci`: CI on main's latest commit, `success`, `pending`, `failure`, or null when the board saw no run of it.
+ *   The release workflow stops unless it passed, so the button says why instead of starting a run that stops.
+ * - `started`: the board's last `prerelease_started` event's time (ms), and `runs` the stored runs: the release
+ *   workflow's first run by hand on main from then is the build's.
+ * - `latest`: the latest pre-release's version and when it was staged, to say it's built once it's newer than the press.
+ * @param {{ workflow: string, branch: string, ahead: any, runs?: any[], started?: number | null,
+ *   latest?: { version: string, staged: string } | null, headSha?: string | null, now?: number }} input
+ */
+export function prereleaseBuild({
+  workflow,
+  branch,
+  ahead,
+  runs = [],
+  started = null,
+  latest = null,
+  headSha = null,
+  now = Date.now(),
+}) {
+  const path = `.github/workflows/${workflow}`;
+  // The run from the press: a minute's grace for clocks, and only while it's recent enough to be news.
+  let build = null;
+  if (started && now - started < BUILD_SHOWN_MS) {
+    const run = runs
+      .filter(
+        (r) =>
+          r.path === path &&
+          r.branch === branch &&
+          r.event === 'workflow_dispatch' &&
+          Date.parse(r.created) >= started - 60_000,
+      )
+      .sort((a, b) => String(a.created).localeCompare(String(b.created)))[0];
+    const built = latest && Date.parse(latest.staged) >= started - 60_000 ? latest.version : null;
+    let state = 'starting';
+    if (built) state = 'built';
+    else if (run && run.status !== 'completed') state = 'running';
+    else if (run && run.conclusion === 'success') state = 'finishing';
+    else if (run) state = 'failed';
+    build = {
+      state,
+      at: new Date(started).toISOString(),
+      version: built,
+      run: run ? { url: run.url ?? null, number: run.number ?? null, conclusion: run.conclusion ?? null } : null,
+    };
+  }
+  const ciRun = headSha
+    ? runs
+        .filter((r) => r.sha === headSha && r.event === 'push' && isCi(r))
+        .sort((a, b) => String(b.created).localeCompare(String(a.created)))[0]
+    : null;
+  const ci = !ciRun
+    ? null
+    : ciRun.status !== 'completed'
+      ? 'pending'
+      : ciRun.conclusion === 'success'
+        ? 'success'
+        : 'failure';
+  let can;
+  if (build && ['starting', 'running', 'finishing'].includes(build.state))
+    can = { allowed: false, reason: 'A pre-release is building. It shows here once it’s staged.' };
+  else if (ahead && ahead.merges === 0)
+    can = { allowed: false, reason: `The latest pre-release has everything on ${branch}. Merge something first.` };
+  else if (ci === 'pending')
+    can = { allowed: false, reason: `CI is still running on ${branch}’s latest commit. Build once it passes.` };
+  else if (ci === 'failure')
+    can = { allowed: false, reason: `CI failed on ${branch}’s latest commit. Fix ${branch}, then build.` };
+  else can = { allowed: true, reason: null };
+  return { workflow, branch, ahead, ci, build, ...can };
+}
+
+/** How long Build a pre-release shows the run it started: long enough for a slow run, short enough not to linger. */
+export const BUILD_SHOWN_MS = 2 * 3_600_000;
