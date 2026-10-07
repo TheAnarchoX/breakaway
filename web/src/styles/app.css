@@ -7433,21 +7433,6 @@ fieldset.field {
 .tl-hint svg {
   flex: none;
 }
-.tl-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.tl-key {
-  display: inline-block;
-  width: 16px;
-  height: 8px;
-  border-radius: 2px;
-  margin-left: 6px;
-}
-.tl-key-sure {
-  background: var(--state-ready);
-}
 .tl-scroll {
   /* A lane's head spans what's in view (100cqi), so its Pull into buttons sit on the right however far it scrolls. */
   container-type: inline-size;
@@ -7604,7 +7589,8 @@ fieldset.field {
   cursor: grabbing;
 }
 .tl-bar.is-dragging {
-  opacity: 0.5;
+  z-index: 3;
+  cursor: grabbing;
 }
 .tl-label {
   display: flex;
@@ -7662,41 +7648,8 @@ fieldset.field {
   gap: 2px;
   height: 100%;
 }
-/* The range: after the likely-at-best end, until the agents' work is likely done. */
-.tl-range,
-.tl-key-range {
-  background: repeating-linear-gradient(
-    -45deg,
-    color-mix(in srgb, var(--muted) 34%, transparent) 0 3px,
-    transparent 3px 7px
-  );
-}
-.tl-range {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-}
-/* The owner's steps: decisions, +owner tasks, and merges, at the owner's pace. */
-.tl-owner,
-.tl-key-owner {
-  background: repeating-linear-gradient(90deg, var(--state-decide) 0 4px, transparent 4px 7px);
-  opacity: 0.75;
-}
-.tl-owner {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  border-radius: 0 3px 3px 0;
-}
-.tl-track.is-unknown {
-  background: linear-gradient(90deg, var(--surface-3), transparent);
-}
-.tl-track.is-unknown .tl-sure {
-  width: 40px;
-}
 .tl-track.is-empty {
-  background: transparent;
-  border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
 }
 .tl-track.is-empty .tl-sure {
   display: none;
@@ -7718,16 +7671,15 @@ fieldset.field {
     animation: none;
   }
   .tl-lane,
-  .tl-handle::after,
-  .tl-row-actions {
+  .tl-edge::after {
     transition: none;
   }
 }
 :root[data-motion="reduce"] .tl-bar.is-chasing .tl-track {
   animation: none;
 }
-:root[data-motion="reduce"] :is(.tl-lane, .tl-row-actions),
-:root[data-motion="reduce"] .tl-handle::after {
+:root[data-motion="reduce"] .tl-lane,
+:root[data-motion="reduce"] .tl-edge::after {
   transition: none;
 }
 .tl-past > summary {
@@ -7759,99 +7711,53 @@ fieldset.field {
 .tl-past .tl-bar {
   cursor: pointer;
 }
-/* The owner's plan (WEB-106): a frame around the pace's bar, from the planned start to the end of the planned end. */
-.tl-key-plan {
-  border: 1.5px solid var(--muted);
+/* The bar is the plan (WEB-111): drag it to move it, its ends to change how long it runs. */
+.tl-bar {
+  touch-action: pan-y;
+  user-select: none;
 }
-.tl-frame {
+.tl-bar.is-fixed {
+  cursor: pointer;
+}
+.tl-edge {
   position: absolute;
-  top: 20px;
-  height: 24px;
-  min-width: 12px;
-  border: 1.5px solid var(--muted);
-  border-radius: 4px;
-  pointer-events: none;
+  top: -4px;
+  bottom: -4px;
+  width: 10px;
+  cursor: ew-resize;
 }
-.tl-frame.is-open {
-  border-left-style: dashed;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+.tl-edge.is-start {
+  left: -5px;
 }
-/* A plan with only a start: a line where it starts. */
-.tl-frame.is-no-end {
-  width: 0;
-  min-width: 0;
-  border-width: 0 0 0 2px;
-  border-radius: 0;
+.tl-edge.is-end {
+  right: -5px;
 }
-.tl-row.is-compact .tl-frame {
-  top: 5px;
-  height: 18px;
+.tl-edge::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--text);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
 }
-/* Behind: the frame's end is marked, and the words beside the bar say by how much. */
-.tl-frame.is-behind {
-  border-right: 3px solid var(--danger);
+.tl-bar:hover .tl-edge::after,
+.tl-bar.is-dragging .tl-edge::after {
+  opacity: 0.7;
 }
-.tl-frame.is-slip,
-.tl-frame.is-not-started {
-  border-right: 3px solid var(--warn);
-}
-.tl-frame.is-moving {
-  border-color: var(--accent);
-}
-.tl-frame-days {
+.tl-drag-days {
   position: absolute;
   left: 100%;
-  top: 2px;
+  bottom: -2px;
   margin-left: 8px;
   padding: 1px 5px;
   border-radius: var(--radius-xs);
   background: var(--surface-3);
   color: var(--text);
   font: 500 11.5px / 1.4 var(--font-mono);
-  white-space: nowrap;
-}
-.tl-handle {
-  position: absolute;
-  top: 18px;
-  z-index: 2;
-  width: 14px;
-  height: 28px;
-  margin-left: -7px;
-  cursor: ew-resize;
-  touch-action: none;
-}
-.tl-handle::after {
-  content: "";
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 5px;
-  width: 4px;
-  border-radius: 2px;
-  background: var(--muted);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
-}
-.tl-row:hover .tl-handle::after,
-.tl-handle:active::after {
-  opacity: 1;
-}
-.tl-track.is-plan-only {
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
-}
-.tl-row-actions {
-  position: absolute;
-  top: 18px;
-  z-index: 2;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
-}
-.tl-row:hover .tl-row-actions,
-.tl-row:focus-within .tl-row-actions {
-  opacity: 1;
-}
-.tl-plan-it {
   white-space: nowrap;
 }
 .tl-status {

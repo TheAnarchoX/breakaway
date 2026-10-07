@@ -17,21 +17,20 @@ The roadmap's timeline ([WEB-102](../../web/src/components/RoadmapTimeline.jsx))
 A feature gains two optional fields, `plannedStart` and `plannedEnd`: whole days (`YYYY-MM-DD`, UTC), as columns `planned_start` and `planned_end` on `features`. `plannedEnd` alone is fine ("done by"); a start after its end is refused. `PATCH /api/features/<slug>` takes them, owner only, like `release`; an empty string clears one. `GET /api/features` returns them, `tasks features` and `features show` print them, and Activity records a change like a change of release.
 
 ### The pace suggests, the owner plans
-The projection in `web/src/lib/roadmap-timeline.js` doesn't change. Each feature now has two things to draw:
+The projection in `web/src/lib/roadmap-timeline.js` doesn't change, but it no longer draws the bar (WEB-111: a frame drawn around the pace's bar read as clutter):
 
-- **The pace**, as today: the likely end, the range it could run to, and the owner's steps.
-- **The plan**, when it has one: a frame from the planned start to the planned end, drawn around the pace's bar on the same row.
-
-A feature without a plan shows the pace's bar and, on hover or focus, **Plan it: 12 Oct to 19 Oct**, the pace's start and likely end. One press sets those as the plan; the owner can then drag either end of the frame (or use Alt+← and Alt+→ on it, with Shift for the start) to move it a day at a time. Planning a whole release at once is **Plan from the pace** on the lane's head, next to the Pull into buttons: it fills in every unplanned feature in that lane from its suggestion, with an Undo, like moving a feature.
+- **The bar is the plan.** It runs from the planned start to the end of the planned end, and fills with the feature's progress (its tasks' states), like the cards' progress bar. Until a feature has a plan, its bar runs from the pace's start to its likely end, a week when the pace can't estimate it.
+- **Drag it.** Dragging the bar moves it in time, and dropping it in another lane aims it at that release; dragging either end changes how long it runs. The first change makes the plan. On the keyboard, Alt+← and Alt+→ move it a day (Shift moves only its end), and Alt+↑ and Alt+↓ change its release. A run of presses saves once.
+- **Plan from the pace** on a lane's head, next to the Pull into buttons, plans every unplanned feature in that lane from its suggestion, with an Undo. A feature's page offers **Plan it** from the pace, which is how a phone plans.
 
 How the pace compares to the plan is said in words on the bar and in its explanation:
 
 - **On plan**: the likely end is on or before the planned end.
 - **Could slip**: the planned end is inside the range the pace could run to: its best end makes it, its likely end doesn't.
-- **Behind by 4 days**: even the pace's best end is after the planned end; the days count from the likely end. The frame's end is marked, and the feature card says it too.
+- **Behind by 4 days**: even the pace's best end is after the planned end; the days count from the likely end. The feature card says it too.
 - **Not started**: the planned start has passed and no task in it has been claimed. It's said before On plan and Could slip, since it's the one to act on.
 
-A feature the pace can't estimate yet ("no estimate yet") draws only its plan, so a new feature can be planned before it has history.
+A feature the pace can't estimate yet ("no estimate yet") is planned the same way, so a new feature can be planned before it has history.
 
 ### The axis
 Calendar days stay, because a plan is dates. The Months zoom goes; in its place, **Fit** scales the axis so a week before today to a week past the last planned or likely end in view fits the screen. Weeks stays the default. A lane's head shows its release's planned end (the latest in it) beside the pace's "Likely by".
@@ -68,7 +67,7 @@ The spec's answer stands unless the owner says otherwise in review.
 
 ## How to check it
 1. Open the Roadmap with the timeline showing, on a wide screen.
-2. Point at a feature's bar: it offers **Plan it** with two dates. Press it: a frame appears around the bar with those dates.
-3. Drag the frame's end a few days earlier than the bar's likely end, past where it could end at best: the bar now says **Behind by** that many days.
+2. Drag a feature's bar a few days to the right: it stays there, and says its planned days.
+3. Drag the bar's right end a few days earlier than where the pace says it's likely done, past where it could end at best: the bar now says **Behind by** that many days.
 4. Press **Plan from the pace** on a release: every feature in it without a plan gets one, and Undo takes them back.
 5. Press **Fit**: everything from today to the last planned end fits the screen.
