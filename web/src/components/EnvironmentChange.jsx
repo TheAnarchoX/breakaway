@@ -1,18 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import {
-  Bot,
-  Check,
-  CircleX,
-  FilePlus2,
-  GitPullRequest,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Send,
-  Trash2,
-  TriangleAlert,
-  X,
-} from 'lucide-preact';
+import { Bot, Check, FilePlus2, GitPullRequest, Pencil, Plus, Send, Trash2, TriangleAlert, X } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { writeDraft } from '../lib/drafts.js';
 import { confirmDialog, github, hashFor, newAgent, pullParam, repoName, toast } from '../lib/store.js';
@@ -32,6 +19,7 @@ import {
   nameAfter,
   nameEdits,
   nameProblem,
+  plansNothing,
   readEdits,
   recentChange,
   setPath,
@@ -39,7 +27,7 @@ import {
   writeEdits,
 } from '../lib/infra-change.js';
 import { PLAN_STATE, amount, settingChanges } from '../views/PlanView.jsx';
-import { mergeEffect } from './PullPage.jsx';
+import { ChangeActions } from './ChangeActions.jsx';
 
 /**
  * Plan from the console (WEB-99; docs/specs/BRK-258-plan-from-the-board.md): the owner changes an environment where
@@ -960,9 +948,6 @@ function haveAnAgent(/** @type {any} */ env, /** @type {string[]} */ lines) {
 function ChangeCard({ ch }) {
   const change = ch.held;
   const { env } = ch;
-  const [busy, setBusy] = useState(/** @type {string | null} */ (null));
-  const [error, setError] = useState(/** @type {string | null} */ (null));
-  const [moved, setMoved] = useState(/** @type {any} */ (null));
   if (!change) return null;
   const pull = change.pull
     ? (github.value.data?.open ?? []).find(
@@ -970,79 +955,11 @@ function ChangeCard({ ch }) {
       )
     : null;
   const card = cardState(change, { checks: pull?.checks?.state ?? null, plan: ch.plan });
-  // A plan that moved since the change was proposed can't be approved: proposing again plans it on the current head.
-  if (moved) Object.assign(card, { approve: false, again: true });
   const word = STATE_WORDS[card.state] ?? card.state;
   const pullHref = change.pull
     ? hashFor({ view: 'github', task: null, pr: pullParam(change.pull.number, change.repo) })
     : null;
 
-  const approve = async () => {
-    // Approve merges into the default branch: when the repository's pipeline deploys on merge, say so, as Merge does.
-    const page = change.pull
-      ? await api(`github/pulls/${enc(change.pull.number)}?repo=${enc(change.repo)}`).catch(() => null)
-      : null;
-    const deploys = page && page.deploys ? mergeEffect(page) : null;
-    const ok = await confirmDialog({
-      title: `Approve this plan for ${env.name}?`,
-      body: `The board merges its pull request, applies the plan, and rolls back if the health check fails.${deploys ? ` ${deploys}` : ''}`,
-      confirmLabel: 'Approve',
-    });
-    if (!ok) return;
-    setBusy('approve');
-    setError(null);
-    try {
-      const res = await api(`infra/changes/${enc(change.n)}/approve`, {
-        method: 'POST',
-        body: { sha: change.commit, digest: change.digest },
-      });
-      setMoved(null);
-      ch.changed(res.change);
-      toast(`Approved: the board merges #${change.pull?.number} and applies the plan.`, 'success');
-    } catch (err) {
-      setError(err.message);
-      if (err.data?.preview) setMoved(err.data.preview);
-    } finally {
-      setBusy(null);
-    }
-  };
-  const reject = async () => {
-    const ok = await confirmDialog({
-      title: 'Reject this change?',
-      body: 'The board closes its pull request. Nothing changes.',
-      confirmLabel: 'Reject',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    setBusy('reject');
-    setError(null);
-    try {
-      const res = await api(`infra/changes/${enc(change.n)}/reject`, { method: 'POST', body: {} });
-      ch.changed(res.change);
-      toast(`Rejected: #${change.pull?.number} is closed and nothing changes.`);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-  const proposeAgain = async () => {
-    setBusy('again');
-    setError(null);
-    try {
-      const res = await api(`infra/environments/${enc(env.id)}/changes`, {
-        method: 'POST',
-        body: { edits: change.edits, propose: true },
-      });
-      setMoved(null);
-      ch.changed(res.change);
-      toast(`Proposed again on the current head: the new plan needs your approval.`);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(null);
-    }
-  };
   const review = /review/iu.test(change.why ?? '');
   return (
     <article class={`change-card change-card-${card.state.replace(' ', '-')}`} aria-labelledby="change-card-title">
@@ -1066,7 +983,12 @@ function ChangeCard({ ch }) {
         ))}
       </ul>
       {card.state === 'checking' && <p class="meta">The board’s plan check is running on its pull request.</p>}
-      {card.state === 'waiting' && (
+      {card.state === 'waiting' && plansNothing(change) && (
+        <p class="meta">
+          It describes {env.name} as it runs, so it plans nothing. Merge keeps it as code; nothing changes.
+        </p>
+      )}
+      {card.state === 'waiting' && !plansNothing(change) && (
         <p class="meta">
           Planned from {short(change.head) || 'the draft'}. Approve merges it and applies this plan; nothing applies
           before.
@@ -1108,50 +1030,7 @@ function ChangeCard({ ch }) {
           )}
         </p>
       )}
-      {card.approve && env.frozen && (
-        <p class="meta change-frozen">
-          {`${env.name[0].toUpperCase()}${env.name.slice(1)}`} is frozen: unfreeze it to approve.
-        </p>
-      )}
-      {moved && (
-        <div class="change-moved">
-          <p class="change-policy-lead">What runs changed since you looked. Here’s the plan now.</p>
-          <PlanPreview preview={moved} />
-        </div>
-      )}
-      {error && !moved && (
-        <p class="field-error" role="alert">
-          {error}
-        </p>
-      )}
-      {(card.approve || card.reject || card.again) && (
-        <div class="change-actions">
-          {card.reject && (
-            <button type="button" class="btn btn-quiet btn-sm" onClick={reject} disabled={busy !== null}>
-              <CircleX size={14} aria-hidden="true" />
-              {busy === 'reject' ? 'Rejecting…' : 'Reject'}
-            </button>
-          )}
-          {card.again && (
-            <button type="button" class="btn btn-quiet btn-sm" onClick={proposeAgain} disabled={busy !== null}>
-              <RefreshCw size={14} aria-hidden="true" />
-              {busy === 'again' ? 'Proposing…' : 'Propose again'}
-            </button>
-          )}
-          {card.approve && (
-            <button
-              type="button"
-              class="btn btn-primary btn-sm"
-              onClick={approve}
-              disabled={busy !== null || env.frozen}
-              aria-busy={busy === 'approve'}
-            >
-              <Check size={14} aria-hidden="true" />
-              {busy === 'approve' ? 'Approving…' : 'Approve'}
-            </button>
-          )}
-        </div>
-      )}
+      <ChangeActions change={change} env={env} card={card} onChanged={(c) => ch.changed(c)} />
     </article>
   );
 }
