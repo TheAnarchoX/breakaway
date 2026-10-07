@@ -217,52 +217,6 @@ export function filterStream(items, { kind = 'all', level = 'all' } = {}) {
 }
 
 /**
- * @typedef {{ key: string, at: number, type: 'deploy' | 'incident', label: string, detail: string,
- *   tone: 'ok' | 'bad' | 'warn' | 'pending', href: string | null, task?: any }} TimelineItem
- */
-
-/**
- * The strip under the map (WEB-97): an environment's recent deploys and incidents on one line, newest first.
- * @param {{ deploys?: any[], incidents?: any[] }} sources deploys as the GitHub view keeps them, incidents as the
- *   console reads them
- * @param {number} [max]
- * @returns {TimelineItem[]}
- */
-export function timelineItems({ deploys = [], incidents = [] }, max = 12) {
-  /** @type {TimelineItem[]} */
-  const items = [];
-  for (const d of deploys) {
-    const failed = ['failure', 'error'].includes(d.state);
-    const done = d.state === 'success' || d.state === 'inactive';
-    const back = d.task === 'rollback' || (failed && /rolled back/iu.test(d.description ?? ''));
-    items.push({
-      key: `deploy:${d.id}`,
-      at: ms(d.updated ?? d.created),
-      type: 'deploy',
-      label: back ? 'Rolled back' : failed ? 'Deploy failed' : done ? 'Deployed' : 'Deploying',
-      detail: String(d.sha ?? '').slice(0, 7),
-      tone: failed ? 'bad' : back ? 'warn' : done ? 'ok' : 'pending',
-      href: d.logUrl ?? null,
-    });
-  }
-  for (const i of incidents)
-    items.push({
-      key: `incident:${i.id}`,
-      at: ms(typeof i.closed === 'string' ? i.closed : i.opened),
-      type: 'incident',
-      label: i.closed ? 'Incident closed' : 'Incident open',
-      detail: i.kind ?? '',
-      tone: i.closed ? 'ok' : i.level === 'critical' ? 'bad' : 'warn',
-      href: null,
-      task: i.task ?? null,
-    });
-  return items
-    .filter((i) => Number.isFinite(i.at))
-    .sort((a, b) => b.at - a.at || a.key.localeCompare(b.key))
-    .slice(0, max);
-}
-
-/**
  * The entries that weren't in the stream last time, so they arrive with a slide: none on the first load.
  * @param {Set<string> | null} before the keys shown last time, or null on the first load
  * @param {StreamItem[]} items

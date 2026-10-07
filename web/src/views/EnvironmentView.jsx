@@ -4,7 +4,7 @@ import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { environmentId, hashFor, navOrder, repoName, tasks } from '../lib/store.js';
 import { STREAM_MAX, agentsAtWork, arrived, streamItems } from '../lib/env-stream.js';
-import { DeploysSection } from '../components/EnvironmentDeploys.jsx';
+import { DeploysSection, RecentDeploys } from '../components/EnvironmentDeploys.jsx';
 import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
 import { FreezeButton, KIND_LABEL, environmentHealth } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
@@ -14,8 +14,8 @@ import { DescribeAsCode } from '../components/InfraDescribe.jsx';
 import { StatusBand } from '../components/EnvironmentStatus.jsx';
 import { Topology } from '../components/EnvironmentTopology.jsx';
 import { StreamRail } from '../components/EnvironmentStream.jsx';
-import { EnvironmentActions } from '../components/EnvironmentActions.jsx';
-import { Timeline } from '../components/EnvironmentTimeline.jsx';
+import { ActionsSection } from '../components/EnvironmentActions.jsx';
+import { NoneYet } from '../components/ui.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 
 /**
@@ -25,8 +25,10 @@ import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
  * waiting plan's changes on the nodes), and a stream of what happens there (signals, runs, incidents, and the audit
  * trail, BRK-175), all kept live by polling the routes it reads, with a panel each for deploys (WEB-88), plans
  * (WEB-62), incidents (WEB-63), nobody owns, cost (WEB-65), and the desired state with Describe it as code (WEB-92).
- * On a wide screen it fills the window (WEB-97): its state on the left, the map in the middle with recent deploys and
- * incidents under it, and the stream on the right, each scrolling on its own; narrower, it stacks, map first.
+ * On a wide screen it fills the window (WEB-97), balanced 2:8:2 (WEB-100): the status band on top of the map in the
+ * middle, admin on the left (the owner's actions, plans, desired state, cost, nobody owns, and what's live), and ops on
+ * the right (the stream, incidents, and recent deploys), each column scrolling on its own and every panel shown in
+ * full. Narrower, it stacks: status, map, ops, admin.
  */
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
@@ -70,15 +72,13 @@ function Drift({ env, desired, error }) {
         </p>
       ) : !desired ? (
         <>
-          <p class="console-quiet">
-            {env.observeOnly ? (
-              'Observe only: the board never changes it, so it takes no desired state.'
-            ) : (
-              <>
-                No desired state yet: add <code>{file}</code> by pull request.
-              </>
-            )}
-          </p>
+          {env.observeOnly ? (
+            <p class="console-quiet">Observe only: the board never changes it, so it takes no desired state.</p>
+          ) : (
+            <NoneYet>
+              Add <code>{file}</code> by pull request.
+            </NoneYet>
+          )}
           <DescribeAsCode env={env} />
         </>
       ) : (
@@ -402,6 +402,14 @@ export function EnvironmentView() {
 
         <div class="console-grid">
           <div class="console-centre">
+            <StatusBand
+              env={env}
+              health={health}
+              cost={state.cost}
+              run={run}
+              agents={agents}
+              inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
+            />
             <Topology
               env={env}
               resources={state.resources}
@@ -412,46 +420,33 @@ export function EnvironmentView() {
               mode={mode}
               onMode={setMode}
             />
-            <Timeline env={env} incidents={state.incidents} />
           </div>
 
-          <aside class="console-side console-state" aria-label={`${env.name}’s state`}>
-            <StatusBand
+          <aside class="console-side console-ops" aria-label={`What happens in ${env.name}`}>
+            <StreamRail
+              items={items}
+              fresh={fresh}
               env={env}
-              health={health}
-              cost={state.cost}
-              run={run}
-              agents={agents}
-              inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
-              actions={
-                <EnvironmentActions
-                  env={env}
-                  drift={state.drift}
-                  tick={state.tick}
-                  onChange={() => load({ quiet: true })}
-                />
-              }
+              nameOf={(rid) => names.get(rid) ?? rid}
+              onResource={showResource}
+              more={olderMore ?? state.more}
+              older={olderBusy}
+              onOlder={loadOlder}
+              updated={state.updated}
+              error={state.error}
             />
-            <EnvironmentPlans env={env} tick={state.tick} />
-            <DeploysSection env={env} />
             <IncidentsSection env={env} tick={state.tick} />
+            <RecentDeploys env={env} />
+          </aside>
+
+          <aside class="console-side console-admin" aria-label={`Manage ${env.name}`}>
+            <ActionsSection env={env} drift={state.drift} tick={state.tick} onChange={() => load({ quiet: true })} />
+            <EnvironmentPlans env={env} tick={state.tick} />
             <Drift env={env} desired={state.desired} error={state.desiredError} />
             <CostSection env={env} tick={state.tick} />
             <UnownedSection env={env} />
+            <DeploysSection env={env} />
           </aside>
-
-          <StreamRail
-            items={items}
-            fresh={fresh}
-            env={env}
-            nameOf={(rid) => names.get(rid) ?? rid}
-            onResource={showResource}
-            more={olderMore ?? state.more}
-            older={olderBusy}
-            onOlder={loadOlder}
-            updated={state.updated}
-            error={state.error}
-          />
         </div>
       </div>
     </div>

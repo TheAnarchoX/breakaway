@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
-import { GitCompareArrows, Hammer, LockOpen } from 'lucide-preact';
+import { GitCompareArrows, Hammer, LockOpen, SlidersHorizontal } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { confirmDialog, hashFor, toast } from '../lib/store.js';
-import { Dialog } from './ui.jsx';
+import { Dialog, NoneYet } from './ui.jsx';
 
 /**
- * The owner's actions on a whole environment, under the console's status band (WEB-95): **Compare now** (BRK-184),
+ * The owner's actions on a whole environment, at the top of the console's admin column (WEB-95, WEB-100): **Compare now** (BRK-184),
  * **Mark as break-glass** on its drift (BRK-187), and **Release the lock** an apply left behind (BRK-179). Each is a
  * cookie-only route, so only the signed-in board shows them, and each asks first and says what follows. None applies
  * anything: comparing makes at most a draft plan, a mark records a change and adds a task, and a release only frees
@@ -265,5 +265,25 @@ export function EnvironmentActions({ env, drift, tick, onChange }) {
       {drift && drift.count > 0 && !mark && <MarkBreakGlass env={env} drift={drift} onDone={onChange} />}
       {env.provider && <CompareNow env={env} onDone={onChange} />}
     </>
+  );
+}
+
+/**
+ * The owner's actions as the admin column's first panel (WEB-100). Nothing on an observe-only environment.
+ * @param {{ env: any, drift: any, tick: number, onChange: () => void }} props
+ */
+export function ActionsSection({ env, drift, tick, onChange }) {
+  if (env.observeOnly) return null;
+  return (
+    <section class="infra-section" aria-labelledby="infra-actions">
+      <h2 id="infra-actions">
+        <SlidersHorizontal size={16} aria-hidden="true" />
+        Actions
+      </h2>
+      <div class="env-actions">
+        <EnvironmentActions env={env} drift={drift} tick={tick} onChange={onChange} />
+      </div>
+      {!env.provider && <NoneYet>Compare now shows here once the environment has a provider.</NoneYet>}
+    </section>
   );
 }

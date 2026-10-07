@@ -3,6 +3,7 @@ import { CircleCheck, CircleDashed, CircleX, TriangleAlert, Wallet } from 'lucid
 import { api, enc } from '../lib/api.js';
 import { hashFor, inScope, repoName } from '../lib/store.js';
 import { rateWords } from '../../../src/infra-currency.js';
+import { NoneYet } from './ui.jsx';
 
 /**
  * Cost on the Infrastructure view (WEB-65; docs/specs/IDEA-19-architect.md, "Cost" and "Views"), from BRK-199's
@@ -274,7 +275,7 @@ export function CostSection({ env, tick = 0 }) {
           Adding up the cost…
         </p>
       ) : !entry || entry.cost.resources === 0 ? (
-        <p class="console-quiet">Nothing to add up yet: the board estimates it once it sees what runs.</p>
+        <NoneYet>The board estimates it once it sees what runs.</NoneYet>
       ) : (
         <>
           <p class="muted">
