@@ -4841,6 +4841,23 @@ fieldset.field {
   width: 100%;
   justify-content: center;
 }
+/* The board's change (WEB-105): its Approve and Reject read like the page's other actions. */
+.pr-change {
+  display: grid;
+  gap: 6px;
+}
+.pr-change p {
+  margin: 0;
+}
+.pr-change .change-actions {
+  display: grid;
+  justify-content: stretch;
+  gap: 6px;
+}
+.pr-change .change-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
 .merge-methods {
   display: flex;
   gap: 6px 16px;

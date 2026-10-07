@@ -612,6 +612,33 @@ export const infraChangesMethods = {
     return row;
   },
 
+  /**
+   * GET /api/infra/changes?repo=&pull=: the latest change whose pull request is `pull` in `repo`, or null, with its
+   * environment's name and freeze, for the pull request page's Approve and Reject (WEB-105).
+   */
+  infraChangeByPullApi({ repo, pull } = {}) {
+    return this.run(async () => {
+      const number = Number(pull);
+      if (!Number.isSafeInteger(number) || number < 1)
+        throw new AgentError('send the pull request’s number as pull', 400);
+      const slug = String(repo || this.defaultRepoSlug())
+        .trim()
+        .toLowerCase();
+      const row = this.sql
+        .exec('SELECT * FROM infra_changes WHERE repo = ? AND pull = ? ORDER BY n DESC LIMIT 1', slug, number)
+        .toArray()[0];
+      if (!row) return { status: 200, body: { change: null, environment: null } };
+      const env = this.environmentRow(String(row.environment), null);
+      return {
+        status: 200,
+        body: {
+          change: this.changeOut(row),
+          environment: { id: Number(env.id), name: env.name, frozen: Boolean(env.frozen) },
+        },
+      };
+    });
+  },
+
   /** GET /api/infra/changes/<n>: one change. */
   infraChangeApi(ref) {
     return this.run(async () => ({ status: 200, body: { change: this.changeOut(this.changeRow(ref)) } }));

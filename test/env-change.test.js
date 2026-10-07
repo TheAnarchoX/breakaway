@@ -278,6 +278,21 @@ describe('the change’s card', () => {
     expect(cardState(change, { checks: 'failure' })).toMatchObject({ state: 'waiting', again: true });
   });
 
+  it('offers Merge instead of Approve for a draft with no edits, once its checks are done', () => {
+    const described = { ...change, edits: [], lines: [] };
+    expect(cardState(described, { checks: 'success' })).toMatchObject({
+      state: 'waiting',
+      approve: false,
+      merge: true,
+      reject: true,
+    });
+    expect(cardState(described, { checks: 'pending' })).toMatchObject({ state: 'checking', merge: false });
+    expect(cardState({ ...change, edits: [{ op: 'remove', resource: 'acme-db' }] })).toMatchObject({
+      approve: true,
+      merge: false,
+    });
+  });
+
   it('merges once approved, or says it can’t with Propose again', () => {
     expect(cardState({ ...change, state: 'approved' })).toMatchObject({
       state: 'merging',

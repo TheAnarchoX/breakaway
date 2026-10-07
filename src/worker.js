@@ -581,6 +581,10 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.infraChangesApi(parts[2], { repo, ...body }));
     }
   }
+  if (parts[0] === 'infra' && parts[1] === 'changes' && parts.length === 2 && method === 'GET')
+    return send(
+      await s.infraChangeByPullApi({ repo: url.searchParams.get('repo'), pull: url.searchParams.get('pull') }),
+    );
   if (parts[0] === 'infra' && parts[1] === 'changes' && parts.length <= 4) {
     if (parts.length === 3 && method === 'GET') return send(await s.infraChangeApi(parts[2]));
     if (parts.length === 4 && parts[3] === 'reject' && method === 'POST') {

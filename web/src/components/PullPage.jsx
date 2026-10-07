@@ -12,7 +12,7 @@ import {
   MessageSquare,
 } from 'lucide-preact';
 import { ago, canAgentReview, isDependabot, plural } from '../lib/model.js';
-import { api } from '../lib/api.js';
+import { api, enc } from '../lib/api.js';
 import {
   actions,
   agents,
@@ -41,6 +41,8 @@ import { RepoChip } from './ui.jsx';
 import { Checks, PrIcon, Review, VERDICT, Verdict, prStateLabel } from './GitHub.jsx';
 import { costWords, policyWords } from '../../../src/infra-pulls.js';
 import { useMedia } from '../lib/media.js';
+import { CARD, cardState, plansNothing } from '../lib/infra-change.js';
+import { ChangeActions } from './ChangeActions.jsx';
 import { Dialog, Segmented } from './ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -1030,6 +1032,88 @@ function BackToKickoff({ kickoff, page }) {
   );
 }
 
+/**
+ * The change the board proposed with this pull request (BRK-259), if it's one: only the board's own branches are asked
+ * about. Answers `{ change, environment }` or null, and reads again when the page does.
+ * @param {any} page
+ * @param {number} tick
+ */
+function useBoardChange(page, tick) {
+  const [found, setFound] = useState(/** @type {any} */ (null));
+  const ours = Boolean(page?.branch?.startsWith('breakaway/infra/'));
+  useEffect(() => {
+    if (!ours) {
+      setFound(null);
+      return undefined;
+    }
+    let live = true;
+    api(`infra/changes?repo=${enc(page.repo)}&pull=${enc(page.number)}`)
+      .then((got) => {
+        if (live) setFound(got.change ? got : null);
+      })
+      .catch(() => {
+        if (live) setFound(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [ours, page?.repo, page?.number, tick]);
+  return found;
+}
+
+/** Whether the board's change is still its to approve or reject: open, or approved and not merged yet. */
+const liveChange = (/** @type {any} */ found) => Boolean(found && ['open', 'approved'].includes(found.change.state));
+
+/**
+ * Approve and Reject on the board's change pull request (WEB-105), the same buttons as the change's card on the
+ * environment's console. A change that plans nothing merges with Merge, as any pull request does, so only Reject is
+ * here for it.
+ * @param {{ page: any, found: any, reload: () => void }} props
+ */
+function BoardChange({ page, found, reload }) {
+  const { change, environment: env } = found;
+  if (page.state !== 'open' || !liveChange(found)) return null;
+  const card = cardState(change, { checks: page.checks?.state ?? null });
+  const nothing = plansNothing(change);
+  const word = CARD[card.state] ?? card.state;
+  const consoleHref = hashFor({ view: 'infrastructure', environment: String(env.id), task: null });
+  return (
+    <div class="pr-change">
+      <p class="meta">
+        The board opened it for a change to{' '}
+        <a href={consoleHref}>
+          <strong>{env.name}</strong>
+        </a>
+        : {word.toLowerCase()}.{' '}
+        {nothing
+          ? `It describes ${env.name} as it runs, so it plans nothing: merge it to keep it as code.`
+          : card.state === 'merging'
+            ? change.approval?.merge === 'auto' || change.approval?.merge === 'sync'
+              ? 'Approved: it merges once its checks pass, then the board applies the plan.'
+              : 'Approved: the board is merging it, then applies the plan.'
+            : card.state === 'cant'
+              ? ''
+              : 'Approve merges it and applies its plan; nothing applies before.'}
+      </p>
+      {card.state === 'cant' && change.why && (
+        <p class="field-error" role="alert">
+          {change.why}
+        </p>
+      )}
+      <ChangeActions
+        change={change}
+        env={env}
+        card={{ ...card, merge: false }}
+        page={page}
+        onChanged={() => {
+          reload();
+          loadGitHub();
+        }}
+      />
+    </div>
+  );
+}
+
 export function PullPage() {
   const { number, repo } = pullRef.value ?? { number: null, repo: null };
   const [state, setState] = useState({ page: null, error: null, loading: true });
@@ -1051,6 +1135,7 @@ export function PullPage() {
 
   const { page, error, loading } = state;
   const kickoff = useKickoff(page);
+  const boardChange = useBoardChange(page, tick);
   // While an agent is on its task, look again each minute, so the page follows it and Fix with an agent comes back after.
   const onIt = page?.agent?.busy ?? null;
   useEffect(() => {
@@ -1200,7 +1285,11 @@ export function PullPage() {
               })}
             </ul>
           )}
-          <PrActions page={page} reload={() => setTick((n) => n + 1)} />
+          {boardChange && <BoardChange page={page} found={boardChange} reload={() => setTick((n) => n + 1)} />}
+          {/* A change that plans something merges by Approve, so its plan is the one you approved. */}
+          {!(liveChange(boardChange) && !plansNothing(boardChange.change)) && (
+            <PrActions page={page} reload={() => setTick((n) => n + 1)} />
+          )}
           <AgentActions page={page} reload={() => setTick((n) => n + 1)} />
           {kickoff && page.state !== 'closed' && <BackToKickoff kickoff={kickoff} page={page} />}
         </section>

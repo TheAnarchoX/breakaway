@@ -353,24 +353,35 @@ export const CARD = {
 };
 
 /**
+ * Whether a change plans nothing: the board's draft of an environment with no file, proposed with no edits (BRK-258,
+ * "Describe it as code"). A change from a file always has an edit: the board refuses one that leaves the file as it is.
+ * @param {{ edits?: unknown[] }} change
+ */
+export const plansNothing = (change) => Array.isArray(change.edits) && change.edits.length === 0;
+
+/**
  * What a change's card shows: the state's key (CARD's, or a plan's once the merged change has one) and whether the
- * owner can approve, reject, or propose it again from here.
+ * owner can approve, merge (a change that plans nothing), reject, or propose it again from here.
  * @param {{ state: string, why?: string | null, approval?: { plan?: string | null } | null, digest?: string | null,
- *   commit?: string | null }} change
+ *   commit?: string | null, edits?: unknown[] }} change
  * @param {{ checks?: string | null, plan?: { state: string } | null }} [seen] the pull request's checks (from the board's
  *   GitHub data: `pending`, `success`, `failure`) and the plan the merge made, when the console has them
- * @returns {{ state: string, plan: boolean, approve: boolean, reject: boolean, again: boolean }}
+ * @returns {{ state: string, plan: boolean, approve: boolean, merge: boolean, reject: boolean, again: boolean }}
  */
 export function cardState(change, { checks = null, plan = null } = {}) {
-  const none = { plan: false, approve: false, reject: false, again: false };
-  if (change.state === 'open')
+  const none = { plan: false, approve: false, merge: false, reject: false, again: false };
+  if (change.state === 'open') {
+    // The board's draft with no edits matches what runs, so it plans nothing: it merges, as any pull request does.
+    const nothing = plansNothing(change);
     return {
       ...none,
       state: checks === 'pending' ? 'checking' : 'waiting',
-      approve: Boolean(change.digest && change.commit),
+      approve: !nothing && Boolean(change.digest && change.commit),
+      merge: nothing && checks !== 'pending' && Boolean(change.commit),
       reject: true,
       again: checks === 'failure',
     };
+  }
   if (change.state === 'approved')
     return change.why
       ? { ...none, state: 'cant', reject: true, again: true }
