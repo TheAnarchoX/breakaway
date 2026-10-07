@@ -3,7 +3,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { fakeProvider } from './fake-infra-provider.js';
-import { ProviderRegistry } from '../src/infra-provider.js';
+import { creatableKinds, ProviderRegistry } from '../src/infra-provider.js';
+import { cloudflare } from '../src/infra-cloudflare.js';
 import { checkTemplate } from '../src/infra-templates.js';
 import {
   applyEdits,
@@ -220,6 +221,159 @@ describe('a change’s edits', () => {
           'route:r1 isn’t the ID the board sees for api.acme.example/* (route:cf-1), so a new pattern would make another route: give it that ID in the file first',
       },
     ]);
+  });
+
+  it('create a resource the provider declares creatable, with its defaults, bound to a Worker in one edit', () => {
+    const kinds = creatableKinds(cloudflare);
+    const seen = [
+      { rid: 'worker:acme-api', kind: 'worker', name: 'acme-api', attrs: '{"bindings":[]}' },
+      { rid: 'queue:q-1', kind: 'queue', name: 'acme-running', attrs: '{}' },
+    ];
+    const create = (edits, more = {}) =>
+      applyEdits({
+        file: cloudflareFile(),
+        environment: 'acme-staging',
+        templates: new Map(),
+        edits,
+        seen,
+        creatable: (kind) => kinds[kind] ?? null,
+        ...more,
+      });
+
+    expect(
+      checkEdits([
+        {
+          op: 'create',
+          kind: 'queue',
+          name: ' acme-jobs ',
+          attrs: { retention: 86_400 },
+          bindTo: { worker: 'acme-api', binding: 'JOBS' },
+        },
+      ]),
+    ).toEqual({
+      ok: true,
+      edits: [
+        {
+          op: 'create',
+          kind: 'queue',
+          name: 'acme-jobs',
+          attrs: { retention: 86_400 },
+          bindTo: { worker: 'acme-api', binding: 'JOBS' },
+        },
+      ],
+    });
+    expect(checkEdits([{ op: 'create', kind: 'Queue', name: 'x' }])).toMatchObject({ problem: { field: 'kind' } });
+    expect(
+      checkEdits([{ op: 'create', kind: 'queue', name: 'x', bindTo: { worker: 'acme-api', binding: 'jobs' } }]),
+    ).toMatchObject({ problem: { field: 'bindTo.binding' } });
+    expect(checkEdits([{ op: 'create', kind: 'queue', name: 'x', attrs: { __proto__x: 1, 'a..b': 1 } }])).toMatchObject(
+      { problem: { field: 'attrs.a..b' } },
+    );
+
+    const got = create([
+      {
+        op: 'create',
+        kind: 'queue',
+        name: 'acme-jobs',
+        attrs: { retention: 86_400 },
+        bindTo: { worker: 'acme-api', binding: 'JOBS' },
+      },
+    ]);
+    expect(got.problems).toEqual([]);
+    expect(got.lines).toEqual(['+ queue acme-jobs, bound to acme-api as JOBS']);
+    expect(got.file.resources.at(-1)).toEqual({
+      id: 'queue:acme-jobs',
+      kind: 'queue',
+      name: 'acme-jobs',
+      attrs: { deliveryDelay: 0, deliveryPaused: false, retention: 86_400 },
+    });
+    expect(got.file.resources[0].attrs.bindings).toEqual([
+      { name: 'JOBS', type: 'queue', resource: 'queue:acme-jobs' },
+    ]);
+    expect(got.touched.get('queue:acme-jobs')).toBe(0);
+    expect(got.touched.get('worker:acme-api')).toBe(0);
+    expect(cloudflareFile().resources[0].attrs.bindings).toEqual([]);
+
+    // A Worker whose file doesn't list its bindings starts from the ones it runs with.
+    const unlisted = cloudflareFile();
+    delete unlisted.resources[0].attrs.bindings;
+    const kept = create(
+      [{ op: 'create', kind: 'd1', name: 'acme-db-2', bindTo: { worker: 'acme-api', binding: 'DB2' } }],
+      {
+        file: unlisted,
+        seen: [
+          {
+            ...seen[0],
+            attrs: '{"bindings":[{"name":"DB","type":"d1","id":"d1-uuid"},{"name":"KEY","type":"secret_text"}]}',
+          },
+        ],
+      },
+    );
+    expect(kept.file.resources[0].attrs.bindings).toEqual([
+      { name: 'DB', type: 'd1', id: 'd1-uuid' },
+      { name: 'KEY', type: 'secret_text' },
+      { name: 'DB2', type: 'd1', resource: 'd1:acme-db-2' },
+    ]);
+
+    const bind = { worker: 'acme-api', binding: 'JOBS' };
+    expect(
+      create([
+        { op: 'create', kind: 'queue', name: 'Acme_Jobs', attrs: {}, bindTo: bind },
+        { op: 'create', kind: 'd1', name: 'acme-db', attrs: {}, bindTo: bind },
+        { op: 'create', kind: 'queue', name: 'acme-running', attrs: {}, bindTo: bind },
+        { op: 'create', kind: 'queue', name: 'acme-jobs', attrs: {} },
+        { op: 'create', kind: 'queue', name: 'acme-jobs', attrs: { retention: 5 }, bindTo: bind },
+        { op: 'create', kind: 'queue', name: 'acme-jobs', attrs: { size: 'large' }, bindTo: bind },
+        { op: 'create', kind: 'queue', name: 'acme-jobs', attrs: {}, bindTo: { ...bind, worker: 'acme-web' } },
+        { op: 'create', kind: 'route', name: 'api.acme.example/*', attrs: { worker: 'acme-api' } },
+        { op: 'create', kind: 'route', name: 'api.acme.example/*', attrs: { zone: 'acme.example', worker: 'acme-x' } },
+        { op: 'create', kind: 'gadget', name: 'acme-g', attrs: {} },
+      ]).problems,
+    ).toEqual([
+      {
+        edit: 0,
+        field: 'name',
+        message:
+          'Acme_Jobs isn’t a queue’s name: Lowercase letters, digits, and dashes, up to 63, unique in the account, like acme-jobs.',
+      },
+      { edit: 1, field: 'name', message: 'acme-staging already has a d1 database called acme-db: pick another name' },
+      {
+        edit: 2,
+        field: 'name',
+        message:
+          'a queue called acme-running already runs in acme-staging: pick another name, or describe the one that runs as code first',
+      },
+      {
+        edit: 3,
+        field: 'bindTo',
+        message: 'a new queue is made only when a worker binds it: say which, and what it calls it',
+      },
+      { edit: 4, field: 'attrs.retention', message: 'Retention is at least 60 seconds' },
+      { edit: 5, field: 'attrs.size', message: 'a new queue has no setting size' },
+      { edit: 6, field: 'bindTo.worker', message: 'acme-staging has no worker called acme-web in its file' },
+      {
+        edit: 7,
+        field: 'attrs.zone',
+        message:
+          'a new route needs its zone: The domain on Cloudflare it’s on, like acme.example: one the environment’s token reaches.',
+      },
+      { edit: 8, field: 'attrs.worker', message: 'acme-staging has no worker called acme-x in its file' },
+      { edit: 9, field: 'kind', message: 'a gadget can’t be added from the board' },
+    ]);
+    // Two in a row: the second sees the first's name and binding.
+    expect(
+      create([
+        { op: 'create', kind: 'queue', name: 'acme-jobs', attrs: {}, bindTo: bind },
+        { op: 'create', kind: 'kv', name: 'acme-flags', attrs: {}, bindTo: bind },
+      ]).problems,
+    ).toEqual([
+      { edit: 1, field: 'bindTo.binding', message: 'acme-api already has a binding called JOBS: pick another name' },
+    ]);
+    // Without the provider's word, nothing is created.
+    expect(
+      create([{ op: 'create', kind: 'queue', name: 'acme-jobs', attrs: {}, bindTo: bind }], { creatable: undefined })
+        .problems,
+    ).toEqual([{ edit: 0, field: 'kind', message: 'a queue can’t be added from the board' }]);
   });
 
   it('put a problem in the file on the edit that touched its resource', () => {
@@ -487,6 +641,45 @@ describe('changes from the console', () => {
     expect(
       (await body(await board(`infra/changes/${proposed.change.n}/reject`, { method: 'POST', body: {} }))).status,
     ).toBe(200);
+  });
+
+  it('creates a resource the provider declares, bound in the same change, and previews it as an add', async () => {
+    const edits = [
+      {
+        op: 'create',
+        kind: 'database',
+        name: 'acme-jobs',
+        attrs: { engine: 'sqlite' },
+        bindTo: { worker: 'api', binding: 'JOBS_DB' },
+      },
+    ];
+    const res = await body(await change(envs['chg-staging'].id, { edits }));
+    expect(res).toMatchObject({ status: 200, lines: ['+ database acme-jobs, bound to api as JOBS_DB'] });
+    expect(res.preview.diff.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: 'create', resource: 'database:acme-jobs', name: 'acme-jobs', reversible: true }),
+        expect.objectContaining({ op: 'update', resource: 'svc-api' }),
+      ]),
+    );
+    expect(res.preview.diff.changes.find((c) => c.op === 'create').after).toEqual({ engine: 'sqlite', size: 'small' });
+    expect(res.preview.reversible).toBe(true);
+    expect(gh.writes).toEqual([]);
+
+    const wrong = await body(
+      await change(envs['chg-staging'].id, {
+        edits: [
+          { op: 'create', kind: 'route', name: 'v3.acme.example', attrs: {} },
+          { op: 'create', kind: 'database', name: 'main', attrs: {}, bindTo: { worker: 'api', binding: 'MAIN' } },
+        ],
+      }),
+    );
+    expect(wrong).toMatchObject({
+      status: 422,
+      problems: [
+        { edit: 0, field: 'kind', message: 'a route can’t be added from the board' },
+        { edit: 1, field: 'name', message: 'chg-staging already has a database called main: pick another name' },
+      ],
+    });
   });
 
   it('is the owner’s alone: the bearer token and an agent’s by are refused, and observe only says so', async () => {
