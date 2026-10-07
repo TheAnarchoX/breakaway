@@ -10505,82 +10505,139 @@ a.pl-mention {
   font-weight: 600;
   color: var(--text);
 }
-/* The status band's own card, above the map: its tiles fill each row they take, in one row once they fit. */
+/* The status band's own card, above the map (WEB-103): every tile the same three rows, its label, one value that
+   matters, and a muted line of detail, so they line up across the row. Two or three to a row when narrow, one row of
+   equal tiles once they fit. */
 .console-band {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-s);
-  /* The gaps between the tiles are the lines, whatever the columns. */
-  background: var(--line);
+  background: var(--surface);
+}
+/* The band's own width picks its columns, so a tile never gets too narrow for its value in the wide console's centre. */
+.console-status {
+  container: band / inline-size;
+}
+@container band (min-width: 440px) {
+  .console-band {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container band (min-width: 560px) {
+  .console-band {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@container band (min-width: 820px) {
+  .console-band {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
 }
 .band-tile {
-  flex: 1 1 128px;
   display: grid;
   align-content: start;
-  gap: 6px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 14px 14px 12px;
   background: var(--surface);
+  /* The lines between the tiles, full height whatever the columns; an empty cell at a row's end stays blank. */
+  outline: 1px solid var(--line);
 }
 .band-tile dt {
   display: flex;
   align-items: center;
   gap: 6px;
-  font: 600 11px / 1.2 var(--font-mono);
+  margin-bottom: 10px;
+  font: 600 11px / 16px var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--muted);
 }
+.band-tile dt svg {
+  flex: none;
+}
 .band-tile dd {
+  display: grid;
+  gap: 4px;
   margin: 0;
   min-width: 0;
-  font-size: 13.5px;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.band-tile .infra-health-line .meta {
-  flex-basis: 100%;
 }
 .band-value {
-  font-weight: 600;
+  display: block;
+  min-width: 0;
+  font: 600 19px / 24px var(--font-body);
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.band-value code {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  background: none;
+  padding: 0;
+}
+.band-value a {
+  color: inherit;
+  text-decoration: none;
+}
+.band-value a:hover {
+  text-decoration: underline;
 }
 .band-value.muted {
-  font-weight: 400;
+  color: var(--muted);
 }
-.band-value .infra-budget {
-  margin-top: 4px;
-  max-width: 100%;
-  white-space: normal;
+.band-detail {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 12.5px;
+  line-height: 17px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+/* A health or budget state's colour, on its words; never colour alone. */
+.band-state-healthy,
+.band-state-inside {
+  color: var(--success);
+}
+.band-state-degraded,
+.band-state-near {
+  color: var(--warn);
+}
+.band-state-down,
+.band-state-over {
+  color: var(--danger);
+}
+.band-value.band-state-unknown {
+  color: var(--muted);
 }
 .band-frozen {
   background: var(--surface-2);
 }
-.band-waiting dd a {
+.band-waiting .band-value {
   color: var(--accent);
-}
-.band-agents {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-.band-agents li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 6px;
 }
 .band-agents .wid {
   text-decoration: none;
 }
 .band-agent {
-  font: 500 12.5px / 1.3 var(--font-mono);
-  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 .console-panel,
 .console-side > .infra-section {
@@ -11043,12 +11100,6 @@ a.pl-mention {
   .console-admin {
     grid-area: admin;
   }
-  .console-band {
-    flex-wrap: nowrap;
-  }
-  .band-tile {
-    flex: 1 1 0;
-  }
   .console-ops {
     grid-area: ops;
   }
@@ -11145,11 +11196,6 @@ a.pl-mention {
 /* An environment whose inventory is out of date (BRK-257): its last discovery failed. */
 .band-stale {
   background: var(--warn-bg);
-}
-.inventory-stale-why {
-  display: block;
-  margin-top: 4px;
-  font-weight: 400;
 }
 .inventory-stale-line {
   display: flex;
