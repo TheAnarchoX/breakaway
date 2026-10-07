@@ -15,10 +15,16 @@ export const PUSH_KINDS = ['blocked', 'question', 'stale', 'done'];
  */
 export const BOARD_PING_KINDS = ['incident', 'envelope'];
 export const MAX_MESSAGE = 500;
-export const MAX_CHANGES = 10;
-export const MAX_PROPOSAL_BYTES = 20 * 1024;
-export const PINGS_PER_TASK_PER_DAY = 3;
-export const PINGS_PER_AGENT_PER_DAY = 10;
+/**
+ * A proposal's only size guard (BRK-261): no count of changes, so a roadmap goes in one ping. 64 KB holds well over
+ * a hundred filled-in tasks and keeps the stored row and the inbox card small.
+ */
+export const MAX_PROPOSAL_BYTES = 64 * 1024;
+/**
+ * A runaway guard against a looping agent, not a budget (BRK-261): there is no cap per task, and whether to ping at
+ * all is the agent's judgment (the core's "Pinging the owner").
+ */
+export const PINGS_PER_AGENT_PER_DAY = 50;
 
 const REF = /^[a-z][a-z0-9_-]{0,19}$/u;
 const WID = /^[A-Z]+-\d+$/u;
@@ -122,10 +128,6 @@ export function validateProposal(raw, ctx) {
   if (new TextEncoder().encode(JSON.stringify(list)).length > MAX_PROPOSAL_BYTES)
     throw new InputError(`a proposal is up to ${MAX_PROPOSAL_BYTES / 1024} KB`);
   if (!list.length) throw new InputError('a proposal with no changes is just a message; leave the proposal out');
-  if (list.length > MAX_CHANGES)
-    throw new InputError(
-      `a proposal is up to ${MAX_CHANGES} changes (this has ${list.length}); split it or ping again after the owner applies this one`,
-    );
 
   const refs = new Set();
   for (const [i, change] of list.entries()) {

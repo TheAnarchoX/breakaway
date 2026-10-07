@@ -49,11 +49,11 @@ An agent that can’t finish a task because only you can help, or whose task tur
 | `done` | The work looks finished already, so you should confirm. | Yes |
 | `fyi` | Something you should know now that needs no action. Inbox only. | No |
 
-The message is up to 500 characters and is refused if it looks like a token. There are at most 3 pings per task and 10 per agent a day, and a repeat of the same kind and message is dropped. A ping stays open until you resolve it or the task is finished.
+The message is up to 500 characters and is refused if it looks like a token. There's no limit per task; a repeat of the same kind and message is dropped, and an agent is stopped at 50 pings a day, a guard against one stuck in a loop. A ping stays open until you resolve it or the task is finished.
 
 ### Proposals
 
-A ping can carry a **proposal**: up to 10 changes and 20 KB you can apply in one press. `ping --template` prints an example.
+A ping can carry a **proposal**: any number of changes, up to 64 KB, that you can apply in one press. Its changes are grouped by kind, and long groups fold. `ping --template` prints an example.
 
 - `add` tasks, with local `ref`s so they can depend on each other.
 - `depend`: add or remove dependencies between existing tasks.
