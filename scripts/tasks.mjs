@@ -299,7 +299,7 @@ Working
     --done-when <text>   what has to be true to call it done
     --decision <file.json>   questions for the owner to answer on the board (adds +decide); see decision --template
   decision <ref> --template   print an example decision file to edit (nothing here answers a decision: the owner does, on the board)
-  ping <ref> <message>   tell the owner you need them, in the inbox and as a push (you must hold the task; a few a day)
+  ping <ref> <message>   tell the owner you need them, in the inbox and as a push (you must hold the task; only when they must act)
     --kind blocked|question|stale|done|fyi   blocked: needs the owner; question: a small question; stale: can't reproduce or already fine; done: looks finished; fyi: inbox only
     --proposal <file.json>   changes for the owner to apply in one press: tasks to add, dependencies, edits, finish, release (ping --template)
   ping --template        print an example proposal file to edit
