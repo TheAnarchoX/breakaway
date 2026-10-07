@@ -143,6 +143,8 @@ export const COST_NOTE_MAX = 500;
  * @property {typeof fetch} [fetch] the fetch to call the platform with; tests pass a mock
  * @property {Resource[]} [resources] what `discover` just found in the environment's scope: the store passes it to
  *   `observe` and `cost` so they needn't discover again
+ * @property {Resource[]} [elsewhere] what `discover` just found in the provider's other environments: `events` keeps an
+ *   alert on a zone or hostname none of them, nor this one, uses as account-wide instead of leaving it out (BRK-256)
  * @property {Set<string>} [reached] the store's collector: the provider adds a permission's name when a call answers
  *   with it, so Connections puts back one an earlier refusal struck (BRK-254)
  */
