@@ -262,6 +262,43 @@ describe('approving and rejecting a plan (BRK-182)', () => {
     await board(`infra/plans/${plan.id}/reject`, { method: 'POST', body: {} });
   });
 
+  it('still reads a plan once its environment is removed, and never approves it (BRK-263)', async () => {
+    const gone = (
+      await body(
+        await board('infra/environments', {
+          method: 'POST',
+          body: { repo: 'widgets', provider: PROVIDER, name: 'appr-gone', kind: 'staging', target: 'svc-api' },
+        }),
+      )
+    ).environment;
+    await runInDurableObject(store(), (s) => {
+      s.sql.exec(
+        `INSERT INTO infra_desired (repo, file, environment, provider, sha, read_at, desired, valid_sha, valid_at, error)
+         VALUES ('widgets', 'appr-gone.json', 'appr-gone', ?, 'sha-gone', ?, ?, 'sha-gone', ?, NULL)`,
+        PROVIDER,
+        Date.now(),
+        JSON.stringify(desired(provider, { 'svc-api': { attrs: { instances: 4, version: '1.0.0' } } })),
+        Date.now(),
+      );
+    });
+    const made = await body(
+      await api('infra/plans', { method: 'POST', body: { environment: gone.id, source: 'pull-request', ref: '#8' } }),
+    );
+    expect(made.status).toBe(201);
+    await board(`infra/plans/${made.plan.id}`, { method: 'PATCH', body: { state: 'waiting' } });
+    expect((await board(`infra/environments/${gone.id}`, { method: 'DELETE', body: {} })).status).toBe(200);
+
+    // Named as its environment was, and out of date: the record outlives the environment, the plan can't go ahead.
+    const read = await body(await api(`infra/plans/${made.plan.id}`));
+    expect(read).toMatchObject({
+      status: 200,
+      plan: { state: 'waiting', environment: { id: gone.id, name: 'appr-gone' } },
+      outOfDate: 'its environment was removed',
+    });
+    const refused = await board(`infra/plans/${made.plan.id}/approve`, { method: 'POST', body: {} });
+    expect(refused.status).toBe(404);
+  });
+
   it('approves a plan the repository’s policy lets through by itself, naming the rule, with no push', async () => {
     const sub = await browser('https://push.example.com/send/policy');
     await board('push/subscriptions', { method: 'POST', body: sub });
