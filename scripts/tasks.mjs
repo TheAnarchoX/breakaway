@@ -371,10 +371,13 @@ Working
                          --pipeline <file.json|none> sets its deploy pipeline ({"workers": {"staging", "production"}, "package": "<npm name>", "workflows": {...}, "deployPaths"},
                          with workers, package, or both) or clears it
   features add <slug>    new feature: its tasks join by carrying <slug> as a tag  [--title <text>]
-                         [--brief <text> | --brief-file <path>] [--release <x.y.z>] (agents add one without a release)
+                         [--brief <text> | --brief-file <path>] [--release <x.y.z>]
                          --from <ref> (owner): made from the group <ref> is in on the Dependencies view: its open tasks
                          join, and tasks already in another feature stay there
-  features modify <slug> change one (owner): --title, --brief, --brief-file, --release <x.y.z|none>, --state open|shipped
+  features modify <slug> change one: --title, --brief, --brief-file, --release <x.y.z|none>; --state open|shipped is the
+                         owner's. An agent's change shows in Activity and on the feature, and the owner can undo it
+  features pull <x.y.z>  pull a release's open tasks, and what they wait for, into now  [--into next] [--dry-run];
+                         the next release goes in first. An agent's pull shows on the feature, and the owner can undo it
   routines add <slug>    new routine (owner, or the agent of a routine maker's task)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
   routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened (or "") starts it on those GitHub events
@@ -1548,6 +1551,21 @@ const commands = {
         ...(by ? { by } : {}),
       });
       print({ feature }, (d) => `Saved ${d.feature.slug}.`);
+      return;
+    }
+    if (sub === 'pull') {
+      const release = need(args[1], 'release').replace(/^v(?=\d)/u, '');
+      const into = opts.into ?? 'now';
+      const dryRun = Boolean(opts['dry-run']);
+      const pulled = await call('POST', `releases/${enc(release)}/pull`, { into, dryRun, ...(by ? { by } : {}) });
+      print(pulled, (d) =>
+        [
+          `${d.dryRun ? 'Would move' : 'Moved'} ${d.tasks.length} ${d.tasks.length === 1 ? 'task' : 'tasks'} of ${d.release} into ${d.into}:`,
+          ...d.tasks.map(
+            (t) => `  ${t.wid ?? t.uuid.slice(0, 8)}  ${t.description}${t.chain ? ' (it waits for this)' : ''}`,
+          ),
+        ].join('\n'),
+      );
       return;
     }
     if (sub === 'show') {

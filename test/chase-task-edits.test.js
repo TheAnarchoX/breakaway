@@ -114,7 +114,7 @@ describe('chase agents and the chase’s tasks', () => {
     expect(early.error).toMatch(/after the chase started/);
   });
 
-  it('refuses a claimed task, an idea, a horizon-* tag, autostart, a decision, and any other field', async () => {
+  it('refuses a claimed task, an idea’s description, a horizon-* tag, autostart, a decision, and any other field', async () => {
     const { name } = await chaseAgent('delta');
     const claimed = await make({ tags: ['agent', 'delta'], brief: 'Mine.', by: 'claude-other' });
     await api(`tasks/${claimed.wid}/claim`, { method: 'POST', body: { agent: 'claude-other' } });
@@ -133,7 +133,6 @@ describe('chase agents and the chase’s tasks', () => {
       { addTags: ['horizon-now'] },
       { autostart: 'yes' },
       { decision: { questions: [{ id: 'q', type: 'yesno', prompt: 'Ship it?' }] } },
-      { priority: 'H' },
       { pr: '12' },
     ]) {
       const res = await body(await edit(target.wid, { ...changes, by: name }));

@@ -830,8 +830,9 @@ npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
 | --- | --- |
 | `features` | Features by release: each one’s progress and chase, and tags that could be features. |
 | `features show <slug>` | One feature: its release, progress, what waits for you, its chase, and its tasks in order. |
-| `features add <slug>` | A new feature; its tasks join by carrying `<slug>` as a tag. `--title`, `--brief` or `--brief-file`, `--release <x.y.z>` (yours; agents add one without a release), and `--from <ref>` (yours) to make it from the whole chain a task is in on the Dependencies view. |
-| `features modify <slug>` | Yours: `--title`, `--brief`, `--brief-file`, `--release <x.y.z\|none>`, `--state open\|shipped`. |
+| `features add <slug>` | A new feature; its tasks join by carrying `<slug>` as a tag. `--title`, `--brief` or `--brief-file`, `--release <x.y.z>`, and `--from <ref>` (yours) to make it from the whole chain a task is in on the Dependencies view. |
+| `features modify <slug>` | `--title`, `--brief`, `--brief-file`, `--release <x.y.z\|none>`, and `--state open\|shipped` (yours). An agent’s change shows in Activity and on the feature, where you can undo it. |
+| `features pull <x.y.z>` | Pull a release’s open tasks, and what they wait for, into now; `--into next` stages it in next, `--dry-run` only lists them. The next release goes in first. An agent’s pull shows on the feature, where you can undo it. |
 | `chase <slug>` | Yours: starts a chase. `--parallel <n>` is the most agents at once in one area (default 3), and changes it on a running chase. `--dry-run` shows what would start and starts nothing. |
 | `chase <slug> stop` | Yours: stops it. Nothing new starts; running agents finish. |
 | `peloton` | The pelotons the agent rides (its repository’s, and its chase’s), who’s on them, and the posts since it last read. `--all` for every post kept. |
@@ -1105,7 +1106,7 @@ A **feature** is a piece of the roadmap: a short name (its slug, like `inbox-fil
 - **Progress is counted, never typed:** done over all, with the counts that explain the rest (running, ready, waiting, needs you, in review). Each task says why it’s where it is, in words: “it waits for BRK-50”, “its pull request is open: merging is yours”.
 - **Suggested features.** A tag on open tasks that isn’t a feature yet is suggested, with **Make it a feature**, aimed at the release its tasks’ release tags share. Nothing is made until you press it. The board’s own tags (`agent`, `owner`, `decide`, `idea`, `general`, `routine`, `security`, `horizon-*`) and release tags never become features.
 
-Anyone signed in reads features, and an agent shaping an idea adds one for the tasks it makes, without a release. Aiming a feature at a release, changing it, deleting it, and chasing it are yours: a request signed with an agent’s name is refused.
+Anyone signed in reads features, and agents plan them too: an agent may add one, aim it at a release, change its title and brief, and pull the next release into now or next. Each agent’s change shows in Activity and under **Agents’ changes** on the feature’s page, with its name and what it was before, and **Undo** puts it back in one press, unless someone changed the same thing since. Planning a feature’s dates, marking it shipped, deleting it, and chasing it are yours: a request signed with an agent’s name is refused.
 
 ### The Roadmap
 
@@ -1216,7 +1217,7 @@ npx breakaway peloton step "Moved the sort into the store; does this affect anyo
 npx breakaway peloton reply 12 "I'll wait for yours, then rebase the filter on it."
 ```
 
-`features modify <slug>` changes `--title`, `--brief` (or `--brief-file`), `--release <x.y.z|none>`, and `--state open|shipped`. Changing a feature, giving it a release, and starting or stopping a chase are yours. `peloton step` goes to the chase’s peloton when the task is in one, else the repository’s; `--peloton <name>` picks. `peloton --all` prints every post kept. The full list is in [the CLI](https://leavethepack.dev/docs/cli/#features-chase-and-the-peloton).
+`features modify <slug>` changes `--title`, `--brief` (or `--brief-file`), `--release <x.y.z|none>`, and `--state open|shipped`, and `features pull <x.y.z> [--into next]` pulls a release into now or next. Agents may do both except `--state`; marking a feature shipped and starting or stopping a chase are yours. `peloton step` goes to the chase’s peloton when the task is in one, else the repository’s; `--peloton <name>` picks. `peloton --all` prints every post kept. The full list is in [the CLI](https://leavethepack.dev/docs/cli/#features-chase-and-the-peloton).
 
 ---
 
@@ -2584,14 +2585,15 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `GET /api/peloton/<peloton>` | A peloton’s roster and posts: a repository’s slug, or `chase:<feature>`. |
 | `POST /api/peloton/<peloton>` | `{ agent, kind, text, reply_to?, task? }`. An agent holding a claimed task that rides it posts. Not the cookie. |
 | `GET /api/features`, `POST /api/features` | Features by release with their progress and chase, and suggested tags; make one (`tasks` or `from` joins tasks). |
-| `GET /api/features/<slug>`, `PATCH …`, `DELETE …` | One feature and its tasks; change or delete it (owner). |
+| `GET /api/features/<slug>`, `PATCH …`, `DELETE …` | One feature and its tasks, with `planning`, agents' changes to its plan; change it (an agent its title, brief, and release; the dates and shipped are the owner's), or delete it (owner). |
 | `POST /api/features/<slug>/chase` | Owner: `{ on, parallel?, dryRun? }` starts, changes, or stops a chase; `{ dismiss: true }` clears an ended chase’s note. |
 | `GET /api/routines`, `POST /api/routines` | List or create routines. |
 | `PATCH /api/routines/<slug>` | Change one. |
 | `POST /api/routines/<slug>/run` | Run it now. |
 | `POST /api/routines/<slug>/triggers`, `DELETE …/triggers/<id>` | Make or revoke a webhook trigger. |
 | `POST /api/horizons/close` | Close now; `{ dryRun: true }` only counts. |
-| `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ into: "next" }` stages it in next instead, from the next release with work in later; `{ dryRun: true }` only lists them. The owner's. |
+| `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ into: "next" }` stages it in next instead, from the next release with work in later; `{ dryRun: true }` only lists them. The owner's or an agent's (with its `by`), whose pull is kept for undo. |
+| `POST /api/planning/<id>/undo` | Undo an agent's change to the plan: a feature's release, title, or brief, a pull, or another task's fields. Refused when someone changed the same field since. Yours, from the signed-in web board. |
 
 ### Firing a routine from outside
 

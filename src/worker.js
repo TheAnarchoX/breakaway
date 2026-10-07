@@ -424,9 +424,14 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'next' && parts.length === 1 && method === 'POST') return send(await s.next(body));
   if (parts[0] === 'backfill' && parts[1] === 'structure' && parts.length === 2 && method === 'POST')
     return send(await s.backfillStructureApi());
-  // Pulling a release into now (BRK-126) or next (BRK-209) is the owner's: an agent's `by` is refused.
+  // Pulling a release into now (BRK-126) or next (BRK-209): the owner's or an agent's, whose pull is kept for undo (BRK-274).
   if (parts[0] === 'releases' && parts[2] === 'pull' && parts.length === 3 && method === 'POST')
     return send(await s.releasePullApi(parts[1], body));
+  // Undoing an agent's change to the plan (BRK-274) is the owner's, from the signed-in web board.
+  if (parts[0] === 'planning' && parts[2] === 'undo' && parts.length === 3 && method === 'POST') {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can undo an agent’s change' });
+    return send(await s.planningUndoApi(parts[1], { by: 'owner' }));
+  }
   if (parts[0] === 'horizons' && parts[1] === 'close' && parts.length === 2 && method === 'POST')
     return send(await s.closeHorizon({ dryRun: Boolean(body.dryRun) }));
   if (parts[0] === 'admin' && parts[1] === 'rebuild' && method === 'POST') return send(await s.rebuild());
