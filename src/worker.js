@@ -1045,6 +1045,14 @@ async function handleApi(request, env, url, ctx) {
       }),
     );
   }
+  // Build a pre-release (WEB-113): starts the release workflow's pre-release job on the default branch. The owner's,
+  // from the signed-in browser only; an agent never starts one.
+  if (parts[0] === 'github' && parts[1] === 'prerelease' && parts.length === 2 && method === 'POST') {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can build a pre-release' });
+    if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
+      return json(403, { error: 'only the owner builds a pre-release; agents never start one' });
+    return send(await s.githubRelease('prerelease', { repo: body.repo ?? url.searchParams.get('repo') }));
+  }
   // Workflows that run by hand (BRK-224): anyone signed in lists them; running one is the owner's, from the signed-in
   // browser only, never the bearer token agents, the CLI, the MCP server, and routines hold.
   if (parts[0] === 'github' && parts[1] === 'workflows' && parts.length === 2 && method === 'GET')

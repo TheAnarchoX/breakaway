@@ -13,7 +13,14 @@
 import { GitHubError } from './github.js';
 import { REGISTRY, distTags, packageUrl, registryUrl, stagedIn } from './packages.js';
 import { clip } from './connections.js';
-import { packageOf, releaseOffer, releasedFrom } from './release.js';
+import {
+  aheadOfPrerelease,
+  packageOf,
+  prereleaseBuild,
+  prereleaseByHand,
+  releaseOffer,
+  releasedFrom,
+} from './release.js';
 
 /** Runs whose annotations are read per sync, newest first; the rest wait for the next one. */
 const MAX_RUNS = 5;
@@ -26,6 +33,8 @@ const OLD_MS = 86_400_000;
 /** Versions kept per repository, and how many the feed shows. */
 const KEEP = 100;
 const SHOWN = 50;
+/** How long the read of whether a release workflow builds pre-releases by hand is kept (WEB-113). */
+const RELEASE_MODE_MS = 86_400_000;
 /** How long a registry read may take before it counts as failed. */
 const TIMEOUT_MS = 10_000;
 
@@ -88,7 +97,13 @@ export const packagesMethods = {
             p.version,
             p.tag,
             run.id,
-            JSON.stringify({ url: run.html_url ?? null, workflow: run.name ?? null, number: run.run_number ?? null }),
+            // The commit it was built from (WEB-113), so main's merges since a pre-release can be counted.
+            JSON.stringify({
+              url: run.html_url ?? null,
+              workflow: run.name ?? null,
+              number: run.run_number ?? null,
+              sha: run.head_sha ?? null,
+            }),
             run.created_at ?? new Date().toISOString(),
           );
         }
@@ -281,6 +296,102 @@ export const packagesMethods = {
     const from = releasedFrom(JSON.parse(this.ghMeta('gh_tags', slug) ?? '[]'), events, pkg.prefix);
     const preparing = this.preparingVersion(slug);
     return (v) => (v.name === pkg.name ? releaseOffer(versions, v.version, { from, preparing }) : null);
+  },
+
+  /**
+   * Build a pre-release (WEB-113) for repository `repo`: null unless its pipeline names a package and its release
+   * workflow builds pre-releases only by hand (as the last read of it said, `gh_release_mode`). Else what main has
+   * since the latest pre-release, CI on main's latest commit, the build the owner last started, and `behind`: for each
+   * of the package's pre-releases whose commit is known, what main has since it, for the Release dialog's warning.
+   * `prs` are the view's pull requests with their tasks, `runs` the stored runs. Reads nothing from GitHub.
+   * @param {any} repo
+   * @param {{ prs?: any[], runs?: any[], now?: number }} [context]
+   */
+  releaseBuildOf(repo, { prs = [], runs = [], now = Date.now() } = {}) {
+    const pkg = packageOf(repo);
+    if (!pkg) return null;
+    const mode = JSON.parse(this.ghMeta('gh_release_mode', repo.slug) ?? 'null');
+    if (!mode?.byHand || mode.workflow !== pkg.workflow) return null;
+    const commits = this.sql
+      .exec('SELECT data FROM gh_commits WHERE repo = ? ORDER BY date DESC', repo.slug)
+      .toArray()
+      .map((r) => JSON.parse(r.data));
+    const tags = new Map(JSON.parse(this.ghMeta('gh_tags', repo.slug) ?? '[]').map((t) => [t.name, t.sha ?? null]));
+    const runSha = new Map(runs.map((r) => [r.id, r.sha ?? null]));
+    const pres = this.sql
+      .exec(
+        'SELECT version, run, data, staged FROM gh_packages WHERE repo = ? AND name = ? ORDER BY staged DESC',
+        repo.slug,
+        pkg.name,
+      )
+      .toArray()
+      .filter((r) => String(r.version).includes('-'))
+      .map((r) => ({
+        version: String(r.version),
+        staged: String(r.staged),
+        // The run's commit, else its tag's, else the run's as the board still has it.
+        sha: JSON.parse(r.data).sha ?? tags.get(`${pkg.prefix}${r.version}`) ?? runSha.get(r.run) ?? null,
+      }));
+    /** @type {Record<string, any>} */
+    const behind = {};
+    for (const p of pres) {
+      const ahead = aheadOfPrerelease({ commits, sha: p.sha, prs });
+      if (ahead) behind[p.version] = ahead;
+    }
+    const latest = pres[0] ?? null;
+    const started = this.sql
+      .exec(
+        `SELECT at FROM gh_events WHERE repo = ? AND data LIKE '%"prerelease_started"%' ORDER BY at DESC LIMIT 1`,
+        repo.slug,
+      )
+      .toArray()[0]?.at;
+    const build = prereleaseBuild({
+      workflow: pkg.workflow,
+      branch: pkg.branch,
+      ahead: latest ? (behind[latest.version] ?? null) : null,
+      runs,
+      started: started ? Number(started) : null,
+      latest,
+      headSha: commits[0]?.sha ?? null,
+      now,
+    });
+    return {
+      ...build,
+      package: pkg.name,
+      latest: latest && { version: latest.version, staged: latest.staged },
+      behind,
+    };
+  },
+
+  /**
+   * Reads whether `repo`'s release workflow builds pre-releases only by hand (WEB-113), from its file on the default
+   * branch: one read, kept until a push changes a workflow or a day passes. Nothing without a package. A file the
+   * board can't read builds nothing by hand, so Build a pre-release stays hidden.
+   */
+  async refreshReleaseMode(client, repo) {
+    const pkg = packageOf(repo);
+    if (!pkg) {
+      this.setGhMeta('gh_release_mode', repo.slug, null);
+      return;
+    }
+    const kept = JSON.parse(this.ghMeta('gh_release_mode', repo.slug) ?? 'null');
+    if (kept && kept.workflow === pkg.workflow && kept.branch === pkg.branch && Date.now() - kept.at < RELEASE_MODE_MS)
+      return;
+    let byHand = false;
+    try {
+      const file = await client.get(
+        `/contents/.github/workflows/${encodeURIComponent(pkg.workflow)}?ref=${encodeURIComponent(pkg.branch)}`,
+      );
+      const bytes = Uint8Array.from(atob(String(file.content ?? '').replace(/\s+/gu, '')), (c) => c.charCodeAt(0));
+      byHand = prereleaseByHand(new TextDecoder().decode(bytes));
+    } catch (error) {
+      if (!(error instanceof GitHubError) || ![403, 404].includes(error.status)) throw error;
+    }
+    this.setGhMeta(
+      'gh_release_mode',
+      repo.slug,
+      JSON.stringify({ workflow: pkg.workflow, branch: pkg.branch, byHand, at: Date.now() }),
+    );
   },
 
   /** What Connections shows for npm: when the registry last answered, and its last failure. */

@@ -27,6 +27,7 @@ import {
   Bot,
   CalendarRange,
   Play,
+  Hammer,
 } from 'lucide-preact';
 import { TRIGGER_LABEL } from '../components/Agents.jsx';
 import {
@@ -86,6 +87,7 @@ const ICONS = {
   promote_started: Rocket,
   rollback_started: Undo2,
   release_started: Rocket,
+  prerelease_started: Hammer,
   workflow_started: Play,
   ci_failed: CircleX,
   ci_fixed: CircleCheck,
@@ -222,6 +224,8 @@ function describe(change) {
       return `You rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
     case 'release_started':
       return `You released ${change.package}@${change.prerelease} as ${change.version}${change.next && change.next !== 'patch' ? `, next ${change.next}` : ''}: it waits on npm for your approval`;
+    case 'prerelease_started':
+      return `You started a pre-release of ${change.package} from ${change.branch}${change.merges ? `: ${change.merges} ${change.merges === 1 ? 'merge' : 'merges'} since ${change.after}` : ''}`;
     case 'workflow_started':
       return `You ran ${change.workflow} on ${change.ref}${change.inputs?.length ? ` with ${change.inputs.join(', ')}` : ''}`;
     case 'pr_closed':

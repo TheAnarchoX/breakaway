@@ -47,7 +47,7 @@ import { RepoChip, Tabs } from '../components/ui.jsx';
 import { PullPage } from '../components/PullPage.jsx';
 import { DeployRow, ReleaseFlow, STATES, summary } from '../components/Release.jsx';
 import { NextVersion } from '../components/NextVersion.jsx';
-import { PackageRelease, ReleaseSetup } from '../components/PackageRelease.jsx';
+import { PackageRelease, PrereleaseBuild, ReleaseSetup } from '../components/PackageRelease.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
 import { RunWorkflow, useRunnable } from '../components/RunWorkflow.jsx';
 
@@ -472,6 +472,7 @@ function PackagesTile({ view, several }) {
             <PackageLine name="Pre-release" v={p.prerelease} versions={view.packages} />
             <PackageLine name="Release" v={p.release} />
           </ul>
+          <PrereleaseBuild repo={p.repo} name={p.name} />
           {p.waiting > 0 && <ApproveHint url={p.url} />}
         </div>
       ))}

@@ -9006,6 +9006,31 @@ a.pl-mention {
   flex-wrap: nowrap;
   align-items: flex-start;
 }
+/* Build a pre-release (WEB-113): what main has since the latest pre-release, folded, and the press under it. */
+.pkg-build {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pkg-build p {
+  margin: 0;
+}
+.pkg-ahead summary {
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.pkg-ahead-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.flow-warning .pkg-ahead + .btn {
+  margin-top: 8px;
+}
 /* Kickoff (WEB-35): the wizard's steps, with the pitch form, the routine guide's copy rows, and the plan. */
 .kickoff .view-intro h1 {
   font-size: 28px;
