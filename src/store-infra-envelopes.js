@@ -10,8 +10,14 @@
  * the plan is approved by the envelope and the executor (BRK-183) applies it with no press; the act is in the audit
  * trail and noted quietly in the inbox, on the runbook's task. Outside, or once the restart cap is used up, the plan
  * waits for the owner, with its push. A frozen or observe-only environment refuses every act.
+ *
+ * Every agent holds the same bearer token and claims are readable, so naming the run isn't enough (BRK-252): each
+ * start of a runbook's run gets its own act key, handed only to that run in its payload (`Act key:`), and an act
+ * without it is refused. The board keeps only the key's SHA-256, for the run's task and the agent it started; it works
+ * while that agent holds the run, for ACT_KEY_MS at most, and for acts only.
  */
 import { AgentError } from './store-agents.js';
+import { sameSecret } from './auth.js';
 import { InputError, resolveRef } from './model.js';
 import { install } from './install.js';
 import { runsTheBoard } from './infra-environments.js';
@@ -23,6 +29,15 @@ import { HOURS_MAX, checkAct, checkEnvelope, envelopeWords, judgeChange, windowW
 const HOUR_MS = 3_600_000;
 /** The most acts an environment keeps: plenty for any restart window. */
 export const ACTS_KEPT = 500;
+/** How long a run's act key works: a runbook's run is for what's happening now, and a new start gets a new key. */
+export const ACT_KEY_MS = 12 * HOUR_MS;
+
+const encoder = new TextEncoder();
+/** A string's SHA-256, in hex. */
+const sha256 = async (text) =>
+  [...new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(String(text))))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 
 /** Whether `by` is the owner's: none, or `owner`. Anything else is an agent's name, and is refused. */
 const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
@@ -50,7 +65,65 @@ export const infraEnvelopesMethods = {
         change TEXT NOT NULL, resource TEXT NOT NULL, inside INTEGER NOT NULL, plan TEXT, agent TEXT, why TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS infra_envelope_acts_by_environment ON infra_envelope_acts (environment, change, at);
+      CREATE TABLE IF NOT EXISTS infra_act_keys (
+        task TEXT PRIMARY KEY, agent TEXT NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL
+      );
     `);
+  },
+
+  /**
+   * A new act key for a runbook's run the board is starting as `agent`, or null when the task isn't a runbook's run.
+   * It replaces the run's last one, so only the latest start's agent can act. The key goes in the run's payload and
+   * nowhere else; the board keeps its SHA-256.
+   * @param {string} uuid the run's task
+   * @param {string} agent
+   * @returns {Promise<string | null>}
+   */
+  async runbookActKey(uuid, agent) {
+    const runbook = this.sql
+      .exec('SELECT 1 FROM routine_runs r JOIN infra_runbooks b ON b.slug = r.slug WHERE r.task = ? LIMIT 1', uuid)
+      .toArray()[0];
+    if (!runbook) return null;
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const key = `act_${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+    const hash = await sha256(key);
+    const now = Date.now();
+    this.sql.exec('DELETE FROM infra_act_keys WHERE created < ?', now - ACT_KEY_MS);
+    this.sql.exec(
+      'INSERT OR REPLACE INTO infra_act_keys (task, agent, hash, created) VALUES (?, ?, ?, ?)',
+      uuid,
+      agent,
+      hash,
+      now,
+    );
+    return key;
+  },
+
+  /**
+   * Refuses an act without the run's own key: the one the board handed the agent it started on that run.
+   * @param {string} uuid the run's task
+   * @param {string} agent
+   * @param {unknown} key
+   */
+  async checkActKey(uuid, agent, key) {
+    const row = this.sql.exec('SELECT agent, hash, created FROM infra_act_keys WHERE task = ?', uuid).toArray()[0];
+    const given = typeof key === 'string' ? key.trim() : '';
+    if (!given)
+      throw new AgentError(
+        'an act needs the run’s own key: set BREAKAWAY_ACT_KEY to the Act key in your payload. Only the agent the board started on the run has one',
+        403,
+      );
+    const ok = row && row.agent === agent && (await sameSecret(row.hash, await sha256(given)));
+    if (!ok)
+      throw new AgentError(
+        'that isn’t this run’s act key: only the agent the board last started on the run has it, in its payload',
+        403,
+      );
+    if (Date.now() - Number(row.created) > ACT_KEY_MS)
+      throw new AgentError(
+        `this run’s act key is more than ${ACT_KEY_MS / HOUR_MS} hours old: the owner starts the run again for a new one`,
+        403,
+      );
   },
 
   /**
@@ -419,7 +492,8 @@ export const infraEnvelopesMethods = {
 
   /**
    * POST /api/infra/envelopes/<environment>/act: a runbook's agent asks for one scale or restart, for the run it holds
-   * (`task`). The body is only { resource, change, value, task, by }; the board builds the plan.
+   * (`task`), with the run's own act key (`key`, BRK-252). The body is only { resource, change, value, task, by, key };
+   * the board builds the plan.
    */
   envelopeActApi(ref, body = {}) {
     return this.run(async () => {
@@ -438,6 +512,7 @@ export const infraEnvelopesMethods = {
       }
       const env = this.environmentRow(ref, body.repo ? String(body.repo).trim().toLowerCase() : null);
       const task = this.envelopeRunbookTask(body.task, agent, env.repo);
+      await this.checkActKey(task.uuid, agent, body.key);
       const act = await this.actInEnvelope(env.id, { repo: env.repo, ...asked, by: 'agent', agent, task });
       return { status: 200, body: { act } };
     });

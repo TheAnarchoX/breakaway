@@ -17,6 +17,9 @@ const PATTERNS = [
   [/\bgh[pousr]_[A-Za-z0-9]{20,}/gu, '[redacted]'],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}/gu, '[redacted]'],
   [/\bxox[abpr]-[\w-]{10,}/gu, '[redacted]'],
+  // A runbook run's act key (BRK-252), on its own or on its payload's line.
+  [/(\bAct key:\s*)\S+/gu, '$1[redacted]'],
+  [/\bact_[0-9a-f]{64}\b/gu, '[redacted]'],
   // Bearer tokens in headers.
   [/(\bBearer\s+)[\w.~+/=-]{16,}/giu, '$1[redacted]'],
   // Long base64 blobs with mixed case and digits (keys, secrets); hex SHAs and UUIDs don't match.
