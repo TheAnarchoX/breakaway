@@ -433,7 +433,8 @@ Infrastructure   (init and add need no board: run them in the checkout of the re
   infra act <environment> <resource> scale <n>|restart   a runbook's agent asks for one scale or restart, for the
                          run it holds (--task <ID>, else the one routine run it has claimed here); it says whether
                          the owner's envelope covers it or it waits for the owner, and names the plan. Only a
-                         runbook's run may; it's the one change a run may ask for, and it never applies anything
+                         runbook's run may, with the Act key from its payload in BREAKAWAY_ACT_KEY (never a flag); it's
+                         the one change a run may ask for, and it never applies anything
   infra adopt <environment>   write the board's draft of the environment's desired state, drafted from what runs
                          there, to .github/breakaway-infra/<environment>.json, then check it like infra check and say
                          what to commit; it never plans or applies, and writes nothing for an observe-only environment
@@ -1473,6 +1474,7 @@ const commands = {
           agent: agent(),
           opts,
           inRepo: (t) => !slug || inRepo(t, slug, repoContext.registry),
+          key: process.env.BREAKAWAY_ACT_KEY ?? null,
         });
       } catch (error) {
         if (!(error instanceof InfraActError)) throw error;
