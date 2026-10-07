@@ -22,13 +22,13 @@ import { InputError, resolveRef } from './model.js';
 import { install } from './install.js';
 import { runsTheBoard } from './infra-environments.js';
 import { declares } from './infra-provider.js';
-import { checkAct, checkEnvelope, envelopeWords, judgeChange, windowWords } from './infra-envelopes.js';
+import { HOURS_MAX, checkAct, checkEnvelope, envelopeWords, judgeChange, windowWords } from './infra-envelopes.js';
 
 /** @typedef {import('./infra-envelopes.js').Envelope} Envelope */
 
 const HOUR_MS = 3_600_000;
 /** The most acts an environment keeps: plenty for any restart window. */
-const ACTS_KEPT = 500;
+export const ACTS_KEPT = 500;
 /** How long a run's act key works: a runbook's run is for what's happening now, and a new start gets a new key. */
 export const ACT_KEY_MS = 12 * HOUR_MS;
 
@@ -386,11 +386,16 @@ export const infraEnvelopesMethods = {
         agent,
         verdict.why,
       );
+      // A restart inside the envelope stays while any window could count it (HOURS_MAX), so many acts can't push the
+      // ones that used the cap out and let more restarts through (BRK-229).
       this.sql.exec(
-        'DELETE FROM infra_envelope_acts WHERE environment = ? AND id NOT IN (SELECT id FROM infra_envelope_acts WHERE environment = ? ORDER BY id DESC LIMIT ?)',
+        `DELETE FROM infra_envelope_acts WHERE environment = ?
+           AND id NOT IN (SELECT id FROM infra_envelope_acts WHERE environment = ? ORDER BY id DESC LIMIT ?)
+           AND NOT (change = 'restart' AND inside = 1 AND at > ?)`,
         env.id,
         env.id,
         ACTS_KEPT,
+        now - HOURS_MAX * HOUR_MS,
       );
       this.appendInfraAudit({
         kind: 'envelope',

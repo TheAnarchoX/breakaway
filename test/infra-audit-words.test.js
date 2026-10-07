@@ -24,6 +24,19 @@ describe('auditWords', () => {
     expect(auditWords({ kind: 'rollback', outcome: 'rolled back' })).toEqual({ label: 'Rolled back', outcome: '' });
   });
 
+  it('says an environment was added, changed, or removed, and a pipeline move changed its target (BRK-229)', () => {
+    expect(auditWords({ kind: 'environment', outcome: 'added' })).toEqual({ label: 'Environment added', outcome: '' });
+    expect(auditWords({ kind: 'environment', outcome: 'changed' })).toEqual({
+      label: 'Environment changed',
+      outcome: '',
+    });
+    expect(auditWords({ kind: 'environment', outcome: 'removed' })).toEqual({
+      label: 'Environment removed',
+      outcome: '',
+    });
+    expect(auditWords({ kind: 'environment', outcome: 'follows the pipeline’s staging' }).label).toBe('Target changed');
+  });
+
   it('never says inside an envelope for a change outside it, or for setting one', () => {
     expect(auditWords({ kind: 'envelope', outcome: 'inside' })).toEqual({ label: 'Inside an envelope', outcome: '' });
     expect(auditWords({ kind: 'envelope', outcome: 'outside' })).toEqual({
