@@ -197,7 +197,7 @@ export function EnvironmentView() {
     desired: state.desired,
     tick: state.tick,
     plans: state.plans,
-    seen: state.resources.length,
+    running: state.resources,
   });
 
   const load = async (/** @type {{ quiet?: boolean }} */ { quiet = false } = {}) => {

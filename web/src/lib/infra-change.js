@@ -220,7 +220,10 @@ export function fieldProblem(field, raw) {
       if (seen.has(name)) return `Two bindings are called ${name}: give each its own name.`;
       seen.add(name);
       const target = (field.targets ?? []).find((t) => t.type === b.type);
-      if (types.has(b.type) && target && !String(b[target.field] ?? '').trim())
+      // A binding that gives no target keeps what it binds now (BRK-285); one with an empty one needs a pick.
+      const picked = String(b[target?.field ?? ''] ?? '').trim() || String(b.resource ?? '').trim();
+      const kept = target && b.resource === undefined && b[target.field] === undefined;
+      if (types.has(b.type) && target && !picked && !kept)
         return `Pick the ${target.label.toLowerCase()} ${name} binds.`;
     }
     return null;
@@ -574,6 +577,72 @@ export function codePrompt(env, kind, edit) {
 export function declaredFor(declared, r) {
   return declared.find((d) => d.id === r.id) ?? declared.find((d) => d.kind === r.kind && d.name === r.name) ?? null;
 }
+
+/** A resource's ID on its platform: its inventory ID after `<kind>:` (BindingTarget in src/infra-provider.js). */
+const platformId = (/** @type {string} */ id) => id.slice(id.indexOf(':') + 1);
+
+/**
+ * @typedef {{ type: string, label: string, kind: string, field: string, by: 'id' | 'name' }} BindingTarget
+ * @typedef {{ key: string, label: string, binds: Record<string, string> }} BindingChoice
+ */
+
+/**
+ * The resources a binding of `target` may bind, each with what the binding says to bind it (BRK-285): by name in the
+ * target's field, or by the platform's ID for one that runs (matched as the plan matches it: the same ID, else kind
+ * and name); one the plan still makes has no platform ID yet, so it's named by its ID in the file, in `resource`.
+ * @param {BindingTarget} target
+ * @param {Array<{ id: string, kind: string, name: string }>} declared the file's resources
+ * @param {Array<{ id: string, kind: string, name: string }>} [running] what the board sees running
+ * @returns {BindingChoice[]}
+ */
+export function bindingChoices(target, declared, running = []) {
+  const live = running.filter((r) => r.kind === target.kind);
+  return declared
+    .filter((r) => r.kind === target.kind)
+    .map((r) => {
+      if (target.by === 'name') return { key: r.id, label: r.name, binds: { [target.field]: r.name } };
+      const runs = declaredFor(live, r);
+      return { key: r.id, label: r.name, binds: runs ? { [target.field]: platformId(runs.id) } : { resource: r.id } };
+    });
+}
+
+/**
+ * What a binding binds, among `choices`: the choice's key, `other` with the value when it names something no choice
+ * is, or neither when it names nothing. A binding the file gives without a target keeps what it binds now (the plan
+ * fills it in), so that's read from the running Worker's binding of the same name and type, and `kept` says so.
+ * @param {BindingTarget} target
+ * @param {Record<string, any>} b
+ * @param {BindingChoice[]} choices
+ * @param {unknown} [live] the running Worker's bindings
+ * @returns {{ key: string | null, other: string | null, kept: boolean }}
+ */
+export function boundChoice(target, b, choices, live = []) {
+  const kept = b.resource === undefined && b[target.field] === undefined;
+  const from = kept
+    ? ((Array.isArray(live) ? live : []).find((x) => isObject(x) && x.name === b.name && x.type === b.type) ?? {})
+    : b;
+  if (typeof from.resource === 'string' && from.resource) {
+    const c = choices.find((x) => x.key === from.resource);
+    return { key: c ? c.key : null, other: c ? null : from.resource, kept };
+  }
+  const value = String(from[target.field] ?? '');
+  if (!value) return { key: null, other: null, kept };
+  const c = choices.find((x) => x.binds[target.field] === value);
+  return { key: c ? c.key : null, other: c ? null : value, kept };
+}
+
+/**
+ * A binding once a choice is picked: its name and type, and what the choice says, nothing else it bound to before;
+ * with no choice, an empty target to pick.
+ * @param {BindingTarget} target
+ * @param {Record<string, any>} b
+ * @param {BindingChoice | null} choice
+ */
+export const bindChoice = (target, b, choice) => ({
+  name: b.name,
+  type: b.type,
+  ...(choice ? choice.binds : { [target.field]: '' }),
+});
 
 /** The change's card, in the brand's words (BRK-258, "The words"). */
 export const CARD = {

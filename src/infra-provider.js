@@ -266,7 +266,9 @@ const PATH = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$/u;
 
 /**
  * One type of binding a `bindings` field changes, and how it names its resource: a binding is `{ name, type, [field]: … }`,
- * with the resource's ID in the desired state (`by: 'id'`) or its name (`by: 'name'`).
+ * the field the provider's plan compares with what runs (BRK-285), holding the resource's ID on the platform (`by:
+ * 'id'`, its inventory ID after `<kind>:`) or its name (`by: 'name'`). One the plan still makes has no platform ID yet,
+ * so a `by: 'id'` binding names it by its ID in the desired state, as `{ name, type, resource }`.
  * @typedef {object} BindingTarget
  * @property {string} type the binding's type, as the platform calls it
  * @property {string} label what people call it

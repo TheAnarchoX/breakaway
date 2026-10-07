@@ -449,11 +449,9 @@ function created(out, edit, kind, { environment, seen }) {
     if (!Array.isArray(list)) return wrong('bindTo.worker', `${worker}’s ${bind.list} isn’t a list in the file`);
     if (list.some((b) => isObject(b) && b.name === binding))
       return wrong('bindTo.binding', `${worker} already has a binding called ${binding}: pick another name`);
-    list.push({
-      name: binding,
-      type: bind.target.type,
-      [bind.target.field]: bind.target.by === 'id' ? id : edit.name,
-    });
+    // A new resource has no ID on the platform yet: one bound by ID names its ID in the file until it runs (BRK-285).
+    const target = bind.target.by === 'id' ? { resource: id } : { [bind.target.field]: edit.name };
+    list.push({ name: binding, type: bind.target.type, ...target });
     writePath(w, parts, list);
     binder = w.id;
     bound = `, bound to ${worker} as ${binding}`;
