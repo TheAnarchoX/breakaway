@@ -258,6 +258,8 @@ const PATH = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$/u;
  * @property {string[]} [kinds] the kinds a `resource` may name
  * @property {BindingTarget[]} [targets] the binding types a `bindings` field changes: a binding of any other type (a
  *   variable, a secret) is shown by its name and type, and kept as it is
+ * @property {Record<string, string>} [typeLabels] a `bindings` field's words for binding types its `targets` don't
+ *   list (a Durable Object, static assets), so a change reads '+ CHAT (Durable Object)' (WEB-110)
  * @property {EditableField[]} [fields] a `rules` field's fields, inside one rule
  * @property {Record<string, unknown>} [template] what a new rule starts from
  */

@@ -95,6 +95,24 @@ const BINDABLE = [
   { type: 'queue', label: 'Queue', kind: 'queue', field: 'resource', by: 'id' },
   { type: 'service', label: 'Worker', kind: 'worker', field: 'service', by: 'name' },
 ];
+/** The binding types BINDABLE doesn't list, in words, for a change's lines (WEB-110). */
+const BINDING_WORDS = {
+  durable_object_namespace: 'Durable Object',
+  assets: 'static assets',
+  plain_text: 'variable',
+  secret_text: 'secret',
+  json: 'variable',
+  analytics_engine: 'Analytics Engine',
+  ai: 'Workers AI',
+  browser: 'Browser Rendering',
+  hyperdrive: 'Hyperdrive',
+  vectorize: 'Vectorize index',
+  version_metadata: 'version metadata',
+  workflow: 'Workflow',
+  send_email: 'email',
+  mtls_certificate: 'mTLS certificate',
+  dispatch_namespace: 'dispatch namespace',
+};
 const CRON = '^\\S+( \\S+){4}$';
 const VALUES_ELSEWHERE = 'Set with the Worker’s deploy, never here.';
 
@@ -159,6 +177,7 @@ export const EDITABLE = {
         label: 'Bindings',
         type: 'bindings',
         targets: BINDABLE,
+        typeLabels: BINDING_WORDS,
         help: 'The environment’s databases, namespaces, buckets, queues, and Workers it reaches, each by a name its code uses. Variables and secrets are kept as they are.',
       },
     ],

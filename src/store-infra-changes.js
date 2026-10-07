@@ -19,6 +19,7 @@ import { DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desire
 import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.js';
 import { planDigest } from './infra-runner.js';
 import { creatableKinds } from './infra-provider.js';
+import { planView } from './infra-plans.js';
 import { redact } from './redact.js';
 import {
   applyEdits,
@@ -30,7 +31,10 @@ import {
   checkEdits,
   desiredText,
   LIVE_STATES,
+  mergeOutcome,
+  outcomeSummary,
   PREVIEW_CACHE_MS,
+  readHasMerge,
   PREVIEWS_PER_MINUTE,
   writablePath,
 } from './infra-changes.js';
@@ -83,6 +87,16 @@ export const infraChangesMethods = {
       );
       CREATE INDEX IF NOT EXISTS infra_changes_environment ON infra_changes (environment, state);
     `);
+    // What a merge became (WEB-110): the merge's commit and when, then the outcome the first compare after it found.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_changes)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('merge_sha')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN merge_sha TEXT');
+    if (!have.has('merged_at')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN merged_at INTEGER');
+    if (!have.has('outcome')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN outcome TEXT');
   },
 
   /** Environment `ref`'s row, when the board may change it from the console; else a 409 saying why not. */
@@ -128,6 +142,8 @@ export const infraChangesMethods = {
       approval: row.approval ? JSON.parse(row.approval) : null,
       state: row.state,
       why: row.why ?? null,
+      merged: row.merged_at ? new Date(row.merged_at).toISOString() : null,
+      outcome: row.outcome ? JSON.parse(row.outcome) : null,
       created: new Date(row.created).toISOString(),
       updated: new Date(row.updated).toISOString(),
     };
@@ -279,6 +295,7 @@ export const infraChangesMethods = {
         ? this.inventoryRows('WHERE i.environment = ?', env.id)
         : [],
       creatable: (kind) => creatable[kind] ?? null,
+      fields: (kind) => (typeof provider?.editable === 'function' ? provider.editable(kind)?.fields : null),
     });
     const head = { head: base.sha, from: base.from, lines: made.lines, dropped: made.dropped };
     if (made.problems.length) return unfit(made.problems, head);
@@ -562,6 +579,7 @@ export const infraChangesMethods = {
     const ref = `#${row.pull}`;
     if (pull.merged_at || pull.merged) {
       this.moveInfraChange(row, 'merged', { by: 'board', outcome: 'merged', summary: `${ref} merged on GitHub` });
+      this.keepChangeMerge(row.n, pull.merge_commit_sha ?? null, pull.merged_at ? Date.parse(pull.merged_at) : null);
       return true;
     }
     if (pull.state === 'closed') {
@@ -583,6 +601,66 @@ export const infraChangesMethods = {
       return true;
     }
     return false;
+  },
+
+  /** Keeps what GitHub says of a change's merge: its commit and when (WEB-110). */
+  keepChangeMerge(n, sha, at) {
+    this.sql.exec(
+      'UPDATE infra_changes SET merge_sha = ?, merged_at = ? WHERE n = ?',
+      sha ?? null,
+      Number.isFinite(at) ? at : Date.now(),
+      Number(n),
+    );
+  },
+
+  /**
+   * The environment's merged changes whose outcome isn't known yet and whose merge the desired state the board last
+   * read includes, so this compare is the one after their merge (WEB-110).
+   */
+  changesToSettle(env) {
+    const read = this.sql
+      .exec('SELECT sha, read_at FROM infra_desired WHERE repo = ? AND environment = ?', env.repo, env.name)
+      .toArray()[0];
+    if (!read) return [];
+    return this.sql
+      .exec("SELECT * FROM infra_changes WHERE environment = ? AND state = 'merged' AND outcome IS NULL", Number(env.id))
+      .toArray()
+      .filter((row) =>
+        readHasMerge(
+          { sha: read.sha ?? null, readAt: read.read_at ?? null },
+          { mergeSha: row.merge_sha ?? null, mergedAt: row.merged_at ?? row.updated },
+        ),
+      );
+  },
+
+  /**
+   * Records what a compare found for the merged changes it settles: nothing to apply, the plan that covers them, or
+   * why the environment holds them. Each gets its audit entry.
+   * @param {Record<string, any>[]} rows changesToSettle's
+   * @param {{ moved: boolean, empty: boolean, plan?: number | string | null, held?: string | null }} compare
+   */
+  settleMergedChanges(rows, { moved, empty, plan = null, held = null }) {
+    if (!rows.length) return;
+    const view = plan === null ? null : planView(this.planRow(plan), { full: false });
+    const outcome = mergeOutcome({ moved, empty, plan: view, held });
+    for (const row of rows) {
+      this.sql.exec(
+        'UPDATE infra_changes SET outcome = ?, updated = ? WHERE n = ?',
+        JSON.stringify(outcome),
+        Date.now(),
+        row.n,
+      );
+      this.appendInfraAudit({
+        kind: 'change',
+        repo: row.repo,
+        environment: row.name,
+        environmentId: Number(row.environment),
+        ...(outcome.plan ? { plan: outcome.plan } : {}),
+        by: 'board',
+        outcome: outcome.kind === 'nothing' ? 'nothing to apply' : outcome.kind,
+        summary: outcomeSummary(row.pull ? `#${row.pull}` : `change ${row.n}`, outcome),
+      });
+    }
   },
 
   /** During a sync: follow the repository's live changes in GitHub's list of pull requests (no extra call). */
