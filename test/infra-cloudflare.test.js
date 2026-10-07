@@ -778,7 +778,9 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
     const before = Date.now();
     await observe({ ...ctx, resources: found.resources });
     const queries = fetch.calls.filter((c) => c.path === '/graphql');
-    const first = queries.filter((q) => Date.parse(q.body.variables.to) - Date.parse(q.body.variables.from) === 15 * 60_000);
+    const first = queries.filter(
+      (q) => Date.parse(q.body.variables.to) - Date.parse(q.body.variables.from) === 15 * 60_000,
+    );
     expect(first.map((c) => c.body.query)).toEqual(Object.values(HEALTH_DATASETS).map((d) => datasetQuery(d)));
     for (const q of queries) {
       // Cloudflare's analytics arrive late: the window ends 5 minutes back, so the newest empty minutes never count.
@@ -905,9 +907,9 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
 
     // A queue nothing consumes is degraded; one whose backlog the token can't read is unknown, naming the call.
     const lonely = resources.map((r) => (r.kind === 'queue' ? { ...r, attrs: { ...r.attrs, consumers: [] } } : r));
-    expect((await observe({ ...ctx, resources: lonely })).find((h) => h.resource === `queue:${QUEUE_JOBS}`)).toMatchObject(
-      { state: 'degraded', text: 'No consumer is attached, so nothing reads its messages' },
-    );
+    expect(
+      (await observe({ ...ctx, resources: lonely })).find((h) => h.resource === `queue:${QUEUE_JOBS}`),
+    ).toMatchObject({ state: 'degraded', text: 'No consumer is attached, so nothing reads its messages' });
     answers[`/accounts/${ACCOUNT}/queues/${QUEUE_JOBS}/metrics`] = 403;
     expect((await observe({ ...ctx, resources })).find((h) => h.resource === `queue:${QUEUE_JOBS}`)).toMatchObject({
       state: 'unknown',
@@ -929,7 +931,9 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
     const longer = cloudflareAnswers();
     longer['/graphql'] = (body) => {
       const minutes = (Date.parse(body.variables.to) - Date.parse(body.variables.from)) / 60_000;
-      return minutes > 60 ? { data: null, errors: [{ message: 'time range too wide' }] } : cloudflareUsage(healthRows())(body);
+      return minutes > 60
+        ? { data: null, errors: [{ message: 'time range too wide' }] }
+        : cloudflareUsage(healthRows())(body);
     };
     const { by: quiet } = await healthOf(longer);
     expect(quiet[`kv:${KV_SESSIONS}`]).toMatchObject({ state: 'idle', text: 'Idle: no operations in the last hour' });

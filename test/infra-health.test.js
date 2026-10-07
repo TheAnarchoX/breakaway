@@ -166,7 +166,10 @@ describe('idle in signals and apply checks (BRK-266)', () => {
     expect(healthSignals(where, idle, new Map([['worker:acme-api', 'healthy']]))).toEqual([]);
     expect(healthSignals(where, idle, new Map())).toEqual([]);
     expect(healthSignals(where, idle, new Map([['worker:acme-api', 'down']]))).toEqual([
-      expect.objectContaining({ level: 'info', text: 'worker:acme-api is healthy again: Idle: no requests in the last day' }),
+      expect.objectContaining({
+        level: 'info',
+        text: 'worker:acme-api is healthy again: Idle: no requests in the last day',
+      }),
     ]);
   });
 
@@ -177,9 +180,7 @@ describe('idle in signals and apply checks (BRK-266)', () => {
       reversible: true,
       changes: [{ op: 'update', resource: 'worker:acme-api', kind: 'worker', name: 'acme-api', reversible: true }],
     };
-    const verdict = healthVerdict(/** @type {any} */ (diff), [
-      { resource: 'worker:acme-api', state: 'idle', at: AT },
-    ]);
+    const verdict = healthVerdict(/** @type {any} */ (diff), [{ resource: 'worker:acme-api', state: 'idle', at: AT }]);
     expect(verdict).toEqual({ ok: true, problems: [], unknown: ['acme-api'], touched: 1 });
   });
 });

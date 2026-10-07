@@ -197,7 +197,12 @@ describe('inventory (BRK-177)', () => {
     provider.observe = async (ctx) =>
       (await observe(ctx)).map((h) =>
         h.resource === 'svc-api'
-          ? { ...h, at: '2026-10-06T13:00:00Z', state: 'unknown', text: 'Couldn’t read its health: GET /metrics failed' }
+          ? {
+              ...h,
+              at: '2026-10-06T13:00:00Z',
+              state: 'unknown',
+              text: 'Couldn’t read its health: GET /metrics failed',
+            }
           : { ...h, at: '2026-10-06T13:00:00Z' },
       );
     expect((await refresh('fake-keep', registry)).ok).toBe(true);
@@ -255,8 +260,7 @@ describe('inventory (BRK-177)', () => {
       calls.push({ url: String(url), init });
       return new Response('', { status });
     };
-    const refreshWith = () =>
-      runInDurableObject(store(), (s) => s.refreshInventory('fake-url', { registry, fetch }));
+    const refreshWith = () => runInDurableObject(store(), (s) => s.refreshInventory('fake-url', { registry, fetch }));
 
     await refreshWith();
     expect(calls).toHaveLength(1);
