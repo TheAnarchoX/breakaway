@@ -41,7 +41,7 @@ To turn it on, connect Cloudflare’s read-only token on **Connections** (the pe
 3. **`npx breakaway infra init`** in the repository, then merge what it writes (`.github/workflows/breakaway-infra.yml`).
 4. The board’s GitHub App with **Actions: read and write** on the repository.
 
-Short-lived environments share one GitHub environment, `short-lived`, with its own token. The manual’s [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) section has the rest.
+[Get started with Architect](/docs/get-started-with-architect/) walks through all of it, from the token to your first approved plan. Short-lived environments share one GitHub environment, `short-lived`, with its own token. The manual’s [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) section has the rest.
 
 The board’s own install is always observe only: Architect watches it and never changes it.
 

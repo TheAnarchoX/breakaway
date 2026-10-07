@@ -56,6 +56,7 @@ A signal that crosses a rule opens an incident: a task, in the repository that o
 
 ## Read more
 
+- [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/): from a read-only token to your first approved plan, step by step.
 - [Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2/): what updating changes, what stays off, and how to go back.
 - [The manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect): environments, plans, envelopes, signals, incidents, and cost, in full.
 - [Run your own board](https://leavethepack.dev/docs/quickstart/), if you don’t have one yet.
