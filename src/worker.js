@@ -600,11 +600,17 @@ async function handleApi(request, env, url, ctx) {
   // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
   if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
     return send(await s.infraCheckApi(body));
-  // Inventory (BRK-177): anyone signed in reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
+  // Inventory (BRK-177): anyone signed in reads it and when the board last looked; a refresh is the board's own (the
+  // cron, a token just pasted) or the owner's Refresh, from the signed-in browser only (BRK-248). An agent's `by` is
+  // refused too.
   if (parts[0] === 'infra' && parts[1] === 'inventory') {
     const q = (name) => url.searchParams.get(name);
-    if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST')
+    if (parts.length === 3 && parts[2] === 'refresh' && method === 'GET')
+      return send(await s.inventoryRefreshStateApi());
+    if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can refresh the inventory' });
       return send(await s.inventoryRefreshApi(body));
+    }
     if (parts.length === 2 && method === 'GET')
       return send(
         await s.inventoryApi({

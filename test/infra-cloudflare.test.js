@@ -879,7 +879,9 @@ describe('Cloudflare’s health and alerts in the signal stream (BRK-191)', () =
     const answers = cloudflareAnswers();
     answers['/graphql'] = cloudflareUsage(healthRows());
     const { production } = await onCloudflare(answers);
-    await inStore((s) => s.refreshInventory('cloudflare'));
+    // Connecting looked once already (BRK-248); make sure it did, since production may be new here.
+    if (!(await inStore((s) => s.inventoryRefreshRow('cloudflare'))))
+      await inStore((s) => s.refreshInventory('cloudflare'));
 
     const health = await signals('kind=health');
     const on = (id) => health.filter((s) => s.resource === id);

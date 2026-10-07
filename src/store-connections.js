@@ -1194,9 +1194,16 @@ export const connectionsMethods = {
         now,
         now,
       );
+      // The inventory fills at once (BRK-248), so the environments have something to show.
+      const inventory = await this.inventoryAfterConnect(provider.id);
       return {
         status: replaced ? 200 : 201,
-        body: { ok: true, ...(await this.providerState(provider)), ...(replaced ? { replaced: true } : {}) },
+        body: {
+          ok: true,
+          ...(await this.providerState(provider)),
+          ...(replaced ? { replaced: true } : {}),
+          ...(inventory ? { inventory } : {}),
+        },
       };
     });
   },
