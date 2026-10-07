@@ -274,7 +274,45 @@ const gh = {
   writeError: null, // [status, message] for the next write
   autoMerge: null,
   prompt: null, // tools/tasks/routine-prompt.md on main
+  queries: [], // the GraphQL reads the board sent (BRK-269)
+  graphqlError: null, // what GraphQL answers every read with, when set: the board reads over REST instead
 };
+
+/** GitHub's GraphQL answer for one pull request's details, from the same pretend state REST answers from (BRK-269). */
+function graphqlPull(number) {
+  const found = gh.pulls.find((p) => p.number === number);
+  if (!found) return null;
+  const [mergeable, state] = gh.mergeable[number] ?? [true, 'clean'];
+  const up = (v) => (v == null ? null : String(v).toUpperCase());
+  return {
+    number,
+    mergeable: mergeable === true ? 'MERGEABLE' : mergeable === false ? 'CONFLICTING' : 'UNKNOWN',
+    mergeStateStatus: up(state) ?? 'UNKNOWN',
+    reviews: { nodes: (gh.reviews[number] ?? []).map((r) => ({ state: r.state, author: r.user ?? null })) },
+    commits: {
+      nodes: [
+        {
+          commit: {
+            statusCheckRollup: {
+              contexts: {
+                nodes: (gh.checks[found.head.sha] ?? []).map((c) => ({
+                  __typename: 'CheckRun',
+                  databaseId: c.id ?? null,
+                  name: c.name,
+                  status: up(c.status),
+                  conclusion: up(c.conclusion),
+                  permalink: c.html_url ?? null,
+                  detailsUrl: c.details_url ?? null,
+                  startedAt: c.started_at ?? null,
+                })),
+              },
+            },
+          },
+        },
+      ],
+    },
+  };
+}
 
 function pr(
   number,
@@ -331,7 +369,7 @@ async function otherRepo(rest, auth, reply) {
   if (rest === '/installation')
     return (await verifyJwt(auth)) ? reply({ id: 88 }) : reply({ message: 'Bad credentials' }, 401);
   if (auth !== 'Bearer ghs_test') return reply({ message: 'Bad credentials' }, 401);
-  if (other.fail) return reply({ message: other.fail[1] }, other.fail[0]);
+  if (other.fail) return reply({ message: other.fail[1] }, other.fail[0], other.fail[2]);
   // GitHub's answer for a repository with no commits yet (CLD-191).
   if (other.empty && (rest === '/commits' || rest.startsWith('/contents/')))
     return reply({ message: 'Git Repository is empty.' }, 409);
@@ -381,10 +419,21 @@ function mockGitHub() {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     const auth = new Headers(init.headers).get('Authorization') ?? '';
-    const reply = (data, status = 200) =>
-      new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+    const reply = (data, status = 200, headers = {}) =>
+      new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
     const path = url.pathname;
     gh.calls.push(path);
+    // A GraphQL query is a read: a sync's pull request details, for acme/widgets only (another repository's
+    // are refused, so it reads them over REST).
+    const sent = path === '/graphql' && init.body ? JSON.parse(init.body) : null;
+    if (sent && /^\s*query\b/u.test(sent.query)) {
+      if (auth !== 'Bearer ghs_test') return reply({ message: 'Bad credentials' }, 401);
+      gh.queries.push(sent);
+      if (gh.graphqlError || sent.variables?.name !== 'widgets')
+        return reply({ errors: [{ message: gh.graphqlError ?? 'Could not resolve to a Repository' }] });
+      const asked = [...sent.query.matchAll(/pr(\d+): pullRequest/gu)].map((m) => Number(m[1]));
+      return reply({ data: { repository: Object.fromEntries(asked.map((n) => [`pr${n}`, graphqlPull(n)])) } });
+    }
     if (init.method && init.method !== 'GET' && !path.startsWith('/app/')) {
       if (auth !== 'Bearer ghs_test') return reply({ message: 'Bad credentials' }, 401);
       gh.writes.push([init.method, path, init.body ? JSON.parse(init.body) : null]);
@@ -614,6 +663,53 @@ describe('GitHub on the board', () => {
       expect.objectContaining({ number: 10, closes: false }),
       expect.objectContaining({ number: 9, closes: true, state: 'merged', verdict: null }),
     ]);
+  });
+
+  it('reads pull request details in one GraphQL query, and over REST when GraphQL fails (BRK-269)', async () => {
+    gh.pulls = [pr(20, { sha: 'sha20' }), pr(21, { sha: 'sha21' })];
+    gh.checks.sha20 = [
+      { id: 1, name: 'CI', status: 'completed', conclusion: 'failure', started_at: '2026-09-29T10:00:00Z' },
+      // A newer run of the same check passed: the newest wins, as over REST.
+      { id: 2, name: 'CI', status: 'completed', conclusion: 'success', started_at: '2026-09-29T10:05:00Z' },
+    ];
+    gh.checks.sha21 = [{ id: 3, name: 'CI', status: 'in_progress', conclusion: null }];
+    gh.reviews[20] = [{ user: { login: 'octocat' }, state: 'APPROVED' }];
+    gh.mergeable[21] = [false, 'dirty'];
+    const details = (overview) =>
+      overview.open
+        .filter((p) => [20, 21].includes(p.number))
+        .map((p) => [p.number, p.checks.state, p.review.decision, p.mergeable, p.verdict])
+        .sort((a, b) => a[0] - b[0]);
+    const expected = [
+      [20, 'success', 'approved', true, 'ready'],
+      [21, 'pending', 'none', false, 'conflicts'],
+    ];
+
+    gh.calls = [];
+    gh.queries = [];
+    const viaGraphql = await body(await api('github/sync', { method: 'POST' }));
+    expect(viaGraphql.error).toBeNull();
+    expect(details(viaGraphql)).toEqual(expected);
+    expect(gh.queries).toHaveLength(1);
+    expect(gh.queries[0].variables).toEqual({ owner: 'acme', name: 'widgets' });
+    // None of the four REST calls per pull request.
+    expect(gh.calls.filter((c) => /\/(check-runs|status|reviews)$|\/pulls\/\d+$/u.test(c))).toEqual([]);
+
+    gh.graphqlError = 'Something went wrong while executing your query.';
+    gh.calls = [];
+    gh.reviews[20] = [{ user: { login: 'octocat' }, state: 'CHANGES_REQUESTED' }];
+    gh.pulls = gh.pulls.map((p) => ({ ...p, updated_at: '2026-09-29T11:00:00Z' }));
+    try {
+      const viaRest = await body(await api('github/sync', { method: 'POST' }));
+      expect(viaRest.error).toBeNull();
+      expect(details(viaRest)).toEqual([
+        [20, 'success', 'changes_requested', true, 'review'],
+        [21, 'pending', 'none', false, 'conflicts'],
+      ]);
+      expect(gh.calls).toEqual(expect.arrayContaining([`${REPO}/commits/sha20/check-runs`, `${REPO}/pulls/21`]));
+    } finally {
+      gh.graphqlError = null;
+    }
   });
 
   it('shows the verdict in the inbox order and reads one pull request live, with its diff', async () => {
@@ -1410,7 +1506,16 @@ describe('GitHub per repository (CLD-124)', () => {
 
   it('keeps syncing one repository while another fails or runs out of requests', async () => {
     const [cld] = await create([{ description: 'Ship while scratch is down', project: 'cloud' }]);
-    other.fail = [403, 'API rate limit exceeded for installation ID 88.'];
+    // GitHub's primary limit: a 403 with no calls remaining and when they come back.
+    other.fail = [
+      403,
+      'API rate limit exceeded for installation ID 88.',
+      {
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 600),
+        'x-ratelimit-resource': 'core',
+      },
+    ];
     gh.pulls = [
       pr(61, {
         title: 'Ship it',
@@ -1436,7 +1541,15 @@ describe('GitHub per repository (CLD-124)', () => {
       ['widgets', 'working'],
       ['scratch', 'attention'],
     ]);
+    // Until the limit resets, the board doesn't call GitHub for that repository at all (BRK-269).
     other.fail = null;
+    gh.calls = [];
+    const waiting = await body(await api('github/sync?repo=scratch', { method: 'POST' }));
+    expect(waiting.error).toMatch(/rate limit is used up until \d\d:\d\d UTC/u);
+    expect(gh.calls.filter((c) => c.startsWith(`${OTHER}/`))).toEqual([]);
+    await runInDurableObject(stub(), (store) => {
+      store.ghCache.scratch.limits.core.reset = Date.now() - 1;
+    });
     expect((await body(await api('github/sync?repo=scratch', { method: 'POST' }))).error).toBeNull();
   });
 
