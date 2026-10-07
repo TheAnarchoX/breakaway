@@ -11,8 +11,8 @@ import { NoneYet } from './ui.jsx';
  * A pipeline environment's deploys on its page (WEB-88; docs/specs/IDEA-19-architect.md, "The first instance"): the
  * deploy flow and the environment as one place. What's live there and who put it there, its recent deploys with their
  * logs, and on production the release flow's own Promote and Roll back, the same buttons with the same checks. The
- * release flow's cards link here, and this links back. What's live sits in the console's admin column, and the recent
- * deploys in its ops column, under the incidents (WEB-100).
+ * release flow's cards link here, and this links back. Both sit in the console's ops column, under the incidents:
+ * what's live, then the recent deploys (WEB-100, WEB-108).
  */
 
 /** Recent deploys the ops column lists. */
