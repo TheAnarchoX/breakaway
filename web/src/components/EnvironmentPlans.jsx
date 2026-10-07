@@ -53,7 +53,8 @@ function ChangeRow({ row, onCard }) {
         </span>
       </span>
       <span class="meta">
-        Your change from the console · {lines} {lines === 1 ? 'edit' : 'edits'} · <When iso={change.updated} />
+        Your change from the console · {row.making ? 'its plan is being made · ' : ''}
+        {lines} {lines === 1 ? 'edit' : 'edits'} · <When iso={change.updated} />
       </span>
       <ChevronRight size={16} aria-hidden="true" class="infra-plan-row-go" />
     </>

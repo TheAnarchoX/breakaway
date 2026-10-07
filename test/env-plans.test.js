@@ -54,6 +54,19 @@ describe('plansPanel', () => {
     expect(plans).toEqual([]);
   });
 
+  it('names an open change whose plan check is still running, then lists its plan once it exists (WEB-116)', () => {
+    const open = change(150, 'open', { digest: null, commit: null });
+    const making = plansPanel({ changes: { open, changes: [open] }, checks: () => 'pending', now });
+    expect(making.changes.map((r) => [r.change.pull.number, r.card.state, r.making])).toEqual([
+      [250, 'checking', true],
+    ]);
+    expect(making.open).toEqual([]);
+    const merged = change(150, 'merged', { outcome: { kind: 'plan', plan: 'plan-4', at: iso(MIN) } });
+    const planned = plansPanel({ plans: [plan(4, 'waiting')], changes: { open: null, changes: [merged] }, now });
+    expect(planned.changes).toEqual([]);
+    expect(planned.open.map((r) => [r.plan.id, r.change.pull.number])).toEqual([['plan-4', 250]]);
+  });
+
   it('says a change is checking while its pull request checks run, and merging once approved', () => {
     const open = change(50, 'open');
     expect(plansPanel({ changes: { open, changes: [] }, checks: () => 'pending' }).changes[0].card.state).toBe(

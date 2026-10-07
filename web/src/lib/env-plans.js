@@ -13,7 +13,8 @@ const ENDED_PLANS = ['applied', 'failed', 'rolled back', 'rejected'];
 export const RECENT_PLANS = 5;
 
 /**
- * @typedef {{ change: any, card: { state: string } }} ChangeRow a console change and its card's state
+ * @typedef {{ change: any, card: { state: string }, making: boolean }} ChangeRow a console change, its card's state,
+ *   and whether its plan is still being made
  * @typedef {{ plan: any, run: any, progress: string | null, change: any }} PlanRow a plan, its run while it applies,
  *   and the console change it came from
  */
@@ -59,7 +60,10 @@ export function plansPanel({ plans = [], runs = [], changes = null, checks = () 
     const mine = change.state === 'open' || change.state === 'approved';
     const merged =
       change.state === 'merged' && (!change.outcome || change.outcome.kind === 'waits') && recentChange(change, now);
-    return mine || merged ? [{ change, card: cardState(change, { checks: checks(change) }) }] : [];
+    if (!mine && !merged) return [];
+    const card = cardState(change, { checks: checks(change) });
+    // Its pull request's plan check is still running (WEB-116): the plan is being made.
+    return [{ change, card, making: card.state === 'checking' }];
   });
 
   /** @returns {PlanRow} */
