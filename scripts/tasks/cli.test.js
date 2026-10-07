@@ -332,9 +332,9 @@ describe('features (BRK-85)', () => {
   });
 
   it('knows its subcommands', () => {
-    for (const sub of ['list', 'add', 'show', 'modify']) expect(unknownSubcommand('features', sub)).toBeNull();
+    for (const sub of ['list', 'add', 'show', 'modify', 'pull']) expect(unknownSubcommand('features', sub)).toBeNull();
     expect(unknownSubcommand('features', 'delete')).toMatch(
-      /^features has no "delete"; it has list, add, show, modify/u,
+      /^features has no "delete"; it has list, add, show, modify, pull/u,
     );
   });
 

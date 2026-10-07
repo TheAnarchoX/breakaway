@@ -89,7 +89,6 @@ describe('cross-task edits by a general agent', () => {
       { removeTags: ['horizon-auto'] },
       { autostart: 'yes' },
       { decision: { questions: [{ id: 'q', type: 'yesno', prompt: 'Ship it?' }] } },
-      { priority: 'H' },
       { pr: '12' },
       { project: 'ideas' },
     ]) {

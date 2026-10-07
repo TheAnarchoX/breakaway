@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { UndoChange, planningWords } from '../components/AgentPlanning.jsx';
 import {
   Activity,
   Archive,
@@ -26,6 +27,7 @@ import {
   MessageSquareWarning,
   Bot,
   CalendarRange,
+  Milestone,
   Play,
 } from 'lucide-preact';
 import { TRIGGER_LABEL } from '../components/Agents.jsx';
@@ -111,6 +113,7 @@ const ICONS = {
   chase_stalled: CircleAlert,
   chase_ended: CircleCheck,
   feature_planned: CalendarRange,
+  agent_planned: Milestone,
 };
 
 const SOURCES = {
@@ -198,6 +201,8 @@ function describe(change) {
       return `The chase on ${change.feature} ended: ${change.detail ?? 'every task is done or in review'}`;
     case 'feature_planned':
       return planned(change);
+    case 'agent_planned':
+      return planningWords(change);
     case 'pr_opened':
       return `${change.draft ? 'Draft pull request' : 'Pull request'} #${change.number} opened${change.by ? ` by ${change.by}` : ''}`;
     case 'pr_ready':
@@ -778,6 +783,12 @@ function Stream() {
                                 <q class="note-quote">
                                   <Inline text={c.text} />
                                 </q>
+                              </>
+                            )}
+                            {c.kind === 'agent_planned' && (
+                              <>
+                                {' '}
+                                <UndoChange change={c} />
                               </>
                             )}
                             {c.kind?.startsWith('pr_') && c.title && (

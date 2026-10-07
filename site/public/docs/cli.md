@@ -123,8 +123,9 @@ npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
 | --- | --- |
 | `features` | Features by release: each one’s progress and chase, and tags that could be features. |
 | `features show <slug>` | One feature: its release, progress, what waits for you, its chase, and its tasks in order. |
-| `features add <slug>` | A new feature; its tasks join by carrying `<slug>` as a tag. `--title`, `--brief` or `--brief-file`, `--release <x.y.z>` (yours; agents add one without a release), and `--from <ref>` (yours) to make it from the whole chain a task is in on the Dependencies view. |
-| `features modify <slug>` | Yours: `--title`, `--brief`, `--brief-file`, `--release <x.y.z\|none>`, `--state open\|shipped`. |
+| `features add <slug>` | A new feature; its tasks join by carrying `<slug>` as a tag. `--title`, `--brief` or `--brief-file`, `--release <x.y.z>`, and `--from <ref>` (yours) to make it from the whole chain a task is in on the Dependencies view. |
+| `features modify <slug>` | `--title`, `--brief`, `--brief-file`, `--release <x.y.z\|none>`, and `--state open\|shipped` (yours). An agent’s change shows in Activity and on the feature, where you can undo it. |
+| `features pull <x.y.z>` | Pull a release’s open tasks, and what they wait for, into now; `--into next` stages it in next, `--dry-run` only lists them. The next release goes in first. An agent’s pull shows on the feature, where you can undo it. |
 | `chase <slug>` | Yours: starts a chase. `--parallel <n>` is the most agents at once in one area (default 3), and changes it on a running chase. `--dry-run` shows what would start and starts nothing. |
 | `chase <slug> stop` | Yours: stops it. Nothing new starts; running agents finish. |
 | `peloton` | The pelotons the agent rides (its repository’s, and its chase’s), who’s on them, and the posts since it last read. `--all` for every post kept. |
