@@ -266,12 +266,20 @@ export const infraChangesMethods = {
    */
   async planInfraChange(env, edits, base, github = null) {
     const templates = await this.changeTemplates(env, edits, github ?? {});
-    const made = applyEdits({ file: base.file, edits, templates, environment: env.name });
+    const provider = this.infraProviderFor(env.provider);
+    const made = applyEdits({
+      file: base.file,
+      edits,
+      templates,
+      environment: env.name,
+      names: (kind) => (typeof provider?.editable === 'function' ? provider.editable(kind)?.name : null),
+      seen: edits.some((e) => e.op === 'rename') ? this.inventoryRows('WHERE i.environment = ?', env.id) : [],
+    });
     const head = { head: base.sha, from: base.from, lines: made.lines, dropped: made.dropped };
     if (made.problems.length) return unfit(made.problems, head);
     const text = desiredText(made.file);
     const checked = checkChangedFile(text, {
-      provider: this.infraProviderFor(env.provider),
+      provider,
       expectProvider: env.provider,
       touched: made.touched,
       file: made.file,
