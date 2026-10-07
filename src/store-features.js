@@ -3,8 +3,9 @@
  * (slug, title, brief, release, state) that tasks join by carrying its slug as a tag. Progress is
  * computed from the tasks, never typed. Tags on open tasks that aren't features yet are suggested,
  * and nothing is made until someone presses for it. Tasks gain no field, so Taskwarrior carries
- * membership as it is. Adding a feature is anyone's (agents shaping an idea add theirs); aiming it
- * at a release, planning its dates, changing it, and deleting it are the owner's.
+ * membership as it is. Adding a feature, aiming it at a release, retitling it, and pulling a release into now or
+ * next are anyone's (BRK-274): an agent's change is kept with its before and after, for Activity and the owner's
+ * undo (store-planning.js). Planning its dates, marking it shipped, and deleting it stay the owner's.
  */
 import { AgentError } from './store-agents.js';
 import { featureIdea } from './feature-prompt.js';
@@ -201,6 +202,15 @@ export const featuresMethods = {
       throw new AgentError(`only the owner can ${what}`, 403);
   },
 
+  /** Who asks to change the plan: null for the owner, or the agent's name, checked. */
+  featureAgent(by) {
+    if (by === undefined || by === null || by === '' || by === 'owner') return null;
+    const name = String(by).trim();
+    if (!/^[\w.@:/-]{1,64}$/u.test(name))
+      throw new InputError('say who is asking: a name of letters, digits, and . _ - @ : / (up to 64)');
+    return name;
+  },
+
   /** The checked fields of `input`, over `base` for the ones it doesn't give. */
   featureFields(input, base) {
     const out = { ...base };
@@ -238,8 +248,6 @@ export const featuresMethods = {
     const problem = featureTagProblem(slug);
     if (problem) throw new InputError(problem);
     const owner = !input.by || input.by === 'owner';
-    if (!owner && 'release' in input && input.release)
-      throw new AgentError('only the owner aims a feature at a release; add it without one', 403);
     if (!owner && 'state' in input) throw new AgentError('only the owner marks a feature shipped', 403);
     if (!owner && plansDates(input)) throw new AgentError('only the owner plans a feature’s dates', 403);
     const by = owner ? 'owner' : String(input.by).trim();
@@ -295,6 +303,8 @@ export const featuresMethods = {
       now,
     );
     if (f.plannedStart || f.plannedEnd) this.featurePlanned(slug, f);
+    // An agent's release on a new feature is a change of plan like any other: the owner can undo it.
+    if (!owner && f.release) this.recordFeaturePlanning(by, slug, { release: null }, { release: f.release });
     if (picked) {
       const at = new Date();
       this.commit(
@@ -381,8 +391,14 @@ export const featuresMethods = {
     return { join, kept };
   },
 
+  /**
+   * Changes a feature. An agent may change its title, brief, and release (BRK-274), each change kept for the owner's
+   * undo; its planned dates and whether it's shipped stay the owner's.
+   */
   modifyFeature(slug, input) {
-    this.ownerOnlyFeatures(input.by, 'change a feature');
+    const agent = this.featureAgent(input.by);
+    if (agent && 'state' in input) throw new AgentError('only the owner marks a feature shipped or open again', 403);
+    if (agent && plansDates(input)) throw new AgentError('only the owner plans a feature’s dates', 403);
     const row = this.featureRow(slug);
     const f = this.featureFields(input, {
       ...row,
@@ -397,10 +413,11 @@ export const featuresMethods = {
       f.state,
       f.plannedStart,
       f.plannedEnd,
-      'owner',
+      agent ?? 'owner',
       Date.now(),
       row.slug,
     );
+    if (agent) this.recordFeaturePlanning(agent, row.slug, row, f);
     if (f.plannedStart !== (row.planned_start ?? null) || f.plannedEnd !== (row.planned_end ?? null))
       this.featurePlanned(row.slug, f);
     return this.featureDetail(row.slug);
@@ -500,7 +517,11 @@ export const featuresMethods = {
 
   featureDetail(slug) {
     const row = this.featureRow(slug);
-    return this.featureView(row, this.featureMembership(), { full: true });
+    // Agents' changes to its plan (BRK-274), newest first, each with the owner's undo.
+    return {
+      ...this.featureView(row, this.featureMembership(), { full: true }),
+      planning: this.featurePlanning(row.slug, row.release),
+    };
   },
 
   /**
@@ -583,14 +604,15 @@ export const featuresMethods = {
   },
 
   /**
-   * Pulls `release` into now (BRK-126), or stages it in next (BRK-209) when `input.into` is `next`: the
-   * owner's. Only the first release with work outside that horizon can be pulled, so the roadmap fills now
-   * and next in version order. `dryRun` only says what would move.
+   * Pulls `release` into now (BRK-126), or stages it in next (BRK-209) when `input.into` is `next`: the owner's or
+   * an agent's (BRK-274), whose pull is kept with each task's horizon before, for the owner's undo. Only the first
+   * release with work outside that horizon can be pulled, so the roadmap fills now and next in version order.
+   * `dryRun` only says what would move.
    */
   pullRelease(release, input) {
     const into = input.into ?? 'now';
     if (into !== 'now' && into !== 'next') throw new InputError(`a release is pulled into now or next (not "${into}")`);
-    this.ownerOnlyFeatures(input.by, `pull a release into ${into}`);
+    const agent = this.featureAgent(input.by);
     const version = String(release ?? '').trim();
     if (!RELEASE.test(version)) throw new InputError(`the release is a version like 1.2.0 (not "${version}")`);
     this.writable();
@@ -620,6 +642,11 @@ export const featuresMethods = {
         ops.push(...diffOps(task.uuid, before, withChanges(before, { horizon: into }, now), now.toISOString()));
       }
       this.commit(ops);
+      if (agent)
+        this.recordPlanning(agent, 'pull', version, {
+          into,
+          tasks: Object.fromEntries(tasks.map((t) => [t.uuid, { before: t.horizon }])),
+        });
     }
     return { release: version, into, tasks, dryRun: Boolean(input.dryRun) };
   },

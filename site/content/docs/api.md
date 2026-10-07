@@ -80,14 +80,15 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `GET /api/peloton/<peloton>` | A peloton’s roster and posts: a repository’s slug, or `chase:<feature>`. |
 | `POST /api/peloton/<peloton>` | `{ agent, kind, text, reply_to?, task? }`. An agent holding a claimed task that rides it posts. Not the cookie. |
 | `GET /api/features`, `POST /api/features` | Features by release with their progress and chase, and suggested tags; make one (`tasks` or `from` joins tasks). |
-| `GET /api/features/<slug>`, `PATCH …`, `DELETE …` | One feature and its tasks; change or delete it (owner). |
+| `GET /api/features/<slug>`, `PATCH …`, `DELETE …` | One feature and its tasks, with `planning`, agents' changes to its plan; change it (an agent its title, brief, and release; the dates and shipped are the owner's), or delete it (owner). |
 | `POST /api/features/<slug>/chase` | Owner: `{ on, parallel?, dryRun? }` starts, changes, or stops a chase; `{ dismiss: true }` clears an ended chase’s note. |
 | `GET /api/routines`, `POST /api/routines` | List or create routines. |
 | `PATCH /api/routines/<slug>` | Change one. |
 | `POST /api/routines/<slug>/run` | Run it now. |
 | `POST /api/routines/<slug>/triggers`, `DELETE …/triggers/<id>` | Make or revoke a webhook trigger. |
 | `POST /api/horizons/close` | Close now; `{ dryRun: true }` only counts. |
-| `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ into: "next" }` stages it in next instead, from the next release with work in later; `{ dryRun: true }` only lists them. The owner's. |
+| `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ into: "next" }` stages it in next instead, from the next release with work in later; `{ dryRun: true }` only lists them. The owner's or an agent's (with its `by`), whose pull is kept for undo. |
+| `POST /api/planning/<id>/undo` | Undo an agent's change to the plan: a feature's release, title, or brief, a pull, or another task's fields. Refused when someone changed the same field since. Yours, from the signed-in web board. |
 
 ### Firing a routine from outside
 

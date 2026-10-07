@@ -1748,6 +1748,17 @@ export const actions = {
     loadFeatures();
     return result;
   },
+  /** Undoes an agent's change to the plan (BRK-274): what it changed goes back, and the roadmap and Activity follow. */
+  async undoPlanning(id) {
+    const result = await change(
+      () => api(`planning/${enc(String(id))}/undo`, { method: 'POST', body: {} }),
+      'Undone: it’s back to what it was.',
+    );
+    const open = featureOpen.peek();
+    if (open?.slug) loadFeature(open.slug);
+    loadFeatures();
+    return result;
+  },
   async deleteFeature(f) {
     const ok = await confirmDialog({
       title: `Delete ${f.title}?`,
