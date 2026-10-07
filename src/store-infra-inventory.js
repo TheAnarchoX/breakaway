@@ -26,6 +26,7 @@ import {
 import { costInCurrency } from './infra-currency.js';
 import { runsTheBoard } from './infra-environments.js';
 import { DAY, SIGNAL_RAW_DAYS, healthSignals } from './infra-signals.js';
+import { debounceHealthUrl, keepLastHealth, readHealthUrl, withHealthUrl } from './infra-health.js';
 
 /** @typedef {import('./infra-provider.js').ProviderRegistry} ProviderRegistry */
 /** @typedef {import('./infra-provider.js').Resource} Resource */
@@ -66,6 +67,28 @@ export const infraInventoryMethods = {
       .toArray()
       .map((c) => c.name);
     if (!columns.includes('cost_note')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN cost_note TEXT');
+    // What couldn't be read on the last refresh, while the last known health stays (BRK-266).
+    if (!columns.includes('health_note')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN health_note TEXT');
+    // How many health URL checks in a row failed, on the front door it's checked on (BRK-266).
+    if (!columns.includes('health_fails')) this.sql.exec('ALTER TABLE infra_inventory ADD COLUMN health_fails INTEGER');
+  },
+
+  /**
+   * The health URL an environment's desired state names (BRK-266), from its last valid copy, or null.
+   * @param {{ repo: string, name: string }} environment
+   * @returns {string | null}
+   */
+  environmentHealthUrl(environment) {
+    const row = this.sql
+      .exec(
+        'SELECT desired FROM infra_desired WHERE repo = ? AND environment = ? AND desired IS NOT NULL',
+        environment.repo,
+        environment.name,
+      )
+      .toArray()[0];
+    if (!row?.desired) return null;
+    const url = JSON.parse(String(row.desired))?.health?.url;
+    return typeof url === 'string' && url ? url : null;
   },
 
   /**
@@ -79,7 +102,8 @@ export const infraInventoryMethods = {
    * provider's `events` since the last refresh (its alerts) join the stream, one of each. Connections shows whether
    * that worked, as the provider's last signal, and how many environments discovery reached.
    * @param {string} providerId
-   * @param {{ registry?: ProviderRegistry }} [options] tests pass a registry with the fake provider
+   * @param {{ registry?: ProviderRegistry, fetch?: typeof fetch }} [options] tests pass a registry with the fake
+   *   provider, and a fetch for health URLs
    */
   async refreshInventory(providerId, options = {}) {
     const registry = options.registry ?? this.infraRegistry();
@@ -183,16 +207,37 @@ export const infraInventoryMethods = {
       const { environment, ctx, found } = slice;
       const elsewhere = [...slices.filter((s) => s !== slice).flatMap((s) => s.found.resources), ...failedResources];
       const seen = { ...ctx, resources: found.resources, elsewhere };
-      const health = await heard('observe', environment, async () =>
-        checkHealth(provider, await provider.observe(seen)),
-      );
+      /** @type {string | null} */
+      let observeFailed = null;
+      let health = await heard('observe', environment, async () => {
+        try {
+          return checkHealth(provider, await provider.observe(seen));
+        } catch (error) {
+          observeFailed = redact(error?.message ?? error).slice(0, 160);
+          throw error;
+        }
+      });
+      const url = this.environmentHealthUrl(environment);
+      /** @type {number | null} how many health URL checks in a row failed, kept on the front door */
+      let urlFails = null;
+      if (health && url) {
+        const before = this.sql
+          .exec(
+            "SELECT MAX(health_fails) AS fails FROM infra_inventory WHERE environment = ? AND kind IN ('route', 'custom-domain')",
+            environment.id,
+          )
+          .toArray()[0];
+        const { check, fails } = debounceHealthUrl(await readHealthUrl(url, options.fetch ?? fetch), before?.fails);
+        urlFails = fails;
+        health = withHealthUrl(found.resources, health, url, check, new Date().toISOString());
+      }
       const costs = await tryCall(async () => checkCosts(provider, await provider.cost(seen)));
       // Alerts since the last refresh, or as far back as the stream keeps them.
       const since = new Date(Math.max(lastSeen.get(environment.id) ?? 0, now - SIGNAL_RAW_DAYS * DAY)).toISOString();
       const alerts = await heard('read the alerts of', environment, async () =>
         checkSignals(provider, seen, since, await provider.events(seen, since)),
       );
-      Object.assign(slice, { health, costs, alerts });
+      Object.assign(slice, { health, costs, alerts, observeFailed, urlFails });
     }
     if (targeted.length && !slices.length) {
       for (const failure of failures) this.inventoryStaleSeen(failure.environment, providerId, failure.message, now);
@@ -212,7 +257,7 @@ export const infraInventoryMethods = {
       throw refused;
     }
     let count = 0;
-    for (const { environment, found, health, costs } of slices) {
+    for (const { environment, found, health, costs, observeFailed, urlFails } of slices) {
       // Each environment in its own transaction: one environment's slice is never half written.
       this.ctx.storage.transactionSync(() => {
         const before = new Map(
@@ -232,19 +277,21 @@ export const infraInventoryMethods = {
         const costOf = new Map((costs ?? []).map((c) => [c.resource, c]));
         for (const r of found.resources) {
           const last = before.get(r.id);
-          const h = health ? healthOf.get(r.id) : null;
+          const h = keepLastHealth(health ? (healthOf.get(r.id) ?? null) : null, last, health ? null : observeFailed);
           const c = costs ? costOf.get(r.id) : null;
           this.sql.exec(
-            'INSERT INTO infra_inventory (environment, provider, rid, kind, name, attrs, health, health_at, health_text, cost, currency, cost_note, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO infra_inventory (environment, provider, rid, kind, name, attrs, health, health_at, health_text, health_note, health_fails, cost, currency, cost_note, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             environment.id,
             providerId,
             r.id,
             r.kind,
             redact(r.name),
             JSON.stringify(redactAttrs(r.attrs ?? {})),
-            health ? (h?.state ?? null) : (last?.health ?? null),
-            health ? (h ? Date.parse(h.at) : null) : (last?.health_at ?? null),
-            health ? (h?.text ? redact(h.text).slice(0, 200) : null) : (last?.health_text ?? null),
+            h.state,
+            h.at,
+            h.text ? redact(h.text).slice(0, 200) : null,
+            h.note ? redact(h.note).slice(0, 300) : null,
+            r.kind === 'route' || r.kind === 'custom-domain' ? urlFails : null,
             costs ? (c?.amount ?? null) : (last?.cost ?? null),
             costs ? (c?.currency ?? null) : (last?.currency ?? null),
             costs ? (c?.note ? redact(c.note).slice(0, 500) : null) : (last?.cost_note ?? null),

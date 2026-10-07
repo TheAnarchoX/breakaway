@@ -15,8 +15,12 @@ export const CHANGE_KINDS = ['create', 'update', 'delete', 'scale', 'restart'];
 export const BASE_CHANGES = ['create', 'update', 'delete'];
 /** The change kinds a provider may add per resource kind, for envelopes. */
 export const ENVELOPE_CHANGES = ['scale', 'restart'];
-/** A resource's health, from `observe`. */
-export const HEALTH_STATES = ['healthy', 'degraded', 'down', 'unknown'];
+/**
+ * A resource's health, from `observe`. `idle` is deployed and reachable with no traffic and no errors seen (BRK-266):
+ * it counts as healthy, never as unknown. `unknown` is only for what the provider couldn't read, and its text says
+ * which call and what to do.
+ */
+export const HEALTH_STATES = ['healthy', 'idle', 'degraded', 'down', 'unknown'];
 /** What a signal is about: health, the platform's alerts, and cost (BRK-172: no metrics, logs, or traces yet). */
 export const SIGNAL_KINDS = ['health', 'alert', 'cost'];
 /** How loud a signal is. */
@@ -61,6 +65,7 @@ export const COST_NOTE_MAX = 500;
  * What should exist in one environment, from its desired-state file (BRK-180).
  * @typedef {object} DesiredState
  * @property {Resource[]} resources
+ * @property {{ url: string }} [health] the owner's health URL, checked on each refresh (BRK-266); providers ignore it
  */
 
 /**

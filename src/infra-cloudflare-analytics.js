@@ -249,14 +249,28 @@ export const COST_DATASETS = {
   },
 };
 
-/** How far back health looks: errors and slowness in the last this many minutes (BRK-188's "Observe" rows). */
+/** How far back health looks first: errors and slowness in the last this many minutes (BRK-188's "Observe" rows). */
 export const HEALTH_WINDOW_MINUTES = 15;
 
 /**
- * The datasets health reads (BRK-188's "Observe" rows), one query each for the whole environment, over the last
- * HEALTH_WINDOW_MINUTES. Which fields each dataset serves at minute resolution is checked against a real account when
- * the owner first tries Architect (BRK-205); a dataset Cloudflare won't answer leaves its resources' health unknown.
- * @type {Record<string, Dataset>}
+ * How far behind now the health window ends (BRK-266): Cloudflare's analytics arrive a few minutes late, so the newest
+ * minutes are always empty and a window ending at now would see a busy resource fall quiet.
+ */
+export const HEALTH_LAG_MINUTES = 5;
+
+/**
+ * The windows health reads, shortest first (BRK-266): a resource with no traffic in one is read again over the next
+ * before it's called idle, and its verdict says which window it came from.
+ */
+export const HEALTH_WINDOWS = [HEALTH_WINDOW_MINUTES, 60, 24 * 60];
+
+/**
+ * The datasets health reads (BRK-188's "Observe" rows), one query each for the whole environment, over the first of
+ * HEALTH_WINDOWS, and again over the longer ones only for the resources it found quiet. `busy` says whether a
+ * resource's usage counts as traffic; a dataset without one (the queues' backlog) is read once. Which fields each
+ * dataset serves at minute resolution is checked against a real account when the owner first tries Architect
+ * (BRK-205); a dataset Cloudflare won't answer leaves its resources' health unread, saying which.
+ * @type {Record<string, Dataset & { busy?: (u: Record<string, number>) => boolean }>}
  */
 export const HEALTH_DATASETS = {
   workers: {
@@ -266,6 +280,7 @@ export const HEALTH_DATASETS = {
     time: 'datetime',
     sum: ['requests', 'errors'],
     label: 'requests and errors',
+    busy: (u) => (u.requests ?? 0) > 0,
   },
   durableObjects: {
     dataset: 'durableObjectsInvocationsAdaptiveGroups',
@@ -274,6 +289,7 @@ export const HEALTH_DATASETS = {
     time: 'datetime',
     sum: ['requests', 'errors'],
     label: 'requests and errors',
+    busy: (u) => (u.requests ?? 0) > 0,
   },
   d1: {
     dataset: 'd1AnalyticsAdaptiveGroups',
@@ -283,6 +299,7 @@ export const HEALTH_DATASETS = {
     sum: ['readQueries', 'writeQueries'],
     avg: ['queryBatchTimeMs'],
     label: 'queries and their time',
+    busy: (u) => (u.readQueries ?? 0) + (u.writeQueries ?? 0) > 0,
   },
   kv: {
     dataset: 'kvOperationsAdaptiveGroups',
@@ -291,6 +308,7 @@ export const HEALTH_DATASETS = {
     time: 'datetime',
     sum: ['requests'],
     label: 'operations',
+    busy: (u) => (u.requests ?? 0) > 0,
   },
   r2: {
     dataset: 'r2OperationsAdaptiveGroups',
@@ -300,6 +318,7 @@ export const HEALTH_DATASETS = {
     sum: ['requests'],
     by: 'responseStatusCode',
     label: 'operations by response status',
+    busy: (u) => Object.entries(u).some(([k, v]) => k.startsWith('requests:') && v > 0),
   },
   queues: {
     dataset: 'queuesBacklogAdaptiveGroups',

@@ -11,8 +11,8 @@ export const NODE = { w: 172, h: 48, gapY: 14, gapX: 92, pad: 16 };
 /** Kinds that sit in front when no relation says so: what people's requests reach first. */
 const FRONT_KINDS = new Set(['route', 'custom-domain', 'domain']);
 
-/** Worst first, like the environment's health. */
-const WORST = ['down', 'degraded', 'unknown', 'healthy'];
+/** Worst first, like the environment's health: one resource that couldn't be read doesn't outrank healthy ones. */
+const WORST = ['down', 'degraded', 'healthy', 'idle', 'unknown'];
 
 /** The map's columns, left to right, with their names. */
 export const COLUMNS = [

@@ -737,7 +737,7 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
     return { fetch, by: Object.fromEntries(health.map((h) => [h.resource, h])) };
   };
 
-  it('reads each resource’s health from the last 15 minutes, and routes and domains take their Worker’s', async () => {
+  it('reads each resource’s health from the last 15 minutes, calls a quiet one idle, and routes take their Worker’s', async () => {
     const answers = cloudflareAnswers();
     answers['/graphql'] = cloudflareUsage(healthRows());
     const { by } = await healthOf(answers);
@@ -745,14 +745,14 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
     expect(state).toEqual({
       [W('acme-api')]: 'down',
       [W('acme-auth')]: 'degraded',
-      [W('acme-rooms')]: 'unknown',
+      [W('acme-rooms')]: 'idle',
       [`d1:${D1_ID}`]: 'degraded',
       [`kv:${KV_CACHE}`]: 'healthy',
-      [`kv:${KV_SESSIONS}`]: 'unknown',
+      [`kv:${KV_SESSIONS}`]: 'idle',
       'r2:acme-files': 'degraded',
       [`queue:${QUEUE_JOBS}`]: 'healthy',
       [`durable-object:${DO_ROOMS}`]: 'healthy',
-      [`durable-object:${DO_COUNTER}`]: 'unknown',
+      [`durable-object:${DO_COUNTER}`]: 'idle',
       [`container:${CONTAINER}`]: 'healthy',
       'route:0000000000000000000000000000d101': 'down',
       'custom-domain:0000000000000000000000000000d201': 'down',
@@ -763,31 +763,91 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
     expect(by[`queue:${QUEUE_JOBS}`].text).toBe('12 in the backlog');
     expect(by[`container:${CONTAINER}`].text).toBe('2 of 2 instances are running');
     expect(by['route:0000000000000000000000000000d101'].text).toMatch(/^Its Worker, acme-api: 60% of 1000/u);
-    expect(by[W('acme-rooms')].text).toBe('No requests in the last 15 minutes');
+    // Quiet after looking back a day: idle, never unknown, and it says which window (BRK-266).
+    expect(by[W('acme-rooms')].text).toMatch(/^Idle: no requests in the last day/u);
+    expect(by[`kv:${KV_SESSIONS}`].text).toBe('Idle: no operations in the last day');
+    expect(Object.values(by).some((h) => h.state === 'unknown')).toBe(false);
   });
 
-  it('asks one query per dataset for the whole environment, over the last 15 minutes, and reads nothing else', async () => {
+  it('asks one query per dataset over a window that ends 5 minutes back, and looks further back only for quiet ones', async () => {
     const answers = cloudflareAnswers();
     answers['/graphql'] = cloudflareUsage(healthRows());
     const { ctx, fetch } = context(answers);
     const found = await discover(ctx);
     fetch.calls.length = 0;
+    const before = Date.now();
     await observe({ ...ctx, resources: found.resources });
     const queries = fetch.calls.filter((c) => c.path === '/graphql');
-    expect(queries.map((c) => c.body.query)).toEqual(Object.values(HEALTH_DATASETS).map((d) => datasetQuery(d)));
+    const first = queries.filter(
+      (q) => Date.parse(q.body.variables.to) - Date.parse(q.body.variables.from) === 15 * 60_000,
+    );
+    expect(first.map((c) => c.body.query)).toEqual(Object.values(HEALTH_DATASETS).map((d) => datasetQuery(d)));
     for (const q of queries) {
-      const { from, to } = q.body.variables;
-      expect(Date.parse(to) - Date.parse(from)).toBe(15 * 60_000);
+      // Cloudflare's analytics arrive late: the window ends 5 minutes back, so the newest empty minutes never count.
+      expect(Date.parse(q.body.variables.to)).toBeLessThanOrEqual(before - 5 * 60_000 + 1000);
+      expect(Date.parse(q.body.variables.to)).toBeGreaterThanOrEqual(before - 5 * 60_000 - 1000);
       expect(q.body.variables.account).toBe(ACCOUNT);
     }
-    const workers = queries.find((q) => q.body.query.includes('workersInvocationsAdaptive('));
-    expect(workers.body.variables.keys).toEqual(['acme-api', 'acme-auth', 'acme-rooms']);
+    const workers = queries.filter((q) => q.body.query.includes('workersInvocationsAdaptive('));
+    expect(workers.map((q) => q.body.variables.keys)).toEqual([
+      ['acme-api', 'acme-auth', 'acme-rooms'],
+      ['acme-rooms'],
+      ['acme-rooms'],
+    ]);
+    expect(workers.map((q) => (Date.parse(q.body.variables.to) - Date.parse(q.body.variables.from)) / 60_000)).toEqual([
+      15, 60, 1440,
+    ]);
+    // The queues' backlog has no traffic to look back for: it's read once.
+    expect(queries.filter((q) => q.body.query.includes('queuesBacklogAdaptiveGroups('))).toHaveLength(1);
     // The rest is the account and the queue's backlog now: given what discover found, it discovers nothing again.
     expect(fetch.calls.filter((c) => c.path !== '/graphql').map((c) => c.path)).toEqual([
       '/accounts?page=1&per_page=50',
       `/accounts/${ACCOUNT}/queues/${QUEUE_JOBS}/metrics`,
     ]);
     for (const c of fetch.calls) expect(NEVER_CALLED.some((re) => re.test(c.path.split('?')[0]))).toBe(false);
+  });
+
+  it('judges a quiet resource by the longer window it found traffic in, and says which', async () => {
+    const answers = cloudflareAnswers();
+    const short = healthRows();
+    const hour = {
+      ...healthRows(),
+      workersInvocationsAdaptive: [{ sum: { requests: 40, errors: 0 }, dimensions: { scriptName: 'acme-rooms' } }],
+      kvOperationsAdaptiveGroups: [{ sum: { requests: 3 }, dimensions: { namespaceId: KV_SESSIONS } }],
+    };
+    const day = {
+      ...healthRows(),
+      durableObjectsInvocationsAdaptiveGroups: [
+        { sum: { requests: 10, errors: 9 }, dimensions: { namespaceId: DO_COUNTER } },
+      ],
+    };
+    const byWindow = { 15: cloudflareUsage(short), 60: cloudflareUsage(hour), 1440: cloudflareUsage(day) };
+    answers['/graphql'] = (body) => {
+      const minutes = (Date.parse(body.variables.to) - Date.parse(body.variables.from)) / 60_000;
+      return byWindow[minutes](body);
+    };
+    const { by } = await healthOf(answers);
+    expect(by[W('acme-rooms')]).toMatchObject({ state: 'healthy', text: '40 requests, 0 failed, in the last hour' });
+    expect(by[`kv:${KV_SESSIONS}`]).toMatchObject({ state: 'healthy', text: '3 operations in the last hour' });
+    expect(by[`durable-object:${DO_COUNTER}`]).toMatchObject({
+      state: 'down',
+      text: '90% of 10 requests failed in the last day',
+    });
+    // A busy one is judged on the short window alone.
+    expect(by[W('acme-api')].text).toBe('60% of 1000 requests failed in the last 15 minutes');
+  });
+
+  it('keeps a busy resource busy despite Cloudflare’s lag: the newest minutes never count', async () => {
+    const answers = cloudflareAnswers();
+    const rows = healthRows();
+    // Cloudflare has nothing yet for the last 5 minutes; a window that reached now would see only those.
+    answers['/graphql'] = (body) => {
+      const lagged = Date.now() - Date.parse(body.variables.to) >= 5 * 60_000 - 1000;
+      return cloudflareUsage(lagged ? rows : Object.fromEntries(Object.keys(rows).map((d) => [d, []])))(body);
+    };
+    const { by } = await healthOf(answers);
+    expect(by[`kv:${KV_CACHE}`]).toMatchObject({ state: 'healthy', text: '10 operations in the last 15 minutes' });
+    expect(by[`durable-object:${DO_ROOMS}`].state).toBe('healthy');
   });
 
   it('calls a Worker with no deployment down, a stopped container down, and a waiting or paused queue degraded', async () => {
@@ -822,15 +882,61 @@ describe('the Cloudflare provider’s observe (BRK-191)', () => {
     });
   });
 
-  it('leaves a dataset Cloudflare won’t answer unknown, and stops on a 429 or a token without the analytics', async () => {
+  it('reads liveness without traffic: a deployed Worker, a queue’s consumer, a container with none assigned', async () => {
+    const answers = cloudflareAnswers();
+    answers['/graphql'] = cloudflareUsage(Object.fromEntries(Object.keys(healthRows()).map((d) => [d, []])));
+    answers[`/accounts/${ACCOUNT}/queues/${QUEUE_JOBS}/metrics`] = 404;
+    const { ctx } = context(answers);
+    const found = await discover(ctx);
+    const resources = found.resources.map((r) => {
+      if (r.id === W('acme-rooms')) return { ...r, attrs: { ...r.attrs, versions: [{ id: 'v1', percentage: 100 }] } };
+      if (r.kind === 'container') return { ...r, attrs: { ...r.attrs, active: 0, assigned: 0 } };
+      return r;
+    });
+    const by = Object.fromEntries((await observe({ ...ctx, resources })).map((h) => [h.resource, h]));
+    expect(by[W('acme-rooms')]).toMatchObject({
+      state: 'idle',
+      text: 'Idle: no requests in the last day; deployed and serving',
+    });
+    expect(by[`queue:${QUEUE_JOBS}`]).toMatchObject({
+      state: 'idle',
+      text: 'Idle: a consumer is attached, and Cloudflare has no backlog figures for it',
+    });
+    expect(by[`container:${CONTAINER}`]).toMatchObject({ state: 'idle', text: 'Idle: no instances are assigned' });
+    expect(Object.values(by).filter((h) => h.state === 'unknown')).toEqual([]);
+
+    // A queue nothing consumes is degraded; one whose backlog the token can't read is unknown, naming the call.
+    const lonely = resources.map((r) => (r.kind === 'queue' ? { ...r, attrs: { ...r.attrs, consumers: [] } } : r));
+    expect(
+      (await observe({ ...ctx, resources: lonely })).find((h) => h.resource === `queue:${QUEUE_JOBS}`),
+    ).toMatchObject({ state: 'degraded', text: 'No consumer is attached, so nothing reads its messages' });
+    answers[`/accounts/${ACCOUNT}/queues/${QUEUE_JOBS}/metrics`] = 403;
+    expect((await observe({ ...ctx, resources })).find((h) => h.resource === `queue:${QUEUE_JOBS}`)).toMatchObject({
+      state: 'unknown',
+      text: expect.stringMatching(/queues\/<id>\/metrics.*Queues Read/u),
+    });
+  });
+
+  it('leaves a dataset Cloudflare won’t answer unknown, naming it, and stops on a 429 or a token without the analytics', async () => {
     const answers = cloudflareAnswers();
     answers['/graphql'] = cloudflareUsage({ ...healthRows(), d1AnalyticsAdaptiveGroups: 'unknown field "avg"' });
     const { by } = await healthOf(answers);
     expect(by[`d1:${D1_ID}`]).toMatchObject({
       state: 'unknown',
-      text: 'Cloudflare’s analytics didn’t answer for its queries and their time',
+      text: expect.stringMatching(/^Couldn’t read its health: .*queries and their time \(d1AnalyticsAdaptiveGroups\)/u),
     });
     expect(by[W('acme-api')].state).toBe('down');
+
+    // A longer window Cloudflare won't answer only stops looking back: the quiet resource is idle on what was read.
+    const longer = cloudflareAnswers();
+    longer['/graphql'] = (body) => {
+      const minutes = (Date.parse(body.variables.to) - Date.parse(body.variables.from)) / 60_000;
+      return minutes > 60
+        ? { data: null, errors: [{ message: 'time range too wide' }] }
+        : cloudflareUsage(healthRows())(body);
+    };
+    const { by: quiet } = await healthOf(longer);
+    expect(quiet[`kv:${KV_SESSIONS}`]).toMatchObject({ state: 'idle', text: 'Idle: no operations in the last hour' });
 
     for (const [status, permission] of [
       [429, undefined],

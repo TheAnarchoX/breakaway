@@ -4,7 +4,7 @@ import { hashFor } from '../lib/store.js';
 import { runWords } from '../lib/env-stream.js';
 import { widClass } from './ui.jsx';
 import { BUDGET, costText } from './InfraCosts.jsx';
-import { HEALTH } from '../views/InfrastructureView.jsx';
+import { HEALTH, healthOfWords } from '../views/InfrastructureView.jsx';
 import { sentence } from '../lib/api.js';
 
 /**
@@ -67,17 +67,16 @@ const plural = (/** @type {number} */ n, /** @type {string} */ one, /** @type {s
   `${n} ${n === 1 ? one : many}`;
 
 /**
- * Health: the worst state, and how many resources share it unless all are healthy.
+ * Health: the worst state, and how many resources share it unless all are healthy, with how many couldn't be read.
  * @param {{ health: any }} props
  */
 function HealthTile({ health }) {
   if (!health) return <Tile label="Health" Icon={Activity} value="Unknown" state="unknown" detail="Not seen yet" />;
-  const { label } = HEALTH[health.state];
-  const value = health.state === 'healthy' || health.state === 'unknown' ? label : `${label} ${health.count}`;
-  const of =
-    health.state === 'healthy'
-      ? `${health.total} of ${plural(health.total, 'resource', 'resources')}`
-      : `${health.count} of ${plural(health.total, 'resource', 'resources')}`;
+  const { label } = HEALTH[health.state] ?? HEALTH.unknown;
+  // One word when it's fine, and a count when something's wrong; what couldn't be read is in the detail (BRK-266).
+  const fine = health.state === 'healthy' || health.state === 'idle';
+  const value = fine || health.state === 'unknown' ? label : `${label} ${health.count}`;
+  const of = healthOfWords(health);
   return (
     <Tile
       label="Health"
