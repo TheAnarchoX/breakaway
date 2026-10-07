@@ -3282,6 +3282,13 @@ fieldset.field {
   box-shadow: var(--shadow-pop);
   animation: toast-in var(--dur) var(--ease);
 }
+/* A toast's one action, like Undo (WEB-102): the only part of the region that takes a click. */
+.toast-action {
+  pointer-events: auto;
+  margin-left: 4px;
+  --btn-bg: color-mix(in srgb, var(--on-invert) 14%, transparent);
+  --btn-fg: var(--on-invert);
+}
 /* ---------- what's new (WEB-80) ---------- */
 
 .whats-new .wn-head {
@@ -7194,6 +7201,371 @@ fieldset.field {
   display: grid;
   gap: 6px;
   font-size: 14px;
+}
+
+/* ---------- the roadmap's timeline (WEB-102) ---------- */
+
+.fr-layout {
+  display: inline-flex;
+}
+.tl {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 24px;
+}
+.tl-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.tl-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  flex: 1 1 320px;
+}
+.tl-hint svg {
+  flex: none;
+}
+.tl-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tl-key {
+  display: inline-block;
+  width: 16px;
+  height: 8px;
+  border-radius: 2px;
+  margin-left: 6px;
+}
+.tl-key-sure {
+  background: var(--state-ready);
+}
+.tl-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.tl-canvas {
+  position: relative;
+  min-width: 100%;
+  padding-bottom: 8px;
+}
+.tl-axis {
+  position: relative;
+  z-index: 1;
+  height: 30px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.tl-tick {
+  position: absolute;
+  top: 8px;
+  padding-left: 6px;
+  font: 500 11.5px / 1.2 var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tl-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+/* Today is what's live: the rider's red. */
+.tl-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.tl-today span {
+  position: absolute;
+  top: 6px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 700 11px / 1.3 var(--font-mono);
+  white-space: nowrap;
+}
+.tl-lane {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line);
+  transition: background var(--dur-fast) var(--ease);
+}
+.tl-lane.is-target {
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+.tl-lane.is-over {
+  background: var(--tint);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.tl-lane-head,
+.tl-lane-empty,
+.tl-lane-foot {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: fit-content;
+  max-width: min(100%, 640px);
+  padding: 0 14px;
+}
+.tl-lane-head {
+  background: var(--bg-2);
+  border-radius: var(--radius-xs);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.tl-lane-head h2,
+.tl-past h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+.tl-lane-head h2 .mono {
+  font: 700 16px / 1 var(--font-mono);
+}
+.tl-lane-end {
+  font-variant-numeric: tabular-nums;
+}
+.tl-lane-empty {
+  margin: 4px 0;
+}
+.tl-lane-foot:empty {
+  display: none;
+}
+/* Where the release is likely done: a short tick on the lane. */
+.tl-marker {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 0;
+  border-left: 2px dashed var(--line-strong);
+  pointer-events: none;
+}
+.tl-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.tl-row {
+  position: relative;
+  height: 50px;
+}
+.tl-row.is-compact {
+  height: 28px;
+}
+.tl-bar {
+  position: absolute;
+  top: 4px;
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+  cursor: grab;
+}
+.tl-row.is-compact .tl-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tl-bar:active {
+  cursor: grabbing;
+}
+.tl-bar.is-dragging {
+  opacity: 0.5;
+}
+.tl-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.tl-label.is-after {
+  color: var(--muted);
+}
+.tl-title {
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font: 500 12px / 1.3 var(--font-mono);
+}
+.tl-bar.is-yours .tl-when {
+  color: var(--text);
+}
+.tl-when .fr-pill {
+  margin: 0;
+}
+.tl-bar:hover .tl-title {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tl-track {
+  position: relative;
+  display: block;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+.tl-row.is-compact .tl-track {
+  height: 10px;
+}
+.tl-sure {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 3px;
+}
+.tl-segs {
+  display: flex;
+  gap: 2px;
+  height: 100%;
+}
+/* The range: after the likely-at-best end, until the agents' work is likely done. */
+.tl-range,
+.tl-key-range {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--muted) 34%, transparent) 0 3px,
+    transparent 3px 7px
+  );
+}
+.tl-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+/* The owner's steps: decisions, +owner tasks, and merges, at the owner's pace. */
+.tl-owner,
+.tl-key-owner {
+  background: repeating-linear-gradient(90deg, var(--state-decide) 0 4px, transparent 4px 7px);
+  opacity: 0.75;
+}
+.tl-owner {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 0 3px 3px 0;
+}
+.tl-track.is-unknown {
+  background: linear-gradient(90deg, var(--surface-3), transparent);
+}
+.tl-track.is-unknown .tl-sure {
+  width: 40px;
+}
+.tl-track.is-empty {
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+}
+.tl-track.is-empty .tl-sure {
+  display: none;
+}
+/* A feature being chased is live: a slow pulse in the rider's red. */
+.tl-bar.is-chasing .tl-track {
+  box-shadow: 0 0 0 1px var(--accent);
+  animation: tl-chase 2.4s var(--ease) infinite;
+}
+@keyframes tl-chase {
+  50% {
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-bar.is-chasing .tl-track {
+    animation: none;
+  }
+  .tl-lane {
+    transition: none;
+  }
+}
+:root[data-motion="reduce"] .tl-bar.is-chasing .tl-track {
+  animation: none;
+}
+.tl-past > summary {
+  list-style: none;
+  cursor: pointer;
+  position: sticky;
+  left: 0;
+  width: fit-content;
+  padding: 0 14px;
+}
+.tl-past > summary::-webkit-details-marker {
+  display: none;
+}
+.tl-past > summary h2 {
+  color: var(--muted);
+}
+.tl-past > summary h2::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: solid var(--muted);
+  border-width: 0 2px 2px 0;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.tl-past[open] > summary h2::before {
+  transform: rotate(45deg);
+}
+.tl-past .tl-bar {
+  cursor: pointer;
+}
+.tl-why {
+  margin: 0;
+  min-height: 2.6em;
+  color: var(--muted);
+}
+.tl-why strong {
+  color: var(--text);
+}
+/* The timeline needs room: on a phone, or a narrow pane, the release list shows instead. */
+.fr-release.is-fallback {
+  display: none;
+}
+@container (max-width: 719px) {
+  .tl,
+  .fr-layout {
+    display: none;
+  }
+  .fr-release.is-fallback {
+    display: grid;
+  }
 }
 
 /* ---------- refine from the answers (WEB-22) ---------- */
