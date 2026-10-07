@@ -11,6 +11,14 @@ node site/build.mjs                             # after editing content/
 pnpm exec wrangler dev -c site/wrangler.jsonc   # preview at localhost:8787
 ```
 
+### The road ahead
+
+Near the bottom of the landing page, the road ahead shows breakaway's coming releases and what each brings: a snapshot of breakaway's own features on its board, by release, in `content/roadmap.json`. Only breakaway's features go in (the board tracks other repositories, and the site is public), only those aimed at a release, and only releases with something left to ship; no dates and no work IDs.
+
+The page moves it along by itself: `public/site.js` reads `/releases.json`, folds every release at or below the latest stable into "Out now in 2.0.0" with a link to its notes, and marks the one after it Next. A release going out needs no rebuild; without the feed, the page shows the snapshot as built, its first release Next.
+
+**Refresh it when the plan changes**, and only when the owner asks: ask an agent to run `node scripts/site-roadmap.mjs` and open a pull request. The script reads the board with the CLI (or a saved `npx breakaway features --json`, with `--from <file>`), writes `content/roadmap.json`, and rebuilds `public/`. Each feature's title and one-line description in the file's `edits` are kept across refreshes; the script names any feature without a line, which falls back to its brief's first sentence until someone writes one in the brand's voice.
+
 ## The update feed
 
 A small Worker that serves `/releases.json`: for each channel (`stable` and `main`), the latest release's version, tag, bundle, manifest, and checksum URLs, the signature's URL (`signature`, or `null` for a release from before signing), the notes' URL, whether it needs steps by hand (`manual`, and `manualSteps` when it does), and the lowest version it updates from (`updatesFrom`). An install reads this one feed instead of GitHub's API, which limits requests per address, and Workers share addresses.
