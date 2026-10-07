@@ -36,6 +36,7 @@ const UNSAFE = new Set(['__proto__', 'prototype', 'constructor']);
 const PATH_DEPTH = 8;
 const VALUE_MAX = 8 * 1024;
 const ID_MAX = 200;
+const NAME_MAX = 200;
 const SUMMARY_MAX = 100;
 const WORDS_MAX = 60;
 
@@ -44,10 +45,13 @@ const WORDS_MAX = 60;
  * - `{ op: 'set', resource, path, value }`: the setting at `path` (dots between keys, inside the resource's attrs) is
  *   `value`, or the platform's again when `value` is null;
  * - `{ op: 'add', template, inputs }`: what the template adds, with these inputs (`infra add`'s);
- * - `{ op: 'remove', resource }`: the resource is gone from the file.
+ * - `{ op: 'remove', resource }`: the resource is gone from the file;
+ * - `{ op: 'rename', resource, name }`: the resource is called `name`, for a kind whose provider declares its name
+ *   editable (BRK-267: a route's pattern), so the plan updates it in place.
  * @typedef {{ op: 'set', resource: string, path: string, value: unknown }
  *   | { op: 'add', template: string, inputs: Record<string, string> }
- *   | { op: 'remove', resource: string }} Edit
+ *   | { op: 'remove', resource: string }
+ *   | { op: 'rename', resource: string, name: string }} Edit
  */
 
 /**
@@ -72,7 +76,7 @@ export function checkEdits(edits) {
   /** @type {Edit[]} */
   const out = [];
   for (const [n, e] of edits.entries()) {
-    if (!isObject(e)) return wrong(n, null, 'each edit is an object with an op: set, add, or remove');
+    if (!isObject(e)) return wrong(n, null, 'each edit is an object with an op: set, add, remove, or rename');
     const resource = () =>
       typeof e.resource === 'string' && e.resource.trim() && e.resource.length <= ID_MAX ? e.resource : null;
     if (e.op === 'set') {
@@ -104,7 +108,13 @@ export function checkEdits(edits) {
     } else if (e.op === 'remove') {
       if (!resource()) return wrong(n, 'resource', 'resource is the ID of a resource in the file');
       out.push({ op: 'remove', resource: e.resource });
-    } else return wrong(n, 'op', 'op is set, add, or remove');
+    } else if (e.op === 'rename') {
+      if (!resource()) return wrong(n, 'resource', 'resource is the ID of a resource in the file');
+      const name = typeof e.name === 'string' ? e.name.trim() : '';
+      if (!name || name.length > NAME_MAX || /\p{Cc}/u.test(name))
+        return wrong(n, 'name', `name is what the platform calls it, up to ${NAME_MAX} characters`);
+      out.push({ op: 'rename', resource: e.resource, name });
+    } else return wrong(n, 'op', 'op is set, add, remove, or rename');
   }
   return { ok: true, edits: out };
 }
@@ -158,10 +168,14 @@ function writePath(resource, parts, value) {
  * @param {Edit[]} args.edits
  * @param {Map<string, FoundTemplate>} args.templates by name, for the adds
  * @param {string} args.environment
+ * @param {(kind: string) => { label: string, help: string, pattern?: string } | null | undefined} [args.names] the name
+ *   a kind's provider lets the console change (its editable `name`, BRK-262), for the renames; none without it
+ * @param {Array<{ rid: string, kind: string, name: string }>} [args.seen] what the board sees running in the
+ *   environment (its inventory), so a rename never turns a resource matched by its name into a new one
  * @returns {{ file: Record<string, any>, files: Array<{ path: string, text: string }>, lines: string[],
  *   dropped: Array<{ edit: number, line: string }>, problems: ChangeProblem[], touched: Map<string, number> }}
  */
-export function applyEdits({ file, edits, templates, environment }) {
+export function applyEdits({ file, edits, templates, environment, names = () => null, seen = [] }) {
   let out = structuredClone(file);
   if (!Array.isArray(out.resources)) out.resources = [];
   /** @type {Array<{ path: string, text: string }>} */
@@ -199,6 +213,43 @@ export function applyEdits({ file, edits, templates, environment }) {
       const [r] = out.resources.splice(at, 1);
       touched.delete(r.id);
       lines.push(`− ${r.kind} ${r.name}`);
+    } else if (edit.op === 'rename') {
+      const at = find(edit.resource);
+      if (at < 0) {
+        dropped.push({ edit: n, line: `${edit.resource} is gone from the file, so renaming it was dropped` });
+        continue;
+      }
+      const r = out.resources[at];
+      if (r.name === edit.name) continue;
+      const declared = names(r.kind);
+      const what = declared?.label.toLowerCase() ?? 'name';
+      if (!declared) {
+        problems.push({ edit: n, field: 'name', message: `a ${r.kind}’s name can’t be changed from the board` });
+        continue;
+      }
+      if (declared.pattern && !new RegExp(declared.pattern, 'u').test(edit.name)) {
+        problems.push({ edit: n, field: 'name', message: `${edit.name} isn’t a ${what}: ${declared.help}` });
+        continue;
+      }
+      // The plan matches a resource by its ID, else by kind and name: one matched by its name would be made anew.
+      const running = seen.some((x) => x.rid === r.id)
+        ? null
+        : seen.find((x) => x.kind === r.kind && x.name === r.name);
+      if (running) {
+        problems.push({
+          edit: n,
+          field: 'name',
+          message: `${r.id} isn’t the ID the board sees for ${r.name} (${running.rid}), so a new ${what} would make another ${r.kind}: give it that ID in the file first`,
+        });
+        continue;
+      }
+      if (out.resources.some((x) => isObject(x) && x !== r && x.kind === r.kind && x.name === edit.name)) {
+        problems.push({ edit: n, field: 'name', message: `another ${r.kind} already has the ${what} ${edit.name}` });
+        continue;
+      }
+      lines.push(`~ ${r.kind} ${r.name}: ${what} → ${edit.name}`);
+      r.name = edit.name;
+      touched.set(r.id, n);
     } else {
       const found = templates.get(edit.template);
       if (!found) {

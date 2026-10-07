@@ -29,6 +29,9 @@ import {
   formValue,
   getPath,
   joinEdits,
+  nameAfter,
+  nameEdits,
+  nameProblem,
   readEdits,
   recentChange,
   setPath,
@@ -212,7 +215,9 @@ export function useChange(env, { desired, tick, plans }) {
       /** @type {import('../lib/infra-change.js').Edit[]} */ more,
       { replacing = /** @type {string | null} */ (null) } = {},
     ) {
-      const base = replacing ? edits.filter((e) => !(e.op === 'set' && e.resource === replacing)) : edits;
+      const base = replacing
+        ? edits.filter((e) => !((e.op === 'set' || e.op === 'rename') && e.resource === replacing))
+        : edits;
       const joined = joinEdits(base, more);
       if ('error' in joined) return joined.error;
       save(joined.edits);
@@ -286,7 +291,7 @@ export function NodeChange({ r, ch }) {
   const kind = ch.editable?.[d.kind];
   return (
     <>
-      {kind?.fields?.length > 0 && !removing && (
+      {(kind?.fields?.length > 0 || kind?.name) && !removing && (
         <button
           type="button"
           class="btn btn-quiet btn-sm"
@@ -594,24 +599,29 @@ function SettingsForm({ ch }) {
     return Object.fromEntries(fields.map((f) => [f.path, formValue(f, getPath(attrs, f.path))]));
   };
   const [form, setForm] = useState(start);
+  // Its name, where the provider lets the console change it (a route's pattern), with any rename this change has.
+  const [name, setName] = useState(() => (d ? nameAfter(ch.edits, d) : ''));
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const first = useRef(/** @type {HTMLHeadingElement | null} */ (null));
   useEffect(() => {
     setForm(start());
+    setName(d ? nameAfter(ch.edits, d) : '');
     setError(null);
     first.current?.focus({ preventScroll: true });
     first.current?.scrollIntoView({ block: 'nearest' });
   }, [ch.editing]);
   if (!d || !kind) return null;
   const problems = Object.fromEntries(fields.map((f) => [f.path, fieldProblem(f, form[f.path])]));
-  const wrong = Object.values(problems).some(Boolean);
+  const renaming = kind.name ? nameProblem(kind.name, name) : null;
+  const wrong = Boolean(renaming) || Object.values(problems).some(Boolean);
   const done = (/** @type {Event} */ e) => {
     e.preventDefault();
     if (wrong) {
       setError('Fix the fields marked first.');
       return;
     }
-    const why = ch.add(settingEdits(d, fields, form), { replacing: d.id });
+    const renamed = kind.name ? nameEdits(d, name) : [];
+    const why = ch.add([...renamed, ...settingEdits(d, fields, form)], { replacing: d.id });
     if (why) setError(why);
     else ch.edit(null);
   };
@@ -621,6 +631,16 @@ function SettingsForm({ ch }) {
         Change {d.name}
       </h3>
       <p class="meta">{d.kind}</p>
+      {kind.name && (
+        <FieldInput
+          field={{ path: 'name', type: 'text', label: kind.name.label, help: kind.name.help }}
+          id="change-name"
+          value={name}
+          resources={ch.declared}
+          problem={renaming}
+          onChange={setName}
+        />
+      )}
       {fields.map((f) => {
         const id = `change-${f.path.replaceAll('.', '-')}`;
         const props = {
@@ -1147,7 +1167,8 @@ export function ChangePanel({ ch, cant }) {
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const panel = useRef(/** @type {HTMLElement | null} */ (null));
   const labels = new Map(Object.entries(ch.editable ?? {}).map(([k, v]) => [k, v.fields ?? []]));
-  const local = editLines(edits, ch.declared, labels);
+  const names = new Map(Object.entries(ch.editable ?? {}).flatMap(([k, v]) => (v.name ? [[k, v.name]] : [])));
+  const local = editLines(edits, ch.declared, labels, names);
   const p = ch.preview;
   const fresh = ch.current && p.data;
   const problemsOf = (/** @type {number} */ n) => p.problems.filter((x) => x.edit === n);
