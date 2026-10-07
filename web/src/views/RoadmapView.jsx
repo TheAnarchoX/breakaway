@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
   ArrowLeft,
   ArrowUpToLine,
+  CalendarRange,
   ChevronsUp,
   FastForward,
   GanttChart,
@@ -36,7 +37,8 @@ import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
-import { RoadmapTimeline } from '../components/RoadmapTimeline.jsx';
+import { PlanStatus, RoadmapTimeline, usePace } from '../components/RoadmapTimeline.jsx';
+import { day, fromDay, planDays, planStatus, suggest } from '../lib/roadmap-timeline.js';
 import { RichText, Title } from '../lib/richtext.jsx';
 
 /**
@@ -58,7 +60,23 @@ const LAYOUTS = [
 const sentence = (why) => `${why.startsWith('it') ? `I${why.slice(1)}` : why}.`;
 const taskHref = (t) => hashFor({ task: t.wid ?? t.uuid });
 
-function FeatureCard({ f }) {
+/**
+ * A feature's plan in a line (WEB-106): `Planned 12 to 19 Oct · Behind by 2 days`, or nothing without one.
+ * @param {{ f: any, pace: ReturnType<typeof usePace> }} props
+ */
+function PlanLine({ f, pace }) {
+  const days = planDays(f, pace.now);
+  if (!days) return null;
+  return (
+    <span class="fr-plan">
+      <CalendarRange size={14} aria-hidden="true" />
+      Planned {days}
+      <PlanStatus status={planStatus(f, pace.projections.get(f.slug), pace.now)} />
+    </span>
+  );
+}
+
+function FeatureCard({ f, pace }) {
   return (
     <li>
       <a class="fr-card" href={featureHref(f.slug)} data-feature={f.slug}>
@@ -72,6 +90,7 @@ function FeatureCard({ f }) {
           <Title text={f.title} />
         </span>
         <Progress progress={f.progress} compact />
+        <PlanLine f={f} pace={pace} />
         <span class={`fr-next ${f.needsYou.length && !f.done ? 'is-yours' : ''}`}>
           {f.needsYou.length > 0 && !f.done && <Hand size={14} aria-hidden="true" />}
           {nextUp(f)}
@@ -195,6 +214,28 @@ function FeatureTask({ t }) {
   );
 }
 
+/** The feature page's plan (WEB-106): the plan and how the pace compares, or Plan it from the pace. */
+function FeaturePlan({ f }) {
+  const all = features.value.data;
+  const released = useMemo(() => (all ? all.features.filter((x) => x.shipped) : []), [all]);
+  const pace = usePace(all, released);
+  const p = pace.projections.get(f.slug);
+  const offer = !f.plannedStart && !f.plannedEnd && !f.shipped ? suggest(p, pace.now) : null;
+  if (!f.plannedStart && !f.plannedEnd && !offer) return null;
+  return (
+    <p class="fr-plan">
+      {offer ? (
+        <button type="button" class="btn btn-sm" onClick={() => actions.planFeature(f, offer)}>
+          <CalendarRange size={15} aria-hidden="true" />
+          Plan it: {day(fromDay(offer.plannedStart), pace.now)} to {day(fromDay(offer.plannedEnd), pace.now)}
+        </button>
+      ) : (
+        <PlanLine f={f} pace={pace} />
+      )}
+    </p>
+  );
+}
+
 function FeatureDetail({ slug }) {
   const open = featureOpen.value;
   const [editing, setEditing] = useState(false);
@@ -298,6 +339,7 @@ function FeatureDetail({ slug }) {
             <h2 id="fr-progress-title">Progress</h2>
             <Progress progress={f.progress} />
             <p class={`fr-next ${f.needsYou.length && !f.done ? 'is-yours' : ''}`}>{nextUp(f)}</p>
+            <FeaturePlan f={f} />
           </section>
           {f.chase && (
             <section class="gh-section" aria-labelledby="fr-chase-title">
@@ -428,8 +470,9 @@ function Overview() {
   const all = state.data;
   const d = scoped(all);
   const scope = repoScope.value;
-  const released = d ? d.features.filter((f) => f.shipped) : [];
+  const released = useMemo(() => (d ? d.features.filter((f) => f.shipped) : []), [all, scope]);
   const groups = d ? releaseGroups(d) : [];
+  const pace = usePace(all, released);
   const none = all && !all.features.length;
   // Features elsewhere on the board, and none in the repository the switcher shows.
   const noneHere = !none && d && !d.features.length;
@@ -466,6 +509,7 @@ function Overview() {
       {timeline && (
         <RoadmapTimeline
           all={all}
+          pace={pace}
           groups={groups}
           released={released}
           head={(g) => <Pulls d={d} release={g.release} />}
@@ -518,7 +562,7 @@ function Overview() {
               {g.features.length > 0 && (
                 <ul class="fr-cards">
                   {g.features.map((f) => (
-                    <FeatureCard key={f.slug} f={f} />
+                    <FeatureCard key={f.slug} f={f} pace={pace} />
                   ))}
                 </ul>
               )}
@@ -535,7 +579,7 @@ function Overview() {
               </summary>
               <ul class="fr-cards">
                 {released.map((f) => (
-                  <FeatureCard key={f.slug} f={f} />
+                  <FeatureCard key={f.slug} f={f} pace={pace} />
                 ))}
               </ul>
             </details>
