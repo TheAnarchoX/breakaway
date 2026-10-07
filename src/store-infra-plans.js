@@ -39,6 +39,12 @@ import {
 const SHOWN = 50;
 const SHOWN_MAX = 200;
 const SELECT = 'SELECT p.*, e.name AS env_name FROM infra_plans p JOIN infra_environments e ON e.id = p.environment';
+/**
+ * The same, for reading one plan: a plan whose environment was removed (a short-lived one, BRK-263) is still there,
+ * named as the audit last named its environment, so the record of what removed it outlives it.
+ */
+const SELECT_READ = `SELECT p.*, COALESCE(e.name, (SELECT a.environment FROM infra_audit a WHERE a.environment_id = p.environment ORDER BY a.id DESC LIMIT 1)) AS env_name, e.id IS NULL AS env_gone
+  FROM infra_plans p LEFT JOIN infra_environments e ON e.id = p.environment`;
 
 /** The moves a frozen environment refuses: rejecting a plan, finishing an apply, and rolling back still go. */
 const FORWARD = ['waiting', 'approved', 'applying'];
@@ -415,9 +421,12 @@ export const infraPlansMethods = {
   /** GET /api/infra/plans/<id>: one plan, with its diff and blast radius, and `outOfDate`: why an open plan can no longer be approved, or null. */
   planApi(ref) {
     return this.run(async () => {
-      const row = this.planRow(ref);
+      const n = planNumber(ref);
+      const row = n ? this.sql.exec(`${SELECT_READ} WHERE p.n = ?`, n).toArray()[0] : null;
+      if (!row) throw new AgentError(`no plan ${String(ref ?? '').slice(0, 40)}`, 404);
       // Why an open plan can't be approved any more (store-infra-approvals.js), so the plan page says so up front.
-      const outOfDate = ['draft', 'waiting'].includes(row.state) ? this.outOfDatePlan(row) : null;
+      const open = ['draft', 'waiting'].includes(row.state);
+      const outOfDate = open ? (row.env_gone ? 'its environment was removed' : this.outOfDatePlan(row)) : null;
       return { status: 200, body: { plan: planView(row), outOfDate } };
     });
   },
