@@ -99,3 +99,37 @@ describe('the next version after a stable (BRK-118)', () => {
     expect(job).toMatch(/close and reopen this pull request/u);
   });
 });
+
+// BRK-273: a merge publishes nothing. The owner runs Release by hand on main: with prerelease empty it publishes a
+// pre-release of main's latest commit, once CI passed on it; with a pre-release's tag it promotes that one to stable.
+describe('releases only by hand (BRK-273)', () => {
+  const jobs = WORKFLOW.split(/\n {2}(?=[\w-]+:\n {4}name:)/u);
+  const job = (name) => jobs.find((j) => j.startsWith(`${name}:`)) ?? '';
+  const triggers = WORKFLOW.slice(WORKFLOW.indexOf('\non:\n'), WORKFLOW.indexOf('\npermissions:'));
+
+  it('is started by workflow_dispatch alone, with prerelease optional', () => {
+    expect(triggers.match(/^ {2}[\w-]+:/gmu)).toEqual(['  workflow_dispatch:']);
+    expect(WORKFLOW).not.toMatch(/workflow_run/u);
+    expect(triggers).toMatch(/ {6}prerelease:\n {8}description: .+\n {8}required: false\n {8}default: ''\n/u);
+  });
+
+  it('publishes a pre-release only from main with prerelease empty, and a stable only with it set', () => {
+    expect(job('prerelease')).toMatch(
+      /^ {4}if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main' && inputs\.prerelease == ''$/mu,
+    );
+    expect(job('stable')).toMatch(
+      /^ {4}if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main' && inputs\.prerelease != ''$/mu,
+    );
+  });
+
+  it('checks CI passed on the commit, and that it has no release yet, before it builds', () => {
+    const pre = job('prerelease');
+    expect(pre).toMatch(/^ {6}SHA: \$\{\{ github\.sha \}\}$/mu);
+    expect(pre).toMatch(/^ {6}actions: read$/mu);
+    const check = pre.indexOf('name: Check the commit');
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(pre.indexOf('name: Build once'));
+    expect(pre).toMatch(/gh run list --repo "\$GITHUB_REPOSITORY" --workflow ci\.yml --commit "\$SHA" --event push/u);
+    expect(pre).toMatch(/git tag --points-at "\$SHA" -l 'v\*'/u);
+  });
+});

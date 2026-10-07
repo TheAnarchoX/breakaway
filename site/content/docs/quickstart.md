@@ -53,7 +53,7 @@ npx breakaway install init
 
 It asks for the board’s name, the Worker’s name, an address on your own domain (blank is fine: the board answers on workers.dev), and a Secrets Store ID (blank is fine: the secrets go on the Worker). It writes the settings, the Deploy and Update workflows, and a README. It never overwrites a file.
 
-Then open `breakaway.config.json` and add one line, so the board can look for updates on its own: `"installRepository": "<you>/my-board"`. Keep `channel` the same as in `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows every merge to breakaway.
+Then open `breakaway.config.json` and add one line, so the board can look for updates on its own: `"installRepository": "<you>/my-board"`. Keep `channel` the same as in `breakaway.json`: `stable` pins a release and sends you a pull request to move it, and `main` follows breakaway’s pre-releases.
 
 Push it to a **private** GitHub repository, and keep it private. Then, on GitHub:
 

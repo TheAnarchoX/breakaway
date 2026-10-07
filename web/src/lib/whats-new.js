@@ -1,6 +1,6 @@
 // What's new (WEB-80): after the board updates, what to tell the person looking at it, from whats-new.json, the file
 // the release workflow writes into the web app's files (scripts/release/lib.js, whatsNewOf). A stable gets a dialog;
-// a pre-release on the main channel, which comes with every merge, only a small note in a corner. Kept free of JSX so
+// a pre-release on the main channel, which comes more often, only a small note in a corner. Kept free of JSX so
 // it's tested in the Worker test runtime, like links.js.
 import { MAIN, STABLE, compareVersions } from '../../../src/versions.js';
 
