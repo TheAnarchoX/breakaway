@@ -30,6 +30,7 @@ import {
 import { Dialog } from '../components/ui.jsx';
 import { BudgetLine, CostOverview } from '../components/InfraCosts.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
+import { AccountAlerts } from '../components/AccountAlerts.jsx';
 
 /**
  * The Infrastructure view (WEB-60; docs/specs/IDEA-19-architect.md, "Views"): each repository's environments with
@@ -518,6 +519,7 @@ export function InfrastructureView() {
         </p>
       )}
       {state.environments !== null && connections.value.loaded && !connectedProviders.length && <ConnectProvider />}
+      {state.environments !== null && <AccountAlerts reload={state.environments} />}
       {state.environments !== null &&
         (shown.length ? (
           [...byRepo].map(([repo, envs]) => (
