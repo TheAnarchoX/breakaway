@@ -15,6 +15,7 @@ import { hashFor } from '../lib/store.js';
 import { STREAM_KINDS, STREAM_LEVELS, filterStream, groupStream } from '../lib/env-stream.js';
 import { AuditSummary } from './AuditSummary.jsx';
 import { AccountAlerts } from './AccountAlerts.jsx';
+import { NoneYet } from './ui.jsx';
 
 /**
  * An environment's stream (WEB-94; docs/specs/WEB-94-environment-console.md): signals, plan moves, runs and their
@@ -230,7 +231,7 @@ export function StreamRail({ items, fresh, env, nameOf, onResource, more, older,
           )}
         </>
       ) : (
-        <p class="console-quiet">Quiet so far. Signals, plans, runs, and every change show here as they happen.</p>
+        <NoneYet>Signals, plans, runs, and every change show here as they happen.</NoneYet>
       )}
     </section>
   );
