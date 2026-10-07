@@ -6,10 +6,13 @@
  * and it runs in Node as well as the Worker.
  *
  * A file is `{ "version": 1, "provider": "<id>", "resources": [ … ] }`: `resources` is BRK-173's DesiredState, each
- * one `{ id, kind, name, attrs? }`. `provider` is optional and, when given, must be the environment's. Nothing else
+ * one `{ id, kind, name, attrs? }`. `provider` is optional and, when given, must be the environment's. `health` is
+ * optional too: `{ "url": "https://…" }`, the owner's own health address the board GETs on each refresh as an active
+ * check of the environment's front door (BRK-266, src/infra-health.js). Nothing else
  * goes at the top level: policy (BRK-181) is `policy.json` and scaling rules (BRK-186) are `scaling.json` in the same
  * folder, so neither name is an environment's, and envelope bounds live on the board, never in the repository.
  */
+import { checkHealthField } from './infra-health.js';
 import { checkDesired } from './infra-provider.js';
 import { redact } from './redact.js';
 
@@ -32,7 +35,7 @@ export const DESIRED_MAX_FILES = 60;
 /** How deep a file may nest: far more than any real one, and well inside the stack. */
 export const MAX_DEPTH = 64;
 
-const TOP = ['version', 'provider', 'resources'];
+const TOP = ['version', 'provider', 'resources', 'health'];
 const RESOURCE = ['id', 'kind', 'name', 'attrs'];
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/u;
 const PROVIDER = /^[a-z][a-z0-9-]{0,31}$/u;
@@ -264,6 +267,10 @@ export function checkDesiredFile(source, { provider = null, expectProvider = nul
         `provider is ${named}, and the environment runs on ${expectProvider}: change one so they match`,
       );
   }
+  if (file.health !== undefined) {
+    const bad = checkHealthField(file.health);
+    if (bad) return wrong(lines.has(bad.field) ? bad.field : 'health', bad.message);
+  }
   if (!Array.isArray(file.resources))
     return wrong(
       file.resources === undefined ? null : 'resources',
@@ -316,6 +323,7 @@ export function checkDesiredFile(source, { provider = null, expectProvider = nul
   /** @type {import('./infra-provider.js').DesiredState} */
   const desired = {
     resources: file.resources.map(({ id, kind, name, attrs }) => ({ id, kind, name, ...(attrs ? { attrs } : {}) })),
+    ...(file.health ? { health: { url: file.health.url } } : {}),
   };
   if (provider) checkDesired(provider, desired);
   return { ok: true, desired, provider: named };

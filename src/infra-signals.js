@@ -100,13 +100,14 @@ export function signalEntry(input, now = Date.now()) {
   };
 }
 
-/** How a resource's health reads as a signal's level: nothing to say when it's healthy or unknown. */
+/** How a resource's health reads as a signal's level: nothing to say when it's healthy, idle, or unknown. */
 const HEALTH_LEVEL = { degraded: 'warning', down: 'critical' };
 
 /**
  * What one environment's health, just observed, adds to the stream: a signal for each resource that's degraded
- * (warning) or down (critical), and one (info) for each that's healthy again after it wasn't. A resource that stays
- * healthy, or whose health is unknown, adds nothing: the inventory keeps its last health either way.
+ * (warning) or down (critical), and one (info) for each that's healthy (or idle, which counts as healthy, BRK-266)
+ * again after it wasn't. A resource that stays healthy, goes quiet, or whose health is unknown, adds nothing: the
+ * inventory keeps its last health either way, so traffic stopping never makes a signal.
  * @param {{ source: string, environment: string, environmentId?: number | null }} where
  * @param {import('./infra-provider.js').Health[]} health
  * @param {Map<string, string | null>} [before] each resource's last health, by its ID
@@ -118,7 +119,8 @@ export function healthSignals({ source, environment, environmentId = null }, hea
   for (const h of health) {
     const level = HEALTH_LEVEL[h.state];
     const was = before.get(h.resource) ?? null;
-    if (!level && !(h.state === 'healthy' && was && HEALTH_LEVEL[was])) continue;
+    const fine = h.state === 'healthy' || h.state === 'idle';
+    if (!level && !(fine && was && HEALTH_LEVEL[was])) continue;
     const said = h.text ? `: ${h.text}` : '';
     signals.push({
       source,

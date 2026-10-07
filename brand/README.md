@@ -161,7 +161,7 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
-- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, and Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair.
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair, and the health URL you name for an environment, your own service, which your board GETs on each refresh.
 - **Free, and the source is public** ([below](#free-and-fair-source)).
 
 Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.

@@ -219,7 +219,8 @@ export function rollbackDiff(diff, steps) {
 /**
  * Whether what an apply touched is healthy: every resource it created, updated, scaled, or restarted that the provider
  * reports down or degraded fails the check. `unknown` names the touched resources the provider can't tell about yet
- * (unknown, or not reported, like a Worker with no requests): when every one is unknown, the apply is unverified.
+ * (unknown, not reported, or idle, like a Worker with no requests: deployed, but nothing has shown it serves the
+ * change, BRK-266): when every one is unknown, the apply is unverified.
  * @param {PlanDiff} diff
  * @param {import('./infra-provider.js').Health[]} health
  * @returns {{ ok: boolean, problems: string[], unknown: string[], touched: number }}
@@ -235,7 +236,8 @@ export function healthVerdict(diff, health) {
     const h = byId.get(c.resource);
     if (h && UNHEALTHY.includes(h.state))
       problems.push(`${c.name} is ${h.state}${h.text ? ` (${redact(h.text).slice(0, 120)})` : ''}`);
-    else if (!h || !HEALTH_STATES.includes(h.state) || h.state === 'unknown') unknown.push(c.name);
+    else if (!h || !HEALTH_STATES.includes(h.state) || h.state === 'unknown' || h.state === 'idle')
+      unknown.push(c.name);
   }
   return { ok: problems.length === 0, problems, unknown, touched: seen.size };
 }
