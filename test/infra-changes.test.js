@@ -568,6 +568,29 @@ describe('changes from the console', () => {
     await board(`infra/changes/${res.change.n}/reject`, { method: 'POST', body: {} });
   });
 
+  it('never moves a branch it didn’t make for the change: it takes the next number', async () => {
+    const next = await inStore((s) => Number(s.meta('infra_change_seq') ?? 0) + 1);
+    gh.branches.add(changeBranch('chg-staging', next));
+    gh.branches.add(changeBranch('chg-staging', next + 1));
+    const edits = [{ op: 'set', resource: 'svc-api', path: 'instances', value: 7 }];
+    const res = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(res.status).toBe(201);
+    expect(res.change).toMatchObject({ n: next + 2, branch: changeBranch('chg-staging', next + 2) });
+    expect(gh.writes.some((w) => w.method === 'PATCH' && w.path.startsWith('/git/refs/'))).toBe(false);
+    await board(`infra/changes/${res.change.n}/reject`, { method: 'POST', body: {} });
+
+    // Every name it tries is taken: it says so, and moves none of them.
+    gh.writes = [];
+    const at = await inStore((s) => Number(s.meta('infra_change_seq')) + 1);
+    for (let k = 0; k < 3; k += 1) gh.branches.add(changeBranch('chg-staging', at + k));
+    const taken = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(taken).toMatchObject({
+      status: 409,
+      error: expect.stringMatching(/the board didn’t make for this change/u),
+    });
+    expect(gh.writes.some((w) => w.method === 'PATCH' || w.path === '/pulls')).toBe(false);
+  });
+
   it('says what GitHub refused, keeping nothing', async () => {
     gh.refuse = true;
     const before = await kept();

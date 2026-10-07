@@ -38,6 +38,8 @@ import SHIPPED from './infra-shipped-templates.json' with { type: 'json' };
 const MINUTE = 60_000;
 /** A repository's template is read again after this long. */
 const TEMPLATE_CACHE_MS = 5 * MINUTE;
+/** How many fresh branch names a proposal tries before it says the names are taken. */
+const BRANCH_TRIES = 3;
 /** The changes an environment's list shows. */
 const LIST_LIMIT = 20;
 
@@ -426,8 +428,8 @@ export const infraChangesMethods = {
         ]);
     }
 
-    const n = live ? Number(live.n) : this.reserveChangeNumber();
-    const branch = live?.branch ?? changeBranch(env.name, n);
+    let n = live ? Number(live.n) : this.reserveChangeNumber();
+    let branch = live?.branch ?? changeBranch(env.name, n);
     const created = base.from === 'draft';
     const title =
       created && !planned.lines.length ? `Describe ${env.name} as code` : changeTitle(env.name, planned.lines);
@@ -442,14 +444,25 @@ export const infraChangesMethods = {
       ],
     });
     const made = await client.send('POST', '/git/commits', { message, tree: tree.sha, parents: [head] });
+    // The open change's branch moves by force: its head is the commit the board wrote (followInfraChange checked).
     if (live) await client.send('PATCH', `/git/refs/heads/${refPath(branch)}`, { sha: made.sha, force: true });
     else
-      try {
-        await client.send('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: made.sha });
-      } catch (error) {
-        // A branch a closed change left behind starts again: it's the board's, for this change alone.
-        if (!(error instanceof GitHubError) || error.status !== 422) throw error;
-        await client.send('PATCH', `/git/refs/heads/${refPath(branch)}`, { sha: made.sha, force: true });
+      for (let tries = 1; ; tries += 1) {
+        try {
+          await client.send('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: made.sha });
+          break;
+        } catch (error) {
+          if (!(error instanceof GitHubError) || error.status !== 422) throw error;
+          // A branch of that name the board didn't make for this change (a person's, or another install's) is
+          // never moved: the next number gets a branch of its own.
+          if (tries >= BRANCH_TRIES)
+            throw new AgentError(
+              `${env.repo} already has branches named like ${changeBranch(env.name, '<n>')} that the board didn’t make for this change: delete the ones you don’t need, then propose again`,
+              409,
+            );
+          n = this.reserveChangeNumber();
+          branch = changeBranch(env.name, n);
+        }
       }
     const home = this.homeUrl();
     const page = home ? `${home}/#/infrastructure/${env.id}` : null;
