@@ -84,6 +84,7 @@ export function auditWords(e) {
   const run = RUN_WORDS[e.kind]?.[outcome];
   if (run) return run;
   const label = AUDIT_LABEL[e.kind] ?? e.kind;
+  if (e.kind === 'lock-release' && outcome === 'released') return { label, outcome: '' };
   if (e.kind === 'plan') return { label, outcome: PLAN_OUTCOME[outcome] ?? outcome };
   return { label, outcome: outcome.toLowerCase() === label.toLowerCase() ? '' : outcome };
 }
@@ -93,3 +94,29 @@ export function auditWords(e) {
  * @param {{ by: string, agent?: string | null }} e
  */
 export const auditActor = (e) => (e.by === 'agent' ? (e.agent ?? 'an agent') : (ACTOR[e.by] ?? e.by));
+
+/**
+ * A lock release in words (WEB-96), by who released it, with the plan the lock was for as a part to link: the stored
+ * summary names the raw holder (`executor:plan-1`), which no one should have to read.
+ * @type {Record<string, (plan: string | null) => (string | { plan: string })[]>}
+ */
+const LOCK_RELEASE = {
+  executor: (plan) => (plan ? ['The executor released the lock after ', { plan }] : ['The executor released the lock']),
+  owner: (plan) => (plan ? ['You released the lock held for ', { plan }] : ['You released the lock']),
+  board: (plan) => (plan ? ['The lock held for ', { plan }, ' expired'] : ['The lock expired']),
+};
+
+/**
+ * An entry's summary as parts: text, and the plan as `{ plan }` where it should link to its page. Only a lock release
+ * is reworded; any other entry is its stored summary.
+ * @param {{ kind: string, by: string, plan?: string | null, summary?: string | null }} e
+ * @returns {(string | { plan: string })[]}
+ */
+export function auditSummary(e) {
+  const words = e.kind === 'lock-release' ? LOCK_RELEASE[e.by] : null;
+  if (words) return words(e.plan ?? null);
+  return e.summary ? [e.summary] : [];
+}
+
+/** The summary's parts as plain text. @param {(string | { plan: string })[]} parts */
+export const summaryText = (parts) => parts.map((p) => (typeof p === 'string' ? p : p.plan)).join('');
