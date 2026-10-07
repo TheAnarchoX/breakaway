@@ -552,6 +552,33 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.infraDescribeStartApi(parts[2], { repo, by: body.by, force: body.force }));
     }
   }
+  // Changes from the console (BRK-259): anyone signed in reads them and the templates; previewing, proposing, and
+  // rejecting one are the owner's, from the signed-in browser only, never the bearer token agents and the CLI hold.
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'environments' &&
+    ['changes', 'templates'].includes(parts[3]) &&
+    parts.length === 4
+  ) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET')
+      return send(
+        await (parts[3] === 'changes'
+          ? s.infraChangesListApi(parts[2], { repo })
+          : s.infraChangeTemplatesApi(parts[2], { repo })),
+      );
+    if (parts[3] === 'changes' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change an environment' });
+      return send(await s.infraChangesApi(parts[2], { repo, ...body }));
+    }
+  }
+  if (parts[0] === 'infra' && parts[1] === 'changes' && parts.length <= 4) {
+    if (parts.length === 3 && method === 'GET') return send(await s.infraChangeApi(parts[2]));
+    if (parts.length === 4 && parts[3] === 'reject' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can reject a change' });
+      return send(await s.infraChangeRejectApi(parts[2], body));
+    }
+  }
   // Environments (BRK-174): anyone signed in reads them; adding, changing, and removing one is the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold (BRK-233). An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'environments' && parts.length <= 3) {

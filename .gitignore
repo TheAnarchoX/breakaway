@@ -13,5 +13,7 @@ dist/
 worker-configuration.d.ts
 # Generated from the files repos init copies by node scripts/board-files.mjs (install, build, typecheck, test, deploy).
 src/board-files.json
+# The golden paths breakaway ships, for the board's console (BRK-259), written by the same script.
+src/infra-shipped-templates.json
 # The CLI's lockfile, written for the version being published by scripts/release/shrinkwrap.mjs (CLI-21).
 /npm-shrinkwrap.json
