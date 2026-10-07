@@ -58,9 +58,22 @@ export async function analyticsQuery(ctx, query, variables) {
       'Cloudflare’s rate limit was reached, so reading the analytics stopped: it refuses every call for 5 minutes, then try again',
       429,
     );
-  if (res.status === 403)
-    throw new AnalyticsError(`Cloudflare refused the analytics: the token needs ${PERMISSION}`, 403, PERMISSION);
   const json = await res.json().catch(() => null);
+  if (res.status === 403) {
+    // What Cloudflare said too, since a refusal isn't always the permission the board guesses (BRK-254).
+    const first = Array.isArray(json?.errors) ? json.errors[0] : null;
+    const said = first
+      ? [first.code, first.message]
+          .filter((x) => x != null && x !== '')
+          .join(': ')
+          .slice(0, 200)
+      : '';
+    throw new AnalyticsError(
+      `Cloudflare refused the analytics: the token needs ${PERMISSION}${said ? ` (Cloudflare said ${said})` : ''}`,
+      403,
+      PERMISSION,
+    );
+  }
   if (!res.ok) throw new AnalyticsError(`Cloudflare answered ${res.status} to the analytics`, res.status);
   const errors = Array.isArray(json?.errors) ? json.errors : [];
   if (errors.length) {
@@ -71,6 +84,7 @@ export async function analyticsQuery(ctx, query, variables) {
       .slice(0, 200);
     throw new AnalyticsError(`Cloudflare’s analytics said: ${said || 'the query failed'}`, 400);
   }
+  ctx.reached?.add(PERMISSION);
   return json?.data ?? null;
 }
 

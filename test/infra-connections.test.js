@@ -105,6 +105,22 @@ describe('a provider’s read-only token, the pure parts (BRK-194)', () => {
 
     const short = providerRow(provider, { ...base, permissions: ['Fake Services Read'], discovery: seen });
     expect(short).toMatchObject({ state: 'attention', detail: /doesn’t have Fake Alerts Read/u });
+    // What the platform said when it refused shows next to the permission the board guessed (BRK-254).
+    const refused = providerRow(provider, {
+      ...base,
+      permissions: ['Fake Services Read'],
+      discovery: { ...later, ok: false, error: 'Fake platform refused GET /x (Fake said 10000: Authentication error)' },
+    });
+    expect(refused.detail).toBe(
+      'connected, but the token doesn’t have Fake Alerts Read; the last discovery failed: Fake platform refused GET /x (Fake said 10000: Authentication error)',
+    );
+
+    // What discovery went on without is a quiet note on a working row (BRK-254).
+    const note = 'routes on acme-two.example aren’t readable with this token, so discovery skipped it';
+    const partial = providerRow(provider, { ...base, discovery: { ...seen, skipped: [note] } });
+    expect(partial).toMatchObject({ state: 'working', detail: `connected; ${note}`, fix: null });
+    expect(partial.items.every((i) => i.ok)).toBe(true);
+    expect(providerRow(provider, { ...base, discovery: { ...seen, skipped: [] } }).detail).toBe('connected');
   });
 
   it('counts a permission by its legacy name, and names both, so a token made before a rename still works (BRK-243)', async () => {

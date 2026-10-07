@@ -265,6 +265,16 @@ function said(json) {
     .slice(0, 200);
 }
 
+/** What Cloudflare said, with each error's code (`10000: Authentication error`), in a line. */
+function saidCodes(json) {
+  const errors = Array.isArray(json?.errors) ? json.errors : [];
+  return errors
+    .filter((e) => e?.message || e?.code != null)
+    .map((e) => (e.code != null ? `${e.code}${e.message ? `: ${e.message}` : ''}` : e.message))
+    .join('; ')
+    .slice(0, 200);
+}
+
 /**
  * A reader for one call of the provider: GETs only, each checked against NEVER_CALLED, stopping on a 429.
  * @param {ProviderContext} ctx
@@ -294,16 +304,21 @@ export function reader(ctx) {
       );
     const json = await res.json().catch(() => null);
     if (res.status === 404 && missingOk) return null;
+    // Cloudflare's own code and message ride along with the permission the board guesses, so the real cause shows.
     if (res.status === 403)
       throw Object.assign(
-        new CloudflareError(`Cloudflare refused GET ${path.split('?')[0]}: the token needs ${named(permission)}`, 403),
-        { permission },
+        new CloudflareError(
+          `Cloudflare refused GET ${path.split('?')[0]}: the token needs ${named(permission)}${saidCodes(json) ? ` (Cloudflare said ${saidCodes(json)})` : ''}`,
+          403,
+        ),
+        { permission, cloudflare: saidCodes(json) },
       );
     if (!res.ok || json?.success === false)
       throw new CloudflareError(
         `Cloudflare answered ${res.status} to GET ${path.split('?')[0]}${said(json) ? `: ${said(json)}` : ''}`,
         res.status,
       );
+    ctx.reached?.add(permission);
     return json;
   }
 
@@ -409,12 +424,25 @@ export function bindingTarget(b) {
  */
 
 /**
+ * The zones whose routes the token can't read, as a quiet note for Connections. An account-owned token is listed every
+ * zone on the account, including ones it has no permission on, so a 403 on one is normal (BRK-254).
+ * @param {Array<{ zone: string, error: any }>} refused
+ */
+function routesSkipped(refused) {
+  const zones = refused.map((r) => r.zone);
+  const list = zones.length === 1 ? zones[0] : `${zones.slice(0, -1).join(', ')} and ${zones.at(-1)}`;
+  return `routes on ${list} aren’t readable with this token, so discovery skipped ${zones.length === 1 ? 'it' : 'them'}`;
+}
+
+/**
  * Discovers what the environment's target Worker runs on, as resources and relations. `missing` names a permission
  * the token lacks for a kind a repository may leave out (queues, containers): that kind isn't read, and discovery goes
- * on (BRK-188, "Tokens"). With `live`, it also returns the LiveAccount plan and apply work from.
+ * on (BRK-188, "Tokens"). `skipped` says, in words, what the token couldn't read and discovery went on without (a
+ * zone whose routes it can't read). Each permission a call answers with goes in `ctx.reached`. With `live`, it also
+ * returns the LiveAccount plan and apply work from.
  * @param {ProviderContext} ctx
  * @param {{ live?: boolean }} [options]
- * @returns {Promise<Discovery & { missing: string[], live?: LiveAccount }>}
+ * @returns {Promise<Discovery & { missing: string[], skipped?: string[], live?: LiveAccount }>}
  */
 export async function discover(ctx, { live = false } = {}) {
   const target = typeof ctx.scope?.target === 'string' ? ctx.scope.target : null;
@@ -424,6 +452,8 @@ export async function discover(ctx, { live = false } = {}) {
   const relations = new Map();
   /** @type {string[]} */
   const missing = [];
+  /** @type {string[]} */
+  const skipped = [];
   /** @type {LiveAccount} */
   const seen = { account: '', scripts: [], bindings: {}, zones: {}, routes: [], domains: [] };
   const add = (r) => resources.set(r.id, r);
@@ -432,6 +462,7 @@ export async function discover(ctx, { live = false } = {}) {
     resources: [...resources.values()],
     relations: [...relations.values()].filter((r) => resources.has(r.from) && resources.has(r.to)),
     missing,
+    ...(skipped.length ? { skipped } : {}),
     ...(live ? { live: seen } : {}),
   });
   if (!target) return done();
@@ -677,12 +708,23 @@ export async function discover(ctx, { live = false } = {}) {
       missing.push('Containers Read');
     }
 
-  // Routes, on the zones the token reaches, that send to a Worker in scope.
+  // Routes, on the zones the token reaches, that send to a Worker in scope. The zones list holds every zone on the
+  // account for an account-owned token, so a 403 on one zone's routes is skipped and named in `skipped`, never an
+  // error (BRK-254); only when every zone refuses does discovery fail, naming the permission.
   const zones = await cf.all(`/zones?account.id=${a}`, { permission: 'Zone Read' }, 50);
+  /** @type {Array<{ zone: string, error: any }>} */
+  const refused = [];
   for (const zone of zones) {
     seen.zones[String(zone.name)] = String(zone.id);
-    const routes =
-      (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
+    let routes;
+    try {
+      routes =
+        (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
+    } catch (error) {
+      if (error?.status !== 403) throw error;
+      refused.push({ zone: String(zone.name), error });
+      continue;
+    }
     for (const route of routes) {
       seen.routes.push({ pattern: String(route.pattern), zone: String(zone.name), worker: String(route.script ?? '') });
       if (!workers.has(String(route.script))) continue;
@@ -695,6 +737,8 @@ export async function discover(ctx, { live = false } = {}) {
       relate(rid('worker', String(route.script)), rid('route', route.id), 'serves');
     }
   }
+  if (refused.length && refused.length === zones.length) throw refused[0].error;
+  if (refused.length) skipped.push(routesSkipped(refused));
 
   // Custom domains attached to a Worker in scope.
   const domains = (await cf.get(`/accounts/${a}/workers/domains`, { permission: WORKERS_READ })).result ?? [];

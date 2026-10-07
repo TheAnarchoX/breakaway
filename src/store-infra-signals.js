@@ -357,8 +357,10 @@ export const infraSignalsMethods = {
       });
       /** @type {import('./infra-provider.js').AlertSetup} */
       let setup;
+      /** @type {Set<string>} */
+      const reached = new Set();
       try {
-        setup = await provider.alerts({ environment: '', token }, { board: [...new Set(board)] });
+        setup = await provider.alerts({ environment: '', token, reached }, { board: [...new Set(board)] });
       } catch (error) {
         const message = `${provider.name} couldn’t say which alerts are set up: ${redact(error?.message ?? error)}`;
         if (typeof error?.permission !== 'string') throw new AgentError(message, error?.status === 429 ? 429 : 502);
@@ -366,6 +368,8 @@ export const infraSignalsMethods = {
         // The permission it's missing, by name, so Connections can say which one to add to the token (WEB-91).
         return { status: 502, body: { error: message, missing: [error.permission] } };
       }
+      // A permission an earlier refusal struck comes back once this read answers with it (BRK-254).
+      this.infraPermissionsSeen(id, { reached: [...reached] });
       return {
         status: 200,
         body: {
