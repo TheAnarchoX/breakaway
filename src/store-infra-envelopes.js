@@ -314,7 +314,7 @@ export const infraEnvelopesMethods = {
       );
     const ctx = {
       environment: env.name,
-      scope: { target: env.target },
+      scope: this.infraScope(env),
       observeOnly: false,
       token: (await this.providerReadToken(env.provider)) ?? undefined,
     };
@@ -333,6 +333,8 @@ export const infraEnvelopesMethods = {
     const refused =
       provider.refuses?.(r, change) ??
       (declares(provider, r.kind, change) ? null : `a ${r.kind} can’t ${change} on ${provider.name}`);
+    const outside = provider.outside?.(ctx, found, r) ?? null;
+    if (outside) throw new AgentError(`${outside}, so nothing was planned`, 409);
     if (refused) throw new AgentError(`${refused}, so nothing was planned`, 409);
     const attrs = structuredClone(r.attrs ?? {});
     const scales = provider.kinds[r.kind]?.scales;

@@ -14,6 +14,7 @@ import { DescribeAsCode } from '../components/InfraDescribe.jsx';
 import { StatusBand } from '../components/EnvironmentStatus.jsx';
 import { Topology } from '../components/EnvironmentTopology.jsx';
 import { StreamRail } from '../components/EnvironmentStream.jsx';
+import { EnvironmentActions } from '../components/EnvironmentActions.jsx';
 
 /**
  * An environment's page (WEB-61; docs/specs/IDEA-19-architect.md, "Views"), at #/infrastructure/<id>, as a console
@@ -383,7 +384,16 @@ export function EnvironmentView() {
         </div>
       </div>
 
-      <StatusBand env={env} health={health} cost={state.cost} run={run} agents={agents} />
+      <StatusBand
+        env={env}
+        health={health}
+        cost={state.cost}
+        run={run}
+        agents={agents}
+        actions={
+          <EnvironmentActions env={env} drift={state.drift} tick={state.tick} onChange={() => load({ quiet: true })} />
+        }
+      />
 
       <div class="console-grid">
         <Topology

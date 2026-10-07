@@ -184,6 +184,11 @@ function network(key) {
     if (/^\/commits\/[^/]+\/status$/u.test(rest)) return reply({ state: 'success', statuses: [] });
     if (rest === '/commits') return reply(gh.commits);
     if (rest === '/actions/runs') return reply({ workflow_runs: [] });
+    // The GitHub environment the runner applies in lets only main deploy (BRK-250).
+    if (/^\/environments\/[^/]+$/u.test(rest))
+      return reply({ deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } });
+    if (/^\/environments\/[^/]+\/deployment-branch-policies$/u.test(rest))
+      return reply({ total_count: 1, branch_policies: [{ id: 1, name: 'main', type: 'branch' }] });
     if (rest === '/actions/workflows/breakaway-infra.yml')
       return reply({ id: 9, path: '.github/workflows/breakaway-infra.yml' });
     if (rest === '/actions/variables/DEPLOYS_PAUSED')

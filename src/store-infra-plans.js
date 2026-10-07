@@ -141,6 +141,24 @@ export const infraPlansMethods = {
   },
 
   /**
+   * An environment's scope on its provider, for a plan or an act (BRK-251): its target, the install's own Worker, and
+   * the other environments' targets on the same provider, which discovery can reach but the environment never changes.
+   * @param {Record<string, any>} env the environment's row
+   */
+  infraScope(env) {
+    const others = this.sql
+      .exec(
+        'SELECT DISTINCT target FROM infra_environments WHERE id != ? AND provider IS ? AND target IS NOT NULL',
+        env.id,
+        env.provider ?? null,
+      )
+      .toArray()
+      .map((row) => String(row.target))
+      .filter((target) => target !== env.target);
+    return { target: env.target, board: install(this.env).worker, others };
+  },
+
+  /**
    * What a plan for an environment would hold, kept nowhere: its provider's diff from `wanted`, its cost change, and
    * its blast radius from the inventory. makeInfraPlan keeps it; `infra check`'s preview (store-infra-check.js) only
    * shows it. Refused on an environment with no provider, or one whose provider isn't connected. With nothing to
@@ -160,7 +178,7 @@ export const infraPlansMethods = {
     const provider = registry.get(env.provider);
     const ctx = {
       environment: env.name,
-      scope: { target: env.target },
+      scope: this.infraScope(env),
       observeOnly: false,
       token: (await this.providerReadToken(env.provider)) ?? undefined,
     };

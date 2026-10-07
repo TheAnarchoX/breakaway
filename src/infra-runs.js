@@ -147,6 +147,36 @@ export function checkRunClaims(claims, { repository, environment, branch, dispat
   return { run: id };
 }
 
+/**
+ * What's wrong with the deployment branch rule of the GitHub environment a run applies in, or null when only the
+ * default branch can deploy to it (BRK-250). The runner's `github.ref` check is read from the branch that runs, so an
+ * edited copy dispatched on another branch would reach the write token: only the environment's own rule stops it.
+ * "Selected branches and tags" naming exactly the default branch passes; no rule, protected branches, another branch
+ * or pattern, or a tag doesn't.
+ * @param {string} name the GitHub environment
+ * @param {string} branch the default branch
+ * @param {{ deployment_branch_policy?: { protected_branches?: boolean, custom_branch_policies?: boolean } | null } | null} environment
+ *   GitHub's answer for the environment, null when there's none
+ * @param {Array<{ name?: string, type?: string }> | null} [policies] its selected branches and tags, read only when it has them
+ * @returns {string | null}
+ */
+export function deployBranchProblem(name, branch, environment, policies = null) {
+  const fix = `under Deployment branches and tags, choose Selected branches and tags and allow only ${branch}`;
+  if (!environment) return `there’s no GitHub environment ${name}: make it with its write token, and ${fix}`;
+  const rule = environment.deployment_branch_policy;
+  if (!rule) return `the GitHub environment ${name} lets any branch deploy: ${fix}`;
+  if (rule.protected_branches || !rule.custom_branch_policies)
+    return `the GitHub environment ${name} lets every protected branch deploy: ${fix}`;
+  const list = policies ?? [];
+  const others = list.filter((p) => p.name !== branch || (p.type ?? 'branch') !== 'branch');
+  if (others.length) {
+    const named = others.map((p) => `${p.type === 'tag' ? 'tag ' : ''}${p.name}`).join(', ');
+    return `the GitHub environment ${name} also lets ${named} deploy: ${fix}`;
+  }
+  if (!list.length) return `the GitHub environment ${name} lets no branch deploy: ${fix}`;
+  return null;
+}
+
 /** @typedef {import('./infra-provider.js').PlanDiff} PlanDiff */
 /** @typedef {import('./infra-provider.js').Change} Change */
 

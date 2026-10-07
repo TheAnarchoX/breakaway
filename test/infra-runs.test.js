@@ -10,6 +10,7 @@ import {
   OIDC_KEYS_URL,
   RunRefused,
   checkRunClaims,
+  deployBranchProblem,
   healthVerdict,
   rollbackDiff,
   verifyRunToken,
@@ -135,6 +136,38 @@ describe('the runner’s token and claims', () => {
   });
 });
 
+describe('the GitHub environment’s deployment branches (BRK-250)', () => {
+  const custom = { deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } };
+
+  it('passes only an environment that lets the default branch, and nothing else, deploy', () => {
+    expect(deployBranchProblem('staging', 'main', custom, [{ name: 'main', type: 'branch' }])).toBeNull();
+    expect(deployBranchProblem('staging', 'trunk', custom, [{ name: 'trunk' }])).toBeNull();
+  });
+
+  it('says what to set for no environment, no rule, protected branches, another branch or a tag, or none', () => {
+    const fix = /under Deployment branches and tags, choose Selected branches and tags and allow only main$/u;
+    const problems = [
+      deployBranchProblem('staging', 'main', null),
+      deployBranchProblem('staging', 'main', { deployment_branch_policy: null }),
+      deployBranchProblem('staging', 'main', {
+        deployment_branch_policy: { protected_branches: true, custom_branch_policies: false },
+      }),
+      deployBranchProblem('staging', 'main', custom, [{ name: 'main' }, { name: 'release/*', type: 'branch' }]),
+      deployBranchProblem('staging', 'main', custom, [{ name: 'main' }, { name: 'main', type: 'tag' }]),
+      deployBranchProblem('staging', 'main', custom, []),
+    ];
+    for (const problem of problems) expect(problem).toMatch(fix);
+    expect(problems.map((p) => p.split(':')[0])).toEqual([
+      'there’s no GitHub environment staging',
+      'the GitHub environment staging lets any branch deploy',
+      'the GitHub environment staging lets every protected branch deploy',
+      'the GitHub environment staging also lets release/* deploy',
+      'the GitHub environment staging also lets tag main deploy',
+      'the GitHub environment staging lets no branch deploy',
+    ]);
+  });
+});
+
 describe('rolling back and the health check', () => {
   const diff = {
     provider: 'fake',
@@ -218,7 +251,12 @@ describe('the executor (BRK-183)', () => {
   let provider;
   let key;
   /** What the pretend GitHub was asked to do, and whether it has the runner's workflow. */
-  const gh = { dispatches: [], workflow: true, dispatchStatus: 204 };
+  const gh = { dispatches: [], workflow: true, dispatchStatus: 204, environments: {}, reads: [] };
+  /** A GitHub environment only the default branch may deploy to, as GitHub answers for it. */
+  const mainOnly = () => ({
+    rule: { protected_branches: false, custom_branch_policies: true },
+    policies: [{ id: 1, name: 'main', type: 'branch' }],
+  });
 
   beforeAll(async () => {
     key = await signer('gh-1');
@@ -249,6 +287,8 @@ describe('the executor (BRK-183)', () => {
     gh.dispatches = [];
     gh.workflow = true;
     gh.dispatchStatus = 204;
+    gh.environments = { 'exec-staging': mainOnly(), 'short-lived': mainOnly() };
+    gh.reads = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
       const url = new URL(typeof input === 'string' ? input : input.url);
       const reply = (data, status = 200) =>
@@ -259,6 +299,16 @@ describe('the executor (BRK-183)', () => {
       if (path === `/repos/${REPO}/installation`) return reply({ id: 77 });
       if (path.startsWith('/app/installations/'))
         return reply({ token: 'ghs_test', expires_at: new Date(Date.now() + 3_600_000).toISOString() });
+      const envPath = /^\/repos\/acme\/widgets\/environments\/([^/]+)(\/deployment-branch-policies)?$/u.exec(path);
+      if (envPath && (init.method ?? 'GET') === 'GET') {
+        gh.reads.push(path);
+        const found = gh.environments[envPath[1]];
+        if (!found) return reply({ message: 'Not Found' }, 404);
+        if (found.status) return reply({ message: 'Resource not accessible by integration' }, found.status);
+        return envPath[2]
+          ? reply({ total_count: found.policies.length, branch_policies: found.policies })
+          : reply({ name: envPath[1], deployment_branch_policy: found.rule, protection_rules: [] });
+      }
       if (path === `/repos/${REPO}/actions/workflows/breakaway-infra.yml` && (init.method ?? 'GET') === 'GET')
         return gh.workflow
           ? reply({ id: 9, path: '.github/workflows/breakaway-infra.yml' })
@@ -634,6 +684,46 @@ describe('the executor (BRK-183)', () => {
       s.sql.exec('UPDATE infra_runs SET next_try = NULL WHERE n = ?', Number(p.id.slice(5))),
     );
     await tick();
+    expect((await applyAsRunner(p.id)).end.outcome).toBe('applied');
+  });
+
+  it('starts no run while its GitHub environment lets another branch deploy, and says what to set (BRK-250)', async () => {
+    const p = await approved(15);
+    const retry = () =>
+      runInDurableObject(store(), (s) =>
+        s.sql.exec('UPDATE infra_runs SET next_try = NULL WHERE n = ?', Number(p.id.slice(5))),
+      );
+    const fix = 'under Deployment branches and tags, choose Selected branches and tags and allow only main';
+    const refused = async (environment, error) => {
+      gh.environments['exec-staging'] = environment;
+      await retry();
+      await tick();
+      expect(gh.dispatches).toHaveLength(0);
+      expect(await run(p.id)).toMatchObject({ phase: 'queued', error });
+      expect((await plan(p.id)).state).toBe('approved');
+      expect(await lock()).toBeNull();
+    };
+    await refused({ rule: null, policies: [] }, `the GitHub environment exec-staging lets any branch deploy: ${fix}`);
+    await refused(
+      { rule: { protected_branches: true, custom_branch_policies: false }, policies: [] },
+      `the GitHub environment exec-staging lets every protected branch deploy: ${fix}`,
+    );
+    await refused(
+      { ...mainOnly(), policies: [...mainOnly().policies, { id: 2, name: 'claude/*', type: 'branch' }] },
+      `the GitHub environment exec-staging also lets claude/* deploy: ${fix}`,
+    );
+    await refused(undefined, `there’s no GitHub environment exec-staging: make it with its write token, and ${fix}`);
+    await refused({ status: 403 }, /^GitHub answered 403 for the GitHub environment exec-staging/u);
+    // Once only main may deploy, it starts like any other.
+    gh.environments['exec-staging'] = mainOnly();
+    gh.reads = [];
+    await retry();
+    await tick();
+    expect(gh.reads).toEqual([
+      `/repos/${REPO}/environments/exec-staging`,
+      `/repos/${REPO}/environments/exec-staging/deployment-branch-policies`,
+    ]);
+    expect(gh.dispatches).toEqual([{ ref: 'main', inputs: { plan: p.id, environment: 'exec-staging' } }]);
     expect((await applyAsRunner(p.id)).end.outcome).toBe('applied');
   });
 
