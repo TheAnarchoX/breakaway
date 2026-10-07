@@ -375,6 +375,8 @@ export const githubMethods = {
     }
     try {
       await this.refreshFlowCompare(client, repo.slug);
+      // Whether Release builds pre-releases by hand (WEB-113): one read a day, or after a push changes a workflow.
+      await this.refreshReleaseMode(client, repo);
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       automation.errors.push(error.message);
@@ -1337,6 +1339,8 @@ export const githubMethods = {
       packages: this.packagesOf(repo.slug).versions,
       // The npm package Release offers on (BRK-103), or null: Packages then says how to turn it on (WEB-81).
       releasePackage: packageOf(repo)?.name ?? null,
+      // Build a pre-release (WEB-113): what main has since the latest one, where Release builds them by hand.
+      releaseBuild: this.releaseBuildOf(repo, { prs, runs: runs() }),
       releases: JSON.parse(this.ghMeta('gh_releases', repo.slug) ?? '[]'),
       tags: JSON.parse(this.ghMeta('gh_tags', repo.slug) ?? '[]'),
       // Prepare the next minor or major (BRK-100), where the pre-releases count from package.json's version.
@@ -1759,6 +1763,7 @@ export const githubMethods = {
     const credentials = await appCredentials(this.env);
     if (!credentials) return { status: 409, body: { error: 'GitHub isn’t connected yet' } };
     if (action === 'release') return this.packageRelease(repo, credentials, version, next);
+    if (action === 'prerelease') return this.buildPrerelease(repo, credentials);
     const pipeline = pipelineOf(repo);
     if (!pipeline)
       return {
@@ -1895,6 +1900,40 @@ export const githubMethods = {
     return answer;
   },
 
+  /**
+   * Build a pre-release (WEB-113): starts the pre-release job of the repository's release workflow on its default
+   * branch, with `prerelease` empty, the same run Run workflow… starts (BRK-224). Only where that workflow builds
+   * pre-releases by hand (BRK-273), and refused while one builds, when the latest pre-release already has everything
+   * on the branch, or while CI on its latest commit isn't green: the workflow checks those again and would stop.
+   */
+  async buildPrerelease(repo, credentials) {
+    const pkg = packageOf(repo);
+    const build = this.githubRepoView(repo, true).releaseBuild;
+    if (!pkg || !build)
+      return {
+        status: 409,
+        body: {
+          error: pkg
+            ? `${repo.name}’s ${pkg.workflow} builds its pre-releases by itself after CI, so there’s nothing to build by hand.`
+            : `${repo.name} releases no npm package: set the pipeline’s package first (repos modify --pipeline).`,
+        },
+      };
+    if (!build.allowed) return { status: 409, body: { error: build.reason } };
+    const event = {
+      kind: 'prerelease_started',
+      package: pkg.name,
+      branch: pkg.branch,
+      after: build.latest?.version ?? null,
+      merges: build.ahead?.merges ?? null,
+    };
+    return this.dispatchRelease(repo, credentials, {
+      workflow: pkg.workflow,
+      ref: pkg.branch,
+      inputs: { prerelease: '' },
+      event,
+    });
+  },
+
   /** Starts `workflow` on `ref` with `inputs` through the GitHub App, and records `event` in Activity once it has. */
   async dispatchRelease(repo, credentials, { workflow, ref, inputs, event }) {
     const client = this.githubClient(credentials, repo);
@@ -1995,6 +2034,7 @@ export const githubMethods = {
   /** A push changed a workflow on `slug`'s default branch: read its workflows again next time. */
   dropWorkflows(slug) {
     if (this.workflowCache) delete this.workflowCache[slug];
+    this.setGhMeta('gh_release_mode', slug, null);
   },
 
   /**
