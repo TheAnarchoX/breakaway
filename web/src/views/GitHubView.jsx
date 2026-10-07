@@ -18,6 +18,7 @@ import {
 } from 'lucide-preact';
 import { ago, plural, shortVersion } from '../lib/model.js';
 import { checksOnMain, checksSummary, githubTabs, latestPackages, pickTab, runState } from '../lib/github-scope.js';
+import { budgetWords } from '../../../src/github-budget.js';
 import { api } from '../lib/api.js';
 import {
   actions,
@@ -767,6 +768,13 @@ export function GitHubView() {
             {d?.connected && (d.lastSync ? ` · synced ${ago(d.lastSync)}` : ' · not synced yet')}
             {d?.connected && ' · updates by webhook, and every 5 minutes'}
           </p>
+          {d?.connected &&
+            (d.rates ?? []).map((r) => (
+              <p key={r.slug} class="meta">
+                {d.all ? `${r.name}: ` : 'Rate limits: '}
+                {budgetWords(r.rate)}
+              </p>
+            ))}
           {settings && <p class="meta">On in this browser: {settings} (in Settings)</p>}
           {d?.connected && !d.githubStatus?.held && <GitHubStatus status={d.githubStatus} />}
           {shownSlug && (
