@@ -8638,6 +8638,27 @@ a.pl-mention {
 .infra-view .conn-top {
   align-items: center;
 }
+/* Last looked and Refresh (BRK-248): beside the view's buttons, its error under them. */
+.infra-view .conn-top .conn-buttons {
+  align-items: flex-start;
+}
+.infra-refresh {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.infra-refresh-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.infra-refresh-error {
+  margin: 0;
+  max-width: 420px;
+  text-align: right;
+}
 .infra-notice {
   display: flex;
   gap: 12px;

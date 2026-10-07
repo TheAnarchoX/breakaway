@@ -11,6 +11,8 @@ describe('redact', () => {
       'BREAKAWAY_API_TOKEN=plainword',
       '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----',
       'key=MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7', // gitleaks:allow (made up, for the redaction)
+      `Act key: act_${'1f'.repeat(32)}`,
+      `npx breakaway infra act acme-production api restart # act_${'2e'.repeat(32)}`,
     ].join('\n');
     const out = redact(text);
     for (const secret of [
@@ -20,6 +22,8 @@ describe('redact', () => {
       's3cr3t-value',
       'plainword',
       'MIIEvQIBADANBgkq',
+      '1f1f1f1f',
+      '2e2e2e2e',
     ]) {
       expect(out).not.toContain(secret);
     }
