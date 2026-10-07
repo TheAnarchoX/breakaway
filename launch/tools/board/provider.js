@@ -7,7 +7,7 @@
  * Each environment is its own slice of the state, keyed by its name, and the launch board's `/__launch` route
  * changes it (seed.sh, through architect.mjs).
  */
-import { CLOUDFLARE_KINDS, READ_PERMISSIONS } from '../../../src/infra-cloudflare.js';
+import { CLOUDFLARE_KINDS, creatable, editable, READ_PERMISSIONS } from '../../../src/infra-cloudflare.js';
 import { checkApply } from '../../../src/infra-provider.js';
 
 /** The only token the made-up account knows: plainly fake, and read only. */
@@ -107,6 +107,9 @@ export const launchProvider = {
   id: 'cloudflare',
   name: 'Cloudflare',
   kinds: CLOUDFLARE_KINDS,
+  // What the console may change and add (BRK-262, BRK-270): Cloudflare's own, so the console reads as it does there.
+  editable,
+  creatable,
   readToken: {
     permissions: READ_PERMISSIONS,
     url: 'https://dash.cloudflare.com/profile/api-tokens',

@@ -18,7 +18,7 @@ import { ActionsSection } from '../components/EnvironmentActions.jsx';
 import { NoneYet } from '../components/ui.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 import {
-  AddFromTemplate,
+  AddResourceButton,
   ChangePanel,
   NodeChange,
   cantChange,
@@ -37,7 +37,7 @@ import {
  * middle, admin on the left (the owner's actions, plans, desired state, cost, and nobody owns), and ops on the right
  * (the stream, incidents, what's live, and recent deploys: WEB-108), each column scrolling on its own and every panel shown in
  * full. Narrower, it stacks: status, map, ops, admin. The owner changes the environment from the map (WEB-99): Change
- * and Remove on a node's detail, Add from a template on the map, and the change with its plan beside the map.
+ * and Remove on a node's detail, Add resource on the map (WEB-107), and the change with its plan beside the map.
  */
 
 /** Audit entries a page shows at a time; Show older pages back with `before`. */
@@ -192,7 +192,12 @@ export function EnvironmentView() {
   const [fresh, setFresh] = useState(/** @type {Set<string>} */ (new Set()));
   const shownKeys = useRef(/** @type {Set<string> | null} */ (null));
   const busy = useRef(false);
-  const ch = useChange(state.env, { desired: state.desired, tick: state.tick, plans: state.plans });
+  const ch = useChange(state.env, {
+    desired: state.desired,
+    tick: state.tick,
+    plans: state.plans,
+    seen: state.resources.length,
+  });
 
   const load = async (/** @type {{ quiet?: boolean }} */ { quiet = false } = {}) => {
     if (busy.current) return;
@@ -352,7 +357,7 @@ export function EnvironmentView() {
   const run = state.runs.find((r) => r.phase !== 'done') ?? null;
   const agents = agentsAtWork(tasks.value, { env, incidents: state.incidents, plans: state.plans });
   const names = new Map(state.resources.map((r) => [r.id, r.name]));
-  const cant = cantChange(env, state.resources.length);
+  const cant = cantChange(env);
   const showResource = (/** @type {string} */ rid) => {
     setMode('list');
     requestAnimationFrame(() => {
@@ -433,9 +438,9 @@ export function EnvironmentView() {
               signals={state.signals}
               mode={mode}
               onMode={setMode}
-              change={ch.overlay()}
+              change={ch.overlay(state.resources)}
               nodeActions={cant ? undefined : (r) => <NodeChange r={r} ch={ch} />}
-              headActions={cant ? null : <AddFromTemplate ch={ch} />}
+              headActions={cant ? null : <AddResourceButton ch={ch} />}
               note={env.observeOnly ? cant : null}
             />
             <ChangePanel ch={ch} cant={cant} />

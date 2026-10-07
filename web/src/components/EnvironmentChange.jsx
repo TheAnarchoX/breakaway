@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Bot, Check, FilePlus2, GitPullRequest, Pencil, Plus, Send, Trash2, TriangleAlert, X } from 'lucide-preact';
+import {
+  ArrowLeft,
+  Bot,
+  Check,
+  FilePlus2,
+  GitPullRequest,
+  Pencil,
+  Plus,
+  Send,
+  Trash2,
+  TriangleAlert,
+  X,
+} from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { writeDraft } from '../lib/drafts.js';
 import { confirmDialog, github, hashFor, newAgent, pullParam, repoName, toast } from '../lib/store.js';
@@ -8,7 +20,13 @@ import {
   CARD,
   PREVIEW_DELAY_MS,
   agentPrompt,
+  bindingFor,
   cardState,
+  codePrompt,
+  createEdit,
+  createForm,
+  createOverlay,
+  createProblems,
   declaredFor,
   editLines,
   editMarks,
@@ -33,7 +51,9 @@ import { ChangeActions } from './ChangeActions.jsx';
  * Plan from the console (WEB-99; docs/specs/BRK-258-plan-from-the-board.md): the owner changes an environment where
  * they see it. **Change** on a node's detail turns its settings into fields (the provider says which, BRK-262), **Add
  * from a template** adds what a golden path adds, and **Remove** takes a resource out. Every edit joins the
- * environment's one change, kept in this browser until it's proposed or discarded. The panel beside the map says the
+ * environment's one change, kept in this browser until it's proposed or discarded. **Add resource** (WEB-107) offers, in
+ * one picker, every kind the provider can create (BRK-270), each asking for its name, its settings, and what binds it,
+ * and the templates below them. The panel beside the map says the
  * change in words at once, then the board's own plan of it (BRK-259: the diff, the cost change, what can't be undone,
  * and the policy's answer), 1.5 seconds after the last edit. **Propose the change** has the board open its pull
  * request, and the change's card follows it without leaving the page: Checking, Waiting for you (Approve, Reject),
@@ -51,16 +71,21 @@ const short = (/** @type {string | null | undefined} */ sha) => (sha ? sha.slice
 
 /**
  * The change's state for one environment: the edits kept in this browser, the board's preview of them, the resource
- * being changed or the template form, what the provider lets the console change, and the change the board holds.
+ * being changed or the Add resource picker, what the provider lets the console change and create, and the change the
+ * board holds.
  * @param {any} env
- * @param {{ desired: any, tick: number, plans: any[] }} options
+ * @param {{ desired: any, tick: number, plans: any[], seen?: number }} options `seen` is how many resources the board
+ *   sees running: an environment with none and no file has no draft to propose until something is added
  */
-export function useChange(env, { desired, tick, plans }) {
+export function useChange(env, { desired, tick, plans, seen = 1 }) {
   const id = env?.id;
   const [edits, setEdits] = useState(/** @type {import('../lib/infra-change.js').Edit[]} */ ([]));
   const [editing, setEditing] = useState(/** @type {string | null} */ (null));
   const [adding, setAdding] = useState(false);
   const [editable, setEditable] = useState(/** @type {Record<string, any> | null} */ (null));
+  const [creatable, setCreatable] = useState(
+    /** @type {Record<string, import('../lib/infra-change.js').CreatableKind> | null} */ (null),
+  );
   const [draft, setDraft] = useState(/** @type {any[] | null} */ (null));
   const [held, setHeld] = useState(/** @type {{ open: any, changes: any[] } | null} */ (null));
   const [plan, setPlan] = useState(/** @type {any} */ (null));
@@ -85,16 +110,24 @@ export function useChange(env, { desired, tick, plans }) {
     setEditing(null);
     setAdding(false);
     setEditable(null);
+    setCreatable(null);
     setDraft(null);
     setHeld(null);
     setPreview({ busy: false, key: null, data: null, problems: [], error: null, wait: null });
     api(`infra/environments/${enc(id)}/editable`)
-      .then((d) => setEditable(d.editable?.kinds ?? {}))
-      .catch(() => setEditable({}));
+      .then((d) => {
+        setEditable(d.editable?.kinds ?? {});
+        setCreatable(d.editable?.creatable ?? {});
+      })
+      .catch(() => {
+        setEditable({});
+        setCreatable({});
+      });
   }, [id]);
 
-  // An environment with no file yet changes the board's draft of it (BRK-240).
-  const fromDraft = Boolean(env) && !env.observeOnly && !desired;
+  // An environment with no file yet changes the board's draft of it (BRK-240); with nothing running, the draft is empty,
+  // so there's nothing to propose until something is added.
+  const fromDraft = Boolean(env) && !env.observeOnly && !desired && seen > 0;
   useEffect(() => {
     if (!fromDraft || id == null) return;
     api(`infra/environments/${enc(id)}/draft`)
@@ -192,6 +225,7 @@ export function useChange(env, { desired, tick, plans }) {
     declared,
     fromDraft,
     editable,
+    creatable,
     editing,
     adding,
     preview,
@@ -221,7 +255,8 @@ export function useChange(env, { desired, tick, plans }) {
       setAdding(false);
       setEditing(rid);
     },
-    addTemplate: (/** @type {boolean} */ on) => {
+    /** Opens or closes the Add resource picker. */
+    addResource: (/** @type {boolean} */ on) => {
       setEditing(null);
       setAdding(on);
     },
@@ -238,14 +273,21 @@ export function useChange(env, { desired, tick, plans }) {
         changes: [change, ...(h?.changes ?? []).filter((c) => c.n !== change.n)],
       }));
     },
-    /** The map's marks for the change: the board's plan of it once it matches, else what this browser knows. */
-    overlay() {
+    /**
+     * The map's marks for the change: the board's plan of it once it matches, else what this browser knows; each add
+     * is drawn with a line to what binds or serves it, among `resources` (what runs).
+     * @param {Array<{ id: string, kind: string, name: string }>} [resources]
+     */
+    overlay(resources = []) {
       if (!edits.length) return null;
+      const made = createOverlay(edits, resources, creatable ?? {});
       if (preview.key === key && preview.data?.preview) {
         const { ops, adds } = planOverlay(preview.data.preview.diff);
-        return { ops, adds };
+        return { ops, adds, relations: made.relations };
       }
-      return { ops: editMarks(edits), adds: [] };
+      const ops = editMarks(edits);
+      for (const a of made.adds) ops.set(a.id, { op: 'create', effect: /** @type {const} */ ('adds') });
+      return { ops, adds: made.adds, relations: made.relations };
     },
   };
 }
@@ -253,10 +295,9 @@ export function useChange(env, { desired, tick, plans }) {
 /** @typedef {ReturnType<typeof useChange>} Change */
 
 /** Why the console can't change this environment, in a line, or null when it can. */
-export function cantChange(/** @type {any} */ env, /** @type {number} */ seen) {
+export function cantChange(/** @type {any} */ env) {
   if (env.observeOnly) return 'Observe only: the board watches it and never changes it.';
   if (!env.provider) return 'Pick its provider and connect it on Connections to change it here.';
-  if (!seen) return 'Nothing seen yet: once the board sees what runs, you can change it here.';
   return null;
 }
 
@@ -682,37 +723,318 @@ function SettingsForm({ ch }) {
   );
 }
 
+/** Opens New agent with `prompt` filled in. */
+function startAgent(/** @type {any} */ env, /** @type {string} */ prompt) {
+  writeDraft('agent', { fields: { prompt, repo: env.repo }, typed: true });
+  newAgent.value = true;
+}
+
 /**
- * Add from a template: the repository's golden paths and the one breakaway ships, each asking for its inputs.
+ * Add resource (WEB-107): every kind the provider can create, a line each on what it's for, then the repository's
+ * templates and breakaway's. Picking one opens its form in the same place.
  * @param {{ ch: Change }} props
  */
-function TemplateForm({ ch }) {
+function AddResource({ ch }) {
+  const [choice, setChoice] = useState(/** @type {{ kind: string } | { template: any } | null} */ (null));
   const [list, setList] = useState(/** @type {{ templates: any[], folder: string } | null} */ (null));
   const [failed, setFailed] = useState(/** @type {string | null} */ (null));
-  const [name, setName] = useState('');
-  const [inputs, setInputs] = useState(/** @type {Record<string, string>} */ ({}));
-  const [error, setError] = useState(/** @type {string | null} */ (null));
+  const title = useRef(/** @type {HTMLHeadingElement | null} */ (null));
   useEffect(() => {
     api(`infra/environments/${enc(ch.env.id)}/templates`)
-      .then((d) => {
-        setList(d);
-        const first = d.templates.find((/** @type {any} */ t) => !t.error);
-        if (first) pick(first);
-      })
+      .then(setList)
       .catch((err) => setFailed(err.message));
   }, [ch.env.id]);
-  const pick = (/** @type {any} */ t) => {
-    setName(t.name);
-    setInputs(
-      Object.fromEntries(Object.entries(t.inputs ?? {}).map(([k, v]) => [k, /** @type {any} */ (v).default ?? ''])),
-    );
-    setError(null);
-  };
-  const template = list?.templates.find((t) => t.name === name) ?? null;
+  useEffect(() => {
+    if (choice) return;
+    title.current?.focus({ preventScroll: true });
+    title.current?.scrollIntoView({ block: 'nearest' });
+  }, [choice]);
+  const back = () => setChoice(null);
+  if (choice && 'kind' in choice && ch.creatable?.[choice.kind])
+    return <CreateForm ch={ch} kindId={choice.kind} kind={ch.creatable[choice.kind]} onBack={back} />;
+  if (choice && 'template' in choice) return <TemplateForm ch={ch} template={choice.template} onBack={back} />;
+  const kinds = Object.entries(ch.creatable ?? {});
   const ours = (list?.templates ?? []).every((t) => t.from === 'breakaway');
+  return (
+    <section class="change-form" aria-labelledby="change-add-title">
+      <h3 id="change-add-title" class="change-form-title" tabIndex={-1} ref={title}>
+        Add a resource
+      </h3>
+      <p class="meta">
+        It joins your change, and the plan shows what it makes. Nothing changes in {ch.env.name} until you propose it
+        and approve the plan.
+      </p>
+      {ch.creatable === null ? (
+        <p class="muted" aria-busy="true">
+          Reading what {ch.env.name} can add…
+        </p>
+      ) : (
+        kinds.length > 0 && (
+          <ul class="change-kinds" aria-label="Kinds you can add">
+            {kinds.map(([id, k]) => (
+              <li key={id}>
+                <button type="button" class="change-kind" onClick={() => setChoice({ kind: id })}>
+                  <Plus size={14} aria-hidden="true" />
+                  <span>
+                    <strong>{k.label}</strong>
+                    {k.needsCode && <span class="change-kind-tag">needs code</span>}
+                    <span class="change-template-text">{k.help}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+      <h4 class="kicker change-add-sub">From a template</h4>
+      {failed ? (
+        <p class="field-error" role="alert">
+          Couldn’t list the templates. {failed}
+        </p>
+      ) : !list ? (
+        <p class="muted" aria-busy="true">
+          Reading the templates…
+        </p>
+      ) : (
+        <>
+          <ul class="change-kinds" aria-label="Templates">
+            {list.templates.map((t) => (
+              <li key={t.name}>
+                <button
+                  type="button"
+                  class={`change-kind ${t.error ? 'is-broken' : ''}`}
+                  onClick={() => setChoice({ template: t })}
+                  disabled={Boolean(t.error)}
+                >
+                  <FilePlus2 size={14} aria-hidden="true" />
+                  <span>
+                    <strong>{t.title ?? t.name}</strong>
+                    <span class="meta">
+                      {' '}
+                      {t.error
+                        ? `doesn’t check: ${t.error}`
+                        : t.from === 'breakaway'
+                          ? 'from breakaway'
+                          : `from ${repoName(ch.env.repo)}`}
+                    </span>
+                    {t.description && <span class="change-template-text">{t.description}</span>}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {ours && (
+            <span class="field-hint">
+              Your own templates go in <code>{list.folder}/</code>, one folder each. Have an agent write one.
+            </span>
+          )}
+        </>
+      )}
+      <div class="change-actions">
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => ch.addResource(false)}>
+          Cancel
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * A new resource of one kind: its name, checked as you type, its settings with the provider's defaults, and what binds
+ * it, with a binding name suggested from its name. A kind made by code says what code must exist, and Have an agent
+ * write it starts an agent on it.
+ * @param {{ ch: Change, kindId: string, kind: import('../lib/infra-change.js').CreatableKind, onBack: () => void }} props
+ */
+function CreateForm({ ch, kindId, kind, onBack }) {
+  // What this change already adds counts too: a route can name the Worker it adds, and a name can't repeat.
+  const adds = ch.edits.flatMap((e) =>
+    e.op === 'create' ? [{ id: '', kind: e.kind, name: e.name, attrs: e.attrs }] : [],
+  );
+  const resources = [...ch.declared, ...adds];
+  const bind = kind.bind ?? null;
+  const binders = bind ? resources.filter((r) => r.kind === bind.kind) : [];
+  const binderLabel = bind ? (ch.creatable?.[bind.kind]?.label ?? bind.kind) : '';
+  const [name, setName] = useState('');
+  const [form, setForm] = useState(() => createForm(kind));
+  const [worker, setWorker] = useState(() =>
+    bind
+      ? (binders.find((b) => b.name === ch.env.target)?.name ?? (bind.required ? (binders[0]?.name ?? '') : ''))
+      : '',
+  );
+  const [binding, setBinding] = useState(/** @type {string | null} */ (null));
+  const [tried, setTried] = useState(false);
+  const [error, setError] = useState(/** @type {string | null} */ (null));
+  const first = useRef(/** @type {HTMLHeadingElement | null} */ (null));
+  useEffect(() => {
+    first.current?.focus({ preventScroll: true });
+    first.current?.scrollIntoView({ block: 'nearest' });
+  }, [kindId]);
+  const bindingName = binding ?? bindingFor(name);
+  const input = { name, form, bindTo: { worker, binding: bindingName } };
+  const problems = createProblems(kindId, kind, input, { taken: resources, declared: resources });
+  const wrong =
+    Boolean(problems.name || problems.worker || problems.binding) || Object.values(problems.fields).some(Boolean);
+  const filled = (/** @type {unknown} */ v) => (Array.isArray(v) ? v.length > 0 : String(v ?? '').trim() !== '');
   const submit = (/** @type {Event} */ e) => {
     e.preventDefault();
-    if (!template) return;
+    setTried(true);
+    if (wrong) {
+      setError('Fix the fields marked first.');
+      return;
+    }
+    const why = ch.add([createEdit(kindId, kind, input)]);
+    if (why) setError(why);
+    else ch.addResource(false);
+  };
+  const writeCode = () => {
+    const edit = /** @type {any} */ (createEdit(kindId, kind, input));
+    startAgent(ch.env, codePrompt(ch.env, kind, { ...edit, name: edit.name || `(name it)` }));
+  };
+  return (
+    <form class="change-form" onSubmit={submit} noValidate aria-labelledby="change-create-title">
+      <div class="change-rule-head">
+        <h3 id="change-create-title" class="change-form-title" tabIndex={-1} ref={first}>
+          {kind.label}
+        </h3>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={onBack}>
+          <ArrowLeft size={14} aria-hidden="true" />
+          Pick another
+        </button>
+      </div>
+      <p class="meta">{kind.help}</p>
+      <FieldInput
+        field={{ path: 'name', type: 'text', label: kind.name.label, help: kind.name.help }}
+        id="change-create-name"
+        value={name}
+        resources={resources}
+        problem={tried || name.trim() ? problems.name : null}
+        onChange={(v) => {
+          setName(v);
+          setError(null);
+        }}
+      />
+      {kind.fields.map((f) => {
+        const id = `change-create-${f.path.replaceAll('.', '-')}`;
+        const props = {
+          field: f,
+          id,
+          value: form[f.path],
+          resources,
+          problem: tried || filled(form[f.path]) ? problems.fields[f.path] : null,
+          onChange: (/** @type {any} */ v) => {
+            setForm((s) => ({ ...s, [f.path]: v }));
+            setError(null);
+          },
+        };
+        if (f.type === 'bindings') return <BindingsInput key={f.path} {...props} />;
+        if (f.type === 'rules') return <RulesInput key={f.path} {...props} />;
+        return <FieldInput key={f.path} {...props} />;
+      })}
+      {bind && (
+        <fieldset class="field change-field change-group" aria-describedby="change-create-bind-help">
+          <legend class="field-label">Bind it to</legend>
+          <select
+            id="change-create-worker"
+            class="select input-sm"
+            aria-label={`The ${binderLabel.toLowerCase()} that binds it`}
+            value={worker}
+            onChange={(e) => {
+              setWorker(/** @type {HTMLSelectElement} */ (e.currentTarget).value);
+              setError(null);
+            }}
+            aria-invalid={tried && problems.worker ? 'true' : undefined}
+          >
+            <option value="">{bind.required ? 'Pick one' : 'Don’t bind it'}</option>
+            {binders.map((b) => (
+              <option key={b.name} value={b.name}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+          <span class="field-hint" id="change-create-bind-help">
+            {binders.length === 0
+              ? `${ch.env.name} has no ${binderLabel.toLowerCase()} in its file yet: add one first, or describe the one that runs as code.`
+              : bind.required
+                ? `It’s made only when a ${binderLabel.toLowerCase()} binds it: pick the one whose code uses it.`
+                : `Optional: the ${binderLabel.toLowerCase()} whose code uses it.`}
+          </span>
+          {tried && problems.worker && <span class="field-error">{problems.worker}</span>}
+          {worker && (
+            <div class="field change-field">
+              <label class="field-label" for="change-create-binding">
+                Binding name
+              </label>
+              <input
+                id="change-create-binding"
+                class="input input-sm"
+                value={bindingName}
+                onInput={(e) => {
+                  setBinding(/** @type {HTMLInputElement} */ (e.currentTarget).value);
+                  setError(null);
+                }}
+                aria-describedby="change-create-binding-help"
+                aria-invalid={problems.binding ? 'true' : undefined}
+                spellcheck={false}
+                autoCapitalize="characters"
+              />
+              <span class="field-hint" id="change-create-binding-help">
+                What {worker}’s code calls it, like env.{bindingName || 'JOBS'}. Suggested from the name.
+              </span>
+              {(tried || binding !== null) && problems.binding && <span class="field-error">{problems.binding}</span>}
+            </div>
+          )}
+        </fieldset>
+      )}
+      {kind.needsCode && (
+        <div class="change-needs-code">
+          <p>
+            <strong>It needs code.</strong> {kind.needsCode}
+          </p>
+          <button type="button" class="btn btn-quiet btn-sm" onClick={writeCode}>
+            <Bot size={14} aria-hidden="true" />
+            Have an agent write it
+          </button>
+        </div>
+      )}
+      {error && (
+        <p class="field-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div class="change-actions">
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => ch.addResource(false)}>
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <Plus size={14} aria-hidden="true" />
+          Add to the change
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * A template from the picker: the repository's golden path or the one breakaway ships, asking for its inputs.
+ * @param {{ ch: Change, template: any, onBack: () => void }} props
+ */
+function TemplateForm({ ch, template, onBack }) {
+  const [inputs, setInputs] = useState(
+    () =>
+      /** @type {Record<string, string>} */ (
+        Object.fromEntries(
+          Object.entries(template.inputs ?? {}).map(([k, v]) => [k, /** @type {any} */ (v).default ?? '']),
+        )
+      ),
+  );
+  const [error, setError] = useState(/** @type {string | null} */ (null));
+  const first = useRef(/** @type {HTMLHeadingElement | null} */ (null));
+  useEffect(() => {
+    first.current?.focus({ preventScroll: true });
+    first.current?.scrollIntoView({ block: 'nearest' });
+  }, [template.name]);
+  const submit = (/** @type {Event} */ e) => {
+    e.preventDefault();
     const empty = Object.keys(template.inputs ?? {}).find((k) => !String(inputs[k] ?? '').trim());
     if (empty) {
       setError(`Give it a ${empty}.`);
@@ -733,86 +1055,49 @@ function TemplateForm({ ch }) {
       },
     ]);
     if (why) setError(why);
-    else ch.addTemplate(false);
+    else ch.addResource(false);
   };
   return (
     <form class="change-form" onSubmit={submit} noValidate aria-labelledby="change-template-title">
-      <h3 id="change-template-title" class="change-form-title">
-        Add from a template
-      </h3>
-      {failed ? (
-        <p class="field-error" role="alert">
-          Couldn’t list the templates. {failed}
+      <div class="change-rule-head">
+        <h3 id="change-template-title" class="change-form-title" tabIndex={-1} ref={first}>
+          Add {template.title ?? template.name}
+        </h3>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={onBack}>
+          <ArrowLeft size={14} aria-hidden="true" />
+          Pick another
+        </button>
+      </div>
+      <p class="meta">
+        From a template, {template.from === 'breakaway' ? 'from breakaway' : `from ${repoName(ch.env.repo)}`}.
+        {template.description ? ` ${template.description}` : ''}
+      </p>
+      {Object.entries(template.inputs ?? {}).map(([k, v]) => (
+        <div key={k} class="field change-field">
+          <label class="field-label" for={`change-input-${k}`}>
+            {k}
+          </label>
+          <input
+            id={`change-input-${k}`}
+            class="input input-sm"
+            value={inputs[k] ?? ''}
+            onInput={(e) => {
+              setInputs((s) => ({ ...s, [k]: /** @type {HTMLInputElement} */ (e.currentTarget).value }));
+              setError(null);
+            }}
+            aria-describedby={`change-input-${k}-help`}
+            spellcheck={false}
+          />
+          <span class="field-hint" id={`change-input-${k}-help`}>
+            {/** @type {any} */ (v).help}
+          </span>
+        </div>
+      ))}
+      {template.files?.length > 0 && (
+        <p class="meta">
+          It also adds {template.files.length === 1 ? 'a file' : `${template.files.length} files`} to the repository in
+          the same pull request.
         </p>
-      ) : !list ? (
-        <p class="muted" aria-busy="true">
-          Reading the templates…
-        </p>
-      ) : (
-        <>
-          <fieldset class="field change-field">
-            <legend class="field-label">Template</legend>
-            <div class="change-templates">
-              {list.templates.map((t) => (
-                <label key={t.name} class={`change-template ${t.error ? 'is-broken' : ''}`}>
-                  <input
-                    type="radio"
-                    name="change-template"
-                    value={t.name}
-                    checked={name === t.name}
-                    disabled={Boolean(t.error)}
-                    onChange={() => pick(t)}
-                  />
-                  <span>
-                    <strong>{t.title ?? t.name}</strong>
-                    <span class="meta">
-                      {' '}
-                      {t.error
-                        ? `doesn’t check: ${t.error}`
-                        : t.from === 'breakaway'
-                          ? 'from breakaway'
-                          : `from ${repoName(ch.env.repo)}`}
-                    </span>
-                    {t.description && <span class="change-template-text">{t.description}</span>}
-                  </span>
-                </label>
-              ))}
-            </div>
-            {ours && (
-              <span class="field-hint">
-                Your own templates go in <code>{list.folder}/</code>, one folder each. Have an agent write one.
-              </span>
-            )}
-          </fieldset>
-          {template &&
-            Object.entries(template.inputs ?? {}).map(([k, v]) => (
-              <div key={k} class="field change-field">
-                <label class="field-label" for={`change-input-${k}`}>
-                  {k}
-                </label>
-                <input
-                  id={`change-input-${k}`}
-                  class="input input-sm"
-                  value={inputs[k] ?? ''}
-                  onInput={(e) => {
-                    setInputs((s) => ({ ...s, [k]: /** @type {HTMLInputElement} */ (e.currentTarget).value }));
-                    setError(null);
-                  }}
-                  aria-describedby={`change-input-${k}-help`}
-                  spellcheck={false}
-                />
-                <span class="field-hint" id={`change-input-${k}-help`}>
-                  {/** @type {any} */ (v).help}
-                </span>
-              </div>
-            ))}
-          {template?.files?.length > 0 && (
-            <p class="meta">
-              It also adds {template.files.length === 1 ? 'a file' : `${template.files.length} files`} to the repository
-              in the same pull request.
-            </p>
-          )}
-        </>
       )}
       {error && (
         <p class="field-error" role="alert">
@@ -820,10 +1105,10 @@ function TemplateForm({ ch }) {
         </p>
       )}
       <div class="change-actions">
-        <button type="button" class="btn btn-quiet btn-sm" onClick={() => ch.addTemplate(false)}>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => ch.addResource(false)}>
           Cancel
         </button>
-        <button type="submit" class="btn btn-primary btn-sm" disabled={!template}>
+        <button type="submit" class="btn btn-primary btn-sm">
           <Plus size={14} aria-hidden="true" />
           Add to the change
         </button>
@@ -937,8 +1222,7 @@ export function PlanPreview({ preview }) {
 
 /** Opens New agent with the prompt filled in, for what the console can't express. */
 function haveAnAgent(/** @type {any} */ env, /** @type {string[]} */ lines) {
-  writeDraft('agent', { fields: { prompt: agentPrompt(env, lines), repo: env.repo }, typed: true });
-  newAgent.value = true;
+  startAgent(env, agentPrompt(env, lines));
 }
 
 /**
@@ -1103,7 +1387,7 @@ export function ChangePanel({ ch, cant }) {
       </header>
 
       {ch.editing && <SettingsForm ch={ch} />}
-      {ch.adding && <TemplateForm ch={ch} />}
+      {ch.adding && <AddResource ch={ch} />}
 
       {(edits.length > 0 || draftOnly) && (
         <>
@@ -1138,6 +1422,7 @@ export function ChangePanel({ ch, cant }) {
                       {x.message}
                     </span>
                   ))}
+                  <NeedsCode ch={ch} edit={edits[n]} />
                 </li>
               ))}
             </ul>
@@ -1217,19 +1502,42 @@ export function ChangePanel({ ch, cant }) {
 }
 
 /**
- * Add from a template, on the map's header.
+ * Under an add of a kind made by code: what code must exist before its plan applies, and an agent to write it.
+ * @param {{ ch: Change, edit: import('../lib/infra-change.js').Edit }} props
+ */
+function NeedsCode({ ch, edit }) {
+  if (edit.op !== 'create') return null;
+  const kind = ch.creatable?.[edit.kind];
+  if (!kind?.needsCode) return null;
+  return (
+    <span class="change-line-code">
+      Needs code: {kind.needsCode}{' '}
+      <button
+        type="button"
+        class="btn btn-quiet btn-sm"
+        onClick={() => startAgent(ch.env, codePrompt(ch.env, kind, edit))}
+      >
+        <Bot size={14} aria-hidden="true" />
+        Have an agent write it
+      </button>
+    </span>
+  );
+}
+
+/**
+ * Add resource, on the resources panel's header, and as the call to action of an environment with nothing in it.
  * @param {{ ch: Change }} props
  */
-export function AddFromTemplate({ ch }) {
+export function AddResourceButton({ ch }) {
   return (
     <button
       type="button"
-      class="btn btn-quiet btn-sm"
-      onClick={() => ch.addTemplate(!ch.adding)}
+      class="btn btn-outline btn-sm"
+      onClick={() => ch.addResource(!ch.adding)}
       aria-pressed={ch.adding}
     >
-      <FilePlus2 size={14} aria-hidden="true" />
-      Add from a template
+      <Plus size={14} aria-hidden="true" />
+      Add resource
     </button>
   );
 }
