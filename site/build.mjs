@@ -3,7 +3,8 @@
  * Builds the landing page and the docs: site/content (Markdown and one HTML page) into site/public, and copies the
  * install prompt (prompts/install.md) to /install.md, where Claude Code reads it from the site (DOC-8), and writes
  * /llms.txt, /llms-full.txt, and each docs page as Markdown (LCH-10). The Architect page (LCH-33) shows LCH-32's
- * screenshots, so they're copied from docs/media to /media, and LCH-38's hero film from launch/media.
+ * screenshots, so they're copied from docs/media to /media, and LCH-38's hero film from launch/media. The landing
+ * page's road ahead is site/content/roadmap.json (LCH-39), which scripts/site-roadmap.mjs writes from the board.
  *   node site/build.mjs           write the pages
  *   node site/build.mjs --check   exit 1 when a written page differs from what the content builds
  * The pages are committed, so deploying the site needs no build step; test/site-pages.test.js runs the check.
@@ -23,6 +24,7 @@ export function readContent(root = here) {
   return {
     landing: readFileSync(join(root, 'content/index.html'), 'utf8'),
     architect: readFileSync(join(root, 'content/architect.md'), 'utf8'),
+    roadmap: JSON.parse(readFileSync(join(root, 'content/roadmap.json'), 'utf8')),
     docs,
   };
 }

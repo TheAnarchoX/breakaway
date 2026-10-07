@@ -973,6 +973,108 @@ td:first-child {
   }
 }
 
+/* The road ahead (LCH-39): releases down a line on a phone, along a road on a wide screen, like the board's roadmap. */
+.road {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 28px;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 22px;
+}
+.stop {
+  position: relative;
+  min-width: 0;
+}
+.stop::before {
+  content: "";
+  position: absolute;
+  left: -29px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--line-strong);
+}
+.stop[data-state="next"]::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.stop[data-state="out"]::before {
+  background: var(--success);
+  border-color: var(--success);
+}
+.stop-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.stop-version {
+  font: 700 20px / 1.2 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.stop-state {
+  font: 600 12px / 1.2 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.stop[data-state="next"] .stop-state {
+  color: var(--accent);
+}
+.stop[data-state="out"] .stop-state {
+  color: var(--success);
+}
+.stop [hidden] {
+  display: none;
+}
+.stop-out {
+  margin: 0;
+  font-size: 16px;
+}
+.stop-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.stop-features h3 {
+  font-size: 17px;
+  margin: 0 0 4px;
+}
+.stop-features p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+.stop[data-state="planned"] .stop-features h3 {
+  color: var(--muted);
+}
+@media (min-width: 900px) {
+  .road {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(250px, 1fr);
+    gap: 32px;
+    border-left: 0;
+    padding: 8px 0 16px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .stop {
+    border-top: 2px solid var(--line-strong);
+    padding-top: 26px;
+    scroll-snap-align: start;
+  }
+  .stop::before {
+    left: 0;
+    top: -7px;
+  }
+}
+
 /* Reduced motion: everything is an instant change. */
 @media (prefers-reduced-motion: reduce) {
   *,

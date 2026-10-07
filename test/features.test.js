@@ -56,7 +56,7 @@ describe('features', () => {
     ]);
   });
 
-  it('checks what it’s given, and only the owner aims a release', async () => {
+  it('checks what it’s given, and only the owner ships a feature or plans its dates', async () => {
     expect((await body(await add('Bad Slug'))).error).toMatch(/slug/);
     expect((await body(await add('agent'))).error).toMatch(/board’s own/);
     expect((await body(await add('v1_2-0'))).error).toMatch(/release tag/);
@@ -64,7 +64,8 @@ describe('features', () => {
     expect((await body(await add('ok', { release: 'soon' }))).error).toMatch(/release/);
     expect((await body(await add('ok', { state: 'gone' }))).error).toMatch(/state/);
     expect((await body(await add('ok', { title: 'x'.repeat(201) }))).error).toMatch(/too long/);
-    expect((await body(await add('ok', { release: '1.2.0', by: 'claude-idea-9' }))).status).toBe(403);
+    expect((await body(await add('ok', { state: 'shipped', by: 'claude-idea-9' }))).status).toBe(403);
+    expect((await body(await add('ok', { plannedEnd: '2026-12-01', by: 'claude-idea-9' }))).status).toBe(403);
   });
 
   it('is made from a suggestion with one press: a title from its slug and the release its tasks share', async () => {
@@ -231,9 +232,9 @@ describe('features', () => {
     ]);
   });
 
-  it('is changed and deleted only by the owner; deleting leaves the tasks and their tag', async () => {
+  it('is shipped and deleted only by the owner; deleting leaves the tasks and their tag', async () => {
     expect(
-      (await body(await api('features/self-update', { method: 'PATCH', body: { title: 'x', by: 'claude-x-1' } })))
+      (await body(await api('features/self-update', { method: 'PATCH', body: { state: 'shipped', by: 'claude-x-1' } })))
         .status,
     ).toBe(403);
     const edited = await body(

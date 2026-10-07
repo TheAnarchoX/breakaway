@@ -37,6 +37,7 @@ import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
+import { FeaturePlanning } from '../components/AgentPlanning.jsx';
 import { PlanStatus, RoadmapTimeline, usePace } from '../components/RoadmapTimeline.jsx';
 import { day, fromDay, planDays, planStatus, suggest } from '../lib/roadmap-timeline.js';
 import { RichText, Title } from '../lib/richtext.jsx';
@@ -364,6 +365,7 @@ function FeatureDetail({ slug }) {
               </ul>
             </section>
           )}
+          <FeaturePlanning f={f} />
           {f.conflicts.length > 0 && (
             <section class="gh-section" aria-labelledby="fr-conflicts-title">
               <h2 id="fr-conflicts-title">
@@ -508,7 +510,6 @@ function Overview() {
       </div>
       {timeline && (
         <RoadmapTimeline
-          all={all}
           pace={pace}
           groups={groups}
           released={released}

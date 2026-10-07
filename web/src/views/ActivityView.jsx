@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { UndoChange, planningWords } from '../components/AgentPlanning.jsx';
 import {
   Activity,
   Archive,
@@ -26,7 +27,9 @@ import {
   MessageSquareWarning,
   Bot,
   CalendarRange,
+  Milestone,
   Play,
+  Hammer,
 } from 'lucide-preact';
 import { TRIGGER_LABEL } from '../components/Agents.jsx';
 import {
@@ -86,6 +89,7 @@ const ICONS = {
   promote_started: Rocket,
   rollback_started: Undo2,
   release_started: Rocket,
+  prerelease_started: Hammer,
   workflow_started: Play,
   ci_failed: CircleX,
   ci_fixed: CircleCheck,
@@ -111,6 +115,7 @@ const ICONS = {
   chase_stalled: CircleAlert,
   chase_ended: CircleCheck,
   feature_planned: CalendarRange,
+  agent_planned: Milestone,
 };
 
 const SOURCES = {
@@ -198,6 +203,8 @@ function describe(change) {
       return `The chase on ${change.feature} ended: ${change.detail ?? 'every task is done or in review'}`;
     case 'feature_planned':
       return planned(change);
+    case 'agent_planned':
+      return planningWords(change);
     case 'pr_opened':
       return `${change.draft ? 'Draft pull request' : 'Pull request'} #${change.number} opened${change.by ? ` by ${change.by}` : ''}`;
     case 'pr_ready':
@@ -222,6 +229,8 @@ function describe(change) {
       return `You rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
     case 'release_started':
       return `You released ${change.package}@${change.prerelease} as ${change.version}${change.next && change.next !== 'patch' ? `, next ${change.next}` : ''}: it waits on npm for your approval`;
+    case 'prerelease_started':
+      return `You started a pre-release of ${change.package} from ${change.branch}${change.merges ? `: ${change.merges} ${change.merges === 1 ? 'merge' : 'merges'} since ${change.after}` : ''}`;
     case 'workflow_started':
       return `You ran ${change.workflow} on ${change.ref}${change.inputs?.length ? ` with ${change.inputs.join(', ')}` : ''}`;
     case 'pr_closed':
@@ -778,6 +787,12 @@ function Stream() {
                                 <q class="note-quote">
                                   <Inline text={c.text} />
                                 </q>
+                              </>
+                            )}
+                            {c.kind === 'agent_planned' && (
+                              <>
+                                {' '}
+                                <UndoChange change={c} />
                               </>
                             )}
                             {c.kind?.startsWith('pr_') && c.title && (

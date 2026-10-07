@@ -1,6 +1,7 @@
 // The landing page and the docs, built from site/content into site/public (BRK-8's Worker serves the result).
 // Pure over the content, so site/build.mjs writes it and test/site-pages.test.js checks the written files match.
 import { escape, frontMatter, inline, render } from './markdown.js';
+import { ROADMAP_MARK, roadmapHtml } from './roadmap.js';
 
 export const SITE = {
   name: 'breakaway',
@@ -189,7 +190,7 @@ function pager(pages, current) {
 
 /**
  * Builds every page.
- * @param {{ landing: string, architect: string, docs: Record<string, string>, notFound?: string }} content file contents by name
+ * @param {{ landing: string, architect: string, roadmap: import('./roadmap.js').Roadmap, docs: Record<string, string>, notFound?: string }} content file contents by name
  * @returns {Map<string, string>} the files to write, by path under site/public
  */
 export function buildPages(content) {
@@ -202,7 +203,7 @@ export function buildPages(content) {
       title: SITE.name,
       description: landing.meta.description,
       path: '/',
-      body: landing.body,
+      body: landing.body.replace(ROADMAP_MARK, () => roadmapHtml(content.roadmap, SITE.repo)),
       bodyClass: 'landing',
     }),
   );

@@ -21,7 +21,7 @@ A **feature** is a piece of the roadmap: a short name (its slug, like `inbox-fil
 - **Progress is counted, never typed:** done over all, with the counts that explain the rest (running, ready, waiting, needs you, in review). Each task says why it’s where it is, in words: “it waits for BRK-50”, “its pull request is open: merging is yours”.
 - **Suggested features.** A tag on open tasks that isn’t a feature yet is suggested, with **Make it a feature**, aimed at the release its tasks’ release tags share. Nothing is made until you press it. The board’s own tags (`agent`, `owner`, `decide`, `idea`, `general`, `routine`, `security`, `horizon-*`) and release tags never become features.
 
-Anyone signed in reads features, and an agent shaping an idea adds one for the tasks it makes, without a release. Aiming a feature at a release, changing it, deleting it, and chasing it are yours: a request signed with an agent’s name is refused.
+Anyone signed in reads features, and agents plan them too: an agent may add one, aim it at a release, change its title and brief, and pull the next release into now or next. Each agent’s change shows in Activity and under **Agents’ changes** on the feature’s page, with its name and what it was before, and **Undo** puts it back in one press, unless someone changed the same thing since. Planning a feature’s dates, marking it shipped, deleting it, and chasing it are yours: a request signed with an agent’s name is refused.
 
 ### The Roadmap
 
@@ -132,4 +132,4 @@ npx breakaway peloton step "Moved the sort into the store; does this affect anyo
 npx breakaway peloton reply 12 "I'll wait for yours, then rebase the filter on it."
 ```
 
-`features modify <slug>` changes `--title`, `--brief` (or `--brief-file`), `--release <x.y.z|none>`, and `--state open|shipped`. Changing a feature, giving it a release, and starting or stopping a chase are yours. `peloton step` goes to the chase’s peloton when the task is in one, else the repository’s; `--peloton <name>` picks. `peloton --all` prints every post kept. The full list is in [the CLI](/docs/cli/#features-chase-and-the-peloton).
+`features modify <slug>` changes `--title`, `--brief` (or `--brief-file`), `--release <x.y.z|none>`, and `--state open|shipped`, and `features pull <x.y.z> [--into next]` pulls a release into now or next. Agents may do both except `--state`; marking a feature shipped and starting or stopping a chase are yours. `peloton step` goes to the chase’s peloton when the task is in one, else the repository’s; `--peloton <name>` picks. `peloton --all` prints every post kept. The full list is in [the CLI](/docs/cli/#features-chase-and-the-peloton).

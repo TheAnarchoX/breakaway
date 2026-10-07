@@ -84,15 +84,17 @@ export const CLOUDFLARE_KINDS = Object.fromEntries(
 );
 
 /**
- * How a Worker's binding names the resource it binds, for the console (BRK-262): by the resource's ID in the desired
- * state, which the plan resolves, or a Worker by its name.
+ * How a Worker's binding names the resource it binds, for the console (BRK-262): in Cloudflare's own field, the one
+ * the plan compares with what runs (BINDING_TARGETS; BRK-285), by the resource's ID on Cloudflare (a D1 database, a KV
+ * namespace) or its name (a bucket, a queue, a Worker). A database or namespace the plan still makes has no ID yet, so
+ * a binding names it by its ID in the desired state, in `resource`, until it runs.
  * @type {import('./infra-provider.js').BindingTarget[]}
  */
 const BINDABLE = [
-  { type: 'd1', label: 'D1 database', kind: 'd1', field: 'resource', by: 'id' },
-  { type: 'kv_namespace', label: 'KV namespace', kind: 'kv', field: 'resource', by: 'id' },
-  { type: 'r2_bucket', label: 'R2 bucket', kind: 'r2', field: 'resource', by: 'id' },
-  { type: 'queue', label: 'Queue', kind: 'queue', field: 'resource', by: 'id' },
+  { type: 'd1', label: 'D1 database', kind: 'd1', field: 'id', by: 'id' },
+  { type: 'kv_namespace', label: 'KV namespace', kind: 'kv', field: 'namespace_id', by: 'id' },
+  { type: 'r2_bucket', label: 'R2 bucket', kind: 'r2', field: 'bucket_name', by: 'name' },
+  { type: 'queue', label: 'Queue', kind: 'queue', field: 'queue_name', by: 'name' },
   { type: 'service', label: 'Worker', kind: 'worker', field: 'service', by: 'name' },
 ];
 /** The binding types BINDABLE doesn't list, in words, for a change's lines (WEB-110). */
@@ -344,8 +346,8 @@ export const EDITABLE = {
 export const editable = (kind) => EDITABLE[kind] ?? null;
 
 /**
- * How a Worker binds each kind the console adds, by the new resource's ID in the desired state or its name; `required`
- * when the plan makes one only if a Worker binds it.
+ * How a Worker binds each kind the console adds, as BINDABLE says; `required` when the plan makes one only if a Worker
+ * binds it.
  */
 const bindAs = (kind, required = false) => {
   const target = BINDABLE.find((t) => t.kind === kind);
@@ -833,9 +835,8 @@ function workerAttrs(script, settings, deployments, secrets, schedules) {
     usageModel: settings.usage_model ?? script.usage_model ?? null,
     observability: Boolean(settings.observability?.enabled),
     placement: settings.placement?.mode ?? script.placement_mode ?? null,
-    bindings: (settings.bindings ?? [])
-      .map((b) => ({ name: String(b.name), type: String(b.type) }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
+    // What each binding binds, by ID or name (BINDING_TARGETS), so a draft names it as the plan compares it (BRK-285).
+    bindings: (settings.bindings ?? []).map(bindingTarget).sort((a, b) => a.name.localeCompare(b.name)),
     secrets: sorted(secrets.map((s) => String(s.name))),
     crons: sorted((schedules?.schedules ?? []).map((s) => String(s.cron))),
     versions: (live?.versions ?? []).map((v) => ({ id: String(v.version_id), percentage: Number(v.percentage) })),

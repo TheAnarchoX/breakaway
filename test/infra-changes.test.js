@@ -288,9 +288,7 @@ describe('a change’s edits', () => {
       name: 'acme-jobs',
       attrs: { deliveryDelay: 0, deliveryPaused: false, retention: 86_400 },
     });
-    expect(got.file.resources[0].attrs.bindings).toEqual([
-      { name: 'JOBS', type: 'queue', resource: 'queue:acme-jobs' },
-    ]);
+    expect(got.file.resources[0].attrs.bindings).toEqual([{ name: 'JOBS', type: 'queue', queue_name: 'acme-jobs' }]);
     expect(got.touched.get('queue:acme-jobs')).toBe(0);
     expect(got.touched.get('worker:acme-api')).toBe(0);
     expect(cloudflareFile().resources[0].attrs.bindings).toEqual([]);

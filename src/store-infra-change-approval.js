@@ -94,9 +94,25 @@ export const infraChangeApprovalMethods = {
   },
 
   /**
-   * The plan the change's file makes at `sha` (its pull request's head), with its digest: the same computation as
-   * the preview and the plan check, with the policy at the default branch. Answers a refusal when the file is gone or
-   * doesn't check.
+   * The plan a desired state's text makes, with its digest: the one computation a change's preview at propose time and
+   * at its pull request's head share (BRK-286), so the plan proposed and the plan approved only differ when the head or
+   * what runs moved. The policy is the default branch's. Answers `{ error }` when the text doesn't check.
+   * @param {Record<string, any>} env
+   * @param {string} text the file's text, exactly as committed
+   */
+  async changePreviewOf(env, text) {
+    const checked = checkDesiredFile(text, {
+      provider: this.infraProviderFor(env.provider),
+      expectProvider: env.provider,
+    });
+    if ('error' in checked) return { error: checked.error };
+    const planned = await this.previewInfraPlan(env, checked.desired, this.infraPolicyFor(env.repo));
+    return { desired: checked.desired, preview: { ...planned, digest: await planDigest(planned.diff) } };
+  },
+
+  /**
+   * The plan the change's file makes at `sha` (its pull request's head), with its digest: changePreviewOf over the
+   * file's text there. Answers a refusal when the file is gone or doesn't check.
    */
   async changePreviewAt(env, row, client, sha) {
     const path = desiredPath(env.name);
@@ -105,16 +121,12 @@ export const infraChangeApprovalMethods = {
       return { refused: refuse(409, `#${row.pull} has no ${path} at its head: propose again`) };
     if (Number(got.size ?? 0) > DESIRED_MAX_BYTES)
       return { refused: refuse(409, `${path} is over ${DESIRED_MAX_BYTES / 1024} KB at #${row.pull}’s head`) };
-    const checked = checkDesiredFile(fromBase64(got.content), {
-      provider: this.infraProviderFor(env.provider),
-      expectProvider: env.provider,
-    });
-    if ('error' in checked)
+    const at = await this.changePreviewOf(env, fromBase64(got.content));
+    if (at.error)
       return {
-        refused: refuse(409, `${path} doesn’t check at #${row.pull}’s head: ${checked.error.message}. Propose again.`),
+        refused: refuse(409, `${path} doesn’t check at #${row.pull}’s head: ${at.error.message}. Propose again.`),
       };
-    const planned = await this.previewInfraPlan(env, checked.desired, this.infraPolicyFor(env.repo));
-    return { preview: { ...planned, digest: await planDigest(planned.diff) } };
+    return { preview: at.preview };
   },
 
   /**
@@ -174,9 +186,21 @@ export const infraChangeApprovalMethods = {
       const at = await this.changePreviewAt(env, row, client, sha);
       if (at.refused) return at.refused;
       const { preview } = at;
-      if (!preview.changes) return refuse(409, approvalWords.nothing(row.pull), { preview });
+      // Nothing to apply at the head (a file for what runs, or edits that leave it as it runs): it merges instead.
+      if (!preview.changes) {
+        this.keepChangePlan(row.n, preview);
+        return refuse(409, approvalWords.nothing(env.name, row.pull), {
+          nothing: true,
+          preview,
+          change: this.changeOut(this.changeRow(row.n)),
+        });
+      }
       if (preview.digest !== digest || preview.digest !== row.digest)
-        return refuse(409, approvalWords.changed, { preview, change: this.changeOut(this.changeRow(row.n)) });
+        return refuse(409, approvalWords.changed, {
+          changed: true,
+          preview,
+          change: this.changeOut(this.changeRow(row.n)),
+        });
       if (preview.policy?.outcome === 'refused') {
         const why = preview.policy.rules?.find((r) => r.applies && r.effect === 'refuse')?.reason;
         return refuse(409, `Your policy refuses it${why ? `: ${why}` : ''}`, { preview });

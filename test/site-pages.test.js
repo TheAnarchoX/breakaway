@@ -6,6 +6,7 @@ import TOKENS from '../brand/tokens.css?raw';
 import SITE_TOKENS from '../site/public/tokens.css?raw';
 import INDEX from '../site/content/index.html?raw';
 import ARCHITECT_SOURCE from '../site/content/architect.md?raw';
+import ROADMAP from '../site/content/roadmap.json';
 import ARCHITECT_MD from '../site/public/architect.md?raw';
 import INSTALL_PROMPT from '../prompts/install.md?raw';
 import SITE_INSTALL_PROMPT from '../site/public/install.md?raw';
@@ -27,7 +28,7 @@ const STATIC = import.meta.glob(['../site/public/**/*', '!../site/public/**/*.ht
 const docs = Object.fromEntries(
   Object.entries(DOC_SOURCES).map(([path, text]) => [path.replace(/^.*\/(.+)\.md$/u, '$1'), text]),
 );
-const content = { landing: INDEX, architect: ARCHITECT_SOURCE, docs };
+const content = { landing: INDEX, architect: ARCHITECT_SOURCE, roadmap: ROADMAP, docs };
 const built = buildPages(content);
 const published = (path) => `/${path}`.replace(/index\.html$/u, '');
 const known = new Set([...built.keys()].map(published));

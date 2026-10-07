@@ -2,7 +2,7 @@
 
 > How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
 
-The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote, Roll back, and Release, which start a repository’s own workflows. Nothing else writes to GitHub.
+The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote, Roll back, Release, and Build a pre-release, which start a repository’s own workflows. Nothing else writes to GitHub.
 
 ## Connecting it
 
@@ -172,6 +172,7 @@ It needs `workers`, `package`, or both. `workflows` and `deployPaths` are option
 - When a deploy succeeds, the board finds the merged pull requests since the previous successful deploy and marks the tasks they closed **On staging** or **Live**.
 - **Promote to production…** asks first, listing the tasks and migrations, and starts the repository’s `promote.yml` with the latest successful staging deploy. A destructive migration needs a tick. **Roll back…** asks for the version to go back to and what broke, and starts `rollback.yml`. Both are cookie only, and the workflows check everything again.
 - **Release…** beside any of the package’s pre-releases makes it the stable version on `latest`, from the same commit’s files, and asks what comes next: patch, which counts by itself, or the next minor or major, which opens a pull request that sets the version. Once a stable is out, its other pre-releases show as superseded. Only you can press it, in the browser or with `npx breakaway github release <pre-release> [--next minor|major]`. Every version waits on npm until you approve it with 2FA: `npm stage approve <id>`, or Staged Packages on npmjs.com. The board never publishes or approves anything there.
+- **Build a pre-release**, for a package whose `release.yml` builds pre-releases only by hand (a merge publishes nothing, as breakaway’s own does), sits on the package’s card. It says how many merges the default branch has since the latest pre-release, with their pull requests and work IDs, and starts the workflow’s pre-release job on the default branch, with `prerelease` left empty. The card follows the run, and once the new pre-release is staged it has **Release…**. It waits while CI on the default branch’s latest commit is running or failed, and while one is building. **Release…** on a pre-release the default branch has moved past says how many merges it leaves out, and offers **Build a pre-release first**. So the order is: build, test it, then release. Only you can press it, in the browser.
 - A merged pull request that changes only docs, skills, or CI shows “No deploy needed”.
 
 The scripts those workflows run are copied into a repository by `repos init`, so every repository makes the same checks.

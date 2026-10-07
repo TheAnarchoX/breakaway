@@ -52,8 +52,8 @@ describe('pulling a release into now (BRK-126)', () => {
     expect(await horizonOf('OPS-7')).toBe('next');
   });
 
-  it('is the owner’s, and checks the release', async () => {
-    expect((await pull('1.4.0', { by: 'claude-x-1' })).status).toBe(403);
+  it('checks the release, and an agent’s name', async () => {
+    expect((await pull('1.4.0', { by: 'claude x' })).status).toBe(400);
     expect((await pull('next')).status).toBe(400);
     expect((await pull('1.3.0')).error).toMatch(/already in now/u);
   });
@@ -109,8 +109,8 @@ describe('staging a release in next (BRK-209)', () => {
     expect(await horizonOf('CLD-4')).toBe('later');
   });
 
-  it('is the owner’s, and checks where it goes', async () => {
-    expect((await pull('2.0.0', { into: 'next', by: 'claude-x-1' })).error).toMatch(/pull a release into next/u);
+  it('checks where it goes', async () => {
+    expect((await pull('2.0.0', { into: 'next', by: 'claude x' })).status).toBe(400);
     expect((await pull('2.0.0', { into: 'later' })).status).toBe(400);
     expect((await pull('2.2.0', { into: 'next' })).error).toMatch(/already in now or next/u);
   });
