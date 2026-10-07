@@ -5971,6 +5971,38 @@ fieldset.field {
   font-size: 14px;
   overflow-wrap: anywhere;
 }
+/* A proposal grouped by kind (BRK-261): a heading per kind, long groups folded on the card. */
+.changes-group {
+  display: grid;
+  gap: 4px;
+}
+.changes-group + .changes-group {
+  margin-top: 6px;
+}
+.changes-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.changes-group-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.changes-more summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.changes-more .changes-list {
+  margin-top: 4px;
+}
 .changes-list li.is-off {
   opacity: 0.55;
 }
