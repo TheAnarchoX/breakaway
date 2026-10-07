@@ -137,11 +137,15 @@ function Drift({ env, desired, error }) {
 /** A read the console can do without: a 404 or a failure leaves its part empty, never the page. */
 const optional = (/** @type {Promise<any>} */ p, /** @type {any} */ fallback) => p.catch(() => fallback);
 
+/** When the board last saw any of the environment's resources, or null before it has. */
+const lastSeen = (/** @type {any[]} */ resources) =>
+  resources.reduce((at, r) => (r.seen && (!at || r.seen > at) ? r.seen : at), /** @type {string | null} */ (null));
+
 /** Whether this screen starts on the list: a phone does, with Map a press away. */
 const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches;
 
 /**
- * @typedef {{ env: any, resources: any[], relations: any[], desired: any, desiredError: string | null, drift: any,
+ * @typedef {{ env: any, resources: any[], relations: any[], stale: any, desired: any, desiredError: string | null, drift: any,
  *   audit: any[], more: boolean, signals: any[], runs: any[], incidents: any[], plans: any[], plan: any, cost: any,
  *   error: string | null, notFound: boolean, loading: boolean, updated: number | null, tick: number }} ConsoleState
  */
@@ -153,6 +157,7 @@ export function EnvironmentView() {
       env: null,
       resources: [],
       relations: [],
+      stale: null,
       desired: null,
       desiredError: null,
       drift: null,
@@ -215,6 +220,7 @@ export function EnvironmentView() {
         env: environment,
         resources: inventory.resources,
         relations: inventory.relations,
+        stale: inventory.stale?.find((/** @type {any} */ x) => x.environmentId === environment.id) ?? null,
         desired: desired.desired,
         desiredError: desired.error,
         drift,
@@ -416,6 +422,7 @@ export function EnvironmentView() {
               cost={state.cost}
               run={run}
               agents={agents}
+              inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
               actions={
                 <EnvironmentActions
                   env={env}

@@ -166,8 +166,12 @@ describe('inventory (BRK-177)', () => {
     };
     const failed = await refresh('fake-fail', registry);
     expect(failed).toMatchObject({ ok: false, status: 502 });
-    expect(failed.error).toMatch(/couldn’t discover widgets’s fail-staging: the platform is down\. Nothing changed/);
-    expect((await inventory({ provider: 'fake-fail' })).resources).toHaveLength(3);
+    expect(failed.error).toMatch(
+      /couldn’t discover widgets’s fail-staging: the platform is down\. The last inventory is kept/,
+    );
+    const kept = await inventory({ provider: 'fake-fail' });
+    expect(kept.resources).toHaveLength(3);
+    expect(kept.stale).toMatchObject([{ environment: 'fail-staging', error: /the platform is down/ }]);
 
     provider.discover = discover;
     provider.observe = async () => {
@@ -178,6 +182,7 @@ describe('inventory (BRK-177)', () => {
     const api_ = (await inventory({ provider: 'fake-fail' })).resources.find((r) => r.id === 'svc-api');
     expect(api_.health).toMatchObject({ state: 'healthy' });
     expect(api_.cost.amount).toBe(7);
+    expect((await inventory({ provider: 'fake-fail' })).stale).toEqual([]);
   });
 
   it('redacts a token a platform echoes back before it’s stored', async () => {
@@ -247,6 +252,174 @@ describe('inventory (BRK-177)', () => {
 /** Pastes `token` for `id` on Connections, as the owner would. */
 const connect = (id, token = 'fake-read-token') =>
   boardApi(`infra/connections/${id}`, { method: 'PUT', body: { token } });
+
+describe('each environment refreshes on its own (BRK-257)', () => {
+  /** Two environments on one platform, both filled once; then `broken`'s discovery throws `error`. */
+  async function twoEnvironments(id, error) {
+    const { provider, registry } = platform(id);
+    const good = await addEnvironment({ name: `${id}-good`, kind: 'staging', provider: id, target: 'api' });
+    const broken = await addEnvironment({ name: `${id}-broken`, kind: 'production', provider: id, target: 'api' });
+    await runInDurableObject(store(), (s) => {
+      s.infraProviders = registry;
+    });
+    expect((await connect(id)).status).toBe(201);
+    const discover = provider.discover;
+    provider.discover = async (ctx) => {
+      if (ctx.environment === broken.name) throw error;
+      return discover(ctx);
+    };
+    return { provider, registry, good, broken, discover };
+  }
+
+  const done = () =>
+    runInDurableObject(store(), (s) => {
+      s.infraProviders = undefined;
+    });
+
+  it('a 500 on one keeps its last inventory, stale, and writes the other’s inventory, health, and alerts', async () => {
+    const id = 'fake-split';
+    const { provider, registry, good, broken, discover } = await twoEnvironments(
+      id,
+      Object.assign(new Error('Fake platform answered 500'), { status: 500 }),
+    );
+    const before = (await inventory({ environment: broken.name })).resources;
+    expect(before).toHaveLength(3);
+
+    provider.state.resources.find((r) => r.id === 'svc-api').attrs.instances = 4;
+    provider.state.health['db-main'] = 'down';
+    provider.state.events.push({
+      resource: 'svc-api',
+      kind: 'alert',
+      level: 'critical',
+      value: null,
+      // After the last refresh, so this one reads it.
+      at: new Date().toISOString(),
+      text: 'api errors are up',
+    });
+    const res = await refresh(id, registry);
+    expect(res).toMatchObject({ ok: true, result: { environments: 1, resources: 3 } });
+    expect(res.result.stale).toMatchObject([{ environmentId: broken.id, environment: broken.name }]);
+
+    // The broken one keeps what it had, and says why it's stale.
+    const kept = await inventory({ environment: broken.name });
+    expect(kept.resources.find((r) => r.id === 'svc-api').attrs.instances).toBe(2);
+    expect(kept.resources.map((r) => r.seen)).toEqual(before.map((r) => r.seen));
+    expect(kept.stale).toEqual([
+      expect.objectContaining({
+        environmentId: broken.id,
+        repo: 'widgets',
+        environment: broken.name,
+        provider: id,
+        error: `Fake platform couldn’t discover widgets’s ${broken.name}: Fake platform answered 500`,
+        seen: before[0].seen,
+      }),
+    ]);
+
+    // The other is written as normal: its inventory, its health, and its alerts.
+    const fresh = await inventory({ environment: good.name });
+    expect(fresh.stale).toEqual([]);
+    expect(fresh.resources.find((r) => r.id === 'svc-api').attrs.instances).toBe(4);
+    expect(fresh.resources.find((r) => r.id === 'db-main').health.state).toBe('down');
+    const signals = await body(await api(`infra/signals?environment=${good.name}`));
+    expect(signals.signals.some((s) => s.kind === 'health' && s.resource === 'db-main' && s.level !== 'info')).toBe(
+      true,
+    );
+    expect(signals.signals.some((s) => s.kind === 'alert' && /api errors are up/.test(s.text))).toBe(true);
+    const quiet = await body(await api(`infra/signals?environment=${broken.name}`));
+    expect(quiet.signals.some((s) => /api errors are up/.test(s.text))).toBe(false);
+
+    // The overview sees it too.
+    expect((await inventory({ provider: id })).stale.map((s) => s.environment)).toEqual([broken.name]);
+
+    // Connections counts and names it, and a 5xx strikes no permission.
+    const row = await runInDurableObject(store(), (s) => s.providerRecord(id));
+    expect(row.discovery).toMatchObject({ ok: false });
+    expect(row.discovery.error).toMatch(new RegExp(`^1 of 2 environments discovered; .*${broken.name}.*answered 500`));
+    expect(row.permissions).toEqual(['Fake Alerts Read', 'Fake Services Read']);
+
+    // Once it answers again, it's fresh.
+    provider.discover = discover;
+    expect((await refresh(id, registry)).ok).toBe(true);
+    expect((await inventory({ provider: id })).stale).toEqual([]);
+    expect(
+      (await inventory({ environment: broken.name })).resources.find((r) => r.id === 'svc-api').attrs.instances,
+    ).toBe(4);
+    expect((await runInDurableObject(store(), (s) => s.providerRecord(id))).discovery).toMatchObject({ ok: true });
+    await done();
+  });
+
+  it('a 403 naming a permission strikes it; the refresh still writes the other', async () => {
+    const id = 'fake-split-403';
+    const { provider, registry, good, broken } = await twoEnvironments(
+      id,
+      Object.assign(new Error('Fake platform refused: the token needs Fake Alerts Read'), {
+        status: 403,
+        permission: 'Fake Alerts Read',
+      }),
+    );
+    const res = await refresh(id, registry);
+    expect(res).toMatchObject({ ok: true, result: { environments: 1, resources: 3 } });
+    expect((await inventory({ environment: good.name })).stale).toEqual([]);
+    expect((await inventory({ environment: broken.name })).stale).toMatchObject([{ error: /needs Fake Alerts Read/ }]);
+    const row = await runInDurableObject(store(), (s) => s.providerRecord(id));
+    expect(row.permissions).toEqual(['Fake Services Read']);
+    expect(row.discovery.error).toMatch(/^1 of 2 environments discovered/);
+
+    // When the other environment reached the same permission in this run, the token is scoped, not missing it: it
+    // comes back, and the refused environment is still stale. What the working one skipped stays on the row.
+    const discover = provider.discover;
+    provider.discover = async (ctx) => {
+      const found = await discover(ctx);
+      ctx.reached?.add('Fake Alerts Read');
+      return { ...found, skipped: ['a zone it can’t read routes on'] };
+    };
+    expect((await refresh(id, registry)).ok).toBe(true);
+    const scoped = await runInDurableObject(store(), (s) => s.providerRecord(id));
+    expect(scoped.permissions).toEqual(['Fake Alerts Read', 'Fake Services Read']);
+    expect(scoped.discovery).toMatchObject({ ok: false, skipped: ['a zone it can’t read routes on'] });
+    expect((await inventory({ environment: broken.name })).stale).toMatchObject([{ error: /needs Fake Alerts Read/ }]);
+    // One environment's 403 doesn't stop the cron: the refresh as a whole worked.
+    const state = await body(await api('infra/inventory/refresh'));
+    expect(state.providers.find((p) => p.provider === id).last).toMatchObject({ ok: true });
+    await done();
+  });
+
+  it('a failed environment’s last zones still count for the others’ alerts', async () => {
+    const id = 'fake-split-elsewhere';
+    const { provider, registry, broken } = await twoEnvironments(id, new Error('gone'));
+    /** @type {any[]} */
+    const elsewhere = [];
+    const events = provider.events;
+    provider.events = async (ctx, since) => {
+      elsewhere.push({ environment: ctx.environment, ids: (ctx.elsewhere ?? []).map((r) => r.id).sort() });
+      return events(ctx, since);
+    };
+    await refresh(id, registry);
+    expect(elsewhere).toEqual([{ environment: `${id}-good`, ids: ['db-main', 'route-api', 'svc-api'] }]);
+    expect((await inventory({ environment: broken.name })).resources).toHaveLength(3);
+    await done();
+  });
+
+  it('when every environment fails, the refresh fails and each keeps its last inventory', async () => {
+    const id = 'fake-split-all';
+    const { provider, registry, good, broken } = await twoEnvironments(id, new Error('down'));
+    const discover = provider.discover;
+    provider.discover = async (ctx) => {
+      if (ctx.environment === good.name) throw Object.assign(new Error('also down'), { status: 503 });
+      return discover(ctx);
+    };
+    const res = await refresh(id, registry);
+    expect(res).toMatchObject({ ok: false, status: 502 });
+    expect(res.error).toMatch(/\(and 1 more\)\. The last inventory is kept/);
+    expect((await inventory({ provider: id })).resources).toHaveLength(6);
+    expect((await inventory({ provider: id })).stale.map((s) => s.environment).sort()).toEqual(
+      [broken.name, good.name].sort(),
+    );
+    const row = await runInDurableObject(store(), (s) => s.providerRecord(id));
+    expect(row.discovery.error).toMatch(/^0 of 2 environments discovered/);
+    await done();
+  });
+});
 
 describe('the inventory refreshes by itself (BRK-248)', () => {
   const MINUTE = 60 * 1000;

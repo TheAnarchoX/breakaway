@@ -10759,3 +10759,31 @@ a.pl-mention {
   max-height: 160px;
   overflow-y: auto;
 }
+
+/* An environment whose inventory is out of date (BRK-257): its last discovery failed. */
+.band-stale {
+  background: var(--warn-bg);
+}
+.inventory-stale-why {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+}
+.inventory-stale-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--warn);
+}
+.inventory-stale-line svg {
+  flex: none;
+  margin-top: 2px;
+}
+.inventory-stale-line span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

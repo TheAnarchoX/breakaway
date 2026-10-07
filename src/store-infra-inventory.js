@@ -2,9 +2,10 @@
  * TaskStore's inventory (docs/specs/IDEA-19-architect.md, "Inventory"; BRK-177): what actually exists in each
  * environment, from its provider's `discover`, with relations, ownership (the environment's repository, the task that
  * owns a short-lived one, and the environment), last health from `observe`, and last cost from `cost`. A refresh
- * replaces one provider's slice in one transaction: a resource the provider no longer reports is dropped, and a failed
- * discovery changes nothing. Nothing outside an environment's scope is stored (infra-inventory.js). Anyone signed in
- * reads it; a refresh is the owner's or the board's (an agent's `by` is refused).
+ * replaces each environment's slice in its own transaction: a resource the provider no longer reports is dropped, and
+ * an environment whose discovery fails keeps its last inventory, marked stale with the reason (BRK-257). Nothing
+ * outside an environment's scope is stored (infra-inventory.js). Anyone signed in reads it; a refresh is the owner's or
+ * the board's (an agent's `by` is refused).
  */
 import { AgentError } from './store-agents.js';
 import { install } from './install.js';
@@ -14,16 +15,20 @@ import {
   MAX_RESOURCES,
   REFRESH_EVERY_MS,
   REFRESH_PER_TICK,
+  clipError,
+  discoveredWords,
   redactAttrs,
   refreshDue,
   resourceView,
   scopeDiscovery,
+  staleView,
 } from './infra-inventory.js';
 import { costInCurrency } from './infra-currency.js';
 import { runsTheBoard } from './infra-environments.js';
 import { DAY, SIGNAL_RAW_DAYS, healthSignals } from './infra-signals.js';
 
 /** @typedef {import('./infra-provider.js').ProviderRegistry} ProviderRegistry */
+/** @typedef {import('./infra-provider.js').Resource} Resource */
 
 /** A call that may fail without failing the refresh: health and cost keep their last values instead. */
 async function tryCall(fn) {
@@ -49,6 +54,9 @@ export const infraInventoryMethods = {
         kind TEXT NOT NULL, PRIMARY KEY (environment, from_rid, to_rid, kind)
       );
       CREATE INDEX IF NOT EXISTS infra_inventory_relations_provider ON infra_inventory_relations (provider);
+      CREATE TABLE IF NOT EXISTS infra_inventory_stale (
+        environment INTEGER PRIMARY KEY, provider TEXT NOT NULL, at INTEGER NOT NULL, error TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS infra_inventory_refresh (
         provider TEXT PRIMARY KEY, at INTEGER NOT NULL, ok INTEGER NOT NULL, status INTEGER, error TEXT, source TEXT
       );
@@ -61,14 +69,15 @@ export const infraInventoryMethods = {
   },
 
   /**
-   * Discovers what exists in every environment on `providerId` and replaces that provider's slice of the inventory
-   * in one transaction. Every environment is discovered before anything is written, so a discovery that fails leaves
-   * the inventory as it was. Health and cost are best effort: when `observe` or `cost` fails, a resource keeps its
-   * last values.
+   * Discovers what exists in every environment on `providerId` and replaces each environment's slice of the inventory
+   * in its own transaction. Each environment stands on its own (BRK-257): one whose discovery fails keeps its last
+   * inventory, marked stale with the reason, while the others are written as normal. Only when every environment fails
+   * does the refresh fail. Every environment is discovered before anything is written. Health and cost are best effort:
+   * when `observe` or `cost` fails, a resource keeps its last values.
    *
    * Then the signals (BRK-191): a resource that's degraded or down, or healthy again, becomes a health signal, and the
    * provider's `events` since the last refresh (its alerts) join the stream, one of each. Connections shows whether
-   * that worked, as the provider's last signal.
+   * that worked, as the provider's last signal, and how many environments discovery reached.
    * @param {string} providerId
    * @param {{ registry?: ProviderRegistry }} [options] tests pass a registry with the fake provider
    */
@@ -83,6 +92,8 @@ export const infraInventoryMethods = {
       .exec('SELECT * FROM infra_environments WHERE provider = ? ORDER BY id', providerId)
       .toArray();
     const slices = [];
+    /** @type {Array<{ environment: any, message: string, status: number | null, permission: string | null }>} */
+    const failures = [];
     /** @type {Set<string>} */
     const missing = new Set();
     /** @type {Set<string>} what discovery went on without, in words (BRK-254) */
@@ -111,13 +122,13 @@ export const infraInventoryMethods = {
       } catch (error) {
         signalFailed ??= {
           message: `${provider.name} couldn’t ${what} ${environment.repo}’s ${environment.name}: ${redact(error?.message ?? error)}`,
-          ...(typeof error?.permission === 'string' ? { permission: error.permission } : {}),
+          ...(error?.status === 403 && typeof error?.permission === 'string' ? { permission: error.permission } : {}),
         };
         return null;
       }
     };
-    for (const environment of environments) {
-      if (!environment.target) continue;
+    const targeted = environments.filter((environment) => environment.target);
+    for (const environment of targeted) {
       const ctx = {
         environment: environment.name,
         scope: { target: environment.target },
@@ -125,36 +136,52 @@ export const infraInventoryMethods = {
         token,
         reached,
       };
-      let found;
       try {
         const discovered = checkDiscovery(provider, await provider.discover(ctx));
+        const found = scopeDiscovery(discovered, environment.target);
+        if (found.resources.length > MAX_RESOURCES)
+          throw new Error(
+            `${found.resources.length} resources are in scope, more than ${MAX_RESOURCES}: point its target at what the repository runs`,
+          );
         for (const name of discovered.missing ?? []) missing.add(name);
         for (const note of discovered.skipped ?? []) skipped.add(redact(note));
-        found = scopeDiscovery(discovered, environment.target);
+        slices.push({ environment, ctx, found });
       } catch (error) {
-        const message = `${provider.name} couldn’t discover ${environment.repo}’s ${environment.name}: ${redact(error?.message ?? error)}`;
-        await this.infraConnectionSeen(providerId, 'discovery', {
-          ok: false,
-          error: message,
-          missing: typeof error?.permission === 'string' ? [error.permission] : [],
+        failures.push({
+          environment,
+          message: `${provider.name} couldn’t discover ${environment.repo}’s ${environment.name}: ${redact(error?.message ?? error)}`,
+          status: typeof error?.status === 'number' ? error.status : null,
+          // Only a refusal naming what it needs strikes a permission off Connections, never a 5xx or a missing Worker.
+          permission: error?.status === 403 && typeof error?.permission === 'string' ? error.permission : null,
         });
-        const refused = new AgentError(`${message}. Nothing changed; try again once the provider answers.`, 502);
-        // What the platform answered, so the cron stops trying a token it refused (BRK-248).
-        if (typeof error?.status === 'number') Object.assign(refused, { providerStatus: error.status });
-        throw refused;
       }
-      if (found.resources.length > MAX_RESOURCES)
-        throw new AgentError(
-          `${environment.name} has ${found.resources.length} resources in scope, more than ${MAX_RESOURCES}: point its target at what the repository runs`,
-          409,
-        );
-      slices.push({ environment, ctx, found });
     }
+    /** @type {Map<number, Resource[]>} what a failed environment had when it was last discovered */
+    const lastKnown = new Map();
+    for (const { environment } of failures)
+      lastKnown.set(
+        environment.id,
+        this.sql
+          .exec(
+            'SELECT rid, kind, name, attrs FROM infra_inventory WHERE environment = ? AND provider = ?',
+            environment.id,
+            providerId,
+          )
+          .toArray()
+          .map((r) => ({
+            id: String(r.rid),
+            kind: String(r.kind),
+            name: String(r.name),
+            attrs: r.attrs ? JSON.parse(String(r.attrs)) : {},
+          })),
+      );
     // Every environment is discovered before any alert is read, so each environment's history knows what the others
-    // use: an alert on a zone none of them uses is the account's (BRK-256).
+    // use: an alert on a zone none of them uses is the account's (BRK-256). A failed environment counts with what it
+    // last had, so its zones never turn account-wide because one discovery failed (BRK-257).
+    const failedResources = [...lastKnown.values()].flat();
     for (const slice of slices) {
       const { environment, ctx, found } = slice;
-      const elsewhere = slices.filter((s) => s !== slice).flatMap((s) => s.found.resources);
+      const elsewhere = [...slices.filter((s) => s !== slice).flatMap((s) => s.found.resources), ...failedResources];
       const seen = { ...ctx, resources: found.resources, elsewhere };
       const health = await heard('observe', environment, async () =>
         checkHealth(provider, await provider.observe(seen)),
@@ -167,21 +194,44 @@ export const infraInventoryMethods = {
       );
       Object.assign(slice, { health, costs, alerts });
     }
-    let count = 0;
-    this.ctx.storage.transactionSync(() => {
-      const before = new Map(
-        this.sql
-          .exec('SELECT * FROM infra_inventory WHERE provider = ?', providerId)
-          .toArray()
-          .map((row) => [`${row.environment} ${row.rid}`, row]),
+    if (targeted.length && !slices.length) {
+      for (const failure of failures) this.inventoryStaleSeen(failure.environment, providerId, failure.message, now);
+      await this.infraConnectionSeen(providerId, 'discovery', {
+        ok: false,
+        error: discoveredWords(failures, targeted.length),
+        missing: failures.flatMap((f) => (f.permission ? [f.permission] : [])),
+      });
+      const [first] = failures;
+      const more = failures.length > 1 ? ` (and ${failures.length - 1} more)` : '';
+      const refused = new AgentError(
+        `${first.message}${more}. The last inventory is kept; try again once the provider answers.`,
+        502,
       );
-      this.sql.exec('DELETE FROM infra_inventory WHERE provider = ?', providerId);
-      this.sql.exec('DELETE FROM infra_inventory_relations WHERE provider = ?', providerId);
-      for (const { environment, found, health, costs } of slices) {
+      // What the platform answered, so the cron stops trying a token it refused (BRK-248).
+      if (first.status !== null) Object.assign(refused, { providerStatus: first.status });
+      throw refused;
+    }
+    let count = 0;
+    for (const { environment, found, health, costs } of slices) {
+      // Each environment in its own transaction: one environment's slice is never half written.
+      this.ctx.storage.transactionSync(() => {
+        const before = new Map(
+          this.sql
+            .exec('SELECT * FROM infra_inventory WHERE environment = ? AND provider = ?', environment.id, providerId)
+            .toArray()
+            .map((row) => [row.rid, row]),
+        );
+        this.sql.exec('DELETE FROM infra_inventory WHERE environment = ? AND provider = ?', environment.id, providerId);
+        this.sql.exec(
+          'DELETE FROM infra_inventory_relations WHERE environment = ? AND provider = ?',
+          environment.id,
+          providerId,
+        );
+        this.sql.exec('DELETE FROM infra_inventory_stale WHERE environment = ?', environment.id);
         const healthOf = new Map((health ?? []).map((h) => [h.resource, h]));
         const costOf = new Map((costs ?? []).map((c) => [c.resource, c]));
         for (const r of found.resources) {
-          const last = before.get(`${environment.id} ${r.id}`);
+          const last = before.get(r.id);
           const h = health ? healthOf.get(r.id) : null;
           const c = costs ? costOf.get(r.id) : null;
           this.sql.exec(
@@ -211,14 +261,35 @@ export const infraInventoryMethods = {
             rel.to,
             rel.kind,
           );
-      }
+      });
+    }
+    for (const failure of failures) this.inventoryStaleSeen(failure.environment, providerId, failure.message, now);
+    // What no environment on this provider looks at any more (its target cleared, or moved to another provider) goes.
+    const kept = [...slices.map((s) => s.environment.id), ...failures.map((f) => f.environment.id)];
+    const marks = kept.map(() => '?').join(', ');
+    const others = kept.length ? `AND environment NOT IN (${marks})` : '';
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`DELETE FROM infra_inventory WHERE provider = ? ${others}`, providerId, ...kept);
+      this.sql.exec(`DELETE FROM infra_inventory_relations WHERE provider = ? ${others}`, providerId, ...kept);
+      this.sql.exec(`DELETE FROM infra_inventory_stale WHERE provider = ? ${others}`, providerId, ...kept);
     });
-    await this.infraConnectionSeen(providerId, 'discovery', {
-      ok: true,
-      missing: [...missing],
-      skipped: [...skipped],
-      reached: [...reached],
-    });
+    await this.infraConnectionSeen(
+      providerId,
+      'discovery',
+      failures.length
+        ? {
+            ok: false,
+            error: discoveredWords(failures, targeted.length),
+            // A permission another environment reached in this run stays: the token is scoped, not missing it (BRK-254).
+            missing: [
+              ...missing,
+              ...failures.flatMap((f) => (f.permission && !reached.has(f.permission) ? [f.permission] : [])),
+            ],
+            skipped: [...skipped],
+            reached: [...reached],
+          }
+        : { ok: true, missing: [...missing], skipped: [...skipped], reached: [...reached] },
+    );
     for (const { environment, found, health, alerts } of slices) {
       const where = { source: providerId, environment: environment.name, environmentId: environment.id };
       const ids = new Set(found.resources.map((r) => r.id));
@@ -252,7 +323,44 @@ export const infraInventoryMethods = {
             }
           : { ok: true, reached: [...reached] },
       );
-    return { provider: providerId, environments: slices.length, resources: count, at: new Date(now).toISOString() };
+    return {
+      provider: providerId,
+      environments: slices.length,
+      resources: count,
+      at: new Date(now).toISOString(),
+      stale: failures.map((f) => ({
+        environmentId: f.environment.id,
+        repo: f.environment.repo,
+        environment: f.environment.name,
+        error: f.message,
+      })),
+    };
+  },
+
+  /** Marks an environment's inventory stale (BRK-257): its discovery failed, so what it shows is from before. */
+  inventoryStaleSeen(environment, providerId, error, at) {
+    this.sql.exec(
+      `INSERT INTO infra_inventory_stale (environment, provider, at, error) VALUES (?, ?, ?, ?)
+       ON CONFLICT (environment) DO UPDATE SET provider = excluded.provider, at = excluded.at, error = excluded.error`,
+      environment.id,
+      providerId,
+      at,
+      clipError(error),
+    );
+  },
+
+  /**
+   * The environments whose inventory is stale, each with why and since when, and when it was last discovered.
+   * @param {number[] | null} [ids] only these environments
+   */
+  inventoryStale(ids = null) {
+    const rows = this.sql
+      .exec(
+        `SELECT s.*, e.repo AS env_repo, e.name AS env_name, (SELECT MAX(seen) FROM infra_inventory i WHERE i.environment = s.environment) AS seen
+         FROM infra_inventory_stale s JOIN infra_environments e ON e.id = s.environment ORDER BY e.repo, e.name`,
+      )
+      .toArray();
+    return rows.filter((r) => !ids || ids.includes(Number(r.environment))).map((r) => staleView(r));
   },
 
   /** The task that owns a short-lived environment, as the inventory shows it. */
@@ -308,10 +416,14 @@ export const infraInventoryMethods = {
           .map((rel) => ({ environmentId: id, from: rel.from_rid, to: rel.to_rid, kind: rel.kind })),
       );
       const shown = new Set(rows.map((r) => `${r.environment} ${r.rid}`));
+      const stale = this.inventoryStale(env ? [Number(env.id)] : null).filter(
+        (s) => (!slug || s.repo === slug) && (!provider || s.provider === provider),
+      );
       return {
         status: 200,
         body: {
           resources: rows.map((row) => this.inventoryOut(row)),
+          stale,
           relations: relations.filter(
             (rel) => shown.has(`${rel.environmentId} ${rel.from}`) && shown.has(`${rel.environmentId} ${rel.to}`),
           ),
