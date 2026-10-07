@@ -49,7 +49,21 @@ const CSS = `
 .post .meta b{color:var(--text)}
 .post .meta i{font-style:normal;margin-left:auto;letter-spacing:.12em;text-transform:uppercase}
 .post p{margin-top:8px;font:600 30px/1.3 var(--font-body)}
-.post.reply{margin-left:72px}`;
+.post.reply{margin-left:72px}
+.push{position:absolute;left:84px;right:84px;top:560px;padding:28px 32px 30px;border-radius:var(--radius-l);background:var(--surface);border:1px solid var(--surface-3)}
+.push .meta{display:flex;align-items:center;gap:18px;font:600 22px var(--font-mono);color:var(--muted)}
+.push .meta i{font-style:normal;margin-left:auto}
+.push b{display:block;margin-top:16px;font:700 40px var(--font-body)}
+.push p{margin-top:8px;font:500 30px/1.35 var(--font-body);color:var(--muted)}
+.trail{position:absolute;left:84px;right:84px;top:860px;display:flex;gap:12px}
+.trail span{flex:1;padding:16px 0;text-align:center;border-radius:var(--radius);background:var(--surface);border:1px solid var(--surface-3);font:600 24px var(--font-mono);color:var(--muted)}
+.trail span.on{color:var(--text);border-color:var(--text)}
+.bound{display:flex;align-items:baseline;gap:20px;margin-top:22px}
+.bound b{font:700 34px var(--font-body)}
+.bound span{margin-left:auto;font:600 26px var(--font-mono);color:var(--muted)}
+.range{position:relative;margin-top:14px;height:14px;border-radius:var(--radius-xs);background:var(--surface-3)}
+.range i{position:absolute;top:0;bottom:0;left:10%;right:0;background:var(--text);border-radius:var(--radius-xs)}
+.range em{position:absolute;top:-10px;width:6px;height:34px;left:30%;background:var(--bg);border:2px solid var(--text)}`;
 
 const frame = ({ kicker, foot, footNote, body }) => `
 <div class="stage">
@@ -254,6 +268,65 @@ const CARDS = {
           <div class="step"><span class="n">1</span><b>Add your board as a connector</b><code>/mcp</code></div>
           <div class="step"><span class="n">2</span><b>Approve it on your board</b><code>one repository</code></div>
           <div class="step"><span class="n">3</span><b>Revoke it under Connections</b></div></div>`,
+    }),
+  },
+  '16-new-in-2-0-0': {
+    alt: 'A card headed "New in 2.0.0." with six lines: The Infrastructure view: health, cost, and drift. Plans you approve, from your phone. Plans in pull requests, as a check. Envelopes: bounds you approve once. Incidents: a signal becomes a task. Freeze, budgets, and npx breakaway infra. At the foot: "Agents propose it. You approve it."',
+    html: frame({
+      kicker: 'Release',
+      foot: 'breakaway',
+      footNote: 'Agents propose it. You approve it.',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:104px;white-space:nowrap">New in <span class="red">2.0.0.</span></div></div>
+        <div class="news">
+          <div class="row"><span class="t">The Infrastructure view: health, cost, and drift</span></div>
+          <div class="row"><span class="t">Plans you approve, from your phone</span></div>
+          <div class="row"><span class="t">Plans in pull requests, as a check</span></div>
+          <div class="row"><span class="t">Envelopes: bounds you approve once</span></div>
+          <div class="row"><span class="t">Incidents: a signal becomes a task</span></div>
+          <div class="row"><span class="t">Freeze, budgets, and npx breakaway infra</span></div></div>`,
+    }),
+  },
+  '17-approve': {
+    alt: 'A card headed "Agents propose it. You approve it." Three steps: 1, an agent changes staging, in a pull request; 2, the plan waits for you, plus 6.40 dollars a month, estimated; 3, you press Approve, shown in red, and the board applies it and checks its health. At the foot: "No agent can press Approve."',
+    html: frame({
+      kicker: 'New in 2.0.0',
+      foot: 'breakaway',
+      footNote: 'No agent can press Approve',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:80px;white-space:nowrap">Agents propose it.<br>You approve it.</div></div>
+        <div class="steps" style="top:600px">
+          <div class="step"><span class="n">1</span><b>An agent changes staging</b><code>pull request</code></div>
+          <div class="step"><span class="n">2</span><b>The plan waits for you</b><code>+$6.40/mo est.</code></div>
+          <div class="step"><span class="n">3</span><b><span class="chip" style="font-size:30px;vertical-align:4px">Approve</span>&nbsp; The board applies it</b><code>checks health</code></div></div>`,
+    }),
+  },
+  '18-envelope': {
+    alt: 'A card headed "Bounds you set once." Below it: "The board scales and restarts inside them, and tells you after. Anything outside waits for you." An envelope on production: widgets-render, 2 to 10 instances, now 3; 3 restarts a day; up to 60 dollars a month.',
+    html: frame({
+      kicker: 'Envelopes',
+      foot: 'breakaway',
+      footNote: 'Inside the bounds, or it waits',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">Bounds you<br>set <span class="red">once.</span></div>
+          <p class="lede" style="margin-top:32px">The board scales and restarts inside them, and tells you after. Anything outside waits for you.</p></div>
+        <div class="fcard" style="position:absolute;left:84px;right:84px;top:640px">
+          <div class="head"><b>production</b><span>envelope</span></div>
+          <div class="bound"><b>widgets-render</b><span>2 to 10 instances · now 3</span></div>
+          <div class="range"><i></i><em></em></div>
+          <div class="bound" style="margin-top:30px"><b>Restarts</b><span>3 a day</span></div>
+          <div class="bound"><b>Cost</b><span>up to $60 a month</span></div></div>`,
+    }),
+  },
+  '19-incident': {
+    alt: 'A card headed "When it breaks, it\'s a task." A made-up push: WGT-41, incident in production: widgets-render is down, 3 of 3 instances failed their health check. Below it, the incident\'s steps: diagnose, which is now, then propose, approve, apply, and verify.',
+    html: frame({
+      kicker: 'Incidents',
+      foot: 'breakaway',
+      footNote: 'Production pushes. The rest waits.',
+      body: `<div class="copy" style="top:200px"><div class="display" style="font-size:112px">When it breaks,<br>it’s a task.</div></div>
+        <div class="push">
+          <div class="meta"><span>widgets tasks</span><i>now</i></div>
+          <b><span class="chip" style="font-size:32px;vertical-align:4px">WGT-41</span>&nbsp; incident in production</b>
+          <p>widgets-render is down: 3 of 3 instances failed their health check.</p></div>
+        <div class="trail"><span class="on">Diagnose</span><span>Propose</span><span>Approve</span><span>Apply</span><span>Verify</span></div>`,
     }),
   },
 };

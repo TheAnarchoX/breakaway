@@ -1,0 +1,28 @@
+{
+  // The launch board (README.md in launch/): breakaway's Worker with a made-up platform and GitHub, for the launch
+  // media. Local only: `node board.mjs` runs it with `wrangler dev`, and it's never deployed.
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "widgets-tasks",
+  "main": "./worker.js",
+  "compatibility_date": "2026-09-26",
+  "workers_dev": false,
+  "vars": {
+    "TASKS_GITHUB_STATUS": "off",
+    "TASKS_INSTALL": {
+      "name": "widgets tasks",
+      "worker": "widgets-tasks",
+      "url": null,
+      "secretsPrefix": "WIDGETS_TASKS_",
+      "secretsStore": null,
+      "store": "widgets",
+      "docs": null
+    }
+  },
+  "assets": {
+    "directory": "../../../web/public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/v1/*", "/github/*", "/mcp", "/oauth/*", "/.well-known/oauth-*", "/login", "/logout", "/__launch/*"]
+  },
+  "durable_objects": { "bindings": [{ "name": "STORE", "class_name": "TaskStore" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TaskStore"] }]
+}
