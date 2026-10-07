@@ -148,7 +148,14 @@ export const infraInventoryMethods = {
           `${environment.name} has ${found.resources.length} resources in scope, more than ${MAX_RESOURCES}: point its target at what the repository runs`,
           409,
         );
-      const seen = { ...ctx, resources: found.resources };
+      slices.push({ environment, ctx, found });
+    }
+    // Every environment is discovered before any alert is read, so each environment's history knows what the others
+    // use: an alert on a zone none of them uses is the account's (BRK-256).
+    for (const slice of slices) {
+      const { environment, ctx, found } = slice;
+      const elsewhere = slices.filter((s) => s !== slice).flatMap((s) => s.found.resources);
+      const seen = { ...ctx, resources: found.resources, elsewhere };
       const health = await heard('observe', environment, async () =>
         checkHealth(provider, await provider.observe(seen)),
       );
@@ -158,7 +165,7 @@ export const infraInventoryMethods = {
       const alerts = await heard('read the alerts of', environment, async () =>
         checkSignals(provider, seen, since, await provider.events(seen, since)),
       );
-      slices.push({ environment, found, health, costs, alerts });
+      Object.assign(slice, { health, costs, alerts });
     }
     let count = 0;
     this.ctx.storage.transactionSync(() => {

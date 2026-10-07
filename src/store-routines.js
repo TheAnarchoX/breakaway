@@ -667,7 +667,7 @@ export const routinesMethods = {
     if (source === 'cloudflare') {
       // The alert joins Architect's signals too (BRK-191), whether or not the routine starts a run.
       // Placed the way the alert history places it (BRK-255): on its Worker's environment, on the environments using
-      // its zone, or once for the account when it names neither.
+      // its zone, or once for the account when it names neither, or a zone no environment uses (BRK-256).
       const fields = alertFields(body);
       const account = Boolean(alertPlace(fields, [])?.account);
       const on = fields.worker ?? fields.hostname ?? fields.zone;
@@ -677,6 +677,7 @@ export const routinesMethods = {
           text: alertText(fields.alert, on),
           account,
           place: (resources) => alertPlace(fields, resources),
+          unused: (resources) => Boolean(alertPlace(fields, [], resources)?.account),
         });
       } catch (error) {
         console.error(`the alert for ${routine.slug} didn’t become a signal: ${error.message}`);

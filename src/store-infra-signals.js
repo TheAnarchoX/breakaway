@@ -291,14 +291,16 @@ export const infraSignalsMethods = {
    * (`recordAccountAlert`). Otherwise `place` says, for each of the provider's environments in `repo`, from the
    * resources its inventory holds, where the alert goes there: on a resource, on the whole environment (`resource`
    * null), or nowhere (null). An environment it places nothing in hears nothing, and neither does one that isn't on
-   * the board. Returns the signals stored in the stream.
+   * the board. When it lands nowhere and `unused` says nothing in any of the provider's environments uses what it
+   * names (BRK-256), it's kept once for the account instead. Returns the signals stored in the stream.
    * @param {string} providerId
    * @param {string} repo the repository whose routine the alert fired
    * @param {{ at: string | null, text: string, account?: boolean,
    *   place?: (resources: Array<{ kind: string, name: string, attrs: Record<string, unknown> }>) =>
-   *     { resource: string | null } | null }} alert
+   *     { resource: string | null } | null,
+   *   unused?: (resources: Array<{ kind: string, name: string, attrs: Record<string, unknown> }>) => boolean }} alert
    */
-  async recordProviderAlert(providerId, repo, { at, text, account = false, place }) {
+  async recordProviderAlert(providerId, repo, { at, text, account = false, place, unused }) {
     const now = Date.now();
     const t = at ? Date.parse(at) : Number.NaN;
     const when = new Date(Number.isNaN(t) || t > now + DAY ? now : t).toISOString();
@@ -308,15 +310,18 @@ export const infraSignalsMethods = {
       return [];
     }
     const environments = this.sql
-      .exec('SELECT id, name FROM infra_environments WHERE provider = ? AND repo = ? ORDER BY id', providerId, repo)
+      .exec('SELECT id, name, repo FROM infra_environments WHERE provider = ? ORDER BY id', providerId)
       .toArray();
+    /** @type {Map<number, Array<{ kind: string, name: string, attrs: Record<string, unknown> }>>} */
+    const inventory = new Map(environments.map((e) => [Number(e.id), []]));
+    for (const r of this.sql
+      .exec('SELECT environment, kind, name, attrs FROM infra_inventory WHERE provider = ?', providerId)
+      .toArray())
+      inventory.get(Number(r.environment))?.push({ kind: r.kind, name: r.name, attrs: JSON.parse(r.attrs || '{}') });
     const signals = [];
     for (const e of environments) {
-      const resources = this.sql
-        .exec('SELECT kind, name, attrs FROM infra_inventory WHERE provider = ? AND environment = ?', providerId, e.id)
-        .toArray()
-        .map((r) => ({ kind: r.kind, name: r.name, attrs: JSON.parse(r.attrs || '{}') }));
-      const where = place?.(resources);
+      if (e.repo !== repo) continue;
+      const where = place?.(inventory.get(Number(e.id)) ?? []);
       if (!where) continue;
       signals.push({
         ...signal,
@@ -325,6 +330,10 @@ export const infraSignalsMethods = {
         resource: where.resource,
       });
     }
+    // An alert on a zone or hostname that none of the provider's environments uses, in any repository, is the
+    // account's, as the alert history keeps it (BRK-256).
+    if (!signals.length && unused?.([...inventory.values()].flat()))
+      this.recordAccountAlert({ ...signal, environment: 'account' });
     return this.recordAlertSignals(signals);
   },
 

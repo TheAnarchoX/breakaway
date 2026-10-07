@@ -1,6 +1,6 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { alertFields, alertPlace, events } from '../src/infra-cloudflare.js';
+import { alertFields, alertPlace, discover, events } from '../src/infra-cloudflare.js';
 import { checkSignals } from '../src/infra-provider.js';
 import { cloudflare } from '../src/infra-cloudflare.js';
 import { ORIGIN } from './constants.js';
@@ -114,6 +114,28 @@ describe('where a Cloudflare alert goes (BRK-255)', () => {
     expect(place({})).toEqual({ resource: null, account: true, on: null });
   });
 
+  it('keeps an alert on a zone no environment uses for the account, given the others’ resources (BRK-256)', () => {
+    const others = [
+      { kind: 'worker', name: 'acme-other' },
+      { kind: 'route', name: 'www.acme-two.example/*', attrs: { zone: 'acme-two.example', worker: 'acme-other' } },
+    ];
+    const place = (data) => alertPlace(alertFields({ alert_name: 'x', data }), resources, others);
+    expect(place({ zone_name: 'unused.example' })).toEqual({ resource: null, account: true, on: 'unused.example' });
+    expect(place({ hostname: 'www.unused.example' })).toEqual({
+      resource: null,
+      account: true,
+      on: 'www.unused.example',
+    });
+    expect(place({ zone_name: 'acme.example' })).toEqual({ resource: null, account: false, on: 'acme.example' });
+    expect(place({ zone_name: 'acme-two.example' })).toBeNull();
+    expect(place({ hostname: 'www.acme-two.example' })).toBeNull();
+    expect(place({ script_name: 'acme-unknown' })).toBeNull();
+    // A zone named only by its ID can't be told apart from one an environment uses.
+    expect(place({ zone_tag: ZONE_TWO })).toBeNull();
+    // Without the others' resources, nothing says the zone is unused.
+    expect(alertPlace(alertFields({ alert_name: 'x', data: { zone_name: 'unused.example' } }), resources)).toBeNull();
+  });
+
   it('reads each environment’s share of the history, finding a zone named by its ID alone', async () => {
     const fetch = cloudflareApi(answers());
     const since = new Date(Date.now() - 24 * HOUR).toISOString();
@@ -142,6 +164,37 @@ describe('where a Cloudflare alert goes (BRK-255)', () => {
     const kept = JSON.stringify([production, staging]);
     for (const value of [...ALERT_NEVER_KEPT, ZONE_TWO, ACCOUNT, 'unused.example']) expect(kept).not.toContain(value);
     for (const c of fetch.calls) expect(c.method).toBe('GET');
+  });
+
+  it('marks an alert on a zone neither environment uses as account-wide, from either one’s history (BRK-256)', async () => {
+    const fetch = cloudflareApi(answers());
+    const since = new Date(Date.now() - 24 * HOUR).toISOString();
+    const found = async (target) =>
+      (await discover({ environment: 'x', scope: { target }, token: TOKEN, fetch })).resources;
+    const resources = { 'acme-api': await found('acme-api'), 'acme-other': await found('acme-other') };
+    const read = async (target, other) => {
+      const ctx = {
+        environment: target === 'acme-api' ? 'production' : 'staging',
+        scope: { target },
+        token: TOKEN,
+        fetch,
+        resources: resources[target],
+        elsewhere: resources[other],
+      };
+      return checkSignals(cloudflare, ctx, since, await events(ctx, since));
+    };
+    const account = (signals) => signals.filter((s) => s.account).map((s) => [s.resource, s.text]);
+    const unused = [
+      [null, 'Cloudflare alert: Cloudflare incident'],
+      [null, 'Cloudflare alert: Advanced certificate on unused.example'],
+    ];
+    const production = await read('acme-api', 'acme-other');
+    const staging = await read('acme-other', 'acme-api');
+    expect(account(production)).toEqual(unused);
+    expect(account(staging)).toEqual(unused);
+    // acme-two.example is staging's, so its alerts stay there and never reach production.
+    expect(production.filter((s) => s.text.includes('acme-two.example'))).toEqual([]);
+    expect(staging.filter((s) => s.text.includes('acme-two.example') && !s.account)).toHaveLength(3);
   });
 });
 
@@ -198,7 +251,15 @@ describe('account-wide alerts on the board (BRK-255)', () => {
       resource: 'worker:acme-api',
     });
     expect((await alertsOf('staging')).every((s) => s.environmentId === staging.id)).toBe(true);
+    // The incident names nothing, and unused.example is a zone neither environment uses (BRK-256): each once.
     expect(await account()).toEqual([
+      {
+        id: expect.any(Number),
+        source: 'cloudflare',
+        level: 'warning',
+        at: T[6],
+        text: 'Cloudflare alert: Advanced certificate on unused.example',
+      },
       {
         id: expect.any(Number),
         source: 'cloudflare',
@@ -212,7 +273,7 @@ describe('account-wide alerts on the board (BRK-255)', () => {
     await inStore((s) => s.refreshInventory('cloudflare'));
     expect(await alertsOf('production')).toHaveLength(1);
     expect(await alertsOf('staging')).toHaveLength(4);
-    expect(await account()).toHaveLength(1);
+    expect(await account()).toHaveLength(2);
 
     // Read only, and kept as long as raw signals.
     expect((await api('infra/account-alerts', { method: 'POST', body: {} })).status).toBe(405);
@@ -245,7 +306,8 @@ describe('account-wide alerts on the board (BRK-255)', () => {
     await fire('Certificate expiring', { hostname: 'www.acme-two.example' });
     await fire('Cloudflare maintenance', {});
     await fire('Cloudflare maintenance', {});
-    await fire('Advanced certificate', { zone_name: 'unused.example' });
+    await fire('Origin errors', { zone_name: 'spare.example' });
+    await fire('Certificate expiring', { hostname: 'shop.spare.example' });
 
     const added = (now, was) => now.filter((t) => !was.includes(t));
     expect(added(await texts('production'), before.production)).toEqual([
@@ -255,8 +317,17 @@ describe('account-wide alerts on the board (BRK-255)', () => {
       'Cloudflare alert: Certificate expiring on www.acme-two.example',
       'Cloudflare alert: Origin errors on acme-two.example',
     ]);
-    expect((await account()).length - before.account.length).toBe(1);
-    expect((await account())[0]).toMatchObject({ text: 'Cloudflare alert: Cloudflare maintenance' });
+    // Neither environment uses spare.example, so its alerts are the account's, as the history keeps them (BRK-256).
+    expect(
+      added(
+        (await account()).map((a) => a.text).sort(),
+        before.account.map((a) => a.text),
+      ),
+    ).toEqual([
+      'Cloudflare alert: Certificate expiring on shop.spare.example',
+      'Cloudflare alert: Cloudflare maintenance',
+      'Cloudflare alert: Origin errors on spare.example',
+    ]);
   });
 
   it('moves the copies an older board kept in every environment into one account-wide alert, once', async () => {
@@ -278,9 +349,13 @@ describe('account-wide alerts on the board (BRK-255)', () => {
       s.setMeta('infra_account_alerts_moved', null);
       s.initInfraAccountAlerts();
       s.initInfraAccountAlerts();
-      return s.sql.exec('SELECT COUNT(*) AS n FROM infra_account_alerts').one().n;
+      return s.sql
+        .exec('SELECT text FROM infra_account_alerts')
+        .toArray()
+        .map((r) => r.text);
     });
-    expect(moved).toBe(2);
+    expect(moved.filter((t) => t === 'Cloudflare alert: Acme status page')).toHaveLength(1);
+    expect(moved).not.toContain('Cloudflare alert: Only production’s');
     expect(await texts('production')).toContain('Cloudflare alert: Only production’s');
     expect(await texts('production')).not.toContain('Cloudflare alert: Acme status page');
     expect(await texts('staging')).not.toContain('Cloudflare alert: Acme status page');

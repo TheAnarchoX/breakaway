@@ -1213,32 +1213,44 @@ export function zonesOf(resources) {
  * zone) is one the environment's routes or custom domains use; `account` when it names no Worker, zone, or hostname
  * (it's about the account or the platform, and the board keeps one per provider, not one per environment); or null
  * when it's another environment's, or no environment's.
+ *
+ * With `elsewhere`, the resources of the provider's other environments, an alert naming a zone or hostname that
+ * neither this environment nor any other uses is `account` too (BRK-256), still on that zone or hostname, rather than
+ * nobody's. A zone named only by its ID, which nothing here can name, stays nobody's.
  * @param {ReturnType<typeof alertFields>} fields
  * @param {Array<{ kind: string, name: string, attrs?: Record<string, unknown> }>} resources
+ * @param {Array<{ kind: string, name: string, attrs?: Record<string, unknown> }>} [elsewhere]
  * @returns {{ resource: string | null, account: boolean, on: string | null } | null}
  */
-export function alertPlace(fields, resources) {
+export function alertPlace(fields, resources, elsewhere) {
   if (fields.worker) {
     const mine = (resources ?? []).some((r) => r.kind === 'worker' && r.name === fields.worker);
     return mine ? { resource: rid('worker', fields.worker), account: false, on: fields.worker } : null;
   }
   if (!fields.zone && !fields.hostname && !fields.zoneId) return { resource: null, account: true, on: null };
+  const on = fields.hostname ?? fields.zone;
+  if (zoneUsed(fields, resources)) return { resource: null, account: false, on };
+  if (elsewhere && on && !zoneUsed(fields, elsewhere)) return { resource: null, account: true, on };
+  return null;
+}
+
+/** Whether the zone an alert names, or its hostname's zone, is one that `resources`' routes or custom domains use. */
+function zoneUsed(fields, resources) {
   const zones = zonesOf(resources);
   const host = fields.hostname;
-  const zone =
-    (fields.zone && zones.has(fields.zone) ? fields.zone : null) ??
-    (host ? [...zones].find((z) => host === z || host.endsWith(`.${z}`)) : null) ??
-    null;
-  return zone ? { resource: null, account: false, on: host ?? zone } : null;
+  return Boolean(
+    (fields.zone && zones.has(fields.zone)) || (host && [...zones].some((z) => host === z || host.endsWith(`.${z}`))),
+  );
 }
 
 /**
  * The account's alerts since `since`, from its alert history (`GET …/alerting/v3/history`, Notifications Read), as
  * `alert` signals placed by `alertPlace` (BRK-255): on the Worker it names when that Worker is in the environment, on
  * the whole environment when it names a zone or hostname the environment uses, and marked `account` when it names
- * none of them; an alert about another environment's Worker or zone is left out. A zone named only by its ID is
- * looked up in the account's zones (Zone Read). Oldest first. The board's alert webhook reports the same alerts as
- * they fire; the store keeps one of each, and one of each account-wide alert across the provider's environments.
+ * none of them, or (given `ctx.elsewhere`, BRK-256) a zone or hostname no environment uses; an alert about another
+ * environment's Worker or zone is left out. A zone named only by its ID is looked up in the account's zones (Zone
+ * Read). Oldest first. The board's alert webhook reports the same alerts as they fire; the store keeps one of each, and
+ * one of each account-wide alert across the provider's environments.
  * @param {ProviderContext} ctx
  * @param {string} since ISO 8601
  * @returns {Promise<import('./infra-provider.js').Signal[]>}
@@ -1283,7 +1295,7 @@ export async function events(ctx, since) {
     if (!at || Date.parse(at) < from) continue;
     if (!fields.worker && !fields.zone && !fields.hostname && fields.zoneId)
       fields.zone = await zoneName(fields.zoneId);
-    const place = alertPlace(fields, resources);
+    const place = alertPlace(fields, resources, ctx.elsewhere);
     if (!place) continue;
     signals.push({
       source: 'cloudflare',
