@@ -52,6 +52,9 @@ function mockGitHub() {
     const reply = (data, status = 200) =>
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
     const path = url.pathname;
+    // A GraphQL query is a sync's read of pull request details (BRK-269): refused, so it reads them over REST.
+    if (path === '/graphql' && /^\s*query\b/u.test(JSON.parse(init.body ?? '{}').query ?? ''))
+      return reply({ errors: [{ message: 'not in this test' }] });
     if (init.method && init.method !== 'GET' && !path.startsWith('/app/')) {
       gh.writes.push([init.method, path, init.body ? JSON.parse(init.body) : null]);
       if (gh.writeError) {
