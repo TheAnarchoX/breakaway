@@ -62,7 +62,6 @@ body {
   border-width: 3px;
 }
 /* A column that scrolls keeps the bar's lane, so its cards don't shift or sit under the bar when it appears. */
-.side-nav,
 .notif-list,
 .stream,
 .stream-list,
@@ -119,6 +118,27 @@ body {
     );
     animation: scroll-fade linear both;
     animation-timeline: scroll(self inline);
+  }
+}
+/* The sidebar's views keep no bar's lane, which would leave them narrower than the repository switcher and off
+   center on the rail (WEB-112): they scroll by wheel, swipe, and keys, and fade at the end there's more of. */
+.side-nav {
+  scrollbar-width: none;
+}
+.side-nav::-webkit-scrollbar {
+  display: none;
+}
+@supports (animation-timeline: scroll()) {
+  .side-nav {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black var(--scroll-fade-start),
+      black calc(100% - var(--scroll-fade-end)),
+      transparent
+    );
+    animation: scroll-fade linear both;
+    animation-timeline: scroll(self block);
   }
 }
 
@@ -681,14 +701,6 @@ a code {
 .is-rail :is(.side-item, .side-status) {
   justify-content: center;
   padding: 0;
-}
-/* The rail is too narrow for a bar's lane, which would push its icons off center: it scrolls by wheel, swipe, and keys. */
-.is-rail .side-nav {
-  scrollbar-gutter: auto;
-  scrollbar-width: none;
-}
-.is-rail .side-nav::-webkit-scrollbar {
-  display: none;
 }
 .is-rail .side-badge {
   position: absolute;
