@@ -34,6 +34,7 @@ breakaway is one Cloudflare Worker and one Durable Object that each person runs 
 ## Run it
 
 - [Deploying and updating](https://leavethepack.dev/docs/deploying.md): How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
+- [Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2.md): What updating a board from 1.5 to 2.0.0 changes by itself, what stays off until you connect a provider, what your repositories get, the GitHub permissions to accept, and how to go back.
 - [Operating a board](https://leavethepack.dev/docs/operations.md): Secrets and what each one does, rotating them, what to keep and what to do when it’s lost, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
 - [Recover without the board](https://leavethepack.dev/docs/recovery.md): Redeploy your board and rebuild your environments by hand, with wrangler and your repositories alone, and what to export while the board still answers.
 - [Architecture](https://leavethepack.dev/docs/architecture.md): What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.
