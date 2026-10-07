@@ -9,8 +9,10 @@ export const WINDOW_DAYS = 28;
 export const STEP_DAYS = 1;
 /** Owner steps a day when the history has none finished. */
 export const OWNER_RATE = 1;
-/** Pixels a day at each zoom. */
-export const ZOOMS = { weeks: 28, months: 7 };
+/** Pixels a day in weeks; Fit works its own out from the screen's width (WEB-106). */
+export const WEEKS_PX = 28;
+/** The narrowest and widest a day draws at Fit. */
+export const FIT_PX = { min: 2, max: 60 };
 
 const time = (iso) => (iso ? Date.parse(iso) : Number.NaN);
 
@@ -251,15 +253,17 @@ function monday(ms) {
 }
 
 /**
- * The span the timeline draws: from the Monday before the earliest bar (and at least a week before now) to a
- * week past the last likely end (and at least four weeks after now).
+ * The span the timeline draws: from the Monday before the earliest bar or plan (and at least a week before now)
+ * to a week past the last likely or planned end (and at least four weeks after now).
  * @param {Iterable<any>} projections
  * @param {number} now
+ * @param {Iterable<{ start: number | null, end: number | null } | null>} [plans]
  */
-export function span(projections, now) {
+export function span(projections, now, plans = []) {
   let from = now - 7 * DAY;
   let to = now + 28 * DAY;
-  for (const p of projections) {
+  const ends = [...plans].filter(Boolean).map((p) => ({ start: p.start, end: p.end === null ? null : p.end + DAY }));
+  for (const p of [...projections, ...ends]) {
     for (const ms of [p.start, p.end, p.likely]) {
       if (!Number.isFinite(ms) || ms === null) continue;
       from = Math.min(from, ms);
@@ -270,17 +274,16 @@ export function span(projections, now) {
 }
 
 /**
- * The timeline's scale at `zoom`: where a time sits, in pixels from the left, the whole width, and the ticks
- * (each Monday in weeks, each month's first day in months) with their labels.
+ * The timeline's scale at `px` pixels a day: where a time sits, in pixels from the left, the whole width, and the
+ * ticks with their labels: each Monday when a week has room for its date, else each month's first day.
  * @param {{ from: number, to: number }} range
- * @param {string} zoom `weeks` or `months`
+ * @param {number} px
  * @param {number} now
  */
-export function scale({ from, to }, zoom, now) {
-  const px = ZOOMS[zoom] ?? ZOOMS.weeks;
+export function scale({ from, to }, px, now) {
   const x = (ms) => Math.round(((ms - from) / DAY) * px);
   const ticks = [];
-  if (zoom === 'months') {
+  if (px * 7 < 56) {
     const d = new Date(from);
     d.setUTCHours(0, 0, 0, 0);
     d.setUTCDate(1);
@@ -297,6 +300,164 @@ export function scale({ from, to }, zoom, now) {
     }
   } else for (let m = from; m < to; m += 7 * DAY) ticks.push({ at: m, x: x(m), label: day(m, now) });
   return { x, width: x(to), ticks, px };
+}
+
+/**
+ * Fit's pixels a day: a week before today to a week past `last` (the last likely or planned end in view) fills
+ * `width`, within FIT_PX.
+ * @param {number} width
+ * @param {number} now
+ * @param {number | null} last
+ */
+export function fitPx(width, now, last) {
+  const days = Math.max(7, ((last ?? now) - now) / DAY) + 14;
+  return Math.min(FIT_PX.max, Math.max(FIT_PX.min, Math.floor((width / days) * 100) / 100));
+}
+
+// ---- the plan (WEB-106): the owner's dates against the pace ----
+
+/** A whole UTC day, `YYYY-MM-DD`, from a time. */
+export const toDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** Midnight UTC of a `YYYY-MM-DD` day, or null. */
+export const fromDay = (d) => (d ? Date.parse(`${d}T00:00:00Z`) : null);
+const index = (ms) => Math.floor(ms / DAY);
+
+/**
+ * A feature's plan, as midnights UTC (the end is the last planned day, so the plan runs to the end of it), or null
+ * when it has none.
+ * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
+ */
+export function planOf(f) {
+  if (!f.plannedStart && !f.plannedEnd) return null;
+  return { start: fromDay(f.plannedStart), end: fromDay(f.plannedEnd) };
+}
+
+/**
+ * What Plan it offers: the pace's start and likely end, as days; null when the pace has no estimate.
+ * @param {any} p one of `project`'s
+ * @param {number} now
+ */
+export function suggest(p, now) {
+  if (p?.state !== 'open' || p.likely === null) return null;
+  const start = toDay(p.start ?? now);
+  const end = toDay(p.likely);
+  return { plannedStart: start, plannedEnd: end < start ? start : end };
+}
+
+/**
+ * The plan with one end moved `days` days: `start` or `end`. The other end moves with it rather than let the
+ * start pass the end. A plan with only an end grows a start from it.
+ * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
+ * @param {'start' | 'end'} which
+ * @param {number} days
+ */
+export function shiftPlan(f, which, days) {
+  const end = fromDay(f.plannedEnd ?? null);
+  const start = fromDay(f.plannedStart ?? null);
+  if (which === 'end') {
+    const to = (end ?? start) + days * DAY;
+    return { plannedStart: start === null ? null : toDay(Math.min(start, to)), plannedEnd: toDay(to) };
+  }
+  const from = (start ?? end) + days * DAY;
+  return { plannedStart: toDay(from), plannedEnd: end === null ? null : toDay(Math.max(end, from)) };
+}
+
+/**
+ * How the pace compares to the plan, by whole UTC days:
+ * - `behind`: even at best the pace ends after the planned end; `days` is how far the likely end is past it;
+ * - `slip`: the planned end is inside the range the pace could run to (on or after its best end, before its
+ *   likely end);
+ * - `not-started`: the planned start has passed and no task in it has been claimed (said before On plan or
+ *   Could slip, since it's the one to act on);
+ * - `on`: the likely end is on or before the planned end;
+ * - `planned`: a plan the pace can't check yet (no estimate, or no planned end);
+ * - `done`: every task is done; `days` is how late the last one finished, 0 when on plan.
+ * Null without a plan.
+ * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
+ * @param {any} p one of `project`'s
+ * @param {number} now
+ * @returns {{ kind: 'on' | 'slip' | 'behind' | 'not-started' | 'planned' | 'done', days: number } | null}
+ */
+export function planStatus(f, p, now) {
+  const plan = planOf(f);
+  if (!plan || !p) return null;
+  const end = plan.end === null ? null : index(plan.end);
+  if (p.state === 'done') return { kind: 'done', days: end === null || !p.end ? 0 : Math.max(0, index(p.end) - end) };
+  if (end !== null && p.state === 'open' && index(p.optimistic) > end)
+    return { kind: 'behind', days: index(p.likely) - end };
+  const unclaimed = p.state === 'empty' || p.projectedStart;
+  if (plan.start !== null && index(plan.start) < index(now) && unclaimed) return { kind: 'not-started', days: 0 };
+  if (end === null || p.state !== 'open') return { kind: 'planned', days: 0 };
+  return { kind: index(p.likely) <= end ? 'on' : 'slip', days: 0 };
+}
+
+/** A plan's status in a few words: `On plan`, `Could slip`, `Behind by 4 days`, `Not started`. */
+export function statusWords(s) {
+  if (!s) return '';
+  if (s.kind === 'behind') return `Behind by ${s.days === 1 ? '1 day' : `${s.days} days`}`;
+  if (s.kind === 'done') return s.days ? `Done ${s.days === 1 ? '1 day' : `${s.days} days`} late` : 'Done on plan';
+  return { on: 'On plan', slip: 'Could slip', 'not-started': 'Not started', planned: 'Planned' }[s.kind];
+}
+
+/**
+ * The plan's days in words: `12 to 19 Oct`, `30 Oct to 2 Nov`, `by 19 Oct`, `from 12 Oct`.
+ * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
+ * @param {number} now
+ */
+export function planDays(f, now) {
+  const start = fromDay(f.plannedStart ?? null);
+  const end = fromDay(f.plannedEnd ?? null);
+  if (start === null && end === null) return '';
+  if (start === null) return `by ${day(end, now)}`;
+  if (end === null) return `from ${day(start, now)}`;
+  const [a, b] = [new Date(start), new Date(end)];
+  const sameMonth = a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth();
+  return `${sameMonth ? a.getUTCDate() : day(start, now)} to ${day(end, now)}`;
+}
+
+/**
+ * The plan and how the pace compares, as a sentence for the bar's explanation; empty without a plan.
+ * @param {{ plannedStart?: string | null, plannedEnd?: string | null }} f
+ * @param {any} p one of `project`'s
+ * @param {number} now
+ */
+export function explainPlan(f, p, now) {
+  const s = planStatus(f, p, now);
+  if (!s) return '';
+  const planned = `Planned ${planDays(f, now)}`;
+  switch (s.kind) {
+    case 'behind':
+      return `${planned}: behind by ${s.days === 1 ? '1 day' : `${s.days} days`}, even at the pace’s best.`;
+    case 'slip':
+      return `${planned}: it could slip, since only the pace’s best makes the end.`;
+    case 'not-started':
+      return `${planned}: not started, though the plan started on ${day(fromDay(f.plannedStart), now)}.`;
+    case 'on':
+      return `${planned}: on plan.`;
+    case 'done':
+      return `${planned}: ${statusWords(s).toLowerCase()}.`;
+    default:
+      return `${planned}.`;
+  }
+}
+
+/** The latest planned end of a lane's features, as a midnight UTC, or null when none has one. */
+export function lanePlanEnd(features) {
+  const ends = features.map((f) => fromDay(f.plannedEnd ?? null)).filter((ms) => ms !== null);
+  return ends.length ? Math.max(...ends) : null;
+}
+
+/**
+ * A lane's features in the timeline's order: by planned start, else the pace's start, so planning a feature also
+ * places it; then the pace's start, then the title.
+ * @param {any[]} features
+ * @param {Map<string, any>} projections
+ * @param {number} now
+ */
+export function ordered(features, projections, now) {
+  const pace = (f) => projections.get(f.slug)?.start ?? now;
+  const key = (f) => fromDay(f.plannedStart ?? null) ?? pace(f);
+  return [...features].sort((a, b) => key(a) - key(b) || pace(a) - pace(b) || a.title.localeCompare(b.title));
 }
 
 /** The release lane `release` moves to with Alt+arrow: the one before or after it, Unplanned last. */

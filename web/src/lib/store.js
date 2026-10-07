@@ -66,9 +66,12 @@ effect(() => savePref('mergeWhenGreen', mergeWhenGreen.value ? 'on' : 'off'));
 /** The Dependencies view shows every finished task instead of folding them into one card a step (WEB-98). */
 export const graphShowDone = signal(pref('graphShowDone', 'off') === 'on');
 effect(() => savePref('graphShowDone', graphShowDone.value ? 'on' : 'off'));
-/** The roadmap on a wide screen (WEB-102): a timeline, or the release list of cards; and the timeline's zoom. */
+/**
+ * The roadmap on a wide screen (WEB-102): a timeline, or the release list of cards; and the timeline's zoom, Weeks
+ * or Fit (WEB-106, which replaced Months).
+ */
 export const roadmapLayout = signal(pref('roadmapLayout', 'timeline') === 'list' ? 'list' : 'timeline');
-export const roadmapZoom = signal(pref('roadmapZoom', 'weeks') === 'months' ? 'months' : 'weeks');
+export const roadmapZoom = signal(pref('roadmapZoom', 'weeks') === 'fit' ? 'fit' : 'weeks');
 effect(() => savePref('roadmapLayout', roadmapLayout.value));
 effect(() => savePref('roadmapZoom', roadmapZoom.value));
 /**
@@ -1602,6 +1605,64 @@ export const actions = {
       undo ? { label: 'Undo', run: () => actions.moveFeature({ ...f, release: to }, from, { undo: false }) } : null,
     );
     return result.feature ?? null;
+  },
+  /**
+   * Plans feature `f` (WEB-106): `plan` is `{ plannedStart, plannedEnd }`, days or null to clear one. The owner's
+   * change, with Undo in the toast that says so.
+   */
+  async planFeature(f, plan, { undo = true } = {}) {
+    const before = { plannedStart: f.plannedStart ?? null, plannedEnd: f.plannedEnd ?? null };
+    const after = { plannedStart: plan.plannedStart ?? null, plannedEnd: plan.plannedEnd ?? null };
+    if (before.plannedStart === after.plannedStart && before.plannedEnd === after.plannedEnd) return null;
+    const result = await change(
+      () =>
+        api(`features/${enc(f.slug)}`, {
+          method: 'PATCH',
+          body: { plannedStart: after.plannedStart ?? '', plannedEnd: after.plannedEnd ?? '' },
+        }),
+      null,
+    );
+    if (!result) return null;
+    await loadFeatures();
+    const said = after.plannedStart || after.plannedEnd ? `+${f.slug}’s plan is saved.` : `+${f.slug} has no plan now.`;
+    toast(
+      undo ? said : `+${f.slug}’s plan is back as it was.`,
+      'success',
+      undo ? { label: 'Undo', run: () => actions.planFeature({ ...f, ...after }, before, { undo: false }) } : null,
+    );
+    return result.feature ?? null;
+  },
+  /**
+   * Plan from the pace (WEB-106): plans each of `plans` (`{ f, plan }`, features with no plan yet) from its
+   * suggestion, with one Undo that clears them all again.
+   */
+  async planFeatures(plans) {
+    const done = [];
+    for (const { f, plan } of plans) {
+      const result = await change(
+        () =>
+          api(`features/${enc(f.slug)}`, {
+            method: 'PATCH',
+            body: { plannedStart: plan.plannedStart ?? '', plannedEnd: plan.plannedEnd ?? '' },
+          }),
+        null,
+      );
+      if (!result) break;
+      done.push(f);
+    }
+    await loadFeatures();
+    if (!done.length) return 0;
+    const undo = async () => {
+      for (const f of done)
+        await change(
+          () => api(`features/${enc(f.slug)}`, { method: 'PATCH', body: { plannedStart: '', plannedEnd: '' } }),
+          null,
+        );
+      await loadFeatures();
+      toast(`${plural(done.length, 'plan')} taken back.`, 'success');
+    };
+    toast(`Planned ${plural(done.length, 'feature')} from the pace.`, 'success', { label: 'Undo', run: undo });
+    return done.length;
   },
   /**
    * Adds a feature and shapes it as an idea (WEB-42): the board makes an idea from its brief, tagged with it, and
