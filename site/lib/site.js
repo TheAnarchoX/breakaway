@@ -16,6 +16,26 @@ const CARD = {
   alt: 'breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.',
 };
 
+/** The Architect page's own card (LCH-32 built it with launch/tools); every other page shares CARD. */
+const ARCHITECT_CARD = {
+  path: '/social-architect.png',
+  width: 2560,
+  height: 1280,
+  alt: 'breakaway: Agents propose it. You approve it. The board runs the infrastructure too, and you still decide. Beside it, a plan for staging on a phone, waiting for you, with Approve.',
+};
+
+/** The Architect page (LCH-33): its source in site/content, and where it's served. */
+export const ARCHITECT = { path: '/architect/', file: 'architect/index.html', markdown: 'architect.md' };
+
+/**
+ * The screenshots the pages show, in docs/media (LCH-32 makes them), each in carbon and chalk. site/build.mjs copies
+ * them to site/public/media, since the site serves only its own files.
+ */
+export const MEDIA = ['architect', 'infra', 'environment', 'plan', 'envelope', 'incident'].flatMap((name) => [
+  `${name}-dark.png`,
+  `${name}-light.png`,
+]);
+
 /** The docs, in reading order, in groups. `file` is in site/content/docs. */
 export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },
@@ -62,6 +82,7 @@ const footer = () => `<footer class="site-footer">
         <h2 class="label">Docs</h2>
         <ul>
           <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="${ARCHITECT.path}">Architect</a></li>
           <li><a href="/docs/concepts/">Concepts</a></li>
           <li><a href="/docs/cli/">The CLI</a></li>
           <li><a href="/docs/deploying/">Deploying and updating</a></li>
@@ -82,8 +103,8 @@ const footer = () => `<footer class="site-footer">
   </div>
 </footer>`;
 
-/** @param {{ title: string, description: string, path: string, body: string, bodyClass?: string }} page */
-function shell({ title, description, path, body, bodyClass = '' }) {
+/** @param {{ title: string, description: string, path: string, body: string, bodyClass?: string, card?: typeof CARD }} page */
+function shell({ title, description, path, body, bodyClass = '', card = CARD }) {
   const full = title === SITE.name ? SITE.name : `${title} · ${SITE.name}`;
   return `<!doctype html>
 <html lang="en">
@@ -100,10 +121,10 @@ function shell({ title, description, path, body, bodyClass = '' }) {
 <meta property="og:description" content="${escape(description)}">
 <meta property="og:url" content="${SITE.url}${path}">
 <meta property="og:type" content="website">
-<meta property="og:image" content="${SITE.url}${CARD.path}">
-<meta property="og:image:width" content="${CARD.width}">
-<meta property="og:image:height" content="${CARD.height}">
-<meta property="og:image:alt" content="${escape(CARD.alt)}">
+<meta property="og:image" content="${SITE.url}${card.path}">
+<meta property="og:image:width" content="${card.width}">
+<meta property="og:image:height" content="${card.height}">
+<meta property="og:image:alt" content="${escape(card.alt)}">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/tokens.css">
@@ -154,7 +175,7 @@ function pager(pages, current) {
 
 /**
  * Builds every page.
- * @param {{ landing: string, docs: Record<string, string>, notFound?: string }} content file contents by name
+ * @param {{ landing: string, architect: string, docs: Record<string, string>, notFound?: string }} content file contents by name
  * @returns {Map<string, string>} the files to write, by path under site/public
  */
 export function buildPages(content) {
@@ -169,6 +190,27 @@ export function buildPages(content) {
       path: '/',
       body: landing.body,
       bodyClass: 'landing',
+    }),
+  );
+
+  const architect = frontMatter(content.architect);
+  // The headline's second sentence wears the red, at display size: the one red thing on the page.
+  const [propose, approve] = architect.meta.title.split(/(?<=\.) /u);
+  files.set(
+    ARCHITECT.file,
+    shell({
+      title: 'Architect',
+      description: architect.meta.description,
+      path: ARCHITECT.path,
+      card: ARCHITECT_CARD,
+      bodyClass: 'story-page',
+      body: `<main id="main" class="wrap doc story" tabindex="-1">
+  <p class="label kicker">${escape(architect.meta.kicker)}</p>
+  <h1 class="display">${escape(propose)} <span class="say-red">${escape(approve)}</span></h1>
+  <p class="lede">${escape(architect.meta.lede)}</p>
+  ${render(architect.body).html}
+  <p class="actions"><a class="btn" href="/docs/quickstart/">Run your own board</a> <a class="btn" href="/docs/updating-to-2/">Update to 2.0.0</a></p>
+</main>`,
     }),
   );
 
@@ -234,11 +276,18 @@ const pageMarkdown = (meta, body) => `# ${meta.title}\n\n> ${meta.description}\n
  * What agents and language models read (LCH-10, the llms.txt convention): /llms.txt, an index of the docs with each
  * page's description and its Markdown; /llms-full.txt, every page's text in reading order; and /docs/<name>.md, each
  * page as Markdown. Built from the same content as the pages, so they never drift. Path → text.
- * @param {{ landing: string, docs: Record<string, string> }} content
+ * @param {{ landing: string, architect: string, docs: Record<string, string> }} content
  */
 export function buildLlms(content) {
   const files = new Map();
   const landing = frontMatter(content.landing);
+  const architect = frontMatter(content.architect);
+  // The Architect page as Markdown, at /architect.md: its screenshots stay images, with their alt text.
+  const architectMarkdown = pageMarkdown(
+    { title: `Architect: ${architect.meta.title}`, description: architect.meta.description },
+    architect.body,
+  );
+  files.set('architect.md', architectMarkdown);
   const meta = (name) => frontMatter(content.docs[name]).meta;
   const index = [
     `# ${SITE.name}`,
@@ -247,9 +296,15 @@ export function buildLlms(content) {
     '',
     'breakaway is one Cloudflare Worker and one Durable Object that each person runs on their own account. Agents claim tasks atomically, open pull requests that close them, and ping the person who runs the board when only they can help; that person merges and deploys. It has a web board, a CLI (`npx breakaway`), and Taskwarrior sync.',
     '',
+    'From 2.0.0, Architect runs the infrastructure the repositories run on too, Cloudflare first: agents propose a change in a pull request and never apply it, and the board applies only what the person who runs it approved, or what fits bounds they approved once (an envelope). The board only watches its own install.',
+    '',
     '## Set it up',
     '',
     `- [The install prompt](${SITE.url}/install.md): paste "Set up a breakaway board for me. Read ${SITE.url}/install.md and follow it." into Claude Code, and it sets up a board with its owner, step by step.`,
+    '',
+    '## Architect',
+    '',
+    `- [Agents propose it. You approve it.](${SITE.url}/architect.md): ${architect.meta.description}`,
     '',
   ];
   for (const { group, pages } of DOCS) {
@@ -271,6 +326,7 @@ export function buildLlms(content) {
   files.set('llms.txt', index.join('\n'));
 
   const full = [`# ${SITE.name}: the docs`, '', `> ${landing.meta.description}`, ''];
+  full.push(`Source: ${SITE.url}${ARCHITECT.path}`, '', architectMarkdown, '---', '');
   for (const name of flat()) {
     const { meta: m, body } = frontMatter(content.docs[name]);
     files.set(`docs/${name}.md`, pageMarkdown(m, body));

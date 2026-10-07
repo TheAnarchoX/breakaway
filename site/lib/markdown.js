@@ -1,6 +1,6 @@
 // A small Markdown for the docs in site/content: headings, paragraphs, lists, fenced code, tables, notes, and
-// inline code, bold, and links. Pure, so the build and its test share it. Anything fancier is written as HTML:
-// a block that starts with `<` passes through to its next blank line.
+// inline code, bold, and links, and an image on a line of its own. Pure, so the build and its test share it. Anything
+// fancier is written as HTML: a block that starts with `<` passes through to its next blank line.
 
 /** @param {string} text */
 export const escape = (text) =>
@@ -40,6 +40,24 @@ export function frontMatter(source) {
   return { meta, body: source.slice(match[0].length) };
 }
 
+/** An image on a line of its own: `![alt](src "caption")`, the caption optional. */
+const IMAGE = /^!\[([^\]]+)\]\((\S+?)(?: "([^"]*)")?\)\s*$/u;
+
+/**
+ * An image as a figure. A screenshot in both themes is written once, as its carbon file (`…-dark.png`): the page
+ * shows the chalk one (`…-light.png`) in the chalk theme, as the logo does. Lazy, so the hidden one isn't fetched.
+ * @param {string} alt @param {string} src @param {string} [caption]
+ */
+function figure(alt, src, caption) {
+  const img = (file, cls) =>
+    `<img${cls ? ` class="${cls}"` : ''} src="${escape(file)}" alt="${escape(alt)}" loading="lazy" decoding="async">`;
+  const both = /-dark\.png$/u.test(src);
+  const imgs = both
+    ? `${img(src, 'shot-dark')}${img(src.replace(/-dark\.png$/u, '-light.png'), 'shot-light')}`
+    : img(src);
+  return `<figure class="shot">${imgs}${caption ? `<figcaption>${inline(caption)}</figcaption>` : ''}</figure>`;
+}
+
 const cells = (row) =>
   row
     .trim()
@@ -60,7 +78,7 @@ export function render(markdown) {
   let i = 0;
 
   const paragraphEnds = (line) =>
-    line === undefined || line.trim() === '' || /^(#{2,3} |```|> |[-*] |\d+\. |\||<)/u.test(line);
+    line === undefined || line.trim() === '' || /^(#{2,3} |```|> |[-*] |\d+\. |\||<|!\[)/u.test(line);
 
   while (i < lines.length) {
     const line = lines[i];
@@ -89,6 +107,12 @@ export function render(markdown) {
       out.push(
         `<h${level} id="${id}"><a class="anchor" href="#${id}" aria-label="Link to this section">#</a>${inline(text)}</h${level}>`,
       );
+      i += 1;
+      continue;
+    }
+    const image = IMAGE.exec(line);
+    if (image) {
+      out.push(figure(image[1], image[2], image[3]));
       i += 1;
       continue;
     }

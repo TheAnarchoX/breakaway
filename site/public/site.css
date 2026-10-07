@@ -139,6 +139,25 @@ strong {
   display: block;
 }
 
+/* Screenshots come in carbon and chalk (LCH-32); the theme decides which shows, as it does the logo. */
+.shot-light {
+  display: none;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .shot-dark {
+    display: none;
+  }
+  :root:not([data-theme="dark"]) .shot-light {
+    display: block;
+  }
+}
+:root[data-theme="light"] .shot-dark {
+  display: none;
+}
+:root[data-theme="light"] .shot-light {
+  display: block;
+}
+
 .label,
 .kicker {
   font: 600 12px / 1.2 var(--font-mono);
@@ -561,6 +580,70 @@ figcaption {
   border-left: 3px solid var(--success);
   border-bottom: 3px solid var(--success);
   transform: rotate(-45deg) translateY(-30%);
+}
+/* Architect (LCH-33): screenshots on the landing page and its own page. */
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.shot .shot-light {
+  display: none;
+}
+.shots {
+  display: grid;
+  gap: 24px;
+  margin-bottom: 40px;
+}
+.shots .phone {
+  max-width: 300px;
+}
+/* Wide, the view and the phone stand side by side at the same height: their widths in the ratio of their shapes. */
+@media (min-width: 900px) {
+  .shots {
+    grid-template-columns: 2.4fr 0.462fr;
+    align-items: start;
+  }
+  .shots .phone {
+    max-width: none;
+  }
+}
+.checks-row {
+  margin-bottom: 32px;
+}
+@media (min-width: 900px) {
+  .checks-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 40px;
+  }
+}
+.doc.story {
+  max-width: 1040px;
+  padding-block: 40px 80px;
+}
+.story > :is(p, ul, h2, .lede) {
+  max-width: 720px;
+}
+.story h1.display {
+  font-size: clamp(40px, 7vw, 72px);
+  line-height: 1;
+}
+.say-red {
+  display: block;
+  color: var(--red);
+}
+.story .shot {
+  margin: 28px 0 36px;
+}
+.story .shot img[src*="/plan-"],
+.story .shot img[src*="/incident-"] {
+  max-width: 340px;
+}
+.story .actions {
+  margin-top: 48px;
 }
 .closing {
   text-align: left;

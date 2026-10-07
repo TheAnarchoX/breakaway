@@ -4,7 +4,7 @@ This folder is what leavethepack.dev serves: a landing page and the docs (`publi
 
 ## The landing page and the docs
 
-The pages are written in `content/` (`index.html` for the landing page, one Markdown file per docs page in `content/docs/`, listed in `lib/site.js`) and built into `public/` by `node site/build.mjs`. **The built pages are committed**, so deploying needs no build step, and `pnpm test` fails when they differ from what the content builds. `public/tokens.css` is a copy of `brand/tokens.css` (a test keeps them equal); the fonts are the board's own, self-hosted. No scripts or styles come from anywhere else, there is no pricing, sign-up, ad, or analytics, and the copy follows the [brand guide](../brand/README.md).
+The pages are written in `content/` (`index.html` for the landing page, `architect.md` for `/architect/`, one Markdown file per docs page in `content/docs/`, listed in `lib/site.js`) and built into `public/` by `node site/build.mjs`, which also copies the screenshots they show from `docs/media` to `public/media` (`MEDIA` in `lib/site.js`). **The built pages are committed**, so deploying needs no build step, and `pnpm test` fails when they differ from what the content builds. `public/tokens.css` is a copy of `brand/tokens.css` (a test keeps them equal); the fonts are the board's own, self-hosted. No scripts or styles come from anywhere else, there is no pricing, sign-up, ad, or analytics, and the copy follows the [brand guide](../brand/README.md).
 
 ```sh
 node site/build.mjs                             # after editing content/
