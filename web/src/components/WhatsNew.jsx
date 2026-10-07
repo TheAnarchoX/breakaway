@@ -9,7 +9,7 @@ import { Dialog } from './ui.jsx';
 
 /**
  * What's new (WEB-80): once the board runs a newer release than this browser last saw, a stable opens a dialog with
- * its notes, and a pre-release on the main channel, which comes with every merge, shows a small note in a corner
+ * its notes, and a pre-release on the main channel, which comes more often, shows a small note in a corner
  * that opens them. The notes come from whats-new.json in the board's own files, so nothing is fetched from anywhere
  * else. The release this browser saw is kept in it, so the first visit shows nothing.
  */

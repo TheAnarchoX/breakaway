@@ -4,22 +4,20 @@
 name: Release
 
 on:
-  # Every push to main, once CI has passed on it: a pre-release on the main channel.
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  # The owner promotes a chosen pre-release to stable. Agents never run this.
+  # Only by hand, and only the owner (BRK-273): a merge to main publishes nothing. Run on main with prerelease empty to
+  # publish a pre-release of main's latest commit on the main channel, once CI has passed on it; run it with a
+  # pre-release's tag to promote that one to stable. Agents never run this.
   workflow_dispatch:
     inputs:
       prerelease:
-        description: The pre-release to promote, like v0.2.0-main.5
-        required: true
+        description: Empty publishes a pre-release of main. A pre-release's tag, like v0.2.0-main.5, promotes it to stable
+        required: false
+        default: ''
         type: string
       # BRK-118: pre-releases count patches from the stable by themselves. With minor or major, once the stable is out,
       # the next-version job opens the pull request that sets package.json to the next minor or major after it.
       next:
-        description: What main works toward next. Patch opens nothing; minor or major opens a pull request that sets package.json
+        description: For a stable, what main works toward next. Patch opens nothing; minor or major opens a pull request that sets package.json
         required: false
         default: patch
         type: choice
@@ -37,12 +35,14 @@ env:
 jobs:
   prerelease:
     name: pre-release
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.prerelease == ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # The npm environment holds NPM_TOKEN, and only main can use it (BRK-75).
     environment: npm
     permissions:
+      # Reads CI's runs on the commit, so a pre-release is only ever of a commit CI passed on.
+      actions: read
       contents: write
       id-token: write
       # The notes read each pull request's title, which a private repository answers 403 without (BRK-57).
@@ -50,13 +50,29 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
-      SHA: ${{ github.event.workflow_run.head_sha }}
+      SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      # BRK-273: the run is by hand now, so it checks what a run after CI used to: CI passed on this commit, on
+      # its push to main. And a commit that already has a pre-release gets no second one.
+      - name: Check the commit
+        run: |
+          set -euo pipefail
+          released=$(git tag --points-at "$SHA" -l 'v*' | head -1)
+          if [ -n "$released" ]; then
+            echo "::error title=Already released::$SHA is $released already. Merge something to main first, or promote $released with the prerelease input."
+            exit 1
+          fi
+          ci=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --event push --json status,conclusion \
+            --jq '.[0] | if . == null then "none" elif .status != "completed" then "running" else .conclusion end')
+          if [ "$ci" != success ]; then
+            echo "::error title=CI hasn't passed on this commit::CI on $SHA is $ci. Run Release again once CI passes on main."
+            exit 1
+          fi
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10
@@ -141,7 +157,7 @@ jobs:
 
   stable:
     name: stable
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.prerelease != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: npm
