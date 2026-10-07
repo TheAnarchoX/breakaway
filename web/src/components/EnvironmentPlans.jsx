@@ -77,7 +77,7 @@ export function EnvironmentPlans({ env, tick = 0 }) {
         </ul>
       ) : (
         <p class="console-quiet">
-          None yet: a pull request to <code>.github/breakaway-infra/{env.name}.json</code>, or drift, makes one.
+          No plan yet: a pull request to <code>.github/breakaway-infra/{env.name}.json</code>, or drift, makes one.
         </p>
       )}
     </section>
