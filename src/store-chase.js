@@ -74,7 +74,8 @@ export const chaseMethods = {
       this.sql.exec(`ALTER TABLE features ADD COLUMN chase_parallel INTEGER NOT NULL DEFAULT ${DEFAULT_PARALLEL}`);
     if (!columns.includes('chase_stalled')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_stalled INTEGER');
     if (!columns.includes('chase_ended')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_ended INTEGER');
-    // Chase started, stopped, stalled, and ended, for Activity; an ended chase's row is also its inbox note.
+    // Chase started, stopped, stalled, and ended, and the owner's changes of plan (WEB-104), for Activity; an ended
+    // chase's row is also its inbox note.
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS chase_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL,
