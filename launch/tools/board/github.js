@@ -17,6 +17,8 @@ export const gh = {
   /** @type {Record<string, any[]>} */ pullFiles: {},
   /** @type {Record<string, string>} */ variables: {},
   /** @type {any[]} the OIDC keys, from architect.mjs's throwaway signer */ keys: [],
+  /** @type {Record<string, any[]>} a commit's check runs, by sha */ checks: {},
+  /** @type {any[]} the deploy flow's Deployments, newest first, each with its `status` */ deployments: [],
 };
 
 const b64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
@@ -62,7 +64,14 @@ globalThis.fetch = async (input, init = {}) => {
   m = /^\/pulls\/(\d+)\/files$/u.exec(rest);
   if (m) return reply(gh.pullFiles[m[1]] ?? []);
   if (/^\/pulls\/\d+\/(reviews|comments)$/u.test(rest)) return reply([]);
-  if (/^\/commits\/[^/]+\/check-runs$/u.test(rest)) return reply({ check_runs: [] });
+  m = /^\/commits\/([^/]+)\/check-runs$/u.exec(rest);
+  if (m) return reply({ check_runs: gh.checks[m[1]] ?? [] });
+  if (rest === '/deployments') return reply(gh.deployments.map(({ status, ...d }) => d));
+  m = /^\/deployments\/(\d+)\/statuses$/u.exec(rest);
+  if (m) {
+    const found = gh.deployments.find((d) => String(d.id) === m[1]);
+    return reply(found?.status ? [found.status] : []);
+  }
   if (/^\/commits\/[^/]+\/status$/u.test(rest)) return reply({ state: 'success', statuses: [] });
   if (rest === '/commits') return reply(gh.commits);
   if (rest === '/actions/runs') return reply({ workflow_runs: [] });
@@ -80,8 +89,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (m)
     return reply({ name: m[1], deployment_branch_policy: { protected_branches: false, custom_branch_policies: true } });
   if (rest === '/environments') return reply({ environments: [] });
-  if (['/deployments', '/dependabot/alerts', '/releases', '/tags', '/issues', '/labels'].includes(rest))
-    return reply([]);
+  if (['/dependabot/alerts', '/releases', '/tags', '/issues', '/labels'].includes(rest)) return reply([]);
   if (/^\/compare\//u.test(rest)) return reply({ commits: [], files: [] });
   m = /^\/contents\/(.+)$/u.exec(rest);
   if (m) {

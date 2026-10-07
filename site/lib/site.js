@@ -37,6 +37,9 @@ export const MEDIA = ['architect', 'infra', 'environment', 'plan', 'envelope', '
   `${name}-light.png`,
 ]);
 
+/** 2.0.0's hero film and its poster (LCH-38), in launch/media, for the Architect page: site/build.mjs copies them too. */
+export const FILM = ['2-0-0-film.mp4', '2-0-0-film-poster.png'];
+
 /** The docs, in reading order, in groups. `file` is in site/content/docs. */
 export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },

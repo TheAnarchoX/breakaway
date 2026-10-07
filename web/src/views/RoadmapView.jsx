@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { signal } from '@preact/signals';
 import {
   ArrowLeft,
   ArrowUpToLine,
@@ -6,8 +7,12 @@ import {
   ChevronsUp,
   FastForward,
   GanttChart,
+  Group,
   Hand,
+  LayoutDashboard,
   LayoutList,
+  ListChecks,
+  ListOrdered,
   Milestone,
   Pencil,
   Plus,
@@ -37,6 +42,7 @@ import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
+import { FeatureOverview, featureTab } from '../components/FeatureOverview.jsx';
 import { FeaturePlanning } from '../components/AgentPlanning.jsx';
 import { PlanStatus, RoadmapTimeline, usePace } from '../components/RoadmapTimeline.jsx';
 import { day, fromDay, planDays, planStatus, suggest } from '../lib/roadmap-timeline.js';
@@ -180,19 +186,22 @@ function Suggestions({ list, first }) {
   );
 }
 
-function FeatureTask({ t }) {
+/** A task's row; `grouped` leaves out its state, which the group it's in already says. */
+function FeatureTask({ t, grouped = false }) {
   const task = byUuid.value.get(t.uuid);
   return (
     <li>
       <a
-        class={`fr-task ${selected.value && task && [task.wid, task.uuid].includes(selected.value) ? 'is-open' : ''}`}
+        class={`fr-task ${grouped ? 'is-grouped' : ''} ${selected.value && task && [task.wid, task.uuid].includes(selected.value) ? 'is-open' : ''}`}
         href={taskHref(t)}
         data-task={t.uuid}
       >
-        <span class={`state fr-state-${t.state}`}>
-          <span class="state-dot" aria-hidden="true" />
-          {STANDING_LABEL[t.state] ?? t.state}
-        </span>
+        {!grouped && (
+          <span class={`state fr-state-${t.state}`}>
+            <span class="state-dot" aria-hidden="true" />
+            {STANDING_LABEL[t.state] ?? t.state}
+          </span>
+        )}
         <span class="fr-task-main">
           <span class="fr-task-head">
             <span class={task ? widClass(task) : 'wid'}>{t.wid ?? t.uuid.slice(0, 8)}</span>
@@ -212,6 +221,88 @@ function FeatureTask({ t }) {
         </span>
       </a>
     </li>
+  );
+}
+
+/** The task list's layout: grouped by where each task stands, or in the order they can be done. */
+const taskLayout = signal(/** @type {'state' | 'order'} */ ('state'));
+const TASK_LAYOUTS = [
+  { id: 'state', label: 'By state', icon: <Group size={15} aria-hidden="true" /> },
+  { id: 'order', label: 'In order', icon: <ListOrdered size={15} aria-hidden="true" /> },
+];
+/** The groups, what needs you first and Done last, folded. */
+const GROUPS = ['needs-you', 'running', 'in-review', 'ready', 'waiting', 'done'];
+
+/** The feature's full task list (WEB-118): a section for each state with Done folded to a count, or in order. */
+function FeatureTasks({ f }) {
+  if (!f.tasks.length)
+    return (
+      <section class="gh-section" aria-labelledby="fr-tasks-title">
+        <h2 id="fr-tasks-title">Tasks</h2>
+        <p class="muted small">
+          No tasks yet. Add the tag <span class="fr-slug">+{f.slug}</span> to a task to put it in this feature.
+        </p>
+      </section>
+    );
+  const layout = taskLayout.value;
+  return (
+    <section class="gh-section" aria-labelledby="fr-tasks-title">
+      <div class="fo-tasks-head">
+        <h2 id="fr-tasks-title">
+          Tasks <span class="count">{f.progress.total}</span>
+        </h2>
+        <Segmented
+          label="Show the tasks"
+          options={TASK_LAYOUTS}
+          value={layout}
+          onChange={(v) => {
+            taskLayout.value = v;
+          }}
+        />
+      </div>
+      {layout === 'order' ? (
+        <>
+          <p class="muted small">In the order they can be done: a task comes after the ones it waits for.</p>
+          <ol class="fr-task-list">
+            {f.tasks.map((t) => (
+              <FeatureTask key={t.uuid} t={t} />
+            ))}
+          </ol>
+        </>
+      ) : (
+        GROUPS.map((state) => {
+          const list = f.tasks.filter((t) => t.state === state);
+          if (!list.length) return null;
+          const rows = (
+            <ul class="fr-task-list">
+              {list.map((t) => (
+                <FeatureTask key={t.uuid} t={t} grouped />
+              ))}
+            </ul>
+          );
+          const head = (
+            <>
+              <span class={`state fr-state-${state}`}>
+                <span class="state-dot" aria-hidden="true" />
+                {STANDING_LABEL[state]}
+              </span>
+              <span class="count">{list.length}</span>
+            </>
+          );
+          return state === 'done' ? (
+            <details key={state} class="fo-group fo-done">
+              <summary>{head}</summary>
+              {rows}
+            </details>
+          ) : (
+            <div key={state} class="fo-group">
+              <h3>{head}</h3>
+              {rows}
+            </div>
+          );
+        })
+      )}
+    </section>
   );
 }
 
@@ -315,25 +406,25 @@ function FeatureDetail({ slug }) {
               <RichText text={f.brief} />
             </section>
           )}
-          <section class="gh-section" aria-labelledby="fr-tasks-title">
-            <h2 id="fr-tasks-title">
-              Tasks <span class="count">{f.progress.total}</span>
-            </h2>
-            {f.tasks.length ? (
-              <>
-                <p class="muted small">In the order they can be done: a task comes after the ones it waits for.</p>
-                <ol class="fr-task-list">
-                  {f.tasks.map((t) => (
-                    <FeatureTask key={t.uuid} t={t} />
-                  ))}
-                </ol>
-              </>
-            ) : (
-              <p class="muted small">
-                No tasks yet. Add the tag <span class="fr-slug">+{f.slug}</span> to a task to put it in this feature.
-              </p>
-            )}
-          </section>
+          <div class="fo-tabs">
+            <Segmented
+              label="Show the feature as"
+              options={[
+                { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={15} aria-hidden="true" /> },
+                {
+                  id: 'tasks',
+                  label: 'Tasks',
+                  icon: <ListChecks size={15} aria-hidden="true" />,
+                  count: f.progress.total,
+                },
+              ]}
+              value={featureTab.value}
+              onChange={(v) => {
+                featureTab.value = v;
+              }}
+            />
+          </div>
+          {featureTab.value === 'overview' ? <FeatureOverview f={f} /> : <FeatureTasks f={f} />}
         </div>
         <div class="gh-col">
           <section class="gh-section" aria-labelledby="fr-progress-title">
@@ -349,20 +440,6 @@ function FeatureDetail({ slug }) {
                 Chase
               </h2>
               <ChasePanel feature={f} chase={f.chase} open={f.progress.total > 0 && !f.done} captain={false} />
-            </section>
-          )}
-          {/* A chase that's on lists its own Needs you, with the blockers it pulled in. */}
-          {f.needsYou.length > 0 && !f.chase?.on && (
-            <section class="gh-section" aria-labelledby="fr-yours-title">
-              <h2 id="fr-yours-title">
-                <Hand size={18} aria-hidden="true" />
-                Needs you <span class="count">{f.needsYou.length}</span>
-              </h2>
-              <ul class="fr-task-list">
-                {f.needsYou.map((t) => (
-                  <FeatureTask key={t.uuid} t={t} />
-                ))}
-              </ul>
             </section>
           )}
           <FeaturePlanning f={f} />

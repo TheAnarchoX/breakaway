@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
 
 const require = createRequire(import.meta.url);
@@ -83,10 +84,18 @@ export async function still(context, html, out, size = null) {
   await p.close();
 }
 
-/** Renders window.render(t, duration) for every frame and pipes the frames to ffmpeg: H.264, yuv420p, faststart, and an optional poster frame at poster.t. */
-export async function video(context, html, { duration, fps = 30, out, poster }) {
+/**
+ * Renders window.render(t, duration) for every frame and pipes the frames to ffmpeg: H.264, yuv420p, faststart, and an
+ * optional poster frame at poster.t. `size` is the frame in px when it isn't the 1080 square; `file` keeps the page in
+ * a file and opens it from there, so it can load images beside it (the film's footage).
+ */
+export async function video(context, html, { duration, fps = 30, out, poster, size, file }) {
   const p = await context.newPage();
-  await p.setContent(html);
+  if (size) await p.setViewportSize(size);
+  if (file) {
+    writeFileSync(file, html);
+    await p.goto(pathToFileURL(file).href);
+  } else await p.setContent(html);
   await settle(p);
   mkdirSync(dirname(out), { recursive: true });
   const ffmpeg = spawn(

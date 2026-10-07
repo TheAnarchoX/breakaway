@@ -5,6 +5,12 @@
 # On the launch board (board.mjs), it seeds Architect too, with architect.mjs.
 set -euo pipefail
 : "${BREAKAWAY_URL:?set BREAKAWAY_URL to the local board, like http://127.0.0.1:8787}" "${BREAKAWAY_TOKEN:?set BREAKAWAY_TOKEN to its token}"
+# ./seed.sh film: the film's world instead (LCH-38), on a fresh launch board: acme/widgets at three scales, from a small
+# app to a scaled setup, all of it through the board's own API (architect.mjs film). footage.mjs does the same, step by
+# step, capturing the views between the steps; this is for looking at the end of it.
+if [ "${1:-}" = film ]; then
+  exec node "$(dirname "$0")/architect.mjs" film
+fi
 node "$(dirname "$0")/../../scripts/tasks.mjs" repos add widgets acme/widgets --area app:APP:App --area api:API:API --area docs:DOC:Docs --name widgets
 cd "$(dirname "$0")/../.."
 t() { node scripts/tasks.mjs "$@" --repo widgets 2>&1 | head -1; }
