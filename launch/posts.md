@@ -12,11 +12,11 @@ Post once the site is live (`LCH-5`): post 4 sends people to the README's instal
 
 > breakaway is a task board for you and your coding agents: they claim the work, you merge it.
 >
-> It runs on your own Cloudflare account. Free, and the source is public.
+> It runs on your own Cloudflare account. Free for people, not for profit, and the source is public.
 >
 > https://github.com/TheAnarchoX/breakaway
 
-**Alt text:** A dark video of big white italic type, one line at a time: "Write the work down.", "Agents claim it.", "You merge it." with "merge it." in red, and "Yours to run." Then the breakaway mark arrives big as one piece, a white slab with a red one against it, and the red slab snaps off into its place. The mark becomes the logo as the name appears beside it, and "Leave the pack.", the command npx breakaway, and "Free, the source is public" join it one after another.
+**Alt text:** A dark video of big white italic type, one line at a time: "Write the work down.", "Agents claim it.", "You merge it." with "merge it." in red, and "Yours to run." Then the breakaway mark arrives big as one piece, a white slab with a red one against it, and the red slab snaps off into its place. The mark becomes the logo as the name appears beside it, and "Leave the pack.", the command npx breakaway, and "Free for people, not for profit" join it one after another.
 
 ## 2. How it works
 
@@ -52,13 +52,13 @@ Post once the site is live (`LCH-5`): post 4 sends people to the README's instal
 
 The post points to the README rather than carrying the prompt: X and Bluesky shorten a long link's text, so a prompt copied from the post would break.
 
-**Alt text:** A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read leavethepack.dev/install.md and follow it. And the line "Free, the source is public."
+**Alt text:** A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read leavethepack.dev/install.md and follow it. And the line "Free for people, not for profit."
 
 ## 5. The licence
 
 No media.
 
-> Free to use, change, and self-host. The licence is FSL-1.1-Apache-2.0: fair source, and each release becomes Apache 2.0 two years after it ships.
+> Free to use, change, and self-host, for personal and noncommercial use. The licence is PolyForm Noncommercial 1.0.0; commercial use is by exception: https://leavethepack.dev/licensing/
 >
 > breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it.
 
@@ -222,7 +222,7 @@ Every name in the media is made up (`acme/widgets`, `widgets-render`, `WGT-41`),
 > - Envelopes: bounds you approve once
 > - Incidents: a signal becomes a task
 
-**Alt text (the video):** A 16-second video, no sound, on carbon, of a made-up repository on breakaway's board, with one line above each view. Staging's map grows: a KV namespace, a queue, an R2 bucket, and a container arrive, each marked adds, from pull request #41: "Agents propose it." On a phone, the plan waits; Approve is pressed and turns red, and the plan reads Approved: "You approve it." The new resources turn healthy and the stream says the health check passed: "The board applies it." A loop of words goes round once, idea, task, pull request, merge, deploy, plan, approve, apply, what runs, signal, incident, task: "From idea to incident. On one board. You decide." Then the breakaway logo, the rider snapping off the pack, "Leave the pack.", npx breakaway, and "Free, the source is public". The poster is the phone with Approve pressed.
+**Alt text (the video):** A 16-second video, no sound, on carbon, of a made-up repository on breakaway's board, with one line above each view. Staging's map grows: a KV namespace, a queue, an R2 bucket, and a container arrive, each marked adds, from pull request #41: "Agents propose it." On a phone, the plan waits; Approve is pressed and turns red, and the plan reads Approved: "You approve it." The new resources turn healthy and the stream says the health check passed: "The board applies it." A loop of words goes round once, idea, task, pull request, merge, deploy, plan, approve, apply, what runs, signal, incident, task: "From idea to incident. On one board. You decide." Then the breakaway logo, the rider snapping off the pack, "Leave the pack.", npx breakaway, and "Free for people, not for profit". The poster is the phone with Approve pressed.
 
 **Alt text (the card):** A card headed "New in 2.0.0." with six lines: The Infrastructure view: health, cost, and drift. Plans you approve, from your phone. Plans in pull requests, as a check. Envelopes: bounds you approve once. Incidents: a signal becomes a task. Freeze, budgets, and npx breakaway infra. At the foot: "Agents propose it. You approve it."
 
@@ -264,7 +264,7 @@ No media.
 
 > Cloudflare first, with a read-only token. Architect stays off until you connect a provider, and the board only watches its own install.
 >
-> Free, and the source is public. Update your board, then start here:
+> Free for people, not for profit, and the source is public. Update your board, then start here:
 >
 > https://leavethepack.dev/architect/
 
@@ -282,7 +282,7 @@ A Show HN, posted by the owner from their own account after the thread, on the d
 
 **First comment:**
 
-> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, and it's free, with the source public (FSL-1.1-Apache-2.0: fair source, and each release becomes Apache 2.0 two years after it ships).
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, It's free for personal and noncommercial use, and the source is public: from 2.0.0 the licence is the PolyForm Noncommercial License 1.0.0, and commercial use is by exception, which I grant case by case (https://leavethepack.dev/licensing/). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 >
 > Until now the board stopped at the pull request and the deploy. 2.0.0 adds Architect, which takes the same rule to what the code runs on: agents propose, you decide.
 >
@@ -313,7 +313,7 @@ One post, by the owner from their own account, after the thread. Read the subred
 
 **Body:**
 
-> breakaway is a task board for you and your coding agents: they claim the work, you merge it. Each install runs on its owner's own Cloudflare account, and it's free, with the source public (fair source: FSL-1.1-Apache-2.0).
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. Each install runs on its owner's own Cloudflare account, It's free for personal and noncommercial use, and the source is public: from 2.0.0 the licence is the PolyForm Noncommercial License 1.0.0, and commercial use is by exception (https://leavethepack.dev/licensing/).
 >
 > 2.0.0 adds Architect: the board runs the infrastructure too, and you still decide.
 >

@@ -12,6 +12,12 @@ const read = (url) => readFileSync(new URL(url, import.meta.url));
 const font = (name, file) =>
   `data:font/woff2;base64,${readFileSync(require.resolve(`@fontsource-variable/${name}/files/${file}`)).toString('base64')}`;
 
+/**
+ * The licence's short line on the end cards and the self-hosting card, from the guide's short lines (brand/README.md,
+ * The licence). The owner picks one; a re-render with another is this one change.
+ */
+export const LICENCE_LINE = 'Free for people, not for profit';
+
 /** The brand's own files: tokens, and the logo drawn as outlines (no font needed). */
 export const tokens = read('../../brand/tokens.css').toString();
 export const logoOnDark = read('../../brand/logo/logo-on-dark.svg')
