@@ -42,6 +42,7 @@ import { ProviderAlerts } from '../components/ProviderAlerts.jsx';
 import { ProviderConnect } from '../components/ProviderConnect.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
 import { SelfUpdate } from '../components/SelfUpdate.jsx';
+import { TokenSetup } from '../components/TokenSetup.jsx';
 import { RepoChip } from '../components/ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -354,6 +355,7 @@ function RepoCard({ repo, rows }) {
           </ul>
         </div>
       ))}
+      <TokenSetup repo={repo.slug} />
     </section>
   );
 }
