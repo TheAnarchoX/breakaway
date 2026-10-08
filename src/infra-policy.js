@@ -171,8 +171,9 @@ export function checkPolicyFile(source) {
 
   /** @param {unknown} value @param {string} field @param {RegExp} shape @param {string} what */
   const names = (value, field, shape, what) => {
-    if (!Array.isArray(value) || value.length === 0)
-      return wrong(field, `${field.split('.').pop()} is a list of ${what}`);
+    if (Array.isArray(value) && value.length === 0)
+      return wrong(field, `${field.split('.').pop()} is empty: leave it out, or list ${what}`);
+    if (!Array.isArray(value)) return wrong(field, `${field.split('.').pop()} is a list of ${what}`);
     if (value.length > LIST_MAX)
       return wrong(field, `${field.split('.').pop()} has ${value.length}: at most ${LIST_MAX}`);
     for (let n = 0; n < value.length; n += 1)

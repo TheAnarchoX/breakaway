@@ -12,6 +12,7 @@ import {
   policyBranch,
   policyChangeBody,
   policyChangeTitle,
+  policyEdit,
   policyText,
   ruleWords,
 } from '../src/infra-policy-changes.js';
@@ -32,6 +33,41 @@ const plan = (changes) => ({
   cost: { delta: 0, after: 0, complete: true, currency: 'USD', unknown: [] },
 });
 const scale = { op: 'scale', kind: 'service', name: 'api', resource: 'svc-api', reversible: true };
+
+describe('what the Policy view sends (WEB-128)', () => {
+  it('leaves out empty access lists, so a policy with none still checks', () => {
+    const rules = policy({ costLimit: 5 });
+    expect(rules.access).toEqual({ kinds: [], settings: [] });
+    // As the view had it before: the whole policy, empty access lists included, is refused.
+    expect(checkPolicyEdit({ costLimit: 5, budget: rules.budget, access: rules.access })).toMatchObject({
+      ok: false,
+      error: { field: 'access.kinds', message: /kinds is empty: leave it out/u },
+    });
+    const sent = policyEdit(rules);
+    expect(sent).not.toHaveProperty('access');
+    expect(checkPolicyEdit(sent)).toMatchObject({ ok: true, policy: { costLimit: 5 } });
+  });
+
+  it('keeps one access list when the other is empty, and drops an environment left with nothing', () => {
+    const rules = policy({ environments: { 'acme-staging': { access: { settings: ['public'] } } } });
+    const edited = {
+      ...rules,
+      access: { kinds: ['route'], settings: [] },
+      environments: {
+        'acme-staging': { access: { kinds: [], settings: ['public'] } },
+        'acme-prod': { access: { kinds: [], settings: [] } },
+        'acme-dev': { allow: [] },
+      },
+    };
+    const sent = policyEdit(edited);
+    expect(sent.access).toEqual({ kinds: ['route'] });
+    expect(sent.environments).toEqual({
+      'acme-dev': { allow: [] },
+      'acme-staging': { access: { settings: ['public'] } },
+    });
+    expect(checkPolicyEdit(sent)).toMatchObject({ ok: true });
+  });
+});
 
 describe('a policy’s two levels', () => {
   it('reads an environment’s own access and allow rules, and refuses an environment named in them', () => {

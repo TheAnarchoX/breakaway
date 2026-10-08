@@ -260,7 +260,15 @@ describe('policy, the pure part (BRK-181)', () => {
     expect(wrong(file({ version: 1, allow: [{ name: 'production' }] }))).toMatchObject({
       message: /the board’s own rules/u,
     });
-    expect(wrong(file({ version: 1, access: { kinds: [] } }))).toMatchObject({ field: 'access.kinds' });
+    // An empty list names nothing: the message says to leave it out (WEB-128).
+    expect(wrong(file({ version: 1, access: { kinds: [] } }))).toMatchObject({
+      field: 'access.kinds',
+      message: 'kinds is empty: leave it out, or list a resource kind, lowercase, like route',
+    });
+    expect(wrong(file({ version: 1, environments: { staging: { access: { settings: [] } } } }))).toMatchObject({
+      field: 'environments.staging.access.settings',
+      message: /settings is empty: leave it out/u,
+    });
     expect(wrong(file({ version: 1, allow: [{ name: 'a', maxChanges: 0 }] }))).toMatchObject({
       field: 'allow[0].maxChanges',
     });
