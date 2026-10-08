@@ -25,14 +25,18 @@ import {
   bindingChoices,
   bindingFor,
   boundChoice,
+  boundRows,
   cardState,
   changePlanId,
   changeShows,
   codePrompt,
+  createAt,
   createEdit,
   createForm,
+  createId,
   createOverlay,
   createProblems,
+  createStart,
   declaredFor,
   editLines,
   editMarks,
@@ -45,10 +49,14 @@ import {
   nameAfter,
   nameEdits,
   nameProblem,
+  orderCreates,
+  pendingCreates,
   plansNothing,
   readEdits,
   readDismissed,
+  rebind,
   recentChange,
+  replaceCreate,
   setPath,
   settingEdits,
   writeDismissed,
@@ -306,6 +314,11 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
     editable,
     creatable,
     editing,
+    /** Where the add being changed is in the change (WEB-119), or -1 when it's a resource of the file or nothing. */
+    editingAdd:
+      editing && !declared.some((/** @type {any} */ r) => r.id === editing)
+        ? edits.findIndex((e) => e.op === 'create' && createId(e) === editing)
+        : -1,
     adding,
     preview,
     /** The owner's pick of the new environment's target, of the Workers the change adds (BRK-291). */
@@ -324,19 +337,28 @@ export function useChange(env, { desired, tick, plans, running = [] }) {
       setDismissed(latestChange.n);
     },
     current: preview.key === key && !preview.busy,
-    /** Joins edits to the change; answers why not when they don't fit. */
+    /**
+     * Joins edits to the change; answers why not when they don't fit. `from` is the change to join them to, when a
+     * form changed its adds too (what they're bound to, WEB-119).
+     */
     add(
       /** @type {import('../lib/infra-change.js').Edit[]} */ more,
-      { replacing = /** @type {string | null} */ (null) } = {},
+      {
+        replacing = /** @type {string | null} */ (null),
+        from = /** @type {import('../lib/infra-change.js').Edit[] | null} */ (null),
+      } = {},
     ) {
+      const was = from ?? edits;
       const base = replacing
-        ? edits.filter((e) => !((e.op === 'set' || e.op === 'rename') && e.resource === replacing))
-        : edits;
+        ? was.filter((e) => !((e.op === 'set' || e.op === 'rename') && e.resource === replacing))
+        : was;
       const joined = joinEdits(base, more);
       if ('error' in joined) return joined.error;
       save(joined.edits);
       return null;
     },
+    /** Keeps the change as a form left it, with its adds in an order the board can make them. */
+    put: (/** @type {import('../lib/infra-change.js').Edit[]} */ next) => save(orderCreates(next, creatable ?? {})),
     drop: (/** @type {number} */ n) => save(edits.filter((_, i) => i !== n)),
     discard: () => {
       save([]);
@@ -442,7 +464,7 @@ export function cantChange(/** @type {any} */ env) {
  * @param {{ r: any, ch: Change }} props
  */
 export function NodeChange({ r, ch }) {
-  if (r.planned) return null;
+  if (r.planned) return <AddChange r={r} ch={ch} />;
   const d = declaredFor(ch.declared, r);
   if (!d)
     return (
@@ -490,6 +512,41 @@ export function NodeChange({ r, ch }) {
           Remove
         </button>
       )}
+    </>
+  );
+}
+
+/**
+ * Change and Remove under a node the change adds (WEB-119): Change opens its form again, Remove takes the add back. A
+ * template's adds are undone under Your change.
+ * @param {{ r: any, ch: Change }} props
+ */
+function AddChange({ r, ch }) {
+  const n = createAt(ch.edits, r);
+  if (n === -1)
+    return ch.edits.some((e) => e.op === 'add') ? (
+      <p class="meta change-node-line">It comes from a template: undo the template under Your change.</p>
+    ) : null;
+  const id = createId(/** @type {any} */ (ch.edits[n]));
+  return (
+    <>
+      {ch.creatable?.[r.kind] && (
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => ch.edit(id)} aria-pressed={ch.editing === id}>
+          <Pencil size={14} aria-hidden="true" />
+          Change
+        </button>
+      )}
+      <button
+        type="button"
+        class="btn btn-quiet btn-sm"
+        onClick={() => {
+          if (ch.editing === id) ch.edit(null);
+          ch.drop(n);
+        }}
+      >
+        <Trash2 size={14} aria-hidden="true" />
+        Remove
+      </button>
     </>
   );
 }
@@ -779,11 +836,25 @@ function SettingsForm({ ch }) {
   const d = ch.declared.find((r) => r.id === ch.editing);
   const kind = d ? ch.editable?.[d.kind] : null;
   const fields = /** @type {import('../lib/infra-change.js').EditableField[]} */ (kind?.fields ?? []);
-  // The form starts from the resource with this change's edits on it, so it shows what you set before.
+  const creatable = ch.creatable ?? {};
+  // What it can pick or bind: the file's resources and this change's adds (WEB-119).
+  const resources = [...ch.declared, ...pendingCreates(ch.edits)];
+  // The form starts from the resource with this change's edits on it, so it shows what you set before, and the
+  // bindings this change's adds give it, like the ones it has.
   const start = () => {
     let attrs = structuredClone(d?.attrs ?? {});
     for (const e of ch.edits) if (e.op === 'set' && e.resource === d?.id) attrs = setPath(attrs, e.path, e.value);
-    return Object.fromEntries(fields.map((f) => [f.path, formValue(f, getPath(attrs, f.path))]));
+    return Object.fromEntries(
+      fields.map((f) => {
+        const value = formValue(f, getPath(attrs, f.path));
+        return [
+          f.path,
+          f.type === 'bindings' && d
+            ? [.../** @type {any[]} */ (value), ...boundRows(ch.edits, creatable, d, f.path)]
+            : value,
+        ];
+      }),
+    );
   };
   const [form, setForm] = useState(start);
   // Its name, where the provider lets the console change it (a route's pattern), with any rename this change has.
@@ -810,15 +881,25 @@ function SettingsForm({ ch }) {
       return;
     }
     const renamed = kind.name ? nameEdits(d, name) : [];
-    const made = [...renamed, ...settingEdits(d, fields, form)];
+    // A binding of one of this change's adds is that add's: its bindTo, not the Worker's setting (WEB-119).
+    let from = ch.edits;
+    const own = { ...form };
+    for (const f of fields)
+      if (f.type === 'bindings') {
+        const split = rebind(from, creatable, d, f.path, form[f.path]);
+        from = split.edits;
+        own[f.path] = split.rows;
+      }
+    const made = [...renamed, ...settingEdits(d, fields, own)];
     // A field you changed that ends as it is (the same bindings in another order) adds no edit: say so (WEB-110).
     const was = start();
     const idle = fields.filter(
       (f) =>
         JSON.stringify(form[f.path]) !== JSON.stringify(was[f.path]) &&
-        !made.some((e) => e.op === 'set' && e.path === f.path),
+        !made.some((e) => e.op === 'set' && e.path === f.path) &&
+        JSON.stringify(own[f.path]) === JSON.stringify(form[f.path]),
     );
-    const why = ch.add(made, { replacing: d.id });
+    const why = ch.add(made, { replacing: d.id, from: orderCreates(from, creatable) });
     if (why) setError(why);
     else {
       const line = idle.length
@@ -856,7 +937,7 @@ function SettingsForm({ ch }) {
           field: f,
           id,
           value: form[f.path],
-          resources: ch.declared,
+          resources,
           problem: problems[f.path],
           onChange: (/** @type {any} */ v) => setForm((s) => ({ ...s, [f.path]: v })),
         };
@@ -904,8 +985,19 @@ function SettingsForm({ ch }) {
   );
 }
 
+/**
+ * The form of an add in the change, opened again from its node or right after it's added (WEB-119).
+ * @param {{ ch: Change }} props
+ */
+function AddForm({ ch }) {
+  const edit = /** @type {any} */ (ch.edits[ch.editingAdd]);
+  const kind = ch.creatable?.[edit.kind];
+  if (!kind) return null;
+  return <CreateForm key={ch.editing} ch={ch} kindId={edit.kind} kind={kind} at={ch.editingAdd} />;
+}
+
 /** Opens New agent with `prompt` filled in. */
-function startAgent(/** @type {any} */ env, /** @type {string} */ prompt) {
+export function startAgent(/** @type {any} */ env, /** @type {string} */ prompt) {
   writeDraft('agent', { fields: { prompt, repo: env.repo }, typed: true });
   newAgent.value = true;
 }
@@ -1023,26 +1115,42 @@ function AddResource({ ch }) {
 /**
  * A new resource of one kind: its name, checked as you type, its settings with the provider's defaults, and what binds
  * it, with a binding name suggested from its name. A kind made by code says what code must exist, and Have an agent
- * write it starts an agent on it.
- * @param {{ ch: Change, kindId: string, kind: import('../lib/infra-change.js').CreatableKind, onBack: () => void }} props
+ * write it starts an agent on it. With `at`, it changes the add at that place in the change instead (WEB-119), and a
+ * new Worker's Bindings field shows what this change's adds bind to it.
+ * @param {{ ch: Change, kindId: string, kind: import('../lib/infra-change.js').CreatableKind, onBack?: () => void,
+ *   at?: number }} props
  */
-function CreateForm({ ch, kindId, kind, onBack }) {
+function CreateForm({ ch, kindId, kind, onBack, at = -1 }) {
+  const creatable = ch.creatable ?? {};
+  const was =
+    at >= 0 ? /** @type {Extract<import('../lib/infra-change.js').Edit, { op: 'create' }>} */ (ch.edits[at]) : null;
   // What this change already adds counts too: a route can name the Worker it adds, and a name can't repeat.
-  const adds = ch.edits.flatMap((e) =>
-    e.op === 'create' ? [{ id: '', kind: e.kind, name: e.name, attrs: e.attrs }] : [],
-  );
+  const adds = pendingCreates(ch.edits.filter((_, i) => i !== at));
   const resources = [...ch.declared, ...adds];
   const bind = kind.bind ?? null;
   const binders = bind ? resources.filter((r) => r.kind === bind.kind) : [];
-  const binderLabel = bind ? (ch.creatable?.[bind.kind]?.label ?? bind.kind) : '';
-  const [name, setName] = useState('');
-  const [form, setForm] = useState(() => createForm(kind));
+  const binderLabel = bind ? (creatable[bind.kind]?.label ?? bind.kind) : '';
+  const opened = () => {
+    if (!was) return null;
+    const s = createStart(kind, was);
+    for (const f of kind.fields)
+      if (f.type === 'bindings')
+        s.form[f.path] = [
+          .../** @type {any[]} */ (s.form[f.path] ?? []),
+          ...boundRows(ch.edits, creatable, was, f.path),
+        ];
+    return s;
+  };
+  const [name, setName] = useState(() => was?.name ?? '');
+  const [form, setForm] = useState(() => opened()?.form ?? createForm(kind));
   const [worker, setWorker] = useState(() =>
-    bind
-      ? (binders.find((b) => b.name === ch.env.target)?.name ?? (bind.required ? (binders[0]?.name ?? '') : ''))
-      : '',
+    was
+      ? (was.bindTo?.worker ?? '')
+      : bind
+        ? (binders.find((b) => b.name === ch.env.target)?.name ?? (bind.required ? (binders[0]?.name ?? '') : ''))
+        : '',
   );
-  const [binding, setBinding] = useState(/** @type {string | null} */ (null));
+  const [binding, setBinding] = useState(/** @type {() => string | null} */ (() => was?.bindTo?.binding ?? null));
   const [tried, setTried] = useState(false);
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const first = useRef(/** @type {HTMLHeadingElement | null} */ (null));
@@ -1063,9 +1171,33 @@ function CreateForm({ ch, kindId, kind, onBack }) {
       setError('Fix the fields marked first.');
       return;
     }
-    const why = ch.add([createEdit(kindId, kind, input)]);
-    if (why) setError(why);
-    else ch.addResource(false);
+    if (!was) {
+      const edit = /** @type {{ kind: string, name: string }} */ (createEdit(kindId, kind, input));
+      const why = ch.add([/** @type {import('../lib/infra-change.js').Edit} */ (edit)]);
+      if (why) setError(why);
+      // Its form opens again at once, as a change to the add, so it can be bound and set up in one go.
+      else ch.edit(createId(edit));
+      return;
+    }
+    // A binding of another add on a new Worker is that add's bindTo, as it is on one that runs.
+    let from = ch.edits;
+    const own = { ...form };
+    for (const f of kind.fields)
+      if (f.type === 'bindings') {
+        const split = rebind(from, creatable, { kind: kindId, name: name.trim(), was: was.name }, f.path, form[f.path]);
+        from = split.edits;
+        own[f.path] = split.rows;
+      }
+    const edit = /** @type {Extract<import('../lib/infra-change.js').Edit, { op: 'create' }>} */ (
+      createEdit(kindId, kind, { ...input, form: own })
+    );
+    const replaced = replaceCreate(from, at, edit, creatable);
+    if ('error' in replaced) {
+      setError(replaced.error);
+      return;
+    }
+    ch.put(replaced.edits);
+    ch.edit(null);
   };
   const writeCode = () => {
     const edit = /** @type {any} */ (createEdit(kindId, kind, input));
@@ -1075,14 +1207,20 @@ function CreateForm({ ch, kindId, kind, onBack }) {
     <form class="change-form" onSubmit={submit} noValidate aria-labelledby="change-create-title">
       <div class="change-rule-head">
         <h3 id="change-create-title" class="change-form-title" tabIndex={-1} ref={first}>
-          {kind.label}
+          {was ? `Change ${was.name}` : kind.label}
         </h3>
-        <button type="button" class="btn btn-quiet btn-sm" onClick={onBack}>
-          <ArrowLeft size={14} aria-hidden="true" />
-          Pick another
-        </button>
+        {onBack && (
+          <button type="button" class="btn btn-quiet btn-sm" onClick={onBack}>
+            <ArrowLeft size={14} aria-hidden="true" />
+            Pick another
+          </button>
+        )}
       </div>
-      <p class="meta">{kind.help}</p>
+      <p class="meta">
+        {was
+          ? `A new ${kind.label} in your change. Set it up and bind it here: nothing is made until you propose the change and approve its plan.`
+          : kind.help}
+      </p>
       <FieldInput
         field={{ path: 'name', type: 'text', label: kind.name.label, help: kind.name.help }}
         id="change-create-name"
@@ -1187,7 +1325,7 @@ function CreateForm({ ch, kindId, kind, onBack }) {
           Cancel
         </button>
         <button type="submit" class="btn btn-primary btn-sm">
-          <Plus size={14} aria-hidden="true" />
+          {was ? <Check size={14} aria-hidden="true" /> : <Plus size={14} aria-hidden="true" />}
           Add to the change
         </button>
       </div>
@@ -1588,7 +1726,8 @@ export function ChangePanel({ ch, cant }) {
         </h2>
       </header>
 
-      {ch.editing && <SettingsForm ch={ch} />}
+      {ch.editing && ch.editingAdd === -1 && <SettingsForm ch={ch} />}
+      {ch.editingAdd >= 0 && <AddForm ch={ch} />}
       {ch.adding && <AddResource ch={ch} />}
 
       {(edits.length > 0 || draftOnly) && (

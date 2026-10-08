@@ -658,7 +658,7 @@ export function Topology({
                   tabIndex={-1}
                 >
                   <Resource r={r} env={env} drift={driftOf} ops={ops} plan={plan} onPick={pick} mine={mine} />
-                  {nodeActions && !r.planned && <div class="topo-detail-actions">{nodeActions(r)}</div>}
+                  {nodeActions && <div class="topo-detail-actions">{nodeActions(r)}</div>}
                 </li>
               ))}
             </ul>

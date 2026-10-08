@@ -510,6 +510,171 @@ export function createEdit(kindId, kind, { name, form, bindTo }) {
   return edit;
 }
 
+/** A resource this change adds, by the ID the board gives it in the file and on the map (`<kind>:<name>`). */
+export const createId = (/** @type {{ kind: string, name: string }} */ e) => `${e.kind}:${e.name}`;
+
+/**
+ * The resources this change adds, as the file will have them, so a form can pick or bind one like any other.
+ * @param {Edit[]} edits
+ * @returns {Array<{ id: string, kind: string, name: string, attrs: Record<string, unknown>, planned: true }>}
+ */
+export const pendingCreates = (edits) =>
+  edits.flatMap((e) =>
+    e.op === 'create'
+      ? [{ id: createId(e), kind: e.kind, name: e.name, attrs: e.attrs, planned: /** @type {const} */ (true) }]
+      : [],
+  );
+
+/**
+ * Where the create edit behind a node the map draws dashed is in the change, or -1 (a template's add has none).
+ * @param {Edit[]} edits
+ * @param {{ kind: string, name: string }} r
+ */
+export const createAt = (edits, r) =>
+  edits.findIndex((e) => e.op === 'create' && e.kind === r.kind && e.name === r.name);
+
+/**
+ * The form a create edit opens in when it's changed (WEB-119): its name, its settings (the kind's default for any it
+ * doesn't give), and what binds it.
+ * @param {CreatableKind} kind
+ * @param {Extract<Edit, { op: 'create' }>} edit
+ * @returns {{ name: string, form: Record<string, unknown>, worker: string, binding: string | null }}
+ */
+export function createStart(kind, edit) {
+  const form = Object.fromEntries(
+    kind.fields.map((f) => [
+      f.path,
+      formValue(f, structuredClone(Object.hasOwn(edit.attrs ?? {}, f.path) ? edit.attrs[f.path] : f.default)),
+    ]),
+  );
+  return { name: edit.name, form, worker: edit.bindTo?.worker ?? '', binding: edit.bindTo?.binding ?? null };
+}
+
+/** Whether the bindings list `path` of a resource of `kind` is where a create of this kind's binding goes. */
+const bindsInto = (/** @type {CreatableKind['bind']} */ bind, /** @type {string} */ kind, /** @type {string} */ path) =>
+  Boolean(bind && bind.kind === kind && bind.list === path);
+
+/** The binding a create's bindTo makes on its binder, as the board writes it (applyCreate in src/infra-changes.js). */
+const bindingRow = (/** @type {NonNullable<CreatableKind['bind']>} */ bind, /** @type {any} */ e) => ({
+  name: e.bindTo.binding,
+  type: bind.target.type,
+  ...(bind.target.by === 'id' ? { resource: createId(e) } : { [bind.target.field]: e.name }),
+});
+
+/**
+ * The bindings this change's adds give `binder` with their bindTo, as rows of its bindings field `path`, so its form
+ * shows them like the ones it has (WEB-119).
+ * @param {Edit[]} edits
+ * @param {Record<string, CreatableKind>} creatable
+ * @param {{ kind: string, name: string }} binder
+ * @param {string} path
+ */
+export function boundRows(edits, creatable, binder, path) {
+  return edits.flatMap((e) => {
+    if (e.op !== 'create' || e.bindTo?.worker !== binder.name) return [];
+    const bind = creatable[e.kind]?.bind;
+    return bind && bindsInto(bind, binder.kind, path) ? [bindingRow(bind, e)] : [];
+  });
+}
+
+/**
+ * A binder's bindings field as its form leaves it, split (WEB-119): a row that binds one of this change's adds, which
+ * nothing else binds yet, becomes that add's bindTo; the other rows stay the field's. An add bound to the binder
+ * before (by its name `was`, when it's renamed) whose row is gone isn't bound any more.
+ * @param {Edit[]} edits
+ * @param {Record<string, CreatableKind>} creatable
+ * @param {{ kind: string, name: string, was?: string }} binder
+ * @param {string} path
+ * @param {unknown} rows the field's value, as the form has it
+ * @returns {{ edits: Edit[], rows: unknown[] }}
+ */
+export function rebind(edits, creatable, binder, path, rows) {
+  const was = binder.was ?? binder.name;
+  /** @type {Map<number, string>} */
+  const bound = new Map();
+  const kept = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const n = !isObject(row)
+      ? -1
+      : edits.findIndex((e, i) => {
+          if (e.op !== 'create' || bound.has(i)) return false;
+          const bind = creatable[e.kind]?.bind;
+          if (!bind || !bindsInto(bind, binder.kind, path) || row.type !== bind.target.type) return false;
+          if (e.bindTo && e.bindTo.worker !== was) return false;
+          return bind.target.by === 'id'
+            ? row.resource === createId(e)
+            : row.resource === undefined && row[bind.target.field] === e.name;
+        });
+    if (n === -1) kept.push(row);
+    else bound.set(n, String(/** @type {any} */ (row).name ?? '').trim());
+  }
+  const out = edits.map((e, i) => {
+    if (e.op !== 'create') return e;
+    const binding = bound.get(i);
+    if (binding !== undefined) return { ...e, bindTo: { worker: binder.name, binding } };
+    if (e.bindTo?.worker === was && bindsInto(creatable[e.kind]?.bind, binder.kind, path)) {
+      const { bindTo: _, ...rest } = e;
+      return rest;
+    }
+    return e;
+  });
+  return { edits: out, rows: kept };
+}
+
+/**
+ * The change with the create at `n` replaced by `edit` (WEB-119): where it was renamed, the adds that name it (what
+ * binds them, a route's Worker) follow the new name.
+ * @param {Edit[]} edits
+ * @param {number} n
+ * @param {Extract<Edit, { op: 'create' }>} edit
+ * @param {Record<string, CreatableKind>} creatable
+ * @returns {{ edits: Edit[] } | { error: string }}
+ */
+export function replaceCreate(edits, n, edit, creatable) {
+  const was = edits[n];
+  if (was?.op !== 'create') return { error: 'That resource isn’t in your change any more.' };
+  if (edits.some((e, i) => i !== n && e.op === 'create' && e.kind === edit.kind && e.name === edit.name))
+    return { error: `Your change already adds a ${edit.kind} called ${edit.name}: pick another name.` };
+  let out = edits.map((e, i) => (i === n ? edit : e));
+  if (was.name !== edit.name)
+    out = out.map((e, i) => {
+      if (i === n || e.op !== 'create') return e;
+      const kind = creatable[e.kind];
+      let next = e;
+      if (e.bindTo?.worker === was.name && kind?.bind?.kind === was.kind)
+        next = { ...next, bindTo: { ...e.bindTo, worker: edit.name } };
+      for (const f of kind?.fields ?? [])
+        if (f.type === 'resource' && (f.kinds ?? []).includes(was.kind) && next.attrs?.[f.path] === was.name)
+          next = { ...next, attrs: { ...next.attrs, [f.path]: edit.name } };
+      return next;
+    });
+  return { edits: orderCreates(out, creatable) };
+}
+
+/**
+ * The change with each add bound to another add after it: the board makes them in order, and a binding needs its
+ * binder made first.
+ * @param {Edit[]} edits
+ * @param {Record<string, CreatableKind>} creatable
+ * @returns {Edit[]}
+ */
+export function orderCreates(edits, creatable) {
+  const out = [...edits];
+  const binderAt = (/** @type {Edit} */ e) =>
+    e.op === 'create' && e.bindTo
+      ? out.findIndex(
+          (x) => x.op === 'create' && x.kind === creatable[e.kind]?.bind?.kind && x.name === e.bindTo?.worker,
+        )
+      : -1;
+  for (let guard = 0; guard < out.length; guard++) {
+    const i = out.findIndex((e, at) => binderAt(e) > at);
+    if (i === -1) break;
+    const [e] = out.splice(i, 1);
+    out.splice(binderAt(e) + 1, 0, e);
+  }
+  return out;
+}
+
 /** The kinds the map puts in front: what a Worker serves, not what it uses. */
 const SERVED = new Set(['route', 'custom-domain', 'domain']);
 
