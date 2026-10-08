@@ -12608,3 +12608,102 @@ button.infra-plan-row {
     gap: 2px;
   }
 }
+
+/* Guided token setup (BRK-304): a repository's infrastructure tokens, on its Connections card and in Kickoff. */
+.token-setup {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.token-setup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.token-setup-head h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.token-setup-state {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--warn);
+}
+.token-setup-state.is-ok {
+  color: var(--success);
+}
+.token-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.token-step {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  min-width: 0;
+}
+.token-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.token-step-head svg,
+.token-checks li svg {
+  flex: none;
+  transform: translateY(2px);
+  color: var(--success);
+}
+.token-step-head.is-bad svg,
+.token-checks li.is-bad svg {
+  color: var(--warn);
+}
+.token-checks li.is-unknown svg {
+  color: var(--muted);
+}
+.token-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+}
+.token-checks li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+}
+.token-fix,
+.token-fix-line {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.token-fix-line {
+  display: block;
+}
+.token-permissions {
+  width: 100%;
+}
+.token-permissions > p,
+.token-permissions > a {
+  margin-top: 8px;
+}
+.token-setup-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
