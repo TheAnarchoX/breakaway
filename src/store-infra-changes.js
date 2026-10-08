@@ -581,6 +581,15 @@ export const infraChangesMethods = {
       outcome: live ? 'replaced' : 'proposed',
       summary: `${live ? 'replaced' : 'proposed'} by the owner as #${pull.number}: ${title}${live?.approval ? '; its approval is reset' : ''}`,
     });
+    this.infraEvent('change.proposed', env, {
+      fields: {
+        pull: `#${pull.number}`,
+        state: live ? 'replaced' : 'proposed',
+        count: Number(planned.preview.changes ?? 0),
+      },
+      dedupe: `${pull.number}:${made.sha}`,
+      cause: { pull: Number(pull.number) },
+    });
     // The plan check (BRK-185) posts on the pull request at the next sync: ask for it now.
     await this.githubWebhook('pull_request', live ? 'synchronize' : 'opened', { slug: env.repo });
     const row = this.sql.exec('SELECT * FROM infra_changes WHERE n = ?', n).toArray()[0];
@@ -646,6 +655,11 @@ export const infraChangesMethods = {
     const fate = changePullFate(row.commit_sha, pull);
     if (fate === 'merged') {
       this.moveInfraChange(row, 'merged', { by: 'board', outcome: 'merged', summary: `${ref} merged on GitHub` });
+      this.infraEvent(
+        'change.merged',
+        { repo: row.repo, name: row.name, kind: this.infraEnvironmentKind(row.environment) },
+        { fields: { pull: ref, state: 'merged' }, dedupe: String(row.pull), cause: { pull: Number(row.pull) } },
+      );
       this.keepChangeMerge(row.n, pull.merge_commit_sha ?? null, pull.merged_at ? Date.parse(pull.merged_at) : null);
       // Merged on GitHub without an approval on the board: its plan still needs the target it gives.
       this.giveChangeTarget(row, 'board');

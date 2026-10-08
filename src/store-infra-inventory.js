@@ -386,6 +386,12 @@ export const infraInventoryMethods = {
 
   /** Marks an environment's inventory stale (BRK-257): its discovery failed, so what it shows is from before. */
   inventoryStaleSeen(environment, providerId, error, at) {
+    // Going stale reaches the routines that listen for it (BRK-293), once until it's fresh again; never with the error.
+    if (!this.sql.exec('SELECT 1 FROM infra_inventory_stale WHERE environment = ?', environment.id).toArray().length)
+      this.infraEvent('inventory.stale', environment, {
+        fields: { state: 'stale', source: providerId },
+        dedupe: String(at),
+      });
     this.sql.exec(
       `INSERT INTO infra_inventory_stale (environment, provider, at, error) VALUES (?, ?, ?, ?)
        ON CONFLICT (environment) DO UPDATE SET provider = excluded.provider, at = excluded.at, error = excluded.error`,
