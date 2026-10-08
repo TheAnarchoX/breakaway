@@ -30,6 +30,7 @@
     "src/infra-cloudflare.js",
     "src/infra-cloudflare-analytics.js",
     "src/infra-cloudflare-plan.js",
+    "src/infra-cloudflare-tokens.js",
     "src/infra-provider.js",
     "src/infra-plans.js",
     "src/infra-policy.js",
