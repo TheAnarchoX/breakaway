@@ -11,14 +11,14 @@ The source is [`brand/README.md`](../../../brand/README.md). Read the parts your
 
 - **Words:** read Voice, Writing it, and Words breakaway uses. breakaway is always lowercase, the board talks to "you", agents go by their name or "agent", and everyone else is "people". Buttons are verbs, errors say what failed and what to do, and success is a word or two.
 - **Infrastructure:** for anything Architect shows (environments, plans, incidents, cost), use Infrastructure words in the guide: Approve, Reject, Freeze, and Unfreeze on buttons and never Apply (you approve, the board applies), pushes only for a production incident or a plan that waits, and amounts marked as estimates in your currency, with the rate when converted. No ops jargon (stack, resource group, DevOps, IaC).
-- **Claims:** anything breakaway says about itself must be on the list of Claims that must stay true, or ship in the same pull request as the feature it describes. Say "free", "fair source", or "the source is public", and "open source" only of a release that has turned Apache 2.0. Say what the board does, never what someone shipped with it: no run numbers, benchmarks, or before-and-after.
+- **Claims:** anything breakaway says about itself must be on the list of Claims that must stay true, or ship in the same pull request as the feature it describes. For the licence, use The licence in the guide: say "free for personal and noncommercial use" (never "free" on its own where a business could read it as theirs), "the source is public", and "commercial use is by exception"; never "open source", "fair source", or "Apache 2.0 in two years". Say what the board does, never what someone shipped with it: no run numbers, benchmarks, or before-and-after.
 - **Look:** read Color, Type, and Shape and motion. Use the tokens in `brand/tokens.css` (the board's stylesheet reads the same names), never hex values. One red thing leads each view; red text only at display size, `--accent` below it. Carbon is the default theme and chalk must work too.
 - **Never** the words on the never list, exclamation marks, emoji, "powered by", another product's logo next to breakaway's, mascots, gradients, or a real repository's private work in a screenshot or fixture.
 
 ## Before you hand it back
 
 1. Go through the guide's **Checklist** and fix anything that fails.
-2. Run `pnpm brand` (the lint for the name, the never list, exclamation marks, and "open source"; a line opts out with `brand-lint-ignore <rule>` in a comment) and `pnpm test`: `test/brand.test.js` checks every text color's contrast in both themes and that the guide's tables match the tokens. A token change updates the guide's tables in the same pull request.
+2. Run `pnpm brand` (the lint for the name, the never list, exclamation marks, and the licence words it rules out; a line opts out with `brand-lint-ignore <rule>` in a comment) and `pnpm test`: `test/brand.test.js` checks every text color's contrast in both themes and that the guide's tables match the tokens. A token change updates the guide's tables in the same pull request.
 3. For a change to the board, look at it in `pnpm dev` in carbon and chalk, narrow and wide, with the keyboard, and with reduced motion on.
 4. In the pull request, add a **Brand** section: the checklist with each item ticked or marked not applicable, and what you looked at.
 
