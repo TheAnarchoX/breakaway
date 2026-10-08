@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-// The board's CLI (scripts/tasks.mjs and scripts/tasks/): plain Node, no Worker. `pnpm test` runs it.
+// The board's CLI (scripts/tasks.mjs and scripts/tasks/) and the CLA check (scripts/cla/): plain Node, no Worker. `pnpm test` runs it.
 export default defineConfig({
   root: fileURLToPath(new URL('../..', import.meta.url)),
   test: {
@@ -10,6 +10,7 @@ export default defineConfig({
       'scripts/lib/**/*.test.js',
       'scripts/release/**/*.test.js',
       'scripts/install/**/*.test.js',
+      'scripts/cla/**/*.test.js',
     ],
   },
 });

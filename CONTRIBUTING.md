@@ -12,7 +12,7 @@ breakaway is built by its owner and their agents. It doesn't take pull requests,
 
 If the owner ever takes a pull request from you, you sign breakaway's [contributor licence agreement](CLA.md) first. It lets the owner license your work the same way as the rest of breakaway, including the commercial exceptions they grant case by case; you keep the copyright in what you wrote.
 
-The **CLA** check on the pull request asks you to sign by commenting, once, with `I have read the breakaway CLA and I sign it.` Your GitHub username and the pull request are kept on this repository's `cla-signatures` branch, and one signature covers your later pull requests. The owner's own pull requests, which the board's agents open, and the bots' don't need one.
+You sign once, on the pull request, in three steps that [CLA.md](CLA.md#how-to-sign) spells out: you upload a signed copy of the agreement in a comment, you comment `I have read the breakaway CLA and I sign it.`, and the owner countersigns with `I countersign the breakaway CLA.` The **CLA** check stays red until all three are there and says which is missing. Your GitHub username, the pull request, and links to the comments and the signed copy are then kept on this repository's `cla-signatures` branch, and one signature covers your later pull requests. The owner's own pull requests, which the board's agents open, and the bots' don't need one.
 
 ## How it's built
 
