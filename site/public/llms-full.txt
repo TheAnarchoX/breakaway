@@ -1,6 +1,6 @@
 # breakaway: the docs
 
-> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs the infrastructure too, and you still decide. Free, fair source, and self-hosted on your own Cloudflare account.
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs the infrastructure too, and you still decide. Free for personal and noncommercial use, and self-hosted on your own Cloudflare account.
 
 Source: https://leavethepack.dev/architect/
 
@@ -121,7 +121,7 @@ These are the claims the docs, the README, and this site all make, and the board
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
-- **Free, and the source is public.** The licence is FSL-1.1-Apache-2.0.
+- **Free for personal and noncommercial use, and the source is public.** The licence is PolyForm Noncommercial 1.0.0 ([`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md)).
 
 > **Where the source of truth is.** These pages are a guide. The repository’s [`docs/tasks.md`](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md) is the manual the code is written against, and `npx breakaway help` always lists the commands your version has.
 
@@ -141,7 +141,7 @@ Each step ends with a check, which reads one of three ways:
 - **Not verified yet:** it’s set up, but nothing has used it. The check says what will verify it. A Claude routine reads this until the first agent it starts claims a task.
 - **Failed:** the check says what failed and the fix. On Connections, that’s a row that reads **Needs attention**.
 
-The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s fair source.
+The licence is PolyForm Noncommercial 1.0.0: breakaway is free for personal and noncommercial use, and commercial use is by exception. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 ## With Claude Code
 
@@ -2668,7 +2668,11 @@ Source: https://leavethepack.dev/docs/faq/
 
 ## Is breakaway free?
 
-Yes. It’s free to run, free to change, and free to self-host. The licence is **FSL-1.1-Apache-2.0**, the Functional Source License: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s [fair source](https://fair.io/licenses/). The source is public. The Open Source Initiative doesn’t count a fair source licence as open source until the Apache date, so breakaway calls itself free and fair source.
+For personal and noncommercial use, yes: free to run, free to change, and free to self-host. The licence is the **PolyForm Noncommercial License 1.0.0**. It lets anyone use breakaway for personal use (research, study, hobby projects, and the like, with no commercial application in view), and lets charities, educational institutions, public research organizations, public safety, health, and environmental organizations, and government institutions use it, however they’re funded. The source is public.
+
+Commercial use is by exception: the owner grants a free commercial licence case by case. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says who can ask and how.
+
+The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, the licence it shipped with.
 
 There is no hosted version, and no accounts, teams, pricing, paid features, or ads.
 

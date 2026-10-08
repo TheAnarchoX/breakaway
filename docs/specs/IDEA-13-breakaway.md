@@ -2,6 +2,8 @@
 
 Task: IDEA-13 on the board · Status: built (before the move to breakaway, under the first install's work IDs)
 
+> Licence note (BRK-295): from 2.0.0, breakaway's licence is PolyForm Noncommercial 1.0.0; this spec keeps the licence it was written under (FSL-1.1-Apache-2.0), which releases before 2.0.0 stay under.
+
 ## Problem
 
 The task board (`tools/tasks/`, the CLI in `scripts/tasks.mjs`, the routine prompt) changed how the owner works: no editor, Claude Code to brainstorm and fix, claude.ai to update the routine, 160 pull requests in under 48 hours, alone. Other people should be able to work like that. It has to leave samewave's repository without breaking the board the owner uses every day.

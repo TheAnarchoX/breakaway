@@ -43,4 +43,4 @@ Nothing goes to breakaway's author or to Anthropic beyond what Claude Code itsel
 
 ## Licence
 
-FSL-1.1-Apache-2.0, as breakaway is: free to use, change, and self-host. See [LICENSE](LICENSE).
+PolyForm Noncommercial 1.0.0, as breakaway is: free for personal and noncommercial use, and commercial use by exception. See [LICENSE](LICENSE) and [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md).
