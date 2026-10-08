@@ -801,6 +801,50 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     );
   });
 
+  it('plans a route to a new environment’s Worker on a zone the token reaches, before that Worker runs (BRK-292)', async () => {
+    const fetch = account();
+    const kinds = creatableKinds(cloudflare);
+    const route = (pattern) =>
+      applyEdits({
+        file: { version: 1, provider: 'cloudflare', resources: [] },
+        edits: [
+          { op: 'create', kind: 'worker', name: 'acme-app', attrs: {} },
+          { op: 'create', kind: 'd1', name: 'acme-new-db', attrs: {}, bindTo: { worker: 'acme-app', binding: 'DB' } },
+          { op: 'create', kind: 'route', name: pattern, attrs: { zone: 'acme.example', worker: 'acme-app' } },
+        ],
+        templates: new Map(),
+        environment: 'production',
+        creatable: (kind) => kinds[kind] ?? null,
+      });
+    const fresh = route('app.acme.example/*');
+    expect(fresh.problems).toEqual([]);
+    const ctx = ctxFor(fetch, READ, { scope: { target: 'acme-app' } });
+    const p = checkPlan(cloudflare, await plan(ctx, fresh.file));
+    expect(p.changes.map((c) => `${c.op} ${c.kind} ${c.name}`).sort()).toEqual([
+      'create d1 acme-new-db',
+      'create route app.acme.example/*',
+      'create worker acme-app',
+    ]);
+    expect(p.changes.find((c) => c.kind === 'route')?.after).toMatchObject({
+      zone: 'acme.example',
+      worker: 'acme-app',
+    });
+    expect(fetch.writes()).toEqual([]);
+    // The routes already on the zone are read too, so a pattern another Worker has is still refused.
+    await expect(plan(ctx, route('other.acme.example/*').file)).rejects.toThrow(
+      /other\.acme\.example\/\* already sends to acme-other/u,
+    );
+    // A zone the token doesn't reach is still refused, naming the ones it does.
+    const elsewhere = route('app.acme.example/*');
+    elsewhere.file.resources.find((r) => r.kind === 'route').attrs.zone = 'acme.invalid';
+    await expect(plan(ctx, elsewhere.file)).rejects.toThrow(
+      /needs attrs\.zone, one of the zones the token reaches \(acme\.example\)/u,
+    );
+    // An inventory refresh of an environment whose target doesn't run yet still reads nothing past the Workers list.
+    const found = await cloudflare.discover(ctxFor(account(), READ, { scope: { target: 'acme-app' } }));
+    expect(found.resources).toEqual([]);
+  });
+
   it('reads a drafted Worker’s bindings back in the console: unchanged plans nothing, one change plans that binding (BRK-285)', async () => {
     const fetch = account();
     // The bindings a real Worker carries besides its resources: kept as they are, never compared or changed.
