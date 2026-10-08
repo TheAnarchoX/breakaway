@@ -14,7 +14,9 @@ import {
   agentsAtWork,
   arrived,
   filterStream,
+  githubRun,
   groupStream,
+  runTile,
   runWords,
   stepsText,
   streamItems,
@@ -240,6 +242,44 @@ describe('the stream', () => {
         { resource: 'b', op: 'delete', ok: false },
       ]),
     ).toBe('1 of 2 changes applied; delete of b failed');
+  });
+
+  it('says a started run waits to check in, and that one which ended on GitHub applied nothing (BRK-308)', () => {
+    const at = Date.parse('2026-10-08T12:00:00Z');
+    const started = { phase: 'dispatched', dispatched: '2026-10-08T11:56:30Z' };
+    expect(runWords(started, at)).toBe('Waiting for the run to check in, 3 min');
+    expect(runWords({ ...started, dispatched: '2026-10-08T11:59:30Z' }, at)).toBe('Starting the apply');
+    expect(runWords({ phase: 'done', outcome: 'failed', startAgain: true })).toBe('Failed: nothing applied');
+    expect(runWords({ phase: 'done', outcome: 'failed', startAgain: false })).toBe('Apply failed');
+    expect(runTile(started, at)).toEqual({ value: 'Waiting', detail: 'for the run, 3 min' });
+    expect(runTile({ phase: 'done', outcome: 'failed', startAgain: true })).toEqual({
+      value: 'Failed',
+      detail: 'nothing applied',
+    });
+    expect(runTile({ phase: 'checked' })).toEqual({ value: 'Applying', detail: null });
+
+    const url = 'https://github.com/acme/widgets/actions/runs/42';
+    expect(githubRun({ phase: 'checked', github: { id: '42', url, conclusion: null } })).toEqual({
+      url,
+      text: 'Running on GitHub: open the run',
+    });
+    expect(githubRun({ phase: 'dispatched', github: null })).toBeNull();
+    const ended = {
+      plan: 'plan-3',
+      phase: 'done',
+      outcome: 'failed',
+      startAgain: true,
+      steps: null,
+      error: 'run 42 ended on GitHub (failure) before it asked for plan-3, so nothing was applied',
+      github: { id: '42', url, conclusion: 'failure' },
+      updated: '2026-10-08T12:00:00Z',
+    };
+    expect(streamItems({ runs: [ended] })[0]).toMatchObject({
+      label: 'The run failed on GitHub before applying',
+      text: 'failure: nothing applied. Start the run again on plan-3.',
+      level: 'critical',
+      link: { url, text: 'Open the run' },
+    });
   });
 });
 

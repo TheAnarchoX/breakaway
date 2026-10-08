@@ -529,7 +529,7 @@ function Answer({ plan, env, outOfDate, onChange }) {
 /**
  * Start the run again (BRK-308), the owner's: on a failed plan whose run applied nothing (it never reached the board,
  * or every step it reported failed). The board checks everything a start checks, and starts a new run; GitHub's
- * Re-run never applies a plan. `lead` is the line above the button, when the place it sits doesn't say why already.
+ * Re-run never applies a plan. With `lead` false, it's the button alone, for a note that already says why.
  * @param {{ plan: { id: string, state: string }, env: { name: string, frozen?: boolean }, run: any, onDone?: () => void, lead?: boolean, size?: string }} props
  */
 export function StartAgain({ plan, env, run, onDone, lead = true, size = '' }) {
@@ -554,26 +554,27 @@ export function StartAgain({ plan, env, run, onDone, lead = true, size = '' }) {
       setBusy(false);
     }
   };
+  const button = (
+    <button
+      type="button"
+      class={`btn btn-primary ${size}`}
+      onClick={start}
+      disabled={busy || env.frozen}
+      aria-busy={busy}
+      title={env.frozen ? `${env.name} is frozen: unfreeze it first` : undefined}
+    >
+      <RotateCcw size={16} aria-hidden="true" />
+      Start the run again
+    </button>
+  );
+  // Inside another note (a first apply's), the button alone.
+  if (!lead) return button;
   return (
     <div class="infra-plan-answer">
-      {lead && (
-        <p class="infra-plan-why-not">
-          Nothing was applied. Fix what stopped the run, then start it again here: GitHub’s Re-run doesn’t apply a plan.
-        </p>
-      )}
-      <div class="infra-plan-buttons">
-        <button
-          type="button"
-          class={`btn btn-primary ${size}`}
-          onClick={start}
-          disabled={busy || env.frozen}
-          aria-busy={busy}
-          title={env.frozen ? `${env.name} is frozen: unfreeze it first` : undefined}
-        >
-          <RotateCcw size={16} aria-hidden="true" />
-          Start the run again
-        </button>
-      </div>
+      <p class="infra-plan-why-not">
+        Nothing was applied. Fix what stopped the run, then start it again here: GitHub’s Re-run doesn’t apply a plan.
+      </p>
+      <div class="infra-plan-buttons">{button}</div>
     </div>
   );
 }

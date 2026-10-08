@@ -905,7 +905,7 @@ describe('the executor (BRK-183)', () => {
     const ended = await run(p.id);
     expect(ended).toMatchObject({ phase: 'done', outcome: 'failed', startAgain: true });
     expect(ended.error).toMatch(
-      /^nothing applied: the run never reached the board before exec-staging’s lock expired/u,
+      /^the run never reached the board before exec-staging’s lock expired, so nothing was applied/u,
     );
     expect(ended.error).not.toMatch(/unknown/u);
     expect(await lock()).toBeNull();
@@ -966,7 +966,9 @@ describe('the executor (BRK-183)', () => {
       startAgain: true,
       github: { id: '42001', conclusion: 'failure' },
     });
-    expect(ended.error).toMatch(/^nothing applied: run 42001 ended on GitHub \(failure\) before it asked for/u);
+    expect(ended.error).toMatch(
+      /^run 42001 ended on GitHub \(failure\) before it asked for plan-\d+, so nothing was applied/u,
+    );
     expect(await lock()).toBeNull();
     const signals = (await body(await api(`infra/signals?environmentId=${staging.id}&source=executor`))).signals ?? [];
     expect(

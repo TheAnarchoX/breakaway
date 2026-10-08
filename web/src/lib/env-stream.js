@@ -71,6 +71,21 @@ export function runWords(run, now = Date.now()) {
 }
 
 /**
+ * A run on the status band's Plan tile, which has room for a word or two: the value, and what follows under it, or
+ * null when the value says it all (BRK-308).
+ * @param {Parameters<typeof runWords>[0]} run
+ * @param {number} [now]
+ * @returns {{ value: string, detail: string | null }}
+ */
+export function runTile(run, now = Date.now()) {
+  const words = runWords(run, now);
+  const waiting = /^Waiting for the run to check in, (\d+ min)$/u.exec(words);
+  if (waiting) return { value: 'Waiting', detail: `for the run, ${waiting[1]}` };
+  if (words === 'Failed: nothing applied') return { value: 'Failed', detail: 'nothing applied' };
+  return { value: words, detail: null };
+}
+
+/**
  * The run's page on GitHub, in words, once the board knows it: while it goes, "Running on GitHub"; when it ended
  * there before it asked for its plan, how (BRK-308). Null when the board doesn't know the run yet.
  * @param {{ phase: string, github?: { url?: string | null, conclusion?: string | null } | null }} run

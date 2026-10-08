@@ -205,7 +205,7 @@ export const infraRunsMethods = {
       // A run that never asked for its plan never had it: nothing can have applied (BRK-308).
       if (row.phase === 'dispatched' && !row.run_id) {
         await this.finishInfraRun(row, 'failed', {
-          summary: `nothing applied: the run never reached the board before ${row.env_name}’s lock ${lockWent}. Fix what stopped it, then press Start the run again`,
+          summary: `the run never reached the board before ${row.env_name}’s lock ${lockWent}, so nothing was applied. Fix what stopped it, then press Start the run again`,
         });
         continue;
       }
@@ -261,7 +261,7 @@ export const infraRunsMethods = {
         summary: `the rollback’s run ${found.id} ended on GitHub (${found.conclusion}) before it asked for its changes${link}`,
       });
     return this.finishInfraRun(current, 'failed', {
-      summary: `nothing applied: run ${found.id} ended on GitHub (${found.conclusion}) before it asked for ${id}. Fix what stopped it, then press Start the run again${link}`,
+      summary: `run ${found.id} ended on GitHub (${found.conclusion}) before it asked for ${id}, so nothing was applied. Fix what stopped it, then press Start the run again`,
       signal: `${id}: the run failed on GitHub before applying: ${found.conclusion}${found.url ? `, open the run: ${found.url}` : ''}`,
     });
   },

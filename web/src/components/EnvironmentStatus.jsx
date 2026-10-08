@@ -1,7 +1,7 @@
 import { Activity, Bot, Eye, FileDiff, Rocket, ScanSearch, Snowflake, Wallet } from 'lucide-preact';
 import { ago, shortVersion } from '../lib/model.js';
 import { hashFor } from '../lib/store.js';
-import { githubRun, runWords } from '../lib/env-stream.js';
+import { githubRun, runTile, runWords } from '../lib/env-stream.js';
 import { widClass } from './ui.jsx';
 import { BUDGET, costText } from './InfraCosts.jsx';
 import { HEALTH, healthOfWords } from '../views/InfrastructureView.jsx';
@@ -244,16 +244,17 @@ export function StatusBand({
           <Tile
             label="Plan"
             Icon={FileDiff}
-            value={runWords(run)}
+            value={runTile(run).value}
             valueTitle={runWords(run)}
             detail={
               <>
+                {runTile(run).detail && <>{runTile(run).detail} · </>}
                 <a href={planLink(run.plan)}>{run.plan}</a>
                 {githubRun(run) && (
                   <>
                     {' · '}
                     <a href={githubRun(run)?.url} target="_blank" rel="noopener noreferrer">
-                      open the run
+                      on GitHub
                     </a>
                   </>
                 )}
@@ -265,14 +266,14 @@ export function StatusBand({
             label="Plan"
             Icon={FileDiff}
             tone="waiting"
-            value={runWords(stopped)}
+            value={runTile(stopped).value}
             valueTitle={runWords(stopped)}
             detail={
               <>
-                <a href={planLink(stopped.plan)}>{stopped.plan}</a>: start the run again
+                Nothing applied · <a href={planLink(stopped.plan)}>{stopped.plan}</a>
               </>
             }
-            detailTitle={`${stopped.plan}: start the run again`}
+            detailTitle={`Nothing applied: start ${stopped.plan}’s run again`}
           />
         ) : env.waitingPlan ? (
           <Tile
