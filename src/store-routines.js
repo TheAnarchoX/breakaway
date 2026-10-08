@@ -14,7 +14,7 @@ import { ROUTINE_GITHUB_EVENTS, routineEventOf } from './github.js';
 import { planOf } from './plans.js';
 import { repoSlugOf } from './repos.js';
 import { alertFields, alertPlace, alertText } from './infra-cloudflare.js';
-import { infraEventsOf, keptInfraEvents } from './infra-events.js';
+import { infraEventsOf, keptInfraEvents, keptRunEvent } from './infra-events.js';
 
 const MAX_TRIGGER_BODY = 16 * 1024;
 const MAX_NOTE = 1000;
@@ -132,6 +132,14 @@ export const routinesMethods = {
     // Which infrastructure events start it (BRK-293): a JSON list of src/infra-events.js's triggers, none by default.
     if (!columns.includes('infra_events'))
       this.sql.exec("ALTER TABLE routines ADD COLUMN infra_events TEXT NOT NULL DEFAULT '[]'");
+    // The infrastructure event that started a run (WEB-122), as infraRunEvent's JSON; null for any other start.
+    if (
+      !this.sql
+        .exec('PRAGMA table_info(routine_runs)')
+        .toArray()
+        .some((c) => c.name === 'event')
+    )
+      this.sql.exec('ALTER TABLE routine_runs ADD COLUMN event TEXT');
     const events = this.sql
       .exec('PRAGMA table_info(routine_events)')
       .toArray()
@@ -156,6 +164,22 @@ export const routinesMethods = {
     };
   },
 
+  /**
+   * The routine a task is a run of, how it started, and the infrastructure event that started it (WEB-122), or null
+   * for a task that isn't a routine's run.
+   * @param {string} uuid
+   */
+  routineRunOf(uuid) {
+    const run = this.sql
+      .exec(
+        'SELECT r.slug, r.trigger, r.event, t.name FROM routine_runs r LEFT JOIN routines t ON t.slug = r.slug WHERE r.task = ? ORDER BY r.id DESC LIMIT 1',
+        uuid,
+      )
+      .toArray()[0];
+    if (!run) return null;
+    return { slug: run.slug, name: run.name ?? run.slug, trigger: run.trigger, event: keptRunEvent(run.event) };
+  },
+
   /** The routine's open run (a task that is still pending), or null. */
   openRunOf(slug) {
     const runs = this.sql
@@ -167,7 +191,10 @@ export const routinesMethods = {
 
   routineView(r) {
     const last = this.sql
-      .exec('SELECT task, trigger, started, failed FROM routine_runs WHERE slug = ? ORDER BY id DESC LIMIT 1', r.slug)
+      .exec(
+        'SELECT task, trigger, started, failed, event FROM routine_runs WHERE slug = ? ORDER BY id DESC LIMIT 1',
+        r.slug,
+      )
       .toArray()[0];
     const open = this.openRunOf(r.slug);
     const brief = (uuid) => (uuid ? { uuid, wid: this.tasks.get(uuid)?.wid ?? null } : null);
@@ -220,12 +247,16 @@ export const routinesMethods = {
         .one().n,
       openRun: brief(open),
       recentRuns: this.sql
-        .exec('SELECT task, trigger, started, failed FROM routine_runs WHERE slug = ? ORDER BY id DESC LIMIT 6', r.slug)
+        .exec(
+          'SELECT task, trigger, started, failed, event FROM routine_runs WHERE slug = ? ORDER BY id DESC LIMIT 6',
+          r.slug,
+        )
         .toArray()
         .map((run) => ({
           ...brief(run.task),
           status: this.tasks.get(run.task)?.status ?? 'gone',
           trigger: run.trigger,
+          event: keptRunEvent(run.event),
           at: new Date(run.started).toISOString(),
           failed: Boolean(run.failed),
         })),
@@ -233,6 +264,7 @@ export const routinesMethods = {
         ? {
             ...brief(last.task),
             trigger: last.trigger,
+            event: keptRunEvent(last.event),
             at: new Date(last.started).toISOString(),
             failed: Boolean(last.failed),
           }
@@ -494,7 +526,10 @@ export const routinesMethods = {
    * Runs a routine: a task in area `routines` of the routine's repository, carrying the prompt, and an agent
    * on it (through that repository's routine). Never queued: over a cap, it says why.
    */
-  async runRoutine(slug, { note = null, trigger = 'manual', comment = null, start = true, force = false } = {}) {
+  async runRoutine(
+    slug,
+    { note = null, trigger = 'manual', comment = null, start = true, force = false, event = null } = {},
+  ) {
     await this.ready();
     const row = this.routineRow(slug);
     const blocker = this.routineBlocker(row, trigger, { force });
@@ -519,11 +554,12 @@ export const routinesMethods = {
     const uuid = res.body.tasks[0].uuid;
     const runId = this.sql
       .exec(
-        'INSERT INTO routine_runs (slug, task, trigger, started) VALUES (?, ?, ?, ?) RETURNING id',
+        'INSERT INTO routine_runs (slug, task, trigger, started, event) VALUES (?, ?, ?, ?, ?) RETURNING id',
         row.slug,
         uuid,
         trigger,
         Date.now(),
+        event ? JSON.stringify(event) : null,
       )
       .one().id;
     if (comment) this.change(uuid, { annotate: comment, by: `routine:${row.slug}` }, new Date(), 'agents');
@@ -759,9 +795,17 @@ export const routinesMethods = {
 
   /**
    * Notes a trigger on the routine's open run, or makes a run (and starts it when the routine says auto, or when
-   * `auto` says so: a signal trigger has its own, BRK-196).
+   * `auto` says so: a signal trigger has its own, BRK-196). `event` is the infrastructure event a new run keeps (WEB-122).
    */
-  async deliverTrigger(routine, label, comment, trigger, refuse, auto = routine.trigger_start === 'auto') {
+  async deliverTrigger(
+    routine,
+    label,
+    comment,
+    trigger,
+    refuse,
+    auto = routine.trigger_start === 'auto',
+    event = null,
+  ) {
     // A run already open gets the trigger noted on it, not a second run.
     if (routine.enabled && !this.routineSettings().paused) {
       const open = this.openRunOf(routine.slug);
@@ -782,7 +826,7 @@ export const routinesMethods = {
     }
     let result;
     try {
-      result = await this.runRoutine(routine.slug, { trigger, comment, start: auto });
+      result = await this.runRoutine(routine.slug, { trigger, comment, start: auto, event });
     } catch (error) {
       if (error.status !== 400)
         this.routineEvent(routine.slug, 'trigger_refused', { detail: `${label}: ${error.message}` });
