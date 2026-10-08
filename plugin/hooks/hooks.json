@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --yes breakaway@2 hook session",
+            "command": "npx --yes breakaway@2.0.1 hook session",
             "async": true
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --yes breakaway@2 hook session",
+            "command": "npx --yes breakaway@2.0.1 hook session",
             "async": true
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --yes breakaway@2 hook session",
+            "command": "npx --yes breakaway@2.0.1 hook session",
             "async": true
           }
         ]
@@ -38,12 +38,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx --yes breakaway@2 hook session",
+            "command": "npx --yes breakaway@2.0.1 hook session",
             "async": true
           },
           {
             "type": "command",
-            "command": "npx --yes breakaway@2 hook wait",
+            "command": "npx --yes breakaway@2.0.1 hook wait",
             "async": true,
             "asyncRewake": true,
             "timeout": 300
