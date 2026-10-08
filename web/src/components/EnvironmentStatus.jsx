@@ -132,9 +132,30 @@ function HealthTile({ health, empty = false, failed = false, declared = null }) 
 /**
  * Whether what the map shows is up to date (BRK-257): when the board last looked or, when it couldn't, since when it's
  * out of date, and why.
- * @param {{ stale: any, seen: string | null }} props `stale` from GET /api/infra/inventory's `stale`; `seen` the latest resource's
+ * @param {{ stale: any, seen: string | null, looking?: boolean }} props `stale` from GET /api/infra/inventory's `stale`; `seen` the latest resource's
  */
-function InventoryTile({ stale, seen }) {
+function InventoryTile({ stale, seen, looking = false }) {
+  // The board is looking now (a Refresh, the cron, or an applied plan's look again, BRK-310): what it finds replaces
+  // what the map shows (WEB-129).
+  if (looking)
+    return (
+      <Tile
+        label="Inventory"
+        Icon={ScanSearch}
+        value="Looking…"
+        muted
+        detail={
+          seen ? (
+            <>
+              last looked <When iso={seen} />
+            </>
+          ) : (
+            'at what runs now'
+          )
+        }
+        detailTitle={seen ? `last looked ${ago(seen)}` : 'at what runs now'}
+      />
+    );
   if (stale) {
     const since = stale.seen ? `as of ${ago(stale.seen)}` : 'never looked at yet';
     return (
@@ -177,10 +198,11 @@ function InventoryTile({ stale, seen }) {
 }
 
 /**
- * `inventory` is whether what the map shows is up to date: the environment's `stale` entry and when the board last saw it.
+ * `inventory` is whether what the map shows is up to date: the environment's `stale` entry, when the board last saw it,
+ * and whether it's looking now.
  * `change` is the owner's change from the console (WEB-99), in words, shown on the Plan tile when no plan runs or waits.
  * `firstApply` is the plan whose first apply failed on a new environment (WEB-120), which Health names.
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null }, change?: { value: string, detail: string } | null, firstApply?: any }} props
+ * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null, looking?: boolean }, change?: { value: string, detail: string } | null, firstApply?: any }} props
  */
 export function StatusBand({
   env,
@@ -207,7 +229,7 @@ export function StatusBand({
           failed={Boolean(firstApply)}
           declared={!env.target && env.desiredTarget?.name ? env.desiredTarget : null}
         />
-        {env.target && <InventoryTile stale={inventory.stale} seen={inventory.seen} />}
+        {env.target && <InventoryTile stale={inventory.stale} seen={inventory.seen} looking={inventory.looking} />}
         {env.frozen ? (
           <Tile
             label="Freeze"
