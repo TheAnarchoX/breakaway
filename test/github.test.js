@@ -1677,6 +1677,106 @@ describe('GitHub per repository (CLD-124)', () => {
       gh.etags = false;
     }
   });
+
+  it('syncs a repository whose checks run each minute from the alarm, and an idle one no more than before (BRK-272)', async () => {
+    await runDurableObjectAlarm(stub()); // nothing left over from the tests above
+    gh.pulls = [pr(72, { title: 'Run the checks', sha: 'sw72' })];
+    gh.checks.sw72 = [{ name: 'CI', status: 'in_progress', conclusion: null }];
+    other.pulls = [];
+    gh.rate = { core: 4900, graphql: 4990 };
+    try {
+      // The cron syncs every repository; widgets's checks run, so its next sync is a minute after this one.
+      await runInDurableObject(stub(), (store) => store.tick('cron'));
+      const planned = await runInDurableObject(stub(), async (store) => ({
+        busy: [...store.githubBusyRepos()],
+        pace: store.githubPace().pace,
+        at: Number(store.meta('gh_fast_at')),
+        alarm: await store.ctx.storage.getAlarm(),
+        last: Number(store.ghMeta('gh_last_sync', 'widgets')),
+      }));
+      expect(planned.busy).toEqual(['widgets']);
+      expect(planned.pace).toBe(60_000);
+      expect(planned.at).toBe(planned.last + 60_000);
+      expect(planned.alarm).toBeLessThanOrEqual(planned.at);
+      // A sync that fails counts as a try: the next waits the same minute, never retrying at once.
+      const failed = await runInDurableObject(stub(), (store) => {
+        store.setGhMeta('gh_last_sync', 'widgets', Date.now() - 600_000);
+        try {
+          return store.githubDueTimes().find((d) => d.slug === 'widgets').at - Date.now();
+        } finally {
+          store.setGhMeta('gh_last_sync', 'widgets', planned.last);
+        }
+      });
+      expect(failed).toBeGreaterThan(50_000);
+
+      // A minute on: the alarm syncs widgets alone, and scratch, with nothing running, waits for the cron.
+      const minuteOn = () =>
+        runInDurableObject(stub(), async (store) => {
+          for (const slug of ['widgets', 'scratch']) {
+            store.setGhMeta('gh_last_sync', slug, Number(store.ghMeta('gh_last_sync', slug)) - 61_000);
+            const rate = store.githubBudget(slug);
+            const at = new Date(Date.parse(rate.at) - 61_000).toISOString();
+            store.setGhMeta('gh_rate', slug, JSON.stringify({ ...rate, at }));
+          }
+          store.setMeta('gh_fast_at', Date.now());
+          await store.ctx.storage.setAlarm(Date.now() + 60_000); // run below, now
+        });
+      await minuteOn();
+      gh.calls = [];
+      expect(await runDurableObjectAlarm(stub())).toBe(true);
+      expect(gh.calls).toContain(`${REPO}/pulls`);
+      expect(gh.calls.filter((c) => c.startsWith(`${OTHER}/`))).toEqual([]);
+      expect(await runInDurableObject(stub(), (store) => Number(store.meta('gh_fast_at')))).toBeGreaterThan(Date.now());
+
+      // An agent on the pull request keeps it busy too, after its checks finish.
+      gh.checks.sw72 = [{ name: 'CI', status: 'completed', conclusion: 'success' }];
+      await minuteOn();
+      expect(await runDurableObjectAlarm(stub())).toBe(true);
+      expect(
+        await runInDurableObject(stub(), (store) => {
+          store.prAgent = () => ({ busy: 'claude-x is working on it right now' });
+          try {
+            return [...store.githubBusyRepos()];
+          } finally {
+            delete store.prAgent;
+          }
+        }),
+      ).toEqual(['widgets']);
+
+      // Nothing runs now: no faster sync is planned, and an alarm for something else reconciles as it always did.
+      const idle = await runInDurableObject(stub(), async (store) => ({
+        busy: [...store.githubBusyRepos()],
+        at: store.meta('gh_fast_at'),
+        next: await store.scheduleFastSync(),
+      }));
+      expect(idle).toEqual({ busy: [], at: null, next: null });
+
+      // The pace slows on its own as the budget left shrinks, and stops when it's nearly gone.
+      const paceWith = (remaining) =>
+        runInDurableObject(stub(), (store) => {
+          store.prAgent = () => ({ busy: 'claude-x is working on it right now' });
+          const rate = store.githubBudget('widgets');
+          const reset = new Date(Date.now() + 30 * 60_000).toISOString();
+          for (const slug of ['widgets', 'scratch'])
+            store.setGhMeta(
+              'gh_rate',
+              slug,
+              JSON.stringify({ ...rate, limits: { ...rate.limits, core: { remaining, limit: 5000, reset } } }),
+            );
+          try {
+            return store.githubPace().pace;
+          } finally {
+            delete store.prAgent;
+          }
+        });
+      expect(await paceWith(4000)).toBe(60_000);
+      expect(await paceWith(600)).toBeGreaterThan(60_000);
+      expect(await paceWith(600)).toBeLessThan(300_000);
+      expect(await paceWith(20)).toBeNull();
+    } finally {
+      gh.rate = null;
+    }
+  });
 });
 
 describe('the GitHub view, Merge, and the pipeline per repository (CLD-125)', () => {
