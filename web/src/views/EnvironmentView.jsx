@@ -6,6 +6,7 @@ import { environmentId, hashFor, navOrder, repoName, tasks } from '../lib/store.
 import { STREAM_MAX, agentsAtWork, arrived, streamItems } from '../lib/env-stream.js';
 import { DeploysSection, RecentDeploys } from '../components/EnvironmentDeploys.jsx';
 import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
+import { firstApplyFailed } from '../lib/env-plans.js';
 import { FreezeButton, KIND_LABEL, environmentHealth } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
 import { UnownedSection } from '../components/Unowned.jsx';
@@ -376,6 +377,8 @@ export function EnvironmentView() {
   const agents = agentsAtWork(tasks.value, { env, incidents: state.incidents, plans: state.plans });
   const names = new Map(state.resources.map((r) => [r.id, r.name]));
   const cant = cantChange(env);
+  // A new environment whose first apply failed: its target points at nothing yet (WEB-120).
+  const firstApply = firstApplyFailed({ env, plans: state.plans, resources: state.resources });
   const showResource = (/** @type {string} */ rid) => {
     setMode('list');
     requestAnimationFrame(() => {
@@ -446,6 +449,7 @@ export function EnvironmentView() {
               agents={agents}
               inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
               change={changeTile(ch)}
+              firstApply={firstApply}
             />
             <Topology
               env={env}
@@ -492,6 +496,8 @@ export function EnvironmentView() {
               changes={ch.board}
               card={cant ? null : (ch.held?.n ?? null)}
               error={state.plansError}
+              failed={firstApply}
+              onChange={() => load({ quiet: true })}
             />
             <Drift env={env} desired={state.desired} error={state.desiredError} />
             <CostSection env={env} tick={state.tick} />
