@@ -198,7 +198,7 @@ npx breakaway list --ready
 - **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, npm's public registry for the packages your repositories publish there, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh).
 - **You decide.** Agents claim, build, and open pull requests. You merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **Taskwarrior is a first-class way in.** The sync protocol is Taskwarrior's.
-- **Free for personal and noncommercial use.** The source is public. Commercial use is by exception, granted case by case ([`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md)).
+- **Free for personal and noncommercial use.** The source is public. Commercial use is by exception, granted case by case ([licensing](https://leavethepack.dev/licensing/)).
 
 ## How it's built
 
@@ -275,11 +275,11 @@ breakaway publishes releases and never deploys an install. Every install, the ow
 
 ## Who builds it
 
-breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else: [`CONTRIBUTING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/CONTRIBUTING.md) says what you can do instead. Report a security problem privately, as [`SECURITY.md`](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. The agents follow [`AGENTS.md`](https://github.com/TheAnarchoX/breakaway/blob/main/AGENTS.md), and anything people see or read follows the [brand guide](https://github.com/TheAnarchoX/breakaway/blob/main/brand/README.md).
+breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else, apart from a [licence exception request](https://leavethepack.dev/licensing/#how-to-ask): [`CONTRIBUTING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/CONTRIBUTING.md) says what you can do instead. Report a security problem privately, as [`SECURITY.md`](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. The agents follow [`AGENTS.md`](https://github.com/TheAnarchoX/breakaway/blob/main/AGENTS.md), and anything people see or read follows the [brand guide](https://github.com/TheAnarchoX/breakaway/blob/main/brand/README.md).
 
 ## Licence
 
-breakaway is free for personal and noncommercial use, under the [PolyForm Noncommercial License 1.0.0](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE): personal use, charities and nonprofits, education, public research, and government use it free. Commercial use is by exception, granted case by case by the owner, and [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says who can ask and how.
+breakaway is free for personal and noncommercial use, under the [PolyForm Noncommercial License 1.0.0](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE): personal use, charities and nonprofits, education, public research, and government use it free. Commercial use is by exception, granted case by case by the owner, and [leavethepack.dev/licensing](https://leavethepack.dev/licensing/) says who can ask and how ([`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) has the same words, next to the code).
 
 The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, in [`LICENSE-FSL`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE-FSL).
 

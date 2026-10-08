@@ -71,6 +71,53 @@ A signal that crosses a rule opens an incident: a task, in the repository that o
 
 ---
 
+Source: https://leavethepack.dev/licensing/
+
+# Licensing: Free for personal and noncommercial use.
+
+> Who uses breakaway free, what counts as commercial, and how worker co-ops and digital rights and privacy groups ask for a free commercial licence. From 2.0.0, the licence is PolyForm Noncommercial 1.0.0.
+
+From 2.0.0, breakaway’s licence is the [PolyForm Noncommercial License 1.0.0](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE). This page says what that means in plain words. It isn’t legal advice: where this page and the licence differ, the licence decides.
+
+## Who uses it free
+
+The licence lets you use, change, and self-host breakaway, and share it with its licence, for a permitted purpose. It names two kinds.
+
+- **Personal use.** Research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any commercial application in view.
+- **Noncommercial organizations.** Charities, educational institutions, public research organizations, public safety or health organizations, environmental protection organizations, and government institutions, however they’re funded.
+
+Free means free: no accounts, no pricing, and no paid features. You run your own board on your own Cloudflare account, and it keeps its data.
+
+## What counts as commercial
+
+Any use the licence doesn’t name as a permitted purpose. Running breakaway for a company’s work, for clients, or for a product you sell is commercial, and so is a personal project with a commercial application in view. If your use isn’t personal use as above, and you aren’t one of the organizations it lists, the licence doesn’t cover it, and you need an exception.
+
+## Exceptions
+
+The owner grants a free commercial licence case by case, to groups whose work fits what breakaway is for:
+
+- **Worker co-ops.** Businesses owned and run by the people who work in them.
+- **Digital rights and privacy groups.** Including projects that build software to give people back ownership of their digital lives, once the owner has looked at the work.
+
+A company funded by venture capital can’t get an exception, whatever its size. Asking is no promise of a yes, and a yes covers the group and the use it names.
+
+## How to ask
+
+Open a [licence exception request](https://github.com/TheAnarchoX/breakaway/issues/new?template=licence-exception.yml) on breakaway’s GitHub. The form asks for:
+
+- **Who you are**: your group’s name, and a link to its site or its work.
+- **What kind of group you are**: a worker co-op, a digital rights or privacy group, or something else, and why it fits.
+- **How you’re owned and funded**: who owns the group, and whether any of its money comes from venture capital.
+- **What you’d use breakaway for**: the work it would run, and roughly how many people would use it.
+
+A request on GitHub is public, so put nothing private in it. The owner answers on the request. A request isn’t a licence until the owner grants it in writing.
+
+## Releases before 2.0.0
+
+Every release before 2.0.0 stays under the licence it shipped with, FSL-1.1-Apache-2.0, whose text is in [`LICENSE-FSL`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE-FSL). The PolyForm Noncommercial License applies to 2.0.0 and every release after it. The same words are in [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md), next to the code.
+
+---
+
 Source: https://leavethepack.dev/docs/
 
 # breakaway docs
@@ -121,7 +168,7 @@ These are the claims the docs, the README, and this site all make, and the board
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
-- **Free for personal and noncommercial use, and the source is public.** The licence is PolyForm Noncommercial 1.0.0 ([`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md)).
+- **Free for personal and noncommercial use, and the source is public.** The licence is PolyForm Noncommercial 1.0.0 ([licensing](https://leavethepack.dev/licensing/)).
 
 > **Where the source of truth is.** These pages are a guide. The repository’s [`docs/tasks.md`](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md) is the manual the code is written against, and `npx breakaway help` always lists the commands your version has.
 
@@ -141,7 +188,7 @@ Each step ends with a check, which reads one of three ways:
 - **Not verified yet:** it’s set up, but nothing has used it. The check says what will verify it. A Claude routine reads this until the first agent it starts claims a task.
 - **Failed:** the check says what failed and the fix. On Connections, that’s a row that reads **Needs attention**.
 
-The licence is PolyForm Noncommercial 1.0.0: breakaway is free for personal and noncommercial use, and commercial use is by exception. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
+The licence is PolyForm Noncommercial 1.0.0: breakaway is free for personal and noncommercial use, and commercial use is by exception. [Licensing](https://leavethepack.dev/licensing/) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 ## With Claude Code
 
@@ -2492,7 +2539,7 @@ No analytics, no telemetry, no tracking, and no other service.
 
 ## How breakaway is built
 
-breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else. The agents follow the repository’s `AGENTS.md`: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in `brand/`. The licence lets you change your own copy as much as you like.
+breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else, apart from a [licence exception request](https://leavethepack.dev/licensing/#how-to-ask). The agents follow the repository’s `AGENTS.md`: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in `brand/`. The licence lets you change your own copy as much as you like.
 
 ```sh
 pnpm install
@@ -2670,7 +2717,7 @@ Source: https://leavethepack.dev/docs/faq/
 
 For personal and noncommercial use, yes: free to run, free to change, and free to self-host. The licence is the **PolyForm Noncommercial License 1.0.0**. It lets anyone use breakaway for personal use (research, study, hobby projects, and the like, with no commercial application in view), and lets charities, educational institutions, public research organizations, public safety, health, and environmental organizations, and government institutions use it, however they’re funded. The source is public.
 
-Commercial use is by exception: the owner grants a free commercial licence case by case. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says who can ask and how.
+Commercial use is by exception: the owner grants a free commercial licence case by case. [Licensing](https://leavethepack.dev/licensing/) says who can ask and how.
 
 The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, the licence it shipped with.
 
@@ -2722,7 +2769,7 @@ A breakaway is the rider who leaves the pack and holds the lead alone. That’s 
 
 ## How do I report a problem or a security issue?
 
-Report a security issue privately, as breakaway’s [security policy](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. breakaway takes no issues or pull requests otherwise: it’s built by its owner and their agents. The licence lets you fix your own copy.
+Report a security issue privately, as breakaway’s [security policy](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. breakaway takes no issues or pull requests otherwise, apart from a [licence exception request](https://leavethepack.dev/licensing/#how-to-ask): it’s built by its owner and their agents. The licence lets you fix your own copy.
 
 ---
 
