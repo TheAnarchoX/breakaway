@@ -905,7 +905,7 @@ function SettingsForm({ ch }) {
 }
 
 /** Opens New agent with `prompt` filled in. */
-function startAgent(/** @type {any} */ env, /** @type {string} */ prompt) {
+export function startAgent(/** @type {any} */ env, /** @type {string} */ prompt) {
   writeDraft('agent', { fields: { prompt, repo: env.repo }, typed: true });
   newAgent.value = true;
 }
