@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Envelopes and scaling rules · breakaway</title>
+<meta name="description" content="Bounds you approve once on one environment, so the board scales and restarts inside them without asking you again, and the scaling rules in your repository that ask it to.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://leavethepack.dev/docs/architect-envelopes/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Envelopes and scaling rules · breakaway">
+<meta property="og:description" content="Bounds you approve once on one environment, so the board scales and restarts inside them without asking you again, and the scaling rules in your repository that ask it to.">
+<meta property="og:url" content="https://leavethepack.dev/docs/architect-envelopes/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://leavethepack.dev/social.png">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
+<meta property="og:image:alt" content="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu" open>
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/updating-to-2/">Updating to 2.0.0</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/recovery/">Recovery</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: start</h2><ul><li><a href="/docs/architect/">What Architect is</a></li><li><a href="/docs/get-started-with-architect/">Get started</a></li><li><a href="/docs/architect-supported/">What’s supported</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: use it</h2><ul><li><a href="/docs/architect-environments/">Environments</a></li><li><a href="/docs/architect-desired-state/">Describe it as code</a></li><li><a href="/docs/architect-changes/">Change an environment</a></li><li><a href="/docs/architect-plans/">Plans and approvals</a></li><li><a href="/docs/architect-policy/">Policy</a></li><li><a href="/docs/architect-envelopes/" aria-current="page">Envelopes and scaling</a></li><li><a href="/docs/architect-signals/">Signals and incidents</a></li><li><a href="/docs/architect-cost/">Cost and budgets</a></li><li><a href="/docs/architect-patterns/">Patterns</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: connect</h2><ul><li><a href="/docs/architect-connections/">Tokens and the apply workflow</a></li><li><a href="/docs/architect-deploy-flow/">With the deploy flow</a></li><li><a href="/docs/architect-agents/">Agents and infrastructure</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: run it</h2><ul><li><a href="/docs/architect-freeze/">Freeze, gates, and locks</a></li><li><a href="/docs/architect-drift/">Drift and break-glass</a></li><li><a href="/docs/architect-recovery/">When it goes wrong</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/">Privacy</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Architect: use it</p>
+    <h1>Envelopes and scaling rules</h1>
+    <p class="lede">Bounds you approve once on one environment, so the board scales and restarts inside them without asking you again, and the scaling rules in your repository that ask it to.</p>
+    <p>An <strong>envelope</strong> is bounds you approve once on one environment, production included: “2 to 10 instances”, “up to 60 a month”, “3 restarts a day”. Inside them, the board scales and restarts without asking you again, and tells you after. Anything outside them is a plan that waits for you, with its push.</p>
+<p>Envelopes start empty. Until you set one, every scale and restart waits for you.</p>
+<h2 id="set-one"><a class="anchor" href="#set-one" aria-label="Link to this section">#</a>Set one</h2>
+<p>On the repository’s settings page, under <strong>Infrastructure</strong>, each environment shows its envelope or “No envelope: every scale and restart waits for you.” Press <strong>Add an envelope</strong>, or <strong>Change</strong> on one you have:</p>
+<ul><li><strong>Scale bounds</strong>: a minimum and a maximum, for one resource by name or every resource of a kind. Only what Cloudflare can scale is offered: a container’s most instances, and a queue consumer’s concurrency (<a href="/docs/architect-supported/#scale-and-restart">What’s supported</a>).</li><li><strong>A cost bound</strong>, optional: the most the environment may cost a month after a scale, in your currency. A scale that would go past it waits for you.</li><li><strong>A restart cap</strong>: how many restarts in a window, 3 a day by default. Once they’re used, the next restart waits for you, with a push. 0 asks you about every restart.</li></ul>
+<p><strong>Set envelope</strong> asks first. <strong>Revoke</strong> puts every scale and restart back in front of you. Each is an <code>envelope</code> entry in the audit trail.</p>
+<p>An envelope lives on the board, one per environment, never in the repository, so a pull request can’t widen it. Setting, changing, and revoking one is yours alone. An observe-only environment has none.</p>
+<h2 id="who-acts-inside-it"><a class="anchor" href="#who-acts-inside-it" aria-label="Link to this section">#</a>Who acts inside it</h2>
+<p>Nothing scales just because an envelope exists. Two things can ask:</p>
+<ul><li><strong>A scaling rule</strong>, in your repository (<a href="#scaling-rules">below</a>), when a signal matches it.</li><li><strong>A runbook’s run</strong>, when its routine’s description says to, with <code>npx breakaway infra act &lt;environment&gt; &lt;resource&gt; scale &lt;n&gt;</code> or <code>restart</code> and the run’s own key (<a href="/docs/architect-signals/#runbooks">Signals, incidents, and runbooks</a>).</li></ul>
+<p>Either way the board builds the plan itself and decides:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">The ask</th><th scope="col">What happens</th></tr></thead><tbody><tr><td>Inside the bounds, the cost bound, and the restart cap</td><td>Approved by the envelope and applied with no press, through the same apply workflow. A quiet note in the inbox: “Scaled widgets-api to 6 instances, inside its envelope.”</td></tr><tr><td>Outside the bounds, past the cost bound, or the restart cap used up</td><td>A plan that waits for you, with a push</td></tr><tr><td>A frozen or observe-only environment, or a change the resource can’t make</td><td>Refused</td></tr></tbody></table></div>
+<h2 id="scaling-rules"><a class="anchor" href="#scaling-rules" aria-label="Link to this section">#</a>Scaling rules</h2>
+<p>Scaling rules are in <code>.github/breakaway-infra/scaling.json</code> on the default branch, checked by <code>infra check</code>. Each rule listens to the environment’s signals and turns a matching one into one ask through the envelope:</p>
+<pre data-lang="json"><code>{
+  &quot;version&quot;: 1,
+  &quot;rules&quot;: [
+    {
+      &quot;name&quot;: &quot;render backlog&quot;,
+      &quot;environments&quot;: [&quot;production&quot;],
+      &quot;resourceKinds&quot;: [&quot;container&quot;],
+      &quot;kinds&quot;: [&quot;health&quot;],
+      &quot;level&quot;: &quot;warning&quot;,
+      &quot;act&quot;: &quot;scale&quot;,
+      &quot;step&quot;: 2
+    },
+    {
+      &quot;name&quot;: &quot;render down&quot;,
+      &quot;environments&quot;: [&quot;production&quot;],
+      &quot;resource&quot;: &quot;widgets-render&quot;,
+      &quot;kinds&quot;: [&quot;health&quot;],
+      &quot;level&quot;: &quot;critical&quot;,
+      &quot;act&quot;: &quot;restart&quot;
+    }
+  ]
+}</code></pre>
+<ul><li><strong>What it hears</strong>: <code>environments</code> (every one when left out); one resource by name (<code>resource</code>) or every resource of some kinds (<code>resourceKinds</code>); the signal <code>kinds</code>, <code>health</code> or <code>alert</code>, never cost, so a budget never scales anything up; the lowest <code>level</code> that counts (<code>critical</code> when left out); and optionally a value <code>above</code> or <code>below</code>.</li><li><strong>What it asks</strong>, of the resource the signal is about: <code>&quot;act&quot;: &quot;scale&quot;</code> with <code>to</code> (a whole number) or <code>step</code> (up or down by a whole number, from what runs now), or <code>&quot;act&quot;: &quot;restart&quot;</code>.</li></ul>
+<p>The envelope, its restart cap, a freeze, and observe only decide, never the rule. The same rule and signal ask at most once a day, and only the signal’s fields and value are read: its text never reaches the ask. A file that doesn’t check asks for nothing, and the board shows its line and field. Each ask, or its refusal, shows on the repository’s scaling rules, and its audit entry names the rule.</p>
+<h2 id="hear-about-it"><a class="anchor" href="#hear-about-it" aria-label="Link to this section">#</a>Hear about it</h2>
+<ul><li>A scale or restart inside the envelope is a quiet note in the inbox, never a push.</li><li>A restart the cap turned away is a plan that waits for you, with a push, and the infrastructure event <code>envelope.used_up</code>, which can start a routine (<a href="/docs/architect-signals/#infrastructure-events">Signals, incidents, and runbooks</a>).</li><li><strong>Freeze</strong> stops envelopes too, until you unfreeze (<a href="/docs/architect-freeze/">Freeze, gates, and locks</a>).</li></ul>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/architect-policy/"><span class="label">Previous</span><span>Policy</span></a><a class="pager-next" href="/docs/architect-signals/"><span class="label">Next</span><span>Signals and incidents</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#set-one">Set one</a></li><li><a href="#who-acts-inside-it">Who acts inside it</a></li><li><a href="#scaling-rules">Scaling rules</a></li><li><a href="#hear-about-it">Hear about it</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/architect/">Architect</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="/licensing/">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="/licensing/">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

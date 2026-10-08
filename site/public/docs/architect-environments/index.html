@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Environments · breakaway</title>
+<meta name="description" content="What an environment is, the three ways to add one, how to build one from nothing or have an agent set it up, and short-lived environments, one per task.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://leavethepack.dev/docs/architect-environments/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Environments · breakaway">
+<meta property="og:description" content="What an environment is, the three ways to add one, how to build one from nothing or have an agent set it up, and short-lived environments, one per task.">
+<meta property="og:url" content="https://leavethepack.dev/docs/architect-environments/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://leavethepack.dev/social.png">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
+<meta property="og:image:alt" content="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu" open>
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/updating-to-2/">Updating to 2.0.0</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/recovery/">Recovery</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: start</h2><ul><li><a href="/docs/architect/">What Architect is</a></li><li><a href="/docs/get-started-with-architect/">Get started</a></li><li><a href="/docs/architect-supported/">What’s supported</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: use it</h2><ul><li><a href="/docs/architect-environments/" aria-current="page">Environments</a></li><li><a href="/docs/architect-desired-state/">Describe it as code</a></li><li><a href="/docs/architect-changes/">Change an environment</a></li><li><a href="/docs/architect-plans/">Plans and approvals</a></li><li><a href="/docs/architect-policy/">Policy</a></li><li><a href="/docs/architect-envelopes/">Envelopes and scaling</a></li><li><a href="/docs/architect-signals/">Signals and incidents</a></li><li><a href="/docs/architect-cost/">Cost and budgets</a></li><li><a href="/docs/architect-patterns/">Patterns</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: connect</h2><ul><li><a href="/docs/architect-connections/">Tokens and the apply workflow</a></li><li><a href="/docs/architect-deploy-flow/">With the deploy flow</a></li><li><a href="/docs/architect-agents/">Agents and infrastructure</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: run it</h2><ul><li><a href="/docs/architect-freeze/">Freeze, gates, and locks</a></li><li><a href="/docs/architect-drift/">Drift and break-glass</a></li><li><a href="/docs/architect-recovery/">When it goes wrong</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/">Privacy</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Architect: use it</p>
+    <h1>Environments</h1>
+    <p class="lede">What an environment is, the three ways to add one, how to build one from nothing or have an agent set it up, and short-lived environments, one per task.</p>
+    <p>An <strong>environment</strong> is a named place a repository runs. It has a kind, a provider, a <strong>target</strong> (what it points at on the provider: a Worker’s name), and three switches: <strong>freeze</strong>, <strong>production gates</strong>, and <strong>observe only</strong> (<a href="/docs/architect-freeze/">Freeze, gates, and locks</a>). Its name is also its file’s name: <code>staging</code> is <code>.github/breakaway-infra/staging.json</code>.</p>
+<p>A fresh install has none. A repository can have up to 50.</p>
+<h2 id="kinds"><a class="anchor" href="#kinds" aria-label="Link to this section">#</a>Kinds</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Kind</th><th scope="col">What it’s for</th><th scope="col">By default</th></tr></thead><tbody><tr><td><strong>production</strong></td><td>What your people use</td><td>Production gates on: every plan waits for you, and its incidents push to your phone</td></tr><tr><td><strong>staging</strong></td><td>Where changes go first</td><td>Plans wait for you under the default policy; its incidents wait quietly in the inbox</td></tr><tr><td><strong>short-lived</strong></td><td>One task’s own, made for it and removed when it closes</td><td>Made and removed by plans that wait for you</td></tr></tbody></table></div>
+<h2 id="add-one"><a class="anchor" href="#add-one" aria-label="Link to this section">#</a>Add one</h2>
+<p>There are three ways, and you pick by where the repository starts.</p>
+<ol><li><strong>It’s on the deploy flow.</strong> It already has two: <strong>staging</strong> and <strong>production</strong>, pointing at its pipeline’s Workers. The board made them when it read the pipeline, and its deploys, Promote, and Roll back show on them (<a href="/docs/architect-deploy-flow/">Architect and the deploy flow</a>).</li><li><strong>It runs something already.</strong> On <strong>Infrastructure</strong>, press <strong>Add an environment</strong>: pick the repository, a name like <code>staging</code>, its kind, the provider, and its target, the Worker’s name. The board looks at what runs there right after, and every 15 minutes.</li><li><strong>You’d rather describe it.</strong> In the same dialog, <strong>Have an agent do it</strong> writes the agent’s prompt for you in three steps: - <strong>How</strong>: <strong>Describe what you need</strong> in your own words (“a Worker with a D1 database and a queue for exports”), or <strong>Let the agent work it out</strong> from the repository’s wrangler config, bindings, and code. - <strong>Environment</strong>: its name, kind, provider, and target, if it has one yet. - <strong>Prompt</strong>: read it, change it if you like, and <strong>Open New agent</strong>. Nothing starts until you press <strong>Start agent</strong> there.</li></ol>
+<p>   The agent writes the environment’s file, runs <code>infra check</code>, and opens a pull request. Its plan waits for you after you merge it.</p>
+<p>Adding, renaming, and removing an environment are yours: an agent’s request is refused. Kickoff’s <strong>Run it</strong> step can add staging and production for a new project too (<a href="/docs/architect-patterns/#a-new-project-from-kickoff">Patterns</a>).</p>
+<h2 id="the-target"><a class="anchor" href="#the-target" aria-label="Link to this section">#</a>The target</h2>
+<p>The target is where the board starts looking. It reads the target and everything the target reaches: the Workers it calls, and what they bind. Nothing else on the account is read or kept, so the map shows only what this environment runs.</p>
+<ul><li><strong>No target yet?</strong> The board looks with the one Worker the environment’s merged file declares, and skips it while the file declares none or several.</li><li><strong>Approving a plan that gives an environment its target</strong> always waits for you, whatever your policy lets through.</li><li><strong>A first apply that failed</strong> leaves the target pointing at nothing. The console says so, with <strong>Clear the target</strong> to start over: nothing that runs changes, and the next change, or <strong>Compare now</strong> while the file still declares it, plans it again.</li></ul>
+<h2 id="build-one-from-nothing"><a class="anchor" href="#build-one-from-nothing" aria-label="Link to this section">#</a>Build one from nothing</h2>
+<p>An environment with nothing in it shows <strong>Add resource</strong> as its first step. You can build the whole thing from the board, without writing a file:</p>
+<ol><li><strong>Add an environment</strong> with no target.</li><li><strong>Add resource</strong>, then <strong>Worker</strong>: give it a name. A new Worker starts with a small module that answers <code>/health</code>, until your deploy puts its code on it.</li><li><strong>Add resource</strong> again for each thing it uses, a D1 database, a KV namespace, a bucket, or a queue, and pick the Worker under <strong>Bind it to</strong>, with the binding name your code will use. Each shows dashed on the map, marked <strong>+ adds</strong>.</li><li><strong>Propose it</strong>. The board opens the pull request with the environment’s first file, and the apply workflow too when the repository doesn’t have one yet and the App may write workflows.</li><li><strong>Approve</strong>. This plan gives the environment its target, so it always waits for you. Making a Worker needs <strong>Workers Admin</strong> on the environment’s write token, for this one apply: add it before you approve, and take it away after (<a href="/docs/architect-connections/#each-environments-write-token">Tokens, GitHub, and the apply workflow</a>).</li><li><strong>Deploy the code</strong> into the new Worker, with the deploy flow or your own workflow. Its wrangler config names the same bindings (<a href="/docs/architect-deploy-flow/#keep-the-wrangler-config-and-the-file-in-agreement">Architect and the deploy flow</a>).</li></ol>
+<p>A Durable Object or a container is made by code. The console says what code must exist, and <strong>Have an agent write it</strong> starts an agent on it. Its plan applies only once that code is deployed.</p>
+<h2 id="what-an-environments-page-shows"><a class="anchor" href="#what-an-environments-page-shows" aria-label="Link to this section">#</a>What an environment’s page shows</h2>
+<ul><li><strong>A status band</strong>: health, freeze, the plan waiting, the budget used, drift, and who holds the lock while one apply runs.</li><li><strong>The map</strong>: each resource with its health and estimated monthly cost, and what uses what. <strong>List</strong> shows the same as rows. A plan waiting marks the resources it changes.</li><li><strong>The live stream</strong>: signals, plans, applies, deploys, and freezes, as they happen.</li><li><strong>Plans, incidents, drift, what nobody owns, recent deploys, cost, and the audit trail</strong>, newest first.</li></ul>
+<p><strong>Refresh</strong> looks at what runs now, and <strong>Last looked</strong> says when the board last did, and what went wrong if anything did.</p>
+<h2 id="short-lived-environments"><a class="anchor" href="#short-lived-environments" aria-label="Link to this section">#</a>Short-lived environments</h2>
+<p>A task can have its own environment: made from a template through a plan, and removed through a plan when the task closes. Use them when an agent’s change needs somewhere real to run before it reaches staging.</p>
+<ol><li><strong>Write the template</strong>, <code>.github/breakaway-infra/short-lived.json</code>. It’s a desired state with a <code>target</code>, where <code>{environment}</code> in the target and in every resource’s <code>id</code> and <code>name</code> becomes the environment’s name, so no two tasks share a resource:</li></ol>
+<p>   ``<code>json    {      &quot;version&quot;: 1,      &quot;provider&quot;: &quot;cloudflare&quot;,      &quot;target&quot;: &quot;widgets-{environment}&quot;,      &quot;resources&quot;: [        { &quot;id&quot;: &quot;worker:widgets-{environment}&quot;, &quot;kind&quot;: &quot;worker&quot;, &quot;name&quot;: &quot;widgets-{environment}&quot; },        { &quot;id&quot;: &quot;kv:widgets-cache-{environment}&quot;, &quot;kind&quot;: &quot;kv&quot;, &quot;name&quot;: &quot;widgets-cache-{environment}&quot; }      ]    }    </code>``</p>
+<ol><li><strong>Give them a write token</strong>: one GitHub environment, <code>short-lived</code>, for all of them, with only the write permissions the template needs. Then run <code>npx breakaway infra init --update</code> and merge it, so the apply workflow takes any environment name.</li><li><strong>Ask for one.</strong> An agent tags its own task <code>+environment</code>, or you press <strong>Give it an environment</strong> in the task’s <strong>Environment</strong> section. The board adds an environment named after the task’s work ID (<code>wgt-12</code>), owned by the task, and the plan that makes it, which waits for you. A policy rule for <code>&quot;environmentKinds&quot;: [&quot;short-lived&quot;]</code> can let it through (<a href="/docs/architect-policy/#letting-some-through">Policy</a>).</li><li><strong>When the task closes</strong>, anywhere (the board, the CLI, a merged pull request, Taskwarrior), the board makes the plan that removes everything in it. That plan is all deletes, so it always waits for you. Once it’s applied, the environment goes. One whose task stays open is offered for removal after 14 days.</li></ol>
+<p>A repository has at most 3 short-lived environments at once. A request over that, or with no template or no connected provider, is refused with why, and looked at again in an hour. Each one’s estimated cost adds up on its task.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/architect-supported/"><span class="label">Previous</span><span>What’s supported</span></a><a class="pager-next" href="/docs/architect-desired-state/"><span class="label">Next</span><span>Describe it as code</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#kinds">Kinds</a></li><li><a href="#add-one">Add one</a></li><li><a href="#the-target">The target</a></li><li><a href="#build-one-from-nothing">Build one from nothing</a></li><li><a href="#what-an-environments-page-shows">What an environment’s page shows</a></li><li><a href="#short-lived-environments">Short-lived environments</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/architect/">Architect</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="/licensing/">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="/licensing/">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

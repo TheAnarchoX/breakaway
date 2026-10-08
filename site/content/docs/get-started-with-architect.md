@@ -1,10 +1,10 @@
 ---
 title: Get started with Architect
-nav: Get started with Architect
+nav: Get started
 description: From a read-only token to your first approved plan, in the order it goes for real: connect Cloudflare, see staging, describe it as code, give it a way to apply, then change something and approve it. Then envelopes, runbooks, and production.
 ---
 
-This is the way in to **Architect**, the board running the infrastructure your repositories run on. You’ll go from nothing connected to a first plan you approved on staging, applied and health-checked, in five steps, the order an owner took them for real. Each step ends in a check. The [manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) says what every piece is, in full; this page says how to start.
+This is the way in to **Architect**, the board running the infrastructure your repositories run on. You’ll go from nothing connected to a first plan you approved on staging, applied and health-checked, in five steps, the order an owner took them for real. Each step ends in a check. This page says how to start; the rest of the Architect section says what every piece is, in full, starting with [What Architect is](/docs/architect/).
 
 Nothing here hands an agent a write credential or lets one apply. The board holds only a read-only token. The one thing that changes infrastructure is a workflow in your repository, which the board starts for one plan you approved.
 
@@ -12,7 +12,7 @@ Nothing here hands an agent a write credential or lets one apply. The board hold
 
 - **A board on 2.0.0**, or a 2.0.0 pre-release ([Updating to 2.0.0](/docs/updating-to-2/)), with the repository whose infrastructure you want on it.
 - **The GitHub App’s new permissions accepted**: Checks and Variables ([how](/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan. Workflows: write and Administration: write are optional and save you two steps below ([what each is for](/docs/updating-to-2/#permissions-you-can-add)).
-- **A Cloudflare account** the repository runs on. Ideally staging lives on its own account: every permission but Workers’ reaches every resource of its kind on an account, so only separate accounts keep staging and production fully apart.
+- **The Cloudflare account** the repository runs on. The board reads one account, so staging and production share it, and their write tokens are kept apart by scope ([how](/docs/architect-connections/#keep-staging-and-production-apart)).
 - **The board on your phone**, with pushes on, if you want to approve from it. A plan that waits sends one push.
 
 You need nothing on the board’s own install. Architect only watches the environment the board runs on, and never changes it.
@@ -104,7 +104,10 @@ You change staging on its page, the board opens the pull request, and you approv
 
 ## Next
 
-- **Envelopes.** Bounds you approve once on an environment, on the repository’s settings page under Infrastructure: “2 to 10 instances”, “3 restarts a day”. The board scales and restarts inside them without asking you again, and tells you after. Anything outside them waits for you ([Envelopes and scaling rules](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#envelopes-and-scaling-rules)).
-- **Runbooks.** A routine with a signal trigger, so an agent starts on an incident by itself, reads, diagnoses, and proposes the fix by pull request. Approve stays yours ([Runbooks](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#runbooks)).
-- **Production.** Its own write token, in a GitHub environment named `production` limited to the default branch, then `npx breakaway infra init --update` and merge it. Production gates make every plan there wait for you and its incidents push. **Freeze** stops every plan, and on the deploy flow pauses Promote and Release too; Roll back still works.
-- **The policy.** `.github/breakaway-infra/policy.json` decides which plans wait for you. By default every plan does, in every environment. Change it from **Policy** on Infrastructure or an environment’s console: the board says what your edit loosens and tightens, opens the pull request, and Approve merges it, with a second press for one that loosens it ([Policy](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#policy)).
+- **Production.** Its own write token, in a GitHub environment named `production` limited to the default branch, then `npx breakaway infra init --update` and merge it. Production gates make every plan there wait for you and its incidents push ([Tokens, GitHub, and the apply workflow](/docs/architect-connections/)).
+- **Your app’s deploys.** On the deploy flow, staging and production are the same environments, with the same tokens and one freeze ([Architect and the deploy flow](/docs/architect-deploy-flow/)).
+- **The policy.** By default every plan waits for you, in every environment. Let small staging changes through from **Policy** on Infrastructure; loosening is never one press ([Policy](/docs/architect-policy/)).
+- **Envelopes.** Bounds you approve once on an environment, like “2 to 10 instances” or “3 restarts a day”. The board scales and restarts inside them without asking you again ([Envelopes and scaling rules](/docs/architect-envelopes/)).
+- **Runbooks.** A routine with a signal trigger, so an agent starts on an incident by itself, diagnoses it, and proposes the fix by pull request. Approve stays yours ([Signals, incidents, and runbooks](/docs/architect-signals/#runbooks)).
+- **Freeze.** It stops every plan on an environment, and on the deploy flow pauses Promote and Release too; Roll back still works ([Freeze, gates, and locks](/docs/architect-freeze/)).
+- **Setups that work**, from an environment per task to scaling on a signal: [Patterns](/docs/architect-patterns/).

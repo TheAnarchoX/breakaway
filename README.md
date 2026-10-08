@@ -138,7 +138,7 @@ Claude Code asks for your board’s address and its token, which it keeps in you
 - **It watches.** Health, the platform's alerts, and cost come in as signals. A critical one opens an incident, a task in the repository that owns what broke, and production's push to your phone. Drift and what nobody owns become plans; nothing changes by itself.
 - **Off until you connect a provider.** Cloudflare is the one provider in 2.0.0, and Connections walks you through its read-only token and each environment's write token. The board only watches its own install.
 
-[The manual's Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) has the rest.
+[The Architect docs](https://leavethepack.dev/docs/architect/) have the rest, and the [manual's Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) is the reference the code is written against.
 
 ## What you get
 
@@ -222,7 +222,8 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
 | [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) | From a read-only token to your first approved plan |
-| [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) | Environments, plans you approve, envelopes, signals, incidents, and cost, and what agents may and may not do |
+| [Architect](https://leavethepack.dev/docs/architect/) | Environments, plans you approve, policy, envelopes, signals, incidents, cost, freeze, break-glass, patterns, and what agents may and may not do |
+| [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/) | Deploy, Promote, and Roll back your app, and approve plans for what it runs on, on the same staging and production |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
 | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) | The `tasks` skill, `/breakaway:next`, the session hooks, and the MCP server in one install, for you or a whole repository |
 | [MCP clients](https://leavethepack.dev/docs/mcp/) | Connect Claude Code or any MCP client to your board's `/mcp`, and sign in from any app that speaks MCP |

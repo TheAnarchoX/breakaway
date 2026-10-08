@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What’s supported · breakaway</title>
+<meta name="description" content="The provider Architect runs on, every kind of resource it sees, which settings it changes, what it can make, remove, scale, and restart, what it never touches, and its limits.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://leavethepack.dev/docs/architect-supported/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="What’s supported · breakaway">
+<meta property="og:description" content="The provider Architect runs on, every kind of resource it sees, which settings it changes, what it can make, remove, scale, and restart, what it never touches, and its limits.">
+<meta property="og:url" content="https://leavethepack.dev/docs/architect-supported/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://leavethepack.dev/social.png">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
+<meta property="og:image:alt" content="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu" open>
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/updating-to-2/">Updating to 2.0.0</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/recovery/">Recovery</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: start</h2><ul><li><a href="/docs/architect/">What Architect is</a></li><li><a href="/docs/get-started-with-architect/">Get started</a></li><li><a href="/docs/architect-supported/" aria-current="page">What’s supported</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: use it</h2><ul><li><a href="/docs/architect-environments/">Environments</a></li><li><a href="/docs/architect-desired-state/">Describe it as code</a></li><li><a href="/docs/architect-changes/">Change an environment</a></li><li><a href="/docs/architect-plans/">Plans and approvals</a></li><li><a href="/docs/architect-policy/">Policy</a></li><li><a href="/docs/architect-envelopes/">Envelopes and scaling</a></li><li><a href="/docs/architect-signals/">Signals and incidents</a></li><li><a href="/docs/architect-cost/">Cost and budgets</a></li><li><a href="/docs/architect-patterns/">Patterns</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: connect</h2><ul><li><a href="/docs/architect-connections/">Tokens and the apply workflow</a></li><li><a href="/docs/architect-deploy-flow/">With the deploy flow</a></li><li><a href="/docs/architect-agents/">Agents and infrastructure</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: run it</h2><ul><li><a href="/docs/architect-freeze/">Freeze, gates, and locks</a></li><li><a href="/docs/architect-drift/">Drift and break-glass</a></li><li><a href="/docs/architect-recovery/">When it goes wrong</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/">Privacy</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Architect: start</p>
+    <h1>What’s supported</h1>
+    <p class="lede">The provider Architect runs on, every kind of resource it sees, which settings it changes, what it can make, remove, scale, and restart, what it never touches, and its limits.</p>
+    <p>Architect runs on <strong>Cloudflare</strong> in 2.0. It sees what an environment runs by starting at its <strong>target</strong>, a Worker, and following what that Worker reaches: the Workers it calls, and every database, namespace, bucket, queue, Durable Object, container, route, and custom domain they use. Nothing outside that scope is read or kept.</p>
+<h2 id="kinds-of-resource"><a class="anchor" href="#kinds-of-resource" aria-label="Link to this section">#</a>Kinds of resource</h2>
+<p>Each resource in an environment’s file has a <code>kind</code>. These are Cloudflare’s:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Kind</th><th scope="col">What it is</th><th scope="col">The settings Architect manages</th><th scope="col">Make</th><th scope="col">Remove</th></tr></thead><tbody><tr><td><code>worker</code></td><td>A Worker</td><td>Compatibility date and flags, usage model, Workers Logs, placement, cron triggers, and bindings</td><td>Yes: it starts with a small module that answers <code>/health</code> until your deploy puts its code on it</td><td>Yes, and it can’t be undone</td></tr><tr><td><code>durable-object</code></td><td>A Durable Object namespace</td><td>None: its class and the Worker that has it</td><td>By code: the Worker exports the class, and a migration in its wrangler config adds it</td><td>By a delete migration, and its data goes</td></tr><tr><td><code>d1</code></td><td>A D1 database</td><td>None. Its schema is your repository’s migrations</td><td>Yes</td><td>Yes, and its data goes</td></tr><tr><td><code>kv</code></td><td>A KV namespace</td><td>None</td><td>Yes</td><td>Yes, and its values go</td></tr><tr><td><code>r2</code></td><td>An R2 bucket</td><td>CORS rules and lifecycle rules</td><td>Yes</td><td>Only when it’s empty: Cloudflare refuses otherwise</td></tr><tr><td><code>queue</code></td><td>A queue</td><td>Delivery delay, delivery paused, retention, and most consumers at once</td><td>Yes</td><td>Yes, and its messages go</td></tr><tr><td><code>container</code></td><td>A container application</td><td>Most instances</td><td>By code: the image, the Durable Object class that starts it, and the container in the Worker’s wrangler config</td><td>Yes, and it can’t be undone</td></tr><tr><td><code>route</code></td><td>A route: a hostname and path sent to a Worker</td><td>Its pattern and its Worker</td><td>Yes</td><td>Yes, and it can be put back</td></tr><tr><td><code>custom-domain</code></td><td>A hostname a Worker serves</td><td>Its Worker</td><td>Yes</td><td>Yes; the hostname stops answering until it’s attached again</td></tr></tbody></table></div>
+<p>A setting the file leaves out isn’t compared, so it stays the deploy’s. A Worker’s variables and secrets show by name only, and are set with its deploy, never by Architect. A Durable Object or a container can be added on the console, which says what code must exist first: its plan applies only once that code is deployed.</p>
+<p>Changes to a <code>route</code> or a <code>custom-domain</code> decide who reaches what, so the policy’s <strong>access</strong> guard makes every one of them wait for you, whatever your allow rules say (<a href="/docs/architect-policy/">Policy</a>).</p>
+<h2 id="scale-and-restart"><a class="anchor" href="#scale-and-restart" aria-label="Link to this section">#</a>Scale and restart</h2>
+<p><a href="/docs/architect-envelopes/">Envelopes</a> let the board scale and restart without asking you each time. On Cloudflare, two kinds can:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">Kind</th><th scope="col">Scale</th><th scope="col">Restart</th></tr></thead><tbody><tr><td><code>container</code>, on the default scheduling policy</td><td>Its most instances (<code>max_instances</code>)</td><td>A rollout of its current configuration: each instance is replaced in turn, with time to drain</td></tr><tr><td><code>queue</code>, with a Worker consumer</td><td>Its consumer’s concurrency (<code>max_concurrency</code>)</td><td>No</td></tr></tbody></table></div>
+<p>Cloudflare scales everything else by itself, so nothing else is offered. A container on the Durable Object scheduling policy, or a queue with no Worker consumer, is refused in words before anything is planned.</p>
+<h2 id="health"><a class="anchor" href="#health" aria-label="Link to this section">#</a>Health</h2>
+<p>The board reads each resource’s health when it looks, every 15 minutes, and when you press <strong>Refresh</strong>:</p>
+<ul><li><strong>Workers and Durable Objects</strong>: requests and errors over the last 15 minutes. Errors make it degraded; no deployment makes it down. With no requests, the board looks back an hour, then a day, before it calls it <strong>idle</strong>, which isn’t down.</li><li><strong>D1</strong>: its queries and how long they take; slow is degraded.</li><li><strong>KV and R2</strong>: their operations.</li><li><strong>Queues</strong>: the backlog and the oldest message. A backlog that keeps growing, or no consumer, is degraded.</li><li><strong>Containers</strong>: the instances running against those assigned. None running when some are assigned is down.</li><li><strong>Routes and custom domains</strong>: their Worker’s health, or your own health address when the environment’s file names one (<a href="/docs/architect-desired-state/#a-health-address">Describe it as code</a>).</li></ul>
+<p>The board reads health with the read-only token, through Cloudflare’s analytics. It reads no logs, traces, or metrics beyond these.</p>
+<h2 id="what-it-never-touches"><a class="anchor" href="#what-it-never-touches" aria-label="Link to this section">#</a>What it never touches</h2>
+<ul><li><strong>Code.</strong> The read-only token can’t read a Worker’s code, and the apply workflow checks none of your repository’s code out.</li><li><strong>Values.</strong> A variable’s or secret’s value, what’s stored in a database, a namespace, or a bucket, and a queue’s messages.</li><li><strong>Your account.</strong> DNS, account settings, members, billing, and API tokens. No token the board asks for can change them.</li><li><strong>The board’s own install.</strong> It’s always observe only.</li><li><strong>Anything outside an environment’s scope</strong>, even on the same account.</li></ul>
+<h2 id="what-isnt-supported-yet"><a class="anchor" href="#what-isnt-supported-yet" aria-label="Link to this section">#</a>What isn’t supported yet</h2>
+<ul><li><strong>Other providers.</strong> Pages, other clouds, servers, and containers outside Cloudflare’s aren’t seen. The deploy flow is Workers only too.</li><li><strong>Metrics, logs, and traces</strong> as signals. Signals are health, the platform’s alerts, and cost.</li><li><strong>Change windows.</strong> Freeze is the one switch.</li><li><strong>A Worker’s code, schema migrations, and secrets</strong> through a plan. Those stay the deploy’s.</li></ul>
+<h2 id="limits"><a class="anchor" href="#limits" aria-label="Link to this section">#</a>Limits</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">What</th><th scope="col">Limit</th></tr></thead><tbody><tr><td>Environments per repository</td><td>50, with at most 3 short-lived ones at once</td></tr><tr><td>Resources in one environment’s file</td><td>500, in at most 256 KB</td></tr><tr><td>Edits in one change on the console</td><td>50</td></tr><tr><td>Plan previews on the console</td><td>6 a minute per environment</td></tr><tr><td><code>infra check</code> previews</td><td>10 a minute per repository</td></tr><tr><td>Plan checks on one pull request</td><td>Up to 5 environments</td></tr><tr><td>How often the board looks at what runs</td><td>Every 15 minutes, and on <strong>Refresh</strong></td></tr><tr><td>How often it compares for drift</td><td>At most once an hour per environment, and as soon as its file changes</td></tr><tr><td>One apply’s lock on an environment</td><td>15 minutes, renewed while it works</td></tr><tr><td>Signals</td><td>Kept 7 days; their daily summaries 90</td></tr><tr><td>The audit trail</td><td>Kept two years</td></tr></tbody></table></div>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/get-started-with-architect/"><span class="label">Previous</span><span>Get started</span></a><a class="pager-next" href="/docs/architect-environments/"><span class="label">Next</span><span>Environments</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#kinds-of-resource">Kinds of resource</a></li><li><a href="#scale-and-restart">Scale and restart</a></li><li><a href="#health">Health</a></li><li><a href="#what-it-never-touches">What it never touches</a></li><li><a href="#what-isnt-supported-yet">What isn’t supported yet</a></li><li><a href="#limits">Limits</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/architect/">Architect</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="/licensing/">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="/licensing/">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

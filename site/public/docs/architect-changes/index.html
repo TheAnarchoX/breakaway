@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change an environment · breakaway</title>
+<meta name="description" content="Two ways to change what runs, both ending in a plan you approve. From the console, where you edit the map, watch the plan form, and the board opens the pull request; or by pull request, from an agent or from you.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://leavethepack.dev/docs/architect-changes/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Change an environment · breakaway">
+<meta property="og:description" content="Two ways to change what runs, both ending in a plan you approve. From the console, where you edit the map, watch the plan form, and the board opens the pull request; or by pull request, from an agent or from you.">
+<meta property="og:url" content="https://leavethepack.dev/docs/architect-changes/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://leavethepack.dev/social.png">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
+<meta property="og:image:alt" content="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu" open>
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/updating-to-2/">Updating to 2.0.0</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/recovery/">Recovery</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: start</h2><ul><li><a href="/docs/architect/">What Architect is</a></li><li><a href="/docs/get-started-with-architect/">Get started</a></li><li><a href="/docs/architect-supported/">What’s supported</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: use it</h2><ul><li><a href="/docs/architect-environments/">Environments</a></li><li><a href="/docs/architect-desired-state/">Describe it as code</a></li><li><a href="/docs/architect-changes/" aria-current="page">Change an environment</a></li><li><a href="/docs/architect-plans/">Plans and approvals</a></li><li><a href="/docs/architect-policy/">Policy</a></li><li><a href="/docs/architect-envelopes/">Envelopes and scaling</a></li><li><a href="/docs/architect-signals/">Signals and incidents</a></li><li><a href="/docs/architect-cost/">Cost and budgets</a></li><li><a href="/docs/architect-patterns/">Patterns</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: connect</h2><ul><li><a href="/docs/architect-connections/">Tokens and the apply workflow</a></li><li><a href="/docs/architect-deploy-flow/">With the deploy flow</a></li><li><a href="/docs/architect-agents/">Agents and infrastructure</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: run it</h2><ul><li><a href="/docs/architect-freeze/">Freeze, gates, and locks</a></li><li><a href="/docs/architect-drift/">Drift and break-glass</a></li><li><a href="/docs/architect-recovery/">When it goes wrong</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/">Privacy</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Architect: use it</p>
+    <h1>Change an environment</h1>
+    <p class="lede">Two ways to change what runs, both ending in a plan you approve. From the console, where you edit the map, watch the plan form, and the board opens the pull request; or by pull request, from an agent or from you.</p>
+    <p>Every change to an environment is a pull request that changes its file, and every pull request ends in a plan you approve. There are two ways to get there:</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col"></th><th scope="col">From the console</th><th scope="col">By pull request</th></tr></thead><tbody><tr><td>Who</td><td>You, on an environment’s page</td><td>An agent, or you, in a checkout</td></tr><tr><td>What you edit</td><td>The map: settings, new resources, removals</td><td>The file in <code>.github/breakaway-infra/</code>, and code with it</td></tr><tr><td>The pull request</td><td>The board opens it, on its own branch</td><td>Whoever made the change opens it</td></tr><tr><td>The plan</td><td>Forms beside the map as you edit, and shows as a check</td><td>Shows as a check on the pull request</td></tr><tr><td>Approve</td><td><strong>Approve</strong> on the change’s card merges it and applies the plan</td><td>You merge it; then its plan waits for you, and <strong>Approve</strong> applies it</td></tr></tbody></table></div>
+<p>Use the console for what you can see and set: a setting, a new queue, a removal. Use a pull request for what needs code with it, or many files, or an agent’s judgment.</p>
+<h2 id="from-the-console"><a class="anchor" href="#from-the-console" aria-label="Link to this section">#</a>From the console</h2>
+<p>Open an environment’s page. Its map is where you change it.</p>
+<ol><li><strong>Change it.</strong> - <strong>Change</strong>, on a resource’s detail, turns the settings the console may change into fields (<a href="/docs/architect-supported/#kinds-of-resource">What’s supported</a>). Variables and secrets show by name only: “Set with the Worker’s deploy, never here.” - <strong>Add resource</strong>, above the map, lists every kind Cloudflare can add, a line each on what it’s for, then your golden paths and breakaway’s <code>queue</code>. A kind asks for its name, checked as you type, its settings with Cloudflare’s defaults filled in, and <strong>Bind it to</strong>: the Worker whose code uses it, with a binding name suggested from its name. <strong>Add to the change</strong>, and it shows dashed on the map, marked <strong>+ adds</strong>. - <strong>Remove</strong>, on a resource’s detail, takes it out.</li><li><strong>Watch the plan form.</strong> Your change shows beside the map at once, an edit a line, and each resource you edited is marked “your change”. About a second and a half after your last edit, the board previews the plan: what changes, what it costs, what else it touches, what can’t be undone, and the policy’s answer. Nothing is written yet, and the change is kept only in this browser. <strong>Discard</strong> drops it.</li><li><strong>Propose the change.</strong> One press, and no confirm, since nothing that runs changes. The board checks the plan once more, commits the file on its own branch, <code>breakaway/infra/&lt;environment&gt;-&lt;n&gt;</code>, and opens the pull request, “Change staging: …”. It closes no task.</li><li><strong>Approve.</strong> The change’s card reads <strong>Checking</strong> while the plan check runs, then <strong>Waiting for you</strong>. <strong>Approve</strong> asks: “Approve this plan for staging? The board merges its pull request, applies the plan, and rolls back if the health check fails.” When merging also deploys, it says so.</li><li><strong>Follow it.</strong> The card reads <strong>Merging</strong>, then the plan’s own status: <strong>Approved</strong>, <strong>Applying</strong>, then <strong>Applied</strong> once the health check passes (<a href="/docs/architect-plans/#after-you-approve">Plans and approvals</a>).</li></ol>
+<p><strong>Reject</strong> asks “Reject this change? The board closes its pull request. Nothing changes.”</p>
+<h3 id="what-the-board-checks-before-it-merges"><a class="anchor" href="#what-the-board-checks-before-it-merges" aria-label="Link to this section">#</a>What the board checks before it merges</h3>
+<p>Approve merges the pull request as your press, the way <strong>Merge</strong> does, and only when:</p>
+<ul><li>the pull request is still at the head you saw, and still the board’s;</li><li>the environment isn’t frozen or observe only;</li><li>the plan at that head is the one you saw, and the policy doesn’t refuse it.</li></ul>
+<p>Then it merges with that head commit, so a push in between refuses. While checks run, it turns on auto-merge, or merges at the first sync after they pass. After the merge, the board plans from the default branch and applies only when that plan is the one you approved; otherwise it waits for you with a push. An approval waits at most 24 hours for its merge, then asks again.</p>
+<h3 id="one-change-per-environment"><a class="anchor" href="#one-change-per-environment" aria-label="Link to this section">#</a>One change per environment</h3>
+<p>Every edit joins the environment’s one change, up to 50 edits. Edits are kept as steps (set a setting, add from a template, remove), so when the file moves on the default branch, the board replays them on the new one and drops, with a line, any whose resource is gone. <strong>Propose again</strong> replays your edits on the current head, and replaces the board’s commit on its branch.</p>
+<p>If someone else pushes to the board’s branch, the change is <strong>taken over</strong>: it’s an ordinary pull request from then on, Approve goes away, and its plan waits for you after you merge it.</p>
+<h3 id="what-the-console-cant-change"><a class="anchor" href="#what-the-console-cant-change" aria-label="Link to this section">#</a>What the console can’t change</h3>
+<p>Code, the policy, <code>scaling.json</code>, your templates, and any setting Cloudflare doesn’t let the console change stay a pull request. <strong>Have an agent do it</strong> starts a general agent with what you were changing, for you to read and edit first. A Durable Object or a container needs code first: <strong>Have an agent write it</strong> starts an agent on that code.</p>
+<h2 id="by-pull-request"><a class="anchor" href="#by-pull-request" aria-label="Link to this section">#</a>By pull request</h2>
+<p>An agent changes infrastructure the way it changes code. In a checkout:</p>
+<pre data-lang="sh"><code>npx breakaway infra adopt staging                 # the first file, from what runs
+npx breakaway infra add queue staging name=jobs worker=widgets-api-staging
+npx breakaway infra check staging                 # the plan it would make
+git switch -c wgt-12-jobs-queue &amp;&amp; git add -A &amp;&amp; git commit -m &quot;WGT-12: Add the jobs queue&quot;</code></pre>
+<p>Then an ordinary pull request. On it:</p>
+<ul><li><strong>The plan check.</strong> Each sync, a pull request that changes an environment’s file or <code>policy.json</code> gets one check, <strong>breakaway: infrastructure plan</strong>, on its head commit, and the board’s pull request page shows the same under <strong>Infrastructure plan</strong>: for each environment it changes, up to 5, the plan it would make and the policy’s answer. It fails when a file doesn’t check, names an observe-only environment, or the policy refuses the plan. It’s neutral when something couldn’t be planned. It passes otherwise, even when the plan will wait for you, which is the default.</li><li><strong>Merging applies nothing.</strong> The check is a preview. Once it merges, the board compares the environment with the new file, and that plan waits for you with one push: “A plan waits for you in staging.” Open it, read it, press <strong>Approve</strong>.</li></ul>
+<p>This is how every agent’s change reaches you, and every incident’s fix.</p>
+<h2 id="when-it-doesnt-merge"><a class="anchor" href="#when-it-doesnt-merge" aria-label="Link to this section">#</a>When it doesn’t merge</h2>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table><thead><tr><th scope="col">What you see</th><th scope="col">What to do</th></tr></thead><tbody><tr><td><strong>Can’t merge</strong>, with why</td><td>Fix what it names (checks failing, a conflict), then <strong>Propose again</strong></td></tr><tr><td>GitHub refuses the merge for a required review</td><td>Add the board’s GitHub App to the ruleset’s bypass list: the repository’s <strong>Settings</strong>, <strong>Rules</strong>, <strong>Rulesets</strong>, the rule, <strong>Bypass list</strong>. The App merges only on your press. Until then, review the pull request on GitHub</td></tr><tr><td><strong>Staging is frozen: unfreeze it to approve.</strong></td><td><strong>Unfreeze</strong> staging, or leave it frozen until you’re ready. You can still edit and propose</td></tr><tr><td>“What runs changed since you looked. Here’s the plan now.”</td><td>Read the new plan before you approve it</td></tr><tr><td>“The plan changed between your approval and the merge.”</td><td>It waits for you again, with a push. Read it and approve it, or reject it</td></tr><tr><td>A note that applying needs <code>.github/workflows/breakaway-infra.yml</code></td><td>Give the App <strong>Workflows: write</strong> and <strong>Propose again</strong>, or run <code>npx breakaway infra init</code> in the repository and merge it (<a href="/docs/architect-connections/#the-apply-workflow">Tokens, GitHub, and the apply workflow</a>)</td></tr></tbody></table></div>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/architect-desired-state/"><span class="label">Previous</span><span>Describe it as code</span></a><a class="pager-next" href="/docs/architect-plans/"><span class="label">Next</span><span>Plans and approvals</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#from-the-console">From the console</a></li><li><a href="#by-pull-request">By pull request</a></li><li><a href="#when-it-doesnt-merge">When it doesn’t merge</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/architect/">Architect</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="/licensing/">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="/licensing/">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

@@ -14,6 +14,13 @@ These docs cover all of it. Start where you are.
 2. [Concepts](/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
 3. [The playbook](/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
+## I want the board to run my infrastructure
+
+1. [What Architect is](/docs/architect/): how a change goes, what stays true, and its words.
+2. [Get started with Architect](/docs/get-started-with-architect/): five steps from a read-only token to your first approved plan on staging.
+3. [Architect and the deploy flow](/docs/architect-deploy-flow/): an app’s deploys and its infrastructure on the same staging and production.
+4. [Patterns](/docs/architect-patterns/): setups that work, from staging first to an environment per task.
+
 ## I want to look something up
 
 | Looking for | Go to |
@@ -25,8 +32,8 @@ These docs cover all of it. Start where you are.
 | Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](/docs/routines/) |
-| Starting with Architect: from a read-only token to your first approved plan | [Get started with Architect](/docs/get-started-with-architect/) |
-| Environments, plans you approve, envelopes, signals, incidents, and cost: Architect | [The manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) |
+| What Architect is, and how a change to infrastructure goes | [Architect](/docs/architect/) |
+| Environments, plans you approve, policy, envelopes, signals, incidents, and cost | [The Architect section](/docs/architect/#read-on) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](/docs/github/) |
 | Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](/docs/plugin/) |
 | Connecting Claude Code or another MCP client to `/mcp` | [MCP clients](/docs/mcp/) |
