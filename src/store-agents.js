@@ -2077,8 +2077,8 @@ export const agentsMethods = {
   async tick(source = 'alarm') {
     const errors = [];
     try {
-      // The alarm reconciles the repositories webhooks named; the cron, every one of them.
-      const result = await this.reconcileGitHub({ only: source === 'cron' ? null : this.takeDirtyRepos() });
+      // The alarm reconciles the repositories webhooks named and the busy ones due (BRK-272); the cron, every one.
+      const result = await this.reconcileGitHub({ only: source === 'cron' ? null : this.alarmRepos() });
       if (result?.error) errors.push(result.error);
     } catch (error) {
       errors.push(error.message); /* recorded in gh_error */
@@ -2125,6 +2125,12 @@ export const agentsMethods = {
       await this.flushInfraEvents();
     } catch (error) {
       errors.push(error.message); /* the next tick delivers it */
+    }
+    // A busy repository syncs again in a minute or so, as its budgets allow (BRK-272).
+    try {
+      await this.scheduleFastSync();
+    } catch (error) {
+      errors.push(error.message); /* the cron syncs it anyway */
     }
     // Before the prune: agent runs and GitHub's rows live on in the dashboard's log (store-stats.js).
     this.archiveStats();
