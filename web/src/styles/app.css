@@ -996,25 +996,6 @@ a code {
   }
 }
 
-.settings-health {
-  display: grid;
-  gap: 2px;
-  font-size: 14px;
-  padding: 12px;
-  border-radius: var(--radius-s);
-  background: var(--bg-2);
-}
-.settings-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-}
-.settings-actions form {
-  margin: 0;
-}
-
 /* ---------- workspace ---------- */
 
 .workspace {
@@ -8732,9 +8713,116 @@ a.pl-mention {
 #settings-repos:focus {
   outline: none;
 }
-.st-foot {
+/* Settings across the width (WEB-127): Connections' width, the server and its actions beside the heading, each
+ * card's heading on one line, fields side by side, and the board's smaller groups in columns. */
+.repo-settings.settings-view {
+  max-width: 1440px;
+}
+.st-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+.st-top .view-intro {
+  margin: 0;
+}
+.st-status {
   display: grid;
-  gap: 12px;
+  justify-items: end;
+  gap: 4px;
+}
+.st-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.st-actions form {
+  margin: 0;
+}
+.st-server {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 14px;
+}
+.st-server-state.is-bad {
+  color: var(--danger);
+}
+.st-status .field-error {
+  margin: 0;
+  text-align: right;
+}
+@media (max-width: 640px) {
+  .st-status,
+  .st-actions,
+  .st-server {
+    justify-items: start;
+    justify-content: flex-start;
+  }
+  .st-status .field-error {
+    text-align: left;
+  }
+}
+.st-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+.st-head .st-head-action {
+  margin-left: auto;
+  align-self: center;
+}
+.st-fields {
+  container: st-fields / inline-size;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 18px 20px;
+}
+.st-code-field {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+  gap: 8px 20px;
+}
+/* Four columns leave Merge method alone on its row: Code colors takes the other three. */
+@container st-fields (min-width: 860px) and (max-width: 1079.98px) {
+  .st-code-field {
+    grid-column: span 3;
+  }
+}
+.st-code-pick {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.st-code-field .st-code-sample {
+  margin: 0;
+}
+.settings-view .st-group .settings-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 16px 20px;
+}
+.st-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px 28px;
+}
+.st-groups .st-group {
+  align-content: start;
+}
+.st-groups .rs-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+}
+.settings-view .st-repos {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 8px;
 }
 
 /* A repository's settings (WEB-30): Connections' frame, one card per section, each saved on its own. */
