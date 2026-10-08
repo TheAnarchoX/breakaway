@@ -426,7 +426,7 @@ describe('policy changes from the board', () => {
       status: 200,
       loosens: ['In pol-staging: plans that only scale resources no longer wait for you (“staging scales”).'],
       tightens: [],
-      unlocks: [{ id: `plan-${n}`, environment: 'pol-staging' }],
+      passes: [{ id: `plan-${n}`, environment: 'pol-staging' }],
     });
     expect(JSON.parse(res.text)).toMatchObject({ version: 1, allow: LOOSER.allow });
     expect(gh.writes).toEqual([]);
@@ -466,7 +466,7 @@ describe('policy changes from the board', () => {
     // Not with a plan it would let through: that plan is answered on its own first.
     const p = await waiting();
     const held = await body(await approve({ loosens: first.loosens }));
-    expect(held).toMatchObject({ status: 409, unlocks: [{ id: `plan-${p}`, environment: 'pol-staging' }] });
+    expect(held).toMatchObject({ status: 409, passes: [{ id: `plan-${p}`, environment: 'pol-staging' }] });
     expect(held.error).toMatch(/waits for you in pol-staging, and this change would let it through without you/u);
     expect(gh.writes.some((w) => w.method === 'PUT')).toBe(false);
     await inStore((s) => s.sql.exec("UPDATE infra_plans SET state = 'rejected' WHERE n = ?", p));

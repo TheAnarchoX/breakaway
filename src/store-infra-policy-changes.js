@@ -212,7 +212,7 @@ export const infraPolicyChangesMethods = {
    * @param {import('./infra-policy.js').Policy} policy
    * @returns {Array<{ id: string, environment: string, environmentId: number }>}
    */
-  plansPolicyUnlocks(slug, policy) {
+  plansPolicyLetsThrough(slug, policy) {
     const rows = this.sql
       .exec(
         `SELECT p.n, p.diff, p.cost, e.* FROM infra_plans p JOIN infra_environments e ON e.id = p.environment
@@ -238,7 +238,7 @@ export const infraPolicyChangesMethods = {
 
   /**
    * POST /api/infra/policy/changes: the owner's, from the signed-in board. `{ repo, policy }` answers `{ text, lines,
-   * loosens, tightens, unlocks }` against the policy in force and writes nothing; with `propose: true` the board opens
+   * loosens, tightens, passes }` against the policy in force and writes nothing; with `propose: true` the board opens
    * (or replaces) the change's pull request and answers `{ change }`.
    */
   infraPolicyChangesApi(body = {}) {
@@ -260,7 +260,7 @@ export const infraPolicyChangesMethods = {
         body: {
           text: checked.text,
           ...diff,
-          unlocks: diff.loosens.length ? this.plansPolicyUnlocks(slug, checked.policy) : [],
+          passes: diff.loosens.length ? this.plansPolicyLetsThrough(slug, checked.policy) : [],
         },
       };
     });
@@ -459,12 +459,12 @@ export const infraPolicyChangesMethods = {
     const change = () => this.policyChangeOut(this.policyChangeRow(row.n));
     if (diff.loosens.length) {
       // 3. Never with a plan it would let through: the owner answers that plan on its own first.
-      const unlocks = this.plansPolicyUnlocks(row.repo, after.policy);
-      if (unlocks.length)
+      const passes = this.plansPolicyLetsThrough(row.repo, after.policy);
+      if (passes.length)
         return refuse(
           409,
-          `${unlocks.length === 1 ? `${unlocks[0].id} waits for you in ${unlocks[0].environment}` : `${unlocks.length} plans wait for you`}, and this change would let ${unlocks.length === 1 ? 'it' : 'them'} through without you. Approve or reject ${unlocks.length === 1 ? 'it' : 'them'} on ${unlocks.length === 1 ? 'its' : 'their'} own first, then approve the policy.`,
-          { unlocks, change: change() },
+          `${passes.length === 1 ? `${passes[0].id} waits for you in ${passes[0].environment}` : `${passes.length} plans wait for you`}, and this change would let ${passes.length === 1 ? 'it' : 'them'} through without you. Approve or reject ${passes.length === 1 ? 'it' : 'them'} on ${passes.length === 1 ? 'its' : 'their'} own first, then approve the policy.`,
+          { passes, change: change() },
         );
       // 4. Loosening is never one press: the second sends back exactly what will no longer wait.
       const confirmed =

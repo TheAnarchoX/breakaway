@@ -310,7 +310,7 @@ function OpenChange({ change, onChanged }) {
   const [busy, setBusy] = useState(/** @type {string | null} */ (null));
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const [confirm, setConfirm] = useState(/** @type {string[] | null} */ (null));
-  const [unlocks, setUnlocks] = useState(/** @type {any[]} */ ([]));
+  const [passes, setPasses] = useState(/** @type {any[]} */ ([]));
   const confirmRef = useRef(/** @type {HTMLFieldSetElement | null} */ (null));
   const loosens = change.lines.some((l) => l.effect === 'loosens');
   const number = change.pull?.number;
@@ -332,7 +332,7 @@ function OpenChange({ change, onChanged }) {
         requestAnimationFrame(() => confirmRef.current?.focus());
       } else {
         setConfirm(null);
-        setUnlocks(err.data?.unlocks ?? []);
+        setPasses(err.data?.passes ?? []);
         setError(err.message);
       }
     } finally {
@@ -429,9 +429,9 @@ function OpenChange({ change, onChanged }) {
       {error && (
         <div class="field-error" role="alert">
           <p>{error}</p>
-          {unlocks.length > 0 && (
+          {passes.length > 0 && (
             <ul class="rs-list">
-              {unlocks.map((u) => (
+              {passes.map((u) => (
                 <li key={u.id}>
                   <a
                     href={hashFor({
@@ -629,11 +629,11 @@ function PolicyEditor({ data, onCancel, onProposed }) {
               </p>
             )}
             <ChangeLines lines={preview.lines} />
-            {preview.unlocks?.length > 0 && (
+            {preview.passes?.length > 0 && (
               <p class="meta">
-                {preview.unlocks.map((u) => `${u.id} in ${u.environment}`).join(', ')}{' '}
-                {preview.unlocks.length === 1 ? 'waits' : 'wait'} for you and would pass under it: answer{' '}
-                {preview.unlocks.length === 1 ? 'it' : 'them'} first, and the change can be approved after.
+                {preview.passes.map((u) => `${u.id} in ${u.environment}`).join(', ')}{' '}
+                {preview.passes.length === 1 ? 'waits' : 'wait'} for you and would pass under it: answer{' '}
+                {preview.passes.length === 1 ? 'it' : 'them'} first, and the change can be approved after.
               </p>
             )}
           </>
