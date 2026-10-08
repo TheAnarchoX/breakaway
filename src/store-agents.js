@@ -239,6 +239,7 @@ export function firePayload(
   repo = null,
   plan = null,
   actKey = null,
+  runIt = null,
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
@@ -254,7 +255,8 @@ export function firePayload(
     ...(kind === 'pr-review' ? ['Mode: pr-review', `Pull request: #${pr}`] : []),
     ...(kind === 'routine' ? ['Mode: routine', `Routine: ${routine}`] : []),
     ...(kind === 'general' ? ['Mode: general'] : []),
-    ...(kind === 'kickoff' ? ['Mode: kickoff'] : []),
+    // Run it's answer (BRK-305): whether the plan drafts the first environments' desired state, or leaves it to Run it.
+    ...(kind === 'kickoff' ? ['Mode: kickoff', `Run it: ${runIt ?? 'not answered yet'}`] : []),
     ...(kind === 'routines' ? ['Mode: routines'] : []),
     // A runbook's run's own key for `infra act` (BRK-252): only this payload carries it.
     ...(actKey ? [`Act key: ${actKey}`] : []),
@@ -1514,9 +1516,13 @@ export const agentsMethods = {
       const attachments = this.sql.exec('SELECT COUNT(*) AS n FROM attachments WHERE task = ?', uuid).one().n;
       const plan = trigger === 'chase' || trigger === 'chase-fix' ? this.planForTask(uuid) : null;
       const actKey = await this.runbookActKey(uuid, agent);
+      const runIt =
+        kind === 'kickoff'
+          ? (this.sql.exec('SELECT run_it FROM kickoffs WHERE idea = ?', uuid).toArray()[0]?.run_it ?? null)
+          : null;
       const session = await fireRoutine(
         credentials,
-        firePayload(task, agent, trigger, note, kind, pr, routine, attachments, repo, plan, actKey),
+        firePayload(task, agent, trigger, note, kind, pr, routine, attachments, repo, plan, actKey, runIt),
         isDefault ? null : repo.slug,
       );
       this.sql.exec(

@@ -139,6 +139,8 @@ export function RunItStep({ k, runIt, idea, merged, onSaved }) {
       <p>
         Whether {k.github ?? k.name} runs somewhere, and how it gets there: its environments, their first plan, and
         deploys. Every repository answers this once; change the answer any time.
+        {!merged &&
+          ' Answer it before the plan is written, and the kickoff’s agent puts staging and production in it too.'}
       </p>
       <fieldset class="field env-agent-how ko-runit-choice" disabled={!k.registered || busy === 'choice'}>
         <legend class="visually-hidden">How it runs</legend>

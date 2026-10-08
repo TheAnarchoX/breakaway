@@ -1,4 +1,4 @@
-import { SELF, env, runDurableObjectAlarm } from 'cloudflare:test';
+import { SELF, env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { isKickoffIdea } from '../src/kickoff.js';
 import { firePayload } from '../src/store-agents.js';
@@ -57,8 +57,34 @@ describe('the kickoff mode, the pure parts (BRK-134)', () => {
       'Started: by “Send answers and carry on” on a kickoff’s decision, from the board',
       'Repository: plant-diary (acme/plant-diary)',
       'Mode: kickoff',
+      'Run it: not answered yet',
       'Attachments: 2',
     ]);
+  });
+
+  it('carries Run it’s answer after Mode: kickoff, so the plan can include the first infrastructure (BRK-305)', () => {
+    const lines = (runIt, kind = 'kickoff') =>
+      firePayload(
+        { wid: 'IDEA-7', description: 'A diary for my plants' },
+        'claude-idea-7',
+        'kickoff',
+        null,
+        kind,
+        null,
+        null,
+        0,
+        { slug: 'plant-diary', github: 'acme/plant-diary' },
+        null,
+        null,
+        runIt,
+      ).split('\n');
+    expect(lines('agent').slice(-2)).toEqual(['Mode: kickoff', 'Run it: agent']);
+    expect(lines('now')).toContain('Run it: now');
+    expect(lines('not-needed')).toContain('Run it: not-needed');
+    // Not answered yet: said so, and the agent leaves how it runs to Run it.
+    expect(lines(null)).toContain('Run it: not answered yet');
+    // Only a kickoff's run carries it.
+    expect(lines('now', 'build').some((l) => l.startsWith('Run it:'))).toBe(false);
   });
 });
 
@@ -117,10 +143,13 @@ describe('the kickoff mode on the board (BRK-134)', () => {
     expect(fires.at(-1)).toContain('Mode: kickoff');
     expect(fires.at(-1)).toContain(`Task: ${idea.wid}`);
 
+    expect(fires.at(-1).split('\n')).toContain('Run it: not answered yet');
+
     const plain = await make({ description: 'An ordinary idea', project: 'ideas', tags: ['agent', 'idea'] });
     const build = await body(await api('agents/start', { method: 'POST', body: { ref: plain.wid } }));
     expect(build.run.kind).toBe('build');
     expect(fires.at(-1)).not.toContain('Mode:');
+    expect(fires.at(-1)).not.toContain('Run it:');
   });
 
   it('keeps a kickoff’s idea open when its questions are answered', async () => {
@@ -176,6 +205,22 @@ describe('the kickoff mode on the board (BRK-134)', () => {
     expect(fires.length).toBe(before + 1);
     expect(fires.at(-1)).toContain('Mode: kickoff');
     expect(fires.at(-1)).toContain('Started: by “Send answers and carry on” on a kickoff’s decision, from the board');
+  });
+
+  it('tells the kickoff’s agent Run it’s answer, read from the kickoff that made the idea (BRK-305)', async () => {
+    const herbs = await kickoffIdea('A garden planner');
+    const agent = `claude-${herbs.wid.toLowerCase()}`;
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      instance.sql.exec(
+        "INSERT INTO kickoffs (id, pitch, name, slug, areas, github, idea, step, created, edited, run_it, run_it_at) VALUES (?, 'A garden planner', 'garden-planner', 'garden-planner', '[]', 'acme/garden-planner', ?, 'done', 1, 1, 'agent', 1)",
+        crypto.randomUUID(),
+        herbs.uuid,
+      );
+    });
+    const started = await body(await api('agents/start', { method: 'POST', body: { ref: herbs.wid } }));
+    expect(started.run).toMatchObject({ kind: 'kickoff', agent });
+    expect(fires.at(-1).split('\n')).toContain('Run it: agent');
+    await api(`tasks/${herbs.wid}/release`, { method: 'POST', body: { agent } });
   });
 
   it('queues the next run for room when the board is full, whatever the switch says, and starts it once', async () => {
