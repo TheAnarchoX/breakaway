@@ -8,7 +8,7 @@ body:
       value: |
         breakaway is free for personal and noncommercial use. The owner grants a free commercial licence case by case to worker co-ops and to digital rights and privacy groups, including projects that build software to give people back ownership of their digital lives. A company funded by venture capital can't get one. [leavethepack.dev/licensing](https://leavethepack.dev/licensing/) says who uses breakaway free and what counts as commercial.
 
-        This request is public: put nothing private in it. Or email, if you'd rather not ask in public: write to theanarchox@proton.me with the subject `breakaway licence exception: <who you are>`. Asking is no promise of a yes, and a request isn't a licence until the owner grants it in writing.
+        This request is public: put nothing private in it. Or email, if you'd rather not ask in public: write to theanarchox@proton.me with the subject `breakaway licence exception: <who you are>`. Asking is no promise of a yes, and a request isn't a licence: an exception starts when both sides have signed the [licence exception agreement](https://github.com/TheAnarchoX/breakaway/blob/main/docs/licence-exception-agreement.md).
   - type: input
     id: group
     attributes:

@@ -199,6 +199,10 @@ describe('the site', () => {
       expect(text).toContain(email);
       expect(text).toContain('breakaway licence exception: <who you are>');
     }
+    // An exception is granted by a signed agreement (DOC-47): the page, LICENSING.md, and the form link its template.
+    expect(page).toContain(`href="${SITE.repo}/blob/main/docs/licence-exception-agreement.md"`);
+    expect(LICENSING_FILE).toContain('](docs/licence-exception-agreement.md)');
+    expect(EXCEPTION_FORM).toContain('docs/licence-exception-agreement.md');
     // Linked from every page's footer, the landing page's licence line, the README, and LICENSING.md.
     for (const [path, html] of built) expect(html, path).toContain(`href="${LICENSING.path}"`);
     expect(INDEX).toContain(`<a href="${LICENSING.path}">`);
