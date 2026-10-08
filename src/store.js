@@ -88,6 +88,7 @@ import { infraEnvelopesMethods } from './store-infra-envelopes.js';
 import { infraScalingMethods } from './store-infra-scaling.js';
 import { infraCurrencyMethods } from './store-infra-currency.js';
 import { infraShortLivedMethods } from './store-infra-short-lived.js';
+import { infraTokensMethods } from './store-infra-tokens.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -1555,6 +1556,7 @@ Object.assign(
   infraScalingMethods,
   infraCurrencyMethods,
   infraShortLivedMethods,
+  infraTokensMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------

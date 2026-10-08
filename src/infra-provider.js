@@ -198,6 +198,23 @@ export const COST_NOTE_MAX = 500;
  * @property {string} url where the owner makes one, on the platform
  * @property {(ctx: { token: string, fetch?: typeof fetch }) => Promise<TokenCheck>} [check] asks the platform about
  *   a pasted token before the board keeps it
+ * @property {(permissions: TokenPermission[], name: string) => TokenTemplate} [template] the link that opens the
+ *   platform's create-token page with what it can prefill (BRK-304)
+ */
+
+/**
+ * A link to the platform's create-token page with some permissions filled in, and the ones to add by hand.
+ * @typedef {{ url: string, prefilled: string[], byHand: string[] }} TokenTemplate
+ */
+
+/**
+ * Each environment's write token (BRK-304), which the board never holds: guided setup says what to make and where to
+ * put it, and checks the GitHub environment has a secret by that name. Never a token's value.
+ * @typedef {object} WriteToken
+ * @property {string} secret the secret the apply workflow reads it from, in the GitHub environment
+ * @property {(desired: DesiredState | null, options: { running: string[] }) => Array<TokenPermission & { scope: string, workers?: string[], once?: boolean }>} permissions
+ *   what one environment's token needs, from its desired state and the targets that already run there
+ * @property {(permissions: TokenPermission[], name: string) => TokenTemplate} [template] the prefilled link
  */
 
 /**
@@ -214,6 +231,7 @@ export const COST_NOTE_MAX = 500;
  *   Worker, `scope.board`, or another environment's target, `scope.others`), in words, or null when it is; an act asks
  *   it before it plans (BRK-251)
  * @property {ReadToken} [readToken] the read-only token it needs, if any
+ * @property {WriteToken} [writeToken] what each environment's write token needs, for guided setup (BRK-304)
  * @property {(ctx: ProviderContext) => Promise<Discovery>} discover
  * @property {(ctx: ProviderContext, desired: DesiredState) => Promise<PlanDiff>} plan
  * @property {(ctx: ProviderContext, plan: PlanDiff) => Promise<ApplyResult>} apply
@@ -380,6 +398,7 @@ export function checkProvider(provider) {
       fail(what, `${kind}'s target is not true or false`);
   }
   if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
+  if (provider.writeToken !== undefined) checkWriteToken(what, provider.writeToken);
   if (provider.refuses !== undefined && typeof provider.refuses !== 'function') fail(what, 'refuses is not a function');
   if (provider.outside !== undefined && typeof provider.outside !== 'function') fail(what, 'outside is not a function');
   if (provider.estimate !== undefined && typeof provider.estimate !== 'function')
@@ -661,6 +680,18 @@ function checkReadToken(what, token) {
   }
   if (typeof token.url !== 'string' || !token.url.startsWith('https://')) fail(what, 'readToken has no https url');
   if (token.check !== undefined && typeof token.check !== 'function') fail(what, 'readToken check is not a function');
+  if (token.template !== undefined && typeof token.template !== 'function')
+    fail(what, 'readToken template is not a function');
+}
+
+/** What guided setup needs of a provider's write token (BRK-304): a secret's name and the permissions, from a function. */
+function checkWriteToken(what, token) {
+  if (!isObject(token)) fail(what, 'writeToken is not an object');
+  if (!text(token.secret) || !/^[A-Z][A-Z0-9_]{0,63}$/u.test(token.secret))
+    fail(what, 'writeToken secret is not a GitHub secret’s name');
+  if (typeof token.permissions !== 'function') fail(what, 'writeToken permissions is not a function');
+  if (token.template !== undefined && typeof token.template !== 'function')
+    fail(what, 'writeToken template is not a function');
 }
 
 /**

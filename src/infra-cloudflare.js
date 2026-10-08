@@ -30,6 +30,7 @@ import {
   readDataset,
 } from './infra-cloudflare-analytics.js';
 import { apply, estimate, plan } from './infra-cloudflare-plan.js';
+import { tokenTemplate, WRITE_SECRET, writePermissions } from './infra-cloudflare-tokens.js';
 
 /** @typedef {import('./infra-provider.js').Provider} Provider */
 /** @typedef {import('./infra-provider.js').ProviderContext} ProviderContext */
@@ -1939,7 +1940,9 @@ export const cloudflare = {
     permissions: READ_PERMISSIONS,
     url: 'https://dash.cloudflare.com/profile/api-tokens',
     check: checkToken,
+    template: tokenTemplate,
   },
+  writeToken: { secret: WRITE_SECRET, permissions: writePermissions, template: tokenTemplate },
   refuses,
   outside,
   editable,

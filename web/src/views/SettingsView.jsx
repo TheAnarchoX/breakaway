@@ -94,9 +94,11 @@ export async function claim(board, name = 'claude') {
 function ThisBrowser() {
   return (
     <section class="rs-section" aria-labelledby="st-browser">
-      <h2 id="st-browser">This browser</h2>
-      <p class="muted small">Only for this browser: they’re kept here, not on the board.</p>
-      <div class="rs-fields">
+      <div class="st-head">
+        <h2 id="st-browser">This browser</h2>
+        <p class="muted small">Only for this browser: they’re kept here, not on the board.</p>
+      </div>
+      <div class="st-fields">
         <label class="field">
           <span class="field-label">Claim as</span>
           <input
@@ -123,26 +125,6 @@ function ThisBrowser() {
               theme.value = v;
             }}
           />
-        </div>
-        <div class="field">
-          <span class="field-label">Code colors</span>
-          <Segmented
-            label="Code colors"
-            options={[
-              { id: 'board', label: 'breakaway' },
-              { id: 'github', label: 'GitHub' },
-              { id: 'one', label: 'One' },
-              { id: 'gruvbox', label: 'Gruvbox' },
-            ]}
-            value={codeColors.value}
-            onChange={(v) => {
-              codeColors.value = v;
-            }}
-          />
-          <CodeBlock code={CODE_SAMPLE} lang="js" class="md-code st-code-sample" />
-          <span class="field-hint">
-            How code looks in diffs and documents. Each has a dark and a light side that follow the theme.
-          </span>
         </div>
         <div class="field">
           <span class="field-label">Open tasks in</span>
@@ -176,6 +158,28 @@ function ThisBrowser() {
           <span class="field-hint">
             What Merge starts with and what Merge when green uses. Picking one in Merge changes it here too.
           </span>
+        </div>
+        <div class="field st-code-field">
+          <div class="st-code-pick">
+            <span class="field-label">Code colors</span>
+            <Segmented
+              label="Code colors"
+              options={[
+                { id: 'board', label: 'breakaway' },
+                { id: 'github', label: 'GitHub' },
+                { id: 'one', label: 'One' },
+                { id: 'gruvbox', label: 'Gruvbox' },
+              ]}
+              value={codeColors.value}
+              onChange={(v) => {
+                codeColors.value = v;
+              }}
+            />
+            <span class="field-hint">
+              How code looks in diffs and documents. Each has a dark and a light side that follow the theme.
+            </span>
+          </div>
+          <CodeBlock code={CODE_SAMPLE} lang="js" class="md-code st-code-sample" />
         </div>
       </div>
       <p class="meta">Keep branches up to date and Merge when green are on each repository’s page, below.</p>
@@ -250,17 +254,21 @@ function BoardRoutines() {
 function TheBoard() {
   return (
     <section class="rs-section" aria-labelledby="st-board">
-      <h2 id="st-board">The board</h2>
-      <p class="muted small">For everyone who uses this board. The Agents and Routines views have these too.</p>
-      <BoardAgents />
-      <BoardRoutines />
-      <div class="st-group">
-        <h3>Currency</h3>
-        <CurrencySettings />
+      <div class="st-head">
+        <h2 id="st-board">The board</h2>
+        <p class="muted small">For everyone who uses this board. The Agents and Routines views have these too.</p>
       </div>
-      <div class="st-group">
-        <h3>Updates</h3>
-        <SelfUpdateSwitch connections={link('connections')} />
+      <BoardAgents />
+      <div class="st-groups">
+        <BoardRoutines />
+        <div class="st-group">
+          <h3>Currency</h3>
+          <CurrencySettings />
+        </div>
+        <div class="st-group">
+          <h3>Updates</h3>
+          <SelfUpdateSwitch connections={link('connections')} />
+        </div>
       </div>
     </section>
   );
@@ -271,7 +279,18 @@ function Repositories() {
   const { loaded, list, removed = [] } = repos.value;
   return (
     <section class="rs-section" id="settings-repos" aria-labelledby="st-repos" tabIndex={-1}>
-      <h2 id="st-repos">Repositories</h2>
+      <div class="st-head">
+        <h2 id="st-repos">Repositories</h2>
+        {loaded && list.length > 0 && (
+          <>
+            <p class="muted small">Each has its own settings: its name, areas, agents, deploys, and pull requests.</p>
+            <button type="button" class="btn btn-outline btn-sm st-head-action" onClick={() => openAddRepo(null)}>
+              <FolderPlus size={16} aria-hidden="true" />
+              Add a repository
+            </button>
+          </>
+        )}
+      </div>
       {!loaded ? (
         <p class="muted" aria-busy="true">
           Loading…
@@ -285,30 +304,21 @@ function Repositories() {
           <PickRepo />
         </>
       ) : (
-        <>
-          <p class="muted small">Each has its own settings: its name, areas, agents, deploys, and pull requests.</p>
-          <ul class="st-repos">
-            {list.map((r) => (
-              <li key={r.slug}>
-                <span class="st-repo-name">
-                  <a href={repoSettingsHref(r.slug)}>
-                    {r.name}
-                    <span class="visually-hidden">’s settings</span>
-                  </a>
-                  {r.isDefault && <span class="meta"> · the default</span>}
-                </span>
-                <span class="meta">{r.github}</span>
-                <span class="meta">{r.areas.map((a) => `${a.name ?? a.project} ${a.prefix}`).join(', ')}</span>
-              </li>
-            ))}
-          </ul>
-          <p>
-            <button type="button" class="btn btn-outline btn-sm" onClick={() => openAddRepo(null)}>
-              <FolderPlus size={16} aria-hidden="true" />
-              Add a repository
-            </button>
-          </p>
-        </>
+        <ul class="st-repos">
+          {list.map((r) => (
+            <li key={r.slug}>
+              <span class="st-repo-name">
+                <a href={repoSettingsHref(r.slug)}>
+                  {r.name}
+                  <span class="visually-hidden">’s settings</span>
+                </a>
+                {r.isDefault && <span class="meta"> · the default</span>}
+              </span>
+              <span class="meta">{r.github}</span>
+              <span class="meta">{r.areas.map((a) => `${a.name ?? a.project} ${a.prefix}`).join(', ')}</span>
+            </li>
+          ))}
+        </ul>
       )}
       {removed.length > 0 && (
         <details class="rs-details">
@@ -332,39 +342,15 @@ function Repositories() {
 
 /**
  * The server's health, the way to Connections, Refresh, Shortcuts, and Sign out, as the dialog's foot had them, and
- * What's new when the board's files have notes for the release it runs (WEB-80).
+ * What's new when the board's files have notes for the release it runs (WEB-80). They sit beside the page's heading
+ * (WEB-127), the actions on one row and the server on a line under them.
  */
-function Foot() {
+function Status() {
   const h = health.value;
   const n = connectionsAttention.value;
   return (
-    <footer class="st-foot">
-      <div class="settings-health">
-        <strong>Server</strong>
-        {healthFailed.value && (
-          <span class="field-error">Can’t reach the board right now. It tries again every 30 seconds.</span>
-        )}
-        {h ? (
-          <>
-            <span>{h.ok ? 'Healthy' : `Can’t read its history: ${h.replicaError}`}</span>
-            <span class="muted">
-              {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
-            </span>
-            {h.secretsStoreInSync === false && (
-              <span class="field-error">
-                The Secrets Store is behind the server’s sync credentials. See docs/tasks.md.
-              </span>
-            )}
-          </>
-        ) : (
-          !healthFailed.value && <span class="muted">Checking…</span>
-        )}
-        <a class={`settings-connections ${n ? 'is-bad' : ''}`} href={link('connections')}>
-          <Plug size={15} aria-hidden="true" />
-          {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
-        </a>
-      </div>
-      <div class="settings-actions">
+    <div class="st-status">
+      <div class="st-actions">
         {whatsNew.value && (
           <button type="button" class="btn btn-quiet btn-sm" onClick={openWhatsNew}>
             <CircleArrowUp size={16} aria-hidden="true" />
@@ -398,7 +384,28 @@ function Foot() {
           </button>
         </form>
       </div>
-    </footer>
+      <p class="st-server">
+        <span class={`st-server-state ${h && !h.ok ? 'is-bad' : ''}`}>
+          <strong>Server</strong>{' '}
+          {h ? (h.ok ? 'healthy' : `can’t read its history: ${h.replicaError}`) : !healthFailed.value && 'checking…'}
+        </span>
+        {h && (
+          <span class="muted">
+            {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
+          </span>
+        )}
+        <a class={`settings-connections ${n ? 'is-bad' : ''}`} href={link('connections')}>
+          <Plug size={15} aria-hidden="true" />
+          {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
+        </a>
+      </p>
+      {healthFailed.value && (
+        <p class="field-error">Can’t reach the board right now. It tries again every 30 seconds.</p>
+      )}
+      {h?.secretsStoreInSync === false && (
+        <p class="field-error">The Secrets Store is behind the server’s sync credentials. See docs/tasks.md.</p>
+      )}
+    </div>
   );
 }
 
@@ -417,15 +424,17 @@ export function SettingsView() {
     el?.focus({ preventScroll: true });
   }, [settingsAt.value, repos.value.loaded]);
   return (
-    <div class="repo-settings">
-      <div class="view-intro">
-        <h1>Settings</h1>
-        <p class="muted">This browser’s, the board’s, and each repository’s.</p>
+    <div class="repo-settings settings-view">
+      <div class="st-top">
+        <div class="view-intro">
+          <h1>Settings</h1>
+          <p class="muted">This browser’s, the board’s, and each repository’s.</p>
+        </div>
+        <Status />
       </div>
       <ThisBrowser />
       <TheBoard />
       <Repositories />
-      <Foot />
     </div>
   );
 }
