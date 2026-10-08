@@ -52,6 +52,10 @@ From 2.0.0, Architect runs the infrastructure the repositories run on too, Cloud
 - [FAQ](https://leavethepack.dev/docs/faq.md): The licence, what breakaway does with your data, what it works with, what it won’t do, and the questions people ask first.
 - [Privacy](https://leavethepack.dev/docs/privacy.md): What breakaway, its CLI, and its Claude Code plugin collect and send: nothing to breakaway’s author, and only what you send to your own board.
 
+## Licensing
+
+- [Free for personal and noncommercial use](https://leavethepack.dev/licensing.md): Who uses breakaway free, what counts as commercial, and how worker co-ops and digital rights and privacy groups ask for a free commercial licence. From 2.0.0, the licence is PolyForm Noncommercial 1.0.0.
+
 ## Optional
 
 - [Every docs page in one file](https://leavethepack.dev/llms-full.txt)
