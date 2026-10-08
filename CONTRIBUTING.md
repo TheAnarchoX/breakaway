@@ -4,7 +4,7 @@ breakaway is built by its owner and their agents. It doesn't take pull requests,
 
 ## What you can do
 
-- **Run it.** Set up your own board with the [self-hosting guide](docs/self-hosting.md). It's free, and it runs on your own Cloudflare account.
+- **Run it.** Set up your own board with the [self-hosting guide](docs/self-hosting.md). It's free for personal and noncommercial use, and it runs on your own Cloudflare account.
 - **Make it yours.** From 2.0.0 on, the [licence](LICENSE) (PolyForm Noncommercial 1.0.0) lets you use, change, and self-host breakaway for anything noncommercial; releases before 2.0.0 stay under FSL-1.1-Apache-2.0. Change your copy as much as you like.
 - **Report a security problem**, privately, as [`SECURITY.md`](SECURITY.md) says. That's the one report breakaway takes, and it gets a reply.
 
