@@ -1,6 +1,6 @@
 # breakaway brand guide
 
-<!-- brand-lint-ignore-file name, never-word, exclamation, open-source: the guide quotes what the lint catches. -->
+<!-- brand-lint-ignore-file name, never-word, exclamation, open-source, fair-source, apache-later, free-for-all: the guide quotes what the lint catches. -->
 
 How breakaway looks and sounds everywhere: the board, its docs, the landing page, and launch posts. Follow it for every string and every pixel, whether you're a person or an agent.
 
@@ -94,7 +94,8 @@ The board's own words, the same everywhere, so people learn them once.
 | **pull request** | GitHub's; "PR" where space is tight | merge request, patch |
 | **In review**, **Done** | A task with an open pull request; one whose pull request merged | resolved, closed, shipped |
 | **the board** | Your breakaway install, and its board view | workspace, dashboard, instance |
-| **free**, **fair source** | The licence: free to use, change, and self-host, and Apache 2.0 two years after each release ([below](#free-and-fair-source)) | open source (until a release turns Apache 2.0) |
+| **free for personal and noncommercial use** | The licence, PolyForm Noncommercial 1.0.0, from 2.0.0: free to use, change, and self-host for personal use and for noncommercial organizations ([below](#the-licence)) | open source, fair source, ethical source, free (on its own, where a business could read it as theirs), Apache 2.0 later |
+| **exception** | A free commercial licence the owner grants case by case, to worker co-ops and digital rights and privacy groups | commercial licence (on its own: there's no price), enterprise plan, paid tier, pricing |
 | **you** | The person who runs the board | user, admin, the owner (in the board's own words) |
 
 ### Infrastructure words
@@ -166,15 +167,41 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair, and the health URL you name for an environment, your own service, which your board GETs on each refresh.
-- **Free, and the source is public** ([below](#free-and-fair-source)).
+- **Free for personal and noncommercial use, and the source is public.** Commercial use is by exception, granted free and case by case ([below](#the-licence)). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.
 
 **Works with, never "powered by".** breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made or endorse it. Never "official", "partner", "powered by", or a lockup with their logos.
 
-### Free and fair source
+### The licence
 
-breakaway's licence is FSL-1.1-Apache-2.0, the Functional Source License: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That's [Fair Source](https://fair.io/licenses/), and the Open Source Initiative doesn't count it as open source until the Apache date. So say "free", "fair source", or "the source is public", name the licence, and say "open source" only of releases that have turned Apache 2.0. Loud and true: "Free to run. Free to change. Apache 2.0 in two years."
+From 2.0.0, breakaway's licence is the PolyForm Noncommercial License 1.0.0 ([`LICENSE`](../LICENSE), in plain words in [`LICENSING.md`](../LICENSING.md)). It lets anyone use, change, and self-host breakaway for personal use, and lets noncommercial organizations (charities, schools, public research, public safety and health, environmental protection, and government) use it for anything. Commercial use isn't covered: it needs an exception, which the owner grants free and case by case, to worker co-ops and digital rights and privacy groups, and never to a company funded by venture capital. Every release before 2.0.0 stays under the licence it shipped with, FSL-1.1-Apache-2.0.
+
+**Name it** as "the PolyForm Noncommercial License 1.0.0" the first time on a page, and "PolyForm Noncommercial" after that. In code and manifests it's `PolyForm-Noncommercial-1.0.0`.
+
+**Say:**
+
+- "Free for personal and noncommercial use." The words that go wherever "free" goes.
+- "The source is public." True of every release.
+- "Commercial use is by exception, granted case by case." With a link to [`LICENSING.md`](../LICENSING.md) or the site's licensing page where there's room.
+- "Releases before 2.0.0 stay under FSL-1.1-Apache-2.0." Only where someone might be running one.
+
+**Short lines** for posts, end cards, and anywhere a sentence won't fit. Each is true to the licence on its own, and goes with the licence's name, or a link to it, within reach (the same post, the next line of the card, the page's footer). The owner picks one and the others stay unused:
+
+- "Free for people, not for profit." Recommended. Free for a person's own use and for organizations that aren't commercial; profit needs an exception.
+- "Free for people and nonprofits. The source is public." The plainest, at two lines.
+- "Free to run. Free to change. Not for profit." The old line's rhythm, with its limit said.
+
+**Never say:**
+
+- "Open source". The Open Source Initiative's definition rules out a licence that limits commercial use, and no release from 2.0.0 ever becomes one. Say it only of a release before 2.0.0 that has turned Apache 2.0, by its version.
+- "Fair source". That was FSL's family, true only of releases before 2.0.0: name them by version when you mean them.
+- "Apache 2.0 in two years", or any date a release turns permissive. From 2.0.0, none does.
+- "Free" on its own, where a business could read it as free for them: "free for everyone", "free for teams", "free for commercial use". Say who it's free for.
+- "Ethical source" or "ethical licence". The licence draws one line, commercial or not, plus the owner's exceptions, and nothing about how it's used.
+- A price, a plan, or "buy a licence". An exception costs nothing.
+
+**What stays true.** [What breakaway is, and isn't](../AGENTS.md#what-breakaway-is-and-isnt) still holds: free and self-hosted, with no hosted version, accounts, pricing, paid features, or ads. An exception doesn't change it, because it's a free licence the owner grants to one group at a time, never a tier anyone pays for. None of this is legal advice: where the guide and the licence differ, the licence decides, and copy never promises more than the licence's own terms.
 
 ### Say what it does
 

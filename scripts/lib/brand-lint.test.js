@@ -54,6 +54,23 @@ describe('brand lint', () => {
     expect(run('Apache 2.0 makes a release open source.')).toEqual([]);
   });
 
+  it('catches the licence words PolyForm Noncommercial rules out', () => {
+    expect(run('breakaway is fair source.')).toEqual(['fair-source']);
+    expect(run('An ethical licence, ethical-source.')).toEqual(['fair-source', 'fair-source']);
+    expect(run('Free to change. Apache 2.0 in two years.')).toEqual(['apache-later']);
+    expect(run('Each release becomes Apache 2.0 later.')).toEqual(['apache-later']);
+    expect(run('Free for everyone.')).toEqual(['free-for-all']);
+    expect(run('Free for commercial use, and free to use commercially.')).toEqual(['free-for-all', 'free-for-all']);
+  });
+
+  it('lets the old licence be named for releases before 2.0.0', () => {
+    expect(run('1.4.0 is fair source (FSL-1.1-Apache-2.0) and becomes Apache 2.0 two years after it ships.')).toEqual(
+      [],
+    );
+    expect(run('Releases before 2.0.0 were fair source.')).toEqual([]);
+    expect(run('Free for personal and noncommercial use. A free commercial licence is by exception.')).toEqual([]);
+  });
+
   it('reports the line and column', () => {
     const [f] = lint([{ path: 'x.md', text: 'one\nthe Breakaway board' }]);
     expect(f).toMatchObject({ path: 'x.md', line: 2, column: 5, rule: 'name' });

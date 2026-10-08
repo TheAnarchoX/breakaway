@@ -25,6 +25,9 @@ const NEVER = [
   'world-class',
 ];
 
+// A line naming the licence releases before 2.0.0 shipped with (FSL-1.1-Apache-2.0) talks about them.
+const PRE_2_0_0 = /\bFSL\b|Functional Source License|before 2\.0\.0/u;
+
 /** @type {Rule[]} */
 export const RULES = [
   {
@@ -57,6 +60,27 @@ export const RULES = [
       /Apache|Open Source Initiative|\bOSI\b|Open Font|doesn’t count|doesn't count|until the Apache|open-source-/iu.test(
         line,
       ),
+  },
+  {
+    id: 'fair-source',
+    message:
+      'From 2.0.0 the licence is PolyForm Noncommercial: say "free for personal and noncommercial use", not "fair source" or "ethical source".',
+    pattern: /\b(?:fair|ethical)[- ]source\b|\bethical licen[cs]e\b/giu,
+    // Releases before 2.0.0 were fair source: a line that names their licence is about them.
+    skip: (line) => PRE_2_0_0.test(line),
+  },
+  {
+    id: 'apache-later',
+    message: 'No release from 2.0.0 turns Apache 2.0: drop the date, or name the release before 2.0.0 you mean.',
+    pattern: /\bApache(?:[- ]2(?:\.0)?)? (?:in|after) (?:two|2) years\b|\b(?:becomes?|turns?|converts? to) Apache\b/giu,
+    skip: (line) => PRE_2_0_0.test(line),
+  },
+  {
+    id: 'free-for-all',
+    message:
+      'Say who it’s free for: "free for personal and noncommercial use". Commercial use is by exception, granted case by case.',
+    pattern:
+      /\bfree (?:for|to) (?:everyone|anyone|anybody|all|any use|any purpose|teams|companies|businesses|commercial use|use commercially)\b/giu,
   },
 ];
 
