@@ -528,7 +528,7 @@ async function handleApi(request, env, url, ctx) {
   // owner's, from the signed-in browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'kickoffs' && parts.length <= 3) {
     if (parts.length === 1 && method === 'GET')
-      return send(await s.kickoffsApi({ idea: url.searchParams.get('idea') }));
+      return send(await s.kickoffsApi({ idea: url.searchParams.get('idea'), repo: url.searchParams.get('repo') }));
     if (parts.length === 2 && method === 'GET')
       return send(await s.kickoffApi(parts[1], { check: url.searchParams.get('check') === '1' }));
     if (method !== 'GET' && via !== 'cookie')
@@ -537,6 +537,7 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'PATCH') return send(await s.kickoffsModifyApi(parts[1], body));
     if (parts.length === 2 && method === 'DELETE') return send(await s.kickoffsDeleteApi(parts[1], body));
     if (parts[2] === 'register' && method === 'POST') return send(await s.kickoffsRegisterApi(parts[1], body));
+    if (parts[2] === 'run-it' && method === 'POST') return send(await s.kickoffsRunItApi(parts[1], body));
   }
   // A draft of an environment's desired state (BRK-240): read only, so agents with the token may ask as well as the owner.
   if (

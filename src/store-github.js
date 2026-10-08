@@ -34,6 +34,7 @@ import {
 } from './github.js';
 import BOARD_FILES from './board-files.json' with { type: 'json' };
 import { budgetAfterSync, countsOf } from './github-budget.js';
+import { syncPace } from './github-pace.js';
 import { install } from './install.js';
 import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
@@ -64,6 +65,8 @@ const IMAGE_TYPES = {
 const MAX_FILES = 15; // merged pull requests whose files are read per sync
 const FILE_PAGES = 5;
 const DEBOUNCE_MS = 5000;
+/** A busy repository's sync this close to due goes with the alarm that's running now (BRK-272). */
+const DUE_SLACK_MS = 5000;
 /** How long a repository's agent prompt, read for the Agents view, is kept before reading it again. */
 const PROMPT_CACHE_MS = 60_000;
 /** Where a repository carries the board's core: where `repos init` copies it, then breakaway's own layout. */
@@ -252,6 +255,81 @@ export const githubMethods = {
     const dirty = JSON.parse(this.meta('gh_dirty') ?? '[]');
     this.setMeta('gh_dirty', null);
     return !dirty.length || dirty.includes('*') ? null : dirty;
+  },
+
+  /**
+   * The repositories an alarm reconciles: the ones webhooks named, and, when it's the fast sync's alarm (BRK-272),
+   * each busy repository whose sync is due. Another alarm with nothing named reconciles every one, as it always has.
+   */
+  alarmRepos(now = Date.now()) {
+    const named = JSON.parse(this.meta('gh_dirty') ?? '[]');
+    const dirty = this.takeDirtyRepos();
+    const at = Number(this.meta('gh_fast_at') ?? 0);
+    if (!at || at > now + DUE_SLACK_MS) return dirty;
+    this.setMeta('gh_fast_at', null);
+    if (named.includes('*')) return null;
+    return [...new Set([...named, ...this.githubDue(now)])];
+  },
+
+  // ---- the fast sync (BRK-272) -----------------------------------------------------------
+
+  /** The repositories with an open pull request whose checks run, or that an agent is on right now. */
+  githubBusyRepos() {
+    const busy = new Set();
+    for (const row of this.sql.exec("SELECT repo, number, data FROM gh_pulls WHERE state = 'open'")) {
+      if (busy.has(row.repo)) continue;
+      const pr = JSON.parse(String(row.data));
+      if (pr.checks?.state === 'pending' || this.prAgent({ ...pr, number: row.number, repo: row.repo }))
+        busy.add(row.repo);
+    }
+    return busy;
+  },
+
+  /** How often a busy repository syncs now (null: no faster than the cron), and which are busy. */
+  githubPace(now = Date.now()) {
+    const busy = this.githubBusyRepos();
+    const repos = this.repos().map((r) => ({
+      slug: r.slug,
+      budget: this.githubBudget(r.slug),
+      busy: busy.has(r.slug),
+    }));
+    return { pace: syncPace(repos, now), busy: repos.filter((r) => r.busy).map((r) => r.slug) };
+  },
+
+  /**
+   * When each busy repository's next sync is due, a pace after its last try (a failed one too, so a failing
+   * repository never retries sooner); empty when the budgets leave no room.
+   */
+  githubDueTimes(now = Date.now()) {
+    const { pace, busy } = this.githubPace(now);
+    const tried = (slug) =>
+      Math.max(Number(this.ghMeta('gh_last_sync', slug) ?? 0), Date.parse(this.githubBudget(slug)?.at ?? '') || 0);
+    return pace ? busy.map((slug) => ({ slug, at: tried(slug) + pace })) : [];
+  },
+
+  /** The busy repositories whose sync is due now. */
+  githubDue(now = Date.now()) {
+    return this.githubDueTimes(now)
+      .filter((d) => d.at <= now + DUE_SLACK_MS)
+      .map((d) => d.slug);
+  },
+
+  /**
+   * After a tick: wakes the alarm when the next busy repository's sync is due, or forgets the fast sync when none
+   * is busy or the budgets leave no room, and the cron carries on alone. Returns when, or null.
+   */
+  async scheduleFastSync(now = Date.now()) {
+    const due = this.githubDueTimes(now);
+    const at = due.length ? Math.max(now + DUE_SLACK_MS, Math.min(...due.map((d) => d.at))) : null;
+    const pending = await this.ctx.storage.getAlarm();
+    if (!at) {
+      // An alarm set for a sync no longer due still fires: it then reconciles only what webhooks named.
+      if (!pending || pending !== Number(this.meta('gh_fast_at') ?? 0)) this.setMeta('gh_fast_at', null);
+      return null;
+    }
+    this.setMeta('gh_fast_at', at);
+    if (!pending || pending > at || pending <= now) await this.ctx.storage.setAlarm(at);
+    return at;
   },
 
   // ---- the reconcile ---------------------------------------------------------------------

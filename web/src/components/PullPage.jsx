@@ -1138,8 +1138,9 @@ export function PullPage() {
   const { page, error, loading } = state;
   const kickoff = useKickoff(page);
   const boardChange = useBoardChange(page, tick);
-  // While an agent is on its task, look again each minute, so the page follows it and Fix with an agent comes back after.
-  const onIt = page?.agent?.busy ?? null;
+  // While an agent is on its task or its checks run, look again each minute, so the page follows them (BRK-272) and
+  // Fix with an agent comes back after.
+  const onIt = page?.agent?.busy ?? (page?.state === 'open' && page?.checks?.state === 'pending' ? 'checks' : null);
   useEffect(() => {
     if (!onIt) return;
     const timer = setInterval(() => {
