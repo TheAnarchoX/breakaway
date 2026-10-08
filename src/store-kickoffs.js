@@ -14,6 +14,7 @@ import { checkRepo, promptPathOf } from './repos.js';
 import {
   KICKOFF_AREA,
   checkName,
+  checkRunIt,
   checkPitch,
   createUrl,
   firstFree,
@@ -21,8 +22,10 @@ import {
   githubOf,
   kickoffIdea,
   prefixCandidates,
+  runItProgress,
   suggestName,
 } from './kickoff.js';
+import { planId } from './infra-plans.js';
 import { slugFrom, wizardSteps } from './wizard.js';
 
 const ID = /^[0-9a-f-]{36}$/u;
@@ -42,6 +45,15 @@ export const kickoffsMethods = {
         github TEXT, idea TEXT, step TEXT NOT NULL, created INTEGER NOT NULL, edited INTEGER NOT NULL
       );
     `);
+    // Run it's answer (WEB-126), on a store from before it was kept.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(kickoffs)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('run_it')) this.sql.exec('ALTER TABLE kickoffs ADD COLUMN run_it TEXT');
+    if (!have.has('run_it_at')) this.sql.exec('ALTER TABLE kickoffs ADD COLUMN run_it_at INTEGER');
   },
 
   ownerOnlyKickoffs(by) {
@@ -69,6 +81,49 @@ export const kickoffsMethods = {
     return this.repos().find((r) => r.github.toLowerCase() === row.github.toLowerCase()) ?? null;
   },
 
+  /**
+   * Run it's progress (WEB-126) for a kickoff: the owner's answer and each part of the setup in its repository. A
+   * kickoff that isn't on the board yet has nothing set up. `deploys` is the wizard's own step, when the caller has it.
+   * @param {any} row
+   * @param {{ deploys?: boolean | null }} [known]
+   */
+  async kickoffRunIt(row, { deploys = null } = {}) {
+    const repo = this.kickoffRepo(row);
+    const facts = {
+      choice: row.run_it ?? null,
+      at: iso(row.run_it_at),
+      provider: (await this.inventoryProviders(this.infraRegistry())).some((p) => p.connected),
+      tokens: null,
+      environments: [],
+      plan: null,
+      deploys: Boolean(deploys ?? repo?.pipeline),
+    };
+    if (!repo) return runItProgress(facts);
+    facts.environments = this.sql
+      .exec('SELECT id, name, kind FROM infra_environments WHERE repo = ? ORDER BY name', repo.slug)
+      .toArray()
+      .map((r) => ({ id: Number(r.id), name: String(r.name), kind: String(r.kind) }));
+    // The plan waiting for the owner if there is one, else the first the repository had.
+    const plan = this.sql
+      .exec(
+        "SELECT n, state, environment FROM infra_plans WHERE repo = ? ORDER BY state = 'waiting' DESC, n LIMIT 1",
+        repo.slug,
+      )
+      .toArray()[0];
+    facts.plan = plan
+      ? { id: planId(Number(plan.n)), state: String(plan.state), environment: Number(plan.environment) }
+      : null;
+    // Each environment's write token, once the guided token setup (BRK-304) can check them. A check that fails
+    // (GitHub's limit used up, or anything else) leaves them unchecked: never done, and never Run it's failure.
+    if (this.infraTokens)
+      try {
+        facts.tokens = Boolean((await this.infraTokens(repo.slug)).done);
+      } catch {
+        facts.tokens = null;
+      }
+    return runItProgress(facts);
+  },
+
   /** A kickoff as the API gives it: its fields, its images, its IDEA's work ID, and github.com's create form. */
   kickoffView(row) {
     const repo = this.kickoffRepo(row);
@@ -84,6 +139,7 @@ export const kickoffsMethods = {
       idea: row.idea ? { uuid: row.idea, wid: idea?.wid ?? null, status: idea?.status ?? null } : null,
       finished: idea?.status === 'completed',
       step: row.step,
+      runIt: row.run_it ?? null,
       images: this.attachmentsOf(row.idea ?? imagesOf(row.id)),
       links: {
         create: createUrl({ name: row.name, github: row.github, pitch: row.pitch }),
@@ -175,19 +231,24 @@ export const kickoffsMethods = {
    * GET /api/kickoffs (anyone signed in): the kickoffs in progress, oldest first, and whether the board's GitHub App
    * is connected (`app`), which every kickoff needs past saving its pitch. A finished one leaves the list. With
    * `idea` (a task's UUID), only the kickoff that made that IDEA, finished or not: the plan's pull request page
-   * leads back to it (WEB-48).
-   * @param {{ idea?: string | null }} [options]
+   * leads back to it (WEB-48). With `repo` (a slug), only the kickoff that registered that repository, finished or
+   * not, with Run it's progress: the repository's settings page sums it up (WEB-126).
+   * @param {{ idea?: string | null, repo?: string | null }} [options]
    */
-  kickoffsApi({ idea = null } = {}) {
-    return this.run(async () =>
-      ok({
-        kickoffs: this.kickoffRows()
-          .filter((r) => (idea ? r.idea === idea : true))
-          .map((r) => this.kickoffView(r))
-          .filter((k) => idea || !k.finished),
-        app: Boolean(await appCredentials(this.env)),
-      }),
-    );
+  kickoffsApi({ idea = null, repo = null } = {}) {
+    return this.run(async () => {
+      const slug = repo ? String(repo).trim().toLowerCase() : null;
+      const rows = this.kickoffRows().filter(
+        (r) => (idea ? r.idea === idea : true) && (slug ? this.kickoffRepo(r)?.slug === slug : true),
+      );
+      const kickoffs = [];
+      for (const r of rows) {
+        const view = this.kickoffView(r);
+        if (!idea && !slug && view.finished) continue;
+        kickoffs.push(slug ? { ...view, runIt: await this.kickoffRunIt(r) } : view);
+      }
+      return ok({ kickoffs, app: Boolean(await appCredentials(this.env)) });
+    });
   },
 
   /**
@@ -218,6 +279,7 @@ export const kickoffsMethods = {
         steps,
         now,
         done,
+        runIt: await this.kickoffRunIt(row, { deploys: steps.find((s) => s.id === 'deploys')?.done ?? null }),
       });
     });
   },
@@ -322,6 +384,32 @@ export const kickoffsMethods = {
       });
       if (result.status !== 201) return result;
       return ok({ repo: result.body.repo, kickoff: this.kickoffView(this.kickoffRow(row.id)) }, 201);
+    });
+  },
+
+  /**
+   * POST /api/kickoffs/<id>/run-it (the owner): Run it's answer (WEB-126), `choice` one of not-needed, now, or
+   * agent, or null to take it back. It needs the repository on the board, since the setup happens there. Answers
+   * with Run it's progress.
+   */
+  kickoffsRunItApi(id, body) {
+    return this.run(async () => {
+      if (!body || typeof body !== 'object') throw new InputError('send the choice: not-needed, now, or agent');
+      this.ownerOnlyKickoffs(body.by);
+      const row = this.kickoffRow(id);
+      if (!this.kickoffRepo(row))
+        throw new AgentError(`add ${row.name} to the board first: how it runs is set up in its repository`, 409);
+      const choice = checkRunIt(body.choice);
+      const at = choice ? Math.max(Date.now(), Number(row.run_it_at ?? 0) + 1) : null;
+      this.sql.exec(
+        'UPDATE kickoffs SET run_it = ?, run_it_at = ?, edited = ? WHERE id = ?',
+        choice,
+        at,
+        Math.max(Date.now(), row.edited + 1),
+        row.id,
+      );
+      const next = this.kickoffRow(row.id);
+      return ok({ kickoff: this.kickoffView(next), runIt: await this.kickoffRunIt(next) });
     });
   },
 

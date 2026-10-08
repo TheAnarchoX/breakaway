@@ -9472,6 +9472,20 @@ a.pl-mention {
   margin: 0 0 4px;
   font-weight: 600;
 }
+/* Run it (WEB-126): the answer, then each part of the setup and what's left. */
+.ko-runit-choice {
+  margin: 0 0 10px;
+}
+.ko-runit {
+  display: grid;
+  gap: 10px;
+}
+.ko-runit > p {
+  margin: 0;
+}
+.ko-summary .wiz-checks {
+  margin: 0 0 8px;
+}
 @media (max-width: 600px) {
   .ko-start {
     padding: 12px;

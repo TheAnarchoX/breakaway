@@ -11,6 +11,8 @@ import {
   githubOf,
   kickoffIdea,
   prefixCandidates,
+  checkRunIt,
+  runItProgress,
   suggestName,
 } from '../src/kickoff.js';
 
@@ -69,6 +71,35 @@ describe('kickoffs, the pure parts', () => {
       horizon: 'next',
       tags: ['agent', 'idea', 'kickoff-project'],
     });
+  });
+
+  it('checks Run it’s answer, and sums up its parts (WEB-126)', () => {
+    expect(checkRunIt('not-needed')).toBe('not-needed');
+    expect(checkRunIt(null)).toBeNull();
+    expect(() => checkRunIt('later')).toThrow(/not-needed, now, agent/);
+    const nothing = { provider: false, tokens: null, environments: [], plan: null, deploys: false };
+    expect(runItProgress({ choice: null, ...nothing })).toMatchObject({ done: false });
+    // Not needed is done, whatever is set up.
+    expect(runItProgress({ choice: 'not-needed', ...nothing })).toMatchObject({ done: true });
+    const now = runItProgress({ choice: 'now', ...nothing });
+    expect(now.parts.map((p) => p.id)).toEqual(['provider', 'tokens', 'environments', 'plan', 'deploys']);
+    // Tokens the board can't check yet neither tick nor hold the step.
+    expect(now.left).toEqual(['provider', 'environments', 'plan', 'deploys']);
+    const all = {
+      provider: true,
+      tokens: null,
+      environments: [
+        { id: 1, name: 'production', kind: 'production' },
+        { id: 2, name: 'staging', kind: 'staging' },
+      ],
+      plan: { id: 'plan-3', state: 'waiting', environment: 2 },
+      deploys: true,
+    };
+    const set = runItProgress({ choice: 'agent', ...all });
+    expect(set).toMatchObject({ done: true, left: [] });
+    expect(set.parts.find((p) => p.id === 'plan').detail).toBe('plan-3, waiting for you');
+    expect(set.parts.find((p) => p.id === 'environments').detail).toBe('production, staging');
+    expect(runItProgress({ choice: 'now', ...all, tokens: false })).toMatchObject({ done: false, left: ['tokens'] });
   });
 });
 
@@ -341,10 +372,63 @@ describe('kickoffs on the board (IDEA-26)', () => {
     expect((await allTasks()).filter((t) => t.project === 'ideas')).toHaveLength(2);
   });
 
+  it('keeps Run it’s answer, the owner’s alone, with its progress in the repository (WEB-126)', async () => {
+    const fresh = await body(await api(`kickoffs/${plant.id}`));
+    expect(fresh.runIt).toMatchObject({ choice: null, done: false });
+    expect(fresh.runIt.parts.map((p) => [p.id, p.done])).toEqual([
+      ['provider', false],
+      ['tokens', null],
+      ['environments', false],
+      ['plan', false],
+      ['deploys', false],
+    ]);
+    const path = `kickoffs/${plant.id}/run-it`;
+    expect((await api(path, { method: 'POST', body: { choice: 'not-needed' } })).status).toBe(403);
+    expect((await owner(path, { method: 'POST', body: { choice: 'not-needed', by: 'claude-x' } })).status).toBe(403);
+    expect((await body(await owner(path, { method: 'POST', body: { choice: 'soon' } }))).status).toBe(400);
+
+    const skipped = await body(await owner(path, { method: 'POST', body: { choice: 'not-needed' } }));
+    expect(skipped.kickoff.runIt).toBe('not-needed');
+    expect(skipped.runIt).toMatchObject({ choice: 'not-needed', done: true });
+    expect(skipped.runIt.at).toBeTruthy();
+
+    // Changing its mind: Set it up now waits for the setup, part by part.
+    const now = await body(await owner(path, { method: 'POST', body: { choice: 'now' } }));
+    expect(now.runIt).toMatchObject({
+      choice: 'now',
+      done: false,
+      left: ['provider', 'environments', 'plan', 'deploys'],
+    });
+    const added = await owner('infra/environments', {
+      method: 'POST',
+      body: { repo: 'plant-diary', name: 'staging', kind: 'staging', provider: 'cloudflare', by: 'owner' },
+    });
+    expect(added.status).toBe(201);
+    const seen = await body(await api(`kickoffs/${plant.id}`));
+    expect(seen.runIt.parts.find((p) => p.id === 'environments')).toMatchObject({ done: true, detail: 'staging' });
+    expect(seen.runIt.left).toEqual(['provider', 'plan', 'deploys']);
+    expect(seen.runIt.environments).toEqual([{ id: expect.any(Number), name: 'staging', kind: 'staging' }]);
+
+    // The repository's settings page reads it by the repository, finished or not.
+    const listed = await body(await api('kickoffs?repo=plant-diary'));
+    expect(listed.kickoffs.map((k) => k.id)).toEqual([plant.id]);
+    expect(listed.kickoffs[0].runIt).toMatchObject({ choice: 'now', left: ['provider', 'plan', 'deploys'] });
+    expect((await body(await api('kickoffs?repo=herbs'))).kickoffs.map((k) => k.runIt.choice)).toEqual([null]);
+
+    // Taking it back leaves the step to do again.
+    const back = await body(await owner(path, { method: 'POST', body: { choice: null } }));
+    expect(back.runIt).toMatchObject({ choice: null, at: null, done: false });
+  });
+
   it('stops a kickoff, its waiting images with it, and a finished one leaves the list', async () => {
     const extra = (await body(await owner('kickoffs', { method: 'POST', body: { pitch: 'Bird feeder camera' } })))
       .kickoff;
     const image = (await body(await upload(extra.id, PNG))).attachment;
+    // Run it waits for the repository: the setup happens there.
+    const early = await body(
+      await owner(`kickoffs/${extra.id}/run-it`, { method: 'POST', body: { choice: 'not-needed' } }),
+    );
+    expect(early).toMatchObject({ status: 409, error: expect.stringMatching(/add .* to the board first/) });
     expect((await api(`kickoffs/${extra.id}`, { method: 'DELETE' })).status).toBe(403);
     const stopped = await body(await owner(`kickoffs/${extra.id}`, { method: 'DELETE' }));
     expect(stopped).toEqual({ status: 200, stopped: extra.id, registered: null });

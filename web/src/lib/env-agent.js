@@ -23,8 +23,10 @@ export const ENV_AGENT_STEPS = /** @type {const} */ ([
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/u;
 
 /**
+ * `also` are more environments for the same pull request, and `plan` the work ID of the idea whose plan the project
+ * follows, both from Kickoff's Run it (WEB-126).
  * @typedef {{ repo: string, name: string, kind: string, provider: string, target?: string | null,
- *   how: 'describe' | 'infer', need?: string }} EnvAgentAsk
+ *   how: 'describe' | 'infer', need?: string, also?: { name: string, kind: string }[], plan?: string | null }} EnvAgentAsk
  */
 
 /**
@@ -56,10 +58,21 @@ export function envAgentProblems(ask) {
 export function envAgentPrompt(ask) {
   const name = ask.name.trim();
   const file = `.github/breakaway-infra/${name}.json`;
+  const also = (ask.also ?? []).filter((e) => e.name !== name);
   const out = [
     `Set up ${name}, a new ${ask.kind} environment for ${ask.repo} on ${ask.provider}, by pull request.`,
     '',
   ];
+  if (also.length)
+    out.push(
+      `In the same pull request, set up ${also.map((e) => `${e.name} (${e.kind})`).join(' and ')} the same way, each in its own file: ${also.map((e) => `.github/breakaway-infra/${e.name}.json`).join(', ')}.`,
+      '',
+    );
+  if (ask.plan)
+    out.push(
+      `${ask.repo} is a new project from Kickoff. Read its plan first: ${ask.plan}’s spec and its first tasks (npx breakaway show ${ask.plan} links its pull request, and npx breakaway specs lists the specs), for what it runs on. If the board already has environments for ${ask.repo} (npx breakaway infra), add to them rather than making them again.`,
+      '',
+    );
   if (ask.how === 'describe') {
     out.push('What it needs, in the owner’s words:', (ask.need ?? '').trim());
   } else {

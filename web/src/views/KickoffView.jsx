@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Flag,
   GitMerge,
-  Globe,
   Play,
   Rocket,
   RefreshCw,
@@ -44,6 +43,7 @@ import { ImagePicker, Thumbnails } from '../components/Attachments.jsx';
 import { DecisionSection } from '../components/Decision.jsx';
 import { LiveLog, MessageAgent, TRIGGER_LABEL } from '../components/Agents.jsx';
 import { RoutineConnect } from '../components/RoutineConnect.jsx';
+import { RunItStep } from '../components/KickoffRunIt.jsx';
 import { useAutosize, Dictate } from '../components/ui.jsx';
 import { Markdown } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
@@ -933,11 +933,15 @@ function KickoffPage({ id }) {
     { id: 'interview', name: 'Tell it what you want', done: planned || merged },
     { id: 'plan', name: 'Read the plan and merge it', done: merged },
     { id: 'build', name: 'Start building', done: false },
-    // The wizard's optional Deploys step (WEB-14, WEB-36): offered last, and never the step to do now.
-    { id: 'online', name: 'Put it online', done: Boolean(step.deploys?.done), optional: true },
+    // Run it (WEB-126): required, last, and answered with Not needed for a project that runs nowhere. It took over
+    // the optional Put it online (WEB-14, WEB-36), whose deploys are one of its parts.
+    { id: 'run', name: 'Run it', done: Boolean(d.runIt?.done) },
   ];
-  const now = steps.find((s) => !s.done && !s.optional)?.id ?? null;
+  // Start building never ticks: once the plan is merged, what's to do is Run it, until it's answered and set up.
+  const before = steps.find((s) => !s.done && s.id !== 'build' && s.id !== 'run')?.id ?? null;
+  const now = before ?? (steps.at(-1).done ? 'build' : 'run');
   const n = steps.findIndex((s) => s.id === now);
+  const runDone = Boolean(d.runIt?.done);
   const stub = STUB.replaceAll('<prompt path>', d.promptPath ?? 'AGENTS.md');
 
   const content = {
@@ -1184,42 +1188,7 @@ function KickoffPage({ id }) {
         </div>
       </>
     ),
-    online: step.deploys?.done ? (
-      <p>
-        It’s online: deploys are on. Releases on the{' '}
-        <button type="button" class="link-button" onClick={() => go('github')}>
-          GitHub page
-        </button>{' '}
-        shows what shipped where.
-      </p>
-    ) : (
-      <>
-        <p>
-          When there’s something to try, the board can put it online. An agent moves {k.github ?? k.name} to breakaway’s
-          deploy flow in a pull request; you merge it, then turn deploys on.
-        </p>
-        <p class="muted">
-          <strong>Where it goes:</strong> a website or an app goes on your Cloudflare account, beside the board. Every
-          merge updates a test copy, and Promote puts it live. A package goes on npm the same way. For anything else,
-          the step says what it can do.
-        </p>
-        <p class="muted">
-          <strong>Why it’s optional:</strong> agents build it either way. Do it now, later, or not at all.
-        </p>
-        <div class="wiz-actions">
-          <button
-            type="button"
-            class="btn btn-outline btn-sm"
-            disabled={!merged}
-            onClick={() => openAddRepo({ slug: k.slug }, 'deploys')}
-          >
-            <Globe size={16} aria-hidden="true" />
-            Put it online
-          </button>
-          {!merged && <span class="meta">Once the plan is merged.</span>}
-        </div>
-      </>
-    ),
+    run: <RunItStep k={k} runIt={d.runIt} idea={idea} merged={merged} onSaved={() => load(true)} />,
   };
 
   return (
@@ -1268,9 +1237,11 @@ function KickoffPage({ id }) {
       </details>
       <p class={`conn-summary ${now ? 'is-next' : ''}`} role="status">
         {now ? <CircleDot size={18} aria-hidden="true" /> : <CircleCheck size={18} aria-hidden="true" />}
-        {merged
+        {merged && runDone
           ? `${k.name}’s plan is merged. Its first tasks are waiting.`
-          : `Step ${n + 1} of ${steps.length}: ${steps[n].name.charAt(0).toLowerCase()}${steps[n].name.slice(1)}.`}
+          : merged
+            ? `${k.name}’s plan is merged. Its first tasks are waiting, and the last step is to say how it runs.`
+            : `Step ${n + 1} of ${steps.length}: ${steps[n].name.charAt(0).toLowerCase()}${steps[n].name.slice(1)}.`}
       </p>
       <ol class="wiz-steps">
         {steps.map((s, i) => (
@@ -1280,9 +1251,8 @@ function KickoffPage({ id }) {
             index={i + 1}
             name={s.name}
             done={s.done}
-            now={now === s.id || (merged && s.id === 'build')}
-            open={now === s.id || (merged && (s.id === 'build' || s.id === 'online'))}
-            detail={s.optional && !s.done ? 'Optional' : null}
+            now={now === s.id}
+            open={now === s.id || (merged && (s.id === 'build' || s.id === 'run'))}
           >
             {content[s.id]}
           </Step>
