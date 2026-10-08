@@ -129,6 +129,14 @@ export const infraDeploysMethods = {
         now,
         now,
       );
+      this.infraEvent(
+        'environment.created',
+        { repo: slug, name: want.name, kind: want.kind },
+        {
+          fields: { state: 'added', source: 'deploy' },
+          dedupe: `added:${now}`,
+        },
+      );
     }
   },
 
@@ -175,6 +183,17 @@ export const infraDeploysMethods = {
             outcome: record.outcome,
             summary: deploySummary(deploy, record.action),
           });
+          // A Deploy or Promote that landed reaches the routines that listen for it (BRK-293).
+          if (record.outcome === 'applied' && record.action !== 'rollback')
+            this.infraEvent(
+              record.action === 'promote' ? 'promote.done' : 'deploy.done',
+              { repo: slug, name: env.name, kind: env.kind },
+              {
+                fields: { state: 'applied', resource: deploy.env, ...(plan ? { plan } : {}) },
+                dedupe: String(deploy.id),
+                cause: { pull: this.mergedPullAt(slug, deploy.sha) },
+              },
+            );
           this.sql.exec(
             'INSERT INTO infra_deploys (deploy, repo, environment, audit, plan, at) VALUES (?, ?, ?, ?, ?, ?)',
             deploy.id,

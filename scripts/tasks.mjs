@@ -380,7 +380,7 @@ Working
                          the next release goes in first. An agent's pull shows on the feature, and the owner can undo it
   routines add <slug>    new routine (owner, or the agent of a routine maker's task)  --name <text> --prompt <text> | --prompt-file <path>  [--done-when <text>] [--horizon now|next|later] [--gap <minutes>] [--daily <n>]
                          [--repo <slug>] the repository it runs in (default: the checkout's)
-  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened (or "") starts it on those GitHub events
+  routines modify <slug> change one (owner, or the agent of the routine maker's task that made it): the same options (--repo <slug> moves it), and --enabled yes|no; --schedule "0 9 * * 1" runs it on a cron schedule (UTC), --schedule "" clears it; --trigger-start auto|wait sets whether a webhook or GitHub event starts the agent or waits for your Start; --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened (or "") starts it on those GitHub events; --infra-events plan.failed,drift.found:environment=staging,budget.crossed:percent=80 (or "", the owner's) starts it on those infrastructure events, each with filters environment=, kind=, resource= (several joined by +)
   routines trigger <slug> new webhook/API trigger (owner): prints its secret once  [--label <text>]
   routines revoke <slug> <id>  revoke a trigger
   routines pause|resume  stop or allow every routine  [--daily-all <n>] sets the cap for all routines a day
@@ -1323,6 +1323,7 @@ const commands = {
         enabled: yes(opts.enabled),
         triggerStart: opts['trigger-start'],
         githubEvents: opts['github-events'],
+        infraEvents: opts['infra-events'],
         gapMinutes: opts.gap === undefined ? undefined : Number(opts.gap),
         dailyCap: opts.daily === undefined ? undefined : Number(opts.daily),
       };
@@ -1429,7 +1430,7 @@ const commands = {
         ...(d.routines.length ? [''] : ['', 'No routines yet: routines add <slug> --name … --prompt …']),
         ...d.routines.map(
           (x) =>
-            `  ${x.slug.padEnd(16)} ${several ? `${x.repo}: ` : ''}${x.enabled ? 'on ' : 'off'} ${x.openRun ? `running ${x.openRun.wid}` : x.lastRun ? `last ${x.lastRun.wid ?? ''} ${ago(x.lastRun.at)}` : 'never run'}, ${x.runsToday} of ${x.dailyCap} today${x.schedule ? `, schedule ${x.schedule}${x.nextRun ? ` (next ${x.nextRun.slice(0, 16).replace('T', ' ')} UTC)` : ''}` : ''}${x.triggers?.length ? `, ${x.triggers.length} trigger${x.triggers.length === 1 ? '' : 's'} (${x.triggerStart === 'auto' ? 'start by themselves' : 'wait for Start'}; ids ${x.triggers.map((t) => t.id).join(', ')})` : ''}${x.disabledReason ? `, off: ${x.disabledReason}` : ''}`,
+            `  ${x.slug.padEnd(16)} ${several ? `${x.repo}: ` : ''}${x.enabled ? 'on ' : 'off'} ${x.openRun ? `running ${x.openRun.wid}` : x.lastRun ? `last ${x.lastRun.wid ?? ''} ${ago(x.lastRun.at)}` : 'never run'}, ${x.runsToday} of ${x.dailyCap} today${x.schedule ? `, schedule ${x.schedule}${x.nextRun ? ` (next ${x.nextRun.slice(0, 16).replace('T', ' ')} UTC)` : ''}` : ''}${x.triggers?.length ? `, ${x.triggers.length} trigger${x.triggers.length === 1 ? '' : 's'} (${x.triggerStart === 'auto' ? 'start by themselves' : 'wait for Start'}; ids ${x.triggers.map((t) => t.id).join(', ')})` : ''}${x.infraEvents?.length ? `, on ${x.infraEvents.map((e) => e.event).join(', ')}` : ''}${x.disabledReason ? `, off: ${x.disabledReason}` : ''}`,
         ),
       ].join('\n'),
     );
