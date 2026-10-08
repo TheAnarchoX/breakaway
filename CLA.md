@@ -1,7 +1,5 @@
 # breakaway's contributor licence agreement
 
-> **Draft, waiting for legal review.** This agreement is plain on purpose and hasn't yet been reviewed by a lawyer. The owner's legal review (BRK-297) may change it before breakaway 2.0.0 ships, and a changed agreement is signed again.
-
 This is an individual contributor licence agreement ("the agreement") between you and breakaway's owner, the licensor named in [`LICENSE`](LICENSE) ("the owner"). It covers every contribution you send to breakaway's repository, now or later.
 
 ## Why it exists
@@ -19,10 +17,26 @@ breakaway is licensed under PolyForm Noncommercial 1.0.0 from 2.0.0 on, and its 
 7. **As is.** You give your contributions as they are, without any warranty, unless you agree otherwise in writing.
 8. **Telling the owner.** If anything you confirm here stops being true, you tell the owner as soon as you know, in a comment on the pull request where you signed.
 
-## How you sign it
+## How to sign
 
-When you open a pull request, the CLA check asks you to sign by commenting on it, once, with exactly:
+You sign once, on your first pull request, in three steps. The **CLA** check on the pull request says which are left, and stays red until all three are done.
 
-> I have read the breakaway CLA and I sign it.
+1. **Upload a signed copy.** Download or print this agreement, fill in the signature section below, sign it, and attach the copy (a PDF or a photo) to a comment on the pull request. The copy is as public as the pull request, so put nothing on it beyond what the signature section asks for.
+2. **Sign it in a comment**, in the same comment or another one, with exactly:
 
-Your GitHub username, your account's ID, and the pull request you signed on are kept in this repository, on the `cla-signatures` branch. One signature covers all your later contributions.
+   > I have read the breakaway CLA and I sign it.
+
+3. **The owner countersigns.** Once they've checked your copy, the owner comments on the same pull request with:
+
+   > I countersign the breakaway CLA.
+
+   Only a countersign from the owner's own GitHub account, after your copy and your comment, counts. If you change either comment after that, the owner countersigns again.
+
+Then your signature is recorded in this repository, on the `cla-signatures` branch: your GitHub username and account ID, the pull request, links to your comments, the signed copy, and the countersign, and the dates. One signature covers all your later contributions. If this agreement changes, you sign the new one the same way.
+
+## Signature
+
+- Full name:
+- GitHub username:
+- Date:
+- Signature:
