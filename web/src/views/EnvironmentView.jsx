@@ -12,6 +12,7 @@ import { IncidentsSection } from '../components/Incidents.jsx';
 import { UnownedSection } from '../components/Unowned.jsx';
 import { CostSection } from '../components/InfraCosts.jsx';
 import { DescribeAsCode } from '../components/InfraDescribe.jsx';
+import { EnvironmentAgentButton } from '../components/EnvironmentAgent.jsx';
 import { StatusBand } from '../components/EnvironmentStatus.jsx';
 import { Topology } from '../components/EnvironmentTopology.jsx';
 import { StreamRail } from '../components/EnvironmentStream.jsx';
@@ -102,6 +103,7 @@ function Drift({ env, desired, error }) {
           )}
           {/* With no target, nothing runs to describe: the console's first change writes the file (BRK-291). */}
           {(env.target || env.observeOnly) && <DescribeAsCode env={env} />}
+          {!env.target && !env.observeOnly && <EnvironmentAgentButton env={env} />}
         </>
       ) : (
         <dl class="infra-facts">
