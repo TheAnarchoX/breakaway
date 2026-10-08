@@ -69,7 +69,7 @@ Answering works as every decision does. A kickoff's decision also has **Send ans
 
 The kickoff page ends with what's next, in order: **Read the plan** (the pull request, with its **In short** quoted on the page), **Merge** it (the board's own Merge, the person's press), then **Start building**, which opens the first-version feature with its **Chase** button. Kickoff never starts the chase. Last, **Run it** (`WEB-126`, which took over `WEB-36`'s optional **Put it online**): a required step that asks whether the project runs anywhere. **Not needed** finishes it; **Set it up now** and **Have an agent do it** show each part of the setup (a provider, the write tokens, staging and production, the first plan waiting, and the wizard's **Deploys** step, `WEB-14`) and what's left, and finish it once every part is in place.
 
-A kickoff is finished when its plan merges; it leaves the Kickoff list, and the repository carries on like any other.
+A kickoff is finished when its plan merges and **Run it** is done (answered **Not needed**, or every part set up): until then it stays in the Kickoff list, marked "Plan merged, Run it left" (`WEB-126`), and then it leaves, and the repository carries on like any other.
 
 ### Edge states
 

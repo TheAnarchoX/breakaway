@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -377,7 +377,7 @@ describe('kickoffs on the board (IDEA-26)', () => {
     expect(fresh.runIt).toMatchObject({ choice: null, done: false });
     expect(fresh.runIt.parts.map((p) => [p.id, p.done])).toEqual([
       ['provider', false],
-      ['tokens', null],
+      ['tokens', false],
       ['environments', false],
       ['plan', false],
       ['deploys', false],
@@ -397,7 +397,7 @@ describe('kickoffs on the board (IDEA-26)', () => {
     expect(now.runIt).toMatchObject({
       choice: 'now',
       done: false,
-      left: ['provider', 'environments', 'plan', 'deploys'],
+      left: ['provider', 'tokens', 'environments', 'plan', 'deploys'],
     });
     const added = await owner('infra/environments', {
       method: 'POST',
@@ -406,13 +406,27 @@ describe('kickoffs on the board (IDEA-26)', () => {
     expect(added.status).toBe(201);
     const seen = await body(await api(`kickoffs/${plant.id}`));
     expect(seen.runIt.parts.find((p) => p.id === 'environments')).toMatchObject({ done: true, detail: 'staging' });
-    expect(seen.runIt.left).toEqual(['provider', 'plan', 'deploys']);
+    expect(seen.runIt.left).toEqual(['provider', 'tokens', 'plan', 'deploys']);
     expect(seen.runIt.environments).toEqual([{ id: expect.any(Number), name: 'staging', kind: 'staging' }]);
 
     // The repository's settings page reads it by the repository, finished or not.
     const listed = await body(await api('kickoffs?repo=plant-diary'));
     expect(listed.kickoffs.map((k) => k.id)).toEqual([plant.id]);
-    expect(listed.kickoffs[0].runIt).toMatchObject({ choice: 'now', left: ['provider', 'plan', 'deploys'] });
+    expect(listed.kickoffs[0].runIt).toMatchObject({ choice: 'now', left: ['provider', 'tokens', 'plan', 'deploys'] });
+
+    // A token check that fails (GitHub's limit used up) leaves the tokens unchecked, and Run it still answers.
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      instance.infraTokens = async () => {
+        throw new Error('GitHub’s limit is used up');
+      };
+    });
+    const unchecked = await body(await api(`kickoffs/${plant.id}`));
+    expect(unchecked.status).toBe(200);
+    expect(unchecked.runIt.parts.find((p) => p.id === 'tokens')).toMatchObject({ done: null });
+    expect(unchecked.runIt.left).toEqual(['provider', 'plan', 'deploys']);
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      delete instance.infraTokens;
+    });
     expect((await body(await api('kickoffs?repo=herbs'))).kickoffs.map((k) => k.runIt.choice)).toEqual([null]);
 
     // Taking it back leaves the step to do again.
@@ -437,8 +451,21 @@ describe('kickoffs on the board (IDEA-26)', () => {
 
     // A registered one stops too, and says which repository stays on the board.
     expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary', 'herb-log']);
-    // Its plan merged: the IDEA is done, and the kickoff with it.
+    // Its plan merged: the IDEA is done, but Run it isn't, so it stays in the list, marked (WEB-126).
     expect((await api('tasks/IDEA-2', { method: 'PATCH', body: { status: 'completed' } })).status).toBe(200);
+    const merged = (await body(await api('kickoffs'))).kickoffs;
+    expect(merged.map((k) => [k.name, k.runItLeft])).toEqual([
+      ['plant-diary', false],
+      ['herb-log', true],
+    ]);
+    // Answered Not needed, Run it is done, and the kickoff leaves the list with it.
+    const herbId = merged[1].id;
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: 'not-needed' } });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    // Taken back, it's left to do again, and back in the list.
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: null } });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary', 'herb-log']);
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: 'not-needed' } });
     expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
     // Asked for by its IDEA, a finished one still answers, so its plan's pull request page can lead back (WEB-48).
     const herbIdea = (await body(await api('tasks/IDEA-2'))).task.uuid;

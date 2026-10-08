@@ -327,8 +327,12 @@ function KickoffStart() {
                   {k.name}
                 </a>
                 <span class="meta">
-                  {k.registered ? `On the board as ${k.slug}` : 'Not on the board yet'}, started{' '}
-                  <time dateTime={k.created}>{ago(k.created)}</time>
+                  {k.runItLeft
+                    ? 'Plan merged, Run it left'
+                    : k.registered
+                      ? `On the board as ${k.slug}`
+                      : 'Not on the board yet'}
+                  , started <time dateTime={k.created}>{ago(k.created)}</time>
                 </span>
               </li>
             ))}

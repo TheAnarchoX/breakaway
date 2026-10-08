@@ -208,7 +208,7 @@ export function checkRunIt(value) {
 
 /**
  * Run it's progress, part by part, from what the board knows about the kickoff's repository: a provider connected,
- * each environment's write token in place (null while the board can't check it, and then it neither ticks nor
+ * each environment's write token in place (null when the board couldn't check them, and then it neither ticks nor
  * holds the step), the environments, the first plan, and deploys on. `left` names the parts still to do; the
  * environments and the plan come along, so the step can link to them.
  * @param {{ choice: string | null, at?: string | null, provider: boolean, tokens: boolean | null,
@@ -223,7 +223,7 @@ export function runItProgress({ choice, at = null, provider, tokens, environment
       id: 'tokens',
       name: 'Write tokens in place',
       done: tokens,
-      detail: tokens === null ? 'Connections checks each environment’s write token.' : null,
+      detail: tokens === null ? 'couldn’t check them just now; try again in a minute' : null,
     },
     {
       id: 'environments',

@@ -3,6 +3,7 @@ import { Bot, Circle, CircleCheck, CircleDashed, Globe, Plus } from 'lucide-prea
 import { api, enc } from '../lib/api.js';
 import { connections, go, hashFor, loadConnections, openAddRepo, toast } from '../lib/store.js';
 import { EnvironmentAgentDialog, connectedProviders } from './EnvironmentAgent.jsx';
+import { TokenSetup } from './TokenSetup.jsx';
 
 /**
  * Kickoff's last step, Run it (WEB-126): required, with three answers. Not needed (a library, research) is recorded
@@ -43,7 +44,7 @@ const envHref = (/** @type {number} */ id, /** @type {string | null} */ plan = n
   hashFor({ view: 'infrastructure', environment: String(id), plan, task: null });
 
 /**
- * Run it's parts as a checklist: done, not yet, or not checked here (the write tokens, until the board can check them).
+ * Run it's parts as a checklist: done, not yet, or couldn't check (the tokens, when GitHub didn't answer).
  * @param {{ runIt: any }} props
  */
 export function RunItParts({ runIt }) {
@@ -62,7 +63,7 @@ export function RunItParts({ runIt }) {
             {p.name}
             {p.detail && <span class="meta">: {p.detail}</span>}
             <span class="visually-hidden">
-              {p.done ? ', done' : p.done === null ? ', not checked here' : ', not yet'}
+              {p.done ? ', done' : p.done === null ? ', couldn’t check' : ', not yet'}
             </span>
           </span>
         </li>
@@ -167,7 +168,7 @@ export function RunItStep({ k, runIt, idea, merged, onSaved }) {
         <div class="ko-runit">
           <RunItParts runIt={runIt} />
           <p class="meta" role="status">
-            {left ?? (runIt.done ? 'All set up.' : 'Connections checks the write tokens.')}
+            {left ?? (runIt.done ? 'All set up.' : 'Couldn’t check the tokens just now. Try again in a minute.')}
           </p>
           <ol class="ko-guide">
             {!part('provider')?.done && (
@@ -186,15 +187,14 @@ export function RunItStep({ k, runIt, idea, merged, onSaved }) {
             {part('tokens')?.done !== true && (
               <li>
                 <p>
-                  <strong>The write tokens:</strong> each environment applies with its own token, kept in a GitHub
-                  environment on {k.github ?? k.name}, never on the board. Connections says which permissions each one
-                  needs and checks it’s there.
+                  <strong>The tokens:</strong> the board reads with a read-only token, and each environment applies with
+                  its own write token, kept in a GitHub environment on {k.github ?? k.name}, never on the board.
                 </p>
-                <div class="wiz-actions">
-                  <button type="button" class="btn btn-outline btn-sm" onClick={() => go('connections')}>
-                    Open Connections
-                  </button>
-                </div>
+                {runIt.environments?.length ? (
+                  <TokenSetup repo={k.slug} paste onChange={(view) => view?.done && onSaved()} />
+                ) : (
+                  <p class="meta">Each token’s checklist shows here once it has environments.</p>
+                )}
               </li>
             )}
             {choice === 'now' && (
