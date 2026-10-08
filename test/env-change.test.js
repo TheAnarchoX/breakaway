@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bindChoice,
+  boundRows,
   bindingChoices,
   boundChoice,
   CHANGE_MAX_EDITS,
@@ -10,10 +11,12 @@ import {
   changePlanId,
   changeShows,
   codePrompt,
+  createAt,
   createEdit,
   createForm,
   createOverlay,
   createProblems,
+  createStart,
   declaredFor,
   editLines,
   editMarks,
@@ -28,9 +31,13 @@ import {
   nameAfter,
   nameEdits,
   nameProblem,
+  orderCreates,
+  pendingCreates,
   readDismissed,
   readEdits,
+  rebind,
   recentChange,
+  replaceCreate,
   sameValue,
   setPath,
   settingEdits,
@@ -585,6 +592,107 @@ describe('adding a resource', () => {
       { from: 'worker:acme-api', to: 'queue:acme-mail', kind: 'uses' },
       { from: 'worker:acme-api', to: 'route:v2.acme.example/*', kind: 'serves' },
     ]);
+  });
+
+  describe('changing an add before it’s proposed (WEB-119)', () => {
+    const db = { op: /** @type {const} */ ('create'), kind: 'd1', name: 'acme-db2', attrs: {} };
+    const jobs = {
+      op: /** @type {const} */ ('create'),
+      kind: 'queue',
+      name: 'acme-jobs',
+      attrs: { deliveryDelay: 5 },
+      bindTo: { worker: 'acme-api', binding: 'JOBS' },
+    };
+    const api2 = { op: /** @type {const} */ ('create'), kind: 'worker', name: 'acme-api2', attrs: {} };
+    const creatable = {
+      ...CREATABLE,
+      worker: { label: 'Worker', help: 'Code.', name: { label: 'Name', help: '' }, fields: [] },
+    };
+
+    it('finds the add behind a dashed node, by the ID the board gives it', () => {
+      const edits = [{ op: /** @type {const} */ ('set'), resource: worker.id, path: 'observability', value: true }, db];
+      expect(createAt(edits, { kind: 'd1', name: 'acme-db2' })).toBe(1);
+      expect(createAt(edits, { kind: 'queue', name: 'acme-db2' })).toBe(-1);
+      expect(pendingCreates(edits)).toEqual([
+        { id: 'd1:acme-db2', kind: 'd1', name: 'acme-db2', attrs: {}, planned: true },
+      ]);
+    });
+
+    it('opens its form from the edit: its settings, the defaults it doesn’t give, and what binds it', () => {
+      expect(createStart(CREATABLE.queue, jobs)).toEqual({
+        name: 'acme-jobs',
+        form: { deliveryDelay: '5', deliveryPaused: false },
+        worker: 'acme-api',
+        binding: 'JOBS',
+      });
+      expect(createStart(CREATABLE.d1, db)).toEqual({ name: 'acme-db2', form: {}, worker: '', binding: null });
+    });
+
+    it('replaces the add where it is, and what names it follows a rename', () => {
+      const route = {
+        op: /** @type {const} */ ('create'),
+        kind: 'route',
+        name: 'v2.acme.example/*',
+        attrs: { zone: 'acme.example', worker: 'acme-api2' },
+      };
+      const bound = { ...db, bindTo: { worker: 'acme-api2', binding: 'DB2' } };
+      const out = replaceCreate([api2, bound, route], 0, { ...api2, name: 'acme-edge' }, creatable);
+      expect('edits' in out && out.edits).toEqual([
+        { ...api2, name: 'acme-edge' },
+        { ...db, bindTo: { worker: 'acme-edge', binding: 'DB2' } },
+        { ...route, attrs: { zone: 'acme.example', worker: 'acme-edge' } },
+      ]);
+      expect(replaceCreate([db, jobs], 1, { ...jobs, kind: 'd1', name: 'acme-db2' }, creatable)).toEqual({
+        error: 'Your change already adds a d1 called acme-db2: pick another name.',
+      });
+      expect('error' in replaceCreate([db], 3, db, creatable)).toBe(true);
+    });
+
+    it('shows the bindings its adds make as rows on the Worker’s form, as the board writes them', () => {
+      expect(boundRows([db, jobs, api2], creatable, { kind: 'worker', name: 'acme-api' }, 'bindings')).toEqual([
+        { name: 'JOBS', type: 'queue', queue: 'acme-jobs' },
+      ]);
+      const onDb = { ...db, bindTo: { worker: 'acme-api', binding: 'DB2' } };
+      expect(boundRows([onDb], creatable, { kind: 'worker', name: 'acme-api' }, 'bindings')).toEqual([
+        { name: 'DB2', type: 'd1', resource: 'd1:acme-db2' },
+      ]);
+      expect(boundRows([onDb], creatable, { kind: 'worker', name: 'acme-api' }, 'routes')).toEqual([]);
+    });
+
+    it('turns a row that binds an add into its bindTo, renamed, removed, or new, and keeps the others', () => {
+      const kept = { name: 'CACHE', type: 'kv', namespace_id: 'abc' };
+      const binder = { kind: 'worker', name: 'acme-api' };
+      // Renamed in the form, and the D1 bound from the Worker's Bindings field like one that runs.
+      const out = rebind([db, jobs], creatable, binder, 'bindings', [
+        kept,
+        { name: 'MAIL', type: 'queue', queue: 'acme-jobs' },
+        { name: 'DB2', type: 'd1', resource: 'd1:acme-db2' },
+      ]);
+      expect(out).toEqual({
+        rows: [kept],
+        edits: [
+          { ...db, bindTo: { worker: 'acme-api', binding: 'DB2' } },
+          { ...jobs, bindTo: { worker: 'acme-api', binding: 'MAIL' } },
+        ],
+      });
+      // Its row removed: the add isn't bound any more.
+      expect(rebind([db, jobs], creatable, binder, 'bindings', [kept])).toEqual({
+        rows: [kept],
+        edits: [db, { op: 'create', kind: 'queue', name: 'acme-jobs', attrs: { deliveryDelay: 5 } }],
+      });
+      // An add another Worker binds stays its, and the row stays a binding of the field.
+      const other = { name: 'JOBS2', type: 'queue', queue: 'acme-jobs' };
+      expect(rebind([jobs], creatable, { kind: 'worker', name: 'acme-web' }, 'bindings', [other])).toEqual({
+        rows: [other],
+        edits: [jobs],
+      });
+    });
+
+    it('moves an add after the new Worker that binds it, so the board makes the Worker first', () => {
+      const bound = { ...db, bindTo: { worker: 'acme-api2', binding: 'DB2' } };
+      expect(orderCreates([bound, jobs, api2], creatable)).toEqual([jobs, api2, bound]);
+      expect(orderCreates([api2, bound], creatable)).toEqual([api2, bound]);
+    });
   });
 
   it('fills in the prompt for an agent to write the code a new resource needs', () => {
