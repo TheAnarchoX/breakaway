@@ -178,3 +178,68 @@ export function kickoffIdea(kickoff) {
     tags: ['agent', 'idea', KICKOFF_TAG],
   };
 }
+
+/**
+ * Kickoff's last step, Run it (WEB-126): the owner's answer to whether and how the project runs somewhere. Not
+ * needed (a library, research) finishes the step; Set it up now and Have an agent do it finish it once every part
+ * of the setup is in place.
+ */
+export const RUN_IT = /** @type {const} */ (['not-needed', 'now', 'agent']);
+
+/**
+ * The owner's answer, checked: one of RUN_IT, or null to take it back.
+ * @param {unknown} value
+ * @returns {(typeof RUN_IT)[number] | null}
+ */
+export function checkRunIt(value) {
+  if (value === null || value === '') return null;
+  const found = RUN_IT.find((c) => c === value);
+  if (!found) throw new InputError(`choice is one of ${RUN_IT.join(', ')}, or null to take it back`);
+  return found;
+}
+
+/**
+ * @typedef {{ id: string, name: string, done: boolean | null, detail: string | null }} RunItPart
+ * @typedef {{ id: number, name: string, kind: string }} RunItEnvironment
+ * @typedef {{ id: string, state: string, environment: number }} RunItPlan
+ * @typedef {{ choice: string | null, at: string | null, done: boolean, parts: RunItPart[], left: string[],
+ *   environments: RunItEnvironment[], plan: RunItPlan | null }} RunIt
+ */
+
+/**
+ * Run it's progress, part by part, from what the board knows about the kickoff's repository: a provider connected,
+ * each environment's write token in place (null when the board couldn't check them, and then it neither ticks nor
+ * holds the step), the environments, the first plan, and deploys on. `left` names the parts still to do; the
+ * environments and the plan come along, so the step can link to them.
+ * @param {{ choice: string | null, at?: string | null, provider: boolean, tokens: boolean | null,
+ *   environments: RunItEnvironment[], plan: RunItPlan | null, deploys: boolean }} facts
+ * @returns {RunIt}
+ */
+export function runItProgress({ choice, at = null, provider, tokens, environments, plan, deploys }) {
+  /** @type {RunItPart[]} */
+  const parts = [
+    { id: 'provider', name: 'A provider connected', done: provider, detail: null },
+    {
+      id: 'tokens',
+      name: 'Write tokens in place',
+      done: tokens,
+      detail: tokens === null ? 'couldn’t check them just now; try again in a minute' : null,
+    },
+    {
+      id: 'environments',
+      name: 'Environments',
+      done: environments.length > 0,
+      detail: environments.length ? environments.map((e) => e.name).join(', ') : null,
+    },
+    {
+      id: 'plan',
+      name: 'The first plan',
+      done: Boolean(plan),
+      detail: plan ? `${plan.id}, ${plan.state === 'waiting' ? 'waiting for you' : plan.state}` : null,
+    },
+    { id: 'deploys', name: 'Deploys on', done: deploys, detail: null },
+  ];
+  const left = parts.filter((p) => p.done === false).map((p) => p.id);
+  const done = choice === 'not-needed' || (Boolean(choice) && !left.length);
+  return { choice, at, done, parts, left, environments, plan };
+}

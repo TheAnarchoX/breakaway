@@ -28,7 +28,7 @@ import { Dialog, Dictate } from './ui.jsx';
  */
 
 /** The providers connected on Connections, as `{ id, name }`. */
-const connectedProviders = () =>
+export const connectedProviders = () =>
   (connections.value.data?.connections ?? [])
     .filter((/** @type {any} */ c) => c.group === 'providers' && c.provider?.connected && c.state !== 'off')
     .map((/** @type {any} */ c) => ({ id: c.provider?.id ?? c.id.replace(/^provider\./u, ''), name: c.name }));
@@ -86,17 +86,26 @@ function ConnectRoutine({ repo }) {
 }
 
 /**
- * The wizard. `env` is the environment whose console opened it, else null for a new one.
- * @param {{ env: any, onClose: () => void, onAdded?: (env: any) => void }} props
+ * What Kickoff's Run it (WEB-126) fills the wizard in with: the repository, how, the first environment, the others
+ * for the same pull request (`also`), the names already on the board (`existing`, never added twice), and the idea
+ * whose plan the project follows.
+ * @typedef {{ repo: string, how: 'describe' | 'infer', name: string, kind: string,
+ *   also: { name: string, kind: string }[], existing: string[], plan: string | null }} EnvAgentPreset
  */
-function Wizard({ env, onClose, onAdded }) {
+
+/**
+ * The wizard. `env` is the environment whose console opened it, else null for a new one, filled in from `preset`
+ * when Kickoff opens it.
+ * @param {{ env: any, onClose: () => void, onAdded?: (env: any) => void, preset?: EnvAgentPreset | null }} props
+ */
+function Wizard({ env, onClose, onAdded, preset = null }) {
   const providers = connectedProviders();
   const [step, setStep] = useState(0);
-  const [how, setHow] = useState(/** @type {'describe' | 'infer'} */ ('describe'));
+  const [how, setHow] = useState(/** @type {'describe' | 'infer'} */ (preset?.how ?? 'describe'));
   const [need, setNeed] = useState('');
-  const [repo, setRepo] = useState(env?.repo ?? repoScope.value ?? repos.value.default);
-  const [name, setName] = useState(env?.name ?? '');
-  const [kind, setKind] = useState(env?.kind ?? 'staging');
+  const [repo, setRepo] = useState(env?.repo ?? preset?.repo ?? repoScope.value ?? repos.value.default);
+  const [name, setName] = useState(env?.name ?? preset?.name ?? '');
+  const [kind, setKind] = useState(env?.kind ?? preset?.kind ?? 'staging');
   const [provider, setProvider] = useState(env?.provider ?? providers[0]?.id ?? '');
   const [target, setTarget] = useState(env?.target ?? '');
   const [prompt, setPrompt] = useState('');
@@ -131,7 +140,16 @@ function Wizard({ env, onClose, onAdded }) {
     target: target.trim() || null,
     how,
     need,
+    also: preset?.also ?? [],
+    plan: preset?.plan ?? null,
   };
+  // The environments a Start adds: this one, and the others from Kickoff, unless the board already has them.
+  const adding = env
+    ? []
+    : [{ name: name.trim(), kind }, ...(preset?.also ?? [])].filter(
+        (e, i, all) => !preset?.existing.includes(e.name) && all.findIndex((o) => o.name === e.name) === i,
+      );
+  const also = (preset?.also ?? []).filter((e) => e.name !== name.trim());
   const noProvider = connections.value.loaded && !providers.length;
   const noRoutine = agents.value.loaded && !routineConnected(repo);
 
@@ -154,14 +172,24 @@ function Wizard({ env, onClose, onAdded }) {
     setBusy(true);
     setError(null);
     try {
-      if (!env) {
+      const added = [];
+      for (const e of adding) {
+        const first = e.name === name.trim();
         const { environment } = await api('infra/environments', {
           method: 'POST',
-          body: { repo, name: name.trim(), kind, provider, target: target.trim() || null, by: 'owner' },
+          body: {
+            repo,
+            name: e.name,
+            kind: e.kind,
+            provider,
+            target: first ? target.trim() || null : null,
+            by: 'owner',
+          },
         });
-        toast(`Added ${environment.name}. Start the agent from New agent.`, 'success');
+        added.push(environment.name);
         onAdded?.(environment);
       }
+      if (added.length) toast(`Added ${added.join(' and ')}. Start the agent from New agent.`, 'success');
       onClose();
       startAgent({ repo }, prompt.trim());
     } catch (err) {
@@ -375,6 +403,11 @@ function Wizard({ env, onClose, onAdded }) {
               <span class="field-hint infra-form-hint" id="env-agent-target-hint">
                 The Worker it runs on. Leave it empty and the agent names one in its pull request.
               </span>
+              {also.length > 0 && (
+                <p class="meta">
+                  {also.map((e) => e.name).join(' and ')} too, in the same pull request, each in its own file.
+                </p>
+              )}
             </>
           )}
         </>
@@ -400,9 +433,9 @@ function Wizard({ env, onClose, onAdded }) {
             />
             <span class="field-hint" id="env-agent-prompt-hint">
               Change anything; Back writes it again from your answers.{' '}
-              {env
+              {!adding.length
                 ? 'New agent opens with it, and nothing starts until you press Start agent there.'
-                : `${name.trim()} is added to the board with nothing in it yet, then New agent opens with this. Nothing starts until you press Start agent there.`}
+                : `${adding.map((e) => e.name).join(' and ')} ${adding.length > 1 ? 'are' : 'is'} added to the board with nothing in ${adding.length > 1 ? 'them' : 'it'} yet, then New agent opens with this. Nothing starts until you press Start agent there.`}
             </span>
           </label>
           {noRoutine && <ConnectRoutine repo={repo} />}
@@ -441,7 +474,11 @@ function Wizard({ env, onClose, onAdded }) {
           {last ? (
             <>
               <Bot size={16} aria-hidden="true" />
-              {busy ? 'Adding…' : env ? 'Open New agent' : `Add ${name.trim()} and open New agent`}
+              {busy
+                ? 'Adding…'
+                : !adding.length
+                  ? 'Open New agent'
+                  : `Add ${adding.map((e) => e.name).join(' and ')} and open New agent`}
             </>
           ) : (
             'Next'
@@ -453,13 +490,14 @@ function Wizard({ env, onClose, onAdded }) {
 }
 
 /**
- * The wizard's dialog, for a view that opens it from its own button (Add an environment).
- * @param {{ open: boolean, onClose: () => void, env?: any, onAdded?: (env: any) => void }} props
+ * The wizard's dialog, for a view that opens it from its own button (Add an environment, Kickoff's Run it).
+ * @param {{ open: boolean, onClose: () => void, env?: any, onAdded?: (env: any) => void,
+ *   preset?: EnvAgentPreset | null }} props
  */
-export function EnvironmentAgentDialog({ open, onClose, env = null, onAdded }) {
+export function EnvironmentAgentDialog({ open, onClose, env = null, onAdded, preset = null }) {
   return (
     <Dialog open={open} onClose={onClose} labelledBy="env-agent-title">
-      {open && <Wizard env={env} onClose={onClose} onAdded={onAdded} />}
+      {open && <Wizard env={env} onClose={onClose} onAdded={onAdded} preset={preset} />}
     </Dialog>
   );
 }
