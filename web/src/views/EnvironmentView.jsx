@@ -21,6 +21,7 @@ import { ActionsSection } from '../components/EnvironmentActions.jsx';
 import { NoneYet } from '../components/ui.jsx';
 import { EMPTY_START } from '../lib/infra-change.js';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
+import { expectedOverlay } from '../lib/topology.js';
 import {
   AddResourceButton,
   ChangePanel,
@@ -172,7 +173,7 @@ const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width:
 /**
  * @typedef {{ env: any, resources: any[], relations: any[], stale: any, desired: any, desiredError: string | null, drift: any,
  *   audit: any[], more: boolean, signals: any[], runs: any[], incidents: any[], plans: any[], plansError: string | null, plan: any,
- *   cost: any,
+ *   applied: any, looking: boolean, cost: any,
  *   error: string | null, notFound: boolean, loading: boolean, updated: number | null, tick: number }} ConsoleState
  */
 
@@ -195,6 +196,8 @@ export function EnvironmentView() {
       plans: [],
       plansError: null,
       plan: null,
+      applied: null,
+      looking: false,
       cost: null,
       error: null,
       notFound: false,
@@ -223,7 +226,7 @@ export function EnvironmentView() {
     if (!quiet) setState((s) => ({ ...s, loading: true }));
     try {
       const { environment } = await api(`infra/environments/${enc(id)}`);
-      const [inventory, audit, desired, drift, signals, runs, incidents, plans, costs] = await Promise.all([
+      const [inventory, audit, desired, drift, signals, runs, incidents, plans, costs, looks] = await Promise.all([
         api(`infra/inventory?environment=${enc(id)}`),
         api(`infra/audit?environmentId=${enc(id)}&limit=${AUDIT_PAGE}`),
         api(`infra/desired/${enc(id)}`).then(
@@ -242,6 +245,7 @@ export function EnvironmentView() {
           (err) => ({ plans: [], error: err.message }),
         ),
         optional(api(`infra/costs?environment=${enc(id)}`), null),
+        optional(api('infra/inventory/refresh'), { providers: [] }),
       ]);
       // The plan whose changes the map shows: one applying now, else the one waiting for you.
       const live = runs.runs.find((/** @type {any} */ r) => r.phase !== 'done');
@@ -252,6 +256,19 @@ export function EnvironmentView() {
             null,
           )
         : null;
+      // What applied what the desired state declares and the inventory hasn't seen yet: the latest applied plan, read
+      // only while something is still expected (WEB-129).
+      const last = plans.plans.find((/** @type {any} */ p) => p.state === 'applied');
+      const unseen = expectedOverlay(desired.desired?.desired?.resources, inventory.resources).adds.length > 0;
+      const applied =
+        !last || !unseen
+          ? null
+          : last.id === plan?.id
+            ? plan
+            : await optional(
+                api(`infra/plans/${enc(last.id)}`).then((p) => p.plan),
+                null,
+              );
       setState((s) => ({
         env: environment,
         resources: inventory.resources,
@@ -268,6 +285,8 @@ export function EnvironmentView() {
         plans: plans.plans,
         plansError: plans.error,
         plan,
+        applied,
+        looking: looks.providers.some((/** @type {any} */ p) => p.provider === environment.provider && p.running),
         cost: costs?.environments?.find((/** @type {any} */ e) => e.environmentId === environment.id) ?? null,
         error: null,
         notFound: false,
@@ -463,7 +482,7 @@ export function EnvironmentView() {
               run={run}
               stopped={stopped}
               agents={agents}
-              inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
+              inventory={{ stale: state.stale, seen: lastSeen(state.resources), looking: state.looking }}
               change={changeTile(ch)}
               firstApply={firstApply}
             />
@@ -481,6 +500,8 @@ export function EnvironmentView() {
               headActions={cant ? null : <AddResourceButton ch={ch} />}
               note={env.observeOnly ? cant : null}
               lead={<LastChange ch={ch} />}
+              declared={state.desired?.desired?.resources ?? null}
+              applied={state.applied}
             />
             <ChangePanel ch={ch} cant={cant} />
           </div>
