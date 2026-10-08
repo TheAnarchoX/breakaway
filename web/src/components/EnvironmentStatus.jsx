@@ -71,9 +71,10 @@ const plural = (/** @type {number} */ n, /** @type {string} */ one, /** @type {s
  * Health: the worst state, and how many resources share it unless all are healthy, with how many couldn't be read.
  * `empty` is an environment with no target yet, which says how to start one (BRK-291); `failed` one whose first apply
  * failed, so its target points at nothing yet (WEB-120).
- * @param {{ health: any, empty?: boolean, failed?: boolean }} props
+ * `declared` is the target an environment with none takes from its merged file (BRK-309), which Compare now plans.
+ * @param {{ health: any, empty?: boolean, failed?: boolean, declared?: { name: string, file: string } | null }} props
  */
-function HealthTile({ health, empty = false, failed = false }) {
+function HealthTile({ health, empty = false, failed = false, declared = null }) {
   if (!health)
     return (
       <Tile
@@ -81,9 +82,23 @@ function HealthTile({ health, empty = false, failed = false }) {
         Icon={Activity}
         value="Unknown"
         state="unknown"
-        detail={empty ? 'Add a resource to start' : failed ? 'First apply failed' : 'Not seen yet'}
+        detail={
+          declared
+            ? 'Compare now to plan it'
+            : empty
+              ? 'Add a resource to start'
+              : failed
+                ? 'First apply failed'
+                : 'Not seen yet'
+        }
         detailTitle={
-          empty ? EMPTY_START : failed ? 'The first apply failed, so the target points at nothing yet' : undefined
+          declared
+            ? `${declared.file} declares ${declared.name}: Compare now drafts the plan that builds it`
+            : empty
+              ? EMPTY_START
+              : failed
+                ? 'The first apply failed, so the target points at nothing yet'
+                : undefined
         }
       />
     );
@@ -212,6 +227,7 @@ export function StatusBand({
           health={env.target ? health : null}
           empty={!env.target && !env.observeOnly}
           failed={Boolean(firstApply)}
+          declared={!env.target && env.desiredTarget?.name ? env.desiredTarget : null}
         />
         {env.target && <InventoryTile stale={inventory.stale} seen={inventory.seen} looking={inventory.looking} />}
         {env.frozen ? (

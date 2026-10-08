@@ -23,6 +23,9 @@ import { LIVE_STATES, changeTarget } from './infra-changes.js';
 import { creatableKinds, targetKinds } from './infra-provider.js';
 import { planDigest } from './infra-runner.js';
 import { redact } from './redact.js';
+import { install } from './install.js';
+import { runsTheBoard } from './infra-environments.js';
+import { planId } from './infra-plans.js';
 import {
   appliedRules,
   approvalLapsed,
@@ -112,6 +115,13 @@ export const infraChangeApprovalMethods = {
     const kinds = provider ? targetKinds(provider) : [];
     const label = String((provider ? creatableKinds(provider)[kinds[0]]?.label : null) ?? kinds[0] ?? 'target');
     const one = changeTarget({ target: null, file: desired, kinds, environment: env.name, label });
+    // The board's own Worker is never another environment's target (BRK-309): it says so rather than plan for it.
+    if (one.name && runsTheBoard({ target: one.name }, install(this.env).worker))
+      return {
+        env,
+        target: null,
+        problem: `${env.name} has no target, and the ${label} its desired state makes, ${one.name}, is the one this board runs on: Architect only observes it, so set ${env.name}’s target on the board`,
+      };
     if (one.name) return { env: { ...env, target: one.name }, target: one.name, label };
     if (!kinds.length) return { env, target: null };
     return {
@@ -121,6 +131,60 @@ export const infraChangeApprovalMethods = {
         ? `${env.name} has no target, and its desired state makes ${one.choices.length} ${label}s (${one.choices.join(', ')}): set which one is its target on the board, then it plans`
         : `${env.name} has no target yet: add a ${label} for it to run to its desired state, or set its target on the board`,
     };
+  },
+
+  /**
+   * The target an environment with none takes from its merged desired state (BRK-309): after Clear the target, or one
+   * whose file merged without a change from the console, Compare, the inventory, and the next plan use the one Worker
+   * its file on the default branch makes, through infraPlanTarget. Only planned with: the environment gets it on the
+   * owner's Approve of that plan (giveDesiredTarget). `target` is null for an environment with a target, one with no
+   * desired state, and when there's a `problem` (none, several, or the board's own Worker), which says so in words.
+   * @param {Record<string, any>} env
+   * @param {import('./infra-provider.js').DesiredState | null} [desired] the environment's, unless the caller has it
+   * @returns {{ env: Record<string, any>, target: string | null, label?: string, problem?: string }}
+   */
+  desiredTargetOf(env, desired) {
+    if (env.target || env.observe_only) return { env, target: null };
+    const wanted = desired === undefined ? this.desiredStateFor(env) : desired;
+    if (!wanted) return { env, target: null };
+    return this.infraPlanTarget(env, wanted);
+  },
+
+  /** The branch an environment's desired state was last read from, in words. */
+  desiredBranchOf(repo) {
+    try {
+      return JSON.parse(this.ghMeta('infra_desired_read', repo) ?? 'null')?.branch ?? 'the default branch';
+    } catch {
+      return 'the default branch';
+    }
+  },
+
+  /**
+   * Gives an environment that has no target the one its plan was made for from its desired state (BRK-309), on the
+   * owner's Approve of that plan and never before, with an audit entry. Nothing when it has a target by now, or the
+   * plan's is the board's own Worker.
+   * @param {Record<string, any>} row the plan's row (planRow)
+   */
+  giveDesiredTarget(row) {
+    if (!row.target) return;
+    const env = this.sql.exec('SELECT * FROM infra_environments WHERE id = ?', Number(row.environment)).toArray()[0];
+    if (!env || env.target || runsTheBoard({ target: row.target }, install(this.env).worker)) return;
+    this.sql.exec(
+      "UPDATE infra_environments SET target = ?, edited = ? WHERE id = ? AND (target IS NULL OR target = '')",
+      row.target,
+      Date.now(),
+      env.id,
+    );
+    this.appendInfraAudit({
+      kind: 'environment',
+      repo: env.repo,
+      environment: env.name,
+      environmentId: Number(env.id),
+      plan: planId(Number(row.n)),
+      by: 'owner',
+      outcome: 'changed',
+      summary: `${env.name}’s target is ${row.target}, from the desired state on ${this.desiredBranchOf(env.repo)}, approved by the owner with ${planId(Number(row.n))}`,
+    });
   },
 
   /**
