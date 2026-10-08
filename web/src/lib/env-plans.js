@@ -46,6 +46,8 @@ export function runProgress(run, plan) {
 export function plansPanel({ plans = [], runs = [], changes = null, checks = () => null, now = Date.now() }) {
   const byId = new Map(plans.map((p) => [p.id, p]));
   const live = new Map(runs.filter((r) => r.phase !== 'done').map((r) => [r.plan, r]));
+  // A run that ended having applied nothing can be started again from its plan (BRK-308).
+  const stopped = new Map(runs.filter((r) => r.phase === 'done' && r.startAgain).map((r) => [r.plan, r]));
   // Every change the board has, the open one first; a plan made from one says which.
   const all = [...(changes?.open ? [changes.open] : []), ...(changes?.changes ?? [])].filter(
     (c, i, list) => list.findIndex((d) => d.n === c.n) === i,
@@ -69,7 +71,11 @@ export function plansPanel({ plans = [], runs = [], changes = null, checks = () 
   /** @returns {PlanRow} */
   const row = (/** @type {any} */ plan) => {
     const run = live.get(plan.id) ?? null;
-    const progress = run ? runProgress(run, plan) : null;
+    const progress = run
+      ? runProgress(run, plan)
+      : plan.state === 'failed' && stopped.has(plan.id)
+        ? 'Nothing applied: start the run again'
+        : null;
     return { plan, run, progress, change: fromChange.get(plan.id) ?? null };
   };
   // A run still going whose plan is older than the ones read shows from the run alone.

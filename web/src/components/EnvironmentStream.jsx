@@ -103,6 +103,14 @@ function Entry({ item, fresh, env, nameOf, onResource }) {
               <a href={planLink}>{item.plan}</a>
             </>
           )}
+          {item.link && (
+            <>
+              {item.who || item.resource || planLink ? ' · ' : ''}
+              <a href={item.link.url} target="_blank" rel="noopener noreferrer">
+                {item.link.text}
+              </a>
+            </>
+          )}
           {item.envelope && (
             <>
               {' · envelope '}

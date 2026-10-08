@@ -17,6 +17,11 @@
  * the plan is applied but unverified, with a warning signal. Every step is in the audit trail, the plan's state says
  * how it ended, and the lock is released with the outcome. A run that stops reporting is swept once its lock expires,
  * marked failed, and sent as a signal, so a production one opens an incident (BRK-197).
+ *
+ * A run that ends on GitHub before it asks for its plan (its setup failed, or someone cancelled it) is found sooner:
+ * once it has been quiet a few minutes, the sweep reads the workflow's runs and ends it failed with nothing applied.
+ * GitHub's Re-run never applies a plan; for a run that applied nothing, the owner presses Start the run again, which
+ * checks everything a start checks and starts a new run (BRK-308).
  */
 import { AgentError } from './store-agents.js';
 import { historySelect } from './store-infra-audit.js';
@@ -32,12 +37,17 @@ import {
   OIDC_KEYS_URL,
   RETRY_MINUTES,
   RUN_LOCK_MINUTES,
+  RUN_LOOKUP_MINUTES,
   RunRefused,
   checkRunClaims,
   deployBranchProblem,
   healthVerdict,
   rollbackDiff,
+  runTitle,
+  runUrl,
   runView,
+  startAgainProblem,
+  startedRun,
   stepsSummary,
   verifyRunToken,
 } from './infra-runs.js';
@@ -80,6 +90,9 @@ const staleRunner = (error, row, env) =>
     ? `; render ${RUNNER_WORKFLOW} again with npx breakaway infra init --update and merge it`
     : '';
 
+/** Whether `by` is the owner's: the signed-in board sends none, or `owner`. */
+const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
+
 /** @param {string} message @param {number} [status] */
 const refuse = (message, status = 409) => {
   throw new RunRefused(message, status);
@@ -105,6 +118,8 @@ export const infraRunsMethods = {
         .map((c) => c.name),
     );
     if (!have.has('github_env')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN github_env TEXT');
+    // The run on GitHub once the board knows it (BRK-308): its ID, link, and how it ended there, as JSON.
+    if (!have.has('github_run')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN github_run TEXT');
   },
 
   /** A plan's run with its environment's name, or null. */
@@ -173,17 +188,82 @@ export const infraRunsMethods = {
     }
   },
 
-  /** Runs whose lock expired or went (the owner released it) without an end: marked failed, with a signal. */
+  /**
+   * Runs whose lock expired or went (the owner released it) without an end: marked failed, with a signal. A run started
+   * a few minutes ago that hasn't asked for its plan is looked up on GitHub (BRK-308).
+   */
   async sweepInfraRuns() {
     const now = Date.now();
     const rows = this.sql.exec(`${SELECT} WHERE r.phase NOT IN ('queued', 'done') ORDER BY r.n`).toArray();
     for (const row of rows) {
       const lock = this.lockRow(row.environment);
-      if (lock && lock.token === row.lock_token && held(lock, now)) continue;
+      if (lock && lock.token === row.lock_token && held(lock, now)) {
+        if (row.phase === 'dispatched' || row.phase === 'rollback-dispatched') await this.lookUpInfraRun(row, now);
+        continue;
+      }
+      const lockWent = lock?.token === row.lock_token ? 'expired' : 'was released';
+      // A run that never asked for its plan never had it: nothing can have applied (BRK-308).
+      if (row.phase === 'dispatched' && !row.run_id) {
+        await this.finishInfraRun(row, 'failed', {
+          summary: `nothing applied: the run never reached the board before ${row.env_name}’s lock ${lockWent}. Fix what stopped it, then press Start the run again`,
+        });
+        continue;
+      }
       await this.finishInfraRun(row, 'expired', {
-        summary: `the run stopped reporting before ${row.env_name}’s lock ${lock?.token === row.lock_token ? 'expired' : 'was released'}; what it applied is unknown, so compare the environment for drift`,
+        summary: `the run stopped reporting before ${row.env_name}’s lock ${lockWent}; what it applied is unknown, so compare the environment for drift`,
       });
     }
+  },
+
+  /**
+   * A started run that hasn't asked for its plan after RUN_LOOKUP_MINUTES, looked up on GitHub at most that often:
+   * one read of the runner's workflow runs, with the Actions: read the GitHub App already has. When GitHub says it
+   * ended, it never had the plan, so it applied nothing: the run ends failed (a rollback, rollback failed), with
+   * GitHub's conclusion and the run's link, and the lock is released. Anything GitHub can't answer waits for the next
+   * look, or for the lock to expire.
+   */
+  async lookUpInfraRun(row, now) {
+    if (!(now - Number(row.dispatched) >= RUN_LOOKUP_MINUTES * MINUTE)) return;
+    this.runLookups ??= new Map();
+    const key = `${row.n}:${row.dispatched}`;
+    if (now - (this.runLookups.get(key) ?? 0) < RUN_LOOKUP_MINUTES * MINUTE) return;
+    this.runLookups.set(key, now);
+    const id = planId(Number(row.n));
+    const env = this.environmentRow(row.environment);
+    const repo = this.repoBySlug(env.repo);
+    const credentials = repo ? await appCredentials(this.env) : null;
+    if (!credentials) return;
+    const branch = repo.defaultBranch || 'main';
+    const since = new Date(Number(row.dispatched) - MINUTE).toISOString();
+    let listed;
+    try {
+      listed = await this.githubClient(credentials, repo).get(
+        `/actions/workflows/${encodeURIComponent(WORKFLOW_FILE)}/runs?event=workflow_dispatch&branch=${encodeURIComponent(branch)}&created=${encodeURIComponent(`>=${since}`)}&per_page=20`,
+      );
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      return;
+    }
+    const found = startedRun(listed?.workflow_runs, {
+      title: runTitle(id, env.name),
+      dispatched: Number(row.dispatched),
+    });
+    // Read again: a run that asked for its plan while GitHub answered isn't one that never did.
+    const current = this.runRow(id);
+    if (!found || !current || current.phase !== row.phase || Number(current.dispatched) !== Number(row.dispatched))
+      return;
+    const github = { id: found.id, url: found.url, conclusion: found.conclusion };
+    this.setRun(row.n, { github_run: JSON.stringify(github) });
+    if (!found.completed) return;
+    const link = found.url ? `: ${found.url}` : '';
+    if (row.phase === 'rollback-dispatched')
+      return this.finishInfraRun(current, 'rollback failed', {
+        summary: `the rollback’s run ${found.id} ended on GitHub (${found.conclusion}) before it asked for its changes${link}`,
+      });
+    return this.finishInfraRun(current, 'failed', {
+      summary: `nothing applied: run ${found.id} ended on GitHub (${found.conclusion}) before it asked for ${id}. Fix what stopped it, then press Start the run again${link}`,
+      signal: `${id}: the run failed on GitHub before applying: ${found.conclusion}${found.url ? `, open the run: ${found.url}` : ''}`,
+    });
   },
 
   /** Starts each queued run that's due, oldest first, one per environment. */
@@ -257,7 +337,14 @@ export const infraRunsMethods = {
       throw error;
     }
     const dispatched = Date.now();
-    this.setRun(row.n, { phase: 'dispatched', lock_token: taken.token, dispatched, error: null, next_try: null });
+    this.setRun(row.n, {
+      phase: 'dispatched',
+      lock_token: taken.token,
+      dispatched,
+      error: null,
+      next_try: null,
+      github_run: null,
+    });
     const undo = (why) => {
       this.setRun(row.n, { phase: 'queued', lock_token: null, dispatched: null });
       this.releaseEnvironmentLock(env.id, { token: taken.token, outcome: 'not started' });
@@ -377,6 +464,7 @@ export const infraRunsMethods = {
         branch: repo.defaultBranch || 'main',
         dispatched: Number(row.dispatched),
         run: bound,
+        plan: planId(Number(row.n)),
       });
       const lock = this.lockRow(env.id);
       if (!lock || lock.token !== row.lock_token || !held(lock, Date.now()))
@@ -411,9 +499,13 @@ export const infraRunsMethods = {
       await this.finishInfraRun(row, 'failed', { summary: `nothing applied: ${problem}` });
       refuse(`${id} won’t apply: ${problem}`);
     }
+    const repo = this.repoBySlug(env.repo);
+    const github = repo ? JSON.stringify({ id: run, url: runUrl(repo.github, run), conclusion: null }) : null;
     this.setRun(
       row.n,
-      rollback ? { rollback_run_id: run, phase: 'rollback-checked' } : { run_id: run, phase: 'checked' },
+      rollback
+        ? { rollback_run_id: run, phase: 'rollback-checked', github_run: github }
+        : { run_id: run, phase: 'checked', github_run: github },
     );
     this.renewEnvironmentLock(env.id, { token: row.lock_token, minutes: RUN_LOCK_MINUTES });
     return {
@@ -555,6 +647,7 @@ export const infraRunsMethods = {
       rollback_diff: JSON.stringify(back.diff),
       rollback_digest: await planDigest(back.diff),
       dispatched,
+      github_run: null,
       error: redact(why).slice(0, 300),
     });
     const n = back.diff.changes.length;
@@ -590,9 +683,9 @@ export const infraRunsMethods = {
    * released with the outcome, and a failure is sent as a signal. Then the queue is looked at again.
    * @param {Record<string, any>} row
    * @param {string} outcome one of RUN_OUTCOMES
-   * @param {{ summary: string }} input
+   * @param {{ summary: string, signal?: string }} input `signal` is the signal's words, when they aren't the summary's
    */
-  async finishInfraRun(row, outcome, { summary }) {
+  async finishInfraRun(row, outcome, { summary, signal }) {
     const id = planId(Number(row.n));
     const env = this.environmentRow(row.environment);
     const plan = this.planRow(row.n);
@@ -620,13 +713,78 @@ export const infraRunsMethods = {
             level: FAILED.includes(outcome) && env.kind === 'production' ? 'critical' : 'warning',
             value: null,
             at: new Date().toISOString(),
-            text: `${id} ${SIGNAL_WORDS[outcome] ?? 'failed'}: ${summary}`,
+            text: signal ?? `${id} ${SIGNAL_WORDS[outcome] ?? 'failed'}: ${summary}`,
           },
         ]);
       } catch (error) {
         console.error(`executor signal: ${error.message}`); /* the plan and the audit trail are the record */
       }
     await this.soonInfraRuns();
+  },
+
+  /**
+   * Starts a plan's run again, for one that ended having applied nothing (BRK-308): the owner's press. Everything a
+   * start checks is checked again (the plan's digest, out of date, frozen, observe only here; the workflow, the GitHub
+   * environment's branches, and the lock when the tick starts it), the plan goes back to approved with the owner in the
+   * audit trail, and the run is queued as new: a new lock, a new workflow_dispatch, and a new run's first attempt.
+   * Refused once anything applied, or may have: that's the rollback and drift path.
+   * @param {string} ref the plan's ID
+   */
+  async startInfraRunAgain(ref) {
+    const plan = this.planRow(ref);
+    const id = planId(Number(plan.n));
+    const row = this.runRow(id);
+    if (!row) throw new AgentError(`${id} has no run to start again: approve it`, 409);
+    const problem = startAgainProblem(row);
+    if (problem) throw new AgentError(`${id} can’t be started again: ${problem}`, 409);
+    if (plan.state !== 'failed')
+      throw new AgentError(`${id} is ${plan.state}: only a failed plan is started again`, 409);
+    const env = this.environmentRow(plan.environment);
+    if (env.observe_only || runsTheBoard(env, install(this.env).worker))
+      throw new AgentError(`${env.name} is observe only: nothing applies to it`, 409);
+    if (env.frozen) throw new AgentError(`${env.name} is frozen: unfreeze it, then start the run again`, 409);
+    const stale = this.outOfDatePlan(plan);
+    if (stale)
+      throw new AgentError(
+        `${id} is out of date: ${stale}. Reject it, and the next plan is drafted from what’s there now.`,
+        409,
+      );
+    if ((await planDigest(JSON.parse(plan.diff))) !== plan.digest)
+      throw new AgentError(`${id} isn’t the plan that was approved: it can’t be started again`, 409);
+    this.ctx.storage.transactionSync(() => {
+      this.moveInfraPlan(id, 'approved', {
+        by: 'owner',
+        outcome: 'started again',
+        summary: `started again by the owner: the last run applied nothing (${String(row.error ?? row.outcome).slice(0, 200)})`,
+        digest: plan.digest,
+      });
+      this.setRun(row.n, {
+        phase: 'queued',
+        lock_token: null,
+        run_id: null,
+        rollback_run_id: null,
+        rollback_diff: null,
+        rollback_digest: null,
+        steps: null,
+        rollback_steps: null,
+        dispatched: null,
+        next_try: null,
+        error: null,
+        outcome: null,
+        github_run: null,
+        github_env: runnerEnvironment(env),
+      });
+    });
+    await this.soonInfraRuns();
+    return runView(this.runRow(id));
+  },
+
+  /** POST /api/infra/plans/<id>/start-again: the owner's, from the signed-in board only (BRK-308). */
+  runStartAgainApi(ref, body = {}) {
+    return this.run(async () => {
+      if (!owners(body.by)) throw new AgentError('only the owner starts a plan’s run again, from the board', 403);
+      return { status: 200, body: { run: await this.startInfraRunAgain(ref) } };
+    });
   },
 
   /** GET /api/infra/runs[?repo=&environment=]: the newest runs first, with where each is. */

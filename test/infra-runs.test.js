@@ -12,7 +12,11 @@ import {
   checkRunClaims,
   deployBranchProblem,
   healthVerdict,
+  reRunRefused,
   rollbackDiff,
+  runTitle,
+  startAgainProblem,
+  startedRun,
   verifyRunToken,
 } from '../src/infra-runs.js';
 
@@ -87,6 +91,7 @@ describe('the runner’s token and claims', () => {
     branch: 'main',
     dispatched: Date.now() - 1000,
     run: null,
+    plan: 'plan-3',
   };
 
   it('takes a token GitHub signed, for this board, still current', async () => {
@@ -129,10 +134,83 @@ describe('the runner’s token and claims', () => {
       /breakaway-infra\.yml/u,
     );
     expect(claim({ event_name: 'push' })?.[0]).toBe(403);
-    expect(claim({ run_attempt: '2' })).toEqual([409, 'a re-run doesn’t apply a plan: a plan runs once']);
+    expect(claim({ run_attempt: '2' })).toEqual([
+      409,
+      'GitHub’s Re-run doesn’t apply a plan: a plan runs once per start. Press Start the run again on the board, on plan-3.',
+    ]);
+    expect(reRunRefused('plan-3')).toMatch(/Start the run again on the board, on plan-3\.$/u);
     expect(claim({ iat: Math.floor(Date.now() / 1000) - 3600 })?.[1]).toMatch(/before the board started it/u);
     expect(claim({}, { ...expected, run: '8' })).toEqual([409, 'another run has this plan: 8']);
     expect(claim({})).toBeNull();
+  });
+});
+
+describe('a run that applied nothing, and the run GitHub lists (BRK-308)', () => {
+  const done = (fields) => ({
+    phase: 'done',
+    outcome: 'failed',
+    run_id: null,
+    steps: null,
+    rollback_diff: null,
+    ...fields,
+  });
+
+  it('can be started again when it never had the plan, or every step it reported failed', () => {
+    expect(startAgainProblem(done({}))).toBeNull();
+    expect(startAgainProblem(done({ outcome: 'expired' }))).toBeNull();
+    const failedSteps = JSON.stringify([{ resource: 'svc-api', op: 'scale', ok: false, error: 'refused' }]);
+    expect(startAgainProblem(done({ run_id: '12', steps: failedSteps }))).toBeNull();
+  });
+
+  it('can’t once anything applied, may have, was rolled back, or the run hasn’t ended', () => {
+    const okStep = JSON.stringify([{ resource: 'svc-api', op: 'scale', ok: true }]);
+    expect(startAgainProblem(done({ run_id: '12', steps: okStep }))).toBe('run 12 applied changes');
+    expect(startAgainProblem(done({ run_id: '12', outcome: 'expired' }))).toMatch(/didn’t say what it applied/u);
+    expect(startAgainProblem(done({ rollback_diff: '{}' }))).toMatch(/rolled them back/u);
+    expect(startAgainProblem(done({ outcome: 'rolled back' }))).toBe('its run ended rolled back');
+    expect(startAgainProblem(done({ outcome: 'applied' }))).toBe('its run ended applied');
+    expect(startAgainProblem(done({ phase: 'dispatched', outcome: null }))).toBe('its run hasn’t ended');
+  });
+
+  it('finds the board’s run by its title, after the start, newest first', () => {
+    const dispatched = Date.parse('2026-10-08T12:00:00Z');
+    const title = runTitle('plan-3', 'acme-staging');
+    expect(title).toBe('Apply plan plan-3 to acme-staging');
+    const listed = (id, at, fields = {}) => ({
+      id,
+      display_title: title,
+      event: 'workflow_dispatch',
+      created_at: at,
+      status: 'completed',
+      conclusion: 'failure',
+      html_url: `https://github.com/acme/widgets/actions/runs/${id}`,
+      ...fields,
+    });
+    expect(
+      startedRun(
+        [
+          listed(1, '2026-10-08T11:00:00Z'),
+          listed(2, '2026-10-08T12:00:05Z', { status: 'in_progress', conclusion: null }),
+          listed(3, '2026-10-08T12:00:30Z'),
+          listed(4, '2026-10-08T12:01:00Z', { display_title: 'Apply plan plan-3 to acme-production' }),
+          listed(5, '2026-10-08T12:02:00Z', { event: 'push' }),
+        ],
+        { title, dispatched },
+      ),
+    ).toEqual({
+      id: '3',
+      url: 'https://github.com/acme/widgets/actions/runs/3',
+      completed: true,
+      conclusion: 'failure',
+    });
+    expect(
+      startedRun([listed(2, '2026-10-08T12:00:05Z', { status: 'queued', conclusion: null })], { title, dispatched }),
+    ).toMatchObject({ id: '2', completed: false, conclusion: null });
+    expect(startedRun([listed(1, '2026-10-08T11:00:00Z')], { title, dispatched })).toBeNull();
+    expect(
+      startedRun([listed(6, '2026-10-08T12:00:30Z', { html_url: 'javascript:alert(1)' })], { title, dispatched }),
+    ).toMatchObject({ url: null });
+    expect(startedRun(null, { title, dispatched })).toBeNull();
   });
 });
 
@@ -251,7 +329,7 @@ describe('the executor (BRK-183)', () => {
   let provider;
   let key;
   /** What the pretend GitHub was asked to do, and whether it has the runner's workflow. */
-  const gh = { dispatches: [], workflow: true, dispatchStatus: 204, environments: {}, reads: [] };
+  const gh = { dispatches: [], workflow: true, dispatchStatus: 204, environments: {}, reads: [], runs: [], listed: 0 };
   /** A GitHub environment only the default branch may deploy to, as GitHub answers for it. */
   const mainOnly = () => ({
     rule: { protected_branches: false, custom_branch_policies: true },
@@ -289,6 +367,8 @@ describe('the executor (BRK-183)', () => {
     gh.dispatchStatus = 204;
     gh.environments = { 'exec-staging': mainOnly(), 'short-lived': mainOnly() };
     gh.reads = [];
+    gh.runs = [];
+    gh.listed = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
       const url = new URL(typeof input === 'string' ? input : input.url);
       const reply = (data, status = 200) =>
@@ -313,6 +393,10 @@ describe('the executor (BRK-183)', () => {
         return gh.workflow
           ? reply({ id: 9, path: '.github/workflows/breakaway-infra.yml' })
           : reply({ message: 'Not Found' }, 404);
+      if (path === `/repos/${REPO}/actions/workflows/breakaway-infra.yml/runs` && (init.method ?? 'GET') === 'GET') {
+        gh.listed++;
+        return reply({ total_count: gh.runs.length, workflow_runs: gh.runs });
+      }
       if (path === `/repos/${REPO}/actions/workflows/breakaway-infra.yml/dispatches` && init.method === 'POST') {
         gh.dispatches.push(JSON.parse(init.body));
         return gh.dispatchStatus === 204
@@ -377,6 +461,14 @@ describe('the executor (BRK-183)', () => {
     return res.plan;
   }
   const tick = () => runInDurableObject(store(), (s) => s.infraRunsTick());
+  /** The board's own alarm runs the same tick in a moment: stopped, so a test's tick is the only one (BRK-308). */
+  const noAlarm = () => runInDurableObject(store(), (s) => s.ctx.storage.deleteAlarm());
+  /** The owner's Start the run again, then the tick that starts it. */
+  const startAgain = async (id, b = {}) => {
+    const res = await body(await board(`infra/plans/${id}/start-again`, { method: 'POST', body: b }));
+    await noAlarm();
+    return res;
+  };
   const plan = async (id) => (await body(await api(`infra/plans/${id}`))).plan;
   const run = async (id) => (await body(await api(`infra/runs/${id}`))).run;
   const audit = async (id) =>
@@ -783,17 +875,184 @@ describe('the executor (BRK-183)', () => {
   it('marks a run that stops reporting failed once its lock expires, and sends a signal', async () => {
     const p = await approved(12);
     await tick();
+    // It had the plan, so what it applied is unknown.
+    expect((await runner(p.id, { runId: '9099' })).status).toBe(200);
     await runInDurableObject(store(), (s) =>
       s.sql.exec('UPDATE infra_locks SET expires = ? WHERE environment = ?', Date.now() - 1000, staging.id),
     );
     await tick();
     expect((await plan(p.id)).state).toBe('failed');
-    expect(await run(p.id)).toMatchObject({ phase: 'done', outcome: 'expired' });
+    expect(await run(p.id)).toMatchObject({ phase: 'done', outcome: 'expired', startAgain: false });
     expect((await audit(p.id)).at(-1)).toEqual(['apply', 'executor', 'expired']);
     const signals = (await body(await api(`infra/signals?environmentId=${staging.id}&source=executor`))).signals ?? [];
     expect(signals.some((s) => s.level === 'warning' && new RegExp(`${p.id} failed`, 'u').test(s.text))).toBe(true);
     // The runner that turns up late is refused.
     expect((await runner(p.id, { runId: '9100' })).status).toBe(404);
+    // And Start the run again is refused: it may have applied something.
+    const again = await startAgain(p.id);
+    expect(again).toMatchObject({ status: 409, error: /didn’t say what it applied/u });
+  });
+
+  it('a run that never reached the board applied nothing, when its lock expires or is released (BRK-308)', async () => {
+    const p = await approved(16);
+    await noAlarm();
+    await tick();
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec('UPDATE infra_locks SET expires = ? WHERE environment = ?', Date.now() - 1000, staging.id),
+    );
+    await tick();
+    expect((await plan(p.id)).state).toBe('failed');
+    const ended = await run(p.id);
+    expect(ended).toMatchObject({ phase: 'done', outcome: 'failed', startAgain: true });
+    expect(ended.error).toMatch(
+      /^nothing applied: the run never reached the board before exec-staging’s lock expired/u,
+    );
+    expect(ended.error).not.toMatch(/unknown/u);
+    expect(await lock()).toBeNull();
+    // Started again, released by hand: the same.
+    expect((await startAgain(p.id)).status).toBe(200);
+    await tick();
+    expect(gh.dispatches).toHaveLength(2);
+    expect((await body(await board('infra/locks/exec-staging', { method: 'DELETE' }))).status).toBe(200);
+    await tick();
+    expect(await run(p.id)).toMatchObject({ outcome: 'failed', error: /lock was released/u, startAgain: true });
+  });
+
+  it('finds a run that ended on GitHub before it asked for its plan, ends it, and starts it again on the owner’s press (BRK-308)', async () => {
+    const p = await approved(17);
+    await noAlarm();
+    await tick();
+    expect(gh.dispatches).toHaveLength(1);
+    // Within the first few minutes, GitHub isn't asked.
+    await tick();
+    expect(gh.listed).toBe(0);
+    const back = 4 * 60_000;
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec('UPDATE infra_runs SET dispatched = dispatched - ? WHERE n = ?', back, Number(p.id.slice(5))),
+    );
+    const dispatched = Date.parse((await run(p.id)).dispatched);
+    const ghRun = (status, conclusion) => ({
+      id: 42001,
+      display_title: `Apply plan ${p.id} to exec-staging`,
+      event: 'workflow_dispatch',
+      created_at: new Date(dispatched + 5000).toISOString(),
+      status,
+      conclusion,
+      html_url: `https://github.com/${REPO}/actions/runs/42001`,
+    });
+    // Still going on GitHub: the board links it and waits.
+    gh.runs = [ghRun('in_progress', null)];
+    await tick();
+    expect(gh.listed).toBe(1);
+    expect(await run(p.id)).toMatchObject({
+      phase: 'dispatched',
+      github: { id: '42001', url: `https://github.com/${REPO}/actions/runs/42001`, conclusion: null },
+    });
+    // Looked at again only after a few more minutes.
+    await tick();
+    expect(gh.listed).toBe(1);
+    await runInDurableObject(store(), (s) => {
+      s.runLookups = new Map();
+    });
+    // It failed in setup: nothing applied, the lock goes, and a signal says so.
+    gh.runs = [ghRun('completed', 'failure')];
+    await tick();
+    expect(gh.listed).toBe(2);
+    expect((await plan(p.id)).state).toBe('failed');
+    const ended = await run(p.id);
+    expect(ended).toMatchObject({
+      phase: 'done',
+      outcome: 'failed',
+      startAgain: true,
+      github: { id: '42001', conclusion: 'failure' },
+    });
+    expect(ended.error).toMatch(/^nothing applied: run 42001 ended on GitHub \(failure\) before it asked for/u);
+    expect(await lock()).toBeNull();
+    const signals = (await body(await api(`infra/signals?environmentId=${staging.id}&source=executor`))).signals ?? [];
+    expect(
+      signals.some(
+        (s) =>
+          s.text ===
+          `${p.id}: the run failed on GitHub before applying: failure, open the run: https://github.com/${REPO}/actions/runs/42001`,
+      ),
+    ).toBe(true);
+    // GitHub's Re-run is refused, saying what to do instead.
+    const reRun = await runner(p.id, { runId: '42001', claims: { run_attempt: '2' } });
+    expect(reRun.status).toBe(404);
+
+    // Only the owner, from the signed-in board, starts it again.
+    const bearer = await body(await api(`infra/plans/${p.id}/start-again`, { method: 'POST', body: {} }));
+    expect(bearer.status).toBe(403);
+    const agent = await startAgain(p.id, { by: 'claude-x' });
+    expect(agent.status).toBe(403);
+    // A plan whose digest no longer matches its approval isn't started again.
+    const n = Number(p.id.slice(5));
+    const digest = await runInDurableObject(store(), (s) => s.planRow(n).digest);
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec('UPDATE infra_plans SET digest = ? WHERE n = ?', 'b'.repeat(64), n),
+    );
+    const tampered = await startAgain(p.id);
+    expect(tampered).toMatchObject({ status: 409, error: /isn’t the plan that was approved/u });
+    await runInDurableObject(store(), (s) => s.sql.exec('UPDATE infra_plans SET digest = ? WHERE n = ?', digest, n));
+    // Nor while the environment is frozen.
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec('UPDATE infra_environments SET frozen = 1 WHERE id = ?', staging.id),
+    );
+    expect(await startAgain(p.id)).toMatchObject({
+      status: 409,
+      error: /frozen/u,
+    });
+    await runInDurableObject(store(), (s) =>
+      s.sql.exec('UPDATE infra_environments SET frozen = 0 WHERE id = ?', staging.id),
+    );
+
+    const again = await startAgain(p.id);
+    expect(again).toMatchObject({
+      status: 200,
+      run: { phase: 'queued', outcome: null, github: null, startAgain: false },
+    });
+    expect((await plan(p.id)).state).toBe('approved');
+    expect((await audit(p.id)).at(-1)).toEqual(['approve', 'owner', 'started again']);
+    // Pressed twice: the second is refused, the run is queued already.
+    expect((await startAgain(p.id)).status).toBe(409);
+    // A new start: a new lock and a new workflow_dispatch, and the new run applies it.
+    await tick();
+    expect(gh.dispatches).toHaveLength(2);
+    expect(gh.dispatches[1]).toEqual({ ref: 'main', inputs: { plan: p.id, environment: 'exec-staging' } });
+    expect(await lock()).toMatchObject({ holder: `executor:${p.id}` });
+    const { runId, end } = await applyAsRunner(p.id);
+    expect(end.outcome).toBe('applied');
+    expect(await run(p.id)).toMatchObject({
+      github: { id: runId, url: `https://github.com/${REPO}/actions/runs/${runId}` },
+    });
+    // Applied: never started again.
+    const applied = await startAgain(p.id);
+    expect(applied).toMatchObject({ status: 409, error: /its run ended applied/u });
+  });
+
+  it('starts a run again whose every step failed, never one that applied a step (BRK-308)', async () => {
+    const q = await approved(18);
+    await noAlarm();
+    await tick();
+    provider.failOn.add('svc-api');
+    expect((await applyAsRunner(q.id)).end).toMatchObject({ outcome: 'failed' });
+    expect(await run(q.id)).toMatchObject({ outcome: 'failed', startAgain: true });
+    provider.failOn.clear();
+    expect((await startAgain(q.id)).status).toBe(200);
+    await tick();
+    expect((await applyAsRunner(q.id)).end.outcome).toBe('applied');
+
+    // One step applied, then the rollback: the move from failed back to approved is refused.
+    const p = await approved(19, '/v3/*');
+    await noAlarm();
+    await tick();
+    provider.failOn.add('route-api');
+    expect((await applyAsRunner(p.id)).end).toMatchObject({ phase: 'rollback-dispatched' });
+    provider.failOn.clear();
+    expect((await applyAsRunner(p.id)).end.outcome).toBe('rolled back');
+    expect(await run(p.id)).toMatchObject({ startAgain: false });
+    const refused = await startAgain(p.id);
+    expect(refused).toMatchObject({ status: 409, error: /can’t be started again/u });
   });
 
   it('lists the runs for anyone signed in, never with the lock’s token', async () => {

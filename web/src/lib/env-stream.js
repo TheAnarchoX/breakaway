@@ -49,13 +49,38 @@ export function stepsText(steps) {
     : `${ok} of ${steps.length} ${steps.length === 1 ? 'change' : 'changes'} applied`;
 }
 
+/** How long a started run may take to ask for its plan before the words say it's waiting for it (BRK-308). */
+const CHECK_IN_MS = 60_000;
+
 /**
- * A run in words: where it is, or how it ended.
- * @param {{ phase: string, outcome?: string | null, rollback?: boolean }} run
+ * A run in words: where it is, or how it ended. A run started a while ago that hasn't asked for its plan says so,
+ * with how long, rather than "Starting the apply"; one that ended having applied nothing says that (BRK-308).
+ * @param {{ phase: string, outcome?: string | null, rollback?: boolean, dispatched?: string | null, startAgain?: boolean }} run
+ * @param {number} [now]
  */
-export function runWords(run) {
-  if (run.phase === 'done') return RUN_OUTCOME[run.outcome ?? ''] ?? 'Done';
+export function runWords(run, now = Date.now()) {
+  if (run.phase === 'done') {
+    if (run.startAgain && run.outcome === 'failed') return 'Failed: nothing applied';
+    return RUN_OUTCOME[run.outcome ?? ''] ?? 'Done';
+  }
+  if (run.phase === 'dispatched' && run.dispatched) {
+    const waited = now - ms(run.dispatched);
+    if (waited >= CHECK_IN_MS) return `Waiting for the run to check in, ${Math.floor(waited / 60_000)} min`;
+  }
   return RUN_PHASE[run.phase] ?? run.phase;
+}
+
+/**
+ * The run's page on GitHub, in words, once the board knows it: while it goes, "Running on GitHub"; when it ended
+ * there before it asked for its plan, how (BRK-308). Null when the board doesn't know the run yet.
+ * @param {{ phase: string, github?: { url?: string | null, conclusion?: string | null } | null }} run
+ * @returns {{ url: string, text: string } | null}
+ */
+export function githubRun(run) {
+  const url = run.github?.url;
+  if (!url) return null;
+  if (run.github?.conclusion) return { url, text: `Ended on GitHub: ${run.github.conclusion}, open the run` };
+  return { url, text: run.phase === 'done' ? 'Open the run on GitHub' : 'Running on GitHub: open the run' };
 }
 
 /**
@@ -63,7 +88,7 @@ export function runWords(run) {
  *   key: string, at: number, type: 'signal' | 'audit' | 'run' | 'incident', kind: StreamKind, label: string,
  *   outcome?: string, text?: string, parts?: (string | { plan: string })[], level?: string, who?: string, plan?: string | null, envelope?: string | null,
  *   resource?: string | null, task?: { uuid: string, wid: string | null, description: string } | null, live?: boolean,
- *   count?: number, firstAt?: number,
+ *   count?: number, firstAt?: number, link?: { url: string, text: string } | null,
  * }} StreamItem
  */
 
@@ -137,18 +162,22 @@ export function streamItems({ signals = [], audit = [], runs = [], incidents = [
   }
   for (const r of runs) {
     const steps = r.rollback && r.rollbackSteps ? r.rollbackSteps : r.steps;
+    const failedOnGitHub = r.phase === 'done' && r.outcome === 'failed' && r.github?.conclusion;
     items.push({
       key: `run:${r.plan}`,
       at: ms(r.updated ?? r.created),
       type: 'run',
       kind: 'plan',
-      label: runWords(r),
+      label: failedOnGitHub ? 'The run failed on GitHub before applying' : runWords(r),
       outcome: r.phase === 'done' ? '' : 'now',
-      text: [stepsText(steps), r.error ?? ''].filter(Boolean).join(' · '),
+      text: failedOnGitHub
+        ? `${r.github.conclusion}: nothing applied. Start the run again on ${r.plan}.`
+        : [stepsText(steps), r.error ?? ''].filter(Boolean).join(' · '),
       who: 'the executor',
       plan: r.plan,
       live: r.phase !== 'done',
       level: r.phase === 'done' && ['failed', 'rollback failed'].includes(r.outcome) ? 'critical' : undefined,
+      link: failedOnGitHub && r.github.url ? { url: r.github.url, text: 'Open the run' } : githubRun(r),
     });
   }
   for (const i of incidents)

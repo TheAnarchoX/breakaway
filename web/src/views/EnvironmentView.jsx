@@ -377,6 +377,8 @@ export function EnvironmentView() {
 
   const health = environmentHealth(state.resources);
   const run = state.runs.find((r) => r.phase !== 'done') ?? null;
+  // The newest run, when it ended having applied nothing: the Plan tile offers to start it again (BRK-308).
+  const stopped = !run && state.runs[0]?.phase === 'done' && state.runs[0].startAgain ? state.runs[0] : null;
   const agents = agentsAtWork(tasks.value, { env, incidents: state.incidents, plans: state.plans });
   const names = new Map(state.resources.map((r) => [r.id, r.name]));
   const cant = cantChange(env);
@@ -457,6 +459,7 @@ export function EnvironmentView() {
               health={health}
               cost={state.cost}
               run={run}
+              stopped={stopped}
               agents={agents}
               inventory={{ stale: state.stale, seen: lastSeen(state.resources) }}
               change={changeTile(ch)}
