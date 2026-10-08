@@ -15,6 +15,8 @@ worker-configuration.d.ts
 src/board-files.json
 # The golden paths breakaway ships, for the board's console (BRK-259), written by the same script.
 src/infra-shipped-templates.json
+# The apply workflow's template, for the board's change (BRK-307), written by the same script.
+src/infra-runner-template.json
 # The CLI's lockfile, written for the version being published by scripts/release/shrinkwrap.mjs (CLI-21).
 /npm-shrinkwrap.json
 # The film's captures of the launch board (launch/tools/footage.mjs), made again for each render.

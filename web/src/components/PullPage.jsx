@@ -942,6 +942,11 @@ function InfraPlan({ page }) {
       {r.skipped > 0 && (
         <p class="meta">{plural(r.skipped, 'more environment')} not planned: split the pull request to see them.</p>
       )}
+      {r.runner && (
+        <p>
+          <strong>Before Approve:</strong> {r.runner}
+        </p>
+      )}
       <p class="meta">
         Merging applies nothing. Once it’s merged, the board plans from the default branch, and the plan waits for you
         on the board unless the policy lets it through.

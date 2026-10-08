@@ -12,10 +12,14 @@
  * in worker.js with the `by` check second, and appends a `change` entry to the audit trail with the environment.
  */
 import { AgentError } from './store-agents.js';
-import { GitHubError, appCredentials, fromBase64 } from './github.js';
+import { GitHubError, appCredentials, appGet, fromBase64 } from './github.js';
+import { releaseOf } from './build.js';
 import { install } from './install.js';
 import { checkTarget, runsTheBoard } from './infra-environments.js';
-import { DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desired.js';
+import { DESIRED_DIR, DESIRED_MAX_BYTES, desiredPath, checkDesiredFile } from './infra-desired.js';
+import { RUNNER_WORKFLOW } from './infra-runner.js';
+import { RUNNER_NEEDS_WORKFLOWS, RunnerRenderError, runnerChange, runnerOwnWords } from './infra-runner-render.js';
+import { canWriteWorkflows } from './infra-tokens.js';
 import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.js';
 import { creatableKinds, targetKinds } from './infra-provider.js';
 import { planView } from './infra-plans.js';
@@ -40,6 +44,7 @@ import {
   writablePath,
 } from './infra-changes.js';
 import SHIPPED from './infra-shipped-templates.json' with { type: 'json' };
+import RUNNER_TEMPLATE from './infra-runner-template.json' with { type: 'json' };
 
 const MINUTE = 60_000;
 /** A repository's template is read again after this long. */
@@ -62,6 +67,14 @@ async function orNull(promise) {
     throw error;
   }
 }
+
+/**
+ * Whether GitHub refused a write because it holds a workflow and the App lacks Workflows: write: a 403, or the 422
+ * some of its write paths answer with the same reason.
+ */
+const refusedWorkflow = (error) =>
+  error instanceof GitHubError &&
+  (error.status === 403 || (error.status === 422 && /workflow/iu.test(`${error.reason ?? ''} ${error.message}`)));
 
 /** A refusal with the problems, on the edits they belong to. */
 function unfit(problems, extra = {}) {
@@ -102,6 +115,8 @@ export const infraChangesMethods = {
     if (!have.has('changes')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN changes INTEGER');
     // The target it gives an environment that has none (BRK-291), set when the owner approves it or it merges.
     if (!have.has('target')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN target TEXT');
+    // What it did about the apply workflow (BRK-307): `{ state, note }`, shown on its card before Approve.
+    if (!have.has('runner')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN runner TEXT');
   },
 
   /** Environment `ref`'s row, when the board may change it from the console; else a 409 saying why not. */
@@ -145,6 +160,7 @@ export const infraChangesMethods = {
       digest: row.digest ?? null,
       changes: row.changes ?? null,
       target: row.target ?? null,
+      runner: row.runner ? JSON.parse(row.runner) : null,
       policy: row.policy ? JSON.parse(row.policy) : null,
       approval: row.approval ? JSON.parse(row.approval) : null,
       state: row.state,
@@ -502,19 +518,31 @@ export const infraChangesMethods = {
         ]);
     }
 
+    let runner = await this.changeRunner(client, repo, env, head, branchOf);
     const created = base.from === 'draft';
     const title =
       created && !planned.lines.length ? `Describe ${env.name} as code` : changeTitle(env.name, planned.lines);
     const message = created && !planned.lines.length ? title : changeCommitMessage(env.name, planned.lines);
-    const made = await this.writeChangeBranch(client, {
-      head,
-      files: [{ path, text: planned.text }, ...planned.files],
-      message,
-      live: live ? { n: Number(live.n), branch: live.branch } : null,
-      branchFor: (k) => changeBranch(env.name, k),
-      reserve: () => this.reserveChangeNumber(),
-      repo: env.repo,
-    });
+    const write = (withRunner) =>
+      this.writeChangeBranch(client, {
+        head,
+        files: [{ path, text: planned.text }, ...planned.files, ...(withRunner ? [runner.file] : [])],
+        message,
+        live: live ? { n: Number(live.n), branch: live.branch } : null,
+        branchFor: (k) => changeBranch(env.name, k),
+        reserve: () => this.reserveChangeNumber(),
+        repo: env.repo,
+      });
+    let made;
+    try {
+      made = await write(Boolean(runner.file));
+    } catch (error) {
+      // GitHub refuses a workflow without Workflows: write, whatever the installation said: propose without it.
+      if (!runner.file || !refusedWorkflow(error)) throw error;
+      runner = { state: 'needs-workflows', note: RUNNER_NEEDS_WORKFLOWS };
+      made = await write(false);
+    }
+    const kept = JSON.stringify({ state: runner.state, note: runner.note ?? null });
     const { n, branch } = made;
     const home = this.homeUrl();
     const page = home ? `${home}/#/infrastructure/${env.id}` : null;
@@ -527,6 +555,7 @@ export const infraChangesMethods = {
       page,
       created,
       empty: base.from === 'empty',
+      runner,
     });
     const pull = live
       ? await client.send('PATCH', `/pulls/${live.pull}`, { title, body: description })
@@ -537,7 +566,7 @@ export const infraChangesMethods = {
     if (live)
       this.sql.exec(
         `UPDATE infra_changes SET edits = ?, lines = ?, base_sha = ?, commit_sha = ?, digest = ?, changes = ?, policy = ?,
-           target = ?, approval = NULL, state = 'open', why = NULL, updated = ? WHERE n = ?`,
+           target = ?, runner = ?, approval = NULL, state = 'open', why = NULL, updated = ? WHERE n = ?`,
         JSON.stringify(edits),
         JSON.stringify(planned.lines),
         head,
@@ -546,14 +575,15 @@ export const infraChangesMethods = {
         Number(planned.preview.changes ?? 0),
         policy,
         planned.target.name,
+        kept,
         now,
         n,
       );
     else
       this.sql.exec(
         `INSERT INTO infra_changes (n, environment, repo, name, edits, lines, base_sha, commit_sha, branch, pull, pull_url,
-           digest, changes, policy, target, approval, state, why, created, updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
+           digest, changes, policy, target, runner, approval, state, why, created, updated)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
         n,
         Number(env.id),
         env.repo,
@@ -569,6 +599,7 @@ export const infraChangesMethods = {
         Number(planned.preview.changes ?? 0),
         policy,
         planned.target.name,
+        kept,
         now,
         now,
       );
@@ -594,6 +625,58 @@ export const infraChangesMethods = {
     await this.githubWebhook('pull_request', live ? 'synchronize' : 'opened', { slug: env.repo });
     const row = this.sql.exec('SELECT * FROM infra_changes WHERE n = ?', n).toArray()[0];
     return { status: live ? 200 : 201, body: { change: this.changeOut(row), preview: planned.preview } };
+  },
+
+  /**
+   * What a change does about the apply workflow (BRK-307; infra-runner-render.js, runnerChange): renders it for the
+   * environments the desired-state folder on the default branch has, plus this one, and answers `{ state, note, file }`.
+   * `added` and `updated` carry the file to commit; `current` needs nothing; `own` is the repository's own workflow,
+   * never overwritten; `needs-workflows` is the App without Workflows: write; `unrendered` is a folder the board can't
+   * render from. Each that leaves the workflow short says so in `note`, shown before Approve. Two reads, and the
+   * installation's permissions when it would write.
+   * @returns {Promise<{ state: string, note?: string | null, file?: { path: string, text: string } }>}
+   */
+  async changeRunner(client, repo, env, head, branch) {
+    const at = `?ref=${encodeURIComponent(head)}`;
+    const listed = await orNull(client.get(`/contents/${refPath(DESIRED_DIR)}${at}`));
+    const names = Array.isArray(listed) ? listed.filter((f) => f?.type === 'file').map((f) => String(f.name)) : [];
+    const got = await orNull(client.get(`/contents/${refPath(RUNNER_WORKFLOW)}${at}`));
+    const there = got && !Array.isArray(got) && got.type === 'file' ? fromBase64(got.content) : null;
+    let change;
+    try {
+      change = runnerChange({
+        names,
+        environment: env.name,
+        there,
+        branch,
+        version: releaseOf(this.env),
+        template: RUNNER_TEMPLATE.text,
+      });
+    } catch (error) {
+      if (!(error instanceof RunnerRenderError)) throw error;
+      return { state: 'unrendered', note: `The board couldn’t render ${RUNNER_WORKFLOW}: ${error.message}` };
+    }
+    if (change.action === 'current') return { state: 'current', note: null };
+    if (change.action === 'own') return { state: 'own', note: runnerOwnWords(change.missing) };
+    if (!(await this.workflowsWritable(repo))) return { state: 'needs-workflows', note: RUNNER_NEEDS_WORKFLOWS };
+    return { state: change.action === 'add' ? 'added' : 'updated', note: null, file: change.file };
+  },
+
+  /** Whether the GitHub App's installation on `repo` has Workflows: write; a read GitHub refuses is a no. */
+  async workflowsWritable(repo) {
+    const credentials = await appCredentials(this.env);
+    if (!credentials) return false;
+    try {
+      const installation = await appGet(
+        credentials,
+        `/repos/${repo.github}/installation`,
+        this.env.TASKS_GITHUB_API || undefined,
+      );
+      return canWriteWorkflows(installation?.permissions);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      return false;
+    }
   },
 
   /**

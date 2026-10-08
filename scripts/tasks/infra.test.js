@@ -7,9 +7,17 @@ import { RUNNER_HEADER, RUNNER_WORKFLOW, planDigest } from '../../src/infra-runn
 import { fakeProvider } from '../../test/fake-infra-provider.js';
 import { HEADER, STATE_FILE, environmentsIn, initStep, renderRunner, run, runner } from './infra.js';
 import { lintWorkflow, parseYaml, runScripts } from './pipeline.js';
+import { runnerChange } from '../../src/infra-runner-render.js';
 
 const TEMPLATE = readFileSync(new URL('../../template/infra/apply.yml', import.meta.url), 'utf8');
 const SAMPLE = { environments: ['production', 'staging'], branch: 'main', version: '2.0.0' };
+const SAMPLE_CHANGE = {
+  names: ['staging.json'],
+  environment: 'production',
+  branch: 'main',
+  version: '2.0.0',
+  template: TEMPLATE,
+};
 const scratch = [];
 const tmp = () => {
   const dir = mkdtempSync(join(tmpdir(), 'infra-'));
@@ -121,6 +129,19 @@ describe('npx breakaway infra init in a scratch repository (CLI-12)', () => {
 
     expect(await run(['init'], {}, io())).toBe(0);
     expect(out.at(-1)).toMatch(/already current/u);
+
+    // Byte for byte what the board commits with a change for the same folder (BRK-307): the Worker renders from the
+    // template scripts/board-files.mjs generates, with the same code.
+    const board = runnerChange({
+      names: ['policy.json', 'staging.json'],
+      environment: 'production',
+      there: null,
+      branch: 'main',
+      version: '2.0.0',
+      template: JSON.parse(readFileSync(new URL('../../src/infra-runner-template.json', import.meta.url), 'utf8')).text,
+    });
+    expect(board.file.text).toBe(text);
+    expect(runnerChange({ ...SAMPLE_CHANGE, there: text }).action).toBe('current');
 
     writeFileSync(join(root, '.github/breakaway-infra/preview.json'), '{}\n');
     expect(await run(['init'], {}, io())).toBe(1);

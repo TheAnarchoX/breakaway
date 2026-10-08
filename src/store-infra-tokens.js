@@ -9,11 +9,11 @@
  * opening Connections again doesn't ask GitHub again; Check again reads afresh.
  */
 import { AgentError } from './store-agents.js';
-import { appCredentials, appGet, GitHubError } from './github.js';
+import { appCredentials, appGet, fromBase64, GitHubError } from './github.js';
 import { install } from './install.js';
 import { providerRow } from './connections.js';
 import { runsTheBoard } from './infra-environments.js';
-import { SHORT_LIVED_GITHUB_ENVIRONMENT, runnerEnvironment } from './infra-runner.js';
+import { RUNNER_WORKFLOW, SHORT_LIVED_GITHUB_ENVIRONMENT, runnerEnvironment } from './infra-runner.js';
 import {
   branchRuleFix,
   canMakeEnvironments,
@@ -21,6 +21,7 @@ import {
   environmentSteps,
   environmentsUrl,
   refusedRead,
+  runnerSetupStep,
   stepsDone,
 } from './infra-tokens.js';
 
@@ -198,6 +199,7 @@ export const infraTokensMethods = {
         canMake: Boolean(canMake && !seen.environment && !seen.problems.environment),
       });
     }
+    const workflow = environments.length ? await this.runnerSetup(client, branch, environments) : null;
     const view = {
       repo: repo.slug,
       github: repo.github,
@@ -206,11 +208,48 @@ export const infraTokensMethods = {
       canMake,
       read,
       environments,
-      done: read.every((r) => r.ok) && environments.every((e) => e.ok) && (read.length > 0 || environments.length > 0),
+      workflow,
+      done:
+        read.every((r) => r.ok) &&
+        environments.every((e) => e.ok) &&
+        (!workflow || workflow.ok === true) &&
+        (read.length > 0 || environments.length > 0),
       checked: new Date().toISOString(),
     };
     this.tokenSetupKept.set(repo.slug, { at: Date.now(), view });
     return view;
+  },
+
+  /**
+   * The checklist's step for the apply workflow on the default branch (BRK-307): one read, done when it's there and
+   * offers every environment that needs a write token.
+   */
+  async runnerSetup(client, branch, environments) {
+    const names = environments.flatMap((e) => (e.environments.length ? e.environments : [e.name]));
+    if (!client)
+      return runnerSetupStep({
+        branch,
+        text: null,
+        environments: names,
+        problem: 'connect the board’s GitHub App first: Connections → GitHub',
+      });
+    try {
+      const got = await client.get(
+        `/contents/${RUNNER_WORKFLOW.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`,
+      );
+      const text = got && !Array.isArray(got) && got.type === 'file' ? fromBase64(got.content) : null;
+      return runnerSetupStep({ branch, text, environments: names });
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      if (error.status === 404) return runnerSetupStep({ branch, text: null, environments: names });
+      if (error.status === 429) throw new AgentError(`GitHub’s rate limit is used up: check again later`, 429);
+      return runnerSetupStep({
+        branch,
+        text: null,
+        environments: names,
+        problem: refusedRead(error, RUNNER_WORKFLOW, 'Contents: read'),
+      });
+    }
   },
 
   /** GET /api/infra/tokens?repo=[&fresh=1]: the checklist. */

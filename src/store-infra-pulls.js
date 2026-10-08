@@ -17,6 +17,8 @@ import { checkPolicyFile, DEFAULT_POLICY, POLICY_PATH } from './infra-policy.js'
 import { comparePolicies } from './infra-policy-changes.js';
 import { runsTheBoard } from './infra-environments.js';
 import { redact } from './redact.js';
+import { RUNNER_WORKFLOW } from './infra-runner.js';
+import { runnerNote } from './infra-runner-render.js';
 import {
   INFRA_CHECK_NAME,
   infraConclusion,
@@ -176,6 +178,7 @@ export const infraPullsMethods = {
         : null,
       problems: changed.problems,
       skipped: list.length - planned.length,
+      runner: await this.pullRunnerNote(repo, pull, files, environments, read),
     };
     // A fork's pull request gets a check without the plan's detail (BRK-253): the check is public, the board isn't.
     const named = (side) => String(side?.repo?.full_name ?? '').toLowerCase();
@@ -212,6 +215,28 @@ export const infraPullsMethods = {
       check: posted,
       error,
     });
+  },
+
+  /**
+   * What the plan check says about the apply workflow (BRK-307): nothing when no environment is planned or the pull
+   * request brings the workflow itself; the board's own change's note, kept when it proposed it; else the workflow at
+   * the head, read once, against the environments planned.
+   * @returns {Promise<string | null>}
+   */
+  async pullRunnerNote(repo, pull, files, environments, read) {
+    const names = environments.filter((e) => e.state === 'planned').map((e) => e.environment);
+    if (!names.length || files.some((f) => f.filename === RUNNER_WORKFLOW)) return null;
+    const change = this.sql
+      .exec(
+        'SELECT runner FROM infra_changes WHERE repo = ? AND pull = ? AND runner IS NOT NULL ORDER BY n DESC LIMIT 1',
+        repo.slug,
+        Number(pull.number),
+      )
+      .toArray()[0];
+    if (change) return JSON.parse(String(change.runner)).note ?? null;
+    const there = await read(RUNNER_WORKFLOW);
+    if (there?.tooBig) return null;
+    return runnerNote(there ? there.text : null, names);
   },
 
   /**

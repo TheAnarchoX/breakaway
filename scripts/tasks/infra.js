@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DESIRED_DIR, environmentOfFile } from '../../src/infra-desired.js';
+import { DESIRED_DIR } from '../../src/infra-desired.js';
 import { SHORT_LIVED_FILE } from '../../src/infra-short-lived.js';
 import { checkApplyResult } from '../../src/infra-provider.js';
 import { providers as registry } from '../../src/infra-providers.js';
@@ -29,15 +29,21 @@ import {
   runPath,
   runReport,
 } from '../../src/infra-runner.js';
-import { fill, lintWorkflow } from './pipeline.js';
+import {
+  RUNNER_RENDER_HEADER,
+  RUNNER_TEMPLATE,
+  RunnerRenderError,
+  environmentsIn,
+  renderRunner,
+  runnerStep,
+} from '../../src/infra-runner-render.js';
 
 /** The first line of the rendered workflow: how `--update` knows the file is its own to replace. */
-export const HEADER = `Rendered by npx breakaway infra init from the environments in ${DESIRED_DIR}/: add one there and run npx breakaway infra init --update, not this file.`;
+export const HEADER = RUNNER_RENDER_HEADER;
 /** Where the runner keeps the checked plan between its steps, in the job's temporary folder. */
 export const STATE_FILE = 'breakaway-infra-run.json';
-const BRANCH = /^(?!.*\.\.)[A-Za-z0-9._/-]{1,100}$/u;
 const HERE = dirname(fileURLToPath(import.meta.url));
-const TEMPLATE = join(HERE, '..', '..', 'template', 'infra', 'apply.yml');
+const TEMPLATE = join(HERE, '..', '..', RUNNER_TEMPLATE);
 const USER_AGENT = 'breakaway-infra-runner';
 
 /** A mistake `infra init` can name. */
@@ -48,66 +54,14 @@ const bad = (message) => {
 
 // ---- infra init ----------------------------------------------------------------------------
 
-/**
- * The environments the runner offers, from the file names in the desired-state folder: each `<environment>.json`,
- * sorted, skipping policy.json, scaling.json, and anything that isn't JSON.
- * @param {string[]} names
- */
-export function environmentsIn(names) {
-  const environments = [];
-  for (const name of names) {
-    const found = environmentOfFile(name);
-    if (!found) continue;
-    if ('problem' in found) throw new InfraError(`${DESIRED_DIR}/${found.problem}.`);
-    environments.push(found.environment);
-  }
-  if (!environments.length)
-    bad(
-      `${DESIRED_DIR}/ has no environment's file, so there's nothing to apply to: write <environment>.json for each (like staging.json), then run this again.`,
-    );
-  return environments.sort();
-}
-
-/**
- * The runner's workflow for these environments, applied from `branch`, running breakaway `version`. With `shortLived`
- * (the folder has short-lived.json), the environment is any name, since each short-lived one is new, and the run may
- * name the GitHub environment that holds the write token: `short-lived` for all of them (BRK-242).
- * @param {{ environments: string[], branch: string, version: string, shortLived?: boolean }} input
- * @param {string} template template/infra/apply.yml
- * @returns {{ path: string, text: string }}
- */
-export function renderRunner({ environments, branch, version, shortLived = false }, template) {
-  if (!BRANCH.test(branch)) bad(`${branch.slice(0, 80)} isn't a branch's name.`);
-  if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u.test(version)) bad(`${version} isn't a breakaway release.`);
-  const text = fill(template, {
-    header: HEADER,
-    branchName: branch,
-    version,
-    shortLived,
-    fixedOnly: !shortLived,
-    environments: environments.map((name) => `- ${JSON.stringify(name)}`),
-  });
-  const problems = lintWorkflow(text);
-  if (problems.length) throw new Error(`${RUNNER_WORKFLOW} renders with problems: ${problems.join('; ')}`);
-  return { path: RUNNER_WORKFLOW, text };
-}
+// The render is shared with the board (src/infra-runner-render.js, BRK-307), so both write the same file.
+export { environmentsIn, renderRunner };
 
 /**
  * What `infra init` does with the rendered file, given what's there (null when nothing): write it, leave it (the
  * same), or refuse it (the repository's own, or rendered before when `update` isn't set).
- * @param {{ path: string, text: string }} file
- * @param {string | null} there
- * @param {{ update?: boolean }} [options]
- * @returns {{ write: boolean, same?: boolean, refused?: string }}
  */
-export function initStep(file, there, { update = false } = {}) {
-  if (there === null) return { write: true };
-  if (there === file.text) return { write: false, same: true };
-  if (!there.startsWith(`# ${HEADER}`))
-    return { write: false, refused: "it's the repository's own, not rendered: rename it, then run infra init again" };
-  if (!update) return { write: false, refused: 'it differs from what infra init renders: run infra init --update' };
-  return { write: true };
-}
+export const initStep = runnerStep;
 
 /** The checkout's top folder, or the folder the command runs in. */
 function topOf(cwd) {
@@ -341,7 +295,7 @@ export async function run(args, opts, io = {}) {
     if (command !== 'init') bad('infra has init. npx breakaway help says what it does.');
     return init(opts, { cwd, log, error, version: io.version });
   } catch (e) {
-    if (!(e instanceof InfraError)) throw e;
+    if (!(e instanceof InfraError) && !(e instanceof RunnerRenderError)) throw e;
     error(`infra: ${e.message}`);
     return 1;
   }

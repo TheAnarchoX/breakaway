@@ -1,5 +1,8 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import RUNNER_TEMPLATE from '../src/infra-runner-template.json';
+import { RUNNER_WORKFLOW } from '../src/infra-runner.js';
+import { RUNNER_NEEDS_WORKFLOWS, renderRunner } from '../src/infra-runner-render.js';
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { fakeProvider } from './fake-infra-provider.js';
@@ -145,7 +148,15 @@ describe('guided token setup on the board (BRK-304)', () => {
   const PROVIDER = 'faketok';
   let cookie;
   /** The pretend GitHub: its environments, what the App may do, and every write it was asked for. */
-  const gh = { environments: {}, administration: 'write', writes: [], secretsStatus: 200, policyStatus: 200 };
+  const gh = {
+    environments: {},
+    administration: 'write',
+    writes: [],
+    secretsStatus: 200,
+    policyStatus: 200,
+    /** The apply workflow on the default branch (BRK-307), null when there's none, or a status GitHub answers. */
+    /** @type {string | number | null} */ workflow: null,
+  };
 
   beforeAll(async () => {
     const res = await SELF.fetch(`${ORIGIN}/login`, {
@@ -200,6 +211,7 @@ describe('guided token setup on the board (BRK-304)', () => {
     gh.writes = [];
     gh.secretsStatus = 200;
     gh.policyStatus = 200;
+    gh.workflow = null;
     await runInDurableObject(store(), (s) => {
       s.tokenSetupKept = new Map();
     });
@@ -214,6 +226,12 @@ describe('guided token setup on the board (BRK-304)', () => {
         return reply({ id: 77, permissions: { metadata: 'read', administration: gh.administration } });
       if (path.startsWith('/app/installations/'))
         return reply({ token: 'ghs_test', expires_at: new Date(Date.now() + 3_600_000).toISOString() });
+      if (path === `/repos/${REPO}/contents/${RUNNER_WORKFLOW}`) {
+        if (url.searchParams.get('ref') !== 'main') return reply({ message: 'Not Found' }, 404);
+        if (typeof gh.workflow === 'number') return reply({ message: 'Resource not accessible' }, gh.workflow);
+        if (gh.workflow === null) return reply({ message: 'Not Found' }, 404);
+        return reply({ type: 'file', encoding: 'base64', content: btoa(gh.workflow) });
+      }
       const m = /^\/repos\/acme\/widgets\/environments\/([^/]+)(\/[a-z-]+)?$/u.exec(path);
       if (!m) return reply({ message: 'Not Found' }, 404);
       const [, name, rest] = m;
@@ -325,6 +343,34 @@ describe('guided token setup on the board (BRK-304)', () => {
     const staging = (await checklist()).environments[0];
     expect(staging.ok).toBe(true);
     expect(staging.canMake).toBe(false);
+  });
+
+  it('checks the apply workflow on the default branch offers every environment that needs a write token (BRK-307)', async () => {
+    const render = (environments) =>
+      renderRunner({ environments, branch: 'main', version: '2.0.0' }, RUNNER_TEMPLATE.text).text;
+    const step = async () => (await checklist()).workflow;
+    expect(await step()).toEqual({
+      id: 'workflow',
+      label: 'The apply workflow on main',
+      ok: false,
+      fix: RUNNER_NEEDS_WORKFLOWS.replace(/\.$/u, ''),
+    });
+    gh.workflow = render(['tok-other']);
+    expect(await step()).toMatchObject({ ok: false, fix: expect.stringMatching(/doesn’t offer tok-staging\./u) });
+    gh.workflow = render(['tok-staging']);
+    expect(await step()).toMatchObject({ ok: true, fix: null });
+    gh.workflow = 403;
+    expect(await step()).toMatchObject({ ok: null, fix: expect.stringMatching(/Contents: read/u) });
+    // Every other step done, the checklist waits on the workflow too.
+    gh.environments['tok-staging'] = {
+      rule: { protected_branches: false, custom_branch_policies: true },
+      policies: [{ name: 'main', type: 'branch' }],
+      secrets: ['FAKE_WRITE_TOKEN'],
+    };
+    gh.workflow = null;
+    const view = await checklist();
+    expect(view.environments[0].ok).toBe(true);
+    expect(view.done).toBe(false);
   });
 
   it('says which permission it needs when GitHub won’t list the secrets', async () => {
