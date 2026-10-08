@@ -263,6 +263,11 @@ export const infraShortLivedMethods = {
         outcome: 'added',
         summary: `short-lived, for ${map.wid ?? 'a task'}, from ${SHORT_LIVED_PATH}${by === 'tag' ? ` (the task’s +${ASK_TAG} tag)` : ''}; nothing exists until its plan is applied`,
       });
+      this.infraEvent('environment.created', env, {
+        fields: { state: 'added', source: 'short-lived', ...(map.wid ? { task: map.wid } : {}) },
+        dedupe: `added:${env.id}`,
+        cause: { wid: map.wid ?? null },
+      });
     });
     await this.shortLivedCreate(this.shortLivedRow(uuid), env, now);
     return this.shortLivedRow(uuid);
@@ -351,6 +356,12 @@ export const infraShortLivedMethods = {
           by: 'board',
           outcome: 'removed',
           summary,
+        });
+        const wid = this.tasks.get(row.task)?.wid ?? null;
+        this.infraEvent('environment.removed', env, {
+          fields: { state: 'removed', source: 'short-lived', ...(wid ? { task: wid } : {}) },
+          dedupe: `removed:${env.id}`,
+          cause: { wid },
         });
       }
       this.setShortLived(row.task, { state: 'removed', environment: null, error: null, next_try: null });

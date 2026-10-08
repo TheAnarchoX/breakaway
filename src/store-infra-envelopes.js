@@ -410,6 +410,20 @@ export const infraEnvelopesMethods = {
         outcome: verdict.inside ? 'inside' : verdict.capUsed ? 'cap used' : 'outside',
         summary: `${what}${task?.wid ? ` for ${task.wid}` : rule ? ` for the scaling rule “${rule}”` : ''}: ${verdict.inside ? 'inside its envelope' : 'waits for the owner'}, ${verdict.why}`,
       });
+      // A restart the cap turned away reaches the routines that listen for it (BRK-293).
+      if (verdict.capUsed)
+        this.infraEvent('envelope.used_up', env, {
+          fields: {
+            plan: made.id,
+            state: 'cap used',
+            resource: r.name,
+            resourceKind: r.kind,
+            ...(task?.wid ? { task: task.wid } : {}),
+          },
+          dedupe: made.id,
+          resourceKinds: [r.kind],
+          cause: { wid: task?.wid ?? null },
+        });
     });
 
     let plan = made;
