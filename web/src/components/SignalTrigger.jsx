@@ -43,7 +43,7 @@ const listOf = (text) =>
  * @param {{ name: string, legend: string, known: string[] | null, chosen: string[], hint: string,
  *   placeholder: string }} props
  */
-function Choices({ name, legend, known, chosen, hint, placeholder }) {
+export function Choices({ name, legend, known, chosen, hint, placeholder }) {
   const options = [...new Set([...(known ?? []), ...chosen])].sort();
   if (!options.length)
     return (
@@ -73,7 +73,7 @@ function Choices({ name, legend, known, chosen, hint, placeholder }) {
  * The environments of the routine's repository and the resource kinds seen in them, to pick from. Null while loading;
  * empty lists when the board has none or can't say (Architect isn't set up yet), and the form falls back to typing.
  */
-function useKnown(repo) {
+export function useKnown(repo) {
   const [known, setKnown] = useState(/** @type {{ environments: string[], kinds: string[] } | null} */ (null));
   useEffect(() => {
     let live = true;

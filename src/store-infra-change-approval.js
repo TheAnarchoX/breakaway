@@ -19,7 +19,8 @@ import { AgentError } from './store-agents.js';
 import { GitHubError, fromBase64 } from './github.js';
 import { DESIRED_MAX_BYTES, checkDesiredFile, desiredPath } from './infra-desired.js';
 import { driftDue } from './infra-drift.js';
-import { LIVE_STATES } from './infra-changes.js';
+import { LIVE_STATES, changeTarget } from './infra-changes.js';
+import { creatableKinds, targetKinds } from './infra-provider.js';
 import { planDigest } from './infra-runner.js';
 import { redact } from './redact.js';
 import {
@@ -94,10 +95,39 @@ export const infraChangeApprovalMethods = {
   },
 
   /**
+   * The environment a plan is made for (BRK-298): the one computation the pull request's check, the console's preview,
+   * Approve, and `infra check` share, so they always plan the same thing. One with a target is planned as it is. One
+   * with none (built from nothing, BRK-291) is planned with `target`, its change's, else the one Worker `desired` makes;
+   * `target` in the answer names it then. With none, or several and no change to say which, it answers the `problem`.
+   * A provider with no target kind plans as it is.
+   * @param {Record<string, any>} env
+   * @param {import('./infra-provider.js').DesiredState} desired
+   * @param {string | null} [target] the change's target, for an environment that has none
+   * @returns {{ env: Record<string, any>, target: string | null, label?: string, problem?: string }}
+   */
+  infraPlanTarget(env, desired, target = null) {
+    if (env.target) return { env, target: null };
+    if (target) return { env: { ...env, target }, target };
+    const provider = this.infraProviderFor(env.provider);
+    const kinds = provider ? targetKinds(provider) : [];
+    const label = String((provider ? creatableKinds(provider)[kinds[0]]?.label : null) ?? kinds[0] ?? 'target');
+    const one = changeTarget({ target: null, file: desired, kinds, environment: env.name, label });
+    if (one.name) return { env: { ...env, target: one.name }, target: one.name, label };
+    if (!kinds.length) return { env, target: null };
+    return {
+      env,
+      target: null,
+      problem: one.choices.length
+        ? `${env.name} has no target, and its desired state makes ${one.choices.length} ${label}s (${one.choices.join(', ')}): set which one is its target on the board, then it plans`
+        : `${env.name} has no target yet: add a ${label} for it to run to its desired state, or set its target on the board`,
+    };
+  },
+
+  /**
    * The plan a desired state's text makes, with its digest: the one computation a change's preview at propose time and
    * at its pull request's head share (BRK-286), so the plan proposed and the plan approved only differ when the head or
    * what runs moved. The policy is the default branch's. Answers `{ error }` when the text doesn't check. An
-   * environment with no target is planned with the one the change gives it (BRK-291).
+   * environment with no target is planned with the one the change gives it (BRK-291), through infraPlanTarget.
    * @param {Record<string, any>} env
    * @param {string} text the file's text, exactly as committed
    * @param {string | null} [target] the change's target, for an environment that has none
@@ -108,8 +138,9 @@ export const infraChangeApprovalMethods = {
       expectProvider: env.provider,
     });
     if ('error' in checked) return { error: checked.error };
-    const at = target && !env.target ? { ...env, target } : env;
-    const planned = await this.previewInfraPlan(at, checked.desired, this.infraPolicyFor(env.repo));
+    const at = this.infraPlanTarget(env, checked.desired, target);
+    if (at.problem) return { error: { line: null, field: 'target', message: at.problem } };
+    const planned = await this.previewInfraPlan(at.env, checked.desired, this.infraPolicyFor(env.repo));
     return { desired: checked.desired, preview: { ...planned, digest: await planDigest(planned.diff) } };
   },
 

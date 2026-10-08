@@ -5792,7 +5792,67 @@ fieldset.field {
 }
 .rt-run {
   justify-content: space-between;
+  flex-wrap: wrap;
   padding-right: 10px;
+}
+/* The infrastructure event that started a run (WEB-122), on a line of its own under the run. */
+.rt-run-event {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+.ie-run a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+}
+.ie-run a:hover {
+  text-decoration-color: currentColor;
+}
+/* A routine's infrastructure events on its form (WEB-122): each ticked one opens its filters under it. */
+.ie-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.ie-row.is-on {
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  padding-bottom: 10px;
+}
+.ie-filters {
+  display: grid;
+  gap: 10px;
+  padding: 2px 10px 0 36px;
+}
+.ie-filters .meta {
+  margin: 0;
+}
+.ie-percent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ie-percent .input {
+  width: 96px;
+}
+.ie-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+/* The routines an environment's events start, on its console (WEB-122). */
+.env-routines {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.env-routines svg {
+  vertical-align: -2px;
+  margin-right: 4px;
 }
 .rt-secret {
   display: grid;
