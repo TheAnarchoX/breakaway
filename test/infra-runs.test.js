@@ -5,6 +5,7 @@ import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { fakeProvider } from './fake-infra-provider.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
 import { RUNNER_HEADER, planDigest, runReport } from '../src/infra-runner.js';
+import { LOOK_AGAIN_MS } from '../src/store-infra-runs.js';
 import {
   OIDC_ISSUER,
   OIDC_KEYS_URL,
@@ -275,7 +276,7 @@ describe('the executor (BRK-183)', () => {
         }),
       )
     ).environment;
-    provider = fakeProvider({ id: PROVIDER });
+    provider = fakeProvider({ id: PROVIDER, readToken: false });
     await runInDurableObject(store(), async (instance) => {
       instance.infraProviders = new ProviderRegistry();
       instance.infraProviders.register(provider);
@@ -379,9 +380,10 @@ describe('the executor (BRK-183)', () => {
   const tick = () => runInDurableObject(store(), (s) => s.infraRunsTick());
   const plan = async (id) => (await body(await api(`infra/plans/${id}`))).plan;
   const run = async (id) => (await body(await api(`infra/runs/${id}`))).run;
+  /** The plan's own entries: the board looking again after its run (BRK-310) is tested on its own. */
   const audit = async (id) =>
     (await body(await api(`infra/audit?environmentId=${staging.id}`))).entries
-      .filter((e) => e.plan === id)
+      .filter((e) => e.plan === id && e.outcome !== 'looked again')
       .reverse()
       .map((e) => [e.kind, e.by, e.outcome]);
   const lock = async () => (await body(await api('infra/locks/exec-staging'))).lock;
@@ -794,6 +796,109 @@ describe('the executor (BRK-183)', () => {
     expect(signals.some((s) => s.level === 'warning' && new RegExp(`${p.id} failed`, 'u').test(s.text))).toBe(true);
     // The runner that turns up late is refused.
     expect((await runner(p.id, { runId: '9100' })).status).toBe(404);
+  });
+
+  describe('looking again after a run (BRK-310)', () => {
+    /** The board's looks at the environment, as a tick would make them, `after` ms from now. */
+    const look = (after = 0) => runInDurableObject(store(), (s) => s.lookAfterInfraRuns(Date.now() + after));
+    const runRowOf = (id) =>
+      runInDurableObject(store(), (s) => {
+        const row = s.runRow(id);
+        return { lookAt: row.look_at, looks: row.looks };
+      });
+    const refreshed = () =>
+      runInDurableObject(
+        store(),
+        (s) => s.sql.exec('SELECT * FROM infra_inventory_refresh WHERE provider = ?', PROVIDER).toArray()[0],
+      );
+    const drift = () =>
+      runInDurableObject(
+        store(),
+        (s) => s.sql.exec('SELECT * FROM infra_drift WHERE environment = ?', staging.id).toArray()[0],
+      );
+    const looked = async (id) =>
+      (await body(await api(`infra/audit?environmentId=${staging.id}`))).entries.filter(
+        (e) => e.plan === id && e.outcome === 'looked again',
+      );
+
+    it('refreshes the inventory and compares drift once an applied plan’s run ends, then once more a little later', async () => {
+      const p = await approved(8);
+      await tick();
+      const before = Date.now();
+      expect((await applyAsRunner(p.id)).end.outcome).toBe('applied');
+      expect((await runRowOf(p.id)).looks).toBe(0);
+      await look();
+      const first = await refreshed();
+      expect(first).toMatchObject({ ok: 1, source: 'executor' });
+      expect(Number(first.at)).toBeGreaterThanOrEqual(before);
+      expect(Number((await drift()).checked)).toBeGreaterThanOrEqual(before);
+      expect((await drift()).count).toBe(0);
+      const entries = await looked(p.id);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ kind: 'apply', by: 'executor', environment: 'exec-staging' });
+      expect(entries[0].summary).toMatch(new RegExp(`^Looked again after ${p.id}; it matches the repository`, 'u'));
+      const after = await runRowOf(p.id);
+      expect(after.looks).toBe(1);
+      expect(Number(after.lookAt)).toBeGreaterThanOrEqual(before + LOOK_AGAIN_MS);
+      // Not due yet: nothing happens until LOOK_AGAIN_MS has passed.
+      await look();
+      expect((await runRowOf(p.id)).looks).toBe(1);
+      // The second look refreshes again, quietly, and is the last.
+      await look(LOOK_AGAIN_MS + 1000);
+      expect(Number((await refreshed()).at)).toBeGreaterThanOrEqual(Number(first.at));
+      expect(await runRowOf(p.id)).toEqual({ lookAt: null, looks: 2 });
+      expect(await looked(p.id)).toHaveLength(1);
+      await look(2 * LOOK_AGAIN_MS + 1000);
+      expect(await runRowOf(p.id)).toEqual({ lookAt: null, looks: 2 });
+      expect((await plan(p.id)).state).toBe('applied');
+    });
+
+    it('looks again after a rollback, and not after a run that applied nothing', async () => {
+      const p = await approved(9);
+      await tick();
+      provider.state.health['svc-api'] = 'down';
+      expect((await applyAsRunner(p.id)).end.phase).toBe('rollback-dispatched');
+      provider.state.health['svc-api'] = 'healthy';
+      // Mid-run, the board doesn't look.
+      expect((await runRowOf(p.id)).lookAt).toBeNull();
+      expect((await applyAsRunner(p.id)).end.outcome).toBe('rolled back');
+      await look();
+      expect((await runRowOf(p.id)).looks).toBe(1);
+      expect((await looked(p.id))[0].summary).toMatch(/1 resource differs from the repository/u);
+      expect((await drift()).count).toBe(1);
+
+      const q = await approved(10);
+      await tick();
+      provider.failOn.add('svc-api');
+      expect((await applyAsRunner(q.id)).end.outcome).toBe('failed');
+      expect(await runRowOf(q.id)).toEqual({ lookAt: null, looks: 0 });
+      await look();
+      expect(await looked(q.id)).toEqual([]);
+    });
+
+    it('notes a refresh that fails on the stream entry, and never changes the plan’s outcome', async () => {
+      const p = await approved(11);
+      await tick();
+      expect((await applyAsRunner(p.id)).end.outcome).toBe('applied');
+      const discover = provider.discover;
+      provider.discover = async () => {
+        throw new Error('the platform timed out');
+      };
+      try {
+        await look();
+      } finally {
+        provider.discover = discover;
+      }
+      const [entry] = await looked(p.id);
+      expect(entry.summary).toMatch(/the inventory couldn’t be refreshed: .*the platform timed out/u);
+      expect((await refreshed()).ok).toBe(0);
+      expect((await plan(p.id)).state).toBe('applied');
+      expect(await run(p.id)).toMatchObject({ phase: 'done', outcome: 'applied' });
+      expect((await runRowOf(p.id)).looks).toBe(1);
+      // The second look tries again, and works.
+      await look(LOOK_AGAIN_MS + 1000);
+      expect((await refreshed()).ok).toBe(1);
+    });
   });
 
   it('lists the runs for anyone signed in, never with the lock’s token', async () => {
