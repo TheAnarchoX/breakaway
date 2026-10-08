@@ -44,15 +44,15 @@ describe('the plugin’s version (LCH-24)', () => {
 describe('the CLI the plugin runs (CLI-20)', () => {
   it('is pinned to the release’s exact version, as the plugin directory asks', () => {
     const hooks = read('plugin/hooks/hooks.json');
-    expect(hooks).toContain('npx --yes breakaway@1 hook session');
+    expect(hooks).toContain('npx --yes breakaway@2 hook session');
     const pinned = withPins(hooks, '1.6.0');
     expect(pinned).toContain('npx --yes breakaway@1.6.0 hook session');
     expect(pinned).toContain('npx --yes breakaway@1.6.0 hook wait');
-    expect(pinned).not.toMatch(/breakaway@1 /u);
+    expect(pinned).not.toMatch(/breakaway@2 /u);
     expect(withPins(read('plugin/.mcp.json'), '1.6.1-main.3')).toContain(
       '"headersHelper": "npx --yes breakaway@1.6.1-main.3 mcp --headers"',
     );
-    expect(withPins('`npx --yes breakaway@1 claim $ARGUMENTS`', '1.6.0')).toBe(
+    expect(withPins('`npx --yes breakaway@2 claim $ARGUMENTS`', '1.6.0')).toBe(
       '`npx --yes breakaway@1.6.0 claim $ARGUMENTS`',
     );
   });

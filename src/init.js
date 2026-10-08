@@ -19,7 +19,7 @@ export { routinePrompt };
  * The CLI on npm (BRK-7), as a repository runs it: `npx breakaway`, pinned to the major (BRK-47), so a breaking change
  * never reaches a repository by itself. It was the `next` channel until the first stable release.
  */
-export const CLI_PACKAGE = 'breakaway@1';
+export const CLI_PACKAGE = 'breakaway@2';
 /**
  * Where the CLI starts: the command, and the two session hooks. repos init no longer copies them (BRK-7): an old copy
  * is replaced by npx, and these still version the CLI and say which files an old copy holds.

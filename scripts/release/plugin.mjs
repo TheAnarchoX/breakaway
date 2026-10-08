@@ -54,12 +54,12 @@ export function withVersion(text, version) {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-/** The CLI as the plugin runs it, at whatever version main names (`breakaway@1`). */
+/** The CLI as the plugin runs it, at whatever version main names (`breakaway@2`). */
 const CLI = /(npx --yes breakaway)@[^\s`"'\\)]+/gu;
 
 /**
  * A plugin file with the CLI pinned to the release's exact version (CLI-20). Anthropic's plugin directory refuses a
- * command that fetches a package at a range like `breakaway@1`, so the plugin runs the CLI released with it.
+ * command that fetches a package at a range like `breakaway@2`, so the plugin runs the CLI released with it.
  * @param {string} text a file of the plugin's
  * @param {string} version like 1.6.0
  */
