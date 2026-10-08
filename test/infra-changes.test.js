@@ -12,6 +12,7 @@ import {
   changeBody,
   changeBranch,
   changeSummary,
+  changeTarget,
   changeTitle,
   checkChangedFile,
   checkEdits,
@@ -417,6 +418,67 @@ describe('a change’s edits', () => {
     expect(text).toContain('**Policy:** Waits for you, by the default policy.');
     expect(text).toContain(PROPOSED_LINE);
     expect(text).not.toMatch(/Closes|Fixes/u);
+  });
+});
+
+describe('a new environment’s target (BRK-291)', () => {
+  const file = (...names) => ({
+    version: 1,
+    provider: 'cloudflare',
+    resources: [
+      ...names.map((name) => ({ id: `worker:${name}`, kind: 'worker', name, attrs: {} })),
+      { id: 'd1:acme-db', kind: 'd1', name: 'acme-db', attrs: {} },
+    ],
+  });
+  const args = { target: null, kinds: ['worker'], environment: 'production', label: 'Worker' };
+
+  it('is the one Worker the change adds, said as a line', () => {
+    expect(changeTarget({ ...args, file: file('acme-app') })).toEqual({
+      name: 'acme-app',
+      choices: ['acme-app'],
+      line: '→ production’s target becomes acme-app',
+    });
+  });
+
+  it('of several, is the one the owner picks, and asks which until they do', () => {
+    const two = file('acme-app', 'acme-web');
+    expect(changeTarget({ ...args, file: two })).toEqual({
+      name: null,
+      choices: ['acme-app', 'acme-web'],
+      line: null,
+      problem: {
+        edit: null,
+        field: 'target',
+        message: 'The change adds 2 Workers: pick which one is production’s target',
+      },
+    });
+    expect(changeTarget({ ...args, file: two, chose: 'acme-web' }).name).toBe('acme-web');
+    expect(changeTarget({ ...args, file: two, chose: 'acme-other' }).name).toBeNull();
+  });
+
+  it('says what to do when the change adds nothing to run, and is nothing when the environment has a target', () => {
+    expect(changeTarget({ ...args, file: file() }).problem?.message).toBe(
+      'production has no target yet: add a Worker for it to run, or point it at what runs',
+    );
+    expect(changeTarget({ ...args, target: 'acme-api', file: file('acme-app') })).toEqual({
+      name: null,
+      choices: [],
+      line: null,
+    });
+    expect(changeTarget({ ...args, kinds: [], file: file('acme-app') }).name).toBeNull();
+  });
+
+  it('starts the pull request’s description from nothing', () => {
+    const text = changeBody({
+      environment: 'production',
+      lines: ['+ worker acme-app', '→ production’s target becomes acme-app'],
+      preview: null,
+      empty: true,
+    });
+    expect(text).toMatch(
+      /^Starts production from nothing: its first desired state, `\.github\/breakaway-infra\/production\.json`/u,
+    );
+    expect(text).toContain('- → production’s target becomes acme-app');
   });
 });
 

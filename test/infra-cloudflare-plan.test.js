@@ -774,6 +774,33 @@ describe('the Cloudflare provider’s apply (BRK-192)', () => {
     await expect(plan(ctxFor(account()), counter.file)).rejects.toThrow(/made by a migration in its Worker’s code/u);
   });
 
+  it('plans a new environment from nothing: the target its desired state makes, and what that Worker binds (BRK-291)', async () => {
+    const fetch = account();
+    const kinds = creatableKinds(cloudflare);
+    const fresh = applyEdits({
+      file: { version: 1, provider: 'cloudflare', resources: [] },
+      edits: [
+        { op: 'create', kind: 'worker', name: 'acme-app', attrs: {} },
+        { op: 'create', kind: 'd1', name: 'acme-new-db', attrs: {}, bindTo: { worker: 'acme-app', binding: 'DB' } },
+      ],
+      templates: new Map(),
+      environment: 'production',
+      creatable: (kind) => kinds[kind] ?? null,
+    });
+    expect(fresh.problems).toEqual([]);
+    const ctx = ctxFor(fetch, READ, { scope: { target: 'acme-app' } });
+    const p = checkPlan(cloudflare, await plan(ctx, fresh.file));
+    expect(p.changes.map((c) => `${c.op} ${c.resource}`).sort()).toEqual([
+      'create d1:acme-new-db',
+      'create worker:acme-app',
+    ]);
+    expect(fetch.writes()).toEqual([]);
+    // A target that neither runs nor is made is still refused.
+    await expect(plan(ctxFor(account(), READ, { scope: { target: 'acme-gone' } }), fresh.file)).rejects.toThrow(
+      /acme-gone isn’t a Worker on the account yet/u,
+    );
+  });
+
   it('reads a drafted Worker’s bindings back in the console: unchanged plans nothing, one change plans that binding (BRK-285)', async () => {
     const fetch = account();
     // The bindings a real Worker carries besides its resources: kept as they are, never compared or changed.

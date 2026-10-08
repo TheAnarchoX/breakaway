@@ -18,7 +18,7 @@ import { checkApply } from '../src/infra-provider.js';
 /** @typedef {import('../src/infra-provider.js').Change} Change */
 
 export const FAKE_KINDS = {
-  service: { changes: ['create', 'update', 'delete', 'scale', 'restart'], scales: 'instances' },
+  service: { changes: ['create', 'update', 'delete', 'scale', 'restart'], scales: 'instances', target: true },
   database: { changes: ['create', 'update', 'delete'] },
   route: { changes: ['create', 'update', 'delete'] },
 };

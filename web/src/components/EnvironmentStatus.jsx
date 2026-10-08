@@ -6,6 +6,7 @@ import { widClass } from './ui.jsx';
 import { BUDGET, costText } from './InfraCosts.jsx';
 import { HEALTH, healthOfWords } from '../views/InfrastructureView.jsx';
 import { sentence } from '../lib/api.js';
+import { EMPTY_START } from '../lib/infra-change.js';
 
 /**
  * The console's status band (WEB-94; docs/specs/WEB-94-environment-console.md): health, freeze, what's live, the plan
@@ -68,10 +69,21 @@ const plural = (/** @type {number} */ n, /** @type {string} */ one, /** @type {s
 
 /**
  * Health: the worst state, and how many resources share it unless all are healthy, with how many couldn't be read.
- * @param {{ health: any }} props
+ * `empty` is an environment with no target yet, which says how to start one (BRK-291).
+ * @param {{ health: any, empty?: boolean }} props
  */
-function HealthTile({ health }) {
-  if (!health) return <Tile label="Health" Icon={Activity} value="Unknown" state="unknown" detail="Not seen yet" />;
+function HealthTile({ health, empty = false }) {
+  if (!health)
+    return (
+      <Tile
+        label="Health"
+        Icon={Activity}
+        value="Unknown"
+        state="unknown"
+        detail={empty ? 'Add a resource to start' : 'Not seen yet'}
+        detailTitle={empty ? EMPTY_START : undefined}
+      />
+    );
   const { label } = HEALTH[health.state] ?? HEALTH.unknown;
   // One word when it's fine, and a count when something's wrong; what couldn't be read is in the detail (BRK-266).
   const fine = health.state === 'healthy' || health.state === 'idle';
@@ -161,7 +173,7 @@ export function StatusBand({ env, health, cost, run, agents, inventory = { stale
   return (
     <section class="console-status" aria-label={`${env.name}’s status`}>
       <dl class="console-band">
-        <HealthTile health={env.target ? health : null} />
+        <HealthTile health={env.target ? health : null} empty={!env.target && !env.observeOnly} />
         {env.target && <InventoryTile stale={inventory.stale} seen={inventory.seen} />}
         {env.frozen ? (
           <Tile

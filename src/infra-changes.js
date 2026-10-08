@@ -491,6 +491,39 @@ export function checkChangedFile(text, { provider = null, expectProvider = null,
   return { ok: false, problem: { edit, field, message: checked.error.message } };
 }
 
+/**
+ * The target a change gives an environment that has none (BRK-291): the one resource of a target kind (a Worker) the
+ * file it makes has, or of several, the one the owner `chose`. Nothing when the environment has a target already, or
+ * when its provider has no target kind. With no such resource, or several and no choice among them, it answers the
+ * problem, with the names to choose from. `label` is what one is called (a Worker).
+ * @param {{ target: string | null, file: Record<string, any>, kinds: string[], environment: string,
+ *   chose?: string | null, label?: string }} args
+ * @returns {{ name: string | null, choices: string[], line: string | null, problem?: ChangeProblem }}
+ */
+export function changeTarget({ target, file, kinds, environment, chose = null, label = kinds[0] }) {
+  if (target || !kinds.length) return { name: null, choices: [], line: null };
+  const choices = (Array.isArray(file.resources) ? file.resources : [])
+    .filter((r) => isObject(r) && kinds.includes(r.kind) && typeof r.name === 'string')
+    .map((r) => r.name);
+  const pick = choices.length === 1 ? choices[0] : choices.includes(chose ?? '') ? chose : null;
+  if (pick) return { name: pick, choices, line: targetLine(environment, pick) };
+  return {
+    name: null,
+    choices,
+    line: null,
+    problem: {
+      edit: null,
+      field: 'target',
+      message: choices.length
+        ? `The change adds ${choices.length} ${label}s: pick which one is ${environment}’s target`
+        : `${environment} has no target yet: add a ${label} for it to run, or point it at what runs`,
+    },
+  };
+}
+
+/** The line a change's new target shows as, in Your change and its pull request. */
+export const targetLine = (environment, name) => `→ ${environment}’s target becomes ${name}`;
+
 /** The branch a change is committed on: the board's own, the only one it ever moves by force. */
 export const changeBranch = (environment, n) => `breakaway/infra/${environment}-${n}`;
 
@@ -512,14 +545,26 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 /**
  * The pull request's description: what changes in words, the plan's summary, and where it came from. It names no
  * task, so it closes none.
+ * `empty` is a change that starts an environment from nothing (BRK-291): its first file has only what the change adds.
  * @param {{ environment: string, lines: string[], dropped?: Array<{ line: string }>, files?: string[],
- *   preview: Record<string, any> | null, page?: string | null, created?: boolean }} args
+ *   preview: Record<string, any> | null, page?: string | null, created?: boolean, empty?: boolean }} args
  */
-export function changeBody({ environment, lines, dropped = [], files = [], preview, page = null, created = false }) {
+export function changeBody({
+  environment,
+  lines,
+  dropped = [],
+  files = [],
+  preview,
+  page = null,
+  created = false,
+  empty = false,
+}) {
   const out = [
-    created
-      ? `Describes ${environment} as code: \`${desiredPath(environment)}\`, from what runs${lines.length ? ', with these edits' : ''}.`
-      : `Changes ${environment}’s desired state, \`${desiredPath(environment)}\`:`,
+    empty
+      ? `Starts ${environment} from nothing: its first desired state, \`${desiredPath(environment)}\`, with these edits.`
+      : created
+        ? `Describes ${environment} as code: \`${desiredPath(environment)}\`, from what runs${lines.length ? ', with these edits' : ''}.`
+        : `Changes ${environment}’s desired state, \`${desiredPath(environment)}\`:`,
     '',
   ];
   for (const line of lines) out.push(`- ${line}`);

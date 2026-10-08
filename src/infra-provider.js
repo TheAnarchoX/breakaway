@@ -167,6 +167,8 @@ export const COST_NOTE_MAX = 500;
  *   Without it, every attr is a setting.
  * @property {string} [scales] the whole-number setting a `scale` changes (like `instances`): required when the kind
  *   declares `scale`, so an envelope (BRK-186) knows what its bounds are bounds of
+ * @property {boolean} [target] one of the kind can be an environment's target, what discovery starts from (a Worker):
+ *   a change that adds one to an environment with no target gives it that target (BRK-291)
  */
 
 /**
@@ -374,6 +376,8 @@ export function checkProvider(provider) {
       fail(what, `${kind}'s settings is not a list of settings' names`);
     if (spec.changes.includes('scale') ? !text(spec.scales) : spec.scales !== undefined)
       fail(what, `${kind}'s scales names the setting a scale changes, and only a kind that scales has one`);
+    if (spec.target !== undefined && typeof spec.target !== 'boolean')
+      fail(what, `${kind}'s target is not true or false`);
   }
   if (provider.readToken !== undefined) checkReadToken(what, provider.readToken);
   if (provider.refuses !== undefined && typeof provider.refuses !== 'function') fail(what, 'refuses is not a function');
@@ -604,6 +608,16 @@ export function checkCreatable(provider, kind, creatable) {
   if (creatable.needsCode !== undefined && !text(creatable.needsCode)) fail(what, 'needsCode is empty');
   return creatable;
 }
+
+/**
+ * The kinds one of which can be an environment's target (BRK-291): the provider's kinds marked `target`.
+ * @param {Provider} provider
+ * @returns {string[]}
+ */
+export const targetKinds = (provider) =>
+  Object.entries(provider.kinds)
+    .filter(([, spec]) => spec.target === true)
+    .map(([kind]) => kind);
 
 /**
  * The kinds the console may add (BRK-270), checked, each with one list of fields: its own, then its editable ones,

@@ -266,8 +266,13 @@ function bindingChange(worker, live, wanted, resolve) {
 export async function plan(ctx, desired) {
   const found = await discover(ctx, { live: true });
   const live = /** @type {LiveAccount} */ (found.live);
-  if (!live.account || !live.scripts.includes(String(ctx.scope?.target ?? '')))
-    refuse(`${ctx.scope?.target ?? 'the target'} isn’t a Worker on the account yet: deploy it first, then plan`);
+  const target = String(ctx.scope?.target ?? '');
+  // A target the desired state makes (a new environment built from the console, BRK-291) is planned like any Worker.
+  const makes = desired.resources.some((r) => r.kind === 'worker' && r.name === target);
+  if (!live.account || !(live.scripts.includes(target) || (target && makes)))
+    refuse(
+      `${ctx.scope?.target ?? 'the target'} isn’t a Worker on the account yet: deploy it first, or add it to the desired state, then plan`,
+    );
   if (ctx.scope?.board && ctx.scope.board === ctx.scope.target)
     refuse(
       `${ctx.scope.target} is the Worker this board runs on: Architect only observes it, so it never plans for it`,

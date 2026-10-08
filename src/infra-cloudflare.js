@@ -79,6 +79,8 @@ export const CLOUDFLARE_KINDS = Object.fromEntries(
         ? { changes: [...BASE, ...ENVELOPE[k].changes], scales: ENVELOPE[k].scales, settings: [...settings] }
         : { changes: [...BASE], settings: [...settings] }),
       ...(ACCESS.includes(k) ? { access: true } : {}),
+      // A Worker is what an environment's discovery starts from (BRK-291).
+      ...(k === 'worker' ? { target: true } : {}),
     },
   ]),
 );
