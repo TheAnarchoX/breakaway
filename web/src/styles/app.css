@@ -12158,6 +12158,30 @@ button.infra-plan-row {
   overflow-y: auto;
 }
 
+/* A new environment whose first apply failed (WEB-120): its target points at nothing yet. */
+.infra-first-apply {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-s);
+  background: var(--warn-bg);
+}
+.infra-first-apply p {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.infra-first-apply p svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+
 /* An environment whose inventory is out of date (BRK-257): its last discovery failed. */
 .band-stale {
   background: var(--warn-bg);

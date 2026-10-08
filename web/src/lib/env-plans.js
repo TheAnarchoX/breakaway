@@ -91,3 +91,22 @@ export function plansPanel({ plans = [], runs = [], changes = null, checks = () 
     .map(row);
   return { changes: changeRows, open, recent };
 }
+
+/** The plan states an apply ends in that leave nothing running behind it. */
+const UNDONE_PLANS = ['failed', 'rolled back'];
+
+/**
+ * A new environment's first apply that failed (WEB-120): its target was set when the owner approved the change that
+ * builds it (BRK-291), but the board has never seen the target and the newest plan's apply failed (or was rolled
+ * back), so the target points at nothing yet. Returns that plan, or null. An observe-only environment never applies, and
+ * a newer plan still open means the owner is already trying again.
+ * @param {{ env: { target?: string | null, observeOnly?: boolean }, plans?: any[], resources?: any[] }} data
+ *   `plans` newest first, as the board reads them
+ */
+export function firstApplyFailed({ env, plans = [], resources = [] }) {
+  if (!env.target || env.observeOnly) return null;
+  const target = env.target.toLowerCase();
+  if (resources.some((r) => String(r.name ?? '').toLowerCase() === target)) return null;
+  const last = plans[0];
+  return last && UNDONE_PLANS.includes(last.state) ? last : null;
+}
