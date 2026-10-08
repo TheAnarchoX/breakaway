@@ -146,7 +146,7 @@ describe('the site', () => {
       'When something breaks, it’s a task',
     ])
       expect(text).toContain(step);
-    expect(text).toContain('Cloudflare first');
+    expect(text).toContain('Cloudflare, the one provider in 2.0.0');
     expect(text).toContain('It only watches its own install.');
     // Apply is never a button: the page's buttons are links to read on, never an action.
     expect(page).not.toMatch(/<button[^>]*>\s*Apply/u);

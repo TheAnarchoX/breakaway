@@ -53,7 +53,7 @@ The marketplace takes the plugin from breakaway’s `plugin` branch, which a sta
 
 ## What it runs, and where it sends what
 
-- **It runs** the CLI released with it, `npx --yes breakaway@<the plugin’s version>`, from its commands and hooks. npx downloads it from npm’s public registry. The CLI has no dependencies and ships a lockfile, so what npx installs is exactly what was published.
+- **It runs** the CLI, `npx --yes breakaway@2`, from its commands and hooks. npx downloads it from npm’s public registry. The CLI has no dependencies and ships a lockfile, so what npx installs is exactly what was published.
 - **It sends to your board, and nowhere else:** the task you claim, your comments and peloton posts, the pull request you link, and, through the hooks, a short entry for each step of the session while you hold a task, with secrets taken out before it leaves.
 - **It fetches from your board:** the tasks, your messages to the session, and the peloton’s posts.
 - **It stores nothing of its own.** Claude Code keeps the address and agent name in its settings and the token in your keychain. While a session runs, the plugin passes them to the session’s commands through Claude Code’s file for that session’s environment.

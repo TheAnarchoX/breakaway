@@ -20,11 +20,11 @@ breakaway’s maintainer hosts it, as a non-commercial project. The page has no 
 
 ## Where does my data live?
 
-On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), npm's public registry, read-only, to see whether a version your repository's workflows staged on npm is live yet, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh.
+On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), the providers you connect for Architect (Cloudflare, with the read-only token you paste; what it reads is redacted and stays on your board), breakaway’s update feed on this site, to look for updates once your config names an install repository, npm's public registry, read-only, to see whether a version your repository's workflows staged on npm is live yet, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh.
 
 ## Does it run my code, or deploy it?
 
-No. The board starts agents, and agents open pull requests. **You** merge and deploy. Nothing in breakaway merges or deploys on an agent’s word. The merge, update-branch, Promote, and Roll back routes accept only the signed-in browser. The bearer token that agents and the CLI hold gets a 403.
+No. The board starts agents, and agents open pull requests. **You** merge and deploy. Nothing in breakaway merges or deploys on an agent’s word. The merge, update-branch, Promote, and Roll back routes accept only the signed-in browser. The bearer token that agents and the CLI hold gets a 403. With Architect, infrastructure follows the same rule: agents propose changes by pull request, and the repository’s apply workflow applies a plan only once you approve it on the board, or when it fits bounds you approved once (an envelope).
 
 ## What does it work with?
 

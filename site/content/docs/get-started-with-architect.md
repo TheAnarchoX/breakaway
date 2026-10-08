@@ -11,7 +11,7 @@ Nothing here hands an agent a write credential or lets one apply. The board hold
 ## Before you start
 
 - **A board on 2.0.0**, or a 2.0.0 pre-release ([Updating to 2.0.0](/docs/updating-to-2/)), with the repository whose infrastructure you want on it.
-- **The GitHub App’s new permissions accepted**: Checks and Variables ([how](/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan.
+- **The GitHub App’s new permissions accepted**: Checks and Variables ([how](/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan. Workflows: write and Administration: write are optional and save you two steps below ([what each is for](/docs/updating-to-2/#permissions-you-can-add)).
 - **A Cloudflare account** the repository runs on. Ideally staging lives on its own account: every permission but Workers’ reaches every resource of its kind on an account, so only separate accounts keep staging and production fully apart.
 - **The board on your phone**, with pushes on, if you want to approve from it. A plan that waits sends one push.
 
@@ -20,6 +20,8 @@ You need nothing on the board’s own install. Architect only watches the enviro
 ## 1. Connect Cloudflare with a read-only token
 
 The board needs one token per provider, and it only reads with it: what runs, what it uses, its health, and what it costs.
+
+Each repository’s card on **Connections** has a checklist, **Infrastructure tokens**, that lists these permissions for you, with **Open Cloudflare with these filled in**: a link to Cloudflare’s create-token page with the ones its links can fill in. Add the ones it marks **add by hand** (the Workers role, Containers, and Notifications) yourself.
 
 1. In Cloudflare, open **Manage Account**, then **Account API Tokens**, and create a custom token with an expiry date.
 2. Give it exactly these permissions:
@@ -61,18 +63,18 @@ The pull request gets a check, **breakaway: infrastructure plan**, which shows t
 
 ## 4. Give staging a way to apply
 
-The board holds no write credentials. Staging’s write token lives in a GitHub environment in the repository, and only the repository’s apply workflow reads it, for a plan you approved. This step is all on Cloudflare and GitHub, and it’s yours: agents never do it.
+The board holds no write credentials. Staging’s write token lives in a GitHub environment in the repository, and only the repository’s apply workflow reads it, for a plan you approved. This step is all on Cloudflare and GitHub, and it’s yours: agents never do it. The **Infrastructure tokens** checklist on the repository’s Connections card walks through it, with the write token’s exact permissions from `staging.json`, and checks each part through the GitHub App: the GitHub environment, its branch rule, a secret of the right name (by name only), and the apply workflow. **Check again** reads GitHub afresh.
 
 1. **Staging’s write token.** A second custom token on Cloudflare, with an expiry date: everything the read token has, plus
    - **Workers: Editor**, scoped to staging’s Workers. If staging has custom domains, scope it to the Workers product instead.
    - Only for what `staging.json` declares: **D1 Write**, **Workers KV Storage Write**, **Workers R2 Storage Write**, **Queues Write**, or **Containers Write**, and **Workers Routes Write** on staging’s zones for routes and custom domains.
    - Never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for production. On the deploy flow, staging already has a token; widen that one.
-2. **A GitHub environment named `staging`**, in the repository’s settings under **Environments**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add only the default branch. Add the token as the secret **`CLOUDFLARE_API_TOKEN`**. The board reads that rule before every run and starts none while another branch could deploy.
+2. **A GitHub environment named `staging`**, in the repository’s settings under **Environments**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add only the default branch. Add the token as the secret **`CLOUDFLARE_API_TOKEN`**. The board reads that rule before every run and starts none while another branch could deploy. With Administration: write, **Make it on GitHub** on the checklist makes the environment and its rule for you; the secret is still yours to add.
 3. **The repository variable `BREAKAWAY_URL`**: your board’s address.
 4. **Actions: read and write** for the board’s GitHub App on the repository. An App on the deploy flow usually has it.
-5. **The apply workflow.** In a checkout of the repository, run `npx breakaway infra init`. It writes `.github/workflows/breakaway-infra.yml`, **Apply infrastructure**, for each environment with a file. Commit it, open a pull request, and merge it.
+5. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, **Apply infrastructure**. With Workflows: write, a pull request the board opened (step 3’s **Propose it**) brought it already, and its description says so. Otherwise, in a checkout of the repository, run `npx breakaway infra init`: it writes the workflow for each environment with a file. Commit it, open a pull request, and merge it.
 
-**Check:** the repository has the **Apply infrastructure** workflow on its default branch, and the `staging` GitHub environment holds the token and lets only the default branch deploy. Production stays without a write token until you’ve seen staging work.
+**Check:** the checklist reads **All in place**: the repository has the **Apply infrastructure** workflow on its default branch, and the `staging` GitHub environment holds the token and lets only the default branch deploy. Production stays without a write token until you’ve seen staging work.
 
 ## 5. Change something, and approve it
 
@@ -96,6 +98,7 @@ You change staging on its page, the board opens the pull request, and you approv
 | GitHub refuses the merge for a required review | Add the board’s GitHub App to the ruleset’s bypass list (the repository’s **Settings**, **Rules**, **Rulesets**, the rule, **Bypass list**). The App merges only on your press. Until then, review the pull request on GitHub |
 | The plan stays **Approved**, with a reason | The run couldn’t start: no apply workflow, a GitHub environment another branch may use, or another plan holds staging’s lock. Fix what it says; it starts on its own |
 | **Staging is frozen: unfreeze it to approve.** | **Unfreeze** staging, or leave it frozen until you’re ready |
+| **Failed: nothing applied** | The run stopped before it had the plan (its setup failed, or it was cancelled), so nothing changed. Fix what GitHub’s run says, then press **Start the run again** on the plan. GitHub’s own Re-run never applies a plan |
 | **Failed** | Read the plan’s steps for what Cloudflare refused, often a write permission the token lacks. A change that can’t be undone is never rolled back by itself |
 | **Applied**, unverified | Nothing called what changed, so the board couldn’t read its health yet. Call it, and look again after the next refresh |
 
@@ -104,4 +107,4 @@ You change staging on its page, the board opens the pull request, and you approv
 - **Envelopes.** Bounds you approve once on an environment, on the repository’s settings page under Infrastructure: “2 to 10 instances”, “3 restarts a day”. The board scales and restarts inside them without asking you again, and tells you after. Anything outside them waits for you ([Envelopes and scaling rules](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#envelopes-and-scaling-rules)).
 - **Runbooks.** A routine with a signal trigger, so an agent starts on an incident by itself, reads, diagnoses, and proposes the fix by pull request. Approve stays yours ([Runbooks](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#runbooks)).
 - **Production.** Its own write token, in a GitHub environment named `production` limited to the default branch, then `npx breakaway infra init --update` and merge it. Production gates make every plan there wait for you and its incidents push. **Freeze** stops every plan, and on the deploy flow pauses Promote and Release too; Roll back still works.
-- **The policy.** `.github/breakaway-infra/policy.json` decides which plans wait for you. By default every plan does, in every environment ([Policy](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#policy)).
+- **The policy.** `.github/breakaway-infra/policy.json` decides which plans wait for you. By default every plan does, in every environment. Change it from **Policy** on Infrastructure or an environment’s console: the board says what your edit loosens and tightens, opens the pull request, and Approve merges it, with a second press for one that loosens it ([Policy](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#policy)).

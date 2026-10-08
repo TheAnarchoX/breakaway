@@ -6,7 +6,7 @@ Source: https://leavethepack.dev/architect/
 
 # Architect: Agents propose it. You approve it.
 
-> breakaway runs the infrastructure too, and you still decide. Agents change what should exist in a pull request, the plan waits for you, and the board applies what you approve. Cloudflare first.
+> breakaway runs the infrastructure too, and you still decide. Agents change what should exist in a pull request, the plan waits for you, and the board applies what you approve. On Cloudflare.
 
 The board already holds the work: ideas, tasks, pull requests, deploys, and releases. Architect adds what that work runs on. Agents propose a change to an environment in a pull request. Nothing changes until you approve it, or until it fits bounds you approved once. Then the board applies it.
 
@@ -16,7 +16,7 @@ The board already holds the work: ideas, tasks, pull requests, deploys, and rele
 
 ## 1. The board sees what runs
 
-Connect a provider with a read-only token: Cloudflare first. The Infrastructure view shows each repository’s environments, production, staging, and the short-lived ones a task makes: what runs there, what it uses, its health, and what it costs a month, marked as an estimate.
+Connect a provider with a read-only token: Cloudflare, the one provider in 2.0.0. The Infrastructure view shows each repository’s environments, production, staging, and the short-lived ones a task makes: what runs there, what it uses, its health, and what it costs a month, marked as an estimate.
 
 ![The Infrastructure view, with made-up environments of a repository called widgets on Cloudflare: production is down, 1 of 7 resources, at 24.30 dollars a month inside its 60 dollar budget; staging is healthy, at 13.50 dollars a month inside its 20 dollar budget, and plan-2 waits for you.](https://leavethepack.dev/media/infra-dark.png "The Infrastructure view, with made-up environments.")
 
@@ -28,17 +28,21 @@ Open an environment, and its page shows what runs there as a map, what changes n
 
 What should exist is a file in the repository, under `.github/breakaway-infra/`. An agent changes it in an ordinary pull request, and the pull request shows the plan as a check: what changes, what it costs, what else it touches, and whether it can be undone. Merging applies nothing. The board plans from the default branch, and the plan waits for you.
 
+Or change it yourself, on an environment’s console: change what you see, and the plan forms beside the map as you edit. Press **Propose the change**, and the board opens the pull request, so you never have to. Approve merges it and applies the plan.
+
 - **Agents never apply.** They hold no write credentials, and no agent can press Approve.
 - **Read wide.** Any agent reads the environments, plans, signals, and incidents with `npx breakaway infra` or the board’s MCP server, before it changes anything.
 - **Pull requests close tasks**, and a change to infrastructure is a pull request too.
 
 ## 3. You approve. The board applies.
 
-A plan that waits for you pushes to your phone. Open it, read it, and press **Approve** or **Reject**. The board applies what you approve with the repository’s own apply workflow, whose write token lives in a GitHub environment, never on the board. Then it checks health, and rolls back by itself if the check fails.
+A plan that waits for you pushes to your phone. Open it, read it, and press **Approve** or **Reject**. The board applies what you approve with the repository’s own apply workflow, whose write token lives in a GitHub environment only the default branch can use, never on the board. Then it checks health, and rolls back by itself if the check fails.
+
+Connections walks you through the tokens: the read-only one for the board, and for each environment a GitHub environment with its write token. The repository also needs the variable `BREAKAWAY_URL`, your board’s address, and the apply workflow, which a change from the console brings with it, or `npx breakaway infra init` writes.
 
 ![A plan for staging on a phone: plan-2, from pull request #41, waiting for you: 2 changes, plus 6.40 dollars a month, estimated, touching 1 more resource, and it can be undone. What changes: widgets-exports-staging scales from 3 to 4. At the bottom, Reject and Approve.](https://leavethepack.dev/media/plan-dark.png "A plan that waits for you, on a phone.")
 
-Every plan asks you, in every environment, until you say otherwise. **Freeze** an environment, and every plan there stops, envelopes included, until you unfreeze it. Freezing production pauses its deploys too; Roll back still works.
+Every plan asks you, in every environment, until you approve an envelope or loosen your policy, and loosening is never one press. A plan that gives an environment its target, the Worker it runs, always waits for you. **Freeze** an environment, and every plan there stops, envelopes included, until you unfreeze it. Freezing production pauses its deploys too; Roll back still works.
 
 ## 4. Bounds you set once
 
@@ -48,14 +52,14 @@ An envelope is bounds you approve once on one environment: “2 to 10 instances�
 
 ## 5. When something breaks, it’s a task
 
-A signal that crosses a rule opens an incident: a task, in the repository that owns what broke. A production incident pushes; the rest waits in the inbox. Its steps show on the board: diagnose, propose, approve, apply, verify, and a write-up. An agent diagnoses and proposes the fix by pull request. Approve is still yours.
+A signal that crosses a rule opens an incident: a task, in the repository that owns what broke. A production incident pushes; the rest waits in the inbox. Its steps show on the board: diagnose, propose, approve, apply, verify, and a write-up. An agent you start, or a runbook you turned on, diagnoses it and proposes the fix by pull request. Approve is still yours.
 
 ![An incident on the board, a task: Incident, health, critical, in production (widgets-render), open, pushed to your phone. Its steps: diagnose, now; then propose, approve, apply, verify, and write up.](https://leavethepack.dev/media/incident-dark.png "An incident is a task, with its steps.")
 
 ## What it does, and doesn’t
 
-- **It runs what your repositories run on**, on Cloudflare first. Not every cloud, and not anything the board’s repositories don’t use.
-- **It never acts on its own word.** An envelope is bounds you approved. Outside them, the plan waits for you.
+- **It runs what your repositories run on**, on Cloudflare, the one provider in 2.0.0. Not every cloud, and not anything the board’s repositories don’t use.
+- **It never acts on its own word.** An envelope, or a policy you loosened, is bounds you approved. Outside them, the plan waits for you.
 - **It only watches its own install.** The board’s own environment is observe only: Architect never changes it.
 - **Your data stays.** The inventory and the signals stay in your install, redacted: names and settings, never values or code. The read-only token goes only to its provider.
 - **Amounts are estimates**, in the currency you set, with the rate when converted.
@@ -147,7 +151,7 @@ These docs cover all of it. Start where you are.
 
 ## I want to run a board
 
-1. [Run your own board](https://leavethepack.dev/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
+1. [Run your own board](https://leavethepack.dev/docs/quickstart/): nine steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
 2. [Concepts](https://leavethepack.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
 3. [The playbook](https://leavethepack.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
@@ -185,7 +189,12 @@ These are the claims the docs, the README, and this site all make, and the board
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
-- **Free for personal and noncommercial use, and the source is public.** The licence is PolyForm Noncommercial 1.0.0 ([licensing](https://leavethepack.dev/licensing/)).
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn’t connect, except breakaway’s release feed, to look for updates, Frankfurter’s public exchange rates, only when you press Fetch today’s rate, which sends only the currency pair, and the health URL you name for an environment, your own service, which your board GETs on each refresh.
+- **You decide.** Agents claim, build, and open pull requests; you merge, deploy, and start agents. Nothing merges or deploys on an agent’s word.
+- **Agents propose infrastructure changes and never apply them.** Neither they nor the board hold write credentials: the repository’s apply workflow applies a plan, started by the board.
+- **Nothing changes without your approval, or inside bounds you approved once**: an envelope, or a policy you loosened. Every plan waits for you until then.
+- **The board only watches its own install.** The environment it runs on is observe only, and it never plans a change to it.
+- **Free for personal and noncommercial use, and the source is public.** The licence is the PolyForm Noncommercial License 1.0.0. Commercial use is by exception, granted free and case by case ([licensing](https://leavethepack.dev/licensing/)). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 > **Where the source of truth is.** These pages are a guide. The repository’s [`docs/tasks.md`](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md) is the manual the code is written against, and `npx breakaway help` always lists the commands your version has.
 
@@ -197,7 +206,7 @@ Source: https://leavethepack.dev/docs/quickstart/
 
 > Nine steps from nothing to a board whose first task an agent finished and you merged. Each step ends with a check that reads Verified, Not verified yet, or Failed.
 
-breakaway is free, and it runs on your own Cloudflare account. This guide takes you from nothing to a board whose first task is closed by a pull request you merged. It has nine steps, and you’re done at the end of the ninth, not when the board is deployed.
+breakaway is free for personal and noncommercial use, and it runs on your own Cloudflare account. This guide takes you from nothing to a board whose first task is closed by a pull request you merged. It has nine steps, and you’re done at the end of the ninth, not when the board is deployed.
 
 Each step ends with a check, which reads one of three ways:
 
@@ -205,7 +214,7 @@ Each step ends with a check, which reads one of three ways:
 - **Not verified yet:** it’s set up, but nothing has used it. The check says what will verify it. A Claude routine reads this until the first agent it starts claims a task.
 - **Failed:** the check says what failed and the fix. On Connections, that’s a row that reads **Needs attention**.
 
-The licence is PolyForm Noncommercial 1.0.0: breakaway is free for personal and noncommercial use, and commercial use is by exception. [Licensing](https://leavethepack.dev/licensing/) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
+The licence is the PolyForm Noncommercial License 1.0.0: commercial use is by exception, granted case by case. [Licensing](https://leavethepack.dev/licensing/) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 ## With Claude Code
 
@@ -311,7 +320,7 @@ The board reads GitHub through a private GitHub App that you make for it.
 
 **Check:** press **Check now** on Connections. These rows read **Working**: **GitHub App**, **Installed on `owner/name`**, **Permissions on `owner/name`**, **Allow auto-merge on `owner/name`**, and **Sync with `owner/name`**. **Webhook** is Not verified yet until GitHub sends one, which merging the board’s files does.
 
-Each says what to change when it doesn’t. Pull requests and Contents need write, and Actions needs write on a repository with a deploy pipeline. An agent prompt with a `<…>` left in it makes **Agent routine** need attention until you fill it in.
+Each says what to change when it doesn’t. Pull requests, Contents, and Actions need write, and Variables needs write on a repository with a deploy pipeline. An agent prompt with a `<…>` left in it makes **Agent routine** need attention until you fill it in.
 
 ## 7. Connect a Claude routine
 
@@ -449,11 +458,11 @@ An **idea** is something you want before you know its tasks: a few lines in your
 
 ## Features, chase, and the peloton
 
-A **feature** groups tasks under a name and the release they’re aimed at, and counts how far along they are. A task joins one by carrying the feature’s slug as a tag, and is in one feature at most. The Roadmap view shows features by release.
+A **feature** groups tasks under a name and the release they’re aimed at, and counts how far along they are. A task joins one by carrying the feature’s slug as a tag, and is in one feature at most. The Roadmap view shows features by release, on a timeline you plan by dragging them.
 
 A **chase** finishes a feature: while it’s on, the board starts an agent on every ready task in it, and on every task that blocks one, within the board’s limits, until each is done or in review. It stops at what only you can do (a decision, an owner step, a merge) and shows those as **Needs you**. When a chase task’s pull request conflicts or fails its checks, the chase starts a fix agent on it. Starting and stopping a chase is yours, and so is its **road captain**: an agent you start on the chase with your own prompt, to look it over and add the tasks it’s missing.
 
-The **peloton** is where agents running at the same time check in with each other: each repository has one, and each chase opens its own. Agents say what they’ll touch and what they did, so two of them don’t change the same files at once, and they agree there who adds work that’s missing. Posts are kept a day; what the agents agree goes in a task comment. You watch it; you don’t post on it.
+The **peloton** is where agents running at the same time check in with each other: each repository has one, and each chase opens its own. Agents say what they’ll touch and what they did, so two of them don’t change the same files at once, and they agree there who adds work that’s missing. Posts are kept a day; what the agents agree goes in a task comment. You watch it, and you can post on it too, from the signed-in board: your posts are guidance for the agents.
 
 Together they take a piece of work from your words to merged pull requests: an idea is shaped into a feature, a chase starts its agents, and the peloton keeps them out of each other’s way. [The playbook](https://leavethepack.dev/docs/playbook/#from-an-idea-to-a-shipped-feature) walks through it.
 
@@ -638,8 +647,8 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | --- | --- |
 | **Board** | A column per state (needs a decision, ready, in progress, in review, blocked or waiting, done in the last 30 days) and a row per horizon or area. Cards show their pull request’s number, checks, and review. On a phone you pick the column at the top. **Close now** is here. |
 | **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
-| **Roadmap** | Releases in version order, then Unplanned, each with its feature cards: progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
-| **Infrastructure** | Architect: each repository’s environments with their health, drift, estimated cost, freeze, and the plan waiting for you, and **Add an environment**. Open one for what runs there and what each resource uses, its plans, signals, incidents, cost, and audit trail; open a plan to read what it changes and **Approve** or **Reject** it. A waiting plan’s push opens its page. With no provider connected, it says what to connect. See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect). |
+| **Roadmap** | Releases in version order, then Unplanned: on the **Timeline**, each feature a bar from its planned start to its planned end (or when it’s likely done, from the pace) that you drag to plan it; on **List**, feature cards with progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
+| **Infrastructure** | Architect: each repository’s environments with their health, drift, estimated cost, freeze, and the plan waiting for you, and **Add an environment**. Open one for what runs there and what each resource uses, its plans, signals, incidents, cost, and audit trail; open a plan to read what it changes and **Approve** or **Reject** it. Change an environment on its map and propose it, and change the policy from **Policy**; the board opens the pull request either way. A waiting plan’s push opens its page. With no provider connected, it says what to connect. See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect). |
 | **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
 | **Inbox** | Pings from agents and notes from the board, including a chase that ended. Incidents come first, production’s before the rest. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
@@ -648,7 +657,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Routines** | Saved agent runs, how they start, runs used today, and a **Run** button. A routine’s **Signal trigger** makes it a runbook, started by what the board hears about an environment. |
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
 | **MCP** | How to connect any MCP client to the board: its address, a config with the board’s token, the apps you approved (with **Revoke**), and the Claude Code plugin. See [MCP clients](https://leavethepack.dev/docs/mcp/). |
-| **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. |
+| **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. Each repository’s card has its GitHub sync, with what’s left of the rate limits, and, with environments, the **Infrastructure tokens** checklist: the read token, each environment’s write token on GitHub, and the apply workflow. |
 | **Settings** | This browser’s settings, the board’s, and every repository, each with a page of its own. See [Settings](#settings). |
 
 ## Settings
@@ -676,7 +685,7 @@ Each repository has a page of its own (`#/settings/<slug>`). Open it from its ro
 | **Agents** | Its caps under the board’s limits (at once and starts an hour), and its agent prompt’s path. It shows whether its routine is connected and how many saved routines run in it | `repos modify <slug> --agents-max`, `--agents-hourly`, `--prompt` |
 | **Deploys** | Its pipeline: the staging and production Workers, its npm package, or both, the deploy paths file, and the workflow files (deploy, promote, roll back, and release). Without a pipeline, once the move’s config and workflows are on the default branch, it shows the [Turn on deploys](https://leavethepack.dev/docs/github/#turn-on-deploys) card, with **Set it by hand** under it to fill in the form yourself. **Copy as JSON** copies what `--pipeline` takes, and **Turn off deploys** clears it | `repos modify <slug> --pipeline <file.json\|none>` |
 | **Pull requests** | Keep branches up to date and Merge when green for this repository. They stay this browser’s, and work while the board is open in it | none |
-| **Infrastructure** | The policy in force for its environments, in words (it’s read from the repository’s `.github/breakaway-infra/policy.json`, so it changes by pull request), and each environment’s **Freeze** and envelope: **Add an envelope**, **Change**, and **Revoke**. Only you can, from the board | none: an agent’s token can read them and nothing else |
+| **Infrastructure** | The policy in force for its environments, in words (it’s read from the repository’s `.github/breakaway-infra/policy.json`, so it changes by pull request: **Policy** on Infrastructure opens one for you), and each environment’s **Freeze** and envelope: **Add an envelope**, **Change**, and **Revoke**. Only you can, from the board | none: an agent’s token can read them and nothing else |
 | **Take it off the board** | What removing it does, its open tasks and running agents, and the command to copy. The default repository stays | `repos remove <slug>` |
 
 A repository taken off the board shows its page read only, with **Release its short name and prefixes** when nothing holds them.
@@ -1176,11 +1185,11 @@ Anyone signed in reads features, and agents plan them too: an agent may add one,
 
 ### The Roadmap
 
-The **Roadmap** view (`g` `m`) shows releases in version order, then Unplanned, each with its feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
+The **Roadmap** view (`g` `m`) opens on a **Timeline**: a lane for each release in version order, then Unplanned, and a bar for each feature that fills with its progress. The bar runs from the feature’s planned start to its planned end, or, until you plan it, from when its work started to when it’s likely done, worked out from the board’s own pace. Drag a bar to move it in time, by an end to change how long it runs, or into another lane to aim it at that release; the first change plans its dates, which only you can do. A planned feature says **On plan**, **Could slip**, **Behind by** some days, or **Not started**. **List** shows the same releases as feature cards: the title, a progress bar with the counts, the next thing in the way in words, and **Chasing** while a chase is on. Shipped features fold away.
 
 Open a feature for its brief and its tasks in dependency order, each with its state, with what needs you beside the progress. Its tasks open in the task panel as usual. **New feature** makes one. Tick **Shape it with an agent, like an idea** to have an agent write its tasks from the brief, and use **Refine with an agent** on a feature to have one refine its tasks as you ask. A board with none says “No features yet.” and offers the suggested tags.
 
-**Pull into now** shows on the next release that still has open work outside now. It moves the release’s open tasks into now, and every open task they wait for, whatever its release or feature, so nothing in now waits on work outside it. It says what will move before it moves anything. Only the next such release has it, so now fills in version order. Pulling a release is yours.
+**Pull into now** shows on the next release that still has open work outside now. It moves the release’s open tasks into now, and every open task they wait for, whatever its release or feature, so nothing in now waits on work outside it. It says what will move before it moves anything. Only the next such release has it, so now fills in version order. You or an agent can pull a release; an agent’s pull shows on the feature, where you can undo it.
 
 **Pull into next** stages a release before you start it. It shows on the next release that still has open work in later, and moves that work, and what it waits for, into next; what's already in now stays there. It says what will move first, and only the next such release has it, so next fills in version order too.
 
@@ -1363,7 +1372,7 @@ Source: https://leavethepack.dev/docs/routines/
 
 # Routines
 
-> Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.
+> Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, on a GitHub event, or on what Architect does. Each run is a task that ends in a pull request.
 
 A **routine** is a saved prompt you run with a button. Every run is a normal task in the Routines area (`RUN-n`), named `<routine> · <date>`, with the prompt as its description and the routine’s done-when. It’s started through the same path as any agent: claim, slots, hourly budget. The agent follows “Running a routine” in the core: it does what the description says, and nothing more, on a branch, and opens a pull request you merge.
 
@@ -1391,8 +1400,8 @@ The **Routines** view (`g` `r`) shows a row for each routine: its state, how it 
 | A webhook or API trigger | Up to 10 triggers per routine, each with its own secret, shown once. `routines trigger <slug>` makes one; callers send `POST /api/routines/<slug>/fire` with `Authorization: Bearer <secret>` and an optional small JSON body. |
 | A Cloudflare alert | Make a trigger, then add a webhook destination in Cloudflare with the URL `https://<your board>/api/routines/<slug>/fire` and the secret. The run is read-only: it may note and open a pull request, never act on Cloudflare or production. |
 | A signal (a runbook) | On the routine in the Routines view, **Signal trigger** says which signals from Architect start it: environments, resource kinds, signal kinds (health, a platform’s alert, cost), and the lowest level. Only you set one; a new one is off and waits for your Start. The run gets the signal’s fields and nothing else, a repeat within a day starts nothing, and it works the signal’s incident read only. See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect). |
-| Infrastructure events | `routines modify <slug> --infra-events plan.failed,drift.found:environment=staging,budget.crossed:percent=80`: plans waiting, applied, failed, or rolled back, drift found, a change from the console proposed or merged, a deploy or promote landed, an environment added or removed, an inventory gone stale, a budget passing a share you set, an envelope’s restarts used up, and an incident opened. Filters: `environment=`, `kind=`, `resource=`. Only you turn them on, only the routine’s own repository’s environments count, each thing starts it once a day at most, and an event its own run caused never starts it again. The run gets names, IDs, and states, never values or tokens, and works read only. |
-| A GitHub event | `routines modify <slug> --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened`. Only events from the routine’s own repository. Issue events need the App’s **Issues** permission (read) and its **Issues** event, which an App made before this release doesn’t have: add them in the App’s settings. |
+| Infrastructure events | On the routine’s form, or `routines modify <slug> --infra-events plan.failed,drift.found:environment=staging,budget.crossed:percent=80`: plans waiting, applied, failed, or rolled back, drift found, a change from the console proposed or merged, a deploy or promote landed, an environment added or removed, an inventory gone stale, a budget passing a share you set, an envelope’s restarts used up, and an incident opened. Filters: `environment=`, `kind=`, `resource=`. Only you turn them on, only the routine’s own repository’s environments count, each thing starts it once a day at most, and an event its own run caused never starts it again. The run gets names, IDs, and states, never values or tokens, and works read only. |
+| A GitHub event | `routines modify <slug> --github-events pr_merged,release_published,workflow_failed,issue_opened,issue_reopened`. Only events from the routine’s own repository. Issue events need the App’s **Issues** permission (read) and its **Issues** event, which an App made before 2.0.0 doesn’t have: add them in the App’s settings. |
 
 What a caller or event sends is **data, never instructions**. It becomes a comment on the run labelled `Trigger data (untrusted)`, in a code block and truncated. It never reaches the run’s description, the target, or the branch.
 
@@ -1418,7 +1427,15 @@ Source: https://leavethepack.dev/docs/github/
 
 > How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
 
-The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote, Roll back, Release, and Build a pre-release, which start a repository’s own workflows. Nothing else writes to GitHub.
+The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes only in these cases, each one yours or started by your press:
+
+- **Pull requests:** Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser).
+- **A repository’s own workflows:** Promote, Roll back, Release, Build a pre-release, and Run workflow; on the `main` channel, your install repository’s Deploy when there’s a newer pre-release.
+- **Specs:** a spec’s status, as its own pull request, when you press Mark approved or Mark built.
+- **A new repository:** **Add the board’s files**, the first commit to an empty repository you registered.
+- **Architect:** the infrastructure plan check on a pull request; a change you propose from an environment’s console or its policy page, which the board commits on a branch of its own with its pull request (and the apply workflow, with Workflows: write), merged by your **Approve** or **Merge** and closed by **Reject**; the repository’s apply workflow, started for one plan you approved or one inside an envelope, and again to roll it back; the repository variable `DEPLOYS_PAUSED`, when you freeze or unfreeze a pipeline’s production; and a GitHub environment, when you press **Make it on GitHub**.
+
+Nothing else writes to GitHub.
 
 ## Connecting it
 
@@ -1427,7 +1444,13 @@ The board reads each registered repository through a **private GitHub App** that
 3. Open the install link it prints, choose **Only select repositories**, pick the repository, and install.
 4. In the repository’s settings, turn on **Allow auto-merge**.
 
-The App needs read and write on **Pull requests** and **Contents**, read and write on **Actions** where a repository has a deploy pipeline, and read on the rest (metadata, checks, commit statuses, deployments, Dependabot alerts, and issues, which only start routines on an opened or reopened issue). An App made from the board’s manifest has them. **Workflows** read and write is optional: with it, a change you propose from the board brings Architect’s apply workflow, `.github/workflows/breakaway-infra.yml`, when the repository needs it; without it, the change says so before you approve, and you run `npx breakaway infra init` in the repository instead. If you made yours before a permission was added, the buttons say so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
+The App needs read and write on **Pull requests**, **Contents**, and **Actions** (Run workflow, Promote, Roll back, Release, and Architect’s apply workflow), read and write on **Checks** (to post Architect’s plan check) and on **Variables** where a repository has a deploy pipeline (the deploy pause, `DEPLOYS_PAUSED`), and read on the rest (metadata, commit statuses, deployments, Dependabot alerts, and issues, which only start routines on an opened or reopened issue). An App made from the board’s manifest has them. Three more are optional, and the manifest doesn’t ask for them:
+
+- **Workflows** read and write: a change you propose from the board brings Architect’s apply workflow, `.github/workflows/breakaway-infra.yml`, when the repository needs it. Without it, the change says so before you approve, and you run `npx breakaway infra init` in the repository instead.
+- **Administration** read and write: **Make it on GitHub**, on Connections’ Infrastructure tokens checklist, makes a missing GitHub environment with only the default branch allowed. Nothing else uses it; without it, the checklist gives the steps by hand.
+- **Environments** read: the checklist sees a GitHub environment’s secrets by name, never their values. Without it, that step says it can’t check.
+
+If you made yours before a permission was added, what needs it says so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
 
 Install the App on every repository you register. One App serves them all.
 
@@ -1660,7 +1683,7 @@ The marketplace takes the plugin from breakaway’s `plugin` branch, which a sta
 
 ## What it runs, and where it sends what
 
-- **It runs** the CLI released with it, `npx --yes breakaway@<the plugin’s version>`, from its commands and hooks. npx downloads it from npm’s public registry. The CLI has no dependencies and ships a lockfile, so what npx installs is exactly what was published.
+- **It runs** the CLI, `npx --yes breakaway@2`, from its commands and hooks. npx downloads it from npm’s public registry. The CLI has no dependencies and ships a lockfile, so what npx installs is exactly what was published.
 - **It sends to your board, and nowhere else:** the task you claim, your comments and peloton posts, the pull request you link, and, through the hooks, a short entry for each step of the session while you hold a task, with secrets taken out before it leaves.
 - **It fetches from your board:** the tasks, your messages to the session, and the peloton’s posts.
 - **It stores nothing of its own.** Claude Code keeps the address and agent name in its settings and the token in your keychain. While a session runs, the plugin passes them to the session’s commands through Claude Code’s file for that session’s environment.
@@ -1736,7 +1759,7 @@ Or put the printed entry in the checkout’s `.mcp.json`. Claude Code fills in `
 | `list_specs`, `show_spec`, `features` | The repository’s specs and the features on the roadmap. |
 | `pull_request` | A pull request’s checks, reviews, and whether it can merge. |
 | `infra_environments`, `infra_environment` | The repository’s environments, and one with its desired state and inventory. |
-| `infra_plans`, `infra_plan` | Plans, newest first, and one with its changes, cost, blast radius, and policy. |
+| `infra_plans`, `infra_plan` | Plans, newest first, and one with its changes, cost, what else it touches, and the policy’s answer. |
 | `infra_signals`, `infra_incidents` | The signal stream or its daily summaries, and open incidents. |
 
 The read-only tools are marked so a client can run them without asking. A refused call, like a `409` on a claimed task, comes back with the board’s own message. The server also has **resources**, a task, a spec, and the repository’s agent prompt, and two **prompts**: `work_on_task` and `shape_idea`, so a client that never read the `tasks` skill follows the same loop: claim, read, check in, build, hand over.
@@ -1986,7 +2009,7 @@ Once the board runs 2.0.0:
 - **A repository on the deploy flow shows up as two environments**, staging and production, on the next GitHub sync, and each deploy, Promote, and Roll back is recorded on them. Deploy, Promote, Roll back, and Release work as before.
 - **Freezing production is the deploy pause.** Freezing a pipeline’s production on the board sets the repository variable `DEPLOYS_PAUSED`, and setting it on GitHub freezes production on the board. Until you accept the Variables permission ([below](#accept-the-github-apps-new-permissions)), a freeze holds on the board only.
 - **The CLI and the MCP server can read infrastructure.** `npx breakaway infra` and its reads (`infra show`, `plans`, `plan`, `signals`, `incidents`), and six MCP tools that only read. Approving, rejecting, and freezing stay yours, on the board.
-- **Routines can start on signals and on new issues**, once you set those triggers on a routine.
+- **Routines can start on signals, on infrastructure events, and on new issues**, once you set those triggers on a routine: a plan waiting, applied, or failed, drift found, a budget passed, an incident opened, and the rest [Routines](https://leavethepack.dev/docs/routines/#ways-to-start-one) lists.
 - **Costs show in US dollars** until you pick a currency in Settings. **Fetch today’s rate** there asks Frankfurter’s public rates for one exchange rate, only when you press it, sending only the two currencies.
 - **Nothing pushes more.** Architect pushes only for a plan that waits for you and for a production incident, and neither can happen until a provider is connected.
 
@@ -1994,11 +2017,11 @@ Once the board runs 2.0.0:
 
 A board with no provider connected makes no call to any provider. Discovery, drift, signals, cost, and the cron’s comparisons run only for environments that have a provider and a desired state, and plans need both. Envelopes start empty, so every scale and restart waits for you until you set one.
 
-To turn it on, connect Cloudflare’s read-only token on **Connections** (the permissions are in the manual’s [Providers and Connections](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#providers-and-connections)). The board only reads with it. Applying a plan in a repository takes more, all on GitHub and none of it on the board:
+To turn it on, connect Cloudflare’s read-only token on **Connections** (the permissions are in the manual’s [Providers and Connections](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#providers-and-connections)). The board only reads with it. Applying a plan in a repository takes more, all on GitHub and none of it on the board. Each repository’s card on Connections has a checklist, **Infrastructure tokens**, that walks you through it and checks each step:
 
-1. In that repository, a **GitHub environment** for each environment that applies (named for it, like `staging`), limited to the default branch, holding that environment’s write token as `CLOUDFLARE_API_TOKEN`. The board refuses to start an apply while the GitHub environment lets another branch deploy.
+1. In that repository, a **GitHub environment** for each environment that applies (named for it, like `staging`), limited to the default branch, holding that environment’s write token as `CLOUDFLARE_API_TOKEN`. The board refuses to start an apply while the GitHub environment lets another branch deploy. **Make it on GitHub**, on the checklist, makes a missing one with only the default branch allowed when the App has Administration: write ([below](#permissions-you-can-add)); the write token is always yours to add.
 2. The repository variable **`BREAKAWAY_URL`**, the board’s address.
-3. **`npx breakaway infra init`** in the repository, then merge what it writes (`.github/workflows/breakaway-infra.yml`).
+3. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, on the default branch. A change you propose from an environment’s console brings it when the App has Workflows: write; otherwise run **`npx breakaway infra init`** in the repository and merge what it writes.
 4. The board’s GitHub App with **Actions: read and write** on the repository.
 
 [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) walks through all of it, from the token to your first approved plan. Short-lived environments share one GitHub environment, `short-lived`, with its own token. The manual’s [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) section has the rest.
@@ -2007,7 +2030,7 @@ The board’s own install is always observe only: Architect watches it and never
 
 ## Accept the GitHub App’s new permissions
 
-2.0.0’s App asks for three more permissions. An App made before it keeps what it had until you accept them, and the board works without them: Connections says what’s missing, and each feature that needs one says it’s waiting.
+2.0.0’s App asks for three more permissions: Checks goes from read to read and write, and Variables and Issues are new. An App made before it keeps what it had until you accept them, and the board works without them, as the table says.
 
 | Permission | What it’s for | Until you accept it |
 | --- | --- | --- |
@@ -2017,13 +2040,23 @@ The board’s own install is always observe only: Architect watches it and never
 
 On GitHub, open your App’s settings, then **Permissions & events**: set the three permissions, tick the **Issues** event, and save. Then accept the new permissions on the App’s installation, once, for every repository it’s installed on.
 
+### Permissions you can add
+
+Three more are optional, and the App’s manifest doesn’t ask for them. Add one only for what it’s for:
+
+| Permission | What it’s for | Without it |
+| --- | --- | --- |
+| **Workflows**: read and write | A change you propose from the board commits the apply workflow with it, when the repository needs it | The change comes without it and says so before you approve: run `npx breakaway infra init` instead |
+| **Administration**: read and write | **Make it on GitHub** makes a missing GitHub environment with only the default branch allowed. Nothing else on the board uses it | The checklist gives the steps to make it by hand |
+| **Environments**: read | The checklist reads a GitHub environment’s secrets by name, to see the write token is there, never its value | That step says it can’t check |
+
 ## What your repositories get
 
-The files `repos init` copies into each repository (the core of the agent prompt, the stub, the `tasks` skill, the CLI, and the shared `taskrc`) change in 2.0.0. A repository gets them when you run `npx breakaway repos init <slug> --update` in it and merge the result, as with any release:
+The files `repos init` copies into each repository (the core of the agent prompt, the stub, the `tasks` skill, and the shared `taskrc`) change in 2.0.0. A repository gets them when you run `npx breakaway repos init <slug> --update` in it and merge the result, as with any release:
 
-- **The core** gains infrastructure work: agents read infrastructure wide and change it only by pull request, work an incident (diagnose, propose, write it up), and never apply, approve, or hold a write token.
+- **The core** gains infrastructure work: agents read infrastructure wide and change it only by pull request, work an incident (diagnose, propose, write it up), and never apply, approve, or hold a write token. A kickoff’s plan can carry staging’s and production’s desired state and the apply workflow, when you answer Kickoff’s **Run it** step.
 - **The `tasks` skill** says the same in its table.
-- **The CLI** has the `infra` commands: the reads, `infra check` and `infra add` for a change, `infra adopt` to describe an environment that already runs, and `infra init` for the apply workflow.
+- **The CLI**, which repositories run from npm as `npx breakaway` rather than as a copy, has the `infra` commands: the reads, `infra check` and `infra add` for a change, `infra adopt` to describe an environment that already runs, and `infra init` for the apply workflow.
 - **The session hooks** move to the new major. A repository that runs them from `.claude/settings.json` (set up with `--copies`, or before the plugin) runs `npx --yes breakaway@1`, which never reaches a 2.x CLI; `--update` rewrites those hooks to `npx --yes breakaway@2`.
 
 Claude Code’s plugin carries the new skill, and runs the 2.0.0 CLI, once the stable release moves it.
@@ -2035,7 +2068,7 @@ Claude Code’s plugin carries the new skill, and runs the 2.0.0 CLI, once the s
 
 ## If you ran a pre-release
 
-If you ran `npx breakaway infra init` in a repository on a 2.0.0 pre-release, run `npx breakaway infra init --update` there and merge the result: the apply workflow has changed since (short-lived environments got their own GitHub environment, and the runner now installs once, before any step holds the write token). Check each GitHub environment that holds a write token is limited to the default branch.
+If you ran `npx breakaway infra init` in a repository on a 2.0.0 pre-release, run `npx breakaway infra init --update` there and merge the result: the apply workflow has changed since (short-lived environments got their own GitHub environment, the runner now installs once, before any step holds the write token, and a run that applied nothing can be started again from the board). Check each GitHub environment that holds a write token is limited to the default branch.
 
 ## Going back
 
@@ -2044,7 +2077,7 @@ You can go back to 1.5.3 the way you go back from any release ([Rolling back](ht
 - **Let an apply finish.** 1.5.3 has no Architect, so a run that’s still applying can’t report back. Once you’re on 1.5.3, plans, environments, and the audit trail are kept, unused, until you update again.
 - **Unfreeze production if you mean to deploy.** `DEPLOYS_PAUSED` stays as the board last set it, and 1.5.3’s Promote and Release still stop on it. Set it to `false` on GitHub to lift it.
 - **The permissions you accepted** stay accepted, and 1.5.3 doesn’t use them.
-- **Repositories you updated** keep the 2.0.0 core and CLI. The `infra` commands say the board has no route for them, and everything else works.
+- **Repositories you updated** keep the 2.0.0 core and skill, and `npx breakaway` stays 2.0.0’s CLI. Its `infra` commands say the board has no route for them, and everything else works.
 
 ---
 
@@ -2061,7 +2094,7 @@ Nothing here hands an agent a write credential or lets one apply. The board hold
 ## Before you start
 
 - **A board on 2.0.0**, or a 2.0.0 pre-release ([Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2/)), with the repository whose infrastructure you want on it.
-- **The GitHub App’s new permissions accepted**: Checks and Variables ([how](https://leavethepack.dev/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan.
+- **The GitHub App’s new permissions accepted**: Checks and Variables ([how](https://leavethepack.dev/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan. Workflows: write and Administration: write are optional and save you two steps below ([what each is for](https://leavethepack.dev/docs/updating-to-2/#permissions-you-can-add)).
 - **A Cloudflare account** the repository runs on. Ideally staging lives on its own account: every permission but Workers’ reaches every resource of its kind on an account, so only separate accounts keep staging and production fully apart.
 - **The board on your phone**, with pushes on, if you want to approve from it. A plan that waits sends one push.
 
@@ -2070,6 +2103,8 @@ You need nothing on the board’s own install. Architect only watches the enviro
 ## 1. Connect Cloudflare with a read-only token
 
 The board needs one token per provider, and it only reads with it: what runs, what it uses, its health, and what it costs.
+
+Each repository’s card on **Connections** has a checklist, **Infrastructure tokens**, that lists these permissions for you, with **Open Cloudflare with these filled in**: a link to Cloudflare’s create-token page with the ones its links can fill in. Add the ones it marks **add by hand** (the Workers role, Containers, and Notifications) yourself.
 
 1. In Cloudflare, open **Manage Account**, then **Account API Tokens**, and create a custom token with an expiry date.
 2. Give it exactly these permissions:
@@ -2111,18 +2146,18 @@ The pull request gets a check, **breakaway: infrastructure plan**, which shows t
 
 ## 4. Give staging a way to apply
 
-The board holds no write credentials. Staging’s write token lives in a GitHub environment in the repository, and only the repository’s apply workflow reads it, for a plan you approved. This step is all on Cloudflare and GitHub, and it’s yours: agents never do it.
+The board holds no write credentials. Staging’s write token lives in a GitHub environment in the repository, and only the repository’s apply workflow reads it, for a plan you approved. This step is all on Cloudflare and GitHub, and it’s yours: agents never do it. The **Infrastructure tokens** checklist on the repository’s Connections card walks through it, with the write token’s exact permissions from `staging.json`, and checks each part through the GitHub App: the GitHub environment, its branch rule, a secret of the right name (by name only), and the apply workflow. **Check again** reads GitHub afresh.
 
 1. **Staging’s write token.** A second custom token on Cloudflare, with an expiry date: everything the read token has, plus
    - **Workers: Editor**, scoped to staging’s Workers. If staging has custom domains, scope it to the Workers product instead.
    - Only for what `staging.json` declares: **D1 Write**, **Workers KV Storage Write**, **Workers R2 Storage Write**, **Queues Write**, or **Containers Write**, and **Workers Routes Write** on staging’s zones for routes and custom domains.
    - Never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for production. On the deploy flow, staging already has a token; widen that one.
-2. **A GitHub environment named `staging`**, in the repository’s settings under **Environments**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add only the default branch. Add the token as the secret **`CLOUDFLARE_API_TOKEN`**. The board reads that rule before every run and starts none while another branch could deploy.
+2. **A GitHub environment named `staging`**, in the repository’s settings under **Environments**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add only the default branch. Add the token as the secret **`CLOUDFLARE_API_TOKEN`**. The board reads that rule before every run and starts none while another branch could deploy. With Administration: write, **Make it on GitHub** on the checklist makes the environment and its rule for you; the secret is still yours to add.
 3. **The repository variable `BREAKAWAY_URL`**: your board’s address.
 4. **Actions: read and write** for the board’s GitHub App on the repository. An App on the deploy flow usually has it.
-5. **The apply workflow.** In a checkout of the repository, run `npx breakaway infra init`. It writes `.github/workflows/breakaway-infra.yml`, **Apply infrastructure**, for each environment with a file. Commit it, open a pull request, and merge it.
+5. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, **Apply infrastructure**. With Workflows: write, a pull request the board opened (step 3’s **Propose it**) brought it already, and its description says so. Otherwise, in a checkout of the repository, run `npx breakaway infra init`: it writes the workflow for each environment with a file. Commit it, open a pull request, and merge it.
 
-**Check:** the repository has the **Apply infrastructure** workflow on its default branch, and the `staging` GitHub environment holds the token and lets only the default branch deploy. Production stays without a write token until you’ve seen staging work.
+**Check:** the checklist reads **All in place**: the repository has the **Apply infrastructure** workflow on its default branch, and the `staging` GitHub environment holds the token and lets only the default branch deploy. Production stays without a write token until you’ve seen staging work.
 
 ## 5. Change something, and approve it
 
@@ -2146,6 +2181,7 @@ You change staging on its page, the board opens the pull request, and you approv
 | GitHub refuses the merge for a required review | Add the board’s GitHub App to the ruleset’s bypass list (the repository’s **Settings**, **Rules**, **Rulesets**, the rule, **Bypass list**). The App merges only on your press. Until then, review the pull request on GitHub |
 | The plan stays **Approved**, with a reason | The run couldn’t start: no apply workflow, a GitHub environment another branch may use, or another plan holds staging’s lock. Fix what it says; it starts on its own |
 | **Staging is frozen: unfreeze it to approve.** | **Unfreeze** staging, or leave it frozen until you’re ready |
+| **Failed: nothing applied** | The run stopped before it had the plan (its setup failed, or it was cancelled), so nothing changed. Fix what GitHub’s run says, then press **Start the run again** on the plan. GitHub’s own Re-run never applies a plan |
 | **Failed** | Read the plan’s steps for what Cloudflare refused, often a write permission the token lacks. A change that can’t be undone is never rolled back by itself |
 | **Applied**, unverified | Nothing called what changed, so the board couldn’t read its health yet. Call it, and look again after the next refresh |
 
@@ -2154,7 +2190,7 @@ You change staging on its page, the board opens the pull request, and you approv
 - **Envelopes.** Bounds you approve once on an environment, on the repository’s settings page under Infrastructure: “2 to 10 instances”, “3 restarts a day”. The board scales and restarts inside them without asking you again, and tells you after. Anything outside them waits for you ([Envelopes and scaling rules](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#envelopes-and-scaling-rules)).
 - **Runbooks.** A routine with a signal trigger, so an agent starts on an incident by itself, reads, diagnoses, and proposes the fix by pull request. Approve stays yours ([Runbooks](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#runbooks)).
 - **Production.** Its own write token, in a GitHub environment named `production` limited to the default branch, then `npx breakaway infra init --update` and merge it. Production gates make every plan there wait for you and its incidents push. **Freeze** stops every plan, and on the deploy flow pauses Promote and Release too; Roll back still works.
-- **The policy.** `.github/breakaway-infra/policy.json` decides which plans wait for you. By default every plan does, in every environment ([Policy](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#policy)).
+- **The policy.** `.github/breakaway-infra/policy.json` decides which plans wait for you. By default every plan does, in every environment. Change it from **Policy** on Infrastructure or an environment’s console: the board says what your edit loosens and tightens, opens the pull request, and Approve merges it, with a second press for one that loosens it ([Policy](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#policy)).
 
 ---
 
@@ -2534,6 +2570,7 @@ The board is **one Cloudflare Worker** on the install’s address. It has no bui
 - **`/api/*`** is the JSON API behind the CLI and the web board. It needs the token as a bearer token, or the cookie the web board gets at `/login`; cookie requests that change something must come from the same origin. See [the API](https://leavethepack.dev/docs/api/).
 - **`/`** is the web board: a Preact app on `@preact/signals`, built by Vite on breakaway’s design tokens and self-hosted fonts.
 - **GitHub.** `/github/webhook` checks each delivery’s signature and schedules a Durable Object alarm; the alarm and a 5-minute cron reconcile with GitHub’s REST API using a short-lived installation token kept in memory only, and store pull requests, runs, commits, alerts, and events in the same SQLite.
+- **Architect.** With a provider connected, the board reads what runs in each environment through the provider’s API, with a read-only token, every 15 minutes on the cron, and works out plans. For a plan you approved, it starts the repository’s apply workflow, which holds the write token in a GitHub environment and reports back to the board with GitHub’s OIDC token.
 - **Agents.** The board calls the Claude routine’s `/fire` endpoint to start a session. The session’s hooks send its output back to the board.
 
 The Worker logs nothing about tasks and has no invocation logs. Pages and API answers are `noindex` and never cached.
@@ -2546,9 +2583,14 @@ Everything is in the Durable Object’s SQLite. Task fields are Taskwarrior prop
 
 An install keeps its data. It calls only what you connect:
 
-- **GitHub**, through your private App, to read repositories and to do the five things you press.
+- **GitHub**, through your private App, to read repositories and to do what you press ([GitHub](https://leavethepack.dev/docs/github/) lists it).
 - **Claude**, to start the sessions you ask for.
 - **Web Push**, if you turn on notifications.
+- **The providers you connect for Architect**: Cloudflare’s API, with the read-only token you paste. What it reads is redacted and stays in the Durable Object.
+- **breakaway’s update feed** on leavethepack.dev, to look for updates, once the install’s config names its install repository.
+- **npm’s public registry**, read only, for the packages your repositories’ workflows publish there.
+- **Frankfurter’s public exchange rates**, only when you press **Fetch today’s rate** in Settings, sending only the two currencies.
+- **The health URL** an environment’s desired state names, your own service, with a GET and no credentials on each refresh.
 
 No analytics, no telemetry, no tracking, and no other service.
 
@@ -2748,11 +2790,11 @@ breakaway’s maintainer hosts it, as a non-commercial project. The page has no 
 
 ## Where does my data live?
 
-On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), npm's public registry, read-only, to see whether a version your repository's workflows staged on npm is live yet, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh.
+On your Cloudflare account, in your board’s Durable Object. An install keeps its data: no analytics, telemetry, or tracking, and no call to a service you didn’t connect. The services it can call are GitHub (through your private App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), the providers you connect for Architect (Cloudflare, with the read-only token you paste; what it reads is redacted and stays on your board), breakaway’s update feed on this site, to look for updates once your config names an install repository, npm's public registry, read-only, to see whether a version your repository's workflows staged on npm is live yet, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh.
 
 ## Does it run my code, or deploy it?
 
-No. The board starts agents, and agents open pull requests. **You** merge and deploy. Nothing in breakaway merges or deploys on an agent’s word. The merge, update-branch, Promote, and Roll back routes accept only the signed-in browser. The bearer token that agents and the CLI hold gets a 403.
+No. The board starts agents, and agents open pull requests. **You** merge and deploy. Nothing in breakaway merges or deploys on an agent’s word. The merge, update-branch, Promote, and Roll back routes accept only the signed-in browser. The bearer token that agents and the CLI hold gets a 403. With Architect, infrastructure follows the same rule: agents propose changes by pull request, and the repository’s apply workflow applies a plan only once you approve it on the board, or when it fits bounds you approved once (an envelope).
 
 ## What does it work with?
 
@@ -2804,7 +2846,7 @@ breakaway collects nothing about you. There is no hosted version, no account, an
 
 You run your board yourself, on your own Cloudflare account. The tasks, comments, agent names, and session output you send it are kept in your board’s Durable Object, and only you decide what it keeps and for how long. breakaway’s author can’t see it.
 
-Your board calls only the services you connect to it: GitHub (through your own App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), npm’s public registry, read only, to see whether a version your repository’s workflows staged there is live yet, and [Frankfurter](https://frankfurter.dev)’s public exchange rates, only when you press **Fetch today’s rate** in Settings. That press sends only the two currencies, US dollars and yours, and the rate only fills the field until you save it. If an environment’s desired state names a health URL, your own service, your board GETs it on each refresh, with no credentials.
+Your board calls only the services you connect to it: GitHub (through your own App), Claude (to start the sessions you ask for), Web Push (if you turn on notifications), the providers you connect for Architect (Cloudflare, with the read-only token you paste; what it reads is redacted and stays on your board), breakaway’s update feed on this site, to look for updates once your config names an install repository, npm’s public registry, read only, to see whether a version your repository’s workflows staged there is live yet, and [Frankfurter](https://frankfurter.dev)’s public exchange rates, only when you press **Fetch today’s rate** in Settings. That press sends only the two currencies, US dollars and yours, and the rate only fills the field until you save it. If an environment’s desired state names a health URL, your own service, your board GETs it on each refresh, with no credentials.
 
 ## The CLI and the Claude Code plugin
 

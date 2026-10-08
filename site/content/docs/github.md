@@ -3,7 +3,15 @@ title: GitHub
 description: How the board reads GitHub through your own private App, the GitHub view and its packages, how pull requests link to tasks, reviewing them with an agent, and what the board can merge, update, promote, and roll back.
 ---
 
-The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes in exactly five cases, all for you: Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser), and Promote, Roll back, Release, and Build a pre-release, which start a repository’s own workflows. Nothing else writes to GitHub.
+The board reads each registered repository through a **private GitHub App** that you make for it. It reads, and writes only in these cases, each one yours or started by your press:
+
+- **Pull requests:** Publish, Update branch, Merge, and Merge when green (pressed on the pull request page, or sent by two settings you can turn on in your browser).
+- **A repository’s own workflows:** Promote, Roll back, Release, Build a pre-release, and Run workflow; on the `main` channel, your install repository’s Deploy when there’s a newer pre-release.
+- **Specs:** a spec’s status, as its own pull request, when you press Mark approved or Mark built.
+- **A new repository:** **Add the board’s files**, the first commit to an empty repository you registered.
+- **Architect:** the infrastructure plan check on a pull request; a change you propose from an environment’s console or its policy page, which the board commits on a branch of its own with its pull request (and the apply workflow, with Workflows: write), merged by your **Approve** or **Merge** and closed by **Reject**; the repository’s apply workflow, started for one plan you approved or one inside an envelope, and again to roll it back; the repository variable `DEPLOYS_PAUSED`, when you freeze or unfreeze a pipeline’s production; and a GitHub environment, when you press **Make it on GitHub**.
+
+Nothing else writes to GitHub.
 
 ## Connecting it
 
@@ -12,7 +20,13 @@ The board reads each registered repository through a **private GitHub App** that
 3. Open the install link it prints, choose **Only select repositories**, pick the repository, and install.
 4. In the repository’s settings, turn on **Allow auto-merge**.
 
-The App needs read and write on **Pull requests** and **Contents**, read and write on **Actions** where a repository has a deploy pipeline, and read on the rest (metadata, checks, commit statuses, deployments, Dependabot alerts, and issues, which only start routines on an opened or reopened issue). An App made from the board’s manifest has them. **Workflows** read and write is optional: with it, a change you propose from the board brings Architect’s apply workflow, `.github/workflows/breakaway-infra.yml`, when the repository needs it; without it, the change says so before you approve, and you run `npx breakaway infra init` in the repository instead. If you made yours before a permission was added, the buttons say so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
+The App needs read and write on **Pull requests**, **Contents**, and **Actions** (Run workflow, Promote, Roll back, Release, and Architect’s apply workflow), read and write on **Checks** (to post Architect’s plan check) and on **Variables** where a repository has a deploy pipeline (the deploy pause, `DEPLOYS_PAUSED`), and read on the rest (metadata, commit statuses, deployments, Dependabot alerts, and issues, which only start routines on an opened or reopened issue). An App made from the board’s manifest has them. Three more are optional, and the manifest doesn’t ask for them:
+
+- **Workflows** read and write: a change you propose from the board brings Architect’s apply workflow, `.github/workflows/breakaway-infra.yml`, when the repository needs it. Without it, the change says so before you approve, and you run `npx breakaway infra init` in the repository instead.
+- **Administration** read and write: **Make it on GitHub**, on Connections’ Infrastructure tokens checklist, makes a missing GitHub environment with only the default branch allowed. Nothing else uses it; without it, the checklist gives the steps by hand.
+- **Environments** read: the checklist sees a GitHub environment’s secrets by name, never their values. Without it, that step says it can’t check.
+
+If you made yours before a permission was added, what needs it says so; change it under GitHub, Settings, Developer settings, GitHub Apps, Permissions & events, then accept the request on the installation.
 
 Install the App on every repository you register. One App serves them all.
 

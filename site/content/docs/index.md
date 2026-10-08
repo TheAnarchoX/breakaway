@@ -10,7 +10,7 @@ These docs cover all of it. Start where you are.
 
 ## I want to run a board
 
-1. [Run your own board](/docs/quickstart/): eight steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
+1. [Run your own board](/docs/quickstart/): nine steps from nothing to a board that starts agents and updates itself. Each step ends in a check.
 2. [Concepts](/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
 3. [The playbook](/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
@@ -48,6 +48,11 @@ These are the claims the docs, the README, and this site all make, and the board
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
-- **Free for personal and noncommercial use, and the source is public.** The licence is PolyForm Noncommercial 1.0.0 ([licensing](/licensing/)).
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn’t connect, except breakaway’s release feed, to look for updates, Frankfurter’s public exchange rates, only when you press Fetch today’s rate, which sends only the currency pair, and the health URL you name for an environment, your own service, which your board GETs on each refresh.
+- **You decide.** Agents claim, build, and open pull requests; you merge, deploy, and start agents. Nothing merges or deploys on an agent’s word.
+- **Agents propose infrastructure changes and never apply them.** Neither they nor the board hold write credentials: the repository’s apply workflow applies a plan, started by the board.
+- **Nothing changes without your approval, or inside bounds you approved once**: an envelope, or a policy you loosened. Every plan waits for you until then.
+- **The board only watches its own install.** The environment it runs on is observe only, and it never plans a change to it.
+- **Free for personal and noncommercial use, and the source is public.** The licence is the PolyForm Noncommercial License 1.0.0. Commercial use is by exception, granted free and case by case ([licensing](/licensing/)). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 > **Where the source of truth is.** These pages are a guide. The repository’s [`docs/tasks.md`](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md) is the manual the code is written against, and `npx breakaway help` always lists the commands your version has.
