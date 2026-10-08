@@ -17,7 +17,7 @@ import {
 /**
  * Infrastructure in a repository's settings (WEB-64; docs/specs/IDEA-19-architect.md, "Views", "Policy",
  * "Envelopes"): the policy in force, in words, guards first, with its cost limit and budgets; and each environment's
- * freeze and envelope. The policy is read from the repository (GET /api/infra/policy), so it's never edited here. An
+ * freeze and envelope. The policy is read from the repository (GET /api/infra/policy) and changed on the Policy view (WEB-123). An
  * envelope is the owner's to add, change, and revoke (PUT and DELETE /api/infra/envelopes/<environment>, which the
  * Worker takes from the signed-in browser only, so an agent's token can read it and nothing else). Freeze is WEB-60's.
  */
@@ -117,13 +117,20 @@ function PolicySource({ out }) {
             <span class="gh-sha">{out.sha.slice(0, 7)}</span>
           </>
         ) : null}
-        . Change it with a pull request.
+        .{' '}
+        <a href={hashFor({ view: 'infrastructure', environment: null, policy: out.repo, task: null })}>
+          Change it on the Policy view
+        </a>
+        , as a pull request you approve.
       </p>
     );
   return (
     <p class="meta">
-      The default policy: the repository has no {file}, so every plan waits for you. Add the file in a pull request to
-      change the limits or let some plans through.
+      The default policy: the repository has no {file}, so every plan waits for you.{' '}
+      <a href={hashFor({ view: 'infrastructure', environment: null, policy: out.repo, task: null })}>
+        Change it on the Policy view
+      </a>
+      , as a pull request you approve.
     </p>
   );
 }

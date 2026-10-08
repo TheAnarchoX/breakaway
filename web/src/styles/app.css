@@ -12300,3 +12300,163 @@ button.infra-plan-row {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+/* The Policy view (WEB-123): each environment's rules in words, recent plans, and the policy as a change you approve. */
+.pol-view {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.pol-section,
+.pol-change,
+.pol-editor {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.pol-change,
+.pol-editor {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--bg-2);
+}
+.pol-change-head,
+.pol-env-head,
+.pol-plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pol-change-head h2 {
+  margin: 0;
+}
+.pol-envs,
+.pol-plans,
+.pol-lines,
+.pol-rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.pol-envs {
+  gap: 16px;
+}
+.pol-env {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.pol-env-head a {
+  font-weight: 650;
+  font-size: 16px;
+}
+.pol-rules {
+  gap: 6px;
+}
+.pol-rules li,
+.pol-line {
+  display: grid;
+  grid-template-columns: 9.5rem 1fr;
+  align-items: baseline;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.pol-line .pill {
+  justify-self: start;
+}
+.pol-level {
+  font: 600 12px / 1.5 var(--font-mono);
+  color: var(--muted);
+}
+.pol-envelope {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.pol-envelope svg {
+  flex: none;
+  margin-top: 3px;
+}
+.pol-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-s);
+  background: var(--warn-bg);
+}
+.pol-confirm legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+}
+.pol-confirm legend + * {
+  clear: both;
+}
+.pol-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.pol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.pol-rules-edit,
+.pol-rule {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.pol-rule {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+}
+.pol-rule > .btn,
+.pol-add {
+  justify-self: start;
+}
+.pol-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pol-checks legend {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.pol-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+.pol-preview {
+  display: grid;
+  gap: 8px;
+}
+.pol-preview h3 {
+  margin: 0;
+}
+.pol-mark {
+  margin: 0;
+}
+@media (max-width: 559px) {
+  .pol-rules li,
+  .pol-line {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

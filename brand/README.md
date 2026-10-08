@@ -119,6 +119,7 @@ Architect is the board running infrastructure too: environments, plans you appro
 | **observe only** | An environment the board watches and never changes. The board's own install is always observe only. | read-only (that's a token's), monitored, unmanaged |
 | **cost limit** | The most one plan may add to an environment's monthly cost before it waits for you | spend cap, threshold, quota |
 | **budget** | What one environment may cost a month; the board sends a signal near it and over it | spend, burn, bill, allowance |
+| **policy** | The rules that decide which plans wait for you, per repository and per environment. A change to it **loosens** (lets more through without you) or **tightens** it; loosening is never one press. | rules engine, guardrails, permissions, governance |
 
 Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or "single pane of glass". Say what happens instead: "The board applies it." "Production is frozen."
 
@@ -136,6 +137,8 @@ Leave ops jargon out of the board: no DevOps, SRE, IaC, toil, control plane, or 
 - "Merge #12? Nothing changes in staging: merging records it as code." For a change whose plan has no changes: a file for what runs, or edits that leave it as it runs. Approve says the same line and offers Merge when it finds the plan at the head has no changes. When merging deploys, it adds that line too.
 
 Its lines: "Set with the Worker's deploy, never here." (a variable or secret, by name only) "What runs changed since you looked. Here's the plan now." "The plan changed between your approval and the merge." "Can't merge #12: checks failing." "Staging is frozen: unfreeze it to approve." Proposing doesn't push (you just pressed it); a plan that waits after a mismatch pushes like any plan that waits.
+
+**A policy change** is proposed and approved like a change: **Change the policy**, **Propose the change**, **Approve**, **Reject**. Each line is marked **Loosens** or **Tightens**, and a change that loosens wears **Loosens your policy**. Its Approve names what will no longer wait for you, and the second press is **Loosen it**: "This loosens your policy. Once it merges, these will no longer wait for you:" then the lines, like "In staging: plans that only scale resources no longer wait for you." A plan it would let through is answered on its own first: "plan-11 waits for you in staging, and this change would let it through without you."
 
 **A plan's status** reads **Draft**, **Waiting for you**, **Approved**, **Rejected**, **Applying**, **Applied**, **Failed**, or **Rolled back**. A plan says why it waits in words, one rule a line: "Production needs you." "Can't be undone: it deletes the `widgets` database." "Adds €6 a month, over your €5 limit."
 

@@ -527,6 +527,21 @@ export const targetLine = (environment, name) => `→ ${environment}’s target 
 /** The branch a change is committed on: the board's own, the only one it ever moves by force. */
 export const changeBranch = (environment, n) => `breakaway/infra/${environment}-${n}`;
 
+/**
+ * What became of a change's pull request, as GitHub reads it: `merged`, `closed`, `taken over` (someone else pushed to
+ * its branch, so its head isn't the commit the board wrote), or null while it's still the board's open one. Shared by
+ * an environment's change and a policy change (WEB-123).
+ * @param {string | null} commit the commit the board wrote
+ * @param {{ merged_at?: string | null, merged?: boolean, state?: string, head?: { sha?: string } }} pull
+ * @returns {'merged' | 'closed' | 'taken over' | null}
+ */
+export function changePullFate(commit, pull) {
+  if (pull.merged_at || pull.merged) return 'merged';
+  if (pull.state === 'closed') return 'closed';
+  if (commit && pull.head?.sha && pull.head.sha !== commit) return 'taken over';
+  return null;
+}
+
 /** The change in a line: the first edit's words, and how many more. */
 export function changeSummary(lines) {
   const first = String(lines[0] ?? 'no edits').replace(/^[~+−]\s*/u, '');
