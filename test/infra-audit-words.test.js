@@ -12,6 +12,21 @@ describe('auditWords', () => {
     expect(auditWords({ kind: 'plan', outcome: 'draft' })).toEqual({ label: 'Plan', outcome: 'draft' });
   });
 
+  it('never says waiting for you for a plan its envelope moved, and still does for one that waits (WEB-125)', () => {
+    expect(auditWords({ kind: 'plan', outcome: 'waiting', by: 'envelope' })).toEqual({
+      label: 'Plan',
+      outcome: 'inside its envelope',
+    });
+    expect(auditWords({ kind: 'plan', outcome: 'waiting', by: 'board' })).toEqual({
+      label: 'Plan',
+      outcome: 'waiting for you',
+    });
+    expect(auditWords({ kind: 'plan', outcome: 'waiting', by: 'agent' })).toEqual({
+      label: 'Plan',
+      outcome: 'waiting for you',
+    });
+  });
+
   it('says an apply that started or is running is applying, and one that failed failed', () => {
     expect(auditWords({ kind: 'apply', outcome: 'started' })).toEqual({ label: 'Applying', outcome: 'started' });
     expect(auditWords({ kind: 'apply', outcome: 'applying' })).toEqual({ label: 'Applying', outcome: '' });
@@ -124,5 +139,33 @@ describe('auditSummary', () => {
     expect(item.text).toBe('The executor released the lock after plan-1');
     expect(item.parts).toEqual(['The executor released the lock after ', { plan: 'plan-1' }]);
     expect(item.text).not.toContain('executor:plan-1');
+  });
+
+  it('never shows a scale inside an envelope as waiting for you in the stream (WEB-125)', () => {
+    const now = Date.now();
+    const items = streamItems({
+      audit: [
+        {
+          id: 1,
+          at: now - 2000,
+          kind: 'plan',
+          by: 'envelope',
+          outcome: 'waiting',
+          plan: 'plan-2',
+          summary: 'inside its envelope: 3 replicas, within 2–6',
+        },
+        {
+          id: 2,
+          at: now - 1000,
+          kind: 'approve',
+          by: 'envelope',
+          outcome: 'approved',
+          plan: 'plan-2',
+          summary: 'approved by its envelope',
+        },
+      ],
+    });
+    expect(items.map((i) => i.outcome)).not.toContain('waiting for you');
+    expect(items.find((i) => i.key === 'audit:1')?.outcome).toBe('inside its envelope');
   });
 });
