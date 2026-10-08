@@ -337,7 +337,7 @@ export function buildLlms(content) {
     '',
     'breakaway is one Cloudflare Worker and one Durable Object that each person runs on their own account. Agents claim tasks atomically, open pull requests that close them, and ping the person who runs the board when only they can help; that person merges and deploys. It has a web board, a CLI (`npx breakaway`), and Taskwarrior sync.',
     '',
-    'From 2.0.0, Architect runs the infrastructure the repositories run on too, Cloudflare first: agents propose a change in a pull request and never apply it, and the board applies only what the person who runs it approved, or what fits bounds they approved once (an envelope). The board only watches its own install.',
+    'From 2.0.0, Architect runs the infrastructure the repositories run on too, on Cloudflare: agents propose a change in a pull request and never apply it, and the board applies only what the person who runs it approved, or what fits bounds they approved once (an envelope). The board only watches its own install.',
     '',
     '## Set it up',
     '',

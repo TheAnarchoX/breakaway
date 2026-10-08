@@ -262,7 +262,7 @@ Every name in the media is made up (`acme/widgets`, `widgets-render`, `WGT-41`),
 
 No media.
 
-> Cloudflare first, with a read-only token. Architect stays off until you connect a provider, and the board only watches its own install.
+> Connect Cloudflare with a read-only token. Architect stays off until you do, and the board only watches its own install.
 >
 > Free for people, not for profit, and the source is public. Update your board, then start here:
 >
@@ -282,19 +282,19 @@ A Show HN, posted by the owner from their own account after the thread, on the d
 
 **First comment:**
 
-> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account, It's free for personal and noncommercial use, and the source is public: from 2.0.0 the licence is the PolyForm Noncommercial License 1.0.0, and commercial use is by exception, which I grant case by case (https://leavethepack.dev/licensing/). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. It runs on your own Cloudflare account. It's free for personal and noncommercial use, and the source is public: from 2.0.0 the licence is the PolyForm Noncommercial License 1.0.0, and commercial use is by exception, which I grant case by case (https://leavethepack.dev/licensing/). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 >
 > Until now the board stopped at the pull request and the deploy. 2.0.0 adds Architect, which takes the same rule to what the code runs on: agents propose, you decide.
 >
-> - You connect a provider (Cloudflare first) with a read-only token. The Infrastructure view shows each repository's environments: what runs, its health, and an estimated cost.
+> - You connect Cloudflare with a read-only token. The Infrastructure view shows each repository's environments: what runs, its health, and an estimated cost.
 > - What should exist is a file in the repository. An agent changes it in an ordinary pull request, and the plan shows on that pull request as a check: what changes, what it costs, what else it touches, and whether it can be undone.
-> - A plan waits for you and pushes to your phone. You press Approve; then a workflow in your repository applies it with a write token held in a GitHub environment, checks health, and rolls back if the check fails. The board itself only holds read-only tokens, and no agent can approve.
+> - A plan waits for you and pushes to your phone. You press Approve; then the board starts a workflow in your repository that applies it with a write token held in a GitHub environment only the default branch can use, checks health, and rolls back if the check fails. The board itself only holds read-only tokens, and no agent can approve.
 > - An envelope is bounds you approve once on an environment ("2 to 10 instances", "3 restarts a day"). The board scales and restarts inside it and tells you after; anything outside waits for you.
 > - A signal that crosses a rule opens an incident as a task in the repository that owns what broke. Only a production incident pushes.
 >
 > The board's own install is observe only: Architect watches it and never changes it.
 >
-> With 2.0.0 the board covers the whole way from an idea to what it runs on: an idea shaped into a spec and tasks, agents that claim and build them, the pull requests you merge, deploys you promote and roll back, and now the infrastructure, planned and approved on the same board.
+> With 2.0.0 the board covers each step from an idea to what it runs on: an idea shaped into a spec and tasks, agents that claim and build them, the pull requests you merge, deploys you promote and roll back, and now the infrastructure, planned and approved on the same board.
 >
 > Architect stays off until you connect a provider, and an install keeps its data: no telemetry, and the read token only goes to its provider. Any provider but Cloudflare, and metrics, logs, and traces as signals, aren't in 2.0.0.
 >
@@ -313,7 +313,7 @@ One post, by the owner from their own account, after the thread. Read the subred
 
 **Body:**
 
-> breakaway is a task board for you and your coding agents: they claim the work, you merge it. Each install runs on its owner's own Cloudflare account, It's free for personal and noncommercial use, and the source is public: from 2.0.0 the licence is the PolyForm Noncommercial License 1.0.0, and commercial use is by exception (https://leavethepack.dev/licensing/).
+> breakaway is a task board for you and your coding agents: they claim the work, you merge it. Each install runs on its owner's own Cloudflare account. It's free for personal and noncommercial use, and the source is public: from 2.0.0 the licence is the PolyForm Noncommercial License 1.0.0, and commercial use is by exception (https://leavethepack.dev/licensing/).
 >
 > 2.0.0 adds Architect: the board runs the infrastructure too, and you still decide.
 >
@@ -326,6 +326,6 @@ One post, by the owner from their own account, after the thread. Read the subred
 >
 > Your install keeps its data: no analytics or telemetry, and Architect stays off until you connect a provider. The board's own install is observe only.
 >
-> Cloudflare is the first provider, and the only one in 2.0.0.
+> Cloudflare is the only provider in 2.0.0.
 >
 > https://github.com/TheAnarchoX/breakaway

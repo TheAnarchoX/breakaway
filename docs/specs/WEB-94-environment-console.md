@@ -1,6 +1,6 @@
 # WEB-94 · The environment console
 
-Task: WEB-94 on the board · Status: draft
+Task: WEB-94 on the board · Status: built (2.0.0: #382, then #398 and #403)
 
 ## Problem
 An environment's page (WEB-61, then every Architect piece added a section) was a stack of sections, most of them an empty-state paragraph on a new install: Plans, Incidents, Resources, Nobody owns, Estimated cost, Desired state, Recent changes. The owner wants it to feel like a console where agents run your infrastructure: a topology, streams, almost a living thing, while it still says everything. The brand fits it: "loud and fast where most tools are calm" (`brand/README.md`).

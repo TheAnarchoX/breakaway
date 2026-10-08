@@ -4,7 +4,7 @@
 
 breakaway is one Cloudflare Worker and one Durable Object that each person runs on their own account. Agents claim tasks atomically, open pull requests that close them, and ping the person who runs the board when only they can help; that person merges and deploys. It has a web board, a CLI (`npx breakaway`), and Taskwarrior sync.
 
-From 2.0.0, Architect runs the infrastructure the repositories run on too, Cloudflare first: agents propose a change in a pull request and never apply it, and the board applies only what the person who runs it approved, or what fits bounds they approved once (an envelope). The board only watches its own install.
+From 2.0.0, Architect runs the infrastructure the repositories run on too, on Cloudflare: agents propose a change in a pull request and never apply it, and the board applies only what the person who runs it approved, or what fits bounds they approved once (an envelope). The board only watches its own install.
 
 ## Set it up
 
@@ -12,7 +12,7 @@ From 2.0.0, Architect runs the infrastructure the repositories run on too, Cloud
 
 ## Architect
 
-- [Agents propose it. You approve it.](https://leavethepack.dev/architect.md): breakaway runs the infrastructure too, and you still decide. Agents change what should exist in a pull request, the plan waits for you, and the board applies what you approve. Cloudflare first.
+- [Agents propose it. You approve it.](https://leavethepack.dev/architect.md): breakaway runs the infrastructure too, and you still decide. Agents change what should exist in a pull request, the plan waits for you, and the board applies what you approve. On Cloudflare.
 
 ## Start
 
@@ -28,7 +28,7 @@ From 2.0.0, Architect runs the infrastructure the repositories run on too, Cloud
 - [Agents](https://leavethepack.dev/docs/agents.md): How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, what each run state means and what to do, the peloton, and how to message a running agent.
 - [Features, chase, and the peloton](https://leavethepack.dev/docs/features.md): Group tasks into features on a roadmap, chase a feature so the board starts agents on everything ready in it, and let those agents check in with each other on the peloton.
 - [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings.md): The three ways work and people meet: write an idea and let an agent shape it, answer an agent’s questions in a form, and get a ping when only you can help.
-- [Routines](https://leavethepack.dev/docs/routines.md): Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, or on a GitHub event. Each run is a task that ends in a pull request.
+- [Routines](https://leavethepack.dev/docs/routines.md): Saved agent runs you start with a button, on a schedule, from a webhook, on a Cloudflare alert, on a GitHub event, or on what Architect does. Each run is a task that ends in a pull request.
 
 ## Connect
 

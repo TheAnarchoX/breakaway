@@ -1,6 +1,6 @@
 # BRK-223 · Run a repository's workflows from the board
 
-Task: BRK-223 on the board · Status: approved (6 Oct 2026, by the owner)
+Task: BRK-223 on the board · Status: built (#304 and #305, in 1.5.2, then #435; approved 6 Oct 2026, by the owner)
 
 ## Problem
 

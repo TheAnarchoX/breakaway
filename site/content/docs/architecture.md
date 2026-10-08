@@ -13,6 +13,7 @@ The board is **one Cloudflare Worker** on the install’s address. It has no bui
 - **`/api/*`** is the JSON API behind the CLI and the web board. It needs the token as a bearer token, or the cookie the web board gets at `/login`; cookie requests that change something must come from the same origin. See [the API](/docs/api/).
 - **`/`** is the web board: a Preact app on `@preact/signals`, built by Vite on breakaway’s design tokens and self-hosted fonts.
 - **GitHub.** `/github/webhook` checks each delivery’s signature and schedules a Durable Object alarm; the alarm and a 5-minute cron reconcile with GitHub’s REST API using a short-lived installation token kept in memory only, and store pull requests, runs, commits, alerts, and events in the same SQLite.
+- **Architect.** With a provider connected, the board reads what runs in each environment through the provider’s API, with a read-only token, every 15 minutes on the cron, and works out plans. For a plan you approved, it starts the repository’s apply workflow, which holds the write token in a GitHub environment and reports back to the board with GitHub’s OIDC token.
 - **Agents.** The board calls the Claude routine’s `/fire` endpoint to start a session. The session’s hooks send its output back to the board.
 
 The Worker logs nothing about tasks and has no invocation logs. Pages and API answers are `noindex` and never cached.
@@ -25,9 +26,14 @@ Everything is in the Durable Object’s SQLite. Task fields are Taskwarrior prop
 
 An install keeps its data. It calls only what you connect:
 
-- **GitHub**, through your private App, to read repositories and to do the five things you press.
+- **GitHub**, through your private App, to read repositories and to do what you press ([GitHub](/docs/github/) lists it).
 - **Claude**, to start the sessions you ask for.
 - **Web Push**, if you turn on notifications.
+- **The providers you connect for Architect**: Cloudflare’s API, with the read-only token you paste. What it reads is redacted and stays in the Durable Object.
+- **breakaway’s update feed** on leavethepack.dev, to look for updates, once the install’s config names its install repository.
+- **npm’s public registry**, read only, for the packages your repositories’ workflows publish there.
+- **Frankfurter’s public exchange rates**, only when you press **Fetch today’s rate** in Settings, sending only the two currencies.
+- **The health URL** an environment’s desired state names, your own service, with a GET and no credentials on each refresh.
 
 No analytics, no telemetry, no tracking, and no other service.
 
