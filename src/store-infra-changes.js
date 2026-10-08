@@ -523,16 +523,24 @@ export const infraChangesMethods = {
     const title =
       created && !planned.lines.length ? `Describe ${env.name} as code` : changeTitle(env.name, planned.lines);
     const message = created && !planned.lines.length ? title : changeCommitMessage(env.name, planned.lines);
-    const write = (withRunner) =>
-      this.writeChangeBranch(client, {
+    // A new change's number, reserved once: a retry without the workflow keeps it and its branch name (BRK-311).
+    const first = live ? null : this.reserveChangeNumber();
+    const write = (withRunner) => {
+      let fresh = first;
+      return this.writeChangeBranch(client, {
         head,
         files: [{ path, text: planned.text }, ...planned.files, ...(withRunner ? [runner.file] : [])],
         message,
         live: live ? { n: Number(live.n), branch: live.branch } : null,
         branchFor: (k) => changeBranch(env.name, k),
-        reserve: () => this.reserveChangeNumber(),
+        reserve: () => {
+          const n = fresh ?? this.reserveChangeNumber();
+          fresh = null;
+          return n;
+        },
         repo: env.repo,
       });
+    };
     let made;
     try {
       made = await write(Boolean(runner.file));
@@ -705,7 +713,8 @@ export const infraChangesMethods = {
           await client.send('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: made.sha });
           break;
         } catch (error) {
-          if (!(error instanceof GitHubError) || error.status !== 422) throw error;
+          // A workflow GitHub refuses is the caller's to retry without it, never a branch that's taken.
+          if (!(error instanceof GitHubError) || error.status !== 422 || refusedWorkflow(error)) throw error;
           // A branch of that name the board didn't make for this change (a person's, or another install's) is
           // never moved: the next number gets a branch of its own.
           if (tries >= BRANCH_TRIES)
