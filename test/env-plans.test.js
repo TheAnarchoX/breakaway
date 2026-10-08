@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RECENT_PLANS, plansPanel, runProgress } from '../web/src/lib/env-plans.js';
+import { RECENT_PLANS, firstApplyFailed, plansPanel, runProgress } from '../web/src/lib/env-plans.js';
 
 // The environment console's Plans panel (WEB-115): the console change, the open plans, and the recent ones.
 const now = Date.now();
@@ -183,5 +183,43 @@ describe('runProgress', () => {
         { state: 'applying', changes: 2 },
       ),
     ).toBe('1 of 2 changes applied; update of acme-db failed');
+  });
+});
+
+describe('firstApplyFailed', () => {
+  const env = { id: 7, name: 'acme-production', target: 'acme-app' };
+  const worker = { id: 'r1', kind: 'worker', name: 'acme-app', seen: iso(MIN) };
+
+  it('names the failed plan when the target was never seen', () => {
+    const failed = plan(1, 'failed');
+    expect(firstApplyFailed({ env, plans: [failed], resources: [] })).toBe(failed);
+  });
+
+  it('counts a rolled-back first apply too', () => {
+    const undone = plan(1, 'rolled back');
+    expect(firstApplyFailed({ env, plans: [undone] })).toBe(undone);
+  });
+
+  it('is null once the board has seen the target', () => {
+    expect(firstApplyFailed({ env, plans: [plan(1, 'failed')], resources: [worker] })).toBeNull();
+    expect(
+      firstApplyFailed({ env, plans: [plan(1, 'failed')], resources: [{ ...worker, name: 'ACME-APP' }] }),
+    ).toBeNull();
+  });
+
+  it('is null when a newer plan is open or applied', () => {
+    expect(firstApplyFailed({ env, plans: [plan(1, 'waiting'), plan(2, 'failed')] })).toBeNull();
+    expect(firstApplyFailed({ env, plans: [plan(1, 'applied'), plan(2, 'failed')] })).toBeNull();
+  });
+
+  it('is null with no target, no plans, or observe only', () => {
+    expect(firstApplyFailed({ env: { ...env, target: null }, plans: [plan(1, 'failed')] })).toBeNull();
+    expect(firstApplyFailed({ env, plans: [] })).toBeNull();
+    expect(firstApplyFailed({ env: { ...env, observeOnly: true }, plans: [plan(1, 'failed')] })).toBeNull();
+  });
+
+  it('ignores a resource that is not the target', () => {
+    const failed = plan(1, 'failed');
+    expect(firstApplyFailed({ env, plans: [failed], resources: [{ ...worker, name: 'acme-db' }] })).toBe(failed);
   });
 });

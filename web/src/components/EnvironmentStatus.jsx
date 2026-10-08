@@ -69,10 +69,11 @@ const plural = (/** @type {number} */ n, /** @type {string} */ one, /** @type {s
 
 /**
  * Health: the worst state, and how many resources share it unless all are healthy, with how many couldn't be read.
- * `empty` is an environment with no target yet, which says how to start one (BRK-291).
- * @param {{ health: any, empty?: boolean }} props
+ * `empty` is an environment with no target yet, which says how to start one (BRK-291); `failed` one whose first apply
+ * failed, so its target points at nothing yet (WEB-120).
+ * @param {{ health: any, empty?: boolean, failed?: boolean }} props
  */
-function HealthTile({ health, empty = false }) {
+function HealthTile({ health, empty = false, failed = false }) {
   if (!health)
     return (
       <Tile
@@ -80,8 +81,10 @@ function HealthTile({ health, empty = false }) {
         Icon={Activity}
         value="Unknown"
         state="unknown"
-        detail={empty ? 'Add a resource to start' : 'Not seen yet'}
-        detailTitle={empty ? EMPTY_START : undefined}
+        detail={empty ? 'Add a resource to start' : failed ? 'First apply failed' : 'Not seen yet'}
+        detailTitle={
+          empty ? EMPTY_START : failed ? 'The first apply failed, so the target points at nothing yet' : undefined
+        }
       />
     );
   const { label } = HEALTH[health.state] ?? HEALTH.unknown;
@@ -161,9 +164,19 @@ function InventoryTile({ stale, seen }) {
 /**
  * `inventory` is whether what the map shows is up to date: the environment's `stale` entry and when the board last saw it.
  * `change` is the owner's change from the console (WEB-99), in words, shown on the Plan tile when no plan runs or waits.
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null }, change?: { value: string, detail: string } | null }} props
+ * `firstApply` is the plan whose first apply failed on a new environment (WEB-120), which Health names.
+ * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null }, change?: { value: string, detail: string } | null, firstApply?: any }} props
  */
-export function StatusBand({ env, health, cost, run, agents, inventory = { stale: null, seen: null }, change = null }) {
+export function StatusBand({
+  env,
+  health,
+  cost,
+  run,
+  agents,
+  inventory = { stale: null, seen: null },
+  change = null,
+  firstApply = null,
+}) {
   const live = env.deploys?.live ?? null;
   const planLink = (/** @type {string} */ plan) =>
     hashFor({ view: 'infrastructure', environment: String(env.id), plan, task: null });
@@ -173,7 +186,11 @@ export function StatusBand({ env, health, cost, run, agents, inventory = { stale
   return (
     <section class="console-status" aria-label={`${env.name}’s status`}>
       <dl class="console-band">
-        <HealthTile health={env.target ? health : null} empty={!env.target && !env.observeOnly} />
+        <HealthTile
+          health={env.target ? health : null}
+          empty={!env.target && !env.observeOnly}
+          failed={Boolean(firstApply)}
+        />
         {env.target && <InventoryTile stale={inventory.stale} seen={inventory.seen} />}
         {env.frozen ? (
           <Tile

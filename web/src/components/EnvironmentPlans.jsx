@@ -1,6 +1,8 @@
-import { ChevronRight, FileDiff, GitPullRequest } from 'lucide-preact';
+import { useState } from 'preact/hooks';
+import { ChevronRight, FileDiff, GitPullRequest, TriangleAlert } from 'lucide-preact';
 import { ago } from '../lib/model.js';
-import { github, hashFor, pullParam } from '../lib/store.js';
+import { api, enc } from '../lib/api.js';
+import { confirmDialog, github, hashFor, pullParam, toast } from '../lib/store.js';
 import { plansPanel } from '../lib/env-plans.js';
 import { PlanState, amount } from '../views/PlanView.jsx';
 import { CHANGE_CARD_ID, ChangeState } from './EnvironmentChange.jsx';
@@ -116,15 +118,71 @@ function PlanRow({ row, ended = false }) {
 }
 
 /**
+ * A new environment's first apply failed (WEB-120): its target, set when the owner approved the change that builds it
+ * (BRK-291), names something that doesn't exist yet, so the console says so instead of waiting to see it. Clear the
+ * target starts again from the console, whose next change gives it a target again; or the owner fixes what failed on
+ * the plan's page and proposes the change again.
+ * @param {{ env: { id: number, name: string, target?: string | null }, plan: any, onCleared?: () => void }} props
+ */
+function FirstApplyFailed({ env, plan, onCleared }) {
+  const [busy, setBusy] = useState(false);
+  const clear = async () => {
+    const ok = await confirmDialog({
+      title: `Clear ${env.name}’s target?`,
+      body: `The board stops looking for ${env.target}, which doesn’t exist yet. Nothing that runs changes. Your next change from the console gives ${env.name} a target again.`,
+      confirmLabel: 'Clear the target',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api(`infra/environments/${enc(env.id)}`, { method: 'PATCH', body: { target: null, by: 'owner' } });
+      toast(`${env.name} has no target now. Add a resource to start again.`, 'success');
+      onCleared?.();
+    } catch (error) {
+      toast(`Couldn’t clear ${env.name}’s target: ${error.message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="infra-first-apply" role="status">
+      <p>
+        <TriangleAlert size={16} aria-hidden="true" />
+        <span>
+          {env.name}’s first apply {plan.state === 'rolled back' ? 'was rolled back' : 'failed'}, so its target,{' '}
+          <code>{env.target}</code>, points at nothing yet. <a href={planHref(plan)}>See why on {plan.id}</a> and
+          propose again, or clear the target and start over.
+        </span>
+      </p>
+      <div class="conn-buttons">
+        <button
+          type="button"
+          class="btn btn-outline btn-sm"
+          onClick={clear}
+          disabled={busy}
+          aria-busy={busy}
+          aria-label={`Clear ${env.name}’s target`}
+        >
+          Clear the target
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * An environment's plans (WEB-62, WEB-115), on its console, from what the console already reads: the change from the
  * console still waiting for you, merging, or not compared yet (linking to its card); the open plans, applying first
  * with the run's progress, then approved, waiting, and drafts (each linking to its page, where the owner approves or
  * rejects it); and the last few that ended. Empty only when there's none of it.
+ * A new environment whose first apply failed says so first, with Clear the target (WEB-120).
  * @param {{ env: { id: number, name: string, observeOnly?: boolean, target?: string | null }, plans: any[], runs: any[],
- *   changes: { open: any, changes: any[] } | null, card: number | null, error?: string | null }} props
- *   `card` is the number of the change whose card shows beside the map
+ *   changes: { open: any, changes: any[] } | null, card: number | null, error?: string | null, failed?: any,
+ *   onChange?: () => void }} props
+ *   `card` is the number of the change whose card shows beside the map; `failed` the plan whose first apply failed
+ *   (firstApplyFailed); `onChange` reads the console again after the target is cleared
  */
-export function EnvironmentPlans({ env, plans, runs, changes, card, error = null }) {
+export function EnvironmentPlans({ env, plans, runs, changes, card, error = null, failed = null, onChange }) {
   const open = github.value.data?.open ?? [];
   const checks = (/** @type {any} */ change) =>
     change.pull
@@ -146,6 +204,7 @@ export function EnvironmentPlans({ env, plans, runs, changes, card, error = null
           Couldn’t load its plans. {error}
         </p>
       )}
+      {failed && <FirstApplyFailed env={env} plan={failed} onCleared={onChange} />}
       {current > 0 && (
         <ul class="infra-plan-list">
           {rows.changes.map((r) => (
