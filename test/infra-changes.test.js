@@ -21,6 +21,10 @@ import {
   PROPOSED_LINE,
 } from '../src/infra-changes.js';
 import SHIPPED from '../src/infra-shipped-templates.json';
+import RUNNER_TEMPLATE from '../src/infra-runner-template.json';
+import { RUNNER_WORKFLOW } from '../src/infra-runner.js';
+import { RUNNER_NEEDS_WORKFLOWS, renderRunner } from '../src/infra-runner-render.js';
+import { releaseOf } from '../src/build.js';
 
 // Changes from the console (BRK-259, docs/specs/BRK-258-plan-from-the-board.md).
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
@@ -491,6 +495,10 @@ const gh = {
   /** @type {string[]} */ reads: [],
   refuse: false,
   branches: new Set(),
+  /** The App installation's permissions (BRK-307: workflows decides whether a change brings the apply workflow). */
+  /** @type {Record<string, string>} */ permissions: {},
+  /** GitHub refuses a tree with a workflow in it, as it does an App without Workflows write. */
+  refuseWorkflow: false,
 };
 
 function mockGitHub() {
@@ -499,7 +507,7 @@ function mockGitHub() {
     const reply = (data, status = 200) => Response.json(data, { status });
     const path = url.pathname;
     if (url.host !== 'api.github.com') throw new Error(`unexpected fetch to ${url}`);
-    if (path === '/repos/acme/widgets/installation') return reply({ id: 77 });
+    if (path === '/repos/acme/widgets/installation') return reply({ id: 77, permissions: gh.permissions });
     if (path.startsWith('/app/installations/'))
       return reply({ token: 'ghs_test', expires_at: new Date(Date.now() + 3_600_000).toISOString() });
     const method = init.method ?? 'GET';
@@ -531,6 +539,13 @@ function mockGitHub() {
     const sent = init.body ? JSON.parse(init.body) : null;
     gh.writes.push({ method, path: local, body: sent });
     if (gh.refuse) return reply({ message: 'Resource not accessible by integration' }, 403);
+    if (
+      gh.refuseWorkflow &&
+      method === 'POST' &&
+      local === '/git/trees' &&
+      sent.tree.some((t) => t.path.startsWith('.github/workflows/'))
+    )
+      return reply({ message: 'Resource not accessible by integration' }, 403);
     if (method === 'POST' && local === '/git/trees') return reply({ sha: `tree-new-${gh.writes.length}` }, 201);
     if (method === 'POST' && local === '/git/commits') return reply({ sha: `commit-${gh.writes.length}` }, 201);
     if (method === 'POST' && local === '/git/refs') {
@@ -635,7 +650,15 @@ describe('changes from the console', () => {
   });
   beforeEach(async () => {
     spy = mockGitHub();
-    Object.assign(gh, { files: {}, head: 'head-1', writes: [], reads: [], refuse: false });
+    Object.assign(gh, {
+      files: {},
+      head: 'head-1',
+      writes: [],
+      reads: [],
+      refuse: false,
+      permissions: {},
+      refuseWorkflow: false,
+    });
     gh.files['.github/breakaway-infra/chg-staging.json'] = JSON.stringify(fileOf(), null, 4);
     await inStore((s) => {
       s.infraChangePreviews = new Map();
@@ -675,6 +698,89 @@ describe('changes from the console', () => {
     });
     expect(await kept()).toEqual(before);
     expect(gh.writes).toEqual([]);
+  });
+
+  it('brings the apply workflow when the App may write workflows, and says before Approve when it can’t (BRK-307)', async () => {
+    const edits = [{ op: 'set', resource: 'svc-api', path: 'instances', value: 5 }];
+    const reject = (n) => board(`infra/changes/${n}/reject`, { method: 'POST', body: {} });
+    const lastBody = () =>
+      [...gh.writes].reverse().find((w) => w.path === '/pulls' || /^\/pulls\/\d+$/u.test(w.path)).body.body;
+    const treeOf = () =>
+      [...gh.writes]
+        .reverse()
+        .find((w) => w.path === '/git/trees')
+        .body.tree.map((t) => t.path);
+    const wanted = renderRunner(
+      { environments: ['chg-other', 'chg-staging'], branch: 'main', version: releaseOf({}) },
+      RUNNER_TEMPLATE.text,
+    );
+    gh.files['.github/breakaway-infra/chg-other.json'] = '{}';
+    gh.files['.github/breakaway-infra/policy.json'] = '{}';
+
+    // With Workflows write and no workflow yet: the same commit adds it, for the folder's environments and this one.
+    gh.permissions = { contents: 'write', workflows: 'write' };
+    const added = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(added.status).toBe(201);
+    expect(added.change.runner).toEqual({ state: 'added', note: null });
+    const tree = [...gh.writes].reverse().find((w) => w.path === '/git/trees').body.tree;
+    expect(tree.map((t) => t.path)).toEqual(['.github/breakaway-infra/chg-staging.json', RUNNER_WORKFLOW]);
+    // Byte for byte what npx breakaway infra init renders.
+    expect(tree[1].content).toBe(wanted.text);
+    expect(lastBody()).toContain(
+      'Adds the apply workflow, `.github/workflows/breakaway-infra.yml`, so an approved plan can run.',
+    );
+    expect((await reject(added.change.n)).status).toBe(200);
+
+    // Already current: nothing to add, and nothing to say.
+    gh.files[RUNNER_WORKFLOW] = wanted.text;
+    const current = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(current.change.runner).toEqual({ state: 'current', note: null });
+    expect(treeOf()).toEqual(['.github/breakaway-infra/chg-staging.json']);
+    expect(lastBody()).not.toMatch(/apply workflow|Before Approve/u);
+    expect((await reject(current.change.n)).status).toBe(200);
+
+    // Its own older render (before chg-staging had a file) is updated.
+    gh.files[RUNNER_WORKFLOW] = renderRunner(
+      { environments: ['chg-other'], branch: 'main', version: '1.9.0' },
+      RUNNER_TEMPLATE.text,
+    ).text;
+    const updated = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(updated.change.runner).toEqual({ state: 'updated', note: null });
+    expect(treeOf()).toContain(RUNNER_WORKFLOW);
+    expect((await reject(updated.change.n)).status).toBe(200);
+
+    // The repository's own is never overwritten: the change says what it lacks.
+    gh.files[RUNNER_WORKFLOW] =
+      'name: Apply\non:\n  workflow_dispatch:\n    inputs:\n      environment:\n        type: choice\n        options:\n          - chg-other\n';
+    const own = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(own.change.runner).toMatchObject({
+      state: 'own',
+      note: expect.stringMatching(/doesn’t offer chg-staging/u),
+    });
+    expect(treeOf()).toEqual(['.github/breakaway-infra/chg-staging.json']);
+    expect(lastBody()).toMatch(/\*\*Before Approve:\*\* .*doesn’t offer chg-staging/u);
+    expect((await reject(own.change.n)).status).toBe(200);
+
+    // Without Workflows write: proposed without it, and the card and the pull request say so before Approve.
+    delete gh.files[RUNNER_WORKFLOW];
+    gh.permissions = { contents: 'write' };
+    const without = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(without.status).toBe(201);
+    expect(without.change.runner).toEqual({ state: 'needs-workflows', note: RUNNER_NEEDS_WORKFLOWS });
+    expect(treeOf()).toEqual(['.github/breakaway-infra/chg-staging.json']);
+    expect(lastBody()).toContain(`**Before Approve:** ${RUNNER_NEEDS_WORKFLOWS}`);
+    expect((await reject(without.change.n)).status).toBe(200);
+
+    // The installation says yes, but GitHub answers 403 for the workflow: read the same way, proposed without it.
+    gh.permissions = { contents: 'write', workflows: 'write' };
+    gh.refuseWorkflow = true;
+    const refused = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(refused.status).toBe(201);
+    expect(refused.change.runner).toEqual({ state: 'needs-workflows', note: RUNNER_NEEDS_WORKFLOWS });
+    expect(treeOf()).toEqual(['.github/breakaway-infra/chg-staging.json']);
+    expect((await reject(refused.change.n)).status).toBe(200);
+    // The board never starts the workflow itself: nothing was dispatched.
+    expect(gh.writes.some((w) => w.path.includes('/dispatches'))).toBe(false);
   });
 
   it('changes a route’s name where the provider declares it, planning an update of the same route', async () => {

@@ -10,6 +10,8 @@
  * their values.
  */
 import { deployBranchProblem } from './infra-runs.js';
+import { RUNNER_WORKFLOW } from './infra-runner.js';
+import { RUNNER_NEEDS_WORKFLOWS, runnerMissing } from './infra-runner-render.js';
 
 /** The checklist's steps for one GitHub environment, in order. */
 export const ENVIRONMENT_STEPS = ['environment', 'branch', 'secret'];
@@ -29,6 +31,37 @@ export const environmentsUrl = (github) => `https://github.com/${github}/setting
  * @param {Record<string, string> | null | undefined} permissions the installation's
  */
 export const canMakeEnvironments = (permissions) => ['write', 'admin'].includes(String(permissions?.administration));
+
+/**
+ * Whether the App may commit the apply workflow (BRK-307): GitHub refuses a GitHub App any change under
+ * `.github/workflows/` without Workflows write. It's optional: without it, a change from the board comes without the
+ * workflow and says so before Approve, and the owner runs `npx breakaway infra init` instead.
+ * @param {Record<string, string> | null | undefined} permissions the installation's
+ */
+export const canWriteWorkflows = (permissions) => ['write', 'admin'].includes(String(permissions?.workflows));
+
+/**
+ * The checklist's step for the apply workflow on the default branch (BRK-307): done when the file is there and offers
+ * every environment that needs a write token.
+ * @param {object} input
+ * @param {string} input.branch the default branch
+ * @param {string | null} input.text the workflow's text there, null when there's none
+ * @param {string[]} input.environments the environments that need a write token
+ * @param {string | null} [input.problem] why it couldn't be read, in words
+ * @returns {SetupStep}
+ */
+export function runnerSetupStep({ branch, text, environments, problem = null }) {
+  const step = { id: 'workflow', label: `The apply workflow on ${branch}` };
+  if (problem) return { ...step, ok: null, fix: problem };
+  if (text === null) return { ...step, ok: false, fix: RUNNER_NEEDS_WORKFLOWS.replace(/\.$/u, '') };
+  const missing = runnerMissing(text, environments);
+  if (!missing.length) return { ...step, ok: true, fix: null };
+  return {
+    ...step,
+    ok: false,
+    fix: `${RUNNER_WORKFLOW} doesn’t offer ${missing.join(', ')}. ${RUNNER_NEEDS_WORKFLOWS.replace(/\.$/u, '')}`,
+  };
+}
 
 /** The steps to make GitHub environment `name` by hand, with only `branch` allowed to deploy. */
 export function environmentByHand(github, name, branch) {
