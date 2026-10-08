@@ -25,7 +25,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/breakaway"><img alt="npm" src="https://img.shields.io/npm/v/breakaway?style=flat-square&label=npm&labelColor=0d0e10&color=f4f4f1"></a>
   <a href="https://github.com/TheAnarchoX/breakaway/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/TheAnarchoX/breakaway/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE"><img alt="Licence: FSL-1.1-Apache-2.0" src="https://img.shields.io/badge/licence-FSL--1.1--Apache--2.0-f4f4f1?style=flat-square&labelColor=0d0e10"></a>
+  <a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE"><img alt="Licence: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-f4f4f1?style=flat-square&labelColor=0d0e10"></a>
 </p>
 
 <p align="center">
@@ -198,7 +198,7 @@ npx breakaway list --ready
 - **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, npm's public registry for the packages your repositories publish there, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh).
 - **You decide.** Agents claim, build, and open pull requests. You merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **Taskwarrior is a first-class way in.** The sync protocol is Taskwarrior's.
-- **Free and fair source.** The source is public, and each release becomes Apache 2.0 two years after it ships.
+- **Free for personal and noncommercial use.** The source is public. Commercial use is by exception, granted case by case ([`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md)).
 
 ## How it's built
 
@@ -279,6 +279,8 @@ breakaway is built by its owner and their agents, and takes no pull requests or 
 
 ## Licence
 
-Free to use, change, and self-host for anything except offering a competing service, under [FSL-1.1-Apache-2.0](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE). Each release becomes Apache 2.0 two years after it ships.
+breakaway is free for personal and noncommercial use, under the [PolyForm Noncommercial License 1.0.0](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE): personal use, charities and nonprofits, education, public research, and government use it free. Commercial use is by exception, granted case by case by the owner, and [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says who can ask and how.
+
+The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, in [`LICENSE-FSL`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSE-FSL).
 
 breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare. None of them made it or endorse it.

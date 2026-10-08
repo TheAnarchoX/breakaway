@@ -20,6 +20,7 @@ const DEFAULT = [
   'site/content',
   'README.md',
   'CONTRIBUTING.md',
+  'LICENSING.md',
   'SECURITY.md',
 ];
 const KINDS = new Set(['.md', '.html', '.js', '.jsx', '.mjs', '.css', '.json']);
