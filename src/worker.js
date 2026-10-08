@@ -785,6 +785,16 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.breakGlassMarkApi(parts[2], { repo, ...body }));
     }
   }
+  // Guided token setup (BRK-304): anyone signed in reads the checklist; Make it on GitHub is the owner's, from the
+  // signed-in browser only. The board never takes a write token: the owner adds it on GitHub.
+  if (parts[0] === 'infra' && parts[1] === 'tokens') {
+    if (parts.length === 2 && method === 'GET')
+      return send(await s.infraTokensApi({ repo: url.searchParams.get('repo'), fresh: url.searchParams.get('fresh') }));
+    if (parts.length === 4 && parts[2] === 'environments' && method === 'POST') {
+      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can make a GitHub environment' });
+      return send(await s.infraTokensMakeApi(parts[3], { repo: url.searchParams.get('repo') }, body));
+    }
+  }
   // Short-lived environments (BRK-200): anyone signed in reads the requests; asking for one from the board is the
   // owner's, from the signed-in browser only. Agents ask with the +environment tag; either way, plans decide.
   if (parts[0] === 'infra' && parts[1] === 'short-lived' && parts.length <= 3) {
