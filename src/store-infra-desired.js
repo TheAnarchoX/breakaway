@@ -16,6 +16,8 @@ import {
   environmentOfFile,
 } from './infra-desired.js';
 import { AgentError } from './store-agents.js';
+import { environmentView } from './infra-environments.js';
+import { install } from './install.js';
 
 /** The commit and branch the last read was of, per repository. */
 const READ = 'infra_desired_read';
@@ -168,7 +170,8 @@ export const infraDesiredMethods = {
           .exec('SELECT * FROM infra_environments WHERE repo = ? AND name = ?', row.repo, row.environment)
           .toArray()[0]
       : null;
-    const view = env ? this.environmentOut(env) : null;
+    // The plain view, not environmentOut: that reads the desired state too (BRK-309).
+    const view = env ? environmentView(env, { worker: install(this.env).worker }) : null;
     let error = row.error ? JSON.parse(row.error) : null;
     if (!error && view?.provider && row.provider && row.provider !== view.provider)
       error = {

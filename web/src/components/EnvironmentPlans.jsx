@@ -7,6 +7,7 @@ import { plansPanel } from '../lib/env-plans.js';
 import { PlanState, StartAgain, amount } from '../views/PlanView.jsx';
 import { CHANGE_CARD_ID, ChangeState } from './EnvironmentChange.jsx';
 import { NoneYet } from './ui.jsx';
+import { CompareNow } from './EnvironmentActions.jsx';
 import { EMPTY_START } from '../lib/infra-change.js';
 
 /** A plan's page (WEB-62), under its environment: the address a waiting plan's push links to. */
@@ -120,24 +121,37 @@ function PlanRow({ row, ended = false }) {
 /**
  * A new environment's first apply failed (WEB-120): its target, set when the owner approved the change that builds it
  * (BRK-291), names something that doesn't exist yet, so the console says so instead of waiting to see it. When its run
- * applied nothing, Start the run again comes first (BRK-308). Clear the target starts again from the console, whose
- * next change gives it a target again; or the owner fixes what failed on the plan's page and proposes the change again.
- * @param {{ env: { id: number, name: string, target?: string | null, frozen?: boolean }, plan: any, run?: any, onCleared?: () => void }} props
+ * applied nothing, Start the run again comes first (BRK-308). Clear the target starts again: when the merged file still
+ * declares that target, Compare now drafts the plan that builds it again (BRK-309); otherwise the console's next change
+ * gives it a target again. Or the owner fixes what failed on the plan's page and proposes the change again.
+ * @param {{ env: { id: number, name: string, target?: string | null, frozen?: boolean }, plan: any, run?: any,
+ *   desired?: any, onCleared?: () => void }} props `desired` is the environment's desired state as the console read it
  */
-function FirstApplyFailed({ env, plan, run = null, onCleared }) {
+function FirstApplyFailed({ env, plan, run = null, desired = null, onCleared }) {
   const again = plan.state === 'failed' && Boolean(run?.startAgain);
   const [busy, setBusy] = useState(false);
+  const file = `${env.name}.json`;
+  const declared = (desired?.desired?.resources ?? []).some(
+    (/** @type {any} */ r) => String(r?.name ?? '') === String(env.target ?? ''),
+  );
   const clear = async () => {
     const ok = await confirmDialog({
       title: `Clear ${env.name}’s target?`,
-      body: `The board stops looking for ${env.target}, which doesn’t exist yet. Nothing that runs changes. Your next change from the console gives ${env.name} a target again.`,
+      body: declared
+        ? `The board stops looking for ${env.target}, which doesn’t exist yet. Nothing that runs changes. ${file} still declares ${env.target}, so Compare now drafts the plan that builds it again, and approving that plan makes it ${env.name}’s target.`
+        : `The board stops looking for ${env.target}, which doesn’t exist yet. Nothing that runs changes. Your next change from the console gives ${env.name} a target again.`,
       confirmLabel: 'Clear the target',
     });
     if (!ok) return;
     setBusy(true);
     try {
       await api(`infra/environments/${enc(env.id)}`, { method: 'PATCH', body: { target: null, by: 'owner' } });
-      toast(`${env.name} has no target now. Add a resource to start again.`, 'success');
+      toast(
+        declared
+          ? `${env.name} has no target now. Compare now drafts the plan that builds ${env.target}.`
+          : `${env.name} has no target now. Add a resource to start again.`,
+        'success',
+      );
       onCleared?.();
     } catch (error) {
       toast(`Couldn’t clear ${env.name}’s target: ${error.message}`, 'error');
@@ -188,13 +202,24 @@ function FirstApplyFailed({ env, plan, run = null, onCleared }) {
  * with the run's progress, then approved, waiting, and drafts (each linking to its page, where the owner approves or
  * rejects it); and the last few that ended. Empty only when there's none of it.
  * A new environment whose first apply failed says so first, with Clear the target (WEB-120).
- * @param {{ env: { id: number, name: string, observeOnly?: boolean, target?: string | null }, plans: any[], runs: any[],
+ * @param {{ env: { id: number, name: string, observeOnly?: boolean, target?: string | null,
+ *   desiredTarget?: { name: string | null, file: string, problem: string | null } | null }, plans: any[], runs: any[],
  *   changes: { open: any, changes: any[] } | null, card: number | null, error?: string | null, failed?: any,
- *   onChange?: () => void }} props
+ *   desired?: any, onChange?: () => void }} props
  *   `card` is the number of the change whose card shows beside the map; `failed` the plan whose first apply failed
  *   (firstApplyFailed); `onChange` reads the console again after the target is cleared
  */
-export function EnvironmentPlans({ env, plans, runs, changes, card, error = null, failed = null, onChange }) {
+export function EnvironmentPlans({
+  env,
+  plans,
+  runs,
+  changes,
+  card,
+  error = null,
+  failed = null,
+  desired = null,
+  onChange,
+}) {
   const open = github.value.data?.open ?? [];
   const checks = (/** @type {any} */ change) =>
     change.pull
@@ -221,6 +246,7 @@ export function EnvironmentPlans({ env, plans, runs, changes, card, error = null
           env={env}
           plan={failed}
           run={runs.find((r) => r.plan === failed.id) ?? null}
+          desired={desired}
           onCleared={onChange}
         />
       )}
@@ -250,10 +276,28 @@ export function EnvironmentPlans({ env, plans, runs, changes, card, error = null
           </ul>
         </>
       )}
-      {!current && !rows.recent.length && !error && (
+      {!current && !rows.recent.length && !error && env.desiredTarget?.name && (
+        // No target, but the merged file declares one (BRK-309): Compare plans with it.
+        <div class="infra-first-apply is-declared">
+          <p>
+            <span>
+              <code>{env.desiredTarget.file}</code> declares <code>{env.desiredTarget.name}</code>: Compare now drafts
+              the plan that builds it.
+            </span>
+          </p>
+          <div class="conn-buttons">
+            <CompareNow env={env} onDone={() => onChange?.()} />
+          </div>
+        </div>
+      )}
+      {!current && !rows.recent.length && !error && !env.desiredTarget?.name && (
         <NoneYet>
           {!env.target && !env.observeOnly ? (
-            `${EMPTY_START}.`
+            env.desiredTarget?.problem ? (
+              `${env.desiredTarget.problem}.`
+            ) : (
+              `${EMPTY_START}.`
+            )
           ) : (
             <>
               A change you propose from the console, a pull request to{' '}

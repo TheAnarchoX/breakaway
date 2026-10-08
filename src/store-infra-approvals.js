@@ -48,14 +48,21 @@ export const infraApprovalsMethods = {
    */
   outOfDatePlan(row) {
     const env = this.sql
-      .exec('SELECT kind, provider, target FROM infra_environments WHERE id = ?', row.environment)
+      .exec('SELECT kind, provider, target, observe_only FROM infra_environments WHERE id = ?', row.environment)
       .toArray()[0];
     if (env) {
       const moved = (what, then, now) =>
         `${row.env_name}’s ${what} changed from ${then ?? 'none'} to ${now ?? 'none'} since it was planned`;
       if (row.env_kind && env.kind !== row.env_kind) return moved('kind', row.env_kind, env.kind);
       if ((env.provider ?? null) !== (row.provider ?? null)) return moved('provider', row.provider, env.provider);
-      if ((env.target ?? null) !== (row.target ?? null)) return moved('target', row.target, env.target);
+      // A plan made with the target the desired state gives an environment with none (BRK-309) is up to date while
+      // the file still gives that one.
+      const gives =
+        !env.target && row.target
+          ? this.desiredTargetOf({ ...env, id: row.environment, repo: row.repo, name: row.env_name }).target
+          : null;
+      if ((env.target ?? null) !== (row.target ?? null) && gives !== row.target)
+        return moved('target', row.target, env.target);
     }
     if (row.desired_sha) {
       const now = this.sql
@@ -73,6 +80,17 @@ export const infraApprovalsMethods = {
       if (drift && !drift.plan_matches) return `${row.env_name}’s drift has changed since it was planned`;
     }
     return null;
+  },
+
+  /**
+   * Whether approving a plan gives its environment a target (BRK-309): the environment has none, and the plan was made
+   * with the one its desired state makes.
+   * @param {Record<string, any>} row the plan's row (planRow)
+   */
+  planGivesTarget(row) {
+    if (!row.target) return false;
+    const env = this.sql.exec('SELECT target FROM infra_environments WHERE id = ?', row.environment).toArray()[0];
+    return Boolean(env && !env.target);
   },
 
   /**
@@ -97,11 +115,19 @@ export const infraApprovalsMethods = {
         `${id} is out of date: ${stale}. Reject it, and the next plan is drafted from what’s there now.`,
         409,
       );
+    const gives = this.planGivesTarget(row);
+    if (gives && by !== 'owner')
+      throw new AgentError(
+        `${id} gives ${row.env_name} its target, ${row.target}: only the owner approves that, on the board`,
+        409,
+      );
     this.moveInfraPlan(id, 'approved', {
       by,
       summary: summary || `approved by the owner; digest ${digest.slice(0, 12)}`,
       digest,
     });
+    // An environment with no target takes the one this plan was made for from its desired state, now (BRK-309).
+    if (gives) this.giveDesiredTarget(row);
     // The executor (BRK-183, store-infra-runs.js) applies it: queued now, started by the alarm in a moment.
     this.queueInfraRun(id);
     await this.soonInfraRuns();
@@ -129,6 +155,8 @@ export const infraApprovalsMethods = {
    */
   async settleInfraPlan(plan) {
     if (plan.policy?.outcome !== 'allowed') return plan;
+    // A plan that gives its environment a target waits for the owner whatever the policy says (BRK-309).
+    if (this.planGivesTarget(this.planRow(plan.id))) return plan;
     const rule = `your policy’s rule “${plan.policy.rule}”`;
     this.moveInfraPlan(plan.id, 'waiting', { by: 'board', summary: `${rule} lets it through` });
     return this.approveInfraPlan(plan.id, { by: 'board', summary: `approved by ${rule}` });

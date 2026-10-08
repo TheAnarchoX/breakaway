@@ -427,7 +427,9 @@ export function EnvironmentView() {
               <EnvironmentRoutines env={env} />
             </div>
             <div class="conn-buttons">
-              {env.provider && env.target && <InventoryRefresh provider={env.provider} onDone={() => load()} />}
+              {env.provider && (env.target || env.desiredTarget?.name) && (
+                <InventoryRefresh provider={env.provider} onDone={() => load()} />
+              )}
               <button
                 type="button"
                 class="btn btn-quiet btn-sm"
@@ -511,6 +513,7 @@ export function EnvironmentView() {
               card={cant ? null : (ch.held?.n ?? null)}
               error={state.plansError}
               failed={firstApply}
+              desired={state.desired}
               onChange={() => load({ quiet: true })}
             />
             <Drift env={env} desired={state.desired} error={state.desiredError} />
