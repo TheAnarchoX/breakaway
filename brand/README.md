@@ -167,9 +167,12 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair, and the health URL you name for an environment, your own service, which your board GETs on each refresh.
+- **Agents propose infrastructure changes and never apply them.** Neither they nor the board hold write credentials: the repository's apply workflow applies a plan, started by the board.
+- **Nothing changes without your approval, or inside bounds you approved once**: an envelope, or a policy you loosened. Every plan waits for you until then.
+- **The board only watches its own install.** The environment it runs on is observe only, and it never plans a change to it.
 - **Free for personal and noncommercial use, and the source is public.** Commercial use is by exception, granted free and case by case ([below](#the-licence)). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
-Say these only once they ship: self-hosting on your own Cloudflare account, the setup guide, and Architect. Once it ships, Architect's claims are: agents propose infrastructure changes and never apply them; nothing changes without your approval, or inside bounds you approved once (an envelope); and the board only watches its own install.
+Say these only once they ship: self-hosting on your own Cloudflare account, and the setup guide.
 
 **Works with, never "powered by".** breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made or endorse it. Never "official", "partner", "powered by", or a lockup with their logos.
 
