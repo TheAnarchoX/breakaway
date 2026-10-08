@@ -261,48 +261,65 @@ export const infraTokensMethods = {
       const path = `/environments/${encodeURIComponent(github)}`;
       const seen = await this.readTokenEnvironment(client, github);
       if (seen.problems.environment) throw new AgentError(seen.problems.environment, 502);
-      let outcome;
-      try {
-        if (!seen.environment) {
-          await client.send('PUT', path, {
-            deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
-          });
-          await client.send('POST', `${path}/deployment-branch-policies`, { name: branch, type: 'branch' });
-          outcome = 'made';
-        } else {
-          if (seen.problems.policies) throw new AgentError(seen.problems.policies, 502);
-          const fix = branchRuleFix(seen.environment, seen.policies, branch);
-          if (fix === 'none') outcome = null;
-          else if (fix === 'add-branch') {
-            await client.send('POST', `${path}/deployment-branch-policies`, { name: branch, type: 'branch' });
-            outcome = 'branch';
-          } else
-            throw new AgentError(
-              `${github} already exists with another branch rule, and the board doesn’t change one it didn’t make: on GitHub, ${repo.github} → Settings → Environments → ${github}, under Deployment branches and tags choose Selected branches and tags and allow only ${branch}`,
-              409,
-            );
-        }
-      } catch (error) {
-        if (!(error instanceof GitHubError)) throw error;
-        throw new AgentError(
-          `GitHub answered ${error.status} making ${github}: ${error.reason ?? error.message}. ${byHand}.`,
-          error.status === 403 ? 403 : 502,
-        );
-      }
-      if (outcome) {
-        const env = group.environments[0] ?? null;
+      const env = group.environments[0] ?? null;
+      const audit = (outcome, summary) =>
         this.appendInfraAudit({
           kind: 'environment',
           repo: repo.slug,
           environment: env?.name ?? github,
           environmentId: env?.id ?? null,
           by: 'owner',
-          outcome: outcome === 'made' ? 'github-environment' : 'github-branch',
-          summary:
-            outcome === 'made'
-              ? `made the GitHub environment ${github}, only ${branch} deploys`
-              : `let ${branch} deploy to the GitHub environment ${github}`,
+          outcome,
+          summary,
         });
+      const refused = (error, what) => {
+        if (!(error instanceof GitHubError)) return error;
+        return new AgentError(
+          `GitHub answered ${error.status} ${what}: ${error.reason ?? error.message}`,
+          error.status === 403 ? 403 : 502,
+        );
+      };
+      const addBranch = async (made) => {
+        try {
+          await client.send('POST', `${path}/deployment-branch-policies`, { name: branch, type: 'branch' });
+        } catch (error) {
+          const e = refused(error, `adding ${branch} to ${github}’s deployment branches`);
+          // The environment exists now with no branch allowed, so nothing deploys to it: pressing again finishes it.
+          if (e instanceof AgentError)
+            e.message = `${made ? `${github} was made, but ` : ''}${e.message}. Press Make it on GitHub again to add ${branch}, or add it by hand under Deployment branches and tags.`;
+          throw e;
+        }
+      };
+      /** @type {'made' | 'branch' | null} */
+      let outcome = null;
+      if (!seen.environment) {
+        try {
+          await client.send('PUT', path, {
+            deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
+          });
+        } catch (error) {
+          const e = refused(error, `making ${github}`);
+          if (e instanceof AgentError) e.message = `${e.message}. ${byHand}.`;
+          throw e;
+        }
+        // Recorded as soon as GitHub has it, so a failed next step never leaves a change unaudited.
+        audit('github-environment', `made the GitHub environment ${github}, only chosen branches deploy`);
+        await addBranch(true);
+        audit('github-branch', `let ${branch} deploy to the GitHub environment ${github}`);
+        outcome = 'made';
+      } else {
+        if (seen.problems.policies) throw new AgentError(seen.problems.policies, 502);
+        const fix = branchRuleFix(seen.environment, seen.policies, branch);
+        if (fix === 'by-hand')
+          throw new AgentError(
+            `${github} already exists with another branch rule, and the board doesn’t change one it didn’t make: on GitHub, ${repo.github} → Settings → Environments → ${github}, under Deployment branches and tags choose Selected branches and tags and allow only ${branch}`,
+            409,
+          );
+        if (fix === 'add-branch') {
+          await addBranch(false);
+          audit('github-branch', `let ${branch} deploy to the GitHub environment ${github}`);
+          outcome = 'branch';
+        }
       }
       const view = await this.infraTokens(repo.slug, { fresh: true });
       return { status: outcome === 'made' ? 201 : 200, body: { ...view, made: outcome } };

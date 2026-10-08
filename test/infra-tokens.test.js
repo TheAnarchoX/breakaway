@@ -145,7 +145,7 @@ describe('guided token setup on the board (BRK-304)', () => {
   const PROVIDER = 'faketok';
   let cookie;
   /** The pretend GitHub: its environments, what the App may do, and every write it was asked for. */
-  const gh = { environments: {}, administration: 'write', writes: [], secretsStatus: 200 };
+  const gh = { environments: {}, administration: 'write', writes: [], secretsStatus: 200, policyStatus: 200 };
 
   beforeAll(async () => {
     const res = await SELF.fetch(`${ORIGIN}/login`, {
@@ -199,6 +199,7 @@ describe('guided token setup on the board (BRK-304)', () => {
     gh.administration = 'write';
     gh.writes = [];
     gh.secretsStatus = 200;
+    gh.policyStatus = 200;
     await runInDurableObject(store(), (s) => {
       s.tokenSetupKept = new Map();
     });
@@ -224,6 +225,7 @@ describe('guided token setup on the board (BRK-304)', () => {
           return reply({ name });
         }
         if (method === 'POST' && rest === '/deployment-branch-policies') {
+          if (gh.policyStatus !== 200) return reply({ message: 'Server Error' }, gh.policyStatus);
           gh.environments[name].policies.push({ name: sent.name, type: sent.type });
           return reply({ id: 1, ...sent });
         }
@@ -285,8 +287,33 @@ describe('guided token setup on the board (BRK-304)', () => {
     const staging = res.environments.find((e) => e.name === 'tok-staging');
     expect(staging.steps.map((s) => s.ok)).toEqual([true, true, false]);
     const audit = (await body(await api('infra/audit?environment=tok-staging'))).entries;
-    expect(audit[0]).toMatchObject({ kind: 'environment', by: 'owner', outcome: 'github-environment' });
-    expect(audit[0].environmentId).toBeTruthy();
+    const made = audit.filter((e) => e.outcome.startsWith('github-'));
+    expect(made.map((e) => e.outcome).sort()).toEqual(['github-branch', 'github-environment']);
+    expect(made.every((e) => e.kind === 'environment' && e.by === 'owner' && e.environmentId)).toBe(true);
+  });
+
+  it('audits a half-made environment and finishes it on the next press', async () => {
+    const madeCount = async () =>
+      (await body(await api('infra/audit?environment=tok-staging'))).entries.filter(
+        (e) => e.outcome === 'github-environment',
+      ).length;
+    const before = await madeCount();
+    gh.policyStatus = 500;
+    const failed = await body(
+      await board('infra/tokens/environments/tok-staging?repo=widgets', { method: 'POST', body: { by: 'owner' } }),
+    );
+    expect(failed.status).toBe(502);
+    expect(failed.error).toMatch(
+      /^tok-staging was made, but GitHub answered 500 .*Press Make it on GitHub again to add main/u,
+    );
+    expect(gh.environments['tok-staging'].policies).toEqual([]);
+    expect(await madeCount()).toBe(before + 1);
+    gh.policyStatus = 200;
+    const again = await body(
+      await board('infra/tokens/environments/tok-staging?repo=widgets', { method: 'POST', body: { by: 'owner' } }),
+    );
+    expect(again.made).toBe('branch');
+    expect(again.environments[0].steps.map((s) => s.ok)).toEqual([true, true, false]);
   });
 
   it('is done once the secret is there, by name only', async () => {
