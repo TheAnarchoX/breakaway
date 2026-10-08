@@ -1,4 +1,4 @@
-// The theme switch, copy buttons on code, the latest release in the hero, and the road ahead. Nothing here is needed to read the page,
+// The theme switch, copy buttons on code, the docs menu on a phone, the latest release in the hero, and the road ahead. Nothing here is needed to read the page,
 // and nothing calls a service other than this site's own update feed.
 const root = document.documentElement;
 const systemLight = () => matchMedia('(prefers-color-scheme: light)').matches;
@@ -45,6 +45,23 @@ for (const holder of document.querySelectorAll('.code')) {
     setTimeout(() => (button.textContent = 'Copy'), 1800);
   });
   holder.append(button);
+}
+
+// The docs menu (DOC-48): on a phone it starts folded, so the page comes first; wide, it's the sidebar and stays open.
+// Without this script it's open, as built.
+const menu = document.querySelector('.docs-menu');
+if (menu) {
+  const wide = matchMedia('(min-width: 900px)');
+  const fit = () => {
+    menu.open = wide.matches;
+  };
+  fit();
+  wide.addEventListener('change', fit);
+  // Wide, the sidebar scrolls on its own: bring the page you're on into it, without moving the page.
+  const nav = menu.closest('.docs-nav');
+  const here = menu.querySelector('[aria-current="page"]');
+  if (wide.matches && nav && here && nav.scrollHeight > nav.clientHeight)
+    nav.scrollTop = Math.max(0, here.offsetTop - nav.offsetTop - nav.clientHeight / 3);
 }
 
 // The latest release in the hero, and the road ahead moved along (LCH-39): a release at or below the latest stable is

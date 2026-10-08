@@ -48,18 +48,25 @@ export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },
   { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'features', 'ideas-decisions-pings', 'routines'] },
   { group: 'Connect', pages: ['github', 'plugin', 'mcp', 'taskwarrior'] },
+  { group: 'Run it', pages: ['deploying', 'updating-to-2', 'operations', 'recovery', 'architecture', 'api'] },
+  // Architect (DOC-48): its own section, in the same four parts as the board's.
+  { group: 'Architect: start', pages: ['architect', 'get-started-with-architect', 'architect-supported'] },
   {
-    group: 'Run it',
+    group: 'Architect: use it',
     pages: [
-      'deploying',
-      'updating-to-2',
-      'get-started-with-architect',
-      'operations',
-      'recovery',
-      'architecture',
-      'api',
+      'architect-environments',
+      'architect-desired-state',
+      'architect-changes',
+      'architect-plans',
+      'architect-policy',
+      'architect-envelopes',
+      'architect-signals',
+      'architect-cost',
+      'architect-patterns',
     ],
   },
+  { group: 'Architect: connect', pages: ['architect-connections', 'architect-deploy-flow', 'architect-agents'] },
+  { group: 'Architect: run it', pages: ['architect-freeze', 'architect-drift', 'architect-recovery'] },
   { group: 'More', pages: ['faq', 'privacy'] },
 ];
 

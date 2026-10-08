@@ -34,14 +34,14 @@ Once the board runs 2.0.0:
 
 A board with no provider connected makes no call to any provider. Discovery, drift, signals, cost, and the cron’s comparisons run only for environments that have a provider and a desired state, and plans need both. Envelopes start empty, so every scale and restart waits for you until you set one.
 
-To turn it on, connect Cloudflare’s read-only token on **Connections** (the permissions are in the manual’s [Providers and Connections](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#providers-and-connections)). The board only reads with it. Applying a plan in a repository takes more, all on GitHub and none of it on the board. Each repository’s card on Connections has a checklist, **Infrastructure tokens**, that walks you through it and checks each step:
+To turn it on, connect Cloudflare’s read-only token on **Connections** (the permissions are in [Tokens, GitHub, and the apply workflow](/docs/architect-connections/#the-boards-read-token)). The board only reads with it. Applying a plan in a repository takes more, all on GitHub and none of it on the board. Each repository’s card on Connections has a checklist, **Infrastructure tokens**, that walks you through it and checks each step:
 
 1. In that repository, a **GitHub environment** for each environment that applies (named for it, like `staging`), limited to the default branch, holding that environment’s write token as `CLOUDFLARE_API_TOKEN`. The board refuses to start an apply while the GitHub environment lets another branch deploy. **Make it on GitHub**, on the checklist, makes a missing one with only the default branch allowed when the App has Administration: write ([below](#permissions-you-can-add)); the write token is always yours to add.
 2. The repository variable **`BREAKAWAY_URL`**, the board’s address.
 3. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, on the default branch. A change you propose from an environment’s console brings it when the App has Workflows: write; otherwise run **`npx breakaway infra init`** in the repository and merge what it writes.
 4. The board’s GitHub App with **Actions: read and write** on the repository.
 
-[Get started with Architect](/docs/get-started-with-architect/) walks through all of it, from the token to your first approved plan. Short-lived environments share one GitHub environment, `short-lived`, with its own token. The manual’s [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) section has the rest.
+[Get started with Architect](/docs/get-started-with-architect/) walks through all of it, from the token to your first approved plan. Short-lived environments share one GitHub environment, `short-lived`, with its own token. The [Architect section](/docs/architect/) of these docs has the rest.
 
 The board’s own install is always observe only: Architect watches it and never changes it.
 

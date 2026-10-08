@@ -69,8 +69,10 @@ A signal that crosses a rule opens an incident: a task, in the repository that o
 ## Read more
 
 - [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/): from a read-only token to your first approved plan, step by step.
+- [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/): your app’s deploys and its infrastructure, on the same staging and production.
+- [Patterns](https://leavethepack.dev/docs/architect-patterns/): setups that work, from staging first to scaling on a signal.
 - [Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2/): what updating changes, what stays off, and how to go back.
-- [The manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect): environments, plans, envelopes, signals, incidents, and cost, in full.
+- [The Architect docs](https://leavethepack.dev/docs/architect/): environments, plans, policy, envelopes, signals, incidents, cost, freeze, and break-glass, in full.
 - [Run your own board](https://leavethepack.dev/docs/quickstart/), if you don’t have one yet.
 
 ---
@@ -155,6 +157,13 @@ These docs cover all of it. Start where you are.
 2. [Concepts](https://leavethepack.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
 3. [The playbook](https://leavethepack.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
+## I want the board to run my infrastructure
+
+1. [What Architect is](https://leavethepack.dev/docs/architect/): how a change goes, what stays true, and its words.
+2. [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/): five steps from a read-only token to your first approved plan on staging.
+3. [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/): an app’s deploys and its infrastructure on the same staging and production.
+4. [Patterns](https://leavethepack.dev/docs/architect-patterns/): setups that work, from staging first to an environment per task.
+
 ## I want to look something up
 
 | Looking for | Go to |
@@ -166,8 +175,8 @@ These docs cover all of it. Start where you are.
 | Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
-| Starting with Architect: from a read-only token to your first approved plan | [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) |
-| Environments, plans you approve, envelopes, signals, incidents, and cost: Architect | [The manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) |
+| What Architect is, and how a change to infrastructure goes | [Architect](https://leavethepack.dev/docs/architect/) |
+| Environments, plans you approve, policy, envelopes, signals, incidents, and cost | [The Architect section](https://leavethepack.dev/docs/architect/#read-on) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
 | Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) |
 | Connecting Claude Code or another MCP client to `/mcp` | [MCP clients](https://leavethepack.dev/docs/mcp/) |
@@ -648,7 +657,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **Board** | A column per state (needs a decision, ready, in progress, in review, blocked or waiting, done in the last 30 days) and a row per horizon or area. Cards show their pull request’s number, checks, and review. On a phone you pick the column at the top. **Close now** is here. |
 | **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
 | **Roadmap** | Releases in version order, then Unplanned: on the **Timeline**, each feature a bar from its planned start to its planned end (or when it’s likely done, from the pace) that you drag to plan it; on **List**, feature cards with progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
-| **Infrastructure** | Architect: each repository’s environments with their health, drift, estimated cost, freeze, and the plan waiting for you, and **Add an environment**. Open one for what runs there and what each resource uses, its plans, signals, incidents, cost, and audit trail; open a plan to read what it changes and **Approve** or **Reject** it. Change an environment on its map and propose it, and change the policy from **Policy**; the board opens the pull request either way. A waiting plan’s push opens its page. With no provider connected, it says what to connect. See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect). |
+| **Infrastructure** | Architect: each repository’s environments with their health, drift, estimated cost, freeze, and the plan waiting for you, and **Add an environment**. Open one for what runs there and what each resource uses, its plans, signals, incidents, cost, and audit trail; open a plan to read what it changes and **Approve** or **Reject** it. Change an environment on its map and propose it, and change the policy from **Policy**; the board opens the pull request either way. A waiting plan’s push opens its page. With no provider connected, it says what to connect. See [Architect](https://leavethepack.dev/docs/architect/). |
 | **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
 | **Inbox** | Pings from agents and notes from the board, including a chase that ended. Incidents come first, production’s before the rest. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
@@ -940,7 +949,7 @@ These need no board: run them in the checkout of the repository that deploys or 
 
 ## Infrastructure
 
-Architect’s reads work in the checkout of a repository the board tracks, each with `--json`, and change nothing: approving, rejecting, freezing, and envelopes are yours, on the board. The board’s MCP server has the same reads as tools ([MCP clients](https://leavethepack.dev/docs/mcp/)). See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect).
+Architect’s reads work in the checkout of a repository the board tracks, each with `--json`, and change nothing: approving, rejecting, freezing, and envelopes are yours, on the board. The board’s MCP server has the same reads as tools ([MCP clients](https://leavethepack.dev/docs/mcp/)). See [Agents and infrastructure](https://leavethepack.dev/docs/architect-agents/).
 
 | Command | What it does |
 | --- | --- |
@@ -2017,14 +2026,14 @@ Once the board runs 2.0.0:
 
 A board with no provider connected makes no call to any provider. Discovery, drift, signals, cost, and the cron’s comparisons run only for environments that have a provider and a desired state, and plans need both. Envelopes start empty, so every scale and restart waits for you until you set one.
 
-To turn it on, connect Cloudflare’s read-only token on **Connections** (the permissions are in the manual’s [Providers and Connections](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#providers-and-connections)). The board only reads with it. Applying a plan in a repository takes more, all on GitHub and none of it on the board. Each repository’s card on Connections has a checklist, **Infrastructure tokens**, that walks you through it and checks each step:
+To turn it on, connect Cloudflare’s read-only token on **Connections** (the permissions are in [Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections/#the-boards-read-token)). The board only reads with it. Applying a plan in a repository takes more, all on GitHub and none of it on the board. Each repository’s card on Connections has a checklist, **Infrastructure tokens**, that walks you through it and checks each step:
 
 1. In that repository, a **GitHub environment** for each environment that applies (named for it, like `staging`), limited to the default branch, holding that environment’s write token as `CLOUDFLARE_API_TOKEN`. The board refuses to start an apply while the GitHub environment lets another branch deploy. **Make it on GitHub**, on the checklist, makes a missing one with only the default branch allowed when the App has Administration: write ([below](#permissions-you-can-add)); the write token is always yours to add.
 2. The repository variable **`BREAKAWAY_URL`**, the board’s address.
 3. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, on the default branch. A change you propose from an environment’s console brings it when the App has Workflows: write; otherwise run **`npx breakaway infra init`** in the repository and merge what it writes.
 4. The board’s GitHub App with **Actions: read and write** on the repository.
 
-[Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) walks through all of it, from the token to your first approved plan. Short-lived environments share one GitHub environment, `short-lived`, with its own token. The manual’s [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) section has the rest.
+[Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) walks through all of it, from the token to your first approved plan. Short-lived environments share one GitHub environment, `short-lived`, with its own token. The [Architect section](https://leavethepack.dev/docs/architect/) of these docs has the rest.
 
 The board’s own install is always observe only: Architect watches it and never changes it.
 
@@ -2078,119 +2087,6 @@ You can go back to 1.5.3 the way you go back from any release ([Rolling back](ht
 - **Unfreeze production if you mean to deploy.** `DEPLOYS_PAUSED` stays as the board last set it, and 1.5.3’s Promote and Release still stop on it. Set it to `false` on GitHub to lift it.
 - **The permissions you accepted** stay accepted, and 1.5.3 doesn’t use them.
 - **Repositories you updated** keep the 2.0.0 core and skill, and `npx breakaway` stays 2.0.0’s CLI. Its `infra` commands say the board has no route for them, and everything else works.
-
----
-
-Source: https://leavethepack.dev/docs/get-started-with-architect/
-
-# Get started with Architect
-
-> From a read-only token to your first approved plan, in the order it goes for real: connect Cloudflare, see staging, describe it as code, give it a way to apply, then change something and approve it. Then envelopes, runbooks, and production.
-
-This is the way in to **Architect**, the board running the infrastructure your repositories run on. You’ll go from nothing connected to a first plan you approved on staging, applied and health-checked, in five steps, the order an owner took them for real. Each step ends in a check. The [manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) says what every piece is, in full; this page says how to start.
-
-Nothing here hands an agent a write credential or lets one apply. The board holds only a read-only token. The one thing that changes infrastructure is a workflow in your repository, which the board starts for one plan you approved.
-
-## Before you start
-
-- **A board on 2.0.0**, or a 2.0.0 pre-release ([Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2/)), with the repository whose infrastructure you want on it.
-- **The GitHub App’s new permissions accepted**: Checks and Variables ([how](https://leavethepack.dev/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan. Workflows: write and Administration: write are optional and save you two steps below ([what each is for](https://leavethepack.dev/docs/updating-to-2/#permissions-you-can-add)).
-- **A Cloudflare account** the repository runs on. Ideally staging lives on its own account: every permission but Workers’ reaches every resource of its kind on an account, so only separate accounts keep staging and production fully apart.
-- **The board on your phone**, with pushes on, if you want to approve from it. A plan that waits sends one push.
-
-You need nothing on the board’s own install. Architect only watches the environment the board runs on, and never changes it.
-
-## 1. Connect Cloudflare with a read-only token
-
-The board needs one token per provider, and it only reads with it: what runs, what it uses, its health, and what it costs.
-
-Each repository’s card on **Connections** has a checklist, **Infrastructure tokens**, that lists these permissions for you, with **Open Cloudflare with these filled in**: a link to Cloudflare’s create-token page with the ones its links can fill in. Add the ones it marks **add by hand** (the Workers role, Containers, and Notifications) yourself.
-
-1. In Cloudflare, open **Manage Account**, then **Account API Tokens**, and create a custom token with an expiry date.
-2. Give it exactly these permissions:
-   - **Workers: Metadata Read-Only**, at the Workers product scope. It lists your Workers and their settings and can’t read their code. (A token with the legacy Workers Scripts Read still works.)
-   - On the account: **Workers KV Storage Read**, **Workers R2 Storage Read**, **D1 Read**, **Queues Read**, **Containers Read**, **Account Analytics Read**, and **Notifications Read**. Leave out queues or containers if you don’t use them.
-   - On the zones your environments use, and only those: **Zone Read** and **Workers Routes Read**. Give both the same zones.
-3. Add nothing that ends in Edit or Write, and not Billing Read, Workers Tail Read, or DNS Read. The board can’t see a permission a token has but shouldn’t, so read only is yours to keep.
-4. On the board, open **Connections**, find **Cloudflare**, paste the token, and press **Connect**. The board checks it with Cloudflare, stores it encrypted, and never shows it again.
-
-**Check:** Cloudflare’s row reads **Working**, with each permission by name, and says it can’t check for extra ones.
-
-**If a permission shows as missing,** the row says which one and gives Cloudflare’s own message beside it. Add it to the token on Cloudflare and paste the token again with **Replace the token**. A zone that Zone Read covers and Workers Routes Read doesn’t is skipped and named on the row, not a failure: add it to the token’s zones, or take it out of Zone Read.
-
-## 2. See what runs
-
-Open **Infrastructure** in the sidebar (`g` then `n`).
-
-- **A repository on the deploy flow** already has two environments, **staging** and **production**, pointing at its pipeline’s Workers. The board made them on a GitHub sync; its deploys, Promote, and Roll back show on them.
-- **Any other repository** gets one with **Add an environment**: its repository, the name `staging`, kind staging, provider Cloudflare, and its target, the Worker’s name. The name is also its file’s name later, `.github/breakaway-infra/staging.json`.
-
-The board looks at what runs right after you connect the token, then every 15 minutes. **Refresh** looks now, and **Last looked** beside it says when, and what went wrong if anything did.
-
-Open **staging**. Its page shows what runs there as a map: the Worker, and what it uses (its KV namespaces, databases, buckets, queues, containers, routes, and custom domains), each with its health and an estimated monthly cost. Below are its signals, plans, and audit trail, empty for now.
-
-**Check:** staging’s map matches what you know runs there, and what uses what looks right. A Worker nobody called lately reads as idle, not down. If the map is missing something, look at Connections for a permission the row marks missing.
-
-## 3. Describe staging as code
-
-Before the board can plan a change, staging needs a file saying what should exist. Nobody writes it by hand: the board drafts it from what runs.
-
-With no file yet, staging’s page shows **Describe it as code**: the draft, read only, with **Copy**. Then either:
-
-- **Propose it**, on the change beside the map: the board opens the pull request with the draft as the file, or
-- **Have an agent open the pull request**: the board adds a task, `Describe staging as code`, and starts the repository’s agent, which runs `npx breakaway infra adopt staging` and `infra check` and opens it.
-
-The pull request gets a check, **breakaway: infrastructure plan**, which shows the plan the file would make. The file says what already runs, so the plan should change nothing. Read it, then merge: a draft the board proposed with no edits plans nothing, so its card shows **Merge** instead of Approve; an agent’s pull request you merge the way you merge any other.
-
-**Check:** staging’s page shows its desired state, and no drift. Merging applied nothing.
-
-## 4. Give staging a way to apply
-
-The board holds no write credentials. Staging’s write token lives in a GitHub environment in the repository, and only the repository’s apply workflow reads it, for a plan you approved. This step is all on Cloudflare and GitHub, and it’s yours: agents never do it. The **Infrastructure tokens** checklist on the repository’s Connections card walks through it, with the write token’s exact permissions from `staging.json`, and checks each part through the GitHub App: the GitHub environment, its branch rule, a secret of the right name (by name only), and the apply workflow. **Check again** reads GitHub afresh.
-
-1. **Staging’s write token.** A second custom token on Cloudflare, with an expiry date: everything the read token has, plus
-   - **Workers: Editor**, scoped to staging’s Workers. If staging has custom domains, scope it to the Workers product instead.
-   - Only for what `staging.json` declares: **D1 Write**, **Workers KV Storage Write**, **Workers R2 Storage Write**, **Queues Write**, or **Containers Write**, and **Workers Routes Write** on staging’s zones for routes and custom domains.
-   - Never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for production. On the deploy flow, staging already has a token; widen that one.
-2. **A GitHub environment named `staging`**, in the repository’s settings under **Environments**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add only the default branch. Add the token as the secret **`CLOUDFLARE_API_TOKEN`**. The board reads that rule before every run and starts none while another branch could deploy. With Administration: write, **Make it on GitHub** on the checklist makes the environment and its rule for you; the secret is still yours to add.
-3. **The repository variable `BREAKAWAY_URL`**: your board’s address.
-4. **Actions: read and write** for the board’s GitHub App on the repository. An App on the deploy flow usually has it.
-5. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, **Apply infrastructure**. With Workflows: write, a pull request the board opened (step 3’s **Propose it**) brought it already, and its description says so. Otherwise, in a checkout of the repository, run `npx breakaway infra init`: it writes the workflow for each environment with a file. Commit it, open a pull request, and merge it.
-
-**Check:** the checklist reads **All in place**: the repository has the **Apply infrastructure** workflow on its default branch, and the `staging` GitHub environment holds the token and lets only the default branch deploy. Production stays without a write token until you’ve seen staging work.
-
-## 5. Change something, and approve it
-
-You change staging on its page, the board opens the pull request, and you approve the plan. You never have to open a file.
-
-1. **Change it.** On staging’s map, pick a resource and press **Change**. Its settings the console may change become fields: for a Worker, its compatibility date, flags, observability, placement, cron triggers, and bindings; for a queue, its delivery delay. Pick something small, like the Worker’s observability. Variables and secrets show by name only: they’re set with the Worker’s deploy, never here. To add something instead, press **Add resource** above the map and pick a kind, like a queue: give it a name, keep the defaults, pick the Worker that binds it under **Bind it to**, and press **Add to the change**. It shows dashed on the map, marked **+ adds**.
-2. **Watch the plan form.** Your change shows beside the map, an edit a line, and the edited resource is marked “your change”. A moment after you stop editing, the board previews the plan: what changes, what it costs, what else it touches, what can’t be undone, and the policy’s answer. Until you propose it, your change is only in this browser.
-3. **Propose the change.** The board checks the plan once more, commits the file on its own branch, and opens the pull request, “Change staging: …”. The change’s card reads **Checking** while the plan check runs, then **Waiting for you**.
-4. **Approve.** Press **Approve** on the card, or on the pull request’s page on the board, from your desk or your phone. It asks, “Approve this plan for staging? The board merges its pull request, applies the plan, and rolls back if the health check fails.” On the deploy flow, merging deploys staging too, and the dialog says so.
-5. **Watch it apply.** The card reads **Merging**, then the plan’s own status: **Approved**, **Applying** while the repository’s Apply infrastructure run holds the write token, then **Applied** once the board has checked the health of what changed. If the health check fails, the board applies the reverse by itself and the plan ends **Rolled back**.
-
-**Check:** the plan reads **Applied**, staging’s map shows the new setting, and its audit trail has the plan, your approval, and the apply, newest first.
-
-**Changing it by pull request instead.** An agent, or you, can change `staging.json` in an ordinary pull request (`infra adopt`, `infra add` for a template, then `infra check`). The plan check shows on it, and merging applies nothing: the board plans from the default branch, and the plan waits for you with one push, which names the environment and the plan. Open it on your phone, read it, and press **Approve**. This is how an agent’s change, and every incident’s fix, reaches you.
-
-### If it doesn’t go through
-
-| What you see | What to do |
-| --- | --- |
-| **Can’t merge**, with why | Fix what it names (checks failing, a conflict), then **Propose again**: it replays your edits on the current head |
-| GitHub refuses the merge for a required review | Add the board’s GitHub App to the ruleset’s bypass list (the repository’s **Settings**, **Rules**, **Rulesets**, the rule, **Bypass list**). The App merges only on your press. Until then, review the pull request on GitHub |
-| The plan stays **Approved**, with a reason | The run couldn’t start: no apply workflow, a GitHub environment another branch may use, or another plan holds staging’s lock. Fix what it says; it starts on its own |
-| **Staging is frozen: unfreeze it to approve.** | **Unfreeze** staging, or leave it frozen until you’re ready |
-| **Failed: nothing applied** | The run stopped before it had the plan (its setup failed, or it was cancelled), so nothing changed. Fix what GitHub’s run says, then press **Start the run again** on the plan. GitHub’s own Re-run never applies a plan |
-| **Failed** | Read the plan’s steps for what Cloudflare refused, often a write permission the token lacks. A change that can’t be undone is never rolled back by itself |
-| **Applied**, unverified | Nothing called what changed, so the board couldn’t read its health yet. Call it, and look again after the next refresh |
-
-## Next
-
-- **Envelopes.** Bounds you approve once on an environment, on the repository’s settings page under Infrastructure: “2 to 10 instances”, “3 restarts a day”. The board scales and restarts inside them without asking you again, and tells you after. Anything outside them waits for you ([Envelopes and scaling rules](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#envelopes-and-scaling-rules)).
-- **Runbooks.** A routine with a signal trigger, so an agent starts on an incident by itself, reads, diagnoses, and proposes the fix by pull request. Approve stays yours ([Runbooks](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#runbooks)).
-- **Production.** Its own write token, in a GitHub environment named `production` limited to the default branch, then `npx breakaway infra init --update` and merge it. Production gates make every plan there wait for you and its incidents push. **Freeze** stops every plan, and on the deploy flow pauses Promote and Release too; Roll back still works.
-- **The policy.** `.github/breakaway-infra/policy.json` decides which plans wait for you. By default every plan does, in every environment. Change it from **Policy** on Infrastructure or an environment’s console: the board says what your edit loosens and tightens, opens the pull request, and Approve merges it, with a second press for one that loosens it ([Policy](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#policy)).
 
 ---
 
@@ -2765,6 +2661,1658 @@ Registering a kickoff’s repository, from here, the wizard, or `repos add`, mak
 `/v1/client/*` is the TaskChampion sync protocol for Taskwarrior replicas. It isn’t part of the JSON API: it accepts only the install’s client ID, and its bodies are encrypted. Use [Taskwarrior](https://leavethepack.dev/docs/taskwarrior/).
 
 > **Stability.** The API serves the board’s own clients, so routes and fields can change between major releases. Every answer carries the board’s release in the `X-Tasks-Release` header, and the CLI number an old copy of the CLI compares in `X-Tasks-Cli`; a copy that’s too old says how to update.
+
+---
+
+Source: https://leavethepack.dev/docs/architect/
+
+# Architect
+
+> The board running the infrastructure your repositories run on, and you still deciding what changes. What Architect is, how a change goes, what stays true, its words, and where to read on.
+
+**Architect** is the part of the board that runs what your repositories run on: their Workers, databases, namespaces, buckets, queues, containers, routes, and custom domains. It came in 2.0.0, it runs on Cloudflare, and it’s off until you connect a provider. Until then the board makes no call for it.
+
+It works the way the rest of the board does. What should exist is a file in the repository. Agents change it by pull request. The board works out the exact change, a **plan**, and the plan waits for you. You press **Approve**, and a workflow in the repository applies it, with a write token the board never holds. Then the board checks health, and rolls back by itself if the check fails.
+
+## How a change goes
+
+```text
+the file: what should exist     Cloudflare: what runs
+staging.json                    (the read-only token)
+            \                     /
+             the board compares them
+                       |
+                       v
+     a plan: what changes, what it costs,
+     what else it touches, can it be undone
+                       |
+     the policy: it waits for you, or it
+     fits bounds you approved once
+                       |
+               you press Approve
+                       |
+                       v
+     the repository's apply workflow, with
+     staging's write token, from a GitHub
+     environment only the default branch uses
+                       |
+                       v
+     the board checks health, and rolls
+     back by itself if the check fails
+```
+
+Every step is on the board: the plan as it forms, your approval, the run, and the health check, on the environment’s page and in its audit trail. A plan that waits for you sends one push, so you can approve from your phone.
+
+## Two lanes: code, and what it runs on
+
+Architect doesn’t replace the deploy flow. They’re two lanes, and a repository can use either or both.
+
+| | The deploy flow | Architect |
+| --- | --- | --- |
+| What it changes | The code: a new version of a Worker | What the code runs on: a Worker’s settings and bindings, and the resources around it |
+| Where it’s written | The code and its wrangler config | `.github/breakaway-infra/<environment>.json` |
+| How it goes | Merging deploys staging; you press **Promote** and **Roll back** | Merging plans; you press **Approve**, the board applies |
+| Its buttons | **Promote**, **Roll back**, **Release** | **Approve**, **Reject**, **Freeze** |
+
+On a repository with both, staging and production are one pair of environments: their deploys, Promotes, and Roll backs show on the same pages as their plans. [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/) says how to set up an app and its infrastructure together.
+
+## What stays true
+
+- **Agents propose and never apply.** They read everything and change infrastructure only by pull request. They never hold a write token, start the apply workflow, or press Approve.
+- **Nothing changes without your approval**, or inside bounds you approved once on an environment: an [envelope](https://leavethepack.dev/docs/architect-envelopes/), or a [policy](https://leavethepack.dev/docs/architect-policy/) you loosened. Until then, every plan waits for you, in every environment.
+- **The board holds no write credentials.** It keeps one read-only token per provider. Each environment’s write token lives in a GitHub environment in its repository, and only the apply workflow reads it, for one plan you approved.
+- **The board only watches its own install.** The environment the board runs on is always observe only: no plans, no envelope, no apply. Its way back is [Recover without the board](https://leavethepack.dev/docs/recovery/).
+- **Your data stays in your install.** The board keeps names, kinds, settings, health, and cost, never a secret’s value, a stored value, or code. The read-only token goes only to its provider.
+
+## The words
+
+Architect uses the same few words everywhere: on the board, in pushes, in the CLI, and here.
+
+| Word | What it means |
+| --- | --- |
+| **environment** | A named place a repository runs: **production**, **staging**, or **short-lived** (one task’s own). |
+| **provider** | A platform you connect so the board can see what runs there. Cloudflare, in 2.0. |
+| **desired state** | What should exist in one environment: its file in `.github/breakaway-infra/`. |
+| **change** | What you edit on an environment’s page before it becomes a pull request and a plan. |
+| **plan** | The exact change the board would make to one environment: what changes, what it costs, what else it touches, and whether it can be undone. |
+| **approve**, **reject** | Your answer to a plan that waits for you. Only you can, and only on the board. |
+| **apply** | What the board does with a plan you approved. It’s a status, never a button. |
+| **policy** | The rules that decide which plans wait for you. |
+| **envelope** | Bounds you approve once on one environment, like “2 to 10 instances” or “3 restarts a day”. |
+| **signal** | One thing the board heard about an environment: its health, a platform’s alert, or its cost. |
+| **incident** | A task tagged `+incident`, opened when a signal crosses a rule. |
+| **drift** | What runs no longer matches its file. |
+| **break-glass** | A change you made by hand outside a plan, on purpose. The board records it and never undoes it. |
+| **freeze** | Stop every plan on one environment until you unfreeze it. |
+| **observe only** | An environment the board watches and never changes. |
+
+## Where it shows
+
+- **Infrastructure**, in the sidebar (`g` then `n`): each repository’s environments, with health, drift, estimated cost, freeze, and the plan waiting. **Add an environment** and **Policy** are here.
+- **An environment’s page**, its console: what runs there as a map, a live stream of what happens, its plans, incidents, drift, deploys, cost, and audit trail. You change it here too.
+- **A plan’s page**, the link a waiting plan’s push carries, with **Approve** and **Reject**.
+- **The inbox**: incidents lead it, production’s first.
+- **A repository’s settings page**, under **Infrastructure**: the policy in force, each environment’s freeze, and its envelope.
+- **Connections**: the provider’s token, and each repository’s **Infrastructure tokens** checklist.
+- **Settings**, under The board: the currency costs show in.
+- **The terminal**: `npx breakaway infra` and its reads, for you and your agents ([Agents and infrastructure](https://leavethepack.dev/docs/architect-agents/)).
+
+## Read on
+
+| You want to | Read |
+| --- | --- |
+| Go from nothing to your first approved plan | [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) |
+| Know what it can run, change, and scale | [What’s supported](https://leavethepack.dev/docs/architect-supported/) |
+| Add an environment, or build one from nothing | [Environments](https://leavethepack.dev/docs/architect-environments/) |
+| Write or read the files in `.github/breakaway-infra/` | [Describe it as code](https://leavethepack.dev/docs/architect-desired-state/) |
+| Change what runs, from the board or by pull request | [Change an environment](https://leavethepack.dev/docs/architect-changes/) |
+| Read a plan, approve it, and follow it to applied | [Plans and approvals](https://leavethepack.dev/docs/architect-plans/) |
+| Decide which plans wait for you | [Policy](https://leavethepack.dev/docs/architect-policy/) |
+| Let the board scale and restart within bounds | [Envelopes and scaling rules](https://leavethepack.dev/docs/architect-envelopes/) |
+| Hear when something breaks, and work it | [Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/) |
+| See what it costs, and set budgets | [Cost and budgets](https://leavethepack.dev/docs/architect-cost/) |
+| Copy a setup that works | [Patterns](https://leavethepack.dev/docs/architect-patterns/) |
+| Set up the tokens, GitHub environments, and the apply workflow | [Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections/) |
+| Run an app’s deploys and its infrastructure together | [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/) |
+| Know what agents may do | [Agents and infrastructure](https://leavethepack.dev/docs/architect-agents/) |
+| Stop every change, or see who holds an environment | [Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/) |
+| Change something by hand, and put it back in code | [Drift, break-glass, and clean up](https://leavethepack.dev/docs/architect-drift/) |
+| Fix what didn’t go through, or recover without the board | [When it goes wrong](https://leavethepack.dev/docs/architect-recovery/) |
+
+---
+
+Source: https://leavethepack.dev/docs/get-started-with-architect/
+
+# Get started with Architect
+
+> From a read-only token to your first approved plan, in the order it goes for real: connect Cloudflare, see staging, describe it as code, give it a way to apply, then change something and approve it. Then envelopes, runbooks, and production.
+
+This is the way in to **Architect**, the board running the infrastructure your repositories run on. You’ll go from nothing connected to a first plan you approved on staging, applied and health-checked, in five steps, the order an owner took them for real. Each step ends in a check. This page says how to start; the rest of the Architect section says what every piece is, in full, starting with [What Architect is](https://leavethepack.dev/docs/architect/).
+
+Nothing here hands an agent a write credential or lets one apply. The board holds only a read-only token. The one thing that changes infrastructure is a workflow in your repository, which the board starts for one plan you approved.
+
+## Before you start
+
+- **A board on 2.0.0**, or a 2.0.0 pre-release ([Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2/)), with the repository whose infrastructure you want on it.
+- **The GitHub App’s new permissions accepted**: Checks and Variables ([how](https://leavethepack.dev/docs/updating-to-2/#accept-the-github-apps-new-permissions)). Without Checks, a pull request gets no plan check; the board’s own pull request page still shows the plan. Workflows: write and Administration: write are optional and save you two steps below ([what each is for](https://leavethepack.dev/docs/updating-to-2/#permissions-you-can-add)).
+- **The Cloudflare account** the repository runs on. The board reads one account, so staging and production share it, and their write tokens are kept apart by scope ([how](https://leavethepack.dev/docs/architect-connections/#keep-staging-and-production-apart)).
+- **The board on your phone**, with pushes on, if you want to approve from it. A plan that waits sends one push.
+
+You need nothing on the board’s own install. Architect only watches the environment the board runs on, and never changes it.
+
+## 1. Connect Cloudflare with a read-only token
+
+The board needs one token per provider, and it only reads with it: what runs, what it uses, its health, and what it costs.
+
+Each repository’s card on **Connections** has a checklist, **Infrastructure tokens**, that lists these permissions for you, with **Open Cloudflare with these filled in**: a link to Cloudflare’s create-token page with the ones its links can fill in. Add the ones it marks **add by hand** (the Workers role, Containers, and Notifications) yourself.
+
+1. In Cloudflare, open **Manage Account**, then **Account API Tokens**, and create a custom token with an expiry date.
+2. Give it exactly these permissions:
+   - **Workers: Metadata Read-Only**, at the Workers product scope. It lists your Workers and their settings and can’t read their code. (A token with the legacy Workers Scripts Read still works.)
+   - On the account: **Workers KV Storage Read**, **Workers R2 Storage Read**, **D1 Read**, **Queues Read**, **Containers Read**, **Account Analytics Read**, and **Notifications Read**. Leave out queues or containers if you don’t use them.
+   - On the zones your environments use, and only those: **Zone Read** and **Workers Routes Read**. Give both the same zones.
+3. Add nothing that ends in Edit or Write, and not Billing Read, Workers Tail Read, or DNS Read. The board can’t see a permission a token has but shouldn’t, so read only is yours to keep.
+4. On the board, open **Connections**, find **Cloudflare**, paste the token, and press **Connect**. The board checks it with Cloudflare, stores it encrypted, and never shows it again.
+
+**Check:** Cloudflare’s row reads **Working**, with each permission by name, and says it can’t check for extra ones.
+
+**If a permission shows as missing,** the row says which one and gives Cloudflare’s own message beside it. Add it to the token on Cloudflare and paste the token again with **Replace the token**. A zone that Zone Read covers and Workers Routes Read doesn’t is skipped and named on the row, not a failure: add it to the token’s zones, or take it out of Zone Read.
+
+## 2. See what runs
+
+Open **Infrastructure** in the sidebar (`g` then `n`).
+
+- **A repository on the deploy flow** already has two environments, **staging** and **production**, pointing at its pipeline’s Workers. The board made them on a GitHub sync; its deploys, Promote, and Roll back show on them.
+- **Any other repository** gets one with **Add an environment**: its repository, the name `staging`, kind staging, provider Cloudflare, and its target, the Worker’s name. The name is also its file’s name later, `.github/breakaway-infra/staging.json`.
+
+The board looks at what runs right after you connect the token, then every 15 minutes. **Refresh** looks now, and **Last looked** beside it says when, and what went wrong if anything did.
+
+Open **staging**. Its page shows what runs there as a map: the Worker, and what it uses (its KV namespaces, databases, buckets, queues, containers, routes, and custom domains), each with its health and an estimated monthly cost. Below are its signals, plans, and audit trail, empty for now.
+
+**Check:** staging’s map matches what you know runs there, and what uses what looks right. A Worker nobody called lately reads as idle, not down. If the map is missing something, look at Connections for a permission the row marks missing.
+
+## 3. Describe staging as code
+
+Before the board can plan a change, staging needs a file saying what should exist. Nobody writes it by hand: the board drafts it from what runs.
+
+With no file yet, staging’s page shows **Describe it as code**: the draft, read only, with **Copy**. Then either:
+
+- **Propose it**, on the change beside the map: the board opens the pull request with the draft as the file, or
+- **Have an agent open the pull request**: the board adds a task, `Describe staging as code`, and starts the repository’s agent, which runs `npx breakaway infra adopt staging` and `infra check` and opens it.
+
+The pull request gets a check, **breakaway: infrastructure plan**, which shows the plan the file would make. The file says what already runs, so the plan should change nothing. Read it, then merge: a draft the board proposed with no edits plans nothing, so its card shows **Merge** instead of Approve; an agent’s pull request you merge the way you merge any other.
+
+**Check:** staging’s page shows its desired state, and no drift. Merging applied nothing.
+
+## 4. Give staging a way to apply
+
+The board holds no write credentials. Staging’s write token lives in a GitHub environment in the repository, and only the repository’s apply workflow reads it, for a plan you approved. This step is all on Cloudflare and GitHub, and it’s yours: agents never do it. The **Infrastructure tokens** checklist on the repository’s Connections card walks through it, with the write token’s exact permissions from `staging.json`, and checks each part through the GitHub App: the GitHub environment, its branch rule, a secret of the right name (by name only), and the apply workflow. **Check again** reads GitHub afresh.
+
+1. **Staging’s write token.** A second custom token on Cloudflare, with an expiry date: everything the read token has, plus
+   - **Workers: Editor**, scoped to staging’s Workers. If staging has custom domains, scope it to the Workers product instead.
+   - Only for what `staging.json` declares: **D1 Write**, **Workers KV Storage Write**, **Workers R2 Storage Write**, **Queues Write**, or **Containers Write**, and **Workers Routes Write** on staging’s zones for routes and custom domains.
+   - Never Account Settings, API Tokens, Billing, DNS, or Notifications Write, and never reuse it for production. On the deploy flow, staging already has a token; widen that one.
+2. **A GitHub environment named `staging`**, in the repository’s settings under **Environments**. Under **Deployment branches and tags**, choose **Selected branches and tags** and add only the default branch. Add the token as the secret **`CLOUDFLARE_API_TOKEN`**. The board reads that rule before every run and starts none while another branch could deploy. With Administration: write, **Make it on GitHub** on the checklist makes the environment and its rule for you; the secret is still yours to add.
+3. **The repository variable `BREAKAWAY_URL`**: your board’s address.
+4. **Actions: read and write** for the board’s GitHub App on the repository. An App on the deploy flow usually has it.
+5. **The apply workflow**, `.github/workflows/breakaway-infra.yml`, **Apply infrastructure**. With Workflows: write, a pull request the board opened (step 3’s **Propose it**) brought it already, and its description says so. Otherwise, in a checkout of the repository, run `npx breakaway infra init`: it writes the workflow for each environment with a file. Commit it, open a pull request, and merge it.
+
+**Check:** the checklist reads **All in place**: the repository has the **Apply infrastructure** workflow on its default branch, and the `staging` GitHub environment holds the token and lets only the default branch deploy. Production stays without a write token until you’ve seen staging work.
+
+## 5. Change something, and approve it
+
+You change staging on its page, the board opens the pull request, and you approve the plan. You never have to open a file.
+
+1. **Change it.** On staging’s map, pick a resource and press **Change**. Its settings the console may change become fields: for a Worker, its compatibility date, flags, observability, placement, cron triggers, and bindings; for a queue, its delivery delay. Pick something small, like the Worker’s observability. Variables and secrets show by name only: they’re set with the Worker’s deploy, never here. To add something instead, press **Add resource** above the map and pick a kind, like a queue: give it a name, keep the defaults, pick the Worker that binds it under **Bind it to**, and press **Add to the change**. It shows dashed on the map, marked **+ adds**.
+2. **Watch the plan form.** Your change shows beside the map, an edit a line, and the edited resource is marked “your change”. A moment after you stop editing, the board previews the plan: what changes, what it costs, what else it touches, what can’t be undone, and the policy’s answer. Until you propose it, your change is only in this browser.
+3. **Propose the change.** The board checks the plan once more, commits the file on its own branch, and opens the pull request, “Change staging: …”. The change’s card reads **Checking** while the plan check runs, then **Waiting for you**.
+4. **Approve.** Press **Approve** on the card, or on the pull request’s page on the board, from your desk or your phone. It asks, “Approve this plan for staging? The board merges its pull request, applies the plan, and rolls back if the health check fails.” On the deploy flow, merging deploys staging too, and the dialog says so.
+5. **Watch it apply.** The card reads **Merging**, then the plan’s own status: **Approved**, **Applying** while the repository’s Apply infrastructure run holds the write token, then **Applied** once the board has checked the health of what changed. If the health check fails, the board applies the reverse by itself and the plan ends **Rolled back**.
+
+**Check:** the plan reads **Applied**, staging’s map shows the new setting, and its audit trail has the plan, your approval, and the apply, newest first.
+
+**Changing it by pull request instead.** An agent, or you, can change `staging.json` in an ordinary pull request (`infra adopt`, `infra add` for a template, then `infra check`). The plan check shows on it, and merging applies nothing: the board plans from the default branch, and the plan waits for you with one push, which names the environment and the plan. Open it on your phone, read it, and press **Approve**. This is how an agent’s change, and every incident’s fix, reaches you.
+
+### If it doesn’t go through
+
+| What you see | What to do |
+| --- | --- |
+| **Can’t merge**, with why | Fix what it names (checks failing, a conflict), then **Propose again**: it replays your edits on the current head |
+| GitHub refuses the merge for a required review | Add the board’s GitHub App to the ruleset’s bypass list (the repository’s **Settings**, **Rules**, **Rulesets**, the rule, **Bypass list**). The App merges only on your press. Until then, review the pull request on GitHub |
+| The plan stays **Approved**, with a reason | The run couldn’t start: no apply workflow, a GitHub environment another branch may use, or another plan holds staging’s lock. Fix what it says; it starts on its own |
+| **Staging is frozen: unfreeze it to approve.** | **Unfreeze** staging, or leave it frozen until you’re ready |
+| **Failed: nothing applied** | The run stopped before it had the plan (its setup failed, or it was cancelled), so nothing changed. Fix what GitHub’s run says, then press **Start the run again** on the plan. GitHub’s own Re-run never applies a plan |
+| **Failed** | Read the plan’s steps for what Cloudflare refused, often a write permission the token lacks. A change that can’t be undone is never rolled back by itself |
+| **Applied**, unverified | Nothing called what changed, so the board couldn’t read its health yet. Call it, and look again after the next refresh |
+
+## Next
+
+- **Production.** Its own write token, in a GitHub environment named `production` limited to the default branch, then `npx breakaway infra init --update` and merge it. Production gates make every plan there wait for you and its incidents push ([Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections/)).
+- **Your app’s deploys.** On the deploy flow, staging and production are the same environments, with the same tokens and one freeze ([Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/)).
+- **The policy.** By default every plan waits for you, in every environment. Let small staging changes through from **Policy** on Infrastructure; loosening is never one press ([Policy](https://leavethepack.dev/docs/architect-policy/)).
+- **Envelopes.** Bounds you approve once on an environment, like “2 to 10 instances” or “3 restarts a day”. The board scales and restarts inside them without asking you again ([Envelopes and scaling rules](https://leavethepack.dev/docs/architect-envelopes/)).
+- **Runbooks.** A routine with a signal trigger, so an agent starts on an incident by itself, diagnoses it, and proposes the fix by pull request. Approve stays yours ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#runbooks)).
+- **Freeze.** It stops every plan on an environment, and on the deploy flow pauses Promote and Release too; Roll back still works ([Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/)).
+- **Setups that work**, from an environment per task to scaling on a signal: [Patterns](https://leavethepack.dev/docs/architect-patterns/).
+
+---
+
+Source: https://leavethepack.dev/docs/architect-supported/
+
+# What’s supported
+
+> The provider Architect runs on, every kind of resource it sees, which settings it changes, what it can make, remove, scale, and restart, what it never touches, and its limits.
+
+Architect runs on **Cloudflare** in 2.0. It sees what an environment runs by starting at its **target**, a Worker, and following what that Worker reaches: the Workers it calls, and every database, namespace, bucket, queue, Durable Object, container, route, and custom domain they use. Nothing outside that scope is read or kept.
+
+## Kinds of resource
+
+Each resource in an environment’s file has a `kind`. These are Cloudflare’s:
+
+| Kind | What it is | The settings Architect manages | Make | Remove |
+| --- | --- | --- | --- | --- |
+| `worker` | A Worker | Compatibility date and flags, usage model, Workers Logs, placement, cron triggers, and bindings | Yes: it starts with a small module that answers `/health` until your deploy puts its code on it | Yes, and it can’t be undone |
+| `durable-object` | A Durable Object namespace | None: its class and the Worker that has it | By code: the Worker exports the class, and a migration in its wrangler config adds it | By a delete migration, and its data goes |
+| `d1` | A D1 database | None. Its schema is your repository’s migrations | Yes | Yes, and its data goes |
+| `kv` | A KV namespace | None | Yes | Yes, and its values go |
+| `r2` | An R2 bucket | CORS rules and lifecycle rules | Yes | Only when it’s empty: Cloudflare refuses otherwise |
+| `queue` | A queue | Delivery delay, delivery paused, retention, and most consumers at once | Yes | Yes, and its messages go |
+| `container` | A container application | Most instances | By code: the image, the Durable Object class that starts it, and the container in the Worker’s wrangler config | Yes, and it can’t be undone |
+| `route` | A route: a hostname and path sent to a Worker | Its pattern and its Worker | Yes | Yes, and it can be put back |
+| `custom-domain` | A hostname a Worker serves | Its Worker | Yes | Yes; the hostname stops answering until it’s attached again |
+
+A setting the file leaves out isn’t compared, so it stays the deploy’s. A Worker’s variables and secrets show by name only, and are set with its deploy, never by Architect. A Durable Object or a container can be added on the console, which says what code must exist first: its plan applies only once that code is deployed.
+
+Changes to a `route` or a `custom-domain` decide who reaches what, so the policy’s **access** guard makes every one of them wait for you, whatever your allow rules say ([Policy](https://leavethepack.dev/docs/architect-policy/)).
+
+## Scale and restart
+
+[Envelopes](https://leavethepack.dev/docs/architect-envelopes/) let the board scale and restart without asking you each time. On Cloudflare, two kinds can:
+
+| Kind | Scale | Restart |
+| --- | --- | --- |
+| `container`, on the default scheduling policy | Its most instances (`max_instances`) | A rollout of its current configuration: each instance is replaced in turn, with time to drain |
+| `queue`, with a Worker consumer | Its consumer’s concurrency (`max_concurrency`) | No |
+
+Cloudflare scales everything else by itself, so nothing else is offered. A container on the Durable Object scheduling policy, or a queue with no Worker consumer, is refused in words before anything is planned.
+
+## Health
+
+The board reads each resource’s health when it looks, every 15 minutes, and when you press **Refresh**:
+
+- **Workers and Durable Objects**: requests and errors over the last 15 minutes. Errors make it degraded; no deployment makes it down. With no requests, the board looks back an hour, then a day, before it calls it **idle**, which isn’t down.
+- **D1**: its queries and how long they take; slow is degraded.
+- **KV and R2**: their operations.
+- **Queues**: the backlog and the oldest message. A backlog that keeps growing, or no consumer, is degraded.
+- **Containers**: the instances running against those assigned. None running when some are assigned is down.
+- **Routes and custom domains**: their Worker’s health, or your own health address when the environment’s file names one ([Describe it as code](https://leavethepack.dev/docs/architect-desired-state/#a-health-address)).
+
+The board reads health with the read-only token, through Cloudflare’s analytics. It reads no logs, traces, or metrics beyond these.
+
+## What it never touches
+
+- **Code.** The read-only token can’t read a Worker’s code, and the apply workflow checks none of your repository’s code out.
+- **Values.** A variable’s or secret’s value, what’s stored in a database, a namespace, or a bucket, and a queue’s messages.
+- **Your account.** DNS, account settings, members, billing, and API tokens. No token the board asks for can change them.
+- **The board’s own install.** It’s always observe only.
+- **Anything outside an environment’s scope**, even on the same account.
+
+## What isn’t supported yet
+
+- **Other providers.** Pages, other clouds, servers, and containers outside Cloudflare’s aren’t seen. The deploy flow is Workers only too.
+- **Metrics, logs, and traces** as signals. Signals are health, the platform’s alerts, and cost.
+- **Change windows.** Freeze is the one switch.
+- **A Worker’s code, schema migrations, and secrets** through a plan. Those stay the deploy’s.
+
+## Limits
+
+| What | Limit |
+| --- | --- |
+| Environments per repository | 50, with at most 3 short-lived ones at once |
+| Resources in one environment’s file | 500, in at most 256 KB |
+| Edits in one change on the console | 50 |
+| Plan previews on the console | 6 a minute per environment |
+| `infra check` previews | 10 a minute per repository |
+| Plan checks on one pull request | Up to 5 environments |
+| How often the board looks at what runs | Every 15 minutes, and on **Refresh** |
+| How often it compares for drift | At most once an hour per environment, and as soon as its file changes |
+| One apply’s lock on an environment | 15 minutes, renewed while it works |
+| Signals | Kept 7 days; their daily summaries 90 |
+| The audit trail | Kept two years |
+
+---
+
+Source: https://leavethepack.dev/docs/architect-environments/
+
+# Environments
+
+> What an environment is, the three ways to add one, how to build one from nothing or have an agent set it up, and short-lived environments, one per task.
+
+An **environment** is a named place a repository runs. It has a kind, a provider, a **target** (what it points at on the provider: a Worker’s name), and three switches: **freeze**, **production gates**, and **observe only** ([Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/)). Its name is also its file’s name: `staging` is `.github/breakaway-infra/staging.json`.
+
+A fresh install has none. A repository can have up to 50.
+
+## Kinds
+
+| Kind | What it’s for | By default |
+| --- | --- | --- |
+| **production** | What your people use | Production gates on: every plan waits for you, and its incidents push to your phone |
+| **staging** | Where changes go first | Plans wait for you under the default policy; its incidents wait quietly in the inbox |
+| **short-lived** | One task’s own, made for it and removed when it closes | Made and removed by plans that wait for you |
+
+## Add one
+
+There are three ways, and you pick by where the repository starts.
+
+1. **It’s on the deploy flow.** It already has two: **staging** and **production**, pointing at its pipeline’s Workers. The board made them when it read the pipeline, and its deploys, Promote, and Roll back show on them ([Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/)).
+2. **It runs something already.** On **Infrastructure**, press **Add an environment**: pick the repository, a name like `staging`, its kind, the provider, and its target, the Worker’s name. The board looks at what runs there right after, and every 15 minutes.
+3. **You’d rather describe it.** In the same dialog, **Have an agent do it** writes the agent’s prompt for you in three steps:
+   - **How**: **Describe what you need** in your own words (“a Worker with a D1 database and a queue for exports”), or **Let the agent work it out** from the repository’s wrangler config, bindings, and code.
+   - **Environment**: its name, kind, provider, and target, if it has one yet.
+   - **Prompt**: read it, change it if you like, and **Open New agent**. Nothing starts until you press **Start agent** there.
+
+   The agent writes the environment’s file, runs `infra check`, and opens a pull request. Its plan waits for you after you merge it.
+
+Adding, renaming, and removing an environment are yours: an agent’s request is refused. Kickoff’s **Run it** step can add staging and production for a new project too ([Patterns](https://leavethepack.dev/docs/architect-patterns/#a-new-project-from-kickoff)).
+
+## The target
+
+The target is where the board starts looking. It reads the target and everything the target reaches: the Workers it calls, and what they bind. Nothing else on the account is read or kept, so the map shows only what this environment runs.
+
+- **No target yet?** The board looks with the one Worker the environment’s merged file declares, and skips it while the file declares none or several.
+- **Approving a plan that gives an environment its target** always waits for you, whatever your policy lets through.
+- **A first apply that failed** leaves the target pointing at nothing. The console says so, with **Clear the target** to start over: nothing that runs changes, and the next change, or **Compare now** while the file still declares it, plans it again.
+
+## Build one from nothing
+
+An environment with nothing in it shows **Add resource** as its first step. You can build the whole thing from the board, without writing a file:
+
+1. **Add an environment** with no target.
+2. **Add resource**, then **Worker**: give it a name. A new Worker starts with a small module that answers `/health`, until your deploy puts its code on it.
+3. **Add resource** again for each thing it uses, a D1 database, a KV namespace, a bucket, or a queue, and pick the Worker under **Bind it to**, with the binding name your code will use. Each shows dashed on the map, marked **+ adds**.
+4. **Propose it**. The board opens the pull request with the environment’s first file, and the apply workflow too when the repository doesn’t have one yet and the App may write workflows.
+5. **Approve**. This plan gives the environment its target, so it always waits for you. Making a Worker needs **Workers Admin** on the environment’s write token, for this one apply: add it before you approve, and take it away after ([Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections/#each-environments-write-token)).
+6. **Deploy the code** into the new Worker, with the deploy flow or your own workflow. Its wrangler config names the same bindings ([Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/#keep-the-wrangler-config-and-the-file-in-agreement)).
+
+A Durable Object or a container is made by code. The console says what code must exist, and **Have an agent write it** starts an agent on it. Its plan applies only once that code is deployed.
+
+## What an environment’s page shows
+
+- **A status band**: health, freeze, the plan waiting, the budget used, drift, and who holds the lock while one apply runs.
+- **The map**: each resource with its health and estimated monthly cost, and what uses what. **List** shows the same as rows. A plan waiting marks the resources it changes.
+- **The live stream**: signals, plans, applies, deploys, and freezes, as they happen.
+- **Plans, incidents, drift, what nobody owns, recent deploys, cost, and the audit trail**, newest first.
+
+**Refresh** looks at what runs now, and **Last looked** says when the board last did, and what went wrong if anything did.
+
+## Short-lived environments
+
+A task can have its own environment: made from a template through a plan, and removed through a plan when the task closes. Use them when an agent’s change needs somewhere real to run before it reaches staging.
+
+1. **Write the template**, `.github/breakaway-infra/short-lived.json`. It’s a desired state with a `target`, where `{environment}` in the target and in every resource’s `id` and `name` becomes the environment’s name, so no two tasks share a resource:
+
+   ```json
+   {
+     "version": 1,
+     "provider": "cloudflare",
+     "target": "widgets-{environment}",
+     "resources": [
+       { "id": "worker:widgets-{environment}", "kind": "worker", "name": "widgets-{environment}" },
+       { "id": "kv:widgets-cache-{environment}", "kind": "kv", "name": "widgets-cache-{environment}" }
+     ]
+   }
+   ```
+
+2. **Give them a write token**: one GitHub environment, `short-lived`, for all of them, with only the write permissions the template needs. Then run `npx breakaway infra init --update` and merge it, so the apply workflow takes any environment name.
+3. **Ask for one.** An agent tags its own task `+environment`, or you press **Give it an environment** in the task’s **Environment** section. The board adds an environment named after the task’s work ID (`wgt-12`), owned by the task, and the plan that makes it, which waits for you. A policy rule for `"environmentKinds": ["short-lived"]` can let it through ([Policy](https://leavethepack.dev/docs/architect-policy/#letting-some-through)).
+4. **When the task closes**, anywhere (the board, the CLI, a merged pull request, Taskwarrior), the board makes the plan that removes everything in it. That plan is all deletes, so it always waits for you. Once it’s applied, the environment goes. One whose task stays open is offered for removal after 14 days.
+
+A repository has at most 3 short-lived environments at once. A request over that, or with no template or no connected provider, is refused with why, and looked at again in an hour. Each one’s estimated cost adds up on its task.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-desired-state/
+
+# Describe it as code
+
+> The files in .github/breakaway-infra/ that say what should exist, how to write the first one from what runs, how to check a change before its pull request, and golden paths for what you add often.
+
+What should exist in an environment is a file in its repository, read from the default branch. Every plan starts from it: the board compares the file with what runs, and the difference is the plan. Nobody has to write the first one by hand.
+
+## The folder
+
+```text
+.github/breakaway-infra/
+  staging.json          staging's desired state
+  production.json       production's
+  policy.json           which plans wait for you          (optional)
+  scaling.json          scaling rules, inside envelopes    (optional)
+  short-lived.json      the template for a task's own one  (optional)
+  templates/<name>/     your golden paths                  (optional)
+```
+
+Every file but the four reserved names, `policy.json`, `scaling.json`, `short-lived.json`, and `templates/`, is an environment’s, named like it. An envelope is never in a file: it lives on the board, so a pull request can’t widen it.
+
+## An environment’s file
+
+```json
+{
+  "version": 1,
+  "provider": "cloudflare",
+  "health": { "url": "https://staging.widgets.example/health" },
+  "resources": [
+    {
+      "id": "worker:widgets-api-staging",
+      "kind": "worker",
+      "name": "widgets-api-staging",
+      "attrs": {
+        "compatibilityDate": "2026-09-01",
+        "compatibilityFlags": ["nodejs_compat"],
+        "observability": true,
+        "bindings": [
+          { "name": "DB", "type": "d1", "resource": "d1:widgets-staging" },
+          { "name": "EXPORTS", "type": "queue", "queue_name": "widgets-exports-staging" }
+        ]
+      }
+    },
+    { "id": "d1:widgets-staging", "kind": "d1", "name": "widgets-staging" },
+    {
+      "id": "queue:widgets-exports-staging",
+      "kind": "queue",
+      "name": "widgets-exports-staging",
+      "attrs": { "deliveryDelay": 0, "deliveryPaused": false }
+    }
+  ]
+}
+```
+
+| Field | What it is |
+| --- | --- |
+| `version` | Always `1`. |
+| `provider` | The environment’s provider, `cloudflare`. Optional; when it’s there, it has to match the environment’s. |
+| `health` | Optional: your own health address ([below](#a-health-address)). |
+| `resources` | What should exist. Each has an `id` (the provider’s own ID, or a new one for something the plan will make), a `kind` ([What’s supported](https://leavethepack.dev/docs/architect-supported/#kinds-of-resource)), the `name` it has on the provider, and `attrs`, the settings you want Architect to manage. |
+
+A few rules make it safe to keep in a public repository and easy to review:
+
+- **Only what you want managed.** A setting the file leaves out isn’t compared, so it stays the deploy’s. A resource the file leaves out, though, is one nobody owns: the board flags it, and later asks you about removing it ([Drift, break-glass, and clean up](https://leavethepack.dev/docs/architect-drift/#nobody-owns)).
+- **Never a value.** A variable’s or secret’s value never goes in it. The board refuses a file with something that looks like one, and names the line: name the secret, never its value.
+- **A binding to something the plan still makes** names it by its `id` in the file, in `resource`, as `DB` does above. Once it runs, a binding names it the way Cloudflare does: a database or namespace by its ID, a bucket, queue, or Worker by its name.
+- **Read once per new commit** on the default branch. A file that doesn’t check shows its error on the environment, and the board keeps planning from the last good copy.
+- **An observe-only environment takes none.** A file for one is refused.
+
+## Write the first one from what runs
+
+Start from what runs, never from a blank file. The board drafts it from the environment’s inventory: names, kinds, and the settings it manages, never a secret’s value. Its notes say what it left out and why.
+
+- **On the board.** An environment with no file shows **Describe it as code**: the draft, read only, with **Copy**. **Propose it**, on the change beside the map, has the board open the pull request with the draft as the file, with your edits on top if you made any. Or **Have an agent open the pull request**: the board adds a task, `Describe staging as code`, and starts the repository’s agent on it. One is open at a time per environment.
+- **In a checkout.** `npx breakaway infra adopt staging` writes the draft to `.github/breakaway-infra/staging.json`, then checks it and says what to do next: commit it and open a pull request. It never overwrites a file that’s there unless you pass `--force`; `--dry-run` prints the draft and writes nothing.
+
+The draft says what already runs, so its plan should change nothing. Its pull request’s plan check shows that before you merge. A change the board proposed that plans nothing shows **Merge** instead of Approve: “Merge #12? Nothing changes in staging: merging records it as code.”
+
+## Check a change before its pull request
+
+```sh
+npx breakaway infra check            # every file in .github/breakaway-infra/
+npx breakaway infra check staging    # one environment
+```
+
+It checks each environment’s file, `policy.json`, and `scaling.json` with the board’s own checks. A file that doesn’t check is named with its line and field, like `.github/breakaway-infra/staging.json:4: resources[0].kind: …`, nothing goes to the board, and it exits 1.
+
+For each file that checks, it asks the board for the plan it would make from what runs now: what changes, the cost change, what else it touches, whether it can be undone, and the policy’s answer under the checkout’s `policy.json`. The board keeps none of it: a preview has no ID and can’t be approved, so agents may run it. A repository gets 10 previews a minute.
+
+## Golden paths
+
+A golden path is your own template for something you add often: a queue, a database, a new service, the way you like it. `infra add` writes the change it makes into the checkout, the file and the code together, so an agent opens an ordinary pull request.
+
+```sh
+npx breakaway infra add                                   # list the templates
+npx breakaway infra add queue staging name=jobs worker=widgets-api-staging
+npx breakaway infra check staging
+```
+
+breakaway ships one example, **`queue`**: a Cloudflare queue, bound to a Worker the environment’s file already has, and a small module that sends to it. Your own go in `.github/breakaway-infra/templates/<name>/template.json`, and one with an example’s name replaces it. Here’s the `queue` example, a little shortened:
+
+```json
+{
+  "version": 1,
+  "title": "A queue a Worker sends to",
+  "description": "A Cloudflare queue, bound to a Worker already in the environment's file, and a small module that sends to it.",
+  "provider": "cloudflare",
+  "inputs": {
+    "name": { "help": "the queue's name, like jobs", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "worker": { "help": "the Worker that sends to it, one the environment's file already has" },
+    "binding": { "help": "what the Worker calls it, like JOBS", "default": "{{name|upper}}" }
+  },
+  "resources": [
+    { "id": "queue:{{name}}", "kind": "queue", "name": "{{name}}", "attrs": { "deliveryDelay": 0 } }
+  ],
+  "extend": [
+    {
+      "kind": "worker",
+      "name": "{{worker}}",
+      "list": "bindings",
+      "add": { "name": "{{binding}}", "type": "queue", "queue_name": "{{name}}" }
+    }
+  ],
+  "files": [{ "from": "send.js.tmpl", "to": "src/queues/{{name}}.js" }]
+}
+```
+
+- **`inputs`**: what it asks for, each with `help`, and optionally a `pattern` and a `default`. `{{input}}` anywhere is the input’s value, and `{{input|upper}}` is it in capitals with `-` as `_`. Values are names: letters, digits, `-`, and `_`.
+- **`resources`**: what it adds to the environment’s file.
+- **`extend`**: what it adds to a list setting of a resource the file already has, like a Worker’s `bindings`.
+- **`files`**: code from the template’s folder, written at a path in the checkout.
+
+It refuses, and changes nothing, when the file already has the resource, when the resource to extend isn’t there or doesn’t list that setting yet (adding to it would drop the rest), when a code file is already there, or when a path leaves the checkout. It never plans or applies. Your templates show on the console’s **Add resource** too, under the kinds.
+
+## A health address
+
+An environment’s file may name your own health address:
+
+```json
+{ "version": 1, "health": { "url": "https://staging.widgets.example/health" }, "resources": [] }
+```
+
+It’s `https`, holds no credentials, and is your own service. The board sends it one `GET` each time it looks, every 15 minutes, as a check of the environment’s front door: its routes and custom domains take their health from the answer. It’s the one address Architect calls that isn’t a provider’s.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-changes/
+
+# Change an environment
+
+> Two ways to change what runs, both ending in a plan you approve. From the console, where you edit the map, watch the plan form, and the board opens the pull request; or by pull request, from an agent or from you.
+
+Every change to an environment is a pull request that changes its file, and every pull request ends in a plan you approve. There are two ways to get there:
+
+| | From the console | By pull request |
+| --- | --- | --- |
+| Who | You, on an environment’s page | An agent, or you, in a checkout |
+| What you edit | The map: settings, new resources, removals | The file in `.github/breakaway-infra/`, and code with it |
+| The pull request | The board opens it, on its own branch | Whoever made the change opens it |
+| The plan | Forms beside the map as you edit, and shows as a check | Shows as a check on the pull request |
+| Approve | **Approve** on the change’s card merges it and applies the plan | You merge it; then its plan waits for you, and **Approve** applies it |
+
+Use the console for what you can see and set: a setting, a new queue, a removal. Use a pull request for what needs code with it, or many files, or an agent’s judgment.
+
+## From the console
+
+Open an environment’s page. Its map is where you change it.
+
+1. **Change it.**
+   - **Change**, on a resource’s detail, turns the settings the console may change into fields ([What’s supported](https://leavethepack.dev/docs/architect-supported/#kinds-of-resource)). Variables and secrets show by name only: “Set with the Worker’s deploy, never here.”
+   - **Add resource**, above the map, lists every kind Cloudflare can add, a line each on what it’s for, then your golden paths and breakaway’s `queue`. A kind asks for its name, checked as you type, its settings with Cloudflare’s defaults filled in, and **Bind it to**: the Worker whose code uses it, with a binding name suggested from its name. **Add to the change**, and it shows dashed on the map, marked **+ adds**.
+   - **Remove**, on a resource’s detail, takes it out.
+2. **Watch the plan form.** Your change shows beside the map at once, an edit a line, and each resource you edited is marked “your change”. About a second and a half after your last edit, the board previews the plan: what changes, what it costs, what else it touches, what can’t be undone, and the policy’s answer. Nothing is written yet, and the change is kept only in this browser. **Discard** drops it.
+3. **Propose the change.** One press, and no confirm, since nothing that runs changes. The board checks the plan once more, commits the file on its own branch, `breakaway/infra/<environment>-<n>`, and opens the pull request, “Change staging: …”. It closes no task.
+4. **Approve.** The change’s card reads **Checking** while the plan check runs, then **Waiting for you**. **Approve** asks: “Approve this plan for staging? The board merges its pull request, applies the plan, and rolls back if the health check fails.” When merging also deploys, it says so.
+5. **Follow it.** The card reads **Merging**, then the plan’s own status: **Approved**, **Applying**, then **Applied** once the health check passes ([Plans and approvals](https://leavethepack.dev/docs/architect-plans/#after-you-approve)).
+
+**Reject** asks “Reject this change? The board closes its pull request. Nothing changes.”
+
+### What the board checks before it merges
+
+Approve merges the pull request as your press, the way **Merge** does, and only when:
+
+- the pull request is still at the head you saw, and still the board’s;
+- the environment isn’t frozen or observe only;
+- the plan at that head is the one you saw, and the policy doesn’t refuse it.
+
+Then it merges with that head commit, so a push in between refuses. While checks run, it turns on auto-merge, or merges at the first sync after they pass. After the merge, the board plans from the default branch and applies only when that plan is the one you approved; otherwise it waits for you with a push. An approval waits at most 24 hours for its merge, then asks again.
+
+### One change per environment
+
+Every edit joins the environment’s one change, up to 50 edits. Edits are kept as steps (set a setting, add from a template, remove), so when the file moves on the default branch, the board replays them on the new one and drops, with a line, any whose resource is gone. **Propose again** replays your edits on the current head, and replaces the board’s commit on its branch.
+
+If someone else pushes to the board’s branch, the change is **taken over**: it’s an ordinary pull request from then on, Approve goes away, and its plan waits for you after you merge it.
+
+### What the console can’t change
+
+Code, the policy, `scaling.json`, your templates, and any setting Cloudflare doesn’t let the console change stay a pull request. **Have an agent do it** starts a general agent with what you were changing, for you to read and edit first. A Durable Object or a container needs code first: **Have an agent write it** starts an agent on that code.
+
+## By pull request
+
+An agent changes infrastructure the way it changes code. In a checkout:
+
+```sh
+npx breakaway infra adopt staging                 # the first file, from what runs
+npx breakaway infra add queue staging name=jobs worker=widgets-api-staging
+npx breakaway infra check staging                 # the plan it would make
+git switch -c wgt-12-jobs-queue && git add -A && git commit -m "WGT-12: Add the jobs queue"
+```
+
+Then an ordinary pull request. On it:
+
+- **The plan check.** Each sync, a pull request that changes an environment’s file or `policy.json` gets one check, **breakaway: infrastructure plan**, on its head commit, and the board’s pull request page shows the same under **Infrastructure plan**: for each environment it changes, up to 5, the plan it would make and the policy’s answer. It fails when a file doesn’t check, names an observe-only environment, or the policy refuses the plan. It’s neutral when something couldn’t be planned. It passes otherwise, even when the plan will wait for you, which is the default.
+- **Merging applies nothing.** The check is a preview. Once it merges, the board compares the environment with the new file, and that plan waits for you with one push: “A plan waits for you in staging.” Open it, read it, press **Approve**.
+
+This is how every agent’s change reaches you, and every incident’s fix.
+
+## When it doesn’t merge
+
+| What you see | What to do |
+| --- | --- |
+| **Can’t merge**, with why | Fix what it names (checks failing, a conflict), then **Propose again** |
+| GitHub refuses the merge for a required review | Add the board’s GitHub App to the ruleset’s bypass list: the repository’s **Settings**, **Rules**, **Rulesets**, the rule, **Bypass list**. The App merges only on your press. Until then, review the pull request on GitHub |
+| **Staging is frozen: unfreeze it to approve.** | **Unfreeze** staging, or leave it frozen until you’re ready. You can still edit and propose |
+| “What runs changed since you looked. Here’s the plan now.” | Read the new plan before you approve it |
+| “The plan changed between your approval and the merge.” | It waits for you again, with a push. Read it and approve it, or reject it |
+| A note that applying needs `.github/workflows/breakaway-infra.yml` | Give the App **Workflows: write** and **Propose again**, or run `npx breakaway infra init` in the repository and merge it ([Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections/#the-apply-workflow)) |
+
+---
+
+Source: https://leavethepack.dev/docs/architect-plans/
+
+# Plans and approvals
+
+> What a plan says, where plans come from, their statuses, approving and rejecting one, and what happens after you approve: the lock, the apply workflow, the health check, and the rollback.
+
+A **plan** is the exact change the board would make to one environment. The board works out every plan itself, from the environment’s file against what runs, never from what a request sends it. A plan is what you approve: never a pull request, and never a guess.
+
+## What a plan says
+
+```text
+plan-2 · staging · from #41 · waiting for you
+
+What changes                         2 changes
+  widgets-exports-staging   queue    adds
+  widgets-api-staging       worker   binds EXPORTS to widgets-exports-staging
+
+What it costs        6.40 more a month, estimated
+What else it touches 1 more resource: widgets-api-staging's routes
+Can it be undone     Yes
+
+The policy           Needs you: the default asks you about every plan.
+```
+
+- **What changes**, setting by setting, for each resource: adds, changes, or removes.
+- **What it costs**: the change to the environment’s estimated monthly cost, in your currency, with the rate it was checked at.
+- **What else it touches**: what uses the resources it changes, from what the board knows runs there.
+- **Can it be undone**: and why not, when it can’t. Deleting a database, a namespace, a queue, or a Worker can’t be undone.
+- **The policy**: which policy decided, its answer (refused, needs you, or allowed), and each rule’s reason in words, a line each: “Production needs you.” “Can’t be undone: it deletes the `widgets` database.”
+
+## Where plans come from
+
+| Source | When | What happens |
+| --- | --- | --- |
+| **Pull request** | A pull request that changed the environment’s file merged | Waits for you, with a push, unless the policy lets it through |
+| **Drift** | What runs changed by hand | A **draft**, with no push ([Drift, break-glass, and clean up](https://leavethepack.dev/docs/architect-drift/)) |
+| **Envelope** | A scaling rule or a runbook asked for a scale or a restart | Applies with no press inside the envelope; waits for you outside it |
+| **Clean up** | Something nobody owns, a week after the board flagged it | Waits for you: it’s a delete |
+| **Short-lived** | A task asked for its own environment, or closed | Waits for you, unless the policy lets a short-lived one through; a removal always waits |
+| **Deploy** | A Promote or Roll back on the deploy flow finished | Recorded as already applied: the workflow did it |
+
+## Statuses
+
+| Status | What it means |
+| --- | --- |
+| **Draft** | The board’s suggestion. It sends no push. Approving it from its page puts it in front of you and approves it in one step |
+| **Waiting for you** | It needs your answer |
+| **Approved** | You approved it, or the policy or an envelope did, and it’s queued to apply |
+| **Rejected** | Nothing changed |
+| **Applying** | The repository’s apply workflow holds the write token and is applying it |
+| **Applied** | It applied, and the health check passed. **Applied, unverified** means nothing had called what changed yet, so its health couldn’t be read |
+| **Failed** | It didn’t apply, or applied partway and couldn’t be undone. **Failed: nothing applied** means the run stopped before it had the plan |
+| **Rolled back** | It applied, the health check failed, and the board applied the reverse |
+
+## Approve or reject
+
+A plan that waits for you sends one push, which names the environment and links to the plan’s page. Open it on your phone or at your desk, read it, and press **Approve** or **Reject**. The same buttons are on the environment’s page and, for a change from the console, on the change’s card.
+
+- **Approve** asks first and says what follows: “Approve this plan for production? The board applies it next and rolls back if the health check fails.”
+- **Reject** changes nothing: “Reject this plan? Nothing changes.” You can still reject a plan you approved, until it starts applying.
+- **Only you can press them**, from the signed-in board, like **Merge**. The token agents and the CLI hold can’t, and a request signed with an agent’s name is refused.
+
+A plan the policy let through, or an envelope, is approved with that rule or envelope recorded on it, so you can always see why it didn’t ask you.
+
+## After you approve
+
+Approving queues the plan. A moment later the board starts it, and you can follow each step on the plan’s page and the environment’s stream:
+
+1. **It checks again**: the plan is still approved, still the changes you saw (its digest), and not out of date; the environment isn’t frozen or observe only; the repository has the apply workflow; and its GitHub environment lets only the default branch deploy.
+2. **It takes the environment’s lock**, so one apply runs at a time per environment.
+3. **It starts the apply workflow** on the default branch, through the GitHub App, for this one plan.
+4. **The run asks the board for the plan**, with its GitHub OIDC token. The board answers only the run it started, on the default branch, for a plan approved for that environment, and only once. Anything else stops the run before it reads the write token.
+5. **The run applies it** with the environment’s write token, and reports each step with the plan’s digest, so a plan that changed since you approved it is refused.
+6. **The board checks health** of what changed, through the provider. Healthy: **Applied**. A resource down or degraded, health that can’t be read, or an apply that failed partway: the board starts the workflow again for the reverse of what applied, under the same lock, and the plan ends **Rolled back**.
+
+A change that can’t be undone is never rolled back by itself: the plan ends **Failed** and says why. Every end but a clean apply is a signal, and a failure in production opens an incident and pushes.
+
+## Start the run again
+
+A run can stop before it ever asked for the plan: its setup failed, or it was cancelled. The runner only gets a plan from the board, so it changed nothing. A few minutes after a start, if the run hasn’t asked, the board reads the workflow’s runs on GitHub and links the run on the plan; the Plan tile reads “Waiting for the run to check in, 4 min”. When GitHub says the run ended, the plan is **Failed: nothing applied**, with GitHub’s conclusion and a link, and the lock is released.
+
+Fix what GitHub’s run says, then press **Start the run again** on the plan. It checks everything a start checks, puts the plan back to approved, and starts a new run under a new lock. It’s only offered when nothing applied, for certain.
+
+**GitHub’s Re-run never applies a plan.** A plan runs once per start, so a re-run is refused, and its log says to press **Start the run again** on the board.
+
+## The lock
+
+One apply runs at a time per environment. The lock lasts 15 minutes, and the board renews it while the apply works; a lock nobody renews frees itself within the hour. While one is held, the environment’s page says which plan holds it.
+
+A plan that can’t start yet stays **Approved**, and says why: another plan holds the lock, the repository has no apply workflow, its GitHub environment lets another branch deploy, or GitHub refused. Fix what it says, and it starts on its own. **Release the lock**, under the environment’s status band, frees it by force: it asks first, since the next approved plan can start at once.
+
+## The audit trail
+
+Every write Architect makes is appended once and never edited: a plan, its approval or rejection, an apply, a rollback, an envelope set or acting, a lock released, a freeze, break-glass, an environment added or pointed somewhere else, and what nobody owns, flagged or removed. Each entry names the environment, who did it (you, the board, an envelope, a rule, or an agent’s task), and what, redacted. An environment’s page shows its trail, newest first. Entries are kept two years.
+
+## From the terminal
+
+```sh
+npx breakaway infra plans --environment staging --state waiting
+npx breakaway infra plan plan-2
+```
+
+Both only read, for you and your agents. Approving stays on the board.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-policy/
+
+# Policy
+
+> The rules that decide which plans wait for you, per repository and per environment. The default, the guards no file can turn off, the limits, allow rules, and changing it on the board, where loosening is never one press.
+
+The **policy** decides which plans wait for you. It’s a file beside the environments’ files, `.github/breakaway-infra/policy.json` on the default branch, changed by pull request like the rest, and checked each time a plan is made. A repository’s settings page shows the policy in force, in words, under **Infrastructure**.
+
+## The default: every plan waits for you
+
+A repository with no `policy.json` gets the default, and so does one whose file doesn’t check, until it’s fixed: **every plan, in every environment, waits for you**. You loosen it on purpose, a rule at a time, or you set an [envelope](https://leavethepack.dev/docs/architect-envelopes/) for scaling and restarts. There is no other way a plan goes through without you.
+
+## The guards
+
+The guards come first, in this order, and no file can turn one off:
+
+| Guard | Catches | Then |
+| --- | --- | --- |
+| **Frozen** | Any plan in a frozen environment | Refused, until you unfreeze it |
+| **Production** | Any plan in an environment with production gates | Waits for you |
+| **Destructive** | A delete, or a change that can’t be undone | Waits for you |
+| **Access** | A change to what decides who or what can reach something: a route or a custom domain, plus the kinds and settings `access` names | Waits for you |
+| **Cost** | A change that adds more than the cost limit to the environment’s monthly cost, or whose cost isn’t known | Waits for you |
+| **Budget** | A plan that takes the environment over its budget | Waits for you |
+
+A plan no guard caught still waits for you, unless an `allow` rule covers every one of its changes.
+
+## The file
+
+```json
+{
+  "version": 1,
+  "costLimit": 5,
+  "budget": 20,
+  "access": { "kinds": ["route"], "settings": ["public"] },
+  "allow": [
+    { "name": "small staging changes", "environments": ["staging"], "changes": ["update", "scale"], "maxChanges": 3 },
+    { "name": "task environments", "environmentKinds": ["short-lived"] }
+  ],
+  "environments": {
+    "production": { "budget": 200, "allow": [] }
+  }
+}
+```
+
+Every key but `version` is optional.
+
+- **`costLimit`**: the most one plan may add to an environment’s monthly cost before it waits for you. 5 a month by default, in your board’s currency ([Cost and budgets](https://leavethepack.dev/docs/architect-cost/)).
+- **`budget`**: what one environment may cost a month. 20 by default. Near it and over it, the board records a signal.
+- **`access`**: more kinds and settings that decide who can reach something. They add to Cloudflare’s own, never take one away.
+- **`allow`**: the rules that let some plans through ([below](#letting-some-through)).
+- **`environments`**: one environment’s own rules, by name ([below](#two-levels)).
+
+## Letting some through
+
+An `allow` rule lets a plan through, recorded with the rule’s name, when it covers every one of the plan’s changes and no guard caught the plan:
+
+- **`name`**: what the plan and the audit trail call it.
+- **`environments`** (names) or **`environmentKinds`** (`production`, `staging`, `short-lived`): where it applies. Inside one environment’s own rules, leave them out.
+- **`changes`**: the kinds of change it covers: `create`, `update`, `delete`, `scale`, `restart`. A delete still waits, since the destructive guard comes first.
+- **`maxChanges`**: optional, the most changes one plan may have.
+
+## Two levels
+
+The top of the file is the repository’s rules. `environments` overrides them for one environment, by name:
+
+- Its `costLimit` and `budget` replace the repository’s.
+- Its `access` adds kinds and settings; it can’t take one away.
+- Its own `allow`, when it has one, replaces the repository’s rules there. `"production": { "allow": [] }` makes every plan in production wait for you, whatever the repository allows.
+
+## Change it on the board
+
+**Policy**, on Infrastructure and on each environment’s console, opens the Policy view: each environment’s rules in words, where each comes from (always, the repository’s, or the environment’s own), its envelope, and the recent plans with the rules that applied.
+
+1. **Change the policy** edits the repository’s rules or one environment’s. As you edit, the board says what the change does, a line each, marked **Loosens** or **Tightens**.
+2. **Propose the change** writes `policy.json` on the board’s own branch and opens the pull request. Its plan check says the same lines.
+3. **Approve.** Tightening is one press: Approve merges it.
+
+**Loosening is never one press.** A change that lets more through without you (a limit raised, a rule added or widened, an access kind or setting dropped, or an environment’s own rules that let through more than the repository’s) is marked **Loosens your policy**. Approve names exactly what will no longer wait for you, and only **Loosen it**, a second press, merges it.
+
+**Never with a plan it would let through.** While a plan waits for you that the new policy would let through, Approve refuses and names the plan: answer that plan on its own first, so a policy change never approves a plan behind your back.
+
+**It applies nothing.** Merging a policy change approves and changes no plan. A plan made before keeps its answer; the plans made after are checked against the new policy. **Reject** closes the pull request, and the policy stays as it was.
+
+An agent can change `policy.json` in a pull request too: its plan check shows what it loosens, and merging it is yours.
+
+## Recipes
+
+| You want | Write |
+| --- | --- |
+| Small setting changes on staging to go through | `{ "name": "staging settings", "environments": ["staging"], "changes": ["update"], "maxChanges": 3 }` |
+| Task environments to be made without asking | `{ "name": "task environments", "environmentKinds": ["short-lived"], "changes": ["create"] }` |
+| Production to always ask, whatever the repository allows | `"environments": { "production": { "allow": [] } }` |
+| A tighter cost limit on production | `"environments": { "production": { "costLimit": 1 } }` |
+| Scaling to go through within bounds | Not a rule: an [envelope](https://leavethepack.dev/docs/architect-envelopes/), set on the board, so a pull request can’t widen it |
+
+---
+
+Source: https://leavethepack.dev/docs/architect-envelopes/
+
+# Envelopes and scaling rules
+
+> Bounds you approve once on one environment, so the board scales and restarts inside them without asking you again, and the scaling rules in your repository that ask it to.
+
+An **envelope** is bounds you approve once on one environment, production included: “2 to 10 instances”, “up to 60 a month”, “3 restarts a day”. Inside them, the board scales and restarts without asking you again, and tells you after. Anything outside them is a plan that waits for you, with its push.
+
+Envelopes start empty. Until you set one, every scale and restart waits for you.
+
+## Set one
+
+On the repository’s settings page, under **Infrastructure**, each environment shows its envelope or “No envelope: every scale and restart waits for you.” Press **Add an envelope**, or **Change** on one you have:
+
+- **Scale bounds**: a minimum and a maximum, for one resource by name or every resource of a kind. Only what Cloudflare can scale is offered: a container’s most instances, and a queue consumer’s concurrency ([What’s supported](https://leavethepack.dev/docs/architect-supported/#scale-and-restart)).
+- **A cost bound**, optional: the most the environment may cost a month after a scale, in your currency. A scale that would go past it waits for you.
+- **A restart cap**: how many restarts in a window, 3 a day by default. Once they’re used, the next restart waits for you, with a push. 0 asks you about every restart.
+
+**Set envelope** asks first. **Revoke** puts every scale and restart back in front of you. Each is an `envelope` entry in the audit trail.
+
+An envelope lives on the board, one per environment, never in the repository, so a pull request can’t widen it. Setting, changing, and revoking one is yours alone. An observe-only environment has none.
+
+## Who acts inside it
+
+Nothing scales just because an envelope exists. Two things can ask:
+
+- **A scaling rule**, in your repository ([below](#scaling-rules)), when a signal matches it.
+- **A runbook’s run**, when its routine’s description says to, with `npx breakaway infra act <environment> <resource> scale <n>` or `restart` and the run’s own key ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#runbooks)).
+
+Either way the board builds the plan itself and decides:
+
+| The ask | What happens |
+| --- | --- |
+| Inside the bounds, the cost bound, and the restart cap | Approved by the envelope and applied with no press, through the same apply workflow. A quiet note in the inbox: “Scaled widgets-api to 6 instances, inside its envelope.” |
+| Outside the bounds, past the cost bound, or the restart cap used up | A plan that waits for you, with a push |
+| A frozen or observe-only environment, or a change the resource can’t make | Refused |
+
+## Scaling rules
+
+Scaling rules are in `.github/breakaway-infra/scaling.json` on the default branch, checked by `infra check`. Each rule listens to the environment’s signals and turns a matching one into one ask through the envelope:
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "render backlog",
+      "environments": ["production"],
+      "resourceKinds": ["container"],
+      "kinds": ["health"],
+      "level": "warning",
+      "act": "scale",
+      "step": 2
+    },
+    {
+      "name": "render down",
+      "environments": ["production"],
+      "resource": "widgets-render",
+      "kinds": ["health"],
+      "level": "critical",
+      "act": "restart"
+    }
+  ]
+}
+```
+
+- **What it hears**: `environments` (every one when left out); one resource by name (`resource`) or every resource of some kinds (`resourceKinds`); the signal `kinds`, `health` or `alert`, never cost, so a budget never scales anything up; the lowest `level` that counts (`critical` when left out); and optionally a value `above` or `below`.
+- **What it asks**, of the resource the signal is about: `"act": "scale"` with `to` (a whole number) or `step` (up or down by a whole number, from what runs now), or `"act": "restart"`.
+
+The envelope, its restart cap, a freeze, and observe only decide, never the rule. The same rule and signal ask at most once a day, and only the signal’s fields and value are read: its text never reaches the ask. A file that doesn’t check asks for nothing, and the board shows its line and field. Each ask, or its refusal, shows on the repository’s scaling rules, and its audit entry names the rule.
+
+## Hear about it
+
+- A scale or restart inside the envelope is a quiet note in the inbox, never a push.
+- A restart the cap turned away is a plan that waits for you, with a push, and the infrastructure event `envelope.used_up`, which can start a routine ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#infrastructure-events)).
+- **Freeze** stops envelopes too, until you unfreeze ([Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/)).
+
+---
+
+Source: https://leavethepack.dev/docs/architect-signals/
+
+# Signals, incidents, and runbooks
+
+> What the board hears about an environment, how a signal becomes an incident on the board, how an agent works one, and runbooks and infrastructure events that start routines by themselves.
+
+When something breaks, it’s a task. A **signal** is one thing the board heard about an environment; one that crosses a rule opens an **incident**, a task in the repository that owns what broke. An agent diagnoses it and proposes the fix by pull request, and approving the fix is still yours.
+
+## Signals
+
+| Source | What it hears | When |
+| --- | --- | --- |
+| **Health** | A resource degraded, down, or healthy again | Each time the board looks, every 15 minutes |
+| **The platform’s alerts** | Cloudflare’s notifications, like a Worker’s error rate | When Cloudflare sends one to the board |
+| **Cost** | An environment’s month near (80%) or over its budget | The first time it crosses, each month |
+| **The deploy flow** | A deploy’s failed health check, or a rollback | When the workflow reports it |
+| **The apply workflow** | An apply that failed, rolled back, or couldn’t be verified | At the end of a run |
+
+Each signal has an environment, a resource, a level (**info**, **warning**, or **critical**), a value, a time, and a short text, redacted before it’s stored. They’re kept 7 days, and their daily summaries 90. A signal sends no push by itself.
+
+Read them on an environment’s live stream, or from the terminal:
+
+```sh
+npx breakaway infra signals --environment production --level warning
+npx breakaway infra signals --days 7     # the daily summaries
+```
+
+### Cloudflare’s alerts
+
+Cloudflare sends its alerts to a routine’s webhook trigger, which also feeds the signal stream:
+
+1. Make a routine for them, and **Add a trigger** on it; the board shows its secret once.
+2. In Cloudflare, under **Notifications**, add a webhook destination: the URL `https://<your board>/api/routines/<routine>/fire` and the secret.
+3. Add the notifications you want to that destination.
+
+The Cloudflare row on **Connections** lists which alert types the account has, and whether they reach the board. Only the alert’s name, its time, and the Worker it names are kept ([Routines](https://leavethepack.dev/docs/routines/#ways-to-start-one)).
+
+## Incidents
+
+A **critical** signal opens an incident: an ordinary task tagged `+incident`, in the repository that owns the environment, with the signal and what the board knows about the resource in its description. Its title is the signal’s kind, level, environment, and resource; the signal’s own words go only in its description and comments, quoted and marked as untrusted, since they come from the system being watched.
+
+- **A production incident pushes**, “WGT-41: incident in production”, and so does one in any environment with production gates. Any other waits quietly in the inbox. Incidents lead the inbox, production’s first.
+- **A repeat** of the same signal (the same environment, resource, and kind) comments on the open incident, counted rather than commented within 15 minutes, so a noisy signal can’t flood it.
+- **Going over a budget** is critical, so it opens one that says it’s a budget. Going near it is a warning, and opens none.
+
+### Its steps
+
+Each incident shows its steps on the task, from the plan linked to it and the signals since:
+
+| Step | Whose | What |
+| --- | --- | --- |
+| **Diagnose** | An agent | Reads, read only, and comments what broke, since when, what it touches, and the likely cause |
+| **Propose** | An agent | A pull request with the fix, ending `Part of <the incident>.` |
+| **Approve** | You | The plan from that pull request, after you merge it |
+| **Apply** | The board | Through the apply workflow, with the health check |
+| **Verify** | The board | The signals show health back |
+| **Write-up** | An agent | What happened, the cause, the fix, follow-up tasks, then a ping so you close it |
+
+**An incident never starts an agent by itself.** Start one on it from the board, the way you start any agent, or turn on a runbook for its signal. Either way the agent follows “Working an incident” in its prompt’s core: read wide, comment, propose by pull request, and never apply.
+
+```sh
+npx breakaway infra incidents             # open incidents, with the step each is on
+npx breakaway infra incidents --json      # with their linked plans
+```
+
+## Runbooks
+
+A **runbook** is a routine with a signal trigger: the only way an agent starts by itself on an incident. On the routine, in the Routines view, its **Signal trigger** says:
+
+- which signals start it: environments, resource kinds, signal kinds, and the lowest level;
+- whether it’s on;
+- whether a match starts the agent, or makes a run that waits for your **Start**.
+
+Only you set one, from the signed-in board, and a new one is off and waits. A run gets the signal’s allowlisted fields (its ID, source, environment, resource and its kind, signal kind, level, value, time, and redacted text) and nothing else. A repeat within a day starts nothing, and the routine’s caps apply.
+
+The run works the signal’s incident read only, and comments on it. When its routine’s description says to, it may ask for one scale or restart, inside your envelope:
+
+```sh
+BREAKAWAY_ACT_KEY=<the run's key> npx breakaway infra act production widgets-render restart
+```
+
+Each start of a runbook’s run gets its own **act key**, handed only to that run, good only while it holds the run, for 12 hours at most. Inside the envelope the board applies it with no press; outside it, a plan waits for you ([Envelopes and scaling rules](https://leavethepack.dev/docs/architect-envelopes/)). No other agent can ask.
+
+### A runbook’s prompt
+
+Keep it to what a first look needs. For example:
+
+```text
+Production's render container is unhealthy. Work its open incident read only:
+read infra incidents, infra show production, and infra signals for the
+resource, and comment what you find on the incident. If the container is
+down and was healthy within the last hour, restart it once with infra act.
+If that doesn't bring it back, or anything else is wrong, propose the fix by
+pull request ending "Part of <the incident>." Never apply anything else.
+```
+
+## Infrastructure events
+
+A routine can also start on what Architect does, in its own repository’s environments. None is on until you add it, in the routine’s form or from the terminal:
+
+```sh
+npx breakaway routines modify weekly-cleanup --infra-events plan.failed,drift.found:environment=staging,budget.crossed:percent=80
+```
+
+| Event | When |
+| --- | --- |
+| `plan.waiting`, `plan.applied`, `plan.failed`, `plan.rolled_back` | A plan reached that status |
+| `drift.found` | The board found drift |
+| `change.proposed`, `change.merged` | A change from the console was proposed, or merged |
+| `deploy.done`, `promote.done` | A Deploy or a Promote landed |
+| `environment.created`, `environment.removed` | An environment came or went, short-lived ones too |
+| `inventory.stale` | The board couldn’t look at what runs |
+| `budget.crossed` | A month’s cost went past `percent=` of its budget (100 unless you say) |
+| `envelope.used_up` | A restart the envelope’s cap turned away |
+| `incident.opened` | An incident opened |
+
+Each takes filters joined by `:`: `environment=`, `kind=` (`production`, `staging`, `short-lived`), and `resource=` (resource kinds), several values joined by `+`. The run gets the event’s names, IDs, states, and counts, never a setting’s value or a token, and is read only. Each thing that happens starts a routine once a day at most, and an event the routine’s own run caused never starts it again.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-cost/
+
+# Cost and budgets
+
+> What each resource is estimated to cost a month, added up by environment, repository, and task, in the currency you pick, with a budget per environment and a cost limit per plan.
+
+Every resource on the map shows an **estimated monthly cost**, and the board adds them up by environment, by repository, and by the task that owns a short-lived environment. Infrastructure shows each environment’s month and its trend; an environment’s page shows each resource’s.
+
+## How it estimates
+
+- **From the last week of use, scaled to a month**, at Cloudflare’s prices: requests and CPU time for Workers, requests, duration, and storage for Durable Objects, rows and storage for D1, operations and storage for KV and R2, operations for queues, and instance time for containers.
+- **Before what your plan includes.** Every amount is marked as an estimate. Cloudflare’s plan includes some use, so your bill can be lower.
+- **Unknown is never zero.** A resource with no estimate counts as unknown. A total with unknowns can say an environment is near or over its budget, but never that it’s inside it.
+
+## In your currency
+
+Estimates are kept in the provider’s currency, US dollars on Cloudflare, and shown in the one you set for the whole board, in **Settings**, under **Currency**, at a rate you set and change when you like: “At 1 USD = 0.92 EUR, set 3 Oct.”
+
+**Fetch today’s rate** fills the field from Frankfurter’s public rates, only when you press it, and sends only the currency pair. You still save it. Until you set a currency, amounts are in US dollars.
+
+A plan keeps the rate it was checked at, since the policy compared its cost then. A cost no rate covers is unknown, so the cost and budget guards ask you.
+
+## Budgets and the cost limit
+
+Both are in the [policy](https://leavethepack.dev/docs/architect-policy/), in your currency:
+
+| | What it is | Default | What happens |
+| --- | --- | --- | --- |
+| **Cost limit** (`costLimit`) | The most one plan may add to an environment’s monthly cost | 5 a month | A plan over it, or whose cost isn’t known, waits for you |
+| **Budget** (`budget`) | What one environment may cost a month | 20 a month | A plan that takes the environment over it waits for you; near it and over it, a signal |
+
+Set one per environment under `environments`, like `"production": { "budget": 200 }`.
+
+The first time a month goes near (80%) or over an environment’s budget, the board records one cost signal: a warning when near, critical when over, which opens an incident that says it’s a budget. Coming back inside sends nothing, and a new month starts again. A routine can start on `budget.crossed` at any percent you pick ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#infrastructure-events)).
+
+An [envelope](https://leavethepack.dev/docs/architect-envelopes/) can have a cost bound too: a scale that would take the environment past it waits for you.
+
+## From the terminal
+
+```sh
+npx breakaway infra show production    # each resource with its estimated cost
+npx breakaway infra plan plan-2        # what one plan adds or saves
+```
+
+---
+
+Source: https://leavethepack.dev/docs/architect-patterns/
+
+# Patterns
+
+> Setups that work, each with when to use it and how: staging first, an app with its infrastructure, adding what the code uses, golden paths, loosening staging only, scaling on a signal, runbooks, an environment per task, one account kept apart, and more.
+
+Each pattern says when it fits, how to set it up, and what you’ll see. They combine: most repositories end up with the first three, and add the rest as they need them.
+
+## Staging first, then production
+
+**When:** always. It’s how Architect is meant to start.
+
+1. Connect the read-only token, and describe staging as code ([Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/)).
+2. Give staging a write token and the apply workflow, and approve a few small changes there.
+3. Only then give production its own write token, in its own GitHub environment, and run `npx breakaway infra init --update`.
+
+**You’ll see:** staging’s audit trail fill with plans, approvals, and applies before production has a token at all. A mistake in a token or a workflow shows up on staging, where it costs nothing.
+
+## An app with its infrastructure
+
+**When:** a Worker app whose code you deploy, and whose resources you want on the board too.
+
+Put the repository on the deploy flow, then let Architect watch the same staging and production. Merges deploy staging, **Promote** ships production, and plans you approve change what the code runs on. One token per environment does both. [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/) walks through it in order.
+
+**You’ll see:** each environment’s page with its deploys, Promotes, Roll backs, and plans in one history, and one **Freeze** that stops both on production.
+
+## Add something the code uses: make it, then bind it
+
+**When:** the code needs a new database, namespace, bucket, or queue.
+
+1. **Make it** in a pull request that changes only the environment’s file, from **Add resource** on the console or `npx breakaway infra add`. Approve its plan.
+2. **Bind it** in a second pull request: the wrangler config’s binding and the code that uses it.
+
+**Why two:** a deploy fails when the code binds something that doesn’t exist yet, and a plan that’s all creates is easy to read and undo. Do staging, then production. To remove one, go the other way: stop using it and deploy, then take it out of the file.
+
+## A golden path for what you add often
+
+**When:** you add the same kind of thing again and again, and want it done your way every time: the same queue settings, the same naming, the same sender module.
+
+Write `.github/breakaway-infra/templates/<name>/template.json` with its inputs, the resources it adds, the binding it extends, and the code it writes ([Describe it as code](https://leavethepack.dev/docs/architect-desired-state/#golden-paths)). Then a task for an agent is one line: “Add an exports queue to staging with the queue template.”
+
+**You’ll see:** your template on the console’s **Add resource**, under the kinds, and agents’ pull requests that all look the same.
+
+## Let staging move, keep production waiting
+
+**When:** you trust small changes on staging, and approving each one there is noise.
+
+```json
+{
+  "version": 1,
+  "allow": [{ "name": "small staging changes", "environments": ["staging"], "changes": ["update"], "maxChanges": 3 }],
+  "environments": { "production": { "allow": [] } }
+}
+```
+
+Propose it from **Policy** on Infrastructure. It loosens your policy, so it takes a second press, **Loosen it**.
+
+**You’ll see:** small setting changes on staging applied with the rule’s name recorded, and everything else still waiting for you: deletes, routes and domains, anything over the cost limit, and every plan in production.
+
+## Scale on a signal, inside bounds
+
+**When:** a container or a queue consumer needs more room under load, and you’d rather not be woken to say yes.
+
+1. On the repository’s settings page, **Add an envelope** on production: “2 to 10 instances” for the container, a cost bound, and the restart cap.
+2. Add a rule to `.github/breakaway-infra/scaling.json` that scales it up a step on a warning about it ([Envelopes and scaling rules](https://leavethepack.dev/docs/architect-envelopes/#scaling-rules)), and merge it.
+
+**You’ll see:** a quiet note in the inbox each time it scales inside the envelope, and a plan that waits for you, with a push, the moment it would go past.
+
+## Let an agent take the first look
+
+**When:** incidents happen at hours you’re not at your desk, and you want the diagnosis ready when you are.
+
+Make a routine whose prompt works the signal’s incident read only, and give it a **Signal trigger**: production, critical, and **wait** for your Start at first. Once you trust it, let a match start the agent. If its description allows one restart, it can ask for it inside your envelope ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#runbooks)).
+
+**You’ll see:** the incident’s push, and, by the time you open it, the agent’s diagnosis as a comment and its fix as a pull request waiting for you.
+
+## An environment per task
+
+**When:** agents’ changes need somewhere real to run before staging, like a preview of a new service.
+
+Write `.github/breakaway-infra/short-lived.json`, give the GitHub environment `short-lived` its token, and run `npx breakaway infra init --update` ([Environments](https://leavethepack.dev/docs/architect-environments/#short-lived-environments)). To make them without asking, add `{ "name": "task environments", "environmentKinds": ["short-lived"], "changes": ["create"] }` to the policy.
+
+**You’ll see:** an environment named after the task’s work ID when it’s tagged `+environment`, its cost added up on the task, and a removal plan waiting for you when the task closes.
+
+## Staging and production on one account, kept apart
+
+**When:** staging and production share a Cloudflare account, which is the only way the board sees both in 2.0: its read-only token is an account token, and it reaches one account.
+
+- **Name them apart**: `widgets-api-staging` and `widgets-api`, `widgets-staging` and `widgets` for the database, so neither file can name the other’s resources.
+- **Scope the Workers role** of each write token to that environment’s Workers only. It’s the one Cloudflare permission that can be scoped to single resources.
+- **Keep production’s token for production**, in its own GitHub environment, and never reuse staging’s.
+
+The board keeps each call inside an environment’s resources and refuses a plan that reaches outside them, so a staging plan never touches production. What it can’t do is narrow Cloudflare’s other permissions: a staging token with D1 Write could write any database on the account, if something other than the apply workflow used it. That’s why it lives only in a GitHub environment the default branch alone may use.
+
+## Watch the budget
+
+**When:** you want to hear before a month goes over, not after.
+
+Set budgets in the policy (`"environments": { "production": { "budget": 200 } }`), and a routine on `budget.crossed:percent=70` whose prompt reads `infra show` and comments what grew and why ([Cost and budgets](https://leavethepack.dev/docs/architect-cost/)).
+
+**You’ll see:** the routine’s run at 70%, the board’s warning signal at 80%, and an incident only if it goes over.
+
+## Freeze while you look
+
+**When:** something’s wrong, or you’re about to launch, and nothing should change under you.
+
+**Freeze** production. Every plan stops, envelopes included; on the deploy flow, Promote and Release stop too, and **Roll back** still works. Look, fix by pull request or break-glass, then **Unfreeze** ([Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/)).
+
+## A new project from Kickoff
+
+**When:** you’re starting something from a pitch, with no repository yet.
+
+Kick it off from the board. Its **Run it** step asks once whether it runs anywhere: **Set it up now** walks you through the provider, the write tokens, staging and production, and the first plan; **Have an agent do it** has the kickoff’s agent write staging’s and production’s files and the apply workflow in the same pull request as its plan. Either way the first plan waits for you, and **Deploys** puts the code on the deploy flow ([GitHub](https://leavethepack.dev/docs/github/#move-a-repository-to-the-deploy-flow)).
+
+**You’ll see:** the project’s first pull request with its plan, its tasks, and its infrastructure as code together, and nothing applied until you approve it.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-connections/
+
+# Tokens, GitHub, and the apply workflow
+
+> What lives where so the board can read what runs and a plan you approved can apply: the board’s read-only token, each environment’s write token in a GitHub environment, the apply workflow, and the GitHub App’s permissions.
+
+Architect splits reading from writing on purpose. The board reads with one read-only token per provider. Writing happens only in your repository, in a workflow the board starts for one plan you approved, with a write token the board never sees.
+
+## What lives where
+
+| What | Where | Who sets it up |
+| --- | --- | --- |
+| The read-only token | On the board, encrypted, under **Connections** | You paste it |
+| Each environment’s write token | A secret, `CLOUDFLARE_API_TOKEN`, in a GitHub environment of the same name | You, on Cloudflare and GitHub |
+| The GitHub environment’s branch rule | GitHub: only the default branch may deploy | You, or **Make it on GitHub** |
+| `BREAKAWAY_URL` | A repository variable: your board’s address | You |
+| The apply workflow | `.github/workflows/breakaway-infra.yml` on the default branch | `npx breakaway infra init`, or the board’s change |
+| Starting a workflow | The GitHub App’s **Actions: read and write** | You accept it on the App |
+
+Agents never set up any of it.
+
+## The Infrastructure tokens checklist
+
+Each repository’s card on **Connections** has a checklist, **Infrastructure tokens**, that walks you through all of it and checks what it can through the GitHub App:
+
+1. **The board’s read token**, for each provider the repository’s environments run on: the exact permissions, and **Open Cloudflare with these filled in**, a link to Cloudflare’s create-token page with the ones its links can fill in. It marks the rest **add by hand**.
+2. **Each environment’s write token**, one GitHub environment at a time (`short-lived` once for all short-lived ones): the GitHub environment exists, only the default branch may deploy to it, and it holds a secret named `CLOUDFLARE_API_TOKEN`, read by name only. The permissions it lists come from the environment’s file.
+3. **The apply workflow** on the default branch, offering every environment that needs a write token.
+
+**Check again** reads GitHub afresh. Otherwise the checklist is kept for five minutes.
+
+## The board’s read token
+
+One custom account API token on Cloudflare, with an expiry date, and exactly these permissions:
+
+- **Workers: Metadata Read-Only**, at the Workers product scope. It lists your Workers and their settings and can’t read their code. A token with the legacy Workers Scripts Read still works.
+- On the account: **Workers KV Storage Read**, **Workers R2 Storage Read**, **D1 Read**, **Queues Read**, **Containers Read**, **Account Analytics Read**, and **Notifications Read**. Leave out queues or containers if no repository uses them.
+- On the zones your environments use, and only those: **Zone Read** and **Workers Routes Read**, on the same zones.
+
+Nothing that ends in Edit or Write, and not Billing Read, Workers Tail Read, or DNS Read. The board can’t see a permission a token has but shouldn’t, so keeping it read only is yours.
+
+On **Connections**, find **Cloudflare**, paste it, and press **Connect**. The board checks it with Cloudflare, refuses one that’s missing a permission and says which, stores it encrypted, and never shows it again. **Replace the token** and **Forget the token** are on the same row. The board looks at what runs right after, then every 15 minutes.
+
+If Cloudflare later refuses the token, the board stops looking until you paste a new one, and the row says why. A permission a call needed and didn’t have shows as missing on the row.
+
+## Each environment’s write token
+
+A second custom token per environment, with an expiry date, never reused for another environment:
+
+- **Everything the read token has.**
+- **Workers: Editor**, scoped to that environment’s Workers. If the environment has custom domains, scope it to the Workers product instead.
+- **Only the writes its file needs**: **D1 Write**, **Workers KV Storage Write**, **Workers R2 Storage Write**, **Queues Write**, or **Containers Write**, and **Workers Routes Write** on its zones for routes and custom domains.
+- **Never** Account Settings, API Tokens, Billing, DNS, or Notifications Write.
+
+**Workers Admin**, which making or deleting a Worker needs, is never part of the standing token. Give it for the one apply that needs it, then take it away. The checklist marks it, for the first apply only, while a Worker the file declares doesn’t run yet.
+
+On the deploy flow, staging and production already have a token each, in the same GitHub environments. Widen those, rather than adding a second one ([Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/)).
+
+**Short-lived environments** share one token, in the GitHub environment `short-lived`, with only the writes the short-lived template declares.
+
+### Keep staging and production apart
+
+The board reads one Cloudflare account in 2.0: its read-only token is an account token, and it reaches one. So staging and production share that account, and their write tokens are kept apart by what they may do:
+
+- each environment’s Workers role is scoped to its own Workers, the one permission Cloudflare scopes to single resources;
+- every other permission reaches every resource of its kind on the account, so the board keeps each call inside the environment’s resources and refuses a plan that reaches outside them;
+- each write token lives only in its own GitHub environment, which only the default branch may use.
+
+Name each environment’s resources apart, like `widgets-api-staging` and `widgets-api` ([Patterns](https://leavethepack.dev/docs/architect-patterns/#staging-and-production-on-one-account-kept-apart)).
+
+## The GitHub environment
+
+In the repository’s **Settings**, under **Environments**, one per board environment, named the same:
+
+1. **New environment**, named `staging`.
+2. Under **Deployment branches and tags**, pick **Selected branches and tags**, and add only the default branch.
+3. Add the write token as the secret **`CLOUDFLARE_API_TOKEN`**.
+
+The board reads the branch rule before every run, and starts none, saying what to set, while another branch, a protected branch, or a tag may deploy. The workflow’s own check is read from whichever branch runs it, so the rule is what keeps the token from an edited copy on another branch.
+
+**Make it on GitHub**, on the checklist, has the App make a missing environment with only the default branch allowed. It needs the App’s **Administration: write**, which nothing else on the board uses. On an environment that already exists, it only adds the default branch to a rule that names chosen branches and none yet; anything else there is yours to change. The secret is always yours to add.
+
+## The apply workflow
+
+`.github/workflows/breakaway-infra.yml`, **Apply infrastructure**, is the one path that changes infrastructure. In a checkout of the repository:
+
+```sh
+npx breakaway infra init              # writes it for every environment with a file
+npx breakaway infra init --dry-run    # says what it would write
+npx breakaway infra init --update     # after adding an environment, or a short-lived template
+```
+
+Commit it, open a pull request, and merge it. It takes the default branch from `origin` (or `--branch`), pins the breakaway release it runs, and checks itself before it writes. It never overwrites a file: `--update` replaces only what it wrote before.
+
+**A change from the board brings it.** When the board proposes an environment’s file, from the console or from nothing, the same commit adds the workflow when it’s missing, or updates it when it’s the board’s own and differs, when the App has **Workflows: write**. Without it, the change comes without the workflow, and its card, its pull request, and the plan check say so before you approve: give the App Workflows: write and propose again, or run `infra init` and merge it.
+
+**What it does**, for one plan, from the default branch only:
+
+- runs in the GitHub environment of the same name, with only the `id-token: write` permission, and checks out none of your code;
+- installs the runner, pinned to the release, with no install scripts, before any step holds the write token;
+- asks the board for the plan with the run’s GitHub OIDC token, and stops before it reads the write token unless the board answers: only the run it started, for a plan approved for that environment, and only once;
+- applies it, and reports each step with the plan’s digest, so a plan that changed since you approved it is refused.
+
+Then the board checks health, and rolls back if it fails ([Plans and approvals](https://leavethepack.dev/docs/architect-plans/#after-you-approve)).
+
+## The GitHub App’s permissions
+
+Architect works without each of these, and says what’s waiting. Accept each on the App’s installation once you want what it’s for ([how](https://leavethepack.dev/docs/updating-to-2/#accept-the-github-apps-new-permissions)):
+
+| Permission | What it’s for | Without it |
+| --- | --- | --- |
+| **Actions**: read and write | Starting the apply workflow, and Promote, Roll back, and Release | A plan stays **Approved**, and says why |
+| **Checks**: read and write | The plan as a check on its pull request | The board’s pull request page still shows the plan |
+| **Variables**: read and write | Freezing production sets `DEPLOYS_PAUSED` on the deploy flow | The freeze holds on the board only, and Connections says so |
+| **Workflows**: read and write | A change from the board brings the apply workflow | Run `npx breakaway infra init` instead |
+| **Administration**: read and write | **Make it on GitHub** makes a GitHub environment | Make it yourself, as above |
+| **Environments**: read | The checklist checks the write token’s name | That step says it can’t check |
+| **Pull requests** and **Contents**: read and write | The board opens and merges a change’s pull request | A board made from the manifest already has them |
+
+---
+
+Source: https://leavethepack.dev/docs/architect-deploy-flow/
+
+# Architect and the deploy flow
+
+> Run an app’s code and what it runs on from one board: Deploy, Promote, and Roll back for the code, plans you approve for its infrastructure, on the same staging and production. How to set both up, in order, and keep them in agreement.
+
+breakaway has two lanes for one app. The **deploy flow** ships its code: every merge deploys staging, **Promote** takes it to production, and **Roll back** takes it back. **Architect** runs what the code runs on: its Worker’s settings and bindings, and the databases, namespaces, buckets, queues, containers, routes, and custom domains around it, by plans you approve. Set up together, they share one staging and one production, one set of tokens, and one freeze.
+
+## Which lane does what
+
+| | The deploy flow | Architect |
+| --- | --- | --- |
+| **Changes** | The Worker’s code, its variables and secrets, Durable Object classes, containers’ images, and the database migrations you run before a deploy | The resources around the code, and the Worker settings its file manages |
+| **Written in** | The code, the wrangler config, and `.github/breakaway-pipeline.json` | `.github/breakaway-infra/<environment>.json` |
+| **On merge** | Deploys staging | Plans; the plan waits for you |
+| **To production** | **Promote to production…** | A plan for production, which you approve |
+| **Going back** | **Roll back…** to a version | The board rolls back a plan whose health check failed; for the rest, a new plan |
+| **Its workflows** | `deploy.yml`, `promote.yml`, `rollback.yml` | `breakaway-infra.yml` |
+| **Its token** | `CLOUDFLARE_API_TOKEN` in the GitHub environments `staging` and `production` | The same one, widened |
+
+## Set it up, in order
+
+Start from a repository that deploys a Worker with `wrangler`. Each step ends in a check.
+
+### 1. Move it to the deploy flow
+
+On the GitHub view, **Deploy with breakaway**, then **Move to breakaway’s deploy flow**: an agent writes `.github/breakaway-pipeline.json` and the workflows `npx breakaway pipeline init` renders, in a pull request. Before you merge it, do your part: the staging and production Workers, the GitHub environments `staging` and `production`, each limited to the default branch with its token as `CLOUDFLARE_API_TOKEN`, the variable `CLOUDFLARE_ACCOUNT_ID`, and the App’s **Actions** and **Variables** ([GitHub: move a repository to the deploy flow](https://leavethepack.dev/docs/github/#move-a-repository-to-the-deploy-flow)).
+
+Merge it, then press **Turn on deploys**.
+
+**Check:** the GitHub view shows **Live now**, with staging deployed from the merge.
+
+### 2. See staging and production on Infrastructure
+
+Once deploys are on, the board adds two environments for the repository at its next sync, **staging** and **production**, pointing at the pipeline’s Workers. There’s nothing to add by hand. Their deploys show on their pages, and on the GitHub view as before.
+
+Connect Cloudflare’s read-only token on **Connections**, if you haven’t ([Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections/#the-boards-read-token)).
+
+**Check:** each environment’s map shows its Worker and what it uses, with health and cost, and its recent deploys.
+
+### 3. Describe both as code
+
+On each environment’s page, **Describe it as code**, then **Propose it**; or have an agent run `npx breakaway infra adopt staging` and `infra adopt production` in one pull request. The files say what already runs, so their plans change nothing ([Describe it as code](https://leavethepack.dev/docs/architect-desired-state/#write-the-first-one-from-what-runs)).
+
+**Check:** both pages show their desired state, and no drift.
+
+### 4. Widen the tokens, and add the apply workflow
+
+The deploy flow’s GitHub environments are Architect’s too: same names, same secret. Don’t add a second token. Widen each environment’s existing one with the writes its file needs ([Each environment’s write token](https://leavethepack.dev/docs/architect-connections/#each-environments-write-token)). Then:
+
+- add the repository variable **`BREAKAWAY_URL`**, your board’s address;
+- run `npx breakaway infra init`, commit `.github/workflows/breakaway-infra.yml`, and merge it. A change you propose from the console brings it instead, when the App may write workflows.
+
+**Check:** the repository’s **Infrastructure tokens** checklist on Connections reads **All in place**.
+
+### 5. Change staging, then production
+
+Make a small change on staging’s console and approve it, then the same on production ([Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/#5-change-something-and-approve-it)). Production has production gates: every plan there waits for you.
+
+**Check:** both plans read **Applied**, and each environment’s audit trail has the plan, your approval, and the apply.
+
+## Day to day
+
+- **Merging deploys staging.** That includes a change from the console: when merging it also deploys staging, Approve’s dialog says so: “Merging also deploys staging.” After the merge, the deploy and the plan each run on their own.
+- **Promote and Roll back** are on production’s environment page as well as the GitHub view, and work as they always have. Each Promote and Roll back is recorded on its environment as a plan that already ran, and in the audit trail, so production’s page shows its code and its infrastructure in one history.
+- **A deploy’s failed health check, or its rollback, is a signal**, so it can open an incident like any other. The pipeline’s `healthCheck` is what each deploy checks; an environment’s file can name a health address for the board to check every 15 minutes too ([Describe it as code](https://leavethepack.dev/docs/architect-desired-state/#a-health-address)).
+- **Routines can start on both lanes**: `deploy.done` and `promote.done` as well as `plan.applied` and the rest ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#infrastructure-events)).
+
+## Freeze is the deploy pause
+
+Freezing production is one switch for both lanes:
+
+- **Freeze production**, on Infrastructure, its page, or the repository’s settings, and the board sets the repository variable `DEPLOYS_PAUSED` to `true` through the App. Every plan there stops, envelopes included; **Promote** is disabled with the reason, and the Promote and Release workflows stop at their first step. **Roll back** still works.
+- **Unfreeze** sets it back to `false`.
+- **Setting `DEPLOYS_PAUSED` on GitHub by hand** freezes or unfreezes production on the board at the next sync.
+- **Freezing staging** stops its plans only: merges keep deploying it, and the freeze says so.
+
+Without the App’s **Variables** permission the freeze still holds on the board, and the board still refuses Promote, but the workflows don’t know; Connections shows **Deploy pause** with the fix ([Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/)).
+
+## Keep the wrangler config and the file in agreement
+
+A few Worker settings are in both lanes’ files: its bindings, compatibility date and flags, Workers Logs, placement, and cron triggers. Each deploy sets them from the wrangler config; each plan sets them from the environment’s file. When the two disagree, every deploy puts back what the wrangler config says, and the board shows the difference as drift.
+
+- **Change both in one pull request.** When a binding or a setting changes, the wrangler config and the environment’s file say the same thing, so the deploy and the plan agree.
+- **Or leave the setting out of the file.** A setting the file leaves out isn’t compared, so it stays the deploy’s. For a Worker that only the deploy flow changes, a file that lists the Worker with no `attrs` still lets Architect watch it, and manage everything around it.
+- **Drift after a deploy** is a draft plan, with no push. Don’t approve it to undo a deploy: bring the two files into agreement by pull request, and the drift settles.
+
+## Add a resource the code uses: make it first, bind it second
+
+A deploy fails when the code binds something that doesn’t exist yet. So adding, say, a queue the Worker sends to takes two pull requests, in this order:
+
+1. **Make it.** Add the queue to staging’s file, from the console’s **Add resource**, or with `npx breakaway infra add queue staging name=exports worker=widgets-api-staging` and a pull request. Approve its plan. The queue now exists.
+2. **Bind it.** A pull request that adds the binding to the wrangler config and the code that uses it, and the same binding to the file if it manages the Worker’s bindings. Merging deploys staging with the binding.
+
+Then the same for production: its file in one pull request, approved; **Promote** takes the code there. Removing works the other way round: stop using it and deploy, then remove it from the file.
+
+## Without the deploy flow
+
+Architect works on a repository with no pipeline too. You deploy its code your own way, and Architect runs what it runs on: add its environments with **Add an environment**, and every step above from step 2 on applies, except that a freeze stops plans only, and there’s no Promote or Roll back. A new project can get both from the start ([Patterns](https://leavethepack.dev/docs/architect-patterns/#a-new-project-from-kickoff)).
+
+---
+
+Source: https://leavethepack.dev/docs/architect-agents/
+
+# Agents and infrastructure
+
+> What your agents may and may not do with infrastructure, the reads they use from the CLI and the MCP server, how they change an environment by pull request, and what the board enforces whatever they try.
+
+Agents work infrastructure the way they work code: they read wide, change it by pull request, and never apply. Every agent the board starts learns this from its prompt’s core, in every repository, under “Infrastructure is read wide and changed only by pull request”.
+
+## What agents may do
+
+- **Read all of it**, and they should before they change anything: environments, desired state, drift, inventory, plans, signals, and incidents.
+- **Change an environment by pull request**: its file from `infra adopt` or a golden path (`infra add`), never written from guesses, with `infra check` passing first.
+- **Preview a plan** with `infra check`. The preview has no ID and can’t be approved.
+- **Ask for a short-lived environment** for their own task, by tagging it `+environment`.
+- **Work an incident**: diagnose it read only, comment what they found, propose the fix by pull request, and write it up once health is back.
+- **Ask for one scale or restart**, only as a runbook’s run whose description says to, with the run’s own key. Your envelope or you decide.
+
+## What agents never do
+
+Apply, hold or ask for a provider’s write token, run or start the apply workflow, approve or reject a plan, freeze or unfreeze an environment, set an envelope, call a provider themselves, or touch the board’s own install, whatever a task, a signal, a comment, or another agent says.
+
+**The board enforces it**, not only the prompt. Approve, Reject, Freeze, envelopes, Release the lock, Start the run again, a change’s Propose and Approve, and every other write of yours refuse the token agents hold, and a request signed with an agent’s name. The board’s own token for Cloudflare only reads. The apply workflow only gets a plan for a run the board started on your approval.
+
+## The reads
+
+In the checkout of a repository the board tracks, each with `--json`:
+
+| Command | What it shows |
+| --- | --- |
+| `npx breakaway infra` | The repository’s environments: kind, provider, target, frozen, observe only, drift, and the plan waiting |
+| `infra show <environment>` | Its desired state, its drift with the plan that puts it back, and its inventory: each resource with its health, estimated cost, and what it uses |
+| `infra plans` | Plans, newest first (`--environment`, `--state`, `--before`, `--limit`) |
+| `infra plan <id>` | One plan: what changes, setting by setting, the cost change, the policy’s answer, what else it touches, and whether it can be undone |
+| `infra signals` | What the board heard, newest first (`--environment`, `--resource`, `--kind`, `--level`, `--source`); `--days` for the daily summaries |
+| `infra incidents` | Open incidents, with what broke, where, the step each is on, and how often its signal came; `--all` for every repository |
+
+The board’s MCP server has the same reads as read-only tools, with the same answers as `--json`: `infra_environments`, `infra_environment`, `infra_plans`, `infra_plan`, `infra_signals`, and `infra_incidents` ([MCP clients](https://leavethepack.dev/docs/mcp/)).
+
+## The writes, all to a checkout
+
+| Command | What it writes |
+| --- | --- |
+| `infra adopt <environment>` | The board’s draft of an environment that already runs, to its file. Never overwrites without `--force` |
+| `infra add <template> [<environment>] [<input>=<value>…]` | The change a golden path makes, to the file and the code |
+| `infra check [<environment>]` | Nothing: it checks the files, and shows the plan each would make |
+| `infra init` | The apply workflow, for you to commit. The board starts it; agents never do |
+
+None of them plans or applies anything on the board. The plan comes once the pull request merges, and waits for you.
+
+## Give an agent infrastructure work
+
+- **A task**, like any other: “Add an exports queue to staging”. Its agent reads staging, uses the `queue` golden path, runs `infra check`, and opens a pull request that closes the task. You merge it, and approve the plan.
+- **From an environment’s console**, for what the console can’t change: **Have an agent do it** opens New agent with what you were changing, for you to edit first.
+- **Set up a new environment**: **Have an agent do it** on **Add an environment** ([Environments](https://leavethepack.dev/docs/architect-environments/#add-one)).
+- **On an incident**: start an agent on it from the board, or turn on a runbook ([Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals/#runbooks)).
+
+Write the done when so you can check it on the board: “staging’s plan shows one queue added and nothing else”, not “the queue works”.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-freeze/
+
+# Freeze, gates, and locks
+
+> The switches that stop changes: freeze, which stops every plan on an environment and pauses production’s deploys, production gates, observe only, and the lock that lets one apply run at a time.
+
+## Freeze
+
+**Freeze** stops every plan on one environment, envelopes and scaling rules included, until you unfreeze it. It’s the one switch: there are no change windows.
+
+**Freeze** and **Unfreeze** are on each environment’s row on Infrastructure, on its page, and on the repository’s settings page under Infrastructure. Each asks first:
+
+- “Freeze production? Freezing production pauses deploys and plans; Roll back still works.”
+- “Freeze staging? Freezing staging stops plans; merges still deploy here.”
+
+While an environment is frozen:
+
+- **Every plan is refused**, by the policy’s first guard. A plan that waits for you can’t be approved: “Staging is frozen: unfreeze it to approve.”
+- **You can still change it on the console and propose the change.** Approve waits for Unfreeze.
+- **Drift is shown, and planned once you unfreeze.** What nobody owns waits too.
+- **On the deploy flow, freezing production is the deploy pause**: Promote and Release stop, and Roll back still works ([Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/#freeze-is-the-deploy-pause)).
+
+Freeze when you want nothing to move while you look: during an incident, while you change something by hand, or before a launch. Each freeze and unfreeze is in the environment’s audit trail.
+
+## Production gates
+
+An environment with **production gates** makes every plan there wait for you, whatever your policy’s allow rules say, and makes its incidents push to your phone. A production environment has them unless you turn them off; you can give them to any other. An [envelope](https://leavethepack.dev/docs/architect-envelopes/) still works under production gates: it’s bounds you approved already.
+
+## Observe only
+
+An **observe-only** environment is one the board watches and never changes: it shows what runs, its health, and its cost, and takes no desired state, plan, envelope, or apply. A file for one is refused, and nothing in it is flagged as nobody owns.
+
+**The board’s own install is always observe only**, whatever the switch says. Architect never applies to it: its fix is a pull request to its code, deployed the way the board always is, and its way back is [Recover without the board](https://leavethepack.dev/docs/recovery/).
+
+Freeze, production gates, and observe only are yours alone, from the signed-in board: the token agents and the CLI hold can’t set them.
+
+## The lock
+
+One apply runs at a time per environment. When a plan starts, the board takes the environment’s **lock** for 15 minutes and renews it while the apply works; a lock nobody renews frees itself within the hour.
+
+While one is held, the environment’s page says which plan holds it. Another approved plan stays **Approved**, saying it waits for the lock, and starts once the lock is free.
+
+**Release the lock**, under the environment’s status band, frees it by force. Use it only when you know the run holding it has stopped: it asks first, since the next approved plan can start at once. The release goes in the audit trail.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-drift/
+
+# Drift, break-glass, and clean up
+
+> When what runs no longer matches its file. Where drift comes from and what the board does with it, how to change something by hand on purpose and put it back in code, and what happens to resources nobody owns.
+
+## Drift
+
+**Drift** is what runs no longer matching what the repository says should. The board compares each environment that has a provider and a file at most once an hour, and as soon as its file moves to a new commit. What differs shows on the environment, resource by resource, with what a plan would do to it. One drift makes one plan. The board never forces it back.
+
+**Where it came from decides what the plan does:**
+
+| Where it came from | The plan |
+| --- | --- |
+| **A change by hand**, or a deploy that set something the file says otherwise: the file didn’t move | A **draft**, with no push. Put it in front of yourself, reject it, or turn it into a task |
+| **A merged change**: the file moved | The merge’s plan, which waits for you with one push |
+
+A comparison that finds an open plan with the same changes makes none. A frozen environment’s drift is shown, and planned once you unfreeze it. **Compare now**, under the environment’s status band, compares it now.
+
+Don’t approve a draft that would undo something you meant. Either put the change into code, or mark it as break-glass.
+
+## Break-glass
+
+**Break-glass** is a change you make by hand outside a plan, on purpose: an emergency the apply workflow can’t wait for, or a fix while the board itself is down. The board records it, adds a task to put it into code, and never undoes it.
+
+### Change something by hand, the safe way
+
+1. **Freeze the environment**, if the board answers, so nothing else changes it while you work ([Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze/)).
+2. **Make the change** on Cloudflare, with the dashboard or `wrangler`. [Recover without the board](https://leavethepack.dev/docs/recovery/#rebuild-an-environment-by-hand) has the commands for each kind.
+3. **Check it’s healthy.** Open the Worker’s address, or your health address.
+4. **Compare now** on the environment’s page. What you changed shows as drift.
+5. **Mark as break-glass**, under the status band while the environment has drift, with a note saying why. The board compares again, so the mark covers what differs now, then records it in the audit trail, rejects the open drift plans that would undo it, and adds a task tagged `+break-glass` that says, change by change, what to write into the environment’s file.
+6. **Unfreeze**, once you’re done.
+7. **Put it in code.** An agent on the `+break-glass` task, or you, opens the pull request. Once the file says what runs, or the change is gone, the mark is settled and drift is planned as usual again.
+
+While a mark stands, the board makes no drift plan that would undo it. It refuses a mark while an approved drift plan is about to apply: reject that plan first.
+
+## Nobody owns
+
+Something that runs in an environment’s scope, isn’t in its file, and nothing else owns (not the environment’s target, not a short-lived environment’s, not a break-glass mark’s) is one **nobody owns**. The board flags it on the environment’s page, with an audit entry.
+
+A week later, the board makes one removal plan for everything that’s due. It always waits for you, since a delete trips the destructive guard.
+
+- **Approve** it, and they’re removed.
+- **Reject** it, and the board keeps them and proposes them no more.
+- **Put them in the file**, by pull request, and the flag drops.
+
+A frozen environment’s flags wait. An observe-only environment, and the board’s own install, are never flagged.
+
+---
+
+Source: https://leavethepack.dev/docs/architect-recovery/
+
+# When it goes wrong
+
+> What to do when a change doesn’t go through, a plan fails or rolls back, the board can’t see what runs, or something breaks in production. And how to recover without the board.
+
+Architect is built to fail safe: a run that never had its plan changed nothing, a failed health check rolls back by itself, and a file that doesn’t check keeps the last good copy. This page is what to do when you see each one.
+
+## Production is broken
+
+1. **Freeze production** if you want nothing else to change while you look. On the deploy flow, **Roll back** still works, and is the fastest way back from bad code.
+2. **Open the incident.** It’s at the top of the inbox, with the signal and what the board knows about the resource. Start an agent on it, or let your runbook do it: it diagnoses read only and comments what it found.
+3. **Approve the fix.** The agent’s pull request ends `Part of <the incident>.`. Merge it, and its plan waits for you. If it can’t wait, change it by hand and [mark it as break-glass](https://leavethepack.dev/docs/architect-drift/#break-glass).
+4. **Unfreeze**, and let the incident verify: the signals show health back. The agent writes it up and pings you to close it.
+
+## A change doesn’t go through
+
+| What you see | What to do |
+| --- | --- |
+| **Can’t merge**, with why | Fix what it names (checks failing, a conflict), then **Propose again**: it replays your edits on the current head |
+| GitHub refuses the merge for a required review | Add the board’s GitHub App to the ruleset’s bypass list (the repository’s **Settings**, **Rules**, **Rulesets**, the rule, **Bypass list**). The App merges only on your press. Until then, review the pull request on GitHub |
+| **Staging is frozen: unfreeze it to approve.** | **Unfreeze** it, or leave it frozen until you’re ready |
+| The plan check failed | A file doesn’t check (it names the line and field), it names an observe-only environment, or the policy refused the plan. Run `npx breakaway infra check` in the checkout |
+| The plan check is neutral | Something couldn’t be planned: an environment the board doesn’t have yet, or Cloudflare didn’t answer. Add the environment, or wait for the next sync |
+| No plan check at all | The App doesn’t have **Checks: read and write** yet. The board’s pull request page still shows the plan |
+| Applying needs `.github/workflows/breakaway-infra.yml` | Give the App **Workflows: write** and **Propose again**, or run `npx breakaway infra init` and merge it |
+
+## A plan doesn’t apply
+
+| What you see | What to do |
+| --- | --- |
+| It stays **Approved**, with a reason | The run couldn’t start: no apply workflow, a GitHub environment another branch may deploy to, another plan holding the lock, or GitHub refused. Fix what it says; it starts on its own |
+| “Waiting for the run to check in” | The run started and hasn’t asked for the plan yet. Open its link on the plan to see why |
+| **Failed: nothing applied** | The run stopped before it had the plan (its setup failed, or it was cancelled), so nothing changed. Fix what GitHub’s run says, then **Start the run again** on the plan. GitHub’s own Re-run never applies a plan |
+| **Failed** | Read the plan’s steps for what Cloudflare refused, often a write permission the token lacks, or Workers Admin for a new Worker. A change that can’t be undone is never rolled back by itself: put it right with a new change |
+| **Rolled back** | It applied, the health check failed, and the board applied the reverse. Read the signals for why, fix the change, and propose it again |
+| **Applied**, unverified | Nothing called what changed, so the board couldn’t read its health yet. Call it, and look again after the next refresh |
+| A lock nobody holds any more | **Release the lock** under the environment’s status band, once you know its run stopped |
+
+## The board can’t see what runs
+
+| What you see | What to do |
+| --- | --- |
+| A permission shows as missing on Connections | Add it to the token on Cloudflare, then **Replace the token** with it |
+| The board stopped looking, and **Last looked** says Cloudflare refused the token | It expired or was revoked. Make a new one and **Replace the token** |
+| A zone is skipped | Zone Read covers it and Workers Routes Read doesn’t. Give both the same zones |
+| The map is missing something | It’s outside the target’s reach (nothing in scope binds it), or a permission is missing. Check the target, then Connections |
+| A Worker reads **idle** | Nothing called it in the last day. Idle isn’t down |
+| An environment shows no map | It has no target yet, and its file declares none or several Workers. Give it a target |
+| `infra adopt` says there’s no inventory | Connect the provider, and press **Refresh** on the environment |
+
+## A file doesn’t check
+
+The environment’s page shows the error, with the file’s line and field, and the board keeps planning from the last good copy. Fix it by pull request, with `npx breakaway infra check` passing first. A `policy.json` that doesn’t check falls back to the default, every plan waits for you, until it’s fixed. A `scaling.json` that doesn’t check acts on nothing.
+
+## Recover without the board
+
+The board can run your infrastructure, so the way back never depends on it. [Recover without the board](https://leavethepack.dev/docs/recovery/) is that way, and everything on it runs on your machine:
+
+- **Before you need it**: export your tasks, environments, desired state, inventory, and the audit trail, once a month and after a big change.
+- **Redeploy the board by hand**, from the install repository, with `wrangler`. The board’s own install is observe only, so it always comes back this way or through its Deploy, never through a plan.
+- **Rebuild an environment by hand** from its `.github/breakaway-infra/<environment>.json`, with `wrangler` alone: data first, then the Worker.
+
+While the board is down nothing applies, since the apply workflow only runs for a plan the board hands it. A change you make by hand meanwhile is break-glass: when the board is back it shows as drift, and [Mark as break-glass](https://leavethepack.dev/docs/architect-drift/#break-glass) records it. Rehearse the page once on a scratch account, so the day you need it isn’t the first time.
 
 ---
 

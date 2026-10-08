@@ -158,7 +158,7 @@ These need no board: run them in the checkout of the repository that deploys or 
 
 ## Infrastructure
 
-Architect’s reads work in the checkout of a repository the board tracks, each with `--json`, and change nothing: approving, rejecting, freezing, and envelopes are yours, on the board. The board’s MCP server has the same reads as tools ([MCP clients](https://leavethepack.dev/docs/mcp/)). See [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect).
+Architect’s reads work in the checkout of a repository the board tracks, each with `--json`, and change nothing: approving, rejecting, freezing, and envelopes are yours, on the board. The board’s MCP server has the same reads as tools ([MCP clients](https://leavethepack.dev/docs/mcp/)). See [Agents and infrastructure](https://leavethepack.dev/docs/architect-agents/).
 
 | Command | What it does |
 | --- | --- |

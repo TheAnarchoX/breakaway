@@ -41,11 +41,40 @@ From 2.0.0, Architect runs the infrastructure the repositories run on too, on Cl
 
 - [Deploying and updating](https://leavethepack.dev/docs/deploying.md): How a change reaches your board: pre-releases and stable releases, the install repository’s Deploy and Update workflows, channels, manual steps, rollbacks, and the update feed.
 - [Updating to 2.0.0](https://leavethepack.dev/docs/updating-to-2.md): What updating a board from 1.5 to 2.0.0 changes by itself, what stays off until you connect a provider, what your repositories get, the GitHub permissions to accept, and how to go back.
-- [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect.md): From a read-only token to your first approved plan, in the order it goes for real: connect Cloudflare, see staging, describe it as code, give it a way to apply, then change something and approve it. Then envelopes, runbooks, and production.
 - [Operating a board](https://leavethepack.dev/docs/operations.md): Secrets and what each one does, rotating them, what to keep and what to do when it’s lost, Connections, backups and export, the health endpoint, and a table of what to do when something breaks.
 - [Recover without the board](https://leavethepack.dev/docs/recovery.md): Redeploy your board and rebuild your environments by hand, with wrangler and your repositories alone, and what to export while the board still answers.
 - [Architecture](https://leavethepack.dev/docs/architecture.md): What runs where: one Cloudflare Worker, one SQLite Durable Object, the TaskChampion sync protocol, the JSON API, the web app, and how GitHub and agents plug in.
 - [The API](https://leavethepack.dev/docs/api.md): The board’s JSON API: how to sign in, the routes for tasks, agents, GitHub, repositories, and routines, which ones only the signed-in browser may call, and how to fire a routine from a webhook.
+
+## Architect: start
+
+- [Architect](https://leavethepack.dev/docs/architect.md): The board running the infrastructure your repositories run on, and you still deciding what changes. What Architect is, how a change goes, what stays true, its words, and where to read on.
+- [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect.md): From a read-only token to your first approved plan, in the order it goes for real: connect Cloudflare, see staging, describe it as code, give it a way to apply, then change something and approve it. Then envelopes, runbooks, and production.
+- [What’s supported](https://leavethepack.dev/docs/architect-supported.md): The provider Architect runs on, every kind of resource it sees, which settings it changes, what it can make, remove, scale, and restart, what it never touches, and its limits.
+
+## Architect: use it
+
+- [Environments](https://leavethepack.dev/docs/architect-environments.md): What an environment is, the three ways to add one, how to build one from nothing or have an agent set it up, and short-lived environments, one per task.
+- [Describe it as code](https://leavethepack.dev/docs/architect-desired-state.md): The files in .github/breakaway-infra/ that say what should exist, how to write the first one from what runs, how to check a change before its pull request, and golden paths for what you add often.
+- [Change an environment](https://leavethepack.dev/docs/architect-changes.md): Two ways to change what runs, both ending in a plan you approve. From the console, where you edit the map, watch the plan form, and the board opens the pull request; or by pull request, from an agent or from you.
+- [Plans and approvals](https://leavethepack.dev/docs/architect-plans.md): What a plan says, where plans come from, their statuses, approving and rejecting one, and what happens after you approve: the lock, the apply workflow, the health check, and the rollback.
+- [Policy](https://leavethepack.dev/docs/architect-policy.md): The rules that decide which plans wait for you, per repository and per environment. The default, the guards no file can turn off, the limits, allow rules, and changing it on the board, where loosening is never one press.
+- [Envelopes and scaling rules](https://leavethepack.dev/docs/architect-envelopes.md): Bounds you approve once on one environment, so the board scales and restarts inside them without asking you again, and the scaling rules in your repository that ask it to.
+- [Signals, incidents, and runbooks](https://leavethepack.dev/docs/architect-signals.md): What the board hears about an environment, how a signal becomes an incident on the board, how an agent works one, and runbooks and infrastructure events that start routines by themselves.
+- [Cost and budgets](https://leavethepack.dev/docs/architect-cost.md): What each resource is estimated to cost a month, added up by environment, repository, and task, in the currency you pick, with a budget per environment and a cost limit per plan.
+- [Patterns](https://leavethepack.dev/docs/architect-patterns.md): Setups that work, each with when to use it and how: staging first, an app with its infrastructure, adding what the code uses, golden paths, loosening staging only, scaling on a signal, runbooks, an environment per task, one account kept apart, and more.
+
+## Architect: connect
+
+- [Tokens, GitHub, and the apply workflow](https://leavethepack.dev/docs/architect-connections.md): What lives where so the board can read what runs and a plan you approved can apply: the board’s read-only token, each environment’s write token in a GitHub environment, the apply workflow, and the GitHub App’s permissions.
+- [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow.md): Run an app’s code and what it runs on from one board: Deploy, Promote, and Roll back for the code, plans you approve for its infrastructure, on the same staging and production. How to set both up, in order, and keep them in agreement.
+- [Agents and infrastructure](https://leavethepack.dev/docs/architect-agents.md): What your agents may and may not do with infrastructure, the reads they use from the CLI and the MCP server, how they change an environment by pull request, and what the board enforces whatever they try.
+
+## Architect: run it
+
+- [Freeze, gates, and locks](https://leavethepack.dev/docs/architect-freeze.md): The switches that stop changes: freeze, which stops every plan on an environment and pauses production’s deploys, production gates, observe only, and the lock that lets one apply run at a time.
+- [Drift, break-glass, and clean up](https://leavethepack.dev/docs/architect-drift.md): When what runs no longer matches its file. Where drift comes from and what the board does with it, how to change something by hand on purpose and put it back in code, and what happens to resources nobody owns.
+- [When it goes wrong](https://leavethepack.dev/docs/architect-recovery.md): What to do when a change doesn’t go through, a plan fails or rolls back, the board can’t see what runs, or something breaks in production. And how to recover without the board.
 
 ## More
 

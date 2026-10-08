@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freeze, gates, and locks · breakaway</title>
+<meta name="description" content="The switches that stop changes: freeze, which stops every plan on an environment and pauses production’s deploys, production gates, observe only, and the lock that lets one apply run at a time.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://leavethepack.dev/docs/architect-freeze/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:site_name" content="breakaway">
+<meta property="og:title" content="Freeze, gates, and locks · breakaway">
+<meta property="og:description" content="The switches that stop changes: freeze, which stops every plan on an environment and pauses production’s deploys, production gates, observe only, and the lock that lets one apply run at a time.">
+<meta property="og:url" content="https://leavethepack.dev/docs/architect-freeze/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://leavethepack.dev/social.png">
+<meta property="og:image:width" content="2560">
+<meta property="og:image:height" content="1280">
+<meta property="og:image:alt" content="breakaway: Leave the pack. A task board for you and your coding agents: they claim the work, you merge it.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="/fonts/archivo-latin-wdth-italic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/site.css">
+<script src="/theme.js"></script>
+</head>
+<body class="">
+<header class="site-header">
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="bar">
+    <a class="brand" href="/" aria-label="breakaway, home">
+      <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+      <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="/docs/" aria-current="true">Docs</a></li>
+        <li><a href="/docs/quickstart/">Run your own</a></li>
+        <li><a href="https://github.com/TheAnarchoX/breakaway">Source</a></li>
+      </ul>
+    </nav>
+    <button class="theme" type="button" data-theme-toggle aria-label="Switch to the chalk theme">Chalk</button>
+  </div>
+</header>
+<div class="wrap docs">
+  <nav class="docs-nav" aria-label="Docs">
+  <details class="docs-menu" open>
+    <summary>Docs menu</summary>
+    <div class="side-group"><h2 class="label">Start</h2><ul><li><a href="/docs/">Overview</a></li><li><a href="/docs/quickstart/">Run your own board</a></li><li><a href="/docs/concepts/">Concepts</a></li><li><a href="/docs/playbook/">The playbook</a></li></ul></div>
+<div class="side-group"><h2 class="label">Use it</h2><ul><li><a href="/docs/web-board/">The web board</a></li><li><a href="/docs/cli/">The CLI</a></li><li><a href="/docs/agents/">Agents</a></li><li><a href="/docs/features/">Features, chase, and the peloton</a></li><li><a href="/docs/ideas-decisions-pings/">Ideas, decisions, and pings</a></li><li><a href="/docs/routines/">Routines</a></li></ul></div>
+<div class="side-group"><h2 class="label">Connect</h2><ul><li><a href="/docs/github/">GitHub</a></li><li><a href="/docs/plugin/">Claude Code plugin</a></li><li><a href="/docs/mcp/">MCP</a></li><li><a href="/docs/taskwarrior/">Taskwarrior</a></li></ul></div>
+<div class="side-group"><h2 class="label">Run it</h2><ul><li><a href="/docs/deploying/">Deploying and updating</a></li><li><a href="/docs/updating-to-2/">Updating to 2.0.0</a></li><li><a href="/docs/operations/">Operating a board</a></li><li><a href="/docs/recovery/">Recovery</a></li><li><a href="/docs/architecture/">Architecture</a></li><li><a href="/docs/api/">The API</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: start</h2><ul><li><a href="/docs/architect/">What Architect is</a></li><li><a href="/docs/get-started-with-architect/">Get started</a></li><li><a href="/docs/architect-supported/">What’s supported</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: use it</h2><ul><li><a href="/docs/architect-environments/">Environments</a></li><li><a href="/docs/architect-desired-state/">Describe it as code</a></li><li><a href="/docs/architect-changes/">Change an environment</a></li><li><a href="/docs/architect-plans/">Plans and approvals</a></li><li><a href="/docs/architect-policy/">Policy</a></li><li><a href="/docs/architect-envelopes/">Envelopes and scaling</a></li><li><a href="/docs/architect-signals/">Signals and incidents</a></li><li><a href="/docs/architect-cost/">Cost and budgets</a></li><li><a href="/docs/architect-patterns/">Patterns</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: connect</h2><ul><li><a href="/docs/architect-connections/">Tokens and the apply workflow</a></li><li><a href="/docs/architect-deploy-flow/">With the deploy flow</a></li><li><a href="/docs/architect-agents/">Agents and infrastructure</a></li></ul></div>
+<div class="side-group"><h2 class="label">Architect: run it</h2><ul><li><a href="/docs/architect-freeze/" aria-current="page">Freeze, gates, and locks</a></li><li><a href="/docs/architect-drift/">Drift and break-glass</a></li><li><a href="/docs/architect-recovery/">When it goes wrong</a></li></ul></div>
+<div class="side-group"><h2 class="label">More</h2><ul><li><a href="/docs/faq/">FAQ</a></li><li><a href="/docs/privacy/">Privacy</a></li></ul></div>
+  </details>
+</nav>
+  <main id="main" class="doc" tabindex="-1">
+    <p class="label kicker">Architect: run it</p>
+    <h1>Freeze, gates, and locks</h1>
+    <p class="lede">The switches that stop changes: freeze, which stops every plan on an environment and pauses production’s deploys, production gates, observe only, and the lock that lets one apply run at a time.</p>
+    <h2 id="freeze"><a class="anchor" href="#freeze" aria-label="Link to this section">#</a>Freeze</h2>
+<p><strong>Freeze</strong> stops every plan on one environment, envelopes and scaling rules included, until you unfreeze it. It’s the one switch: there are no change windows.</p>
+<p><strong>Freeze</strong> and <strong>Unfreeze</strong> are on each environment’s row on Infrastructure, on its page, and on the repository’s settings page under Infrastructure. Each asks first:</p>
+<ul><li>“Freeze production? Freezing production pauses deploys and plans; Roll back still works.”</li><li>“Freeze staging? Freezing staging stops plans; merges still deploy here.”</li></ul>
+<p>While an environment is frozen:</p>
+<ul><li><strong>Every plan is refused</strong>, by the policy’s first guard. A plan that waits for you can’t be approved: “Staging is frozen: unfreeze it to approve.”</li><li><strong>You can still change it on the console and propose the change.</strong> Approve waits for Unfreeze.</li><li><strong>Drift is shown, and planned once you unfreeze.</strong> What nobody owns waits too.</li><li><strong>On the deploy flow, freezing production is the deploy pause</strong>: Promote and Release stop, and Roll back still works (<a href="/docs/architect-deploy-flow/#freeze-is-the-deploy-pause">Architect and the deploy flow</a>).</li></ul>
+<p>Freeze when you want nothing to move while you look: during an incident, while you change something by hand, or before a launch. Each freeze and unfreeze is in the environment’s audit trail.</p>
+<h2 id="production-gates"><a class="anchor" href="#production-gates" aria-label="Link to this section">#</a>Production gates</h2>
+<p>An environment with <strong>production gates</strong> makes every plan there wait for you, whatever your policy’s allow rules say, and makes its incidents push to your phone. A production environment has them unless you turn them off; you can give them to any other. An <a href="/docs/architect-envelopes/">envelope</a> still works under production gates: it’s bounds you approved already.</p>
+<h2 id="observe-only"><a class="anchor" href="#observe-only" aria-label="Link to this section">#</a>Observe only</h2>
+<p>An <strong>observe-only</strong> environment is one the board watches and never changes: it shows what runs, its health, and its cost, and takes no desired state, plan, envelope, or apply. A file for one is refused, and nothing in it is flagged as nobody owns.</p>
+<p><strong>The board’s own install is always observe only</strong>, whatever the switch says. Architect never applies to it: its fix is a pull request to its code, deployed the way the board always is, and its way back is <a href="/docs/recovery/">Recover without the board</a>.</p>
+<p>Freeze, production gates, and observe only are yours alone, from the signed-in board: the token agents and the CLI hold can’t set them.</p>
+<h2 id="the-lock"><a class="anchor" href="#the-lock" aria-label="Link to this section">#</a>The lock</h2>
+<p>One apply runs at a time per environment. When a plan starts, the board takes the environment’s <strong>lock</strong> for 15 minutes and renews it while the apply works; a lock nobody renews frees itself within the hour.</p>
+<p>While one is held, the environment’s page says which plan holds it. Another approved plan stays <strong>Approved</strong>, saying it waits for the lock, and starts once the lock is free.</p>
+<p><strong>Release the lock</strong>, under the environment’s status band, frees it by force. Use it only when you know the run holding it has stopped: it asks first, since the next approved plan can start at once. The release goes in the audit trail.</p>
+    <nav class="pager" aria-label="Next and previous pages"><a class="pager-prev" href="/docs/architect-agents/"><span class="label">Previous</span><span>Agents and infrastructure</span></a><a class="pager-next" href="/docs/architect-drift/"><span class="label">Next</span><span>Drift and break-glass</span></a></nav>
+  </main>
+  <nav class="toc" aria-label="On this page"><h2 class="label">On this page</h2><ul><li><a href="#freeze">Freeze</a></li><li><a href="#production-gates">Production gates</a></li><li><a href="#observe-only">Observe only</a></li><li><a href="#the-lock">The lock</a></li></ul></nav>
+</div>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <img class="logo-dark" src="/logo/logo-on-dark.svg" width="161" height="19" alt="breakaway">
+        <img class="logo-light" src="/logo/logo-on-light.svg" width="161" height="19" alt="" aria-hidden="true">
+        <p class="muted">Leave the pack.</p>
+      </div>
+      <nav aria-label="Docs">
+        <h2 class="label">Docs</h2>
+        <ul>
+          <li><a href="/docs/quickstart/">Run your own board</a></li>
+          <li><a href="/architect/">Architect</a></li>
+          <li><a href="/docs/concepts/">Concepts</a></li>
+          <li><a href="/docs/cli/">The CLI</a></li>
+          <li><a href="/docs/deploying/">Deploying and updating</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="Project">
+        <h2 class="label">Project</h2>
+        <ul>
+          <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
+          <li><a href="/licensing/">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="/releases.json">Update feed</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="/licensing/">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
+  </div>
+</footer>
+<script src="/site.js" defer></script>
+</body>
+</html>

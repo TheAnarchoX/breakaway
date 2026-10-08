@@ -12,6 +12,13 @@ These docs cover all of it. Start where you are.
 2. [Concepts](https://leavethepack.dev/docs/concepts/): tasks, work IDs, areas, horizons, claims, and how a pull request closes a task. Read it before you add the first task.
 3. [The playbook](https://leavethepack.dev/docs/playbook/): how to write tasks agents finish, and how to run many of them at once without losing the thread.
 
+## I want the board to run my infrastructure
+
+1. [What Architect is](https://leavethepack.dev/docs/architect/): how a change goes, what stays true, and its words.
+2. [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/): five steps from a read-only token to your first approved plan on staging.
+3. [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/): an app’s deploys and its infrastructure on the same staging and production.
+4. [Patterns](https://leavethepack.dev/docs/architect-patterns/): setups that work, from staging first to an environment per task.
+
 ## I want to look something up
 
 | Looking for | Go to |
@@ -23,8 +30,8 @@ These docs cover all of it. Start where you are.
 | Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
-| Starting with Architect: from a read-only token to your first approved plan | [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) |
-| Environments, plans you approve, envelopes, signals, incidents, and cost: Architect | [The manual’s Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) |
+| What Architect is, and how a change to infrastructure goes | [Architect](https://leavethepack.dev/docs/architect/) |
+| Environments, plans you approve, policy, envelopes, signals, incidents, and cost | [The Architect section](https://leavethepack.dev/docs/architect/#read-on) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |
 | Working the board from Claude Code: `/breakaway:claim`, `next`, and `hand-over` | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) |
 | Connecting Claude Code or another MCP client to `/mcp` | [MCP clients](https://leavethepack.dev/docs/mcp/) |
