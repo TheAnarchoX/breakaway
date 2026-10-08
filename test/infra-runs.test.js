@@ -415,7 +415,7 @@ describe('the executor (BRK-183)', () => {
     return { runId, checked, end };
   }
 
-  it('applies an approved plan: locks, starts the workflow, hands the plan to that run once, verifies, and unlocks', async () => {
+  it('applies an approved plan: locks, starts the workflow, hands the plan to that run once, verifies, and passes', async () => {
     const p = await approved(3);
     expect(await run(p.id)).toMatchObject({ phase: 'queued', outcome: null });
     await tick();

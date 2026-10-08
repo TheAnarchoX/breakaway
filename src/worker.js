@@ -625,6 +625,16 @@ async function handleApi(request, env, url, ctx) {
   // Policy (BRK-181): read only, from each repository's default branch, or the default; it changes by pull request.
   if (parts[0] === 'infra' && parts[1] === 'policy' && parts.length === 2 && method === 'GET')
     return send(await s.policyApi({ repo: url.searchParams.get('repo') }));
+  // The Policy view (WEB-123): anyone signed in reads it; previewing, proposing, approving, and rejecting a policy
+  // change are the owner's, from the signed-in browser only, never the bearer token agents and the CLI hold.
+  if (parts[0] === 'infra' && parts[1] === 'policy' && parts[2] === 'view' && parts.length === 3 && method === 'GET')
+    return send(await s.infraPolicyViewApi({ repo: url.searchParams.get('repo') }));
+  if (parts[0] === 'infra' && parts[1] === 'policy' && parts[2] === 'changes' && method === 'POST') {
+    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change the policy' });
+    if (parts.length === 3) return send(await s.infraPolicyChangesApi(body));
+    if (parts.length === 5 && parts[4] === 'approve') return send(await s.infraPolicyChangeApproveApi(parts[3], body));
+    if (parts.length === 5 && parts[4] === 'reject') return send(await s.infraPolicyChangeRejectApi(parts[3], body));
+  }
   // Scaling rules (BRK-241): read only, from each repository's default branch; they change by pull request.
   if (parts[0] === 'infra' && parts[1] === 'scaling' && parts.length === 2 && method === 'GET')
     return send(await s.scalingApi({ repo: url.searchParams.get('repo') }));

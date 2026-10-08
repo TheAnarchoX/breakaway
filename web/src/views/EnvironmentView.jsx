@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { ArrowLeft, FileCode, RefreshCw, Server } from 'lucide-preact';
+import { ArrowLeft, FileCode, RefreshCw, Server, ShieldCheck } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { environmentId, hashFor, navOrder, repoName, tasks } from '../lib/store.js';
@@ -434,6 +434,13 @@ export function EnvironmentView() {
                 <RefreshCw size={16} aria-hidden="true" class={state.loading ? 'spin' : ''} />
                 Reload
               </button>
+              <a
+                class="btn btn-quiet btn-sm"
+                href={hashFor({ view: 'infrastructure', environment: null, policy: env.repo, task: null })}
+              >
+                <ShieldCheck size={16} aria-hidden="true" />
+                Policy
+              </a>
               <FreezeButton env={env} onChange={(updated) => setState((s) => ({ ...s, env: updated }))} />
             </div>
           </div>

@@ -33,6 +33,7 @@ export const AUDIT_KINDS = [
   'environment',
   'cleanup',
   'change',
+  'policy',
 ];
 /** Who acted: the owner (never by name), the executor, an envelope acting with no press, or an agent proposing. */
 export const AUDIT_ACTORS = ['owner', 'executor', 'envelope', 'agent', 'board'];

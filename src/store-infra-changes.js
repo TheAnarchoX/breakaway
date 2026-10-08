@@ -25,6 +25,7 @@ import {
   changeBody,
   changeBranch,
   changeCommitMessage,
+  changePullFate,
   changeTarget,
   changeTitle,
   checkChangedFile,
@@ -501,42 +502,20 @@ export const infraChangesMethods = {
         ]);
     }
 
-    let n = live ? Number(live.n) : this.reserveChangeNumber();
-    let branch = live?.branch ?? changeBranch(env.name, n);
     const created = base.from === 'draft';
     const title =
       created && !planned.lines.length ? `Describe ${env.name} as code` : changeTitle(env.name, planned.lines);
     const message = created && !planned.lines.length ? title : changeCommitMessage(env.name, planned.lines);
-
-    const commit = await client.get(`/git/commits/${encodeURIComponent(head)}`);
-    const tree = await client.send('POST', '/git/trees', {
-      base_tree: commit?.tree?.sha,
-      tree: [
-        { path, mode: '100644', type: 'blob', content: planned.text },
-        ...planned.files.map((f) => ({ path: f.path, mode: '100644', type: 'blob', content: f.text })),
-      ],
+    const made = await this.writeChangeBranch(client, {
+      head,
+      files: [{ path, text: planned.text }, ...planned.files],
+      message,
+      live: live ? { n: Number(live.n), branch: live.branch } : null,
+      branchFor: (k) => changeBranch(env.name, k),
+      reserve: () => this.reserveChangeNumber(),
+      repo: env.repo,
     });
-    const made = await client.send('POST', '/git/commits', { message, tree: tree.sha, parents: [head] });
-    // The open change's branch moves by force: its head is the commit the board wrote (followInfraChange checked).
-    if (live) await client.send('PATCH', `/git/refs/heads/${refPath(branch)}`, { sha: made.sha, force: true });
-    else
-      for (let tries = 1; ; tries += 1) {
-        try {
-          await client.send('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: made.sha });
-          break;
-        } catch (error) {
-          if (!(error instanceof GitHubError) || error.status !== 422) throw error;
-          // A branch of that name the board didn't make for this change (a person's, or another install's) is
-          // never moved: the next number gets a branch of its own.
-          if (tries >= BRANCH_TRIES)
-            throw new AgentError(
-              `${env.repo} already has branches named like ${changeBranch(env.name, '<n>')} that the board didn’t make for this change: delete the ones you don’t need, then propose again`,
-              409,
-            );
-          n = this.reserveChangeNumber();
-          branch = changeBranch(env.name, n);
-        }
-      }
+    const { n, branch } = made;
     const home = this.homeUrl();
     const page = home ? `${home}/#/infrastructure/${env.id}` : null;
     const description = changeBody({
@@ -617,6 +596,47 @@ export const infraChangesMethods = {
     return { status: live ? 200 : 201, body: { change: this.changeOut(row), preview: planned.preview } };
   },
 
+  /**
+   * Writes `files` as one commit on `head` and points the change's branch at it: the open change's own branch moves by
+   * force (its head is the commit the board wrote, which followInfraChange checked), and a new change gets a branch of
+   * its own, never one the board didn't make for it. Shared by an environment's change and a policy change (WEB-123).
+   * @param {any} client
+   * @param {{ head: string, files: Array<{ path: string, text: string }>, message: string,
+   *   live: { n: number, branch: string } | null, branchFor: (n: number | string) => string, reserve: () => number,
+   *   repo: string }} args
+   * @returns {Promise<{ n: number, branch: string, sha: string }>}
+   */
+  async writeChangeBranch(client, { head, files, message, live, branchFor, reserve, repo }) {
+    let n = live ? live.n : reserve();
+    let branch = live?.branch ?? branchFor(n);
+    const commit = await client.get(`/git/commits/${encodeURIComponent(head)}`);
+    const tree = await client.send('POST', '/git/trees', {
+      base_tree: commit?.tree?.sha,
+      tree: files.map((f) => ({ path: f.path, mode: '100644', type: 'blob', content: f.text })),
+    });
+    const made = await client.send('POST', '/git/commits', { message, tree: tree.sha, parents: [head] });
+    if (live) await client.send('PATCH', `/git/refs/heads/${refPath(branch)}`, { sha: made.sha, force: true });
+    else
+      for (let tries = 1; ; tries += 1) {
+        try {
+          await client.send('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: made.sha });
+          break;
+        } catch (error) {
+          if (!(error instanceof GitHubError) || error.status !== 422) throw error;
+          // A branch of that name the board didn't make for this change (a person's, or another install's) is
+          // never moved: the next number gets a branch of its own.
+          if (tries >= BRANCH_TRIES)
+            throw new AgentError(
+              `${repo} already has branches named like ${branchFor('<n>')} that the board didn’t make for this change: delete the ones you don’t need, then propose again`,
+              409,
+            );
+          n = reserve();
+          branch = branchFor(n);
+        }
+      }
+    return { n, branch, sha: made.sha };
+  },
+
   /** The next change's number: synchronous, so two proposals never share one. */
   reserveChangeNumber() {
     const kept = Number(this.meta('infra_change_seq') ?? 0);
@@ -632,7 +652,8 @@ export const infraChangesMethods = {
    */
   followInfraChange(row, pull) {
     const ref = `#${row.pull}`;
-    if (pull.merged_at || pull.merged) {
+    const fate = changePullFate(row.commit_sha, pull);
+    if (fate === 'merged') {
       this.moveInfraChange(row, 'merged', { by: 'board', outcome: 'merged', summary: `${ref} merged on GitHub` });
       this.infraEvent(
         'change.merged',
@@ -644,7 +665,7 @@ export const infraChangesMethods = {
       this.giveChangeTarget(row, 'board');
       return true;
     }
-    if (pull.state === 'closed') {
+    if (fate === 'closed') {
       this.moveInfraChange(row, 'closed', {
         by: 'board',
         outcome: 'closed',
@@ -653,7 +674,7 @@ export const infraChangesMethods = {
       });
       return true;
     }
-    if (row.commit_sha && pull.head?.sha && pull.head.sha !== row.commit_sha) {
+    if (fate === 'taken over') {
       this.moveInfraChange(row, 'taken over', {
         by: 'board',
         outcome: 'taken over',
