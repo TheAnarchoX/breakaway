@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -11,6 +11,8 @@ import {
   githubOf,
   kickoffIdea,
   prefixCandidates,
+  checkRunIt,
+  runItProgress,
   suggestName,
 } from '../src/kickoff.js';
 
@@ -69,6 +71,35 @@ describe('kickoffs, the pure parts', () => {
       horizon: 'next',
       tags: ['agent', 'idea', 'kickoff-project'],
     });
+  });
+
+  it('checks Run it’s answer, and sums up its parts (WEB-126)', () => {
+    expect(checkRunIt('not-needed')).toBe('not-needed');
+    expect(checkRunIt(null)).toBeNull();
+    expect(() => checkRunIt('later')).toThrow(/not-needed, now, agent/);
+    const nothing = { provider: false, tokens: null, environments: [], plan: null, deploys: false };
+    expect(runItProgress({ choice: null, ...nothing })).toMatchObject({ done: false });
+    // Not needed is done, whatever is set up.
+    expect(runItProgress({ choice: 'not-needed', ...nothing })).toMatchObject({ done: true });
+    const now = runItProgress({ choice: 'now', ...nothing });
+    expect(now.parts.map((p) => p.id)).toEqual(['provider', 'tokens', 'environments', 'plan', 'deploys']);
+    // Tokens the board can't check yet neither tick nor hold the step.
+    expect(now.left).toEqual(['provider', 'environments', 'plan', 'deploys']);
+    const all = {
+      provider: true,
+      tokens: null,
+      environments: [
+        { id: 1, name: 'production', kind: 'production' },
+        { id: 2, name: 'staging', kind: 'staging' },
+      ],
+      plan: { id: 'plan-3', state: 'waiting', environment: 2 },
+      deploys: true,
+    };
+    const set = runItProgress({ choice: 'agent', ...all });
+    expect(set).toMatchObject({ done: true, left: [] });
+    expect(set.parts.find((p) => p.id === 'plan').detail).toBe('plan-3, waiting for you');
+    expect(set.parts.find((p) => p.id === 'environments').detail).toBe('production, staging');
+    expect(runItProgress({ choice: 'now', ...all, tokens: false })).toMatchObject({ done: false, left: ['tokens'] });
   });
 });
 
@@ -341,10 +372,77 @@ describe('kickoffs on the board (IDEA-26)', () => {
     expect((await allTasks()).filter((t) => t.project === 'ideas')).toHaveLength(2);
   });
 
+  it('keeps Run it’s answer, the owner’s alone, with its progress in the repository (WEB-126)', async () => {
+    const fresh = await body(await api(`kickoffs/${plant.id}`));
+    expect(fresh.runIt).toMatchObject({ choice: null, done: false });
+    expect(fresh.runIt.parts.map((p) => [p.id, p.done])).toEqual([
+      ['provider', false],
+      ['tokens', false],
+      ['environments', false],
+      ['plan', false],
+      ['deploys', false],
+    ]);
+    const path = `kickoffs/${plant.id}/run-it`;
+    expect((await api(path, { method: 'POST', body: { choice: 'not-needed' } })).status).toBe(403);
+    expect((await owner(path, { method: 'POST', body: { choice: 'not-needed', by: 'claude-x' } })).status).toBe(403);
+    expect((await body(await owner(path, { method: 'POST', body: { choice: 'soon' } }))).status).toBe(400);
+
+    const skipped = await body(await owner(path, { method: 'POST', body: { choice: 'not-needed' } }));
+    expect(skipped.kickoff.runIt).toBe('not-needed');
+    expect(skipped.runIt).toMatchObject({ choice: 'not-needed', done: true });
+    expect(skipped.runIt.at).toBeTruthy();
+
+    // Changing its mind: Set it up now waits for the setup, part by part.
+    const now = await body(await owner(path, { method: 'POST', body: { choice: 'now' } }));
+    expect(now.runIt).toMatchObject({
+      choice: 'now',
+      done: false,
+      left: ['provider', 'tokens', 'environments', 'plan', 'deploys'],
+    });
+    const added = await owner('infra/environments', {
+      method: 'POST',
+      body: { repo: 'plant-diary', name: 'staging', kind: 'staging', provider: 'cloudflare', by: 'owner' },
+    });
+    expect(added.status).toBe(201);
+    const seen = await body(await api(`kickoffs/${plant.id}`));
+    expect(seen.runIt.parts.find((p) => p.id === 'environments')).toMatchObject({ done: true, detail: 'staging' });
+    expect(seen.runIt.left).toEqual(['provider', 'tokens', 'plan', 'deploys']);
+    expect(seen.runIt.environments).toEqual([{ id: expect.any(Number), name: 'staging', kind: 'staging' }]);
+
+    // The repository's settings page reads it by the repository, finished or not.
+    const listed = await body(await api('kickoffs?repo=plant-diary'));
+    expect(listed.kickoffs.map((k) => k.id)).toEqual([plant.id]);
+    expect(listed.kickoffs[0].runIt).toMatchObject({ choice: 'now', left: ['provider', 'tokens', 'plan', 'deploys'] });
+
+    // A token check that fails (GitHub's limit used up) leaves the tokens unchecked, and Run it still answers.
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      instance.infraTokens = async () => {
+        throw new Error('GitHub’s limit is used up');
+      };
+    });
+    const unchecked = await body(await api(`kickoffs/${plant.id}`));
+    expect(unchecked.status).toBe(200);
+    expect(unchecked.runIt.parts.find((p) => p.id === 'tokens')).toMatchObject({ done: null });
+    expect(unchecked.runIt.left).toEqual(['provider', 'plan', 'deploys']);
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      delete instance.infraTokens;
+    });
+    expect((await body(await api('kickoffs?repo=herbs'))).kickoffs.map((k) => k.runIt.choice)).toEqual([null]);
+
+    // Taking it back leaves the step to do again.
+    const back = await body(await owner(path, { method: 'POST', body: { choice: null } }));
+    expect(back.runIt).toMatchObject({ choice: null, at: null, done: false });
+  });
+
   it('stops a kickoff, its waiting images with it, and a finished one leaves the list', async () => {
     const extra = (await body(await owner('kickoffs', { method: 'POST', body: { pitch: 'Bird feeder camera' } })))
       .kickoff;
     const image = (await body(await upload(extra.id, PNG))).attachment;
+    // Run it waits for the repository: the setup happens there.
+    const early = await body(
+      await owner(`kickoffs/${extra.id}/run-it`, { method: 'POST', body: { choice: 'not-needed' } }),
+    );
+    expect(early).toMatchObject({ status: 409, error: expect.stringMatching(/add .* to the board first/) });
     expect((await api(`kickoffs/${extra.id}`, { method: 'DELETE' })).status).toBe(403);
     const stopped = await body(await owner(`kickoffs/${extra.id}`, { method: 'DELETE' }));
     expect(stopped).toEqual({ status: 200, stopped: extra.id, registered: null });
@@ -353,8 +451,32 @@ describe('kickoffs on the board (IDEA-26)', () => {
 
     // A registered one stops too, and says which repository stays on the board.
     expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary', 'herb-log']);
-    // Its plan merged: the IDEA is done, and the kickoff with it.
+    // Its plan merged: the IDEA is done, but Run it isn't, so it stays in the list, marked (WEB-126).
     expect((await api('tasks/IDEA-2', { method: 'PATCH', body: { status: 'completed' } })).status).toBe(200);
+    const merged = (await body(await api('kickoffs'))).kickoffs;
+    expect(merged.map((k) => [k.name, k.runItLeft])).toEqual([
+      ['plant-diary', false],
+      ['herb-log', true],
+    ]);
+    const herbId = merged[1].id;
+    // A kickoff whose plan merged before Run it existed stays out of the list, even once its page is opened again.
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      instance.sql.exec('ALTER TABLE kickoffs DROP COLUMN run_it_done');
+      instance.initKickoffs();
+    });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    expect((await body(await api(`kickoffs/${herbId}`))).runIt.done).toBe(false);
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    // The owner's own answer takes over from there. Taken back, it's left to do, and back in the list.
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: null } });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary', 'herb-log']);
+    // Answered Not needed, Run it is done, and the kickoff leaves the list with it.
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: 'not-needed' } });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    // Taken back, it's left to do again, and back in the list.
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: null } });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary', 'herb-log']);
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: 'not-needed' } });
     expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
     // Asked for by its IDEA, a finished one still answers, so its plan's pull request page can lead back (WEB-48).
     const herbIdea = (await body(await api('tasks/IDEA-2'))).task.uuid;

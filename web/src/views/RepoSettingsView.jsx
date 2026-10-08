@@ -16,6 +16,7 @@ import { AREAS, plural } from '../lib/model.js';
 import { RepoPullSettings } from '../components/PullSettings.jsx';
 import { DeployCard } from '../components/DeployCard.jsx';
 import { InfraSettings } from '../components/InfraSettings.jsx';
+import { KickoffSummary } from '../components/KickoffRunIt.jsx';
 import { WORKFLOWS, deployField, missingOf, pipelineForm, pipelineOf } from '../lib/pipeline-form.js';
 import {
   agents,
@@ -1360,6 +1361,7 @@ export function RepoSettingsView() {
             onReload={load}
             readOnly={readOnly}
           />
+          {!readOnly && <KickoffSummary slug={data.repo.slug} />}
           {!readOnly && <InfraSettings key={`infra:${data.repo.slug}`} repo={data.repo} />}
           {!readOnly && <PullRequests repo={data.repo} />}
           {!readOnly && <TakeOff data={data} />}

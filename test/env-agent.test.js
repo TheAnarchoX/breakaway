@@ -67,6 +67,37 @@ describe('envAgentPrompt (WEB-121)', () => {
   });
 });
 
+describe('envAgentPrompt from Kickoff’s Run it (WEB-126)', () => {
+  const kickoff = {
+    ...base,
+    repo: 'plant-diary',
+    how: /** @type {const} */ ('infer'),
+    also: [
+      { name: 'staging', kind: 'staging' },
+      { name: 'production', kind: 'production' },
+    ],
+    plan: 'IDEA-1',
+  };
+
+  it('sets up the other environments in the same pull request, each in its own file', () => {
+    const prompt = envAgentPrompt(kickoff);
+    expect(prompt).toContain(
+      'In the same pull request, set up production (production) the same way, each in its own file: .github/breakaway-infra/production.json.',
+    );
+    // The environment the wizard names isn't repeated.
+    expect(prompt).not.toContain('staging (staging)');
+  });
+
+  it('reads the project’s plan first, and adds to environments already on the board', () => {
+    const prompt = envAgentPrompt(kickoff);
+    expect(prompt).toContain('Read its plan first: IDEA-1’s spec');
+    expect(prompt).toContain('npx breakaway show IDEA-1');
+    expect(prompt).toContain('add to them rather than making them again');
+    expect(prompt).toContain('Never apply');
+    expect(envAgentPrompt(base)).not.toContain('Kickoff');
+  });
+});
+
 describe('envAgentProblems (WEB-121)', () => {
   it('passes a filled-in wizard', () => {
     expect(envAgentProblems(base)).toEqual({});
