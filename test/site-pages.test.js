@@ -188,6 +188,17 @@ describe('the site', () => {
       expect(text).toContain(label);
       expect(EXCEPTION_FORM).toContain(`label: ${label.replace('’', "'")}`);
     }
+    // Or in private, by email (DOC-45): the public issue first, then the address and the subject as text people
+    // can select and copy, on the page, in LICENSING.md, and in the form's intro.
+    const email = 'theanarchox@proton.me';
+    const subject = 'breakaway licence exception: &lt;who you are&gt;';
+    expect(page.indexOf('issues/new?template=licence-exception.yml')).toBeLessThan(page.indexOf(email));
+    expect(page).toContain(`<pre><code>${email}</code></pre>`);
+    expect(page).toContain(`<pre><code>${subject}</code></pre>`);
+    for (const text of [LICENSING_FILE, EXCEPTION_FORM]) {
+      expect(text).toContain(email);
+      expect(text).toContain('breakaway licence exception: <who you are>');
+    }
     // Linked from every page's footer, the landing page's licence line, the README, and LICENSING.md.
     for (const [path, html] of built) expect(html, path).toContain(`href="${LICENSING.path}"`);
     expect(INDEX).toContain(`<a href="${LICENSING.path}">`);

@@ -7,10 +7,11 @@ import { describe, expect, it } from 'vitest';
 // below. The list is what remains, each with its reason and the number of lines it may keep: a new one in a
 // listed file fails too, and a file that no longer needs its entry fails until the entry is gone, so the list
 // only shrinks. BRK-55 retired the Worker's built-in first install, so what's left is history and the tests that
-// keep it out. Naming this project's own repository (`TheAnarchoX/breakaway`) is fine.
+// keep it out. Naming this project's own repository (`TheAnarchoX/breakaway`) is fine, and so is the address the
+// owner published for asking for a licence exception in private (DOC-45).
 
 const ROOT = new URL('../../', import.meta.url);
-const NAMED = /samewave|theanarchox(?!\/breakaway\b)/iu;
+const NAMED = /samewave|theanarchox(?!\/breakaway\b|@proton\.me\b)/iu;
 
 const HISTORY = 'the board began in the first install: its decisions, specs, and deploy records keep their history';
 const KEEPS_OUT = 'checks that the files it covers never name it';
