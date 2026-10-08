@@ -934,7 +934,65 @@ export async function discover(ctx, { live = false } = {}) {
     ),
   );
   seen.scripts = [...scripts.keys()];
-  if (!scripts.has(target)) return done();
+  /** @param {Set<string>} workers the Workers in scope, whose routes and custom domains are resources */
+  async function serving(workers) {
+    // Routes, on the zones the token reaches, that send to a Worker in scope. The zones list holds every zone on the
+    // account for an account-owned token, so a 403 on one zone's routes is skipped and named in `skipped`, never an
+    // error (BRK-254); only when every zone refuses does discovery fail, naming the permission.
+    const zones = await cf.all(`/zones?account.id=${a}`, { permission: 'Zone Read' }, 50);
+    /** @type {Array<{ zone: string, error: any }>} */
+    const refused = [];
+    for (const zone of zones) {
+      seen.zones[String(zone.name)] = String(zone.id);
+      let routes;
+      try {
+        routes =
+          (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
+      } catch (error) {
+        if (error?.status !== 403) throw error;
+        refused.push({ zone: String(zone.name), error });
+        continue;
+      }
+      for (const route of routes) {
+        seen.routes.push({
+          pattern: String(route.pattern),
+          zone: String(zone.name),
+          worker: String(route.script ?? ''),
+        });
+        if (!workers.has(String(route.script))) continue;
+        add({
+          id: rid('route', route.id),
+          kind: 'route',
+          name: String(route.pattern),
+          attrs: { zone: zone.name, worker: String(route.script) },
+        });
+        relate(rid('worker', String(route.script)), rid('route', route.id), 'serves');
+      }
+    }
+    if (refused.length && refused.length === zones.length) throw refused[0].error;
+    if (refused.length) skipped.push(routesSkipped(refused));
+
+    // Custom domains attached to a Worker in scope.
+    const domains = (await cf.get(`/accounts/${a}/workers/domains`, { permission: WORKERS_READ })).result ?? [];
+    for (const d of domains) {
+      seen.domains.push({ hostname: String(d.hostname), worker: String(d.service ?? '') });
+      if (!workers.has(String(d.service))) continue;
+      add({
+        id: rid('custom-domain', d.id),
+        kind: 'custom-domain',
+        name: String(d.hostname),
+        attrs: { zone: d.zone_name ?? null, environment: d.environment ?? null, worker: String(d.service) },
+      });
+      relate(rid('worker', String(d.service)), rid('custom-domain', d.id), 'serves');
+    }
+  }
+
+  // A target that doesn't run yet (a new environment built from the console, BRK-291) has nothing in scope, but a plan
+  // still needs the zones, routes, and domains, so its first change can serve a hostname (BRK-292).
+  if (!scripts.has(target)) {
+    if (live) await serving(new Set());
+    return done();
+  }
 
   // The Workers in scope: the target, and the Workers it calls or whose Durable Objects it binds.
   /** @type {Map<string, any[]>} */
@@ -1166,52 +1224,7 @@ export async function discover(ctx, { live = false } = {}) {
       missing.push('Containers Read');
     }
 
-  // Routes, on the zones the token reaches, that send to a Worker in scope. The zones list holds every zone on the
-  // account for an account-owned token, so a 403 on one zone's routes is skipped and named in `skipped`, never an
-  // error (BRK-254); only when every zone refuses does discovery fail, naming the permission.
-  const zones = await cf.all(`/zones?account.id=${a}`, { permission: 'Zone Read' }, 50);
-  /** @type {Array<{ zone: string, error: any }>} */
-  const refused = [];
-  for (const zone of zones) {
-    seen.zones[String(zone.name)] = String(zone.id);
-    let routes;
-    try {
-      routes =
-        (await cf.get(`/zones/${enc(zone.id)}/workers/routes`, { permission: 'Workers Routes Read' })).result ?? [];
-    } catch (error) {
-      if (error?.status !== 403) throw error;
-      refused.push({ zone: String(zone.name), error });
-      continue;
-    }
-    for (const route of routes) {
-      seen.routes.push({ pattern: String(route.pattern), zone: String(zone.name), worker: String(route.script ?? '') });
-      if (!workers.has(String(route.script))) continue;
-      add({
-        id: rid('route', route.id),
-        kind: 'route',
-        name: String(route.pattern),
-        attrs: { zone: zone.name, worker: String(route.script) },
-      });
-      relate(rid('worker', String(route.script)), rid('route', route.id), 'serves');
-    }
-  }
-  if (refused.length && refused.length === zones.length) throw refused[0].error;
-  if (refused.length) skipped.push(routesSkipped(refused));
-
-  // Custom domains attached to a Worker in scope.
-  const domains = (await cf.get(`/accounts/${a}/workers/domains`, { permission: WORKERS_READ })).result ?? [];
-  for (const d of domains) {
-    seen.domains.push({ hostname: String(d.hostname), worker: String(d.service ?? '') });
-    if (!workers.has(String(d.service))) continue;
-    add({
-      id: rid('custom-domain', d.id),
-      kind: 'custom-domain',
-      name: String(d.hostname),
-      attrs: { zone: d.zone_name ?? null, environment: d.environment ?? null, worker: String(d.service) },
-    });
-    relate(rid('worker', String(d.service)), rid('custom-domain', d.id), 'serves');
-  }
-
+  await serving(workers);
   return done();
 }
 
