@@ -1,7 +1,7 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
-import { fakeProvider } from './fake-infra-provider.js';
+import { fakeProvider, fakeState } from './fake-infra-provider.js';
 import { GitHubError } from '../src/github.js';
 import { DESIRED_DIR } from '../src/infra-desired.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
@@ -20,6 +20,8 @@ const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const store = () => env.STORE.get(env.STORE.idFromName('widgets'));
 const inStore = (fn) => runInDurableObject(store(), fn);
 const PROVIDER = 'fakepulls';
+/** A platform with nothing on it yet, for an environment built from nothing (BRK-298). */
+const EMPTY = 'fakepullsnew';
 const encoder = new TextEncoder();
 const b64 = (text) => btoa(String.fromCharCode(...encoder.encode(text)));
 
@@ -81,6 +83,7 @@ describe('which files a pull request changes in the folder', () => {
 describe('a pull request’s plan as a check', () => {
   let cookie;
   let provider;
+  let empty;
   /** @type {Record<string, any>} */
   const envs = {};
   const board = (path, { method = 'GET', body: b } = {}) =>
@@ -168,10 +171,24 @@ describe('a pull request’s plan as a check', () => {
       );
       envs[name] = made.environment;
     }
+    // An environment with nothing running and no target yet.
+    envs['pulls-fresh'] = (
+      await body(
+        await board('infra/environments', {
+          method: 'POST',
+          body: { repo: 'widgets', provider: EMPTY, name: 'pulls-fresh', kind: 'production' },
+        }),
+      )
+    ).environment;
     provider = fakeProvider({ id: PROVIDER });
+    empty = fakeProvider({
+      id: EMPTY,
+      state: { ...fakeState(), resources: [], relations: [], health: {}, costs: {}, events: [] },
+    });
     await inStore(async (s) => {
       s.infraProviders = new ProviderRegistry();
       s.infraProviders.register(provider);
+      s.infraProviders.register(empty);
       await s.refreshInventory(PROVIDER);
     });
   });
@@ -371,6 +388,99 @@ describe('a pull request’s plan as a check', () => {
       conclusion: 'neutral',
       output: { title: 'Pulls-new isn’t on the board yet' },
     });
+  });
+
+  it('plans an environment with no target with the one its change gives it, or the one service its file makes (BRK-298)', async () => {
+    const PATH = `${DESIRED_DIR}/pulls-fresh.json`;
+    const id = envs['pulls-fresh'].id;
+    /** The target each plan of the empty platform was asked for. */
+    const asked = [];
+    const plan = empty.plan;
+    empty.plan = async (ctx, desired) => {
+      asked.push(ctx.scope?.target ?? null);
+      return plan(ctx, desired);
+    };
+    const resource = (kind, name) => ({ id: `${kind}:${name}`, kind, name, attrs: {} });
+    const fileWith = (...resources) => JSON.stringify({ version: 1, provider: EMPTY, resources }, null, 2);
+    const app = resource('service', 'acme-app');
+    const web = resource('service', 'acme-web');
+    const db = resource('database', 'acme-db');
+    gh.files = [{ filename: PATH, status: 'added', additions: 1, deletions: 0 }];
+    try {
+      // The board's own change for the pull request names the target, as the console's preview and Approve plan it.
+      await inStore((s) =>
+        s.sql.exec(
+          `INSERT INTO infra_changes (n, environment, repo, name, edits, lines, branch, pull, target, state, created, updated)
+           VALUES (9801, ?, 'widgets', 'pulls-fresh', '[]', '[]', 'breakaway/infra/pulls-fresh-9801', 61, 'acme-web', 'open', ?, ?)`,
+          id,
+          Date.now(),
+          Date.now(),
+        ),
+      );
+      gh.at[PATH] = fileWith(app, web, db);
+      await check([pull(61, 'sha-61')]);
+      expect(gh.posted[0]).toMatchObject({ conclusion: 'success', output: { title: '3 changes to pulls-fresh' } });
+      expect(gh.posted[0].output.summary).toContain(
+        'pulls-fresh has no target yet: planned with acme-web, the target its change gives it.',
+      );
+      const page = (await shown(61)).environments[0];
+      expect(page).toMatchObject({ state: 'planned', target: { name: 'acme-web', from: 'change' } });
+      expect(page.preview.diff.changes.map((c) => [c.op, c.name])).toEqual([
+        ['create', 'acme-app'],
+        ['create', 'acme-web'],
+        ['create', 'acme-db'],
+      ]);
+      expect(asked).toEqual(['acme-web']);
+
+      // A hand-written first file, with no change on the board: the one service it makes.
+      asked.length = 0;
+      gh.at[PATH] = fileWith(app, db);
+      await check([pull(62, 'sha-62')]);
+      expect(gh.posted[1]).toMatchObject({ conclusion: 'success', output: { title: '2 changes to pulls-fresh' } });
+      expect(gh.posted[1].output.summary).toContain(
+        'pulls-fresh has no target yet: planned with acme-app, the one Service its file makes.',
+      );
+      expect((await shown(62)).environments[0]).toMatchObject({
+        state: 'planned',
+        target: { name: 'acme-app', from: 'desired' },
+        preview: { changes: 2 },
+      });
+      expect(asked).toEqual(['acme-app']);
+
+      // Two services and nothing to say which: it says to pick one, and plans nothing.
+      asked.length = 0;
+      gh.at[PATH] = fileWith(app, web, db);
+      await check([pull(63, 'sha-63')]);
+      expect(gh.posted[2]).toMatchObject({
+        conclusion: 'neutral',
+        output: { title: 'Pulls-fresh couldn’t be planned' },
+      });
+      expect((await shown(63)).environments[0]).toMatchObject({
+        state: 'failed',
+        problem:
+          'pulls-fresh has no target, and its desired state makes 2 Services (acme-app, acme-web): set which one is its target on the board, then it plans',
+      });
+      expect(asked).toEqual([]);
+
+      // `infra check` plans it the same way.
+      const one = await body(
+        await board('infra/check', {
+          method: 'POST',
+          body: { environment: 'pulls-fresh', repo: 'widgets', file: fileWith(app, db), policy: null },
+        }),
+      );
+      expect(one).toMatchObject({ status: 200, preview: { changes: 2 } });
+      const two = await body(
+        await board('infra/check', {
+          method: 'POST',
+          body: { environment: 'pulls-fresh', repo: 'widgets', file: fileWith(app, web), policy: null },
+        }),
+      );
+      expect(two).toMatchObject({ status: 422, problem: { field: 'target' } });
+    } finally {
+      empty.plan = plan;
+      await inStore((s) => s.sql.exec('DELETE FROM infra_changes WHERE n = 9801'));
+    }
   });
 
   it('says a removed file changes nothing', async () => {

@@ -39,7 +39,7 @@ import { CodeBlock, tokensOf, useHighlightAll } from '../lib/highlight.jsx';
 import { FilePreview } from './FilePreview.jsx';
 import { RepoChip } from './ui.jsx';
 import { Checks, PrIcon, Review, VERDICT, Verdict, prStateLabel } from './GitHub.jsx';
-import { costWords, policyWords } from '../../../src/infra-pulls.js';
+import { costWords, policyWords, targetWords } from '../../../src/infra-pulls.js';
 import { useMedia } from '../lib/media.js';
 import { CARD, cardState, plansNothing } from '../lib/infra-change.js';
 import { ChangeActions } from './ChangeActions.jsx';
@@ -875,6 +875,7 @@ function InfraEnvironment({ e }) {
   return (
     <div class="infra-pr-env">
       <h3>{e.environment}</h3>
+      {e.state === 'planned' && e.target && <p class="meta">{targetWords(e)}</p>}
       {body}
     </div>
   );

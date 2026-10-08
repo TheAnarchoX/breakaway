@@ -145,7 +145,8 @@ export const infraPullsMethods = {
 
     /** @type {import('./infra-pulls.js').EnvironmentCheck[]} */
     const environments = [];
-    for (const want of planned) environments.push(await this.checkInfraPullEnvironment(repo, want, read, policyOf));
+    for (const want of planned)
+      environments.push(await this.checkInfraPullEnvironment(repo, want, read, policyOf, pull.number));
 
     // What a policy change loosens and tightens, in words (WEB-123): the policy at the base against the one at the head.
     let policyLines = null;
@@ -214,10 +215,12 @@ export const infraPullsMethods = {
   },
 
   /**
-   * One environment's part of a pull request's check, from its file at the head.
+   * One environment's part of a pull request's check, from its file at the head. An environment with no target is
+   * planned with the one the board's change for this pull request gives it, else the one Worker its file makes
+   * (BRK-298), as the console's preview and Approve plan it; `target` names it then.
    * @returns {Promise<import('./infra-pulls.js').EnvironmentCheck>}
    */
-  async checkInfraPullEnvironment(repo, want, read, policyOf) {
+  async checkInfraPullEnvironment(repo, want, read, policyOf, number = null) {
     const env = this.sql
       .exec('SELECT * FROM infra_environments WHERE repo = ? AND name = ?', repo.slug, want.environment)
       .toArray()[0];
@@ -228,6 +231,7 @@ export const infraPullsMethods = {
       problem: null,
       error: null,
       preview: null,
+      target: null,
     };
     if (env && (env.observe_only || runsTheBoard(env, install(this.env).worker)))
       return {
@@ -267,9 +271,25 @@ export const infraPullsMethods = {
         state: 'to-add',
         problem: `${repo.slug} has no environment called ${want.environment}: add it on the board, or rename the file. Nothing is planned until then.`,
       };
+    const change = env.target
+      ? null
+      : this.sql
+          .exec(
+            'SELECT target FROM infra_changes WHERE environment = ? AND pull = ? AND target IS NOT NULL ORDER BY n DESC LIMIT 1',
+            Number(env.id),
+            Number(number),
+          )
+          .toArray()[0];
+    const at = this.infraPlanTarget(env, checked.desired, change?.target ?? null);
+    if (at.problem) return { ...base, state: 'failed', problem: at.problem };
+    const target = at.target
+      ? change
+        ? { name: at.target, from: /** @type {const} */ ('change') }
+        : { name: at.target, from: /** @type {const} */ ('desired'), label: at.label }
+      : null;
     try {
-      const preview = await this.previewInfraPlan(env, checked.desired, policyOf);
-      return { ...base, state: 'planned', preview };
+      const preview = await this.previewInfraPlan(at.env, checked.desired, policyOf);
+      return { ...base, state: 'planned', preview, target };
     } catch (error) {
       return { ...base, state: 'failed', problem: redact(String(error?.message ?? error)) };
     }
