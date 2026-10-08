@@ -1,6 +1,6 @@
 // Builds the launch images: launch/media/*.png (2160 px, square). Each card is an entry below: a kicker,
 // a display headline, and a body. Run: node cards.mjs [name ...]
-import { logoOnDark, page, still, withBrowser } from './kit.mjs';
+import { LICENCE_LINE, logoOnDark, page, still, withBrowser } from './kit.mjs';
 
 const OUT = new URL('../media/', import.meta.url);
 
@@ -102,11 +102,11 @@ const CARDS = {
     }),
   },
   '04-run-your-own': {
-    alt: 'A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read leavethepack.dev/install.md and follow it. And the line: free, and the source is public.',
+    alt: 'A card headed "Run your own." Below it: "Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you." Then the prompt: Set up a breakaway board for me. Read leavethepack.dev/install.md and follow it. And the line: free for people, not for profit.',
     html: frame({
       kicker: 'Self-hosting',
       foot: 'breakaway',
-      footNote: 'Free · the source is public',
+      footNote: LICENCE_LINE,
       body: `<div class="copy" style="top:200px"><div class="display">Run<br>your <span class="red">own.</span></div>
           <p class="lede">Paste this into Claude Code. It sets up a board on your own Cloudflare account, with you.</p></div>
         <div class="prompt"><div class="label">Claude Code</div><p>Set up a breakaway board for me.<br>Read leavethepack.dev/install.md<br>and follow it.</p></div>`,
