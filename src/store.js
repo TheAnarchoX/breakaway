@@ -538,6 +538,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       ...task,
       pings: this.pingsFor(uuid),
       incident: this.incidentOfTask(uuid),
+      routineRun: this.routineRunOf(uuid),
       dependsOn: task.depends.map(brief),
       blockingTasks: task.blocking.map(brief),
       relatedTasks: [...task.related, ...relatedBy].map(brief),

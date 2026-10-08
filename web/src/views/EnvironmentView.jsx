@@ -9,6 +9,7 @@ import { EnvironmentPlans } from '../components/EnvironmentPlans.jsx';
 import { firstApplyFailed } from '../lib/env-plans.js';
 import { FreezeButton, KIND_LABEL, environmentHealth } from './InfrastructureView.jsx';
 import { IncidentsSection } from '../components/Incidents.jsx';
+import { EnvironmentRoutines } from '../components/InfraEvents.jsx';
 import { UnownedSection } from '../components/Unowned.jsx';
 import { CostSection } from '../components/InfraCosts.jsx';
 import { DescribeAsCode } from '../components/InfraDescribe.jsx';
@@ -421,6 +422,7 @@ export function EnvironmentView() {
                   </>
                 )}
               </p>
+              <EnvironmentRoutines env={env} />
             </div>
             <div class="conn-buttons">
               {env.provider && env.target && <InventoryRefresh provider={env.provider} onDone={() => load()} />}

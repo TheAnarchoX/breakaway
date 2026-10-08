@@ -211,6 +211,64 @@ describe('routines started by infrastructure events (BRK-293)', () => {
     expect(fires).toHaveLength(0); // each waits for the owner's Start
   });
 
+  it('names the event that started a run on its history and its task, with what it links to (WEB-122)', async () => {
+    const id = await inStore((store) => {
+      const now = Date.now();
+      return store.sql
+        .exec(
+          'INSERT INTO infra_environments (repo, name, kind, created, edited) VALUES (?, ?, ?, ?, ?) RETURNING id',
+          'widgets',
+          'ev-linked',
+          'staging',
+          now,
+          now,
+        )
+        .one().id;
+    });
+    await make('ev-named', { infraEvents: 'plan.failed,incident.opened' });
+    await say(
+      'plan.failed',
+      { repo: 'widgets', name: 'ev-linked', kind: 'staging' },
+      { fields: { plan: 'plan-41', pull: '#12', state: 'failed' }, dedupe: 'named-1' },
+    );
+    const run = (await routine('ev-named')).recentRuns[0];
+    const event = {
+      key: 'plan.failed',
+      label: INFRA_EVENTS['plan.failed'],
+      environment: 'ev-linked',
+      environmentId: Number(id),
+      plan: 'plan-41',
+      task: null,
+      pull: 12,
+    };
+    expect(run.event).toEqual(event);
+    expect((await routine('ev-named')).lastRun.event).toEqual(event);
+    expect((await detail(run.wid)).routineRun).toEqual({
+      slug: 'ev-named',
+      name: 'Routine ev-named',
+      trigger: 'infra',
+      event,
+    });
+    await finish(run.wid);
+
+    // An environment the board doesn't know (yet, or any more) still names it, without a link.
+    await say('incident.opened', STAGING, { fields: { task: 'OPS-9' }, dedupe: 'named-2' });
+    const second = (await routine('ev-named')).recentRuns[0];
+    expect(second.event).toMatchObject({ key: 'incident.opened', environmentId: null, task: 'OPS-9', plan: null });
+
+    // A run started any other way has no event, on its history or its task.
+    await finish(second.wid);
+    const manual = await body(await api('routines/ev-named/run', { method: 'POST', body: {} }));
+    expect((await routine('ev-named')).recentRuns[0].event).toBeNull();
+    expect((await detail(manual.task.wid)).routineRun).toMatchObject({
+      slug: 'ev-named',
+      trigger: 'manual',
+      event: null,
+    });
+    expect((await detail(run.wid)).routineRun.event.key).toBe('plan.failed');
+    await api('routines/ev-named', { method: 'PATCH', body: { infraEvents: '' } });
+  });
+
   it('matches only its filters and its own repository, and a routine that’s off starts nothing', async () => {
     await make('ev-picky', { infraEvents: 'plan.applied:environment=ev-prod:resource=database' });
     await say('plan.applied', { repo: 'widgets', name: 'ev-prod', kind: 'production' }, { resourceKinds: ['service'] });
