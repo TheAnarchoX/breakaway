@@ -50,7 +50,7 @@ export const RULES = [
   {
     id: 'open-source',
     message:
-      'Say "free", "fair source", or "the source is public": "open source" only of a release that has turned Apache 2.0.',
+      'Say "free for personal and noncommercial use" or "the source is public": breakaway’s licence isn’t an open source one.',
     pattern: /\bopen[- ]source\b/giu,
     // Apache 2.0 releases, the Open Source Initiative, and the font licence's own words are about the term itself.
     skip: (line) =>

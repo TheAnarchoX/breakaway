@@ -186,8 +186,8 @@ describe('work IDs in text', () => {
 
   it('skips what only looks like one', () => {
     const any = () => true;
-    expect(splitWids('a FSL-1.1 licence, X-1, ABCDEFGHI-2, HTTP-200s, and a-OPS-12', any)).toEqual([
-      'a FSL-1.1 licence, X-1, ABCDEFGHI-2, HTTP-200s, and a-OPS-12',
+    expect(splitWids('a GPL-3.0 licence, X-1, ABCDEFGHI-2, HTTP-200s, and a-OPS-12', any)).toEqual([
+      'a GPL-3.0 licence, X-1, ABCDEFGHI-2, HTTP-200s, and a-OPS-12',
     ]);
     expect(splitWids('UTF-8 text', known)).toEqual([{ wid: 'UTF-8' }, ' text']);
     expect(splitWids('', any)).toEqual([]);

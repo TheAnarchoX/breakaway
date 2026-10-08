@@ -121,7 +121,7 @@ const WID_IN_TEXT = /(?<![\w-])([A-Z]{2,8}-\d+)(?![\w-]|\.\d)/gu;
 
 /**
  * Plain text → strings and `{ wid }` for each work ID in it that `known` says the board has, so a spec's text can
- * open the task it names. A version like FSL-1.1, or something longer, stays text.
+ * open the task it names. A version like GPL-3.0, or something longer, stays text.
  * @param {string} text
  * @param {(wid: string) => boolean} known
  * @returns {Array<string | { wid: string }>}

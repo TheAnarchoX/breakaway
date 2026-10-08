@@ -12,7 +12,7 @@ Each step ends with a check, which reads one of three ways:
 - **Not verified yet:** it’s set up, but nothing has used it. The check says what will verify it. A Claude routine reads this until the first agent it starts claims a task.
 - **Failed:** the check says what failed and the fix. On Connections, that’s a row that reads **Needs attention**.
 
-The licence is FSL-1.1-Apache-2.0: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s fair source.
+The licence is PolyForm Noncommercial 1.0.0: breakaway is free for personal and noncommercial use, and commercial use is by exception. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 ## With Claude Code
 

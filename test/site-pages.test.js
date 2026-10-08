@@ -211,17 +211,15 @@ describe('the site', () => {
     expect(lint(files)).toEqual([]);
   });
 
-  it('says what the board does, never what someone shipped with it (ID-3), and calls the licence “free” and “fair source”', () => {
+  it('says what the board does, never what someone shipped with it (ID-3), and names the licence without calling it open or fair source', () => {
     for (const [path, html] of built)
       expect(visible(html), path).not.toMatch(/\b160\b|pull requests in|editors? opened|real run/iu);
     const text = visible(built.get('index.html'));
-    expect(text).toContain('FSL-1.1-Apache-2.0');
+    expect(text).toContain('PolyForm Noncommercial 1.0.0');
+    expect(text).toMatch(/free for personal and noncommercial use/iu);
     expect(text).toMatch(/no accounts, pricing, ads, or analytics/u);
-    // The FAQ may name the term once, to say why the licence isn’t called that.
-    for (const html of built.values())
-      expect(
-        visible(html).replace(/The Open Source Initiative doesn’t count a fair source licence as open source/u, ''),
-      ).not.toMatch(/open[- ]source/iu);
+    for (const [path, html] of built)
+      expect(visible(html), path).not.toMatch(/open[- ]source|fair source|Apache 2\.0 in two years/iu);
   });
 
   it('has no pricing, sign-ups, ads, analytics, or third-party requests', () => {

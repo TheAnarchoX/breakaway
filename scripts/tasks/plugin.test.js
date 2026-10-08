@@ -31,7 +31,7 @@ describe('the breakaway plugin (CLI-7)', () => {
 
   it('has a manifest, three commands that run the CLI on npm, and a README', () => {
     const manifest = json(`${PLUGIN_DIR}.claude-plugin/plugin.json`);
-    expect(manifest).toMatchObject({ name: 'breakaway', license: 'FSL-1.1-Apache-2.0' });
+    expect(manifest).toMatchObject({ name: 'breakaway', license: 'PolyForm-Noncommercial-1.0.0' });
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/u);
     for (const name of ['claim', 'next', 'hand-over']) {
       const skill = read(`${PLUGIN_DIR}skills/${name}/SKILL.md`);

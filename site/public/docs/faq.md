@@ -4,7 +4,11 @@
 
 ## Is breakaway free?
 
-Yes. It’s free to run, free to change, and free to self-host. The licence is **FSL-1.1-Apache-2.0**, the Functional Source License: free to use, change, and self-host for anything except offering a competing service, and each release becomes Apache 2.0 two years after it ships. That’s [fair source](https://fair.io/licenses/). The source is public. The Open Source Initiative doesn’t count a fair source licence as open source until the Apache date, so breakaway calls itself free and fair source.
+For personal and noncommercial use, yes: free to run, free to change, and free to self-host. The licence is the **PolyForm Noncommercial License 1.0.0**. It lets anyone use breakaway for personal use (research, study, hobby projects, and the like, with no commercial application in view), and lets charities, educational institutions, public research organizations, public safety, health, and environmental organizations, and government institutions use it, however they’re funded. The source is public.
+
+Commercial use is by exception: the owner grants a free commercial licence case by case. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says who can ask and how.
+
+The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, the licence it shipped with.
 
 There is no hosted version, and no accounts, teams, pricing, paid features, or ads.
 
