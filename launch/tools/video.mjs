@@ -4,7 +4,7 @@
 // so the render is deterministic. Motion follows the guide: fast out, no bounce, arrive from the left, leave to the
 // right. Run: node video.mjs [launch|film|film-square|2-0-0]; the film's need footage.mjs's captures first.
 import { readFileSync } from 'node:fs';
-import { page, video, withBrowser } from './kit.mjs';
+import { LICENCE_LINE, page, video, withBrowser } from './kit.mjs';
 
 const OUT = new URL('../media/', import.meta.url);
 const DURATION = 16;
@@ -83,7 +83,7 @@ const body = `
     ${pack}<g id="rider">${rider}</g><g id="name" opacity="0">${name}</g></svg></div>
   <div class="join display" id="line">Leave the pack.</div>
   <div class="join cmd" id="cmd"><i>$</i> npx breakaway</div>
-  <div class="join label" id="note">Free · the source is public</div>
+  <div class="join label" id="note">${LICENCE_LINE}</div>
 </div>`;
 
 const script = `

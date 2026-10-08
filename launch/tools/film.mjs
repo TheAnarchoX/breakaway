@@ -5,7 +5,7 @@
 // One red thing at a time: the line's red words, the red of a claimed work ID, or Approve as it fills.
 // video.mjs renders it: node video.mjs film | film-square | 2-0-0.
 import { existsSync, readFileSync } from 'node:fs';
-import { page } from './kit.mjs';
+import { LICENCE_LINE, page } from './kit.mjs';
 
 const FOOTAGE = new URL('./footage/', import.meta.url);
 const manifest = (name) => {
@@ -483,7 +483,7 @@ export function filmPage({ format = 'wide', cut = false } = {}) {
       ${pack}<g id="rider">${rider}</g><g id="name" opacity="0">${name}</g></svg></div>
     <div class="join display" id="leave">Leave the pack.</div>
     <div class="join cmd" id="cmd"><i>$</i> npx breakaway</div>
-    <div class="join label" id="note">Free · the source is public</div>
+    <div class="join label" id="note">${LICENCE_LINE}</div>
   </div>`;
   const script = `
 const clamp = (x) => Math.max(0, Math.min(1, x));
