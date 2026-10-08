@@ -8,9 +8,13 @@
  * It writes src/infra-shipped-templates.json too (BRK-259), generated and never committed the same way: the golden
  * paths breakaway ships, template/infra/templates/<name>/, each file by name, so the board's console can add from
  * them when a repository has no template of that name.
+ *
+ * And src/infra-runner-template.json (BRK-307), the same way: the apply workflow's template, so the board renders
+ * .github/workflows/breakaway-infra.yml from the very text npx breakaway infra init does.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { boardSources } from '../src/init.js';
+import { RUNNER_TEMPLATE } from '../src/infra-runner-render.js';
 
 const ROOT = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, ROOT), 'utf8');
@@ -34,9 +38,12 @@ export const shippedTemplates = () =>
       ]),
   );
 
+export const runnerTemplate = () => ({ path: RUNNER_TEMPLATE, text: read(RUNNER_TEMPLATE) });
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   writeFileSync(new URL('src/board-files.json', ROOT), `${JSON.stringify(boardFiles(), null, 2)}\n`);
   writeFileSync(new URL('src/infra-shipped-templates.json', ROOT), `${JSON.stringify(shippedTemplates(), null, 2)}\n`);
+  writeFileSync(new URL('src/infra-runner-template.json', ROOT), `${JSON.stringify(runnerTemplate(), null, 2)}\n`);
   // On stderr: npm pack and npm publish run it (prepare), and their --json goes to stdout.
-  console.error('Wrote src/board-files.json and src/infra-shipped-templates.json.');
+  console.error('Wrote src/board-files.json, src/infra-shipped-templates.json, and src/infra-runner-template.json.');
 }

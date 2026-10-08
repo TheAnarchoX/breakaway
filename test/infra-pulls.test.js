@@ -5,6 +5,9 @@ import { fakeProvider, fakeState } from './fake-infra-provider.js';
 import { GitHubError } from '../src/github.js';
 import { DESIRED_DIR } from '../src/infra-desired.js';
 import { ProviderRegistry } from '../src/infra-provider.js';
+import { RUNNER_WORKFLOW } from '../src/infra-runner.js';
+import { RUNNER_NEEDS_INIT, renderRunner } from '../src/infra-runner-render.js';
+import RUNNER_TEMPLATE from '../src/infra-runner-template.json';
 import {
   costWords,
   INFRA_CHECK_NAME,
@@ -213,11 +216,14 @@ describe('a pull request’s plan as a check', () => {
     expect(run.output.summary).toMatch(/\| update \| api\.acme\.example \| route \|/u);
     expect(run.output.summary).toMatch(/\*\*Policy:\*\* Waits for you, by the default policy\./u);
     expect(run.output.summary).toMatch(/Merging applies nothing\./u);
+    // No apply workflow at the head: a waiting note before Approve, never a failure (BRK-307).
+    expect(run.output.summary).toContain(`**Before Approve:** ${RUNNER_NEEDS_INIT}`);
     // The policy is read at the head too: without one, the default decides.
     expect(gh.calls).toEqual([
       'GET /pulls/11/files',
       `GET /contents/${DESIRED_DIR}/policy.json`,
       `GET /contents/${DESIRED_DIR}/pulls-staging.json`,
+      `GET /contents/${RUNNER_WORKFLOW}`,
       'POST /check-runs',
     ]);
 
@@ -228,6 +234,7 @@ describe('a pull request’s plan as a check', () => {
       title: '1 change to pulls-staging',
       check: { id: 701, url: 'https://github.com/acme/widgets/runs/701' },
       error: null,
+      runner: RUNNER_NEEDS_INIT,
       environments: [
         {
           environment: 'pulls-staging',
@@ -246,6 +253,41 @@ describe('a pull request’s plan as a check', () => {
     expect(gh.calls).toEqual([]);
     await check([pull(11, 'sha-11b')]);
     expect(gh.posted.map((p) => p.head_sha)).toEqual(['sha-11a', 'sha-11b']);
+  });
+
+  it('says what the apply workflow still needs before Approve, from the workflow at the head (BRK-307)', async () => {
+    const rendered = (environments) =>
+      renderRunner({ environments, branch: 'main', version: '2.0.0' }, RUNNER_TEMPLATE.text).text;
+    gh.files = changes('pulls-staging.json');
+    gh.at[`${DESIRED_DIR}/pulls-staging.json`] = fileOf({ 'route-api': { attrs: { path: '/v2/*' } } });
+
+    // Rendered for it: nothing to say.
+    gh.at[RUNNER_WORKFLOW] = rendered(['pulls-production', 'pulls-staging']);
+    await check([pull(12, 'sha-12a')]);
+    expect(gh.posted.at(-1).output.summary).not.toMatch(/Before Approve/u);
+    expect((await shown(12)).runner).toBeNull();
+
+    // Rendered before the environment was added: infra init --update.
+    gh.at[RUNNER_WORKFLOW] = rendered(['pulls-production']);
+    await check([pull(12, 'sha-12b')]);
+    expect(gh.posted.at(-1).conclusion).toBe('success');
+    expect(gh.posted.at(-1).output.summary).toContain(
+      `**Before Approve:** ${RUNNER_WORKFLOW} doesn’t offer pulls-staging yet: run npx breakaway infra init --update in the repository and merge it.`,
+    );
+
+    // The repository's own, taking any environment: the board doesn't second-guess it.
+    gh.at[RUNNER_WORKFLOW] =
+      'name: Apply infrastructure\non:\n  workflow_dispatch:\n    inputs:\n      environment:\n        type: string\n';
+    await check([pull(12, 'sha-12c')]);
+    expect(gh.posted.at(-1).output.summary).not.toMatch(/Before Approve/u);
+
+    // A pull request that brings the workflow itself isn't asked about it, and costs no read of it.
+    delete gh.at[RUNNER_WORKFLOW];
+    gh.files = [...changes('pulls-staging.json'), { filename: RUNNER_WORKFLOW, status: 'added' }];
+    gh.calls = [];
+    await check([pull(12, 'sha-12d')]);
+    expect(gh.posted.at(-1).output.summary).not.toMatch(/Before Approve/u);
+    expect(gh.calls).not.toContain(`GET /contents/${RUNNER_WORKFLOW}`);
   });
 
   it('keeps a fork’s check to what happened, not what the environment holds (BRK-253)', async () => {

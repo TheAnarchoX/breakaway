@@ -12323,6 +12323,20 @@ button.infra-plan-row {
   align-items: center;
   gap: 4px;
 }
+/* What the apply workflow still needs before Approve (BRK-307): a waiting note, not an error. */
+.change-runner {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+.change-runner svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--warn);
+}
 /* The last change, folded to a line above the map once its card ends (WEB-110). */
 .change-last {
   display: flex;
