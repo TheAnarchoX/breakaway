@@ -51,6 +51,7 @@ import { infraSignalsMethods } from './store-infra-signals.js';
 import { infraAccountAlertsMethods } from './store-infra-account-alerts.js';
 import { infraDeploySignalsMethods } from './store-infra-deploy-signals.js';
 import { infraRunbooksMethods } from './store-infra-runbooks.js';
+import { infraEventsMethods } from './store-infra-events.js';
 import { infraIncidentsMethods } from './store-infra-incidents.js';
 import { githubStatusMethods } from './store-github-status.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
@@ -143,6 +144,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraSignals();
     this.initInfraAccountAlerts();
     this.initInfraRunbooks();
+    this.initInfraEvents();
     this.initInfraIncidents();
     this.initKickoffs();
     this.initRoutineKeep();
@@ -1516,6 +1518,7 @@ Object.assign(
   infraAccountAlertsMethods,
   infraDeploySignalsMethods,
   infraRunbooksMethods,
+  infraEventsMethods,
   infraIncidentsMethods,
   githubStatusMethods,
   updatesMethods,

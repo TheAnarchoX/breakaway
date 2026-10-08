@@ -43,6 +43,7 @@ const RUN_TRIGGER = {
   github: 'by GitHub',
   cloudflare: 'by a Cloudflare alert',
   signal: 'by a signal',
+  infra: 'by an infrastructure event',
 };
 const HORIZONS = [
   ['now', 'Now'],

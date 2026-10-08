@@ -211,6 +211,7 @@ const TRIGGER_TEXT = {
   webhook: 'by a routine’s webhook or API trigger, from the board',
   cloudflare: 'by a Cloudflare alert, from the board',
   signal: 'by a routine’s signal trigger (a runbook), for a signal from Architect',
+  infra: 'by a routine’s infrastructure event, from Architect',
   general: 'by a prompt from the owner, from the board',
   chase: 'by the owner’s chase of a feature, because the task became ready',
   'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
@@ -2118,6 +2119,12 @@ export const agentsMethods = {
       await this.shortLivedTick();
     } catch (error) {
       errors.push(error.message); /* the next tick tries again */
+    }
+    // Infrastructure events (BRK-293): whatever a delivery left queued reaches the routines that listen for it.
+    try {
+      await this.flushInfraEvents();
+    } catch (error) {
+      errors.push(error.message); /* the next tick delivers it */
     }
     // Before the prune: agent runs and GitHub's rows live on in the dashboard's log (store-stats.js).
     this.archiveStats();

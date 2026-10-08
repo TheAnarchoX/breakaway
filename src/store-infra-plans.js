@@ -17,6 +17,7 @@ import { AgentError } from './store-agents.js';
 import { historySelect } from './store-infra-audit.js';
 import { install } from './install.js';
 import { redact } from './redact.js';
+import { PLAN_EVENTS, planCause } from './infra-events.js';
 import { runsTheBoard } from './infra-environments.js';
 import { checkCosts, checkDesired, checkPlan } from './infra-provider.js';
 import { costChangeInCurrency } from './infra-currency.js';
@@ -367,6 +368,20 @@ export const infraPlansMethods = {
         outcome: outcome ?? to,
         summary: summary || `${row.state} → ${to}`,
       });
+      // Routines that listen for it hear it (BRK-293): waiting, applied, failed, or rolled back.
+      if (PLAN_EVENTS[to]) {
+        const changes = JSON.parse(row.diff).changes ?? [];
+        this.infraEvent(
+          PLAN_EVENTS[to],
+          { repo: row.repo, name: row.env_name, kind: row.env_kind },
+          {
+            fields: { plan: planId(Number(row.n)), state: to, source: row.source, count: changes.length },
+            dedupe: planId(Number(row.n)),
+            resourceKinds: changes.map((/** @type {any} */ c) => c.kind),
+            cause: planCause(row.ref),
+          },
+        );
+      }
     });
     return planView(this.planRow(ref));
   },

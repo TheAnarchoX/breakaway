@@ -97,6 +97,8 @@ export const infraCostsMethods = {
       const sum = sumCosts(rows, setting).environments.get(Number(env.id)) ?? emptyTotal(setting.currency);
       const budget = this.environmentBudget(env).amount;
       const state = budgetState(sum, budget);
+      // The share used reaches the routines that wait for it (BRK-293): each says its own share.
+      if (budget > 0) this.infraBudgetUsed(env, month, (sum.amount / budget) * 100);
       const before = this.sql
         .exec('SELECT signalled FROM infra_costs WHERE environment = ? AND month = ?', env.id, month)
         .toArray()[0];

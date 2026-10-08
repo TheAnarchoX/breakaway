@@ -206,6 +206,7 @@ export const infraEnvironmentsMethods = {
         outcome: 'added',
         summary: `added by the owner: ${row.kind}, ${row.provider ?? 'no provider'} ${row.target ?? 'no target'}${row.observe_only ? ', observe only' : ''}`,
       });
+      this.infraEvent('environment.created', row, { fields: { state: 'added' }, dedupe: `added:${row.id}` });
       return { status: 201, body: { environment: this.environmentOut(row) } };
     });
   },
@@ -315,6 +316,7 @@ export const infraEnvironmentsMethods = {
         outcome: 'removed',
         summary: 'removed by the owner',
       });
+      this.infraEvent('environment.removed', row, { fields: { state: 'removed' }, dedupe: `removed:${row.id}` });
       return { status: 200, body: { removed: this.environmentOut(row) } };
     });
   },
