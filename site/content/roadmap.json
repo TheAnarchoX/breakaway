@@ -7,7 +7,12 @@
         {
           "slug": "architect",
           "title": "Architect",
-          "line": "The board runs the infrastructure too. Agents propose changes in pull requests; you approve each plan."
+          "line": "The board runs your infrastructure too, Cloudflare first: environments from nothing, a console, and policy. Agents propose changes in pull requests; you approve the plans, and they run in your own GitHub Actions."
+        },
+        {
+          "slug": "licensing",
+          "title": "A new licence",
+          "line": "Free for personal and noncommercial use, under the PolyForm Noncommercial License 1.0.0. Commercial use is by exception, granted free and case by case."
         },
         {
           "slug": "feature-plans",
@@ -20,25 +25,30 @@
       "version": "2.1.0",
       "features": [
         {
-          "slug": "agent-conduct",
-          "title": "Agent conduct: review, follow-through, and sources",
-          "line": "Habits for every agent: review its own work, answer what it’s asked, and check its sources."
-        },
-        {
           "slug": "captaincy",
           "title": "Captaincy: chases that fit your day",
           "line": "A road captain for each chase, and chases sized to what you can review."
         },
         {
-          "slug": "compliance-center",
-          "title": "Compliance center",
-          "line": "Compliance checks on your code and infrastructure, software bills of materials, and a data inventory, from the board."
+          "slug": "people",
+          "title": "People and roles",
+          "line": "People and roles inside your own install, so a group can run one board together, each with their own agents. You still decide what merges and deploys, and there’s still no hosted version."
         }
       ]
     },
     {
       "version": "2.2.0",
       "features": [
+        {
+          "slug": "agent-conduct",
+          "title": "Agent conduct: review, follow-through, and sources",
+          "line": "Habits for every agent: review its own work, answer what it’s asked, and check its sources."
+        },
+        {
+          "slug": "compliance-center",
+          "title": "Compliance center",
+          "line": "Compliance checks on your code and infrastructure, software bills of materials, and a data inventory, from the board."
+        },
         {
           "slug": "security-core",
           "title": "Security core: a watcher for what agents do on the board",
@@ -68,6 +78,11 @@
           "slug": "runners",
           "title": "breakaway runners",
           "line": "Runners on your own compute that take the board’s jobs: apply runs, CI, and later agents."
+        },
+        {
+          "slug": "artifact-graph",
+          "title": "The artifact graph",
+          "line": "Everything from an idea to what runs, versioned and connected: checks and builds bound to the exact code, and a trail from anything running back to its idea."
         }
       ]
     },
@@ -124,7 +139,7 @@
   ],
   "edits": {
     "architect": {
-      "line": "The board runs the infrastructure too. Agents propose changes in pull requests; you approve each plan."
+      "line": "The board runs your infrastructure too, Cloudflare first: environments from nothing, a console, and policy. Agents propose changes in pull requests; you approve the plans, and they run in your own GitHub Actions."
     },
     "feature-plans": {
       "line": "Plan a feature’s start and end, and see from the pace when it’s likely done."
@@ -168,6 +183,18 @@
     "git-hosting": {
       "title": "breakaway git: repositories, pull requests, and CI on your own install",
       "line": "Host the code on your install too, with reviews and checks built for many agents at once. GitHub stays supported."
+    },
+    "licensing": {
+      "title": "A new licence",
+      "line": "Free for personal and noncommercial use, under the PolyForm Noncommercial License 1.0.0. Commercial use is by exception, granted free and case by case."
+    },
+    "people": {
+      "title": "People and roles",
+      "line": "People and roles inside your own install, so a group can run one board together, each with their own agents. You still decide what merges and deploys, and there’s still no hosted version."
+    },
+    "artifact-graph": {
+      "title": "The artifact graph",
+      "line": "Everything from an idea to what runs, versioned and connected: checks and builds bound to the exact code, and a trail from anything running back to its idea."
     }
   }
 }
