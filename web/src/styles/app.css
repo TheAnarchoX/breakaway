@@ -11640,6 +11640,14 @@ button.infra-plan-row {
 .topo-health-planned .topo-node-box {
   fill: var(--bg-2);
 }
+/* Expected (WEB-129): declared and applied, not seen yet. Between a plan's add (short dashes on the page's ground)
+   and what runs (solid on a surface): long dashes on a surface. */
+.topo-health-expected .topo-node-box {
+  stroke-dasharray: 10 3;
+}
+.topo-node-mark.is-expected {
+  fill: var(--muted);
+}
 .topo-plan-removes .topo-node-name {
   text-decoration: line-through;
 }
@@ -11715,6 +11723,10 @@ button.infra-plan-row {
 }
 .infra-res.is-planned {
   border-style: dashed;
+}
+.infra-res.is-expected {
+  border-style: dashed;
+  border-color: var(--line-strong);
 }
 .topo-signals h5 {
   margin: 4px 0;
