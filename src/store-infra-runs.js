@@ -22,6 +22,11 @@
  * once it has been quiet a few minutes, the sweep reads the workflow's runs and ends it failed with nothing applied.
  * GitHub's Re-run never applies a plan; for a run that applied nothing, the owner presses Start the run again, which
  * checks everything a start checks and starts a new run (BRK-308).
+ *
+ * Once a run that may have changed something ends (applied, unverified, rolled back, partly applied, or expired), the
+ * board looks again (BRK-310): on the next tick it refreshes the provider's inventory with its read-only token and
+ * compares the environment for drift, then once more LOOK_AGAIN_MS later, because a provider can lag. A look that
+ * fails is a note on that one stream entry, never the plan's outcome.
  */
 import { AgentError } from './store-agents.js';
 import { historySelect } from './store-infra-audit.js';
@@ -72,6 +77,8 @@ const SIGNAL_WORDS = {
   'rolled back': 'was rolled back',
   unverified: 'applied, but its health isn’t known yet',
 };
+/** How long after the first look the board looks again, for a provider that's slow to show what changed (BRK-310). */
+export const LOOK_AGAIN_MS = 2 * MINUTE;
 
 /**
  * The GitHub environment a run applies in: the one recorded when it was queued, or, for a run queued before BRK-242,
@@ -120,6 +127,9 @@ export const infraRunsMethods = {
     if (!have.has('github_env')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN github_env TEXT');
     // The run on GitHub once the board knows it (BRK-308): its ID, link, and how it ended there, as JSON.
     if (!have.has('github_run')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN github_run TEXT');
+    // When the board looks at the environment again after the run, and how many looks it has had (BRK-310).
+    if (!have.has('look_at')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN look_at INTEGER');
+    if (!have.has('looks')) this.sql.exec('ALTER TABLE infra_runs ADD COLUMN looks INTEGER');
   },
 
   /** A plan's run with its environment's name, or null. */
@@ -174,7 +184,10 @@ export const infraRunsMethods = {
     return runView(this.runRow(id));
   },
 
-  /** What the alarm and the cron do: sweep runs that stopped reporting, then start what's queued. Never throws. */
+  /**
+   * What the alarm and the cron do: sweep runs that stopped reporting, start what's queued, then look again at the
+   * environments runs just changed. Never throws.
+   */
   async infraRunsTick() {
     try {
       await this.sweepInfraRuns();
@@ -186,6 +199,77 @@ export const infraRunsMethods = {
     } catch (error) {
       console.error(`executor start: ${error.message}`);
     }
+    try {
+      await this.lookAfterInfraRuns();
+    } catch (error) {
+      console.error(`executor look: ${error.message}`);
+    }
+  },
+
+  /**
+   * Looks again at each environment a run ended in that's due (BRK-310): refreshes its provider's inventory, compares
+   * it for drift, and asks the alarm for the second look. The first look leaves one stream entry, with what failed if
+   * anything did; the second is quiet. Neither changes the plan.
+   * @param {number} [now]
+   */
+  async lookAfterInfraRuns(now = Date.now()) {
+    const rows = this.sql
+      .exec(`${SELECT} WHERE r.phase = 'done' AND r.look_at IS NOT NULL AND r.look_at <= ? ORDER BY r.n`, now)
+      .toArray();
+    for (const row of rows) {
+      const looks = Number(row.looks ?? 0) + 1;
+      // Set first, so a look that throws is never repeated tick after tick.
+      const next = looks < 2 ? now + LOOK_AGAIN_MS : null;
+      this.setRun(row.n, { look_at: next, looks });
+      const env = this.environmentRow(row.environment);
+      const problems = [];
+      if (env.provider)
+        try {
+          await this.refreshInventoryNow(env.provider, { source: 'executor' });
+        } catch (error) {
+          problems.push(`the inventory couldn’t be refreshed: ${redact(error?.message ?? String(error))}`);
+        }
+      let drift = null;
+      const refused = this.driftRefusal(env);
+      if (!refused)
+        try {
+          drift = await this.checkInfraDrift(env.id);
+        } catch (error) {
+          problems.push(`drift couldn’t be compared: ${redact(error?.message ?? String(error))}`);
+        }
+      if (drift?.error) problems.push(drift.error);
+      if (next) await this.alarmBy(next);
+      if (looks > 1) continue;
+      const found =
+        drift && !drift.error && drift.count !== null
+          ? drift.count === 0
+            ? 'it matches the repository'
+            : `${drift.count} resource${drift.count === 1 ? ' differs' : 's differ'} from the repository`
+          : null;
+      this.appendInfraAudit({
+        kind: 'apply',
+        repo: env.repo,
+        environment: env.name,
+        environmentId: env.id,
+        plan: planId(Number(row.n)),
+        by: 'executor',
+        outcome: 'looked again',
+        summary: [
+          `Looked again after ${planId(Number(row.n))}`,
+          found,
+          ...problems,
+          `the board looks once more in ${LOOK_AGAIN_MS / MINUTE} minutes`,
+        ]
+          .filter(Boolean)
+          .join('; '),
+      });
+    }
+  },
+
+  /** Asks the alarm to fire by `at`, keeping a sooner one: the store's one alarm serves everything. */
+  async alarmBy(at) {
+    const pending = await this.ctx.storage.getAlarm();
+    if (!pending || pending > at || pending <= Date.now()) await this.ctx.storage.setAlarm(at);
   },
 
   /**
@@ -700,7 +784,17 @@ export const infraRunsMethods = {
     const lock = this.lockRow(env.id);
     if (lock && lock.token === row.lock_token && held(lock, Date.now()))
       this.releaseEnvironmentLock(env.id, { token: row.lock_token, outcome });
-    this.setRun(row.n, { phase: 'done', outcome, error: redact(summary).slice(0, 300), lock_token: null });
+    // A run that may have changed something sends the board to look at the environment again (BRK-310).
+    const steps = JSON.parse(this.runRow(row.n)?.steps ?? 'null');
+    const changed = outcome !== 'failed' || Boolean(steps?.some((/** @type {{ ok: boolean }} */ s) => s.ok));
+    this.setRun(row.n, {
+      phase: 'done',
+      outcome,
+      error: redact(summary).slice(0, 300),
+      lock_token: null,
+      look_at: changed ? Date.now() : null,
+      looks: 0,
+    });
     if (FAILED.includes(outcome) || outcome === 'rolled back' || outcome === 'unverified')
       try {
         await this.recordSignals([
@@ -772,6 +866,8 @@ export const infraRunsMethods = {
         error: null,
         outcome: null,
         github_run: null,
+        look_at: null,
+        looks: 0,
         github_env: runnerEnvironment(env),
       });
     });

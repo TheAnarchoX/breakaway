@@ -1067,12 +1067,20 @@ describe('Architect’s whole loop (BRK-228)', () => {
       'environment',
     ])
       expect(kinds, kind).toContain(kind);
-    // Every plan's trail starts with it being made, and every apply that started ended and let its lock go.
+    // Every plan's trail starts with it being made, and every apply that started ended and let its lock go; only the
+    // board looking at the environment again (BRK-310) comes after that.
     const byPlan = Map.groupBy(all.filter((e) => e.plan).reverse(), (e) => e.plan);
     for (const [id, entries] of byPlan) {
       expect(entries[0], id).toMatchObject({ kind: 'plan', outcome: 'draft' });
-      if (entries.some((e) => e.kind === 'apply' && e.outcome === 'started'))
-        expect(entries.at(-1), id).toMatchObject({ kind: 'lock-release' });
+      const own = entries.filter((e) => e.outcome !== 'looked again');
+      if (own.some((e) => e.kind === 'apply' && e.outcome === 'started'))
+        expect(own.at(-1), id).toMatchObject({ kind: 'lock-release' });
+      const look = entries.findIndex((e) => e.outcome === 'looked again');
+      if (look !== -1)
+        expect(
+          entries.slice(0, look).some((e) => e.kind === 'lock-release'),
+          id,
+        ).toBe(true);
     }
     // No agent ever approved, and only the owner, the board's policy, or an envelope did.
     expect(new Set(all.filter((e) => e.kind === 'approve').map((e) => e.by))).toEqual(new Set(['owner', 'envelope']));

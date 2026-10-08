@@ -24,6 +24,8 @@ const RUN_WORDS = {
     applying: { label: 'Applying', outcome: '' },
     failed: { label: 'Apply failed', outcome: '' },
     unhealthy: { label: 'Applied', outcome: 'health check failed' },
+    // The board refreshing the inventory and drift after a run ended (BRK-310): a look, not an apply.
+    'looked again': { label: 'Looked again', outcome: '' },
   },
   rollback: {
     started: { label: 'Rolling back', outcome: 'started' },
