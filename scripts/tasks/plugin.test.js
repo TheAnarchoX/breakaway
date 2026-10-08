@@ -38,7 +38,7 @@ describe('the breakaway plugin (CLI-7)', () => {
       expect(skill).toMatch(new RegExp(`^---\\nname: ${name}\\n`, 'u'));
       expect(skill).toContain(`npx --yes ${CLI_PACKAGE} `);
       // Commands do what an agent may already do: they never force a claim or finish a task themselves.
-      expect(skill).not.toMatch(/breakaway@1 (?:claim|next|release)\b[^`]*--force|breakaway@1 done\b/u);
+      expect(skill).not.toMatch(/breakaway@2 (?:claim|next|release)\b[^`]*--force|breakaway@2 done\b/u);
     }
     expect(read(`${PLUGIN_DIR}README.md`).split(/\s+/u).length).toBeGreaterThan(40);
   });

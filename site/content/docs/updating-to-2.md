@@ -74,8 +74,9 @@ The files `repos init` copies into each repository (the core of the agent prompt
 - **The core** gains infrastructure work: agents read infrastructure wide and change it only by pull request, work an incident (diagnose, propose, write it up), and never apply, approve, or hold a write token. A kickoff’s plan can carry staging’s and production’s desired state and the apply workflow, when you answer Kickoff’s **Run it** step.
 - **The `tasks` skill** says the same in its table.
 - **The CLI**, which repositories run from npm as `npx breakaway` rather than as a copy, has the `infra` commands: the reads, `infra check` and `infra add` for a change, `infra adopt` to describe an environment that already runs, and `infra init` for the apply workflow.
+- **The session hooks** move to the new major. A repository that runs them from `.claude/settings.json` (set up with `--copies`, or before the plugin) runs `npx --yes breakaway@1`, which never reaches a 2.x CLI; `--update` rewrites those hooks to `npx --yes breakaway@2`.
 
-Claude Code’s plugin carries the new skill once the stable release moves it.
+Claude Code’s plugin carries the new skill, and runs the 2.0.0 CLI, once the stable release moves it.
 
 ## What breaks or moves
 
