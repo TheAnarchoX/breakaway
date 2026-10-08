@@ -4,7 +4,7 @@ nav: Run your own board
 description: Nine steps from nothing to a board whose first task an agent finished and you merged. Each step ends with a check that reads Verified, Not verified yet, or Failed.
 ---
 
-breakaway is free, and it runs on your own Cloudflare account. This guide takes you from nothing to a board whose first task is closed by a pull request you merged. It has nine steps, and you’re done at the end of the ninth, not when the board is deployed.
+breakaway is free for personal and noncommercial use, and it runs on your own Cloudflare account. This guide takes you from nothing to a board whose first task is closed by a pull request you merged. It has nine steps, and you’re done at the end of the ninth, not when the board is deployed.
 
 Each step ends with a check, which reads one of three ways:
 
@@ -12,7 +12,7 @@ Each step ends with a check, which reads one of three ways:
 - **Not verified yet:** it’s set up, but nothing has used it. The check says what will verify it. A Claude routine reads this until the first agent it starts claims a task.
 - **Failed:** the check says what failed and the fix. On Connections, that’s a row that reads **Needs attention**.
 
-The licence is PolyForm Noncommercial 1.0.0: breakaway is free for personal and noncommercial use, and commercial use is by exception. [Licensing](/licensing/) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
+The licence is the PolyForm Noncommercial License 1.0.0: commercial use is by exception, granted case by case. [Licensing](/licensing/) says what that covers. Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 
 ## With Claude Code
 
@@ -118,7 +118,7 @@ The board reads GitHub through a private GitHub App that you make for it.
 
 **Check:** press **Check now** on Connections. These rows read **Working**: **GitHub App**, **Installed on `owner/name`**, **Permissions on `owner/name`**, **Allow auto-merge on `owner/name`**, and **Sync with `owner/name`**. **Webhook** is Not verified yet until GitHub sends one, which merging the board’s files does.
 
-Each says what to change when it doesn’t. Pull requests and Contents need write, and Actions needs write on a repository with a deploy pipeline. An agent prompt with a `<…>` left in it makes **Agent routine** need attention until you fill it in.
+Each says what to change when it doesn’t. Pull requests, Contents, and Actions need write, and Variables needs write on a repository with a deploy pipeline. An agent prompt with a `<…>` left in it makes **Agent routine** need attention until you fill it in.
 
 ## 7. Connect a Claude routine
 

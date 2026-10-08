@@ -1,6 +1,6 @@
 # WEB-104 · Plan features from the board's pace
 
-Task: WEB-104 on the board · Status: draft
+Task: WEB-104 on the board · Status: built (2.0.0: #415, #420, #427, #432)
 
 ## Problem
 The roadmap's timeline ([WEB-102](../../web/src/components/RoadmapTimeline.jsx)) draws each feature from its first work to when the board's pace says it's likely done. That pace is a fair calculation: what each area finished in the last 28 days, the feature's longest chain of open tasks, and the owner's own steps. But on its own it isn't a plan. Bars move every time a task closes or a new one lands, a feature with no history says "no estimate yet", and the Months zoom stretches a few weeks of agent work into a thin strip that says little. The owner wants to plan with it: say when a feature should start and end, see whether the pace agrees, and order the work by that, without the timeline turning into a matrix of dates.

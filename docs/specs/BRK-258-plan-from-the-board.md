@@ -1,6 +1,6 @@
 # BRK-258 · Plan from the board
 
-Task: BRK-258 on the board, in the `architect` feature · Status: draft
+Task: BRK-258 on the board, in the `architect` feature · Status: built (2.0.0: #407, #410, #413, #414; the owner merged the spec in #402)
 
 ## Problem
 

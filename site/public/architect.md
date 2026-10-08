@@ -1,6 +1,6 @@
 # Architect: Agents propose it. You approve it.
 
-> breakaway runs the infrastructure too, and you still decide. Agents change what should exist in a pull request, the plan waits for you, and the board applies what you approve. Cloudflare first.
+> breakaway runs the infrastructure too, and you still decide. Agents change what should exist in a pull request, the plan waits for you, and the board applies what you approve. On Cloudflare.
 
 The board already holds the work: ideas, tasks, pull requests, deploys, and releases. Architect adds what that work runs on. Agents propose a change to an environment in a pull request. Nothing changes until you approve it, or until it fits bounds you approved once. Then the board applies it.
 
@@ -10,7 +10,7 @@ The board already holds the work: ideas, tasks, pull requests, deploys, and rele
 
 ## 1. The board sees what runs
 
-Connect a provider with a read-only token: Cloudflare first. The Infrastructure view shows each repository’s environments, production, staging, and the short-lived ones a task makes: what runs there, what it uses, its health, and what it costs a month, marked as an estimate.
+Connect a provider with a read-only token: Cloudflare, the one provider in 2.0.0. The Infrastructure view shows each repository’s environments, production, staging, and the short-lived ones a task makes: what runs there, what it uses, its health, and what it costs a month, marked as an estimate.
 
 ![The Infrastructure view, with made-up environments of a repository called widgets on Cloudflare: production is down, 1 of 7 resources, at 24.30 dollars a month inside its 60 dollar budget; staging is healthy, at 13.50 dollars a month inside its 20 dollar budget, and plan-2 waits for you.](https://leavethepack.dev/media/infra-dark.png "The Infrastructure view, with made-up environments.")
 
@@ -22,17 +22,21 @@ Open an environment, and its page shows what runs there as a map, what changes n
 
 What should exist is a file in the repository, under `.github/breakaway-infra/`. An agent changes it in an ordinary pull request, and the pull request shows the plan as a check: what changes, what it costs, what else it touches, and whether it can be undone. Merging applies nothing. The board plans from the default branch, and the plan waits for you.
 
+Or change it yourself, on an environment’s console: change what you see, and the plan forms beside the map as you edit. Press **Propose the change**, and the board opens the pull request, so you never have to. Approve merges it and applies the plan.
+
 - **Agents never apply.** They hold no write credentials, and no agent can press Approve.
 - **Read wide.** Any agent reads the environments, plans, signals, and incidents with `npx breakaway infra` or the board’s MCP server, before it changes anything.
 - **Pull requests close tasks**, and a change to infrastructure is a pull request too.
 
 ## 3. You approve. The board applies.
 
-A plan that waits for you pushes to your phone. Open it, read it, and press **Approve** or **Reject**. The board applies what you approve with the repository’s own apply workflow, whose write token lives in a GitHub environment, never on the board. Then it checks health, and rolls back by itself if the check fails.
+A plan that waits for you pushes to your phone. Open it, read it, and press **Approve** or **Reject**. The board applies what you approve with the repository’s own apply workflow, whose write token lives in a GitHub environment only the default branch can use, never on the board. Then it checks health, and rolls back by itself if the check fails.
+
+Connections walks you through the tokens: the read-only one for the board, and for each environment a GitHub environment with its write token. The repository also needs the variable `BREAKAWAY_URL`, your board’s address, and the apply workflow, which a change from the console brings with it, or `npx breakaway infra init` writes.
 
 ![A plan for staging on a phone: plan-2, from pull request #41, waiting for you: 2 changes, plus 6.40 dollars a month, estimated, touching 1 more resource, and it can be undone. What changes: widgets-exports-staging scales from 3 to 4. At the bottom, Reject and Approve.](https://leavethepack.dev/media/plan-dark.png "A plan that waits for you, on a phone.")
 
-Every plan asks you, in every environment, until you say otherwise. **Freeze** an environment, and every plan there stops, envelopes included, until you unfreeze it. Freezing production pauses its deploys too; Roll back still works.
+Every plan asks you, in every environment, until you approve an envelope or loosen your policy, and loosening is never one press. A plan that gives an environment its target, the Worker it runs, always waits for you. **Freeze** an environment, and every plan there stops, envelopes included, until you unfreeze it. Freezing production pauses its deploys too; Roll back still works.
 
 ## 4. Bounds you set once
 
@@ -42,14 +46,14 @@ An envelope is bounds you approve once on one environment: “2 to 10 instances�
 
 ## 5. When something breaks, it’s a task
 
-A signal that crosses a rule opens an incident: a task, in the repository that owns what broke. A production incident pushes; the rest waits in the inbox. Its steps show on the board: diagnose, propose, approve, apply, verify, and a write-up. An agent diagnoses and proposes the fix by pull request. Approve is still yours.
+A signal that crosses a rule opens an incident: a task, in the repository that owns what broke. A production incident pushes; the rest waits in the inbox. Its steps show on the board: diagnose, propose, approve, apply, verify, and a write-up. An agent you start, or a runbook you turned on, diagnoses it and proposes the fix by pull request. Approve is still yours.
 
 ![An incident on the board, a task: Incident, health, critical, in production (widgets-render), open, pushed to your phone. Its steps: diagnose, now; then propose, approve, apply, verify, and write up.](https://leavethepack.dev/media/incident-dark.png "An incident is a task, with its steps.")
 
 ## What it does, and doesn’t
 
-- **It runs what your repositories run on**, on Cloudflare first. Not every cloud, and not anything the board’s repositories don’t use.
-- **It never acts on its own word.** An envelope is bounds you approved. Outside them, the plan waits for you.
+- **It runs what your repositories run on**, on Cloudflare, the one provider in 2.0.0. Not every cloud, and not anything the board’s repositories don’t use.
+- **It never acts on its own word.** An envelope, or a policy you loosened, is bounds you approved. Outside them, the plan waits for you.
 - **It only watches its own install.** The board’s own environment is observe only: Architect never changes it.
 - **Your data stays.** The inventory and the signals stay in your install, redacted: names and settings, never values or code. The read-only token goes only to its provider.
 - **Amounts are estimates**, in the currency you set, with the rate when converted.

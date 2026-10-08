@@ -1,6 +1,6 @@
 # WEB-123: A policy manager on the infrastructure console
 
-Status: draft
+Task: WEB-123 on the board, in the `architect` feature · Status: built (2.0.0: #451, then #467)
 
 ## The problem
 

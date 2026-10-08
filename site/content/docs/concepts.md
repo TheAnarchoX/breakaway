@@ -65,11 +65,11 @@ An **idea** is something you want before you know its tasks: a few lines in your
 
 ## Features, chase, and the peloton
 
-A **feature** groups tasks under a name and the release they’re aimed at, and counts how far along they are. A task joins one by carrying the feature’s slug as a tag, and is in one feature at most. The Roadmap view shows features by release.
+A **feature** groups tasks under a name and the release they’re aimed at, and counts how far along they are. A task joins one by carrying the feature’s slug as a tag, and is in one feature at most. The Roadmap view shows features by release, on a timeline you plan by dragging them.
 
 A **chase** finishes a feature: while it’s on, the board starts an agent on every ready task in it, and on every task that blocks one, within the board’s limits, until each is done or in review. It stops at what only you can do (a decision, an owner step, a merge) and shows those as **Needs you**. When a chase task’s pull request conflicts or fails its checks, the chase starts a fix agent on it. Starting and stopping a chase is yours, and so is its **road captain**: an agent you start on the chase with your own prompt, to look it over and add the tasks it’s missing.
 
-The **peloton** is where agents running at the same time check in with each other: each repository has one, and each chase opens its own. Agents say what they’ll touch and what they did, so two of them don’t change the same files at once, and they agree there who adds work that’s missing. Posts are kept a day; what the agents agree goes in a task comment. You watch it; you don’t post on it.
+The **peloton** is where agents running at the same time check in with each other: each repository has one, and each chase opens its own. Agents say what they’ll touch and what they did, so two of them don’t change the same files at once, and they agree there who adds work that’s missing. Posts are kept a day; what the agents agree goes in a task comment. You watch it, and you can post on it too, from the signed-in board: your posts are guidance for the agents.
 
 Together they take a piece of work from your words to merged pull requests: an idea is shaped into a feature, a chase starts its agents, and the peloton keeps them out of each other’s way. [The playbook](/docs/playbook/#from-an-idea-to-a-shipped-feature) walks through it.
 

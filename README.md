@@ -7,7 +7,7 @@
 
 <p align="center">
   <b>breakaway is a task board for you and your coding agents.</b><br>
-  They claim the work. You merge it. Free, and it runs on your own Cloudflare account.
+  They claim the work. You merge it. Free for personal and noncommercial use, and it runs on your own Cloudflare account.
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 </p>
 
 <p align="center">
-  <b>New in 1.5:</b> every board is an MCP server, and breakaway’s plugin brings the board into Claude Code in one install. <a href="https://github.com/TheAnarchoX/breakaway/blob/main/docs/releases/v1.5.0.md">Read the release notes</a>.
+  <b>New in 2.0:</b> the board runs the infrastructure too, and you still decide. <a href="https://github.com/TheAnarchoX/breakaway/blob/main/docs/releases/v2.0.0.md">Read the release notes</a>.
 </p>
 
 ## Run your own
@@ -126,17 +126,17 @@ Claude Code asks for your board’s address and its token, which it keeps in you
   <img alt="Agents propose it. You approve it. In three steps: 1, an agent changes staging in a pull request, #41, to staging.json. 2, the plan waits for you: 2 changes, 6.40 dollars more a month, estimated, and it can be undone. 3, you press Approve, and the board applies it and checks its health." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/architect-dark.png" width="100%">
 </picture>
 
-**In the 2.0.0 pre-releases.** The board can run what your repositories run on too: environments, plans you approve, and incidents, in an **Infrastructure** view, pushes, and `npx breakaway infra`. Code still ships through the deploy flow; Architect looks after what exists around it.
+**New in 2.0.0.** The board can run what your repositories run on too: environments, plans you approve, and incidents, in an **Infrastructure** view, pushes, and `npx breakaway infra`. Code still ships through the deploy flow; Architect looks after what exists around it.
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/infra-light.png">
   <img alt="The Infrastructure view, with made-up environments of a repository called widgets on Cloudflare: production is down, 1 of 7 resources, at 24.30 dollars a month inside its 60 dollar budget; staging is healthy, at 13.50 dollars a month inside its 20 dollar budget, and plan-2 waits for you." src="https://raw.githubusercontent.com/TheAnarchoX/breakaway/main/docs/media/infra-dark.png" width="100%">
 </picture>
 
-- **Changed by pull request.** What should exist is a file per environment in `.github/breakaway-infra/`, started from what already runs. A pull request that changes one shows its plan as a check: what changes, what it costs, what else it touches, and whether it can be undone.
-- **You approve, the board applies.** Every plan waits for you by default, and you approve it from your phone. A workflow in the repository applies it, with its write token in a GitHub environment: the board holds only a read-only token, and agents never apply anything. Bounds you approve once on an environment (an envelope) let it scale and restart inside them.
+- **Changed by pull request.** What should exist is a file per environment in `.github/breakaway-infra/`, started from what already runs. A pull request that changes one shows its plan as a check: what changes, what it costs, what else it touches, and whether it can be undone. Or change it yourself on an environment's console: the board opens the pull request, and Approve merges it and applies the plan.
+- **You approve, the board applies.** Every plan waits for you by default, and you approve it from your phone. The board starts a workflow in the repository that applies it, with its write token in a GitHub environment only the default branch can use: the board holds only a read-only token, and agents never apply anything. Bounds you approve once on an environment (an envelope) let it scale and restart inside them, and a policy you loosen lets more through without you.
 - **It watches.** Health, the platform's alerts, and cost come in as signals. A critical one opens an incident, a task in the repository that owns what broke, and production's push to your phone. Drift and what nobody owns become plans; nothing changes by itself.
-- **Off until you connect a provider**, Cloudflare first. The board only watches its own install.
+- **Off until you connect a provider.** Cloudflare is the one provider in 2.0.0, and Connections walks you through its read-only token and each environment's write token. The board only watches its own install.
 
 [The manual's Architect section](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) has the rest.
 
@@ -195,7 +195,7 @@ npx breakaway list --ready
 ## What it is, and isn't
 
 - **Self-hosted.** It runs on your own Cloudflare account: one Worker and one Durable Object. There's no hosted breakaway, and no accounts, teams, or pricing.
-- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, npm's public registry for the packages your repositories publish there, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh).
+- **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, breakaway's release feed, to look for updates, npm's public registry for the packages your repositories publish there, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh).
 - **You decide.** Agents claim, build, and open pull requests. You merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **Taskwarrior is a first-class way in.** The sync protocol is Taskwarrior's.
 - **Free for personal and noncommercial use.** The source is public. Commercial use is by exception, granted case by case ([licensing](https://leavethepack.dev/licensing/)).
@@ -221,6 +221,7 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) | A roadmap of features, a chase that starts agents on what's ready, and agents checking in with each other |
 | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
+| [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) | From a read-only token to your first approved plan |
 | [Architect](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md#architect) | Environments, plans you approve, envelopes, signals, incidents, and cost, and what agents may and may not do |
 | [The CLI](https://leavethepack.dev/docs/cli/) | Every command of `npx breakaway` |
 | [The Claude Code plugin](https://leavethepack.dev/docs/plugin/) | The `tasks` skill, `/breakaway:next`, the session hooks, and the MCP server in one install, for you or a whole repository |
@@ -275,7 +276,7 @@ breakaway publishes releases and never deploys an install. Every install, the ow
 
 ## Who builds it
 
-breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else, apart from a [licence exception request](https://leavethepack.dev/licensing/#how-to-ask): [`CONTRIBUTING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/CONTRIBUTING.md) says what you can do instead. Report a security problem privately, as [`SECURITY.md`](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. The agents follow [`AGENTS.md`](https://github.com/TheAnarchoX/breakaway/blob/main/AGENTS.md), and anything people see or read follows the [brand guide](https://github.com/TheAnarchoX/breakaway/blob/main/brand/README.md).
+breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else, apart from a [licence exception request](https://leavethepack.dev/licensing/#how-to-ask): [`CONTRIBUTING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/CONTRIBUTING.md) says what you can do instead, and the [contributor licence agreement](https://github.com/TheAnarchoX/breakaway/blob/main/CLA.md) you sign on the pull request if the owner ever takes one from you. Report a security problem privately, as [`SECURITY.md`](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. The agents follow [`AGENTS.md`](https://github.com/TheAnarchoX/breakaway/blob/main/AGENTS.md), and anything people see or read follows the [brand guide](https://github.com/TheAnarchoX/breakaway/blob/main/brand/README.md).
 
 ## Licence
 

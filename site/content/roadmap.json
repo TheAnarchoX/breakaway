@@ -7,7 +7,7 @@
         {
           "slug": "architect",
           "title": "Architect",
-          "line": "The board runs your infrastructure too, Cloudflare first: environments from nothing, a console, and policy. Agents propose changes in pull requests; you approve the plans, and they run in your own GitHub Actions."
+          "line": "The board runs your infrastructure too, on Cloudflare: environments from nothing, a console, and policy. Agents propose changes in pull requests; you approve the plans, and they run in your own GitHub Actions."
         },
         {
           "slug": "licensing",
@@ -139,7 +139,7 @@
   ],
   "edits": {
     "architect": {
-      "line": "The board runs your infrastructure too, Cloudflare first: environments from nothing, a console, and policy. Agents propose changes in pull requests; you approve the plans, and they run in your own GitHub Actions."
+      "line": "The board runs your infrastructure too, on Cloudflare: environments from nothing, a console, and policy. Agents propose changes in pull requests; you approve the plans, and they run in your own GitHub Actions."
     },
     "feature-plans": {
       "line": "Plan a feature’s start and end, and see from the pace when it’s likely done."
