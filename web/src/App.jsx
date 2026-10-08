@@ -31,6 +31,7 @@ import {
   toggleSidebar,
   view,
   environmentId,
+  policyFor,
   planRef,
   VIEWS,
 } from './lib/store.js';
@@ -55,6 +56,7 @@ import { KickoffView } from './views/KickoffView.jsx';
 import { SettingsView } from './views/SettingsView.jsx';
 import { InfrastructureView } from './views/InfrastructureView.jsx';
 import { EnvironmentView } from './views/EnvironmentView.jsx';
+import { InfraPolicyView } from './views/InfraPolicyView.jsx';
 import { PlanView } from './views/PlanView.jsx';
 import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
@@ -192,13 +194,15 @@ function Board() {
   const routine = Boolean(selectedRoutine.value) && !(open && !modal);
   useShortcuts();
   // An environment's page (WEB-61) lives under Infrastructure, at #/infrastructure/<id>, and a plan's (WEB-62) under
-  // its environment, at #/infrastructure/<id>?plan=<plan>.
+  // its environment, at #/infrastructure/<id>?plan=<plan>. The Policy view (WEB-123) is #/infrastructure/policy.
   const View =
     view.value === 'infrastructure' && environmentId.value
       ? planRef.value
         ? PlanView
         : EnvironmentView
-      : (VIEW_COMPONENTS[view.value] ?? BoardView);
+      : view.value === 'infrastructure' && policyFor.value !== null
+        ? InfraPolicyView
+        : (VIEW_COMPONENTS[view.value] ?? BoardView);
   return (
     <div class={`app ${phone ? 'app-phone' : ''}`}>
       <a class="skip-link" href="#main">
