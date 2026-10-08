@@ -1,0 +1,58 @@
+name: CLA
+
+# BRK-296: anyone outside breakaway who opens a pull request signs the contributor licence agreement (CLA.md) first,
+# so the owner can license every part of breakaway the same way and grant commercial exceptions. CLA Assistant Lite
+# runs here, in this repository, and keeps signatures on the cla-signatures branch: no third-party service. The
+# owner's own pull requests (the board's agents open theirs as the owner) and the bots' are exempt by author, so the
+# job is skipped for them.
+#
+# pull_request_target runs this file from the default branch with a token that can write, so it never checks out
+# or runs the pull request's code.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+
+jobs:
+  cla:
+    name: cla
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      (github.event_name == 'pull_request_target' &&
+        github.event.pull_request.user.login != github.repository_owner &&
+        !contains(fromJSON('["dependabot[bot]","github-actions[bot]","breakaway-integration[bot]"]'), github.event.pull_request.user.login)) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+        github.event.issue.user.login != github.repository_owner &&
+        !contains(fromJSON('["dependabot[bot]","github-actions[bot]","breakaway-integration[bot]"]'), github.event.issue.user.login) &&
+        (github.event.comment.body == 'recheck' || contains(github.event.comment.body, 'I have read the breakaway CLA and I sign it')))
+    steps:
+      - uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/CLA.md
+          path-to-signatures: signatures/cla.json
+          branch: cla-signatures
+          # Commits in an outside pull request by the owner or a bot need no signature.
+          allowlist: ${{ github.repository_owner }},dependabot[bot],github-actions[bot],breakaway-integration[bot]
+          custom-pr-sign-comment: I have read the breakaway CLA and I sign it.
+          custom-notsigned-prcomment: >-
+            Thanks for the pull request. Before the owner can look at it, each person who wrote a commit in it signs
+            breakaway's [contributor licence agreement](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.repository.default_branch }}/CLA.md),
+            once, by commenting on this pull request with the line below.
+          custom-allsigned-prcomment: Everyone who wrote a commit here has signed the CLA.
+          signed-commit-message: "CLA: $contributorName signed"
+          create-file-commit-message: "CLA: Start the signatures file"
+          # Keeps the pull request open for comments after it merges, where CLA.md's point 8 says to write.
+          lock-pullrequest-aftermerge: false
