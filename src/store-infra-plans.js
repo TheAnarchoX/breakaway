@@ -266,7 +266,11 @@ export const infraPlansMethods = {
         `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`,
         409,
       );
-    const { provider, stored, cost, blast } = await this.computeInfraPlan(env, wanted, diff ?? null, { only });
+    // An environment with no target is planned with the one Worker its desired state makes (BRK-309): the plan keeps
+    // it, and the environment takes it on the owner's Approve (store-infra-approvals.js), never before.
+    const at = wanted ? this.desiredTargetOf(env, wanted) : { env };
+    if (at.problem) throw new AgentError(at.problem, 409);
+    const { provider, stored, cost, blast } = await this.computeInfraPlan(at.env, wanted, diff ?? null, { only });
     if (stored.changes.length === 0)
       throw new AgentError(
         only
@@ -287,7 +291,7 @@ export const infraPlansMethods = {
             env.id,
             env.repo,
             env.provider,
-            env.target ?? null,
+            at.env.target ?? null,
             env.kind,
             desired || diff ? null : (kept?.valid_sha ?? null),
             from.source,
@@ -313,7 +317,7 @@ export const infraPlansMethods = {
         by,
         agent,
         outcome: 'draft',
-        summary: `${stored.changes.length} change${stored.changes.length === 1 ? '' : 's'} from ${from.source}${from.ref ? ` ${from.ref}` : ''}${stored.reversible ? '' : ', not all reversible'}; ${policySummary(policy)}`,
+        summary: `${stored.changes.length} change${stored.changes.length === 1 ? '' : 's'} from ${from.source}${from.ref ? ` ${from.ref}` : ''}${stored.reversible ? '' : ', not all reversible'}; ${policySummary(policy)}${at.target ? `; builds ${at.target}, ${env.name}’s target once you approve it` : ''}`,
       });
     });
     // A plan the repository's policy lets through is approved by the board (BRK-182, store-infra-approvals.js).

@@ -12439,6 +12439,11 @@ button.infra-plan-row {
   margin-top: 2px;
   color: var(--warn);
 }
+/* An environment with no target whose merged file declares one (BRK-309): Compare now plans with it. */
+.infra-first-apply.is-declared {
+  border-color: var(--line);
+  background: var(--surface-2);
+}
 
 /* An environment whose inventory is out of date (BRK-257): its last discovery failed. */
 .band-stale {

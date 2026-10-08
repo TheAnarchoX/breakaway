@@ -151,7 +151,10 @@ export const infraInventoryMethods = {
         return null;
       }
     };
-    const targeted = environments.filter((environment) => environment.target);
+    // One with no target is looked at with the one its desired state makes (BRK-309): an empty slice until it's built.
+    const targeted = environments
+      .map((environment) => this.desiredTargetOf(environment).env)
+      .filter((environment) => environment.target);
     for (const environment of targeted) {
       const ctx = {
         environment: environment.name,
@@ -558,7 +561,10 @@ export const infraInventoryMethods = {
         connected: provider.readToken ? Boolean(row) && (await this.providerReadToken(provider.id)) !== null : true,
         edited: row ? Number(row.edited) : null,
         environments: count(''),
-        targets: count("AND target IS NOT NULL AND target != ''"),
+        targets: this.sql
+          .exec('SELECT * FROM infra_environments WHERE provider = ?', provider.id)
+          .toArray()
+          .filter((env) => env.target || this.desiredTargetOf(env).target).length,
       });
     }
     return out;
