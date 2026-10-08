@@ -62,6 +62,18 @@ export function policyText(policy) {
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
+/**
+ * A policy as the Policy view sends it to propose (WEB-128): what `policyText` writes, without its version. Empty access
+ * lists, an empty access, and an environment with no rules of its own are left out, so the form never sends what
+ * `checkPolicyEdit` refuses.
+ * @param {Policy} policy
+ * @returns {Record<string, any>}
+ */
+export function policyEdit(policy) {
+  const { version: _version, ...rest } = JSON.parse(policyText(policy));
+  return rest;
+}
+
 /** @param {{ kinds?: string[], settings?: string[] }} access */
 function accessText(access) {
   /** @type {Record<string, string[]>} */

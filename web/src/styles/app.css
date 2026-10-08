@@ -12470,20 +12470,19 @@ button.infra-plan-row {
 }
 .pol-section,
 .pol-change,
-.pol-editor {
+.pol-propose {
   display: grid;
   gap: 12px;
   min-width: 0;
 }
 .pol-change,
-.pol-editor {
+.pol-propose {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-s);
   background: var(--bg-2);
 }
 .pol-change-head,
-.pol-env-head,
 .pol-plan-head {
   display: flex;
   flex-wrap: wrap;
@@ -12493,34 +12492,14 @@ button.infra-plan-row {
 .pol-change-head h2 {
   margin: 0;
 }
-.pol-envs,
 .pol-plans,
-.pol-lines,
-.pol-rules {
+.pol-lines {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 10px;
 }
-.pol-envs {
-  gap: 16px;
-}
-.pol-env {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  min-width: 0;
-}
-.pol-env-head a {
-  font-weight: 650;
-  font-size: 16px;
-}
-.pol-rules {
-  gap: 6px;
-}
-.pol-rules li,
 .pol-line {
   display: grid;
   grid-template-columns: 9.5rem 1fr;
@@ -12530,10 +12509,6 @@ button.infra-plan-row {
 }
 .pol-line .pill {
   justify-self: start;
-}
-.pol-level {
-  font: 600 12px / 1.5 var(--font-mono);
-  color: var(--muted);
 }
 .pol-envelope {
   display: flex;
@@ -12615,8 +12590,212 @@ button.infra-plan-row {
 .pol-mark {
   margin: 0;
 }
+/* WEB-128: the default and each environment as sections you change in place, and one change for all of it. */
+.pol-propose {
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  box-shadow: var(--shadow-pop);
+}
+.pol-scopes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.pol-scope {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  min-width: 0;
+}
+.pol-scope-editing {
+  border-color: var(--line-strong);
+}
+.pol-scope-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pol-scope-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.pol-scope-edit {
+  margin-left: auto;
+}
+.pol-scope-intro {
+  margin: -6px 0 0;
+}
+.pol-pill-change {
+  background: var(--tint);
+  color: var(--accent);
+}
+.pol-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.pol-group > .meta {
+  margin: 0;
+}
+.pol-group-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.pol-from {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font: 600 11px / 1.5 var(--font-mono);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.pol-from-own {
+  background: var(--tint);
+  color: var(--accent);
+}
+.pol-always {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.pol-always li {
+  display: flex;
+  font-size: 14px;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.pol-always svg {
+  flex: none;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.pol-always-warn,
+.pol-always-warn svg {
+  color: var(--warn);
+}
+.pol-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.pol-limit {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radius-s);
+  background: var(--bg-2);
+  min-width: 0;
+}
+.pol-limit-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.pol-limit-value {
+  font: var(--display-weight) 28px / 1.1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.pol-limit-unit {
+  font: 500 13px var(--font-body);
+  color: var(--muted);
+}
+.pol-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pol-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font: 500 12.5px / 1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.pol-chip-own {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--tint);
+}
+.pol-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.pol-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--bg-2);
+  min-width: 0;
+}
+.pol-card-editing {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+.pol-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pol-card-name {
+  overflow-wrap: anywhere;
+}
+.pol-card-edit {
+  margin-left: auto;
+}
+.pol-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+.pol-card-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.pol-card-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pol-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.pol-remove {
+  margin-right: auto;
+}
 @media (max-width: 559px) {
-  .pol-rules li,
   .pol-line {
     grid-template-columns: 1fr;
     gap: 2px;
