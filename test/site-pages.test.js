@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { ARCHITECT, buildLlms, buildPages, DOCS, MEDIA, SITE } from '../site/lib/site.js';
+import { ARCHITECT, buildLlms, buildPages, DOCS, LICENSING, MEDIA, SITE } from '../site/lib/site.js';
 import { frontMatter, render, slug } from '../site/lib/markdown.js';
 import { lint } from '../scripts/lib/brand-lint.js';
 import TOKENS from '../brand/tokens.css?raw';
 import SITE_TOKENS from '../site/public/tokens.css?raw';
 import INDEX from '../site/content/index.html?raw';
 import ARCHITECT_SOURCE from '../site/content/architect.md?raw';
+import LICENSING_SOURCE from '../site/content/licensing.md?raw';
 import ROADMAP from '../site/content/roadmap.json';
 import ARCHITECT_MD from '../site/public/architect.md?raw';
+import LICENSING_MD from '../site/public/licensing.md?raw';
+import EXCEPTION_FORM from '../.github/ISSUE_TEMPLATE/licence-exception.yml?raw';
+import README from '../README.md?raw';
+import LICENSING_FILE from '../LICENSING.md?raw';
 import INSTALL_PROMPT from '../prompts/install.md?raw';
 import SITE_INSTALL_PROMPT from '../site/public/install.md?raw';
 import LLMS from '../site/public/llms.txt?raw';
@@ -28,7 +33,7 @@ const STATIC = import.meta.glob(['../site/public/**/*', '!../site/public/**/*.ht
 const docs = Object.fromEntries(
   Object.entries(DOC_SOURCES).map(([path, text]) => [path.replace(/^.*\/(.+)\.md$/u, '$1'), text]),
 );
-const content = { landing: INDEX, architect: ARCHITECT_SOURCE, roadmap: ROADMAP, docs };
+const content = { landing: INDEX, architect: ARCHITECT_SOURCE, licensing: LICENSING_SOURCE, roadmap: ROADMAP, docs };
 const built = buildPages(content);
 const published = (path) => `/${path}`.replace(/index\.html$/u, '');
 const known = new Set([...built.keys()].map(published));
@@ -81,6 +86,7 @@ describe('the site', () => {
     expect(llms.get('llms.txt')).toBe(LLMS);
     expect(llms.get('llms-full.txt')).toBe(LLMS_FULL);
     expect(llms.get('architect.md')).toBe(ARCHITECT_MD);
+    expect(llms.get('licensing.md')).toBe(LICENSING_MD);
     const pages = [...llms].filter(([path]) => path.startsWith('docs/'));
     for (const [path, text] of pages) expect(DOCS_MD[`../site/public/${path}`], path).toBe(text);
     expect(Object.keys(DOCS_MD).length).toBe(pages.length);
@@ -89,15 +95,19 @@ describe('the site', () => {
     for (const name of Object.keys(docs)) expect(LLMS).toContain(`${SITE.url}/docs/${name}.md)`);
     expect(LLMS).toContain(`${SITE.url}/install.md`);
     expect(LLMS).toContain(`${SITE.url}/architect.md)`);
+    expect(LLMS).toContain(`${SITE.url}/licensing.md)`);
+    expect(LLMS_FULL).toContain(`Source: ${SITE.url}${LICENSING.path}`);
     expect(LLMS_FULL).toContain(`Source: ${SITE.url}${ARCHITECT.path}`);
     // Read away from the site, so every link of the site's own is absolute.
     expect(LLMS_FULL).not.toMatch(/\]\(\/(?!\/)/u);
     expect(ARCHITECT_MD).not.toMatch(/\]\(\/(?!\/)/u);
+    expect(LICENSING_MD).not.toMatch(/\]\(\/(?!\/)/u);
     expect(
       lint([
         { path: 'site/public/llms.txt', text: LLMS },
         { path: 'site/public/llms-full.txt', text: LLMS_FULL },
         { path: 'site/public/architect.md', text: ARCHITECT_MD },
+        { path: 'site/public/licensing.md', text: LICENSING_MD },
       ]),
     ).toEqual([]);
   });
@@ -147,6 +157,42 @@ describe('the site', () => {
     }
     for (const [tag] of page.matchAll(/<img\b[^>]*src="\/media\/[^>]*>/gu)) expect(tag).toMatch(/\salt="[^"]{20,}"/u);
     expect(built.get('index.html')).toContain(`href="${ARCHITECT.path}"`);
+  });
+
+  it('says who uses breakaway free, what counts as commercial, and how to ask for an exception, on its own page (DOC-43)', () => {
+    const page = built.get(LICENSING.file);
+    const text = visible(page);
+    for (const heading of [
+      'Who uses it free',
+      'What counts as commercial',
+      'Exceptions',
+      'How to ask',
+      'Releases before 2.0.0',
+    ])
+      expect(text).toContain(heading);
+    expect(text).toContain('PolyForm Noncommercial License 1.0.0');
+    expect(text).toContain('Worker co-ops');
+    expect(text).toContain('Digital rights and privacy groups');
+    expect(text).toContain('venture capital');
+    expect(text).toContain('no promise of a yes');
+    expect(text).toContain('FSL-1.1-Apache-2.0');
+    expect(text).toContain('It isn’t legal advice');
+    // How to ask is the issue form in this repository, which asks for what the page lists.
+    expect(page).toContain(`${SITE.repo}/issues/new?template=licence-exception.yml`);
+    for (const label of [
+      'Who you are',
+      'What kind of group you are',
+      'How you’re owned and funded',
+      'What you’d use breakaway for',
+    ]) {
+      expect(text).toContain(label);
+      expect(EXCEPTION_FORM).toContain(`label: ${label.replace('’', "'")}`);
+    }
+    // Linked from every page's footer, the landing page's licence line, the README, and LICENSING.md.
+    for (const [path, html] of built) expect(html, path).toContain(`href="${LICENSING.path}"`);
+    expect(INDEX).toContain(`<a href="${LICENSING.path}">`);
+    expect(README).toContain(`${SITE.url}${LICENSING.path}`);
+    expect(LICENSING_FILE).toContain(`${SITE.url}${LICENSING.path}`);
   });
 
   it('renders an image on its own line as a figure, in both themes when it’s a carbon screenshot', () => {
@@ -206,6 +252,7 @@ describe('the site', () => {
     const files = [
       { path: 'site/content/index.html', text: INDEX },
       { path: 'site/content/architect.md', text: ARCHITECT_SOURCE },
+      { path: 'site/content/licensing.md', text: LICENSING_SOURCE },
       ...Object.entries(docs).map(([name, text]) => ({ path: `site/content/docs/${name}.md`, text })),
     ];
     expect(lint(files)).toEqual([]);

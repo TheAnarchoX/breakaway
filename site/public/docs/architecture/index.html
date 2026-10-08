@@ -69,7 +69,7 @@
 <h2 id="tests"><a class="anchor" href="#tests" aria-label="Link to this section">#</a>Tests</h2>
 <p><code>pnpm test</code> runs the server’s tests: crypto against TaskChampion’s own test vector, the protocol, the replica, the API, sign-in, rotation, activity, and more. Nothing reaches the network: GitHub, Claude, and Web Push are mocked. <code>pnpm interop</code> checks the Worker against real Taskwarrior 3: two and three replicas, API changes and claims, conflicting edits, and a replica that starts from the server’s snapshot. Run it after changing sync, the replica, or the task model.</p>
 <h2 id="how-breakaway-is-built"><a class="anchor" href="#how-breakaway-is-built" aria-label="Link to this section">#</a>How breakaway is built</h2>
-<p>breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else. The agents follow the repository’s <code>AGENTS.md</code>: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in <code>brand/</code>. The licence lets you change your own copy as much as you like.</p>
+<p>breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else, apart from a <a href="/licensing/#how-to-ask">licence exception request</a>. The agents follow the repository’s <code>AGENTS.md</code>: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in <code>brand/</code>. The licence lets you change your own copy as much as you like.</p>
 <pre data-lang="sh"><code>pnpm install
 pnpm dev        # the board, locally
 pnpm test       # the tests
@@ -101,13 +101,13 @@ pnpm interop    # checks sync against real Taskwarrior 3</code></pre>
         <h2 class="label">Project</h2>
         <ul>
           <li><a href="https://github.com/TheAnarchoX/breakaway">breakaway on GitHub</a></li>
-          <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="/licensing/">Licence: PolyForm Noncommercial 1.0.0</a></li>
           <li><a href="https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md">Security</a></li>
           <li><a href="/releases.json">Update feed</a></li>
         </ul>
       </nav>
     </div>
-    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by exception. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="/licensing/">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
     <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
   </div>
 </footer>
