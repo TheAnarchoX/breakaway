@@ -497,8 +497,14 @@ const gh = {
   branches: new Set(),
   /** The App installation's permissions (BRK-307: workflows decides whether a change brings the apply workflow). */
   /** @type {Record<string, string>} */ permissions: {},
-  /** GitHub refuses a tree with a workflow in it, as it does an App without Workflows write. */
+  /**
+   * GitHub refuses a workflow, as it does an App without Workflows write: `true` at the tree, `'ref'` where it really
+   * does, when a branch is created or moved to a commit whose tree holds one (BRK-311).
+   * @type {boolean | 'ref'}
+   */
   refuseWorkflow: false,
+  /** Trees and commits the board wrote that hold a workflow. */
+  workflowShas: new Set(),
 };
 
 function mockGitHub() {
@@ -539,15 +545,33 @@ function mockGitHub() {
     const sent = init.body ? JSON.parse(init.body) : null;
     gh.writes.push({ method, path: local, body: sent });
     if (gh.refuse) return reply({ message: 'Resource not accessible by integration' }, 403);
-    if (
-      gh.refuseWorkflow &&
-      method === 'POST' &&
-      local === '/git/trees' &&
-      sent.tree.some((t) => t.path.startsWith('.github/workflows/'))
-    )
+    const workflowTree =
+      method === 'POST' && local === '/git/trees' && sent.tree.some((t) => t.path.startsWith('.github/workflows/'));
+    if (gh.refuseWorkflow === true && workflowTree)
       return reply({ message: 'Resource not accessible by integration' }, 403);
-    if (method === 'POST' && local === '/git/trees') return reply({ sha: `tree-new-${gh.writes.length}` }, 201);
-    if (method === 'POST' && local === '/git/commits') return reply({ sha: `commit-${gh.writes.length}` }, 201);
+    if (method === 'POST' && local === '/git/trees') {
+      const sha = `tree-new-${gh.writes.length}`;
+      if (workflowTree) gh.workflowShas.add(sha);
+      return reply({ sha }, 201);
+    }
+    if (method === 'POST' && local === '/git/commits') {
+      const sha = `commit-${gh.writes.length}`;
+      if (gh.workflowShas.has(sent.tree)) gh.workflowShas.add(sha);
+      return reply({ sha }, 201);
+    }
+    if (
+      gh.refuseWorkflow === 'ref' &&
+      local.startsWith('/git/refs') &&
+      (method === 'POST' || method === 'PATCH') &&
+      gh.workflowShas.has(sent.sha)
+    )
+      return reply(
+        {
+          message:
+            'refusing to allow a GitHub App to create or update workflow `.github/workflows/breakaway-infra.yml` without `workflows` permission',
+        },
+        422,
+      );
     if (method === 'POST' && local === '/git/refs') {
       const branch = sent.ref.replace(/^refs\/heads\//u, '');
       if (gh.branches.has(branch)) return reply({ message: 'Reference already exists' }, 422);
@@ -658,6 +682,7 @@ describe('changes from the console', () => {
       refuse: false,
       permissions: {},
       refuseWorkflow: false,
+      workflowShas: new Set(),
     });
     gh.files['.github/breakaway-infra/chg-staging.json'] = JSON.stringify(fileOf(), null, 4);
     await inStore((s) => {
@@ -781,6 +806,58 @@ describe('changes from the console', () => {
     expect((await reject(refused.change.n)).status).toBe(200);
     // The board never starts the workflow itself: nothing was dispatched.
     expect(gh.writes.some((w) => w.path.includes('/dispatches'))).toBe(false);
+  });
+
+  it('keeps one change number and one branch when GitHub refuses the workflow at the branch (BRK-311)', async () => {
+    const edits = [{ op: 'set', resource: 'svc-api', path: 'instances', value: 6 }];
+    const reject = (n) => board(`infra/changes/${n}/reject`, { method: 'POST', body: {} });
+    const lastN = () =>
+      inStore((s) =>
+        Math.max(
+          Number(s.meta('infra_change_seq') ?? 0),
+          Number(s.sql.exec('SELECT COALESCE(MAX(n), 0) AS n FROM infra_changes').toArray()[0].n),
+        ),
+      );
+    const refs = () => gh.writes.filter((w) => w.path.startsWith('/git/refs'));
+    // The installation says yes, but GitHub refuses the branch whose commit holds the workflow.
+    gh.permissions = { contents: 'write', workflows: 'write' };
+    gh.refuseWorkflow = 'ref';
+
+    // A new change: the refused attempt leaves no branch, and the retry names the same one, with the next number.
+    const before = await lastN();
+    const made = await body(await change(envs['chg-staging'].id, { edits, propose: true }));
+    expect(made.status).toBe(201);
+    expect(made.change.runner).toEqual({ state: 'needs-workflows', note: RUNNER_NEEDS_WORKFLOWS });
+    expect(made.change.n).toBe(before + 1);
+    expect(await lastN()).toBe(before + 1);
+    const branch = `breakaway/infra/chg-staging-${made.change.n}`;
+    expect(made.change.branch).toBe(branch);
+    expect(refs().map((w) => [w.method, w.body.ref])).toEqual([
+      ['POST', `refs/heads/${branch}`],
+      ['POST', `refs/heads/${branch}`],
+    ]);
+    expect(gh.workflowShas.has(refs()[0].body.sha)).toBe(true);
+    expect(gh.workflowShas.has(refs()[1].body.sha)).toBe(false);
+    expect([...gh.branches].filter((b) => b.startsWith('breakaway/infra/chg-staging-'))).toContain(branch);
+    expect(gh.writes.filter((w) => w.path === '/pulls').map((w) => w.body.head)).toEqual([branch]);
+
+    // Replacing it: the branch stays where it was until the retry moves it, once, to the commit without the workflow.
+    gh.writes = [];
+    const again = await body(
+      await change(envs['chg-staging'].id, { edits: [{ ...edits[0], value: 7 }], propose: true }),
+    );
+    expect(again.status).toBe(200);
+    expect(again.change).toMatchObject({ n: made.change.n, branch, runner: { state: 'needs-workflows' } });
+    expect(await lastN()).toBe(before + 1);
+    const path = `/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`;
+    expect(refs().map((w) => [w.method, w.path])).toEqual([
+      ['PATCH', path],
+      ['PATCH', path],
+    ]);
+    expect(gh.workflowShas.has(refs()[0].body.sha)).toBe(true);
+    expect(gh.workflowShas.has(refs()[1].body.sha)).toBe(false);
+    expect(gh.writes.some((w) => w.method === 'POST' && w.path === '/pulls')).toBe(false);
+    expect((await reject(made.change.n)).status).toBe(200);
   });
 
   it('changes a route’s name where the provider declares it, planning an update of the same route', async () => {
