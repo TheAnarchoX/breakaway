@@ -55,7 +55,14 @@ export const kickoffsMethods = {
     if (!have.has('run_it')) this.sql.exec('ALTER TABLE kickoffs ADD COLUMN run_it TEXT');
     if (!have.has('run_it_at')) this.sql.exec('ALTER TABLE kickoffs ADD COLUMN run_it_at INTEGER');
     // Whether Run it was last seen done, so the list keeps a merged kickoff until it is without asking GitHub per row.
-    if (!have.has('run_it_done')) this.sql.exec('ALTER TABLE kickoffs ADD COLUMN run_it_done INTEGER');
+    // A kickoff whose plan merged before Run it existed is marked 2, finished before it: it stays out of the list, and
+    // only the owner's own answer changes that.
+    if (!have.has('run_it_done')) {
+      this.sql.exec('ALTER TABLE kickoffs ADD COLUMN run_it_done INTEGER');
+      this.sql.exec(
+        "UPDATE kickoffs SET run_it_done = 2 WHERE idea IN (SELECT uuid FROM tasks WHERE json_extract(data, '$.status') = 'completed')",
+      );
+    }
   },
 
   ownerOnlyKickoffs(by) {
@@ -125,10 +132,14 @@ export const kickoffsMethods = {
     return runItProgress(facts);
   },
 
-  /** Keeps whether Run it is done, as last seen, for the list (kickoffsApi). Returns the row as it now is. */
-  kickoffRunItSeen(row, runIt) {
+  /**
+   * Keeps whether Run it is done, as last seen, for the list (kickoffsApi). A kickoff finished before Run it (2) keeps
+   * that until the owner answers (`answered`). Returns the row as it now is.
+   */
+  kickoffRunItSeen(row, runIt, { answered = false } = {}) {
     const done = runIt.done ? 1 : 0;
-    if (Number(row.run_it_done ?? 0) === done) return row;
+    const was = Number(row.run_it_done ?? 0);
+    if (was === done || (was === 2 && !answered)) return row;
     this.sql.exec('UPDATE kickoffs SET run_it_done = ? WHERE id = ?', done, row.id);
     return { ...row, run_it_done: done };
   },
@@ -424,7 +435,7 @@ export const kickoffsMethods = {
       );
       let next = this.kickoffRow(row.id);
       const runIt = await this.kickoffRunIt(next);
-      next = this.kickoffRunItSeen(next, runIt);
+      next = this.kickoffRunItSeen(next, runIt, { answered: true });
       return ok({ kickoff: this.kickoffView(next), runIt });
     });
   },

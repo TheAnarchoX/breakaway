@@ -458,8 +458,19 @@ describe('kickoffs on the board (IDEA-26)', () => {
       ['plant-diary', false],
       ['herb-log', true],
     ]);
-    // Answered Not needed, Run it is done, and the kickoff leaves the list with it.
     const herbId = merged[1].id;
+    // A kickoff whose plan merged before Run it existed stays out of the list, even once its page is opened again.
+    await runInDurableObject(env.STORE.get(env.STORE.idFromName('widgets')), (instance) => {
+      instance.sql.exec('ALTER TABLE kickoffs DROP COLUMN run_it_done');
+      instance.initKickoffs();
+    });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    expect((await body(await api(`kickoffs/${herbId}`))).runIt.done).toBe(false);
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
+    // The owner's own answer takes over from there. Taken back, it's left to do, and back in the list.
+    await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: null } });
+    expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary', 'herb-log']);
+    // Answered Not needed, Run it is done, and the kickoff leaves the list with it.
     await owner(`kickoffs/${herbId}/run-it`, { method: 'POST', body: { choice: 'not-needed' } });
     expect((await body(await api('kickoffs'))).kickoffs.map((k) => k.name)).toEqual(['plant-diary']);
     // Taken back, it's left to do again, and back in the list.
