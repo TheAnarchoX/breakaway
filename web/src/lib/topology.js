@@ -188,3 +188,71 @@ export function layoutTopology(resources, relations, { target = null } = {}) {
  * @param {number} [max]
  */
 export const fitName = (name, max = 20) => (name.length > max ? `${name.slice(0, max - 1)}…` : name);
+
+/** A resource's ID on its platform: its ID after `<kind>:`. */
+const platformId = (/** @type {string} */ id) => id.slice(id.indexOf(':') + 1);
+
+/** Every string in a resource's settings, however deep. */
+function stringsIn(/** @type {unknown} */ value, /** @type {string[]} */ out = []) {
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value)) for (const v of value) stringsIn(v, out);
+  else if (value && typeof value === 'object') for (const v of Object.values(value)) stringsIn(v, out);
+  return out;
+}
+
+/**
+ * What the merged desired state declares that the inventory hasn't seen yet (WEB-129): a node for each, marked
+ * `expected`, with the plan that applied it when the latest applied plan created it, and a line to what binds or
+ * serves it, so an applied plan's resources stay on the map until the inventory looks again. A declared resource is
+ * seen when something on the map has its ID, else its kind and name (as the plan matches them). A setting that names
+ * another declared resource (its ID, its name, or its platform ID) is a line; a name two of them share is none.
+ * @param {Array<{ id: string, kind: string, name: string, attrs?: Record<string, unknown> }> | null | undefined} declared
+ * @param {Array<{ id: string, kind: string, name: string }>} shown what the map draws already: the inventory, plus a
+ *   plan's or a change's adds
+ * @param {{ id: string, diff?: { changes: Array<{ op: string, resource: string, kind: string, name: string }> } } | null} [applied]
+ *   the latest applied plan
+ * @returns {{ adds: any[], relations: { from: string, to: string, kind: string }[] }}
+ */
+export function expectedOverlay(declared, shown, applied = null) {
+  if (!declared?.length) return { adds: [], relations: [] };
+  const live = (/** @type {{ id: string, kind: string, name: string }} */ d) =>
+    shown.find((r) => r.id === d.id) ?? shown.find((r) => r.kind === d.kind && r.name === d.name) ?? null;
+  const created = (applied?.diff?.changes ?? []).filter((c) => c.op === 'create');
+  /** @type {Map<string, string>} each declared resource's ID on the map */
+  const mapId = new Map();
+  const adds = [];
+  for (const d of declared) {
+    const r = live(d);
+    mapId.set(d.id, r ? r.id : d.id);
+    if (r) continue;
+    const by = created.some((c) => c.resource === d.id || (c.kind === d.kind && c.name === d.name));
+    adds.push({
+      id: d.id,
+      kind: d.kind,
+      name: d.name,
+      attrs: d.attrs,
+      health: null,
+      cost: null,
+      expected: true,
+      appliedBy: by && applied ? applied.id : null,
+    });
+  }
+  const unseen = new Set(adds.map((a) => a.id));
+  /** @type {Map<string, { from: string, to: string, kind: string }>} */
+  const relations = new Map();
+  for (const a of declared) {
+    for (const s of new Set(stringsIn(a.attrs))) {
+      const byId = declared.filter((b) => b !== a && b.id === s);
+      const named = byId.length ? byId : declared.filter((b) => b !== a && (b.name === s || platformId(b.id) === s));
+      if (named.length !== 1) continue;
+      const b = named[0];
+      if (!unseen.has(a.id) && !unseen.has(b.id)) continue;
+      const serves = FRONT_KINDS.has(a.kind);
+      const from = /** @type {string} */ (mapId.get(serves ? b.id : a.id));
+      const to = /** @type {string} */ (mapId.get(serves ? a.id : b.id));
+      const kind = serves ? 'serves' : 'uses';
+      relations.set(`${from} ${kind} ${to}`, { from, to, kind });
+    }
+  }
+  return { adds, relations: [...relations.values()] };
+}
