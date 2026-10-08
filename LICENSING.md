@@ -22,7 +22,14 @@ The owner grants a free commercial licence case by case, to groups whose work fi
 
 A company funded by venture capital can't get an exception, whatever its size. Asking is no promise of a yes.
 
-How to ask, and what to include, is on [leavethepack.dev/licensing](https://leavethepack.dev/licensing/).
+## How to ask
+
+There are two ways, and asking in public comes first:
+
+1. **In public**: open a [licence exception request](https://github.com/TheAnarchoX/breakaway/issues/new?template=licence-exception.yml) on GitHub.
+2. **In private**, if you'd rather not ask in public: email the owner at `theanarchox@proton.me` with the subject `breakaway licence exception: <who you are>`.
+
+What to include is on [leavethepack.dev/licensing](https://leavethepack.dev/licensing/).
 
 ## Releases before 2.0.0
 

@@ -5,7 +5,7 @@ breakaway's account on X is [@leavethepackdev](https://x.com/leavethepackdev). T
 | Field | Value |
 | --- | --- |
 | Name | `breakaway` |
-| Bio | `A task board for you and your coding agents: they claim the work, you merge it. Runs on your own Cloudflare account. Free, and the source is public.` |
+| Bio | `A task board for you and your coding agents: they claim the work, you merge it. Runs on your own Cloudflare account. Free for people, not for profit.` |
 | Location | Leave it empty |
 | Website | `leavethepack.dev` |
 | Profile photo | [`media/profile/avatar.png`](media/profile/avatar.png) |
