@@ -36,6 +36,8 @@ describe('auditWords', () => {
       label: 'Applied',
       outcome: 'health check failed',
     });
+    // The board looking at the environment again after a run (BRK-310) isn't an apply.
+    expect(auditWords({ kind: 'apply', outcome: 'looked again' })).toEqual({ label: 'Looked again', outcome: '' });
     expect(auditWords({ kind: 'rollback', outcome: 'started' })).toEqual({ label: 'Rolling back', outcome: 'started' });
     expect(auditWords({ kind: 'rollback', outcome: 'rolled back' })).toEqual({ label: 'Rolled back', outcome: '' });
   });

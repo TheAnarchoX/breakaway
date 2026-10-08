@@ -586,9 +586,10 @@ export const infraInventoryMethods = {
 
   /**
    * Refreshes one provider's inventory and keeps how it went (BRK-248), whoever asked: the cron, a token just pasted,
-   * or the owner's Refresh. One refresh per provider at a time; a second while one runs is refused.
+   * the owner's Refresh, or the executor after a run (BRK-310). One refresh per provider at a time; a second while one
+   * runs is refused.
    * @param {string} providerId
-   * @param {{ registry?: ProviderRegistry, source?: 'cron' | 'connect' | 'owner' }} [options]
+   * @param {{ registry?: ProviderRegistry, source?: 'cron' | 'connect' | 'owner' | 'executor' }} [options]
    */
   async refreshInventoryNow(providerId, options = {}) {
     const registry = options.registry ?? this.infraRegistry();
