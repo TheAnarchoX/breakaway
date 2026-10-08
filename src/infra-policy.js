@@ -14,9 +14,14 @@
  * A file is:
  *
  *   { "version": 1, "costLimit": 5, "budget": 20,
- *     "environments": { "production": { "costLimit": 50, "budget": 200 } },
+ *     "environments": { "production": { "costLimit": 50, "budget": 200, "allow": [] } },
  *     "access": { "kinds": ["route"], "settings": ["public"] },
  *     "allow": [ { "name": "small staging changes", "environments": ["staging"], "changes": ["update", "scale"] } ] }
+ *
+ * Two levels (WEB-123): the top of the file is the repository's rules, and `environments` overrides them for one
+ * environment by name. An environment's `costLimit` and `budget` replace the repository's, its `access` adds kinds and
+ * settings to the repository's (it can't take one away), and its `allow`, when it has one, replaces the repository's
+ * rules for that environment: `"allow": []` makes every plan there wait for the owner whatever the repository allows.
  *
  * Limits are a month, in the board's currency (BRK-226): the owner's, set in Settings, which the plan's cost change is
  * converted into before it's checked (infra-currency.js). Pure and Node-safe, so `npx
@@ -76,11 +81,21 @@ export const DEFAULT_POLICY = Object.freeze({
  */
 
 /**
+ * One environment's rules (WEB-123): limits that replace the repository's, access kinds and settings added to the
+ * repository's, and allow rules that replace the repository's for it when present.
+ * @typedef {object} EnvironmentRules
+ * @property {number} [costLimit]
+ * @property {number} [budget]
+ * @property {{ kinds: string[], settings: string[] }} [access]
+ * @property {AllowRule[]} [allow]
+ */
+
+/**
  * @typedef {object} Policy
  * @property {number} version
  * @property {number} costLimit the most one plan may add to an environment's monthly cost before it waits
  * @property {number} budget what one environment may cost a month
- * @property {Record<string, { costLimit?: number, budget?: number }>} environments limits for one environment by name
+ * @property {Record<string, EnvironmentRules>} environments one environment's rules by name, over the repository's
  * @property {{ kinds: string[], settings: string[] }} access resource kinds and settings that decide who or what can
  *   reach something, on top of the ones the provider declares
  * @property {AllowRule[]} allow
@@ -90,6 +105,9 @@ const TOP = ['version', 'costLimit', 'budget', 'environments', 'access', 'allow'
 const LIMITS = ['costLimit', 'budget'];
 const ACCESS = ['kinds', 'settings'];
 const RULE = ['name', 'environments', 'environmentKinds', 'changes', 'kinds', 'maxChanges'];
+/** An environment's own rule names no environments: it's already that environment's. */
+const ENV_RULE = ['name', 'changes', 'kinds', 'maxChanges'];
+const ENV_KEYS = [...LIMITS, 'access', 'allow'];
 const ENV_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/u;
 const KIND = /^[a-z][a-z0-9-]{0,39}$/u;
 const SETTING = /^[A-Za-z_][\w.-]{0,79}$/u;
@@ -162,125 +180,176 @@ export function checkPolicyFile(source) {
     return null;
   };
 
+  /**
+   * An `access` object, at the top or for one environment.
+   * @param {any} value @param {string} at
+   */
+  const accessOf = (value, at) => {
+    const out = { kinds: /** @type {string[]} */ ([]), settings: /** @type {string[]} */ ([]) };
+    if (!isObject(value))
+      return {
+        bad: wrong(at, 'access names more resource kinds and settings that decide who or what can reach something'),
+      };
+    for (const key of Object.keys(value))
+      if (!ACCESS.includes(key))
+        return { bad: wrong(`${at}.${key}`, `“${key}” isn’t part of access: it has kinds and settings`) };
+    if (value.kinds !== undefined) {
+      const bad = names(value.kinds, `${at}.kinds`, KIND, 'a resource kind, lowercase, like route');
+      if (bad) return { bad };
+      out.kinds = [...value.kinds];
+    }
+    if (value.settings !== undefined) {
+      const bad = names(value.settings, `${at}.settings`, SETTING, 'a setting’s name, like public');
+      if (bad) return { bad };
+      out.settings = [...value.settings];
+    }
+    return { access: out };
+  };
+
+  /**
+   * An `allow` list, at the top or for one environment, whose rules may not name environments.
+   * @param {unknown} list @param {string} at @param {string[]} keys
+   */
+  const allowOf = (list, at, keys) => {
+    /** @type {AllowRule[]} */
+    const allow = [];
+    if (!Array.isArray(list))
+      return { bad: wrong(at, 'allow is a list of rules that let a kind of plan through: [ { "name": …, … } ]') };
+    if (list.length > POLICY_MAX_RULES)
+      return { bad: wrong(at, `allow has ${list.length} rules: at most ${POLICY_MAX_RULES}`) };
+    const seen = new Map();
+    for (let n = 0; n < list.length; n += 1) {
+      const here = `${at}[${n}]`;
+      const r = list[n];
+      if (!isObject(r)) return { bad: wrong(here, 'each rule is an object with a name, and what it covers') };
+      for (const key of Object.keys(r))
+        if (!keys.includes(key))
+          return {
+            bad: wrong(
+              `${here}.${key}`,
+              RULE.includes(key)
+                ? `“${key}” isn’t part of an environment’s own rule: it’s already that environment’s`
+                : `“${key}” isn’t part of a rule: it has ${keys.join(', ')}`,
+            ),
+          };
+      if (typeof r.name !== 'string' || r.name.trim() === '' || r.name.length > RULE_NAME_MAX)
+        return {
+          bad: wrong(
+            r.name === undefined ? here : `${here}.name`,
+            `name says what the rule lets through, up to ${RULE_NAME_MAX} characters, like small staging changes`,
+          ),
+        };
+      const name = r.name.trim();
+      if (seen.has(name))
+        return { bad: wrong(`${here}.name`, `${name} is the name of ${at}[${seen.get(name)}] too: give each its own`) };
+      seen.set(name, n);
+      if (GUARDS.includes(name) || name === EVERY)
+        return { bad: wrong(`${here}.name`, `${name} is the name of one of the board’s own rules: pick another`) };
+      /** @type {AllowRule} */
+      const rule = { name };
+      if (r.environments !== undefined) {
+        const bad = names(r.environments, `${here}.environments`, ENV_NAME, 'an environment’s name, like staging');
+        if (bad) return { bad };
+        rule.environments = [...r.environments];
+      }
+      if (r.environmentKinds !== undefined) {
+        const bad = names(
+          r.environmentKinds,
+          `${here}.environmentKinds`,
+          KIND,
+          `a kind of environment: ${ENVIRONMENT_KINDS.join(', ')}`,
+        );
+        if (bad) return { bad };
+        const unknown = r.environmentKinds.findIndex((k) => !ENVIRONMENT_KINDS.includes(k));
+        if (unknown >= 0)
+          return {
+            bad: wrong(
+              `${here}.environmentKinds[${unknown}]`,
+              `${r.environmentKinds[unknown]} isn’t a kind of environment: ${ENVIRONMENT_KINDS.join(', ')}`,
+            ),
+          };
+        rule.environmentKinds = [...r.environmentKinds];
+      }
+      if (r.changes !== undefined) {
+        const bad = names(r.changes, `${here}.changes`, KIND, `a change kind: ${CHANGE_KINDS.join(', ')}`);
+        if (bad) return { bad };
+        const unknown = r.changes.findIndex((c) => !CHANGE_KINDS.includes(c));
+        if (unknown >= 0)
+          return {
+            bad: wrong(
+              `${here}.changes[${unknown}]`,
+              `${r.changes[unknown]} isn’t a change kind: ${CHANGE_KINDS.join(', ')}`,
+            ),
+          };
+        rule.changes = [...r.changes];
+      }
+      if (r.kinds !== undefined) {
+        const bad = names(r.kinds, `${here}.kinds`, KIND, 'a resource kind, lowercase, like service');
+        if (bad) return { bad };
+        rule.kinds = [...r.kinds];
+      }
+      if (r.maxChanges !== undefined) {
+        if (!Number.isInteger(r.maxChanges) || r.maxChanges < 1 || r.maxChanges > 1000)
+          return { bad: wrong(`${here}.maxChanges`, 'maxChanges is a whole number from 1 to 1000') };
+        rule.maxChanges = r.maxChanges;
+      }
+      allow.push(rule);
+    }
+    return { allow };
+  };
+
   /** @type {Policy['environments']} */
   const environments = {};
   if (file.environments !== undefined) {
     if (!isObject(file.environments))
       return wrong(
         'environments',
-        'environments is an object of limits by environment: { "production": { "budget": 200 } }',
+        'environments is an object of rules by environment: { "production": { "budget": 200 } }',
       );
-    for (const [name, limits] of Object.entries(file.environments)) {
+    for (const [name, rules] of Object.entries(file.environments)) {
       const at = `environments.${name}`;
       if (!ENV_NAME.test(name))
         return wrong(at, `${name} isn’t an environment’s name: lowercase letters, digits, and -, like staging`);
-      if (!isObject(limits)) return wrong(at, 'each environment has a costLimit, a budget, or both');
-      for (const key of Object.keys(limits))
-        if (!LIMITS.includes(key))
-          return wrong(`${at}.${key}`, `“${key}” isn’t an environment’s limit: it has costLimit and budget`);
+      if (!isObject(rules))
+        return wrong(at, 'each environment has a costLimit, a budget, access, allow, or some of them');
+      for (const key of Object.keys(rules))
+        if (!ENV_KEYS.includes(key))
+          return wrong(`${at}.${key}`, `“${key}” isn’t an environment’s rule: it has ${ENV_KEYS.join(', ')}`);
+      /** @type {EnvironmentRules} */
+      const own = {};
       for (const key of LIMITS)
-        if (limits[key] !== undefined) {
-          const bad = limit(limits[key], `${at}.${key}`);
+        if (rules[key] !== undefined) {
+          const bad = limit(rules[key], `${at}.${key}`);
           if (bad) return bad;
+          own[key] = rules[key];
         }
-      environments[name] = { ...limits };
+      if (rules.access !== undefined) {
+        const got = accessOf(rules.access, `${at}.access`);
+        if (got.bad) return got.bad;
+        own.access = got.access;
+      }
+      if (rules.allow !== undefined) {
+        const got = allowOf(rules.allow, `${at}.allow`, ENV_RULE);
+        if (got.bad) return got.bad;
+        own.allow = got.allow;
+      }
+      environments[name] = own;
     }
   }
 
-  const access = { kinds: /** @type {string[]} */ ([]), settings: /** @type {string[]} */ ([]) };
+  let access = { kinds: /** @type {string[]} */ ([]), settings: /** @type {string[]} */ ([]) };
   if (file.access !== undefined) {
-    if (!isObject(file.access))
-      return wrong(
-        'access',
-        'access names more resource kinds and settings that decide who or what can reach something',
-      );
-    for (const key of Object.keys(file.access))
-      if (!ACCESS.includes(key))
-        return wrong(`access.${key}`, `“${key}” isn’t part of access: it has kinds and settings`);
-    if (file.access.kinds !== undefined) {
-      const bad = names(file.access.kinds, 'access.kinds', KIND, 'a resource kind, lowercase, like route');
-      if (bad) return bad;
-      access.kinds = [...file.access.kinds];
-    }
-    if (file.access.settings !== undefined) {
-      const bad = names(file.access.settings, 'access.settings', SETTING, 'a setting’s name, like public');
-      if (bad) return bad;
-      access.settings = [...file.access.settings];
-    }
+    const got = accessOf(file.access, 'access');
+    if (got.bad) return got.bad;
+    access = got.access;
   }
 
   /** @type {AllowRule[]} */
-  const allow = [];
+  let allow = [];
   if (file.allow !== undefined) {
-    if (!Array.isArray(file.allow))
-      return wrong('allow', 'allow is a list of rules that let a kind of plan through: [ { "name": …, … } ]');
-    if (file.allow.length > POLICY_MAX_RULES)
-      return wrong('allow', `allow has ${file.allow.length} rules: at most ${POLICY_MAX_RULES}`);
-    const seen = new Map();
-    for (let n = 0; n < file.allow.length; n += 1) {
-      const at = `allow[${n}]`;
-      const r = file.allow[n];
-      if (!isObject(r)) return wrong(at, 'each rule is an object with a name, and what it covers');
-      for (const key of Object.keys(r))
-        if (!RULE.includes(key))
-          return wrong(`${at}.${key}`, `“${key}” isn’t part of a rule: it has ${RULE.join(', ')}`);
-      if (typeof r.name !== 'string' || r.name.trim() === '' || r.name.length > RULE_NAME_MAX)
-        return wrong(
-          r.name === undefined ? at : `${at}.name`,
-          `name says what the rule lets through, up to ${RULE_NAME_MAX} characters, like small staging changes`,
-        );
-      const name = r.name.trim();
-      if (seen.has(name))
-        return wrong(`${at}.name`, `${name} is the name of allow[${seen.get(name)}] too: give each its own`);
-      seen.set(name, n);
-      if (GUARDS.includes(name) || name === EVERY)
-        return wrong(`${at}.name`, `${name} is the name of one of the board’s own rules: pick another`);
-      /** @type {AllowRule} */
-      const rule = { name };
-      if (r.environments !== undefined) {
-        const bad = names(r.environments, `${at}.environments`, ENV_NAME, 'an environment’s name, like staging');
-        if (bad) return bad;
-        rule.environments = [...r.environments];
-      }
-      if (r.environmentKinds !== undefined) {
-        const bad = names(
-          r.environmentKinds,
-          `${at}.environmentKinds`,
-          KIND,
-          `a kind of environment: ${ENVIRONMENT_KINDS.join(', ')}`,
-        );
-        if (bad) return bad;
-        const unknown = r.environmentKinds.findIndex((k) => !ENVIRONMENT_KINDS.includes(k));
-        if (unknown >= 0)
-          return wrong(
-            `${at}.environmentKinds[${unknown}]`,
-            `${r.environmentKinds[unknown]} isn’t a kind of environment: ${ENVIRONMENT_KINDS.join(', ')}`,
-          );
-        rule.environmentKinds = [...r.environmentKinds];
-      }
-      if (r.changes !== undefined) {
-        const bad = names(r.changes, `${at}.changes`, KIND, `a change kind: ${CHANGE_KINDS.join(', ')}`);
-        if (bad) return bad;
-        const unknown = r.changes.findIndex((c) => !CHANGE_KINDS.includes(c));
-        if (unknown >= 0)
-          return wrong(
-            `${at}.changes[${unknown}]`,
-            `${r.changes[unknown]} isn’t a change kind: ${CHANGE_KINDS.join(', ')}`,
-          );
-        rule.changes = [...r.changes];
-      }
-      if (r.kinds !== undefined) {
-        const bad = names(r.kinds, `${at}.kinds`, KIND, 'a resource kind, lowercase, like service');
-        if (bad) return bad;
-        rule.kinds = [...r.kinds];
-      }
-      if (r.maxChanges !== undefined) {
-        if (!Number.isInteger(r.maxChanges) || r.maxChanges < 1 || r.maxChanges > 1000)
-          return wrong(`${at}.maxChanges`, 'maxChanges is a whole number from 1 to 1000');
-        rule.maxChanges = r.maxChanges;
-      }
-      allow.push(rule);
-    }
+    const got = allowOf(file.allow, 'allow', RULE);
+    if (got.bad) return got.bad;
+    allow = got.allow;
   }
 
   return {
@@ -300,6 +369,31 @@ export function checkPolicyFile(source) {
 export function limitsFor(policy, environment) {
   const own = policy.environments?.[environment] ?? {};
   return { costLimit: own.costLimit ?? policy.costLimit, budget: own.budget ?? policy.budget };
+}
+
+/**
+ * The allow rules that decide for one environment (WEB-123): its own when it has an `allow`, else the repository's.
+ * @param {Policy} policy
+ * @param {string} environment
+ * @returns {{ allow: AllowRule[], level: 'environment' | 'repository' }}
+ */
+export function allowFor(policy, environment) {
+  const own = policy.environments?.[environment]?.allow;
+  return own ? { allow: own, level: 'environment' } : { allow: policy.allow ?? [], level: 'repository' };
+}
+
+/**
+ * The access kinds and settings a policy names for one environment: the repository's, with the environment's added.
+ * @param {Policy} policy
+ * @param {string} environment
+ */
+export function accessFor(policy, environment) {
+  const own = policy.environments?.[environment]?.access;
+  const union = (a = [], b = []) => [...new Set([...a, ...b])];
+  return {
+    kinds: union(policy.access?.kinds, own?.kinds),
+    settings: union(policy.access?.settings, own?.settings),
+  };
 }
 
 /**
@@ -343,16 +437,17 @@ function accessChange(change, access) {
   return keys.length ? keys : null;
 }
 
-/** The provider's access kinds and settings, with the policy's added. */
-function accessOf(policy, provider) {
-  const kinds = new Set(policy.access?.kinds ?? []);
+/** The provider's access kinds and settings, with the policy's for the environment added. */
+function accessOf(policy, provider, environment) {
+  const named = accessFor(policy, environment);
+  const kinds = new Set(named.kinds);
   /** @type {Map<string, Set<string>>} */
   const settings = new Map();
   for (const [kind, spec] of Object.entries(provider?.kinds ?? {})) {
     if (spec?.access) kinds.add(kind);
     if (Array.isArray(spec?.accessSettings)) settings.set(kind, new Set(spec.accessSettings));
   }
-  return { kinds, settings, anyKind: new Set(policy.access?.settings ?? []) };
+  return { kinds, settings, anyKind: new Set(named.settings) };
 }
 
 /** A change in a few words, for a reason: "deletes the `main` database". */
@@ -438,7 +533,7 @@ export function evaluatePolicy(
     destroys.length ? `Can’t be undone: it ${andMore(undo)}.` : 'Every change can be undone, and nothing is deleted.',
   );
 
-  const access = accessOf(policy, provider);
+  const access = accessOf(policy, provider, env);
   const reaching = diff.changes.map((c) => ({ c, keys: accessChange(c, access) })).filter((x) => x.keys !== null);
   add(
     'access',
@@ -491,11 +586,19 @@ export function evaluatePolicy(
     outcome = 'needs-owner';
     rule = asked[0].rule;
   } else {
-    const allowed = policy.allow.find((a) => allows(a, env, diff, environment.kind));
+    const { allow, level } = allowFor(policy, env);
+    const allowed = allow.find((a) => allows(a, env, diff, environment.kind));
     if (allowed) {
       outcome = 'allowed';
       rule = allowed.name;
-      add(allowed.name, true, 'allow', `Allowed by your policy’s rule “${allowed.name}”.`);
+      add(
+        allowed.name,
+        true,
+        'allow',
+        level === 'environment'
+          ? `Allowed by ${env}’s own rule “${allowed.name}” in your policy.`
+          : `Allowed by your policy’s rule “${allowed.name}”.`,
+      );
     } else {
       outcome = 'needs-owner';
       rule = EVERY;
@@ -503,9 +606,11 @@ export function evaluatePolicy(
         EVERY,
         true,
         'ask',
-        policy.allow.length
+        allow.length
           ? 'No rule in your policy lets it through, so it needs you.'
-          : 'Every plan needs you: the default policy lets nothing through.',
+          : level === 'environment'
+            ? `Every plan in ${env} needs you: your policy lets nothing through there.`
+            : 'Every plan needs you: the default policy lets nothing through.',
       );
     }
   }

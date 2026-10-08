@@ -366,6 +366,8 @@ export const githubMethods = {
     }
     // Changes from the console (BRK-259): each one's pull request merged, closed, or taken over, from the same list.
     this.followInfraChanges(repo.slug, fetched.pulls);
+    // Policy changes from the board (WEB-123), the same way.
+    this.followPolicyChanges(repo.slug, fetched.pulls);
     // Approved changes (BRK-260): lapse, say why they can't merge, merge at a green sync, and plan from the merge.
     try {
       await this.advanceInfraChanges(client, repo);

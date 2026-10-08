@@ -93,8 +93,9 @@ export function infraFilesIn(files) {
 /**
  * @typedef {object} PullCheck
  * @property {EnvironmentCheck[]} environments
- * @property {{ path: string, ok: boolean, error: import('./infra-desired.js').DesiredError | null } | null} policy
- *   the policy file, when the pull request changes it
+ * @property {{ path: string, ok: boolean, error: import('./infra-desired.js').DesiredError | null,
+ *   lines?: import('./infra-policy-changes.js').PolicyLine[] | null } | null} policy
+ *   the policy file, when the pull request changes it, with what it loosens and tightens when it checks (WEB-123)
  * @property {Array<{ path: string, message: string }>} problems files no environment could have
  * @property {number} skipped environments past MAX_ENVIRONMENTS_PER_PULL, not planned
  */
@@ -249,6 +250,19 @@ export function infraSummary(check, { page = null, outside = false } = {}) {
       'Until it’s fixed, the default policy decides.',
       '',
     );
+  }
+  if (check.policy?.ok && check.policy.lines) {
+    const loosens = check.policy.lines.filter((l) => l.effect === 'loosens');
+    const tightens = check.policy.lines.filter((l) => l.effect === 'tightens');
+    if (loosens.length)
+      lines.push(
+        '**Loosens your policy.** These will no longer wait for you:',
+        ...loosens.map((l) => `- ${l.line}`),
+        '',
+      );
+    if (tightens.length) lines.push('**Tightens your policy:**', ...tightens.map((l) => `- ${l.line}`), '');
+    if (!loosens.length && !tightens.length)
+      lines.push(`\`${check.policy.path}\` changes how it’s written, not what waits for you.`, '');
   }
   for (const e of check.environments) lines.push(...(outside ? brief(e) : section(e)), '');
   if (check.skipped)

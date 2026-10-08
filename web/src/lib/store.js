@@ -882,6 +882,11 @@ export const kickoffId = signal(null);
 export const environmentId = signal(/** @type {string | null} */ (null));
 /** The plan open on #/infrastructure/<id>?plan=<plan> (WEB-62), the link a waiting plan's push carries, or null. */
 export const planRef = signal(/** @type {string | null} */ (null));
+/**
+ * The Policy view, #/infrastructure/policy (WEB-123): the repository it's open on (`?of=<slug>`), `''` when the link
+ * names none, or null when it isn't open.
+ */
+export const policyFor = signal(/** @type {string | null} */ (null));
 /** The sign-in from MCP apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
 export const authorizeId = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
@@ -916,6 +921,8 @@ function parseHash() {
     kickoffId.value = kickoff?.[1] ?? null;
     const environment = /^infrastructure\/(\d{1,9})$/u.exec(path);
     environmentId.value = environment?.[1] ?? null;
+    const of = p.get('of') ?? '';
+    policyFor.value = path === 'infrastructure/policy' ? (/^[a-z][a-z0-9-]{0,31}$/u.test(of) ? of : '') : null;
     planRef.value = environment && /^plan-\d{1,15}$/u.test(p.get('plan') ?? '') ? p.get('plan') : null;
     authorizeId.value = /^authorize\/([\w-]{20,64})$/u.exec(path)?.[1] ?? null;
     view.value = settings
@@ -924,7 +931,7 @@ function parseHash() {
         : 'settings'
       : kickoff
         ? 'kickoff'
-        : environment
+        : environment || path === 'infrastructure/policy'
           ? 'infrastructure'
           : VIEW_IDS.includes(path)
             ? path
@@ -976,6 +983,7 @@ export function hashFor({
   kickoff = kickoffId.value,
   environment = view.value === 'infrastructure' ? environmentId.value : null,
   plan = environment ? planRef.value : null,
+  policy = v === 'infrastructure' && !environment ? policyFor.value : null,
 } = {}) {
   // The consent page stands alone: nothing else in the hash, so the URL stays the one the sign-in came to.
   if (authorizeId.value) return `#/authorize/${authorizeId.value}`;
@@ -986,6 +994,7 @@ export function hashFor({
   if (v === 'specs' && spec) p.set('spec', specParam(spec.path, spec.slug, repos.peek().default));
   if (v === 'inbox' && ping) p.set('ping', ping);
   if (v === 'infrastructure' && environment && plan) p.set('plan', plan);
+  if (v === 'infrastructure' && !environment && policy) p.set('of', policy);
   if (task) p.set('task', task);
   if (task && mode) p.set('view', mode);
   if (v === 'github' && githubConnect.value) p.set('connect', githubConnect.value);
@@ -1011,7 +1020,9 @@ export function hashFor({
         ? `kickoff/${kickoff}`
         : v === 'infrastructure' && environment
           ? `infrastructure/${environment}`
-          : v;
+          : v === 'infrastructure' && policy !== null
+            ? 'infrastructure/policy'
+            : v;
   return `#/${path}${qs ? `?${qs}` : ''}`;
 }
 

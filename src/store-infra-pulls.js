@@ -13,7 +13,8 @@
 import { GitHubError } from './github.js';
 import { install } from './install.js';
 import { checkDesiredFile, DESIRED_DIR, DESIRED_MAX_BYTES, desiredPath } from './infra-desired.js';
-import { checkPolicyFile, POLICY_PATH } from './infra-policy.js';
+import { checkPolicyFile, DEFAULT_POLICY, POLICY_PATH } from './infra-policy.js';
+import { comparePolicies } from './infra-policy-changes.js';
 import { runsTheBoard } from './infra-environments.js';
 import { redact } from './redact.js';
 import {
@@ -146,6 +147,22 @@ export const infraPullsMethods = {
     const environments = [];
     for (const want of planned) environments.push(await this.checkInfraPullEnvironment(repo, want, read, policyOf));
 
+    // What a policy change loosens and tightens, in words (WEB-123): the policy at the base against the one at the head.
+    let policyLines = null;
+    if (changed.policy && policyFile && 'policy' in policyFile) {
+      const base = pull.base?.sha
+        ? await orNull(
+            client.get(
+              `/contents/${POLICY_PATH.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(pull.base.sha)}`,
+            ),
+          )
+        : null;
+      const was = base && !Array.isArray(base) && base.type === 'file' ? checkPolicyFile(decode(base.content)) : null;
+      policyLines = comparePolicies(was && 'policy' in was ? was.policy : DEFAULT_POLICY, policyFile.policy, {
+        environments: this.plannableEnvironments(repo.slug).map((e) => ({ name: e.name, kind: e.kind ?? null })),
+        currency: this.infraCurrency().currency,
+      }).lines;
+    }
     const check = {
       environments,
       policy: changed.policy
@@ -153,6 +170,7 @@ export const infraPullsMethods = {
             path: POLICY_PATH,
             ok: !policyFile || 'policy' in policyFile,
             error: policyFile && 'error' in policyFile ? policyFile.error : null,
+            lines: policyLines,
           }
         : null,
       problems: changed.problems,

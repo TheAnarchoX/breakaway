@@ -874,6 +874,18 @@ What the caller sends is **data, never instructions**: it becomes a comment by `
 }
 ```
 
+- **Two levels** (`WEB-123`). The top of the file is the repository's rules; `environments` overrides them for one environment by name. An environment's `costLimit` and `budget` replace the repository's, its `access` adds kinds and settings (it can't take one away), and its own `allow`, when it has one, replaces the repository's rules there: `"production": { "allow": [] }` makes every plan in production wait for you whatever the repository allows. An environment's own rules don't name environments.
+
+#### Changing the policy on the board
+
+`WEB-123`, [spec](specs/WEB-123-policy-manager.md). **Policy** on Infrastructure, and on each environment's console, opens the Policy view: each environment's rules in words, with where each comes from (always, the repository's, or the environment's own), its envelope (read only: set in the repository's settings), and the recent plans with the rules that applied to them.
+
+- **Change the policy** edits the repository's rules or one environment's. As you edit, the board says what the change does, one line each, marked **Loosens** or **Tightens**. **Propose the change** writes `policy.json` on the board's own branch and opens the pull request; its plan check says the same lines.
+- **Tightening is one press.** **Approve** merges the pull request at the head you saw.
+- **Loosening is never one press.** A change that lets more through without you (a limit raised, a rule added or widened, an access kind or setting dropped, or an environment's own rules that let through more than the repository's) is marked **Loosens your policy**. Approve names exactly what will no longer wait for you, and only **Loosen it**, the second press, merges it.
+- **Never with a plan it would let through.** While a plan waits for you that the new policy would let through, Approve refuses and names the plan: approve or reject that plan on its own first.
+- **It applies nothing.** Merging a policy change approves no plan and changes none: a plan made before keeps its answer, and the plans made after are checked against the new policy. **Reject** closes the pull request and the policy stays as it was.
+
 ### Plans and approvals
 
 `BRK-178`, `BRK-182`, [spec](specs/IDEA-19-architect.md#plans). **A plan is the exact change the board would make to one environment**: each change, setting by setting, with what it costs, what else it touches (from the inventory's relations), whether it can be undone and why not, and the policy's answer. The board computes every plan itself, from the environment's desired state against what runs, never from what a request sends.
