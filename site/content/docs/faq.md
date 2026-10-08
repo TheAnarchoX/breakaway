@@ -8,7 +8,7 @@ description: The licence, what breakaway does with your data, what it works with
 
 For personal and noncommercial use, yes: free to run, free to change, and free to self-host. The licence is the **PolyForm Noncommercial License 1.0.0**. It lets anyone use breakaway for personal use (research, study, hobby projects, and the like, with no commercial application in view), and lets charities, educational institutions, public research organizations, public safety, health, and environmental organizations, and government institutions use it, however they’re funded. The source is public.
 
-Commercial use is by exception: the owner grants a free commercial licence case by case. [`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md) says who can ask and how.
+Commercial use is by exception: the owner grants a free commercial licence case by case. [Licensing](/licensing/) says who can ask and how.
 
 The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, the licence it shipped with.
 
@@ -60,4 +60,4 @@ A breakaway is the rider who leaves the pack and holds the lead alone. That’s 
 
 ## How do I report a problem or a security issue?
 
-Report a security issue privately, as breakaway’s [security policy](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. breakaway takes no issues or pull requests otherwise: it’s built by its owner and their agents. The licence lets you fix your own copy.
+Report a security issue privately, as breakaway’s [security policy](https://github.com/TheAnarchoX/breakaway/blob/main/SECURITY.md) says. breakaway takes no issues or pull requests otherwise, apart from a [licence exception request](/licensing/#how-to-ask): it’s built by its owner and their agents. The licence lets you fix your own copy.

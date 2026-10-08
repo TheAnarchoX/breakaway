@@ -28,6 +28,9 @@ const ARCHITECT_CARD = {
 /** The Architect page (LCH-33): its source in site/content, and where it's served. */
 export const ARCHITECT = { path: '/architect/', file: 'architect/index.html', markdown: 'architect.md' };
 
+/** The licensing page (DOC-43): who uses breakaway free, what counts as commercial, and how to ask for an exception. */
+export const LICENSING = { path: '/licensing/', file: 'licensing/index.html', markdown: 'licensing.md' };
+
 /**
  * The screenshots the pages show, in docs/media (LCH-32 makes them), each in carbon and chalk. site/build.mjs copies
  * them to site/public/media, since the site serves only its own files.
@@ -107,13 +110,13 @@ const footer = () => `<footer class="site-footer">
         <h2 class="label">Project</h2>
         <ul>
           <li><a href="${SITE.repo}">breakaway on GitHub</a></li>
-          <li><a href="${SITE.repo}/blob/main/LICENSING.md">Licence: PolyForm Noncommercial 1.0.0</a></li>
+          <li><a href="${LICENSING.path}">Licence: PolyForm Noncommercial 1.0.0</a></li>
           <li><a href="${SITE.repo}/blob/main/SECURITY.md">Security</a></li>
           <li><a href="/releases.json">Update feed</a></li>
         </ul>
       </nav>
     </div>
-    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by exception. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
+    <p class="fine">breakaway is free for personal and noncommercial use, and the source is public. Commercial use is by <a href="${LICENSING.path}">exception</a>. This page has no accounts, pricing, ads, or analytics. breakaway works with Claude Code, GitHub, Taskwarrior, and Cloudflare; none of them made it or endorse it.</p>
     <p class="fine wink">Of course, all limits imposed can be removed. Break things :)</p>
   </div>
 </footer>`;
@@ -190,7 +193,7 @@ function pager(pages, current) {
 
 /**
  * Builds every page.
- * @param {{ landing: string, architect: string, roadmap: import('./roadmap.js').Roadmap, docs: Record<string, string>, notFound?: string }} content file contents by name
+ * @param {{ landing: string, architect: string, licensing: string, roadmap: import('./roadmap.js').Roadmap, docs: Record<string, string>, notFound?: string }} content file contents by name
  * @returns {Map<string, string>} the files to write, by path under site/public
  */
 export function buildPages(content) {
@@ -225,6 +228,22 @@ export function buildPages(content) {
   <p class="lede">${escape(architect.meta.lede)}</p>
   ${render(architect.body).html}
   <p class="actions"><a class="btn" href="/docs/quickstart/">Run your own board</a> <a class="btn" href="/docs/updating-to-2/">Update to 2.0.0</a></p>
+</main>`,
+    }),
+  );
+
+  const licensing = frontMatter(content.licensing);
+  files.set(
+    LICENSING.file,
+    shell({
+      title: 'Licensing',
+      description: licensing.meta.description,
+      path: LICENSING.path,
+      body: `<main id="main" class="wrap doc" tabindex="-1">
+  <p class="label kicker">${escape(licensing.meta.kicker)}</p>
+  <h1>${escape(licensing.meta.title)}</h1>
+  <p class="lede">${escape(licensing.meta.lede)}</p>
+  ${render(licensing.body).html}
 </main>`,
     }),
   );
@@ -291,7 +310,7 @@ const pageMarkdown = (meta, body) => `# ${meta.title}\n\n> ${meta.description}\n
  * What agents and language models read (LCH-10, the llms.txt convention): /llms.txt, an index of the docs with each
  * page's description and its Markdown; /llms-full.txt, every page's text in reading order; and /docs/<name>.md, each
  * page as Markdown. Built from the same content as the pages, so they never drift. Path → text.
- * @param {{ landing: string, architect: string, docs: Record<string, string> }} content
+ * @param {{ landing: string, architect: string, licensing: string, docs: Record<string, string> }} content
  */
 export function buildLlms(content) {
   const files = new Map();
@@ -303,6 +322,13 @@ export function buildLlms(content) {
     architect.body,
   );
   files.set('architect.md', architectMarkdown);
+  const licensing = frontMatter(content.licensing);
+  // The licensing page as Markdown, at /licensing.md.
+  const licensingMarkdown = pageMarkdown(
+    { title: `Licensing: ${licensing.meta.title}`, description: licensing.meta.description },
+    licensing.body,
+  );
+  files.set('licensing.md', licensingMarkdown);
   const meta = (name) => frontMatter(content.docs[name]).meta;
   const index = [
     `# ${SITE.name}`,
@@ -331,6 +357,10 @@ export function buildLlms(content) {
     index.push('');
   }
   index.push(
+    '## Licensing',
+    '',
+    `- [Free for personal and noncommercial use](${SITE.url}/licensing.md): ${licensing.meta.description}`,
+    '',
     '## Optional',
     '',
     `- [Every docs page in one file](${SITE.url}/llms-full.txt)`,
@@ -342,6 +372,7 @@ export function buildLlms(content) {
 
   const full = [`# ${SITE.name}: the docs`, '', `> ${landing.meta.description}`, ''];
   full.push(`Source: ${SITE.url}${ARCHITECT.path}`, '', architectMarkdown, '---', '');
+  full.push(`Source: ${SITE.url}${LICENSING.path}`, '', licensingMarkdown, '---', '');
   for (const name of flat()) {
     const { meta: m, body } = frontMatter(content.docs[name]);
     files.set(`docs/${name}.md`, pageMarkdown(m, body));

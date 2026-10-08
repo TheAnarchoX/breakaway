@@ -36,7 +36,7 @@ No analytics, no telemetry, no tracking, and no other service.
 
 ## How breakaway is built
 
-breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else. The agents follow the repository’s `AGENTS.md`: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in `brand/`. The licence lets you change your own copy as much as you like.
+breakaway is built by its owner and their agents, and takes no pull requests or issues from anyone else, apart from a [licence exception request](https://leavethepack.dev/licensing/#how-to-ask). The agents follow the repository’s `AGENTS.md`: what breakaway is and isn’t, what agents never do, and the conventions. A change that people see follows the brand guide in `brand/`. The licence lets you change your own copy as much as you like.
 
 ```sh
 pnpm install
