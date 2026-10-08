@@ -68,6 +68,7 @@ import { DecisionSection } from './Decision.jsx';
 import { AttachmentsSection } from './Attachments.jsx';
 import { FeatureSection } from './Feature.jsx';
 import { IncidentSection } from './Incidents.jsx';
+import { RunEventLine } from './InfraEvents.jsx';
 import { ShortLivedSection } from './ShortLived.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
@@ -897,6 +898,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
       <AgentSection task={t} />
       <DecisionSection task={t} />
       <IncidentSection task={t} />
+      <RunEventLine task={t} />
       <Brief task={t} field="brief" label="Description" empty="No description yet." by={t.briefBy ?? ''} rows={8} />
       <Brief task={t} field="doneWhen" label="Done when" empty="Nothing written down yet." rows={3} />
       <AttachmentsSection task={t} />
@@ -995,6 +997,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
           <div class="modal-main">
             <DecisionSection task={t} />
             <IncidentSection task={t} />
+            <RunEventLine task={t} />
             <Brief
               task={t}
               field="brief"

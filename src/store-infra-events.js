@@ -20,6 +20,7 @@ import {
   infraEventData,
   infraEventMatches,
   infraEventOf,
+  infraRunEvent,
   keptInfraEvents,
 } from './infra-events.js';
 
@@ -72,6 +73,12 @@ export const infraEventsMethods = {
   /** An environment's kind by its ID, for an event a store says without the row at hand; null once it's gone. */
   infraEnvironmentKind(id) {
     return this.sql.exec('SELECT kind FROM infra_environments WHERE id = ?', Number(id)).toArray()[0]?.kind ?? null;
+  },
+
+  /** An environment's ID by its repository and name, for a run's link to it; null when the board doesn't know it. */
+  infraEnvironmentIdOf(repo, name) {
+    const row = this.sql.exec('SELECT id FROM infra_environments WHERE repo = ? AND name = ?', repo, name).toArray()[0];
+    return row ? Number(row.id) : null;
   },
 
   /** Delivers what's queued, one delivery at a time; resolves when everything queued so far is through. */
@@ -132,7 +139,15 @@ export const infraEventsMethods = {
         };
         try {
           const comment = `${triggerComment(label, { data: infraEventData(event) })}\n\n${READ_ONLY}`;
-          const result = await this.deliverTrigger(this.routineRow(routine.slug), label, comment, 'infra', refuse);
+          const result = await this.deliverTrigger(
+            this.routineRow(routine.slug),
+            label,
+            comment,
+            'infra',
+            refuse,
+            undefined,
+            infraRunEvent(event, this.infraEnvironmentIdOf(event.repo, event.environment)),
+          );
           started.push({ routine: routine.slug, event: event.key, ...result });
         } catch {
           /* refused and logged */

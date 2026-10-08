@@ -35,6 +35,14 @@ import { Dialog, RepoChip, Segmented, Dictate } from '../components/ui.jsx';
 import { MakeRoutinesDialog } from '../components/MakeRoutines.jsx';
 import { RichText } from '../lib/richtext.jsx';
 import { SignalChip, SignalTrigger } from '../components/SignalTrigger.jsx';
+import {
+  InfraEventsChip,
+  InfraEventsField,
+  RunEvent,
+  eventLabel,
+  filterWords,
+  infraEventsFrom,
+} from '../components/InfraEvents.jsx';
 
 const RUN_TRIGGER = {
   manual: 'by hand',
@@ -83,6 +91,8 @@ function RoutineForm({ routine, from, onDone, id }) {
   // A copy's short name follows the repository picked until you type your own.
   const [slug, setSlug] = useState(from ? copySlug(from, startRepo) : '');
   const [slugTyped, setSlugTyped] = useState(false);
+  // The infrastructure events offer the environments of the repository picked.
+  const [repo, setRepo] = useState(startRepo);
   // The Claude plan's ceiling for one routine's runs a day, and a new routine's default (CLD-198).
   const limits = routines.value.data?.settings?.limits;
   const save = async (e) => {
@@ -98,6 +108,7 @@ function RoutineForm({ routine, from, onDone, id }) {
       gapMinutes: Number(f.get('gap')),
       triggerStart: f.get('triggerStart'),
       githubEvents: f.getAll('githubEvents'),
+      infraEvents: infraEventsFrom(f),
     };
     // A routine runs in one repository (CLD-127); with only one registered there's nothing to pick.
     if (multiRepo.value) body.repo = f.get('repo');
@@ -138,6 +149,7 @@ function RoutineForm({ routine, from, onDone, id }) {
             class="select"
             name="repo"
             onChange={(e) => {
+              setRepo(e.currentTarget.value);
               if (from && !slugTyped) setSlug(copySlug(from, e.currentTarget.value));
             }}
           >
@@ -228,8 +240,9 @@ function RoutineForm({ routine, from, onDone, id }) {
           the run as a comment, never as instructions.
         </span>
       </fieldset>
+      <InfraEventsField repo={repo} chosen={src?.infraEvents ?? []} />
       <label class="field">
-        <span class="field-label">When a webhook, API, or GitHub trigger fires</span>
+        <span class="field-label">When a webhook, API, GitHub, or infrastructure trigger fires</span>
         <select class="select" name="triggerStart">
           <option value="wait" selected={src?.triggerStart !== 'auto'}>
             Make the task and wait for my Start
@@ -289,7 +302,8 @@ function Meter({ used, cap, label = 'runs today' }) {
 }
 
 /**
- * Every way a routine can start, as short chips: by hand always, then a schedule, triggers, GitHub events, and signals.
+ * Every way a routine can start, as short chips: by hand always, then a schedule, triggers, GitHub events,
+ * infrastructure events, and signals.
  * @param {Record<string, any>} props
  */
 function Starts({ r }) {
@@ -320,6 +334,7 @@ function Starts({ r }) {
           {r.githubEvents.length} GitHub {r.githubEvents.length === 1 ? 'event' : 'events'}
         </li>
       )}
+      {r.infraEvents?.length > 0 && <InfraEventsChip n={r.infraEvents.length} />}
       {r.signal && <SignalChip t={r.signal} />}
     </ul>
   );
@@ -712,6 +727,19 @@ function PanelContent({ r, onClose }) {
                 <span class="muted">No events</span>
               )}
             </Fact>
+            <Fact label="Infrastructure">
+              {r.infraEvents?.length ? (
+                <ul class="ie-facts">
+                  {r.infraEvents.map((e) => (
+                    <li key={e.event}>
+                      {eventLabel(e.event)} <span class="muted">({filterWords(e)})</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span class="muted">No events</span>
+              )}
+            </Fact>
             <Fact label="Tasks go to">{title(r.horizon)}</Fact>
           </dl>
           <Section title="Webhook and API triggers" id="rt-triggers">
@@ -734,8 +762,13 @@ function PanelContent({ r, onClose }) {
                     )}
                     <span class="meta">
                       {run.failed ? 'didn’t start' : run.status === 'completed' ? 'finished' : 'open'} ·{' '}
-                      {RUN_TRIGGER[run.trigger] ?? run.trigger} · {ago(run.at)}
+                      {run.event ? 'by infrastructure' : (RUN_TRIGGER[run.trigger] ?? run.trigger)} · {ago(run.at)}
                     </span>
+                    {run.event && (
+                      <span class="meta rt-run-event">
+                        <RunEvent event={run.event} repo={r.repo} />
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -864,7 +897,10 @@ function RecentRuns({ d }) {
               </span>
               <span class="meta">
                 {run.failed ? 'didn’t start' : run.status === 'completed' ? 'finished' : 'open'} ·{' '}
-                {RUN_TRIGGER[run.trigger] ?? run.trigger} · {ago(run.at)}
+                {run.event
+                  ? `${eventLabel(run.event.key)} in ${run.event.environment}`
+                  : (RUN_TRIGGER[run.trigger] ?? run.trigger)}{' '}
+                · {ago(run.at)}
               </span>
             </li>
           ))}
