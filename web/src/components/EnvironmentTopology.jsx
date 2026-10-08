@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Boxes, List, Maximize2, Network, Target, X, ZoomIn, ZoomOut } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { hashFor, repoName } from '../lib/store.js';
-import { MAP_MAX, NODE, collapse, fitName, layoutTopology, planOverlay } from '../lib/topology.js';
+import { MAP_MAX, NODE, collapse, expectedOverlay, fitName, layoutTopology, planOverlay } from '../lib/topology.js';
 import { LEVEL } from '../lib/env-stream.js';
 import { ZOOM_MAX, ZOOM_STEP, clampView, fitView, panView, viewBox, zoomOf, zoomView } from '../lib/pan-zoom.js';
 import { amountText } from './InfraCosts.jsx';
@@ -137,21 +137,34 @@ function HealthPill({ state }) {
 
 /**
  * What the console knows about a resource besides the inventory: its drift, what the waiting plan does to it.
- * @param {{ r: any, drift: Map<string, string>, ops: Map<string, { op: string, effect: string }>, plan: any, mine?: boolean }} props
+ * @param {{ r: any, drift: Map<string, string>, ops: Map<string, { op: string, effect: string }>, plan: any, mine?: boolean, envId?: number }} props
  */
-function Marks({ r, drift, ops, plan, mine = false }) {
+function Marks({ r, drift, ops, plan, mine = false, envId = 0 }) {
   const d = drift.get(r.id);
   const o = ops.get(r.id);
-  if (!d && !o && !(r.cost?.amount > 0)) return null;
+  if (!d && !o && !r.expected && !(r.cost?.amount > 0)) return null;
   return (
     <ul class="topo-marks">
+      {r.expected && (
+        <li class="topo-mark topo-mark-expected">
+          {r.appliedBy ? (
+            <>
+              Applied by <a href={planHref({ id: r.appliedBy, environment: { id: envId } })}>{r.appliedBy}</a>, not seen
+              yet
+            </>
+          ) : (
+            'The desired state declares it, not seen yet'
+          )}
+          : the board shows what runs once it looks again
+        </li>
+      )}
       {r.cost?.amount > 0 && (
         <li class="topo-mark">
           {amountText(r.cost.amount, r.cost.currency)} a month, estimated
           {r.group ? ' together' : ''}
         </li>
       )}
-      {d && <li class="topo-mark topo-mark-drift">Drift: {DRIFT_OP[d] ?? d}</li>}
+      {d && !r.expected && <li class="topo-mark topo-mark-drift">Drift: {DRIFT_OP[d] ?? d}</li>}
       {o && mine && (
         <li class={`topo-mark topo-mark-${o.effect}`}>
           Your change {o.effect === 'adds' ? 'adds it' : o.effect === 'removes' ? 'removes it' : 'changes it'}
@@ -191,6 +204,8 @@ function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h
         )}
         {r.planned ? (
           <span class="infra-health infra-health-unknown">Not running yet</span>
+        ) : r.expected ? (
+          <span class="infra-health infra-health-unknown">Expected</span>
         ) : (
           <HealthPill state={state} />
         )}
@@ -215,7 +230,7 @@ function Resource({ r, env, drift, ops, plan, onPick, signals, headingLevel = 'h
         {(r.health?.at || r.seen) && (r.health?.at ? ' · checked ' : ' · seen ')}
         <When iso={r.health?.at ?? r.seen} />
       </p>
-      <Marks r={r} drift={drift} ops={ops} plan={plan} mine={mine} />
+      <Marks r={r} drift={drift} ops={ops} plan={plan} mine={mine} envId={env.id} />
       {(r.uses?.length > 0 || r.usedBy?.length > 0) && (
         <dl class="infra-rels">
           <Relations label="Uses" links={r.uses} onPick={onPick} />
@@ -374,15 +389,19 @@ function TopologyMap({ map, selected, onSelect, drift, ops, mine = false }) {
               })}
             </g>
             {map.nodes.map((n) => {
-              const state = n.planned ? 'planned' : healthOf(n);
+              const state = n.planned ? 'planned' : n.expected ? 'expected' : healthOf(n);
               const o = ops.get(n.id);
-              const d = drift.get(n.id);
+              const d = n.expected ? undefined : drift.get(n.id);
               const cost = n.cost?.amount > 0 ? amountText(n.cost.amount, n.cost.currency) : '';
-              const mark = o ? `${EFFECT[o.effect].sign} ${o.effect}` : d ? 'drift' : '';
+              const mark = o ? `${EFFECT[o.effect].sign} ${o.effect}` : n.expected ? 'expected' : d ? 'drift' : '';
               const words = [
                 n.name,
                 n.group ? `${n.group.members.length} ${n.kind}` : n.kind,
-                n.planned ? 'not running yet' : HEALTH[state]?.label.toLowerCase(),
+                n.planned
+                  ? 'not running yet'
+                  : n.expected
+                    ? `expected: ${n.appliedBy ? `applied by ${n.appliedBy}, ` : ''}not seen yet`
+                    : HEALTH[state]?.label.toLowerCase(),
                 n.target ? 'the target' : '',
                 cost ? `${cost} a month, estimated` : '',
                 o ? (mine ? `your change ${o.effect} it` : EFFECT[o.effect].label.toLowerCase()) : '',
@@ -426,7 +445,7 @@ function TopologyMap({ map, selected, onSelect, drift, ops, mine = false }) {
                     <text
                       x={NODE.w - 8}
                       y="37"
-                      class={`topo-node-mark ${o ? `is-${o.effect}` : 'is-drift'}`}
+                      class={`topo-node-mark ${o ? `is-${o.effect}` : n.expected ? 'is-expected' : 'is-drift'}`}
                       text-anchor="end"
                     >
                       {mark}
@@ -479,12 +498,14 @@ function TopologyMap({ map, selected, onSelect, drift, ops, mine = false }) {
 
 /**
  * The topology panel: the map (wide) or the list (phones, and anyone who picks it), and the selected node's detail.
- * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[], relations?: any[] } | null, headActions?: any, note?: string | null, lead?: any }} props
+ * @param {{ env: any, resources: any[], relations: any[], plan: any, drift: any, signals: any[], mode: 'map' | 'list', onMode: (m: 'map' | 'list') => void, nodeActions?: (r: any) => any, change?: { ops: Map<string, any>, adds: any[], relations?: any[] } | null, headActions?: any, note?: string | null, lead?: any, declared?: any[] | null, applied?: any }} props
  *   `nodeActions` renders the owner's actions for a resource in its detail and its row in the list (WEB-99's Change
  *   and Remove); `change` is the owner's change (WEB-99), whose marks show instead of a plan's while they edit, labelled
  *   "your change", with lines from each add to what binds it (WEB-107); `headActions` sit in the panel's header (Add
  *   resource), and are the call to action when nothing runs yet; `note` is a line under it; `lead` is a line above
- *   the map (the last change, folded, WEB-110).
+ *   the map (the last change, folded, WEB-110). `declared` is the merged desired state's resources, and what the
+ *   inventory hasn't seen of them stays on the map as expected (WEB-129), with `applied`, the latest applied plan, as
+ *   what applied it.
  */
 export function Topology({
   env,
@@ -500,6 +521,8 @@ export function Topology({
   headActions = null,
   note = null,
   lead = null,
+  declared = null,
+  applied = null,
 }) {
   const [selected, setSelected] = useState(/** @type {string | null} */ (null));
   // Escape puts a node's detail away, wherever focus is, unless a dialog is open over the page.
@@ -516,11 +539,20 @@ export function Topology({
   const driftOf = new Map((drift?.resources ?? []).map((/** @type {any} */ d) => [d.id, d.op]));
   const running = new Set(resources.map((r) => r.id));
   const planned = adds.filter((a) => !running.has(a.id));
-  const nodes = new Set([...running, ...planned.map((a) => a.id)]);
-  const lines = [...relations, ...(change?.relations ?? []).filter((r) => nodes.has(r.from) && nodes.has(r.to))];
-  const shown = collapse([...resources, ...planned], lines, MAP_MAX);
+  // What the desired state declares and nothing on the map has yet: an applied plan's resources until the inventory
+  // looks again (WEB-129). An observe-only environment declares nothing.
+  const expected = env.observeOnly
+    ? { adds: [], relations: [] }
+    : expectedOverlay(declared, [...resources, ...planned], applied);
+  const drawn = [...resources, ...planned, ...expected.adds];
+  const nodes = new Set(drawn.map((r) => r.id));
+  const lines = [
+    ...relations,
+    ...[...(change?.relations ?? []), ...expected.relations].filter((r) => nodes.has(r.from) && nodes.has(r.to)),
+  ];
+  const shown = collapse(drawn, lines, MAP_MAX);
   const map = layoutTopology(shown.resources, shown.relations, { target: env.target });
-  const all = resourceGroups([...resources, ...planned], lines, env.target);
+  const all = resourceGroups(drawn, lines, env.target);
   const byId = new Map(all.flatMap((g) => g.items).map((r) => [r.id, r]));
   const group = shown.resources.find((r) => r.id === selected && r.group);
   const current = selected ? (byId.get(selected) ?? group ?? null) : null;
@@ -536,8 +568,6 @@ export function Topology({
     }
   };
   const count = resources.length;
-  // Something your change adds draws the map even before anything runs.
-  const drawn = count + planned.length;
   return (
     <section class="console-panel topo" aria-labelledby="infra-resources">
       <header class="console-panel-head">
@@ -545,8 +575,8 @@ export function Topology({
           <Boxes size={16} aria-hidden="true" />
           Resources {count > 0 && <span class="count">{count}</span>}
         </h2>
-        {headActions && drawn > 0 && <div class="topo-head-actions">{headActions}</div>}
-        {drawn > 0 && (
+        {headActions && drawn.length > 0 && <div class="topo-head-actions">{headActions}</div>}
+        {drawn.length > 0 && (
           <div class="segmented segmented-xs" role="group" aria-label="Show resources as">
             <button type="button" aria-pressed={mode === 'map'} onClick={() => onMode('map')}>
               <Network size={14} aria-hidden="true" />
@@ -561,7 +591,7 @@ export function Topology({
       </header>
       {lead}
       {note && <p class="console-quiet">{note}</p>}
-      {!drawn ? (
+      {!drawn.length ? (
         <div class="console-quiet topo-empty">
           <p>
             {env.target ? (
@@ -640,6 +670,8 @@ export function Topology({
                 {[...new Set([...ops.values()].map((o) => o.effect))].map((e) => `${EFFECT[e].sign} ${e}`).join(', ')}.{' '}
               </>
             )}
+            {expected.adds.length > 0 &&
+              `${expected.adds.length === 1 ? 'One resource is' : `${expected.adds.length} resources are`} expected: the desired state declares ${expected.adds.length === 1 ? 'it' : 'them'}, and the board hasn’t seen ${expected.adds.length === 1 ? 'it' : 'them'} run yet. `}
             Select a node for its detail.
           </p>
         </>
@@ -653,7 +685,7 @@ export function Topology({
               {g.items.map((r) => (
                 <li
                   key={r.id}
-                  class={`infra-res ${selected === r.id ? 'is-selected' : ''} ${r.planned ? 'is-planned' : ''}`}
+                  class={`infra-res ${selected === r.id ? 'is-selected' : ''} ${r.planned ? 'is-planned' : ''} ${r.expected ? 'is-expected' : ''}`}
                   id={`infra-res-${r.id}`}
                   tabIndex={-1}
                 >

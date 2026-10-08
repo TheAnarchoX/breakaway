@@ -4,6 +4,7 @@ import {
   NODE,
   collapse,
   columnsOf,
+  expectedOverlay,
   fitName,
   layoutTopology,
   planOverlay,
@@ -154,6 +155,69 @@ describe('the map', () => {
       { id: 'r2:acme-files', kind: 'r2', name: 'acme-files', health: null, cost: null, planned: true },
     ]);
     expect(planOverlay(null).ops.size).toBe(0);
+  });
+
+  it('keeps what the desired state declares on the map until the inventory sees it (WEB-129)', () => {
+    const declared = [
+      {
+        id: 'worker:acme-api',
+        kind: 'worker',
+        name: 'acme-api',
+        attrs: {
+          bindings: [
+            { name: 'JOBS', type: 'queue', queue_name: 'acme-jobs' },
+            { name: 'DB', resource: 'd1:acme-db' },
+          ],
+        },
+      },
+      { id: 'queue:acme-jobs', kind: 'queue', name: 'acme-jobs', attrs: { deliveryDelay: 0 } },
+      { id: 'd1:acme-db', kind: 'd1', name: 'acme-db' },
+      { id: 'route:acme.example/*', kind: 'route', name: 'acme.example/*', attrs: { script: 'acme-api' } },
+      { id: 'r2:acme-files', kind: 'r2', name: 'acme-files' },
+    ];
+    // The Worker runs (under the platform's own ID); the plan waiting adds the bucket; the rest isn't seen yet.
+    const seen = [
+      { id: 'worker:acme-api', kind: 'worker', name: 'acme-api' },
+      { id: 'r2:acme-files', kind: 'r2', name: 'acme-files', planned: true },
+    ];
+    const applied = {
+      id: 'plan-4',
+      diff: { changes: [{ op: 'create', resource: 'queue:acme-jobs', kind: 'queue', name: 'acme-jobs' }] },
+    };
+    const { adds, relations } = expectedOverlay(declared, seen, applied);
+    expect(adds.map((a) => [a.id, a.appliedBy])).toEqual([
+      ['queue:acme-jobs', 'plan-4'],
+      ['d1:acme-db', null],
+      ['route:acme.example/*', null],
+    ]);
+    expect(adds[0]).toMatchObject({ kind: 'queue', name: 'acme-jobs', expected: true, health: null, cost: null });
+    expect(adds[0].attrs).toEqual({ deliveryDelay: 0 });
+    // Lines to what binds or serves each, to the live node's ID; none between two resources the inventory has.
+    expect(relations).toEqual([
+      { from: 'worker:acme-api', to: 'queue:acme-jobs', kind: 'uses' },
+      { from: 'worker:acme-api', to: 'd1:acme-db', kind: 'uses' },
+      { from: 'worker:acme-api', to: 'route:acme.example/*', kind: 'serves' },
+    ]);
+  });
+
+  it('matches what runs by kind and name when its ID differs, and draws nothing once everything is seen', () => {
+    const declared = [
+      { id: 'kv:acme-cache', kind: 'kv', name: 'acme-cache' },
+      { id: 'worker:acme-api', kind: 'worker', name: 'acme-api', attrs: { bindings: [{ resource: 'kv:acme-cache' }] } },
+    ];
+    const seen = [
+      { id: 'kv:0f3a', kind: 'kv', name: 'acme-cache' },
+      { id: 'worker:acme-api', kind: 'worker', name: 'acme-api' },
+    ];
+    expect(expectedOverlay(declared, seen)).toEqual({ adds: [], relations: [] });
+    // A name two resources share is no line: the map can't tell which one it means.
+    const twins = [
+      { id: 'worker:acme', kind: 'worker', name: 'acme', attrs: { x: 'acme-twin' } },
+      { id: 'kv:acme-twin', kind: 'kv', name: 'acme-twin' },
+      { id: 'r2:acme-twin', kind: 'r2', name: 'acme-twin' },
+    ];
+    expect(expectedOverlay(twins, []).relations).toEqual([]);
+    expect(expectedOverlay(null, seen)).toEqual({ adds: [], relations: [] });
   });
 
   it('cuts long names to fit a node', () => {
