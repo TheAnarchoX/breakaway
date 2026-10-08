@@ -101,6 +101,8 @@ The owner grants a free commercial licence case by case, to groups whose work fi
 
 A company funded by venture capital can’t get an exception, whatever its size. Asking is no promise of a yes, and a yes covers the group and the use it names.
 
+An exception is granted by a signed agreement. Once the owner and the group agree on one, on the request or by email, the owner fills in the [licence exception agreement](https://github.com/TheAnarchoX/breakaway/blob/main/docs/licence-exception-agreement.md) with the group, the use, any limits, and how long, and both sign it. It’s free, it’s only for the group named in it, and it ends if the group stops fitting the groups above, like by taking money from venture capital.
+
 ## How to ask
 
 There are two ways. Asking in public comes first: everyone can see who asks and what the owner answers.
@@ -125,7 +127,7 @@ Either way, say:
 - **How you’re owned and funded**: who owns the group, and whether any of its money comes from venture capital.
 - **What you’d use breakaway for**: the work it would run, and roughly how many people would use it.
 
-A request on GitHub is public, so put nothing private in it; an email stays between you and the owner. The owner answers where you asked. A request isn’t a licence until the owner grants it in writing.
+A request on GitHub is public, so put nothing private in it; an email stays between you and the owner. The owner answers where you asked. A request isn’t a licence: the exception starts when both sides have signed the [agreement](https://github.com/TheAnarchoX/breakaway/blob/main/docs/licence-exception-agreement.md).
 
 ## Releases before 2.0.0
 

@@ -22,6 +22,8 @@ The owner grants a free commercial licence case by case, to groups whose work fi
 
 A company funded by venture capital can't get an exception, whatever its size. Asking is no promise of a yes.
 
+An exception is granted by a signed agreement. Once the owner and the group agree on one, on the request or by email, the owner fills in the [licence exception agreement](docs/licence-exception-agreement.md) with the group, the use, any limits, and how long, and both sign it. It's free, only for the group named in it, and it ends if the group stops fitting the groups above, like by taking money from venture capital.
+
 ## How to ask
 
 There are two ways, and asking in public comes first:
@@ -29,7 +31,7 @@ There are two ways, and asking in public comes first:
 1. **In public**: open a [licence exception request](https://github.com/TheAnarchoX/breakaway/issues/new?template=licence-exception.yml) on GitHub.
 2. **In private**, if you'd rather not ask in public: email the owner at `theanarchox@proton.me` with the subject `breakaway licence exception: <who you are>`.
 
-What to include is on [leavethepack.dev/licensing](https://leavethepack.dev/licensing/).
+What to include is on [leavethepack.dev/licensing](https://leavethepack.dev/licensing/). A request isn't a licence: the exception starts when both sides have signed the agreement.
 
 ## Releases before 2.0.0
 
