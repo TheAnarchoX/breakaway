@@ -82,6 +82,16 @@ export const infraEnvironmentsMethods = {
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS infra_environments_name ON infra_environments (repo, name)');
   },
 
+  /**
+   * What an environment with no target is planned with from its desired state (BRK-309): `{ name, file, problem }`, or
+   * null when it has a target, is observe only, or has no desired state.
+   */
+  desiredTargetView(row) {
+    if (row.target || row.observe_only || !this.desiredStateFor(row)) return null;
+    const at = this.desiredTargetOf(row);
+    return { name: at.target, file: `${row.name}.json`, problem: at.problem ?? null };
+  },
+
   environmentOut(row) {
     const map = row.task ? this.tasks.get(row.task) : null;
     const task = map ? { uuid: row.task, wid: map.wid ?? null, description: map.description ?? '' } : null;
@@ -89,6 +99,8 @@ export const infraEnvironmentsMethods = {
     return {
       ...environmentView(row, { worker: install(this.env).worker, task }),
       waitingPlan: this.waitingInfraPlan(row.id),
+      // With no target, the one its merged desired state makes, which Compare plans with (BRK-309), or why there's none.
+      desiredTarget: this.desiredTargetView(row),
       ...this.driftFor(row.id),
       // Whether DEPLOYS_PAUSED on GitHub matches a pipeline production's freeze (BRK-236), else null.
       deploysPaused: this.deployPause(row),

@@ -27,15 +27,19 @@ function When({ iso }) {
 }
 
 /**
- * Compare it now, rather than on the board's next check. Shown where the board can compare it at all.
+ * Compare it now, rather than on the board's next check. Shown where the board can compare it at all. An environment
+ * with no target is compared with the one its merged file declares (BRK-309), and the confirm says so.
  * @param {{ env: any, onDone: () => void }} props
  */
-function CompareNow({ env, onDone }) {
+export function CompareNow({ env, onDone }) {
   const [busy, setBusy] = useState(false);
+  const builds = !env.target ? (env.desiredTarget?.name ?? null) : null;
   const compare = async () => {
     const ok = await confirmDialog({
       title: `Compare ${env.name} now?`,
-      body: 'The board reads what runs and checks it against the repository. Nothing changes: drift from a change by hand becomes a draft plan, and drift from a merged change a plan that waits for you.',
+      body: builds
+        ? `${env.desiredTarget.file} declares ${builds}, so the board plans with it: it reads what runs and drafts the plan that builds it. Nothing changes until you approve that plan, and approving it makes ${builds} ${env.name}’s target.`
+        : 'The board reads what runs and checks it against the repository. Nothing changes: drift from a change by hand becomes a draft plan, and drift from a merged change a plan that waits for you.',
       confirmLabel: 'Compare now',
     });
     if (!ok) return;

@@ -82,9 +82,11 @@ export const infraDriftMethods = {
     if (!env.provider) return `${env.name} has no provider: the owner picks one on the board first`;
     if (!this.infraRegistry().has(env.provider))
       return `${env.provider} isn’t connected, so ${env.name} can’t be compared`;
-    if (!this.desiredStateFor(env))
+    const desired = this.desiredStateFor(env);
+    if (!desired)
       return `${env.name} has no desired state yet: add .github/breakaway-infra/${env.name}.json to ${env.repo}’s default branch`;
-    return null;
+    // With no target, it's compared against the one Worker its file makes (BRK-309); none, or several, says so.
+    return this.desiredTargetOf(env, desired).problem ?? null;
   },
 
   /**
@@ -103,7 +105,8 @@ export const infraDriftMethods = {
       throw new AgentError(`${env.name} is being compared already: wait for that to finish`, 409);
     this.driftChecking.add(env.id);
     try {
-      return await this.compareDrift(env);
+      // An environment with no target is compared, and planned, with the one its desired state makes (BRK-309).
+      return await this.compareDrift(this.desiredTargetOf(env).env);
     } finally {
       this.driftChecking.delete(env.id);
     }
@@ -117,7 +120,7 @@ export const infraDriftMethods = {
     const provider = this.infraRegistry().get(env.provider);
     const ctx = {
       environment: env.name,
-      scope: { target: env.target },
+      scope: { target: env.target ?? this.desiredTargetOf(env).target },
       observeOnly: false,
       token: (await this.providerReadToken(env.provider)) ?? undefined,
     };
