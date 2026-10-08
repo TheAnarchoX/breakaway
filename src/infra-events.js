@@ -263,3 +263,43 @@ export const PLAN_EVENTS = {
   failed: 'plan.failed',
   'rolled back': 'plan.rolled_back',
 };
+
+/**
+ * What a run keeps about the event that started it (WEB-122), for its history and its task to name it and link to it:
+ * the key and its words, the environment, and the plan, task, and pull request on it. `environmentId` is the board's
+ * own environment, looked up by the store, or null when it doesn't know it.
+ * @typedef {{ key: string, label: string, environment: string, environmentId: number | null, plan: string | null,
+ *   task: string | null, pull: number | null }} InfraRunEvent
+ */
+
+/**
+ * @param {InfraEvent} event
+ * @param {number | null} environmentId
+ * @returns {InfraRunEvent}
+ */
+export function infraRunEvent(event, environmentId) {
+  const { plan, task, pull } = event.fields;
+  const number = /^#(\d+)$/u.exec(String(pull ?? ''));
+  return {
+    key: event.key,
+    label: INFRA_EVENTS[event.key],
+    environment: event.environment,
+    environmentId,
+    plan: typeof plan === 'string' && /^plan-\d+$/u.test(plan) ? plan : null,
+    task: typeof task === 'string' && WID.test(task) ? task : null,
+    pull: number ? Number(number[1]) : null,
+  };
+}
+
+/** A run's kept event, from its column: one that no longer reads is none at all. */
+export function keptRunEvent(text) {
+  if (!text) return null;
+  try {
+    const event = JSON.parse(String(text));
+    return event && typeof event.key === 'string' && event.key in INFRA_EVENTS
+      ? { ...event, label: INFRA_EVENTS[event.key] }
+      : null;
+  } catch {
+    return null;
+  }
+}
