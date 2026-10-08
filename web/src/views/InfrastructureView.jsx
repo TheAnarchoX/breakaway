@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   Server,
+  ShieldCheck,
   Snowflake,
   TriangleAlert,
 } from 'lucide-preact';
@@ -514,6 +515,13 @@ export function InfrastructureView() {
         </div>
         <div class="conn-buttons">
           <InventoryRefresh onDone={load} />
+          <a
+            class="btn btn-quiet btn-sm"
+            href={hashFor({ view: 'infrastructure', environment: null, policy: repoScope.value ?? '', task: null })}
+          >
+            <ShieldCheck size={16} aria-hidden="true" />
+            Policy
+          </a>
           <button
             type="button"
             class="btn btn-quiet btn-sm"
