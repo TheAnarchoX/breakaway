@@ -7,6 +7,10 @@
 # {{branchName}} may use. It checks out none of this repository's code: it runs breakaway's runner, pinned to
 # {{version}} and installed once, before any step holds the token, from the package's own lockfile with no install
 # scripts, and reports each step to the board. Agents never run this workflow.
+#
+# Don't use GitHub's Re-run on it: a plan runs once per start, so the board refuses a re-run and the log says so. When
+# a run fails before it applies anything, fix what stopped it and press Start the run again on the plan's page on the
+# board, which starts a new run.
 name: Apply infrastructure
 run-name: Apply plan ${{ inputs.plan }} to ${{ inputs.environment }}
 

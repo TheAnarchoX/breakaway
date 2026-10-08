@@ -8,6 +8,7 @@ import {
   History,
   Network,
   RefreshCw,
+  RotateCcw,
   Scale,
   Snowflake,
   TriangleAlert,
@@ -16,6 +17,7 @@ import {
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { auditActor, auditSummary, auditWords } from '../lib/infra-audit.js';
+import { githubRun, runWords } from '../lib/env-stream.js';
 import { confirmDialog, environmentId, hashFor, navOrder, planRef, repoName, toast } from '../lib/store.js';
 import { rateWords } from '../../../src/infra-currency.js';
 import { AuditSummary } from '../components/AuditSummary.jsx';
@@ -357,8 +359,22 @@ function Steps({ run, audit, names, envId }) {
       </h2>
       {run && (
         <p class="meta">
-          {run.outcome ? (OUTCOME[run.outcome] ?? run.outcome) : 'The executor is on it'}
+          {run.outcome
+            ? run.startAgain && run.outcome === 'failed'
+              ? runWords(run)
+              : (OUTCOME[run.outcome] ?? run.outcome)
+            : run.phase === 'dispatched'
+              ? runWords(run)
+              : 'The executor is on it'}
           {run.error && <> · {run.error}</>}
+          {githubRun(run) && (
+            <>
+              {' · '}
+              <a href={githubRun(run)?.url} target="_blank" rel="noopener noreferrer">
+                {githubRun(run)?.text}
+              </a>
+            </>
+          )}
           {run.updated && (
             <>
               {' · '}
@@ -506,6 +522,59 @@ function Answer({ plan, env, outOfDate, onChange }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Start the run again (BRK-308), the owner's: on a failed plan whose run applied nothing (it never reached the board,
+ * or every step it reported failed). The board checks everything a start checks, and starts a new run; GitHub's
+ * Re-run never applies a plan. With `lead` false, it's the button alone, for a note that already says why.
+ * @param {{ plan: { id: string, state: string }, env: { name: string, frozen?: boolean }, run: any, onDone?: () => void, lead?: boolean, size?: string }} props
+ */
+export function StartAgain({ plan, env, run, onDone, lead = true, size = '' }) {
+  const [busy, setBusy] = useState(false);
+  if (plan.state !== 'failed' || !run?.startAgain) return null;
+  const start = async () => {
+    const ok = await confirmDialog({
+      title: `Start the run again for ${env.name}?`,
+      body: `The last run applied nothing. The board checks ${plan.id} again and starts a new run, which applies it.`,
+      confirmLabel: 'Start the run again',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api(`infra/plans/${enc(plan.id)}/start-again`, { method: 'POST', body: { by: 'owner' } });
+      toast(`Started again. The board applies ${plan.id} to ${env.name} next.`, 'success');
+      onDone?.();
+    } catch (error) {
+      toast(`Couldn’t start the run again: ${error.message}`, 'error');
+      onDone?.();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const button = (
+    <button
+      type="button"
+      class={`btn btn-primary ${size}`}
+      onClick={start}
+      disabled={busy || env.frozen}
+      aria-busy={busy}
+      title={env.frozen ? `${env.name} is frozen: unfreeze it first` : undefined}
+    >
+      <RotateCcw size={16} aria-hidden="true" />
+      Start the run again
+    </button>
+  );
+  // Inside another note (a first apply's), the button alone.
+  if (!lead) return button;
+  return (
+    <div class="infra-plan-answer">
+      <p class="infra-plan-why-not">
+        Nothing was applied. Fix what stopped the run, then start it again here: GitHub’s Re-run doesn’t apply a plan.
+      </p>
+      <div class="infra-plan-buttons">{button}</div>
     </div>
   );
 }
@@ -736,6 +805,7 @@ export function PlanView() {
       <Cost cost={plan.cost} />
       <Reach blast={plan.blastRadius} names={state.names} />
       <Answer plan={plan} env={env} outOfDate={state.outOfDate} onChange={load} />
+      <StartAgain plan={plan} env={env} run={state.run} onDone={load} />
       <Steps run={state.run} audit={state.audit} names={state.names} envId={envId} />
     </div>
   );

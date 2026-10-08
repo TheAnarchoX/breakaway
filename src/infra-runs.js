@@ -47,6 +47,14 @@ export const UNHEALTHY = ['down', 'degraded'];
 export const RETRY_MINUTES = 10;
 /** How long the executor holds the environment's lock for a run, renewed on each of its calls, in minutes. */
 export const RUN_LOCK_MINUTES = 30;
+/**
+ * How long a started run may go without asking for its plan before the board looks it up on GitHub, and how long
+ * between two looks, in minutes (BRK-308): one read, so a run that failed before it reached the board ends then, not
+ * when the lock expires.
+ */
+export const RUN_LOOKUP_MINUTES = 3;
+/** The outcomes a run that applied nothing may end with, so the owner can start it again (BRK-308). */
+const START_AGAIN_OUTCOMES = ['failed', 'expired'];
 
 /** Why the runner's call is refused: `status` is the HTTP status the route answers. */
 export class RunRefused extends Error {
@@ -122,12 +130,13 @@ export async function verifyRunToken(token, { keys, audience, now = Date.now() }
 /**
  * Checks a verified token's claims are the run the board started: the repository, the environment, the runner's
  * workflow on the default branch, started by workflow_dispatch, its first attempt, after the board dispatched it, and,
- * once a run has checked, that same run. A mismatch is a 403 naming the claim; a second run or attempt, a 409.
+ * once a run has checked, that same run. A mismatch is a 403 naming the claim; a second run or attempt, a 409. A
+ * re-run replays the old start, so it never applies: its 409 says to press Start the run again on `plan` (BRK-308).
  * @param {Record<string, any>} claims
- * @param {{ repository: string, environment: string, branch: string, dispatched: number, run: string | null }} expected
+ * @param {{ repository: string, environment: string, branch: string, dispatched: number, run: string | null, plan?: string }} expected
  * @returns {{ run: string }}
  */
-export function checkRunClaims(claims, { repository, environment, branch, dispatched, run }) {
+export function checkRunClaims(claims, { repository, environment, branch, dispatched, run, plan = 'the plan' }) {
   const repo = String(repository).toLowerCase();
   if (String(claims.repository ?? '').toLowerCase() !== repo) refuse(`the run isn’t in ${repository}`, 403);
   if (claims.environment !== environment) refuse(`the run isn’t in the GitHub environment ${environment}`, 403);
@@ -140,11 +149,78 @@ export function checkRunClaims(claims, { repository, environment, branch, dispat
   if (claims.event_name !== 'workflow_dispatch') refuse('the run wasn’t started by the board', 403);
   const id = String(claims.run_id ?? '');
   if (!/^\d{1,20}$/u.test(id)) refuse('the run’s OIDC token names no run', 403);
-  if (String(claims.run_attempt ?? '1') !== '1') refuse('a re-run doesn’t apply a plan: a plan runs once', 409);
+  if (String(claims.run_attempt ?? '1') !== '1') refuse(reRunRefused(plan), 409);
   if (Number(claims.iat) < Math.floor(dispatched / 1000) - CLOCK_SKEW)
     refuse('the run started before the board started it', 403);
   if (run && run !== id) refuse(`another run has this plan: ${run}`, 409);
   return { run: id };
+}
+
+/**
+ * What the board answers a re-run of the runner's workflow, and the runner prints in its log (BRK-308).
+ * @param {string} plan the plan's ID
+ */
+export const reRunRefused = (plan) =>
+  `GitHub’s Re-run doesn’t apply a plan: a plan runs once per start. Press Start the run again on the board, on ${plan}.`;
+
+/**
+ * The runner's run as GitHub lists it: the workflow's `run-name` (template/infra/apply.yml), so the board can find the
+ * run it started, which workflow_dispatch doesn't name.
+ * @param {string} plan @param {string} environment
+ */
+export const runTitle = (plan, environment) => `Apply plan ${plan} to ${environment}`;
+
+/**
+ * The run the board started, from GitHub's list of the runner workflow's runs: the newest titled `title` and made
+ * after `dispatched`, with its link, whether it's still going, and how it ended. Null when it isn't listed yet. A run
+ * that completed before it asked for its plan never had it, so it applied nothing, whatever its conclusion.
+ * @param {Array<Record<string, any>> | null | undefined} runs GitHub's `workflow_runs`
+ * @param {{ title: string, dispatched: number }} started
+ * @returns {{ id: string, url: string | null, completed: boolean, conclusion: string | null } | null}
+ */
+export function startedRun(runs, { title, dispatched }) {
+  const ours = (runs ?? [])
+    .filter(
+      (r) =>
+        r?.display_title === title &&
+        r.event === 'workflow_dispatch' &&
+        Date.parse(r.created_at) >= dispatched - CLOCK_SKEW * 1000,
+    )
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const run = ours[0];
+  if (!run || !/^\d{1,20}$/u.test(String(run.id))) return null;
+  const completed = run.status === 'completed';
+  return {
+    id: String(run.id),
+    url: /^https:\/\/github\.com\/[^\s]+$/u.test(String(run.html_url ?? '')) ? String(run.html_url) : null,
+    completed,
+    conclusion: completed ? String(run.conclusion ?? 'unknown').slice(0, 40) : null,
+  };
+}
+
+/**
+ * A run's page on GitHub, from the repository and the run's ID.
+ * @param {string} repository `owner/name` @param {string} run
+ */
+export const runUrl = (repository, run) => `https://github.com/${repository}/actions/runs/${run}`;
+
+/**
+ * Why a run can't be started again, or null when it can (BRK-308): it ended failed or expired, no rollback started,
+ * and it applied nothing for certain: the plan was never handed to a run (only the board hands it out, so no run could
+ * apply it), or the run that had it reported every step failed. Once anything applied, or may have, it's the
+ * rollback and drift path instead.
+ * @param {Record<string, any>} row the run's row
+ * @returns {string | null}
+ */
+export function startAgainProblem(row) {
+  if (row.phase !== 'done') return 'its run hasn’t ended';
+  if (!START_AGAIN_OUTCOMES.includes(row.outcome)) return `its run ended ${row.outcome}`;
+  if (row.rollback_diff || row.rollback_run_id) return 'its run applied changes, and the board rolled them back';
+  if (!row.run_id) return null;
+  const steps = row.steps ? JSON.parse(row.steps) : null;
+  if (!steps) return `run ${row.run_id} had the plan and didn’t say what it applied: compare the environment for drift`;
+  if (steps.some((/** @type {{ ok: boolean }} */ s) => s.ok)) return `run ${row.run_id} applied changes`;
+  return null;
 }
 
 /**
@@ -272,6 +348,11 @@ export function runView(row) {
     rollbackSteps: row.rollback_steps ? JSON.parse(row.rollback_steps) : null,
     outcome: row.outcome ?? null,
     error: row.error ?? null,
+    // Whether the owner can press Start the run again (BRK-308): it ended having applied nothing.
+    startAgain: startAgainProblem(row) === null,
+    // The run on GitHub, once the board knows it: `{ id, url, conclusion }`, the conclusion only when it ended there
+    // before it asked for its plan (BRK-308).
+    github: row.github_run ? JSON.parse(row.github_run) : null,
     nextTry: row.phase === 'queued' ? at(row.next_try) : null,
     dispatched: at(row.dispatched),
     created: at(row.created),

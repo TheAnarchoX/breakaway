@@ -4,7 +4,7 @@ import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { confirmDialog, github, hashFor, pullParam, toast } from '../lib/store.js';
 import { plansPanel } from '../lib/env-plans.js';
-import { PlanState, amount } from '../views/PlanView.jsx';
+import { PlanState, StartAgain, amount } from '../views/PlanView.jsx';
 import { CHANGE_CARD_ID, ChangeState } from './EnvironmentChange.jsx';
 import { NoneYet } from './ui.jsx';
 import { CompareNow } from './EnvironmentActions.jsx';
@@ -120,14 +120,15 @@ function PlanRow({ row, ended = false }) {
 
 /**
  * A new environment's first apply failed (WEB-120): its target, set when the owner approved the change that builds it
- * (BRK-291), names something that doesn't exist yet, so the console says so instead of waiting to see it. Clear the
- * target starts again: when the merged file still declares that target, Compare now drafts the plan that builds it
- * again (BRK-309); otherwise the console's next change gives it a target again. Or the owner fixes what failed on the
- * plan's page and proposes the change again.
- * @param {{ env: { id: number, name: string, target?: string | null }, plan: any, desired?: any,
- *   onCleared?: () => void }} props `desired` is the environment's desired state as the console read it
+ * (BRK-291), names something that doesn't exist yet, so the console says so instead of waiting to see it. When its run
+ * applied nothing, Start the run again comes first (BRK-308). Clear the target starts again: when the merged file still
+ * declares that target, Compare now drafts the plan that builds it again (BRK-309); otherwise the console's next change
+ * gives it a target again. Or the owner fixes what failed on the plan's page and proposes the change again.
+ * @param {{ env: { id: number, name: string, target?: string | null, frozen?: boolean }, plan: any, run?: any,
+ *   desired?: any, onCleared?: () => void }} props `desired` is the environment's desired state as the console read it
  */
-function FirstApplyFailed({ env, plan, desired = null, onCleared }) {
+function FirstApplyFailed({ env, plan, run = null, desired = null, onCleared }) {
+  const again = plan.state === 'failed' && Boolean(run?.startAgain);
   const [busy, setBusy] = useState(false);
   const file = `${env.name}.json`;
   const declared = (desired?.desired?.resources ?? []).some(
@@ -163,12 +164,23 @@ function FirstApplyFailed({ env, plan, desired = null, onCleared }) {
       <p>
         <TriangleAlert size={16} aria-hidden="true" />
         <span>
-          {env.name}’s first apply {plan.state === 'rolled back' ? 'was rolled back' : 'failed'}, so its target,{' '}
-          <code>{env.target}</code>, points at nothing yet. <a href={planHref(plan)}>See why on {plan.id}</a> and
-          propose again, or clear the target and start over.
+          {again ? (
+            <>
+              {env.name}’s first apply failed before it applied anything, so its target, <code>{env.target}</code>,
+              points at nothing yet. <a href={planHref(plan)}>See why on {plan.id}</a>, fix it, and start the run again,
+              or clear the target and start over.
+            </>
+          ) : (
+            <>
+              {env.name}’s first apply {plan.state === 'rolled back' ? 'was rolled back' : 'failed'}, so its target,{' '}
+              <code>{env.target}</code>, points at nothing yet. <a href={planHref(plan)}>See why on {plan.id}</a> and
+              propose again, or clear the target and start over.
+            </>
+          )}
         </span>
       </p>
       <div class="conn-buttons">
+        {again && <StartAgain plan={plan} env={env} run={run} onDone={onCleared} lead={false} size="btn-sm" />}
         <button
           type="button"
           class="btn btn-outline btn-sm"
@@ -229,7 +241,15 @@ export function EnvironmentPlans({
           Couldn’t load its plans. {error}
         </p>
       )}
-      {failed && <FirstApplyFailed env={env} plan={failed} desired={desired} onCleared={onChange} />}
+      {failed && (
+        <FirstApplyFailed
+          env={env}
+          plan={failed}
+          run={runs.find((r) => r.plan === failed.id) ?? null}
+          desired={desired}
+          onCleared={onChange}
+        />
+      )}
       {current > 0 && (
         <ul class="infra-plan-list">
           {rows.changes.map((r) => (

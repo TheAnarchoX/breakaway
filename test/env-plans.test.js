@@ -36,6 +36,15 @@ const change = (/** @type {number} */ n, /** @type {string} */ state, more = {})
 });
 
 describe('plansPanel', () => {
+  it('says a failed plan whose run applied nothing can be started again (BRK-308)', () => {
+    const failed = plan(3, 'failed');
+    const runs = [{ plan: 'plan-3', phase: 'done', outcome: 'failed', startAgain: true, steps: null }];
+    expect(plansPanel({ plans: [failed], runs }).recent[0]).toMatchObject({
+      progress: 'Nothing applied: start the run again',
+    });
+    expect(plansPanel({ plans: [failed], runs: [{ ...runs[0], startAgain: false }] }).recent[0].progress).toBeNull();
+  });
+
   it('is empty when there is nothing', () => {
     expect(plansPanel({})).toEqual({ changes: [], open: [], recent: [] });
     expect(plansPanel({ plans: [], runs: [], changes: { open: null, changes: [] } })).toEqual({

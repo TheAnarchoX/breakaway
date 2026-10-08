@@ -1,7 +1,7 @@
 import { Activity, Bot, Eye, FileDiff, Rocket, ScanSearch, Snowflake, Wallet } from 'lucide-preact';
 import { ago, shortVersion } from '../lib/model.js';
 import { hashFor } from '../lib/store.js';
-import { runWords } from '../lib/env-stream.js';
+import { githubRun, runTile, runWords } from '../lib/env-stream.js';
 import { widClass } from './ui.jsx';
 import { BUDGET, costText } from './InfraCosts.jsx';
 import { HEALTH, healthOfWords } from '../views/InfrastructureView.jsx';
@@ -202,13 +202,16 @@ function InventoryTile({ stale, seen, looking = false }) {
  * and whether it's looking now.
  * `change` is the owner's change from the console (WEB-99), in words, shown on the Plan tile when no plan runs or waits.
  * `firstApply` is the plan whose first apply failed on a new environment (WEB-120), which Health names.
- * @param {{ env: any, health: any, cost: any, run: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null, looking?: boolean }, change?: { value: string, detail: string } | null, firstApply?: any }} props
+ * `stopped` is the newest run when it ended having applied nothing, so the Plan tile says so until it's started again
+ * (BRK-308).
+ * @param {{ env: any, health: any, cost: any, run: any, stopped?: any, agents: { agent: string, task: any, why: string }[], inventory?: { stale: any, seen: string | null, looking?: boolean }, change?: { value: string, detail: string } | null, firstApply?: any }} props
  */
 export function StatusBand({
   env,
   health,
   cost,
   run,
+  stopped = null,
   agents,
   inventory = { stale: null, seen: null },
   change = null,
@@ -279,9 +282,36 @@ export function StatusBand({
           <Tile
             label="Plan"
             Icon={FileDiff}
-            value={runWords(run)}
+            value={runTile(run).value}
             valueTitle={runWords(run)}
-            detail={<a href={planLink(run.plan)}>{run.plan}</a>}
+            detail={
+              <>
+                {runTile(run).detail && <>{runTile(run).detail} · </>}
+                <a href={planLink(run.plan)}>{run.plan}</a>
+                {githubRun(run) && (
+                  <>
+                    {' · '}
+                    <a href={githubRun(run)?.url} target="_blank" rel="noopener noreferrer">
+                      on GitHub
+                    </a>
+                  </>
+                )}
+              </>
+            }
+          />
+        ) : stopped ? (
+          <Tile
+            label="Plan"
+            Icon={FileDiff}
+            tone="waiting"
+            value={runTile(stopped).value}
+            valueTitle={runWords(stopped)}
+            detail={
+              <>
+                Nothing applied · <a href={planLink(stopped.plan)}>{stopped.plan}</a>
+              </>
+            }
+            detailTitle={`Nothing applied: start ${stopped.plan}’s run again`}
           />
         ) : env.waitingPlan ? (
           <Tile
