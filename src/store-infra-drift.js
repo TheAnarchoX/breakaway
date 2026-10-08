@@ -190,6 +190,14 @@ export const infraDriftMethods = {
       });
     }
 
+    // New drift (not what the last comparison found) reaches the routines that listen for it (BRK-293).
+    if (diff.changes.length && fingerprint !== last?.fingerprint)
+      this.infraEvent('drift.found', env, {
+        fields: { count: diff.changes.length, source: merged ? 'pull-request' : 'drift' },
+        dedupe: fingerprint,
+        resourceKinds: diff.changes.map((c) => c.kind),
+        cause: merged ? { pull: this.mergedPullAt(env.repo, desiredSha) } : {},
+      });
     const open = this.sql
       .exec(
         `SELECT n, source, diff FROM infra_plans WHERE environment = ? AND state IN (${OPEN}) ORDER BY n DESC`,

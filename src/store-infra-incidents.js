@@ -207,6 +207,19 @@ export const infraIncidentsMethods = {
       )
       .one().id;
     const wid = this.tasks.get(uuid)?.wid ?? 'An incident';
+    // Routines that listen for it hear it (BRK-293); runbooks still hear the signal itself.
+    const resourceKind = this.runbookResourceKind(signal, env.repo);
+    this.infraEvent('incident.opened', env, {
+      fields: {
+        task: this.tasks.get(uuid)?.wid ?? undefined,
+        state: signal.level,
+        source: signal.kind,
+        resource: signal.resource ?? undefined,
+        resourceKind: resourceKind ?? undefined,
+      },
+      dedupe: String(id),
+      resourceKinds: [resourceKind],
+    });
     await this.boardPing(
       uuid,
       'incident',

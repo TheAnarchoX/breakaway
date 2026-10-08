@@ -14,6 +14,7 @@ import { ROUTINE_GITHUB_EVENTS, routineEventOf } from './github.js';
 import { planOf } from './plans.js';
 import { repoSlugOf } from './repos.js';
 import { alertFields, alertPlace, alertText } from './infra-cloudflare.js';
+import { infraEventsOf, keptInfraEvents } from './infra-events.js';
 
 const MAX_TRIGGER_BODY = 16 * 1024;
 const MAX_NOTE = 1000;
@@ -128,6 +129,9 @@ export const routinesMethods = {
     // Who made it (BRK-221): the routine maker's task and its agent, or neither when the owner did.
     if (!columns.includes('made_by')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by TEXT');
     if (!columns.includes('made_by_agent')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by_agent TEXT');
+    // Which infrastructure events start it (BRK-293): a JSON list of src/infra-events.js's triggers, none by default.
+    if (!columns.includes('infra_events'))
+      this.sql.exec("ALTER TABLE routines ADD COLUMN infra_events TEXT NOT NULL DEFAULT '[]'");
     const events = this.sql
       .exec('PRAGMA table_info(routine_events)')
       .toArray()
@@ -172,6 +176,7 @@ export const routinesMethods = {
       nextRun: this.nextScheduledRun(r),
       triggerStart: r.trigger_start ?? 'wait',
       githubEvents: githubEventsOf(r),
+      infraEvents: keptInfraEvents(r.infra_events),
       signal: this.runbookOf(r.slug),
       triggers: this.sql
         .exec(
@@ -280,6 +285,12 @@ export const routinesMethods = {
     return { uuid, wid: map.wid ?? null, agent, repo: repoSlugOf(map, this.defaultRepoSlug()) };
   },
 
+  /** Infrastructure events are the owner's to turn on (BRK-293): a routine maker's agent never sets them. */
+  ownerInfraEvents(input) {
+    if ('infraEvents' in input)
+      throw new AgentError('only the owner turns on infrastructure events for a routine', 403);
+  },
+
   /** A routine maker writes routines in its task's repository only: `repo` is the routine's, null for the default. */
   checkMakerRepo(writer, repo) {
     const slug = repo || this.defaultRepoSlug();
@@ -332,6 +343,7 @@ export const routinesMethods = {
         );
       out.github_events = [...new Set(list)].join(',');
     }
+    if ('infraEvents' in input) out.infra_events = JSON.stringify(infraEventsOf(input.infraEvents));
     if ('repo' in input) out.repo = input.repo ? this.checkRepoSlug(input.repo) : null;
     if ('enabled' in input) out.enabled = input.enabled ? 1 : 0;
     if (!out.name) throw new InputError('a routine needs a name');
@@ -341,6 +353,7 @@ export const routinesMethods = {
 
   createRoutine(input) {
     const writer = this.routineWriter(input.by);
+    if (writer) this.ownerInfraEvents(input);
     const slug = String(input.slug ?? '').toLowerCase();
     if (!SLUG.test(slug))
       throw new InputError('the slug is lowercase letters, digits, and hyphens, starting with a letter (up to 40)');
@@ -355,6 +368,7 @@ export const routinesMethods = {
       schedule: null,
       trigger_start: 'wait',
       github_events: '',
+      infra_events: '[]',
       // A routine maker's routine is in its task's repository unless it says otherwise.
       repo: writer && writer.repo !== this.defaultRepoSlug() ? writer.repo : null,
     });
@@ -369,7 +383,7 @@ export const routinesMethods = {
     }
     const now = Date.now();
     this.sql.exec(
-      'INSERT INTO routines (slug, name, prompt, done_when, horizon, enabled, gap_minutes, daily_cap, edited_by, edited_at, created, schedule, last_slot, trigger_start, github_events, repo, made_by, made_by_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO routines (slug, name, prompt, done_when, horizon, enabled, gap_minutes, daily_cap, edited_by, edited_at, created, schedule, last_slot, trigger_start, github_events, repo, made_by, made_by_agent, infra_events) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       slug,
       f.name,
       f.prompt,
@@ -388,6 +402,7 @@ export const routinesMethods = {
       f.repo,
       writer?.uuid ?? null,
       writer?.agent ?? null,
+      f.infra_events,
     );
     if (writer) this.routineEvent(slug, 'routine_made', { task: writer.uuid, agent: writer.agent });
     return this.routineView(this.routineRow(slug));
@@ -395,6 +410,7 @@ export const routinesMethods = {
 
   modifyRoutine(slug, input) {
     const writer = this.routineWriter(input.by);
+    if (writer) this.ownerInfraEvents(input);
     const row = this.routineRow(slug);
     if (writer && row.made_by !== writer.uuid)
       throw new AgentError(
@@ -405,7 +421,7 @@ export const routinesMethods = {
     if (writer) this.checkMakerRepo(writer, f.repo);
     // Turning it back on clears the reason it switched itself off.
     this.sql.exec(
-      'UPDATE routines SET name = ?, prompt = ?, done_when = ?, horizon = ?, enabled = ?, gap_minutes = ?, daily_cap = ?, edited_by = ?, edited_at = ?, disabled_reason = ?, schedule = ?, trigger_start = ?, github_events = ?, repo = ? WHERE slug = ?',
+      'UPDATE routines SET name = ?, prompt = ?, done_when = ?, horizon = ?, enabled = ?, gap_minutes = ?, daily_cap = ?, edited_by = ?, edited_at = ?, disabled_reason = ?, schedule = ?, trigger_start = ?, github_events = ?, repo = ?, infra_events = ? WHERE slug = ?',
       f.name,
       f.prompt,
       f.done_when,
@@ -420,6 +436,7 @@ export const routinesMethods = {
       f.trigger_start ?? 'wait',
       f.github_events ?? '',
       f.repo ?? null,
+      f.infra_events ?? '[]',
       row.slug,
     );
     // A schedule set or changed now starts from now: a slot that passed while it was being edited isn't made up.

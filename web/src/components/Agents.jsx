@@ -43,6 +43,7 @@ export const TRIGGER_LABEL = {
   'road-captain': 'started as a chase’s road captain',
   move: 'started to move a repository to the deploy flow',
   signal: 'started by a signal, through a runbook',
+  infra: 'started by an infrastructure event',
   describe: 'started to describe an environment as code',
 };
 
