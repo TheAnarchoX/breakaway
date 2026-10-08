@@ -13,6 +13,7 @@ import { checkDesiredFile, DESIRED_DIR, desiredPath } from './infra-desired.js';
 import { fieldProblem } from './infra-provider.js';
 import { addFromTemplate, inputValues, TEMPLATE_NAME } from './infra-templates.js';
 import { costWords, policyWords } from './infra-pulls.js';
+import { RUNNER_WORKFLOW } from './infra-runner.js';
 import { bindingLabels, sameSetting, sameWords, settingWords } from './infra-setting-words.js';
 
 /** At most this many edits in one change. */
@@ -561,8 +562,10 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
  * The pull request's description: what changes in words, the plan's summary, and where it came from. It names no
  * task, so it closes none.
  * `empty` is a change that starts an environment from nothing (BRK-291): its first file has only what the change adds.
+ * `runner` is what it does about the apply workflow (BRK-307, runnerWords).
  * @param {{ environment: string, lines: string[], dropped?: Array<{ line: string }>, files?: string[],
- *   preview: Record<string, any> | null, page?: string | null, created?: boolean, empty?: boolean }} args
+ *   preview: Record<string, any> | null, page?: string | null, created?: boolean, empty?: boolean,
+ *   runner?: { state: string, note?: string | null } | null }} args
  */
 export function changeBody({
   environment,
@@ -573,6 +576,7 @@ export function changeBody({
   page = null,
   created = false,
   empty = false,
+  runner = null,
 }) {
   const out = [
     empty
@@ -589,6 +593,8 @@ export function changeBody({
     for (const f of files) out.push(`- \`${f}\``);
     out.push('');
   }
+  const workflow = runnerWords(runner);
+  if (workflow) out.push(workflow, '');
   for (const d of dropped) out.push(`Dropped: ${d.line}.`);
   if (dropped.length) out.push('');
   if (preview) {
@@ -607,6 +613,18 @@ export function changeBody({
   out.push('---', PROPOSED_LINE);
   if (page) out.push('', `[See it on the board](${page})`);
   return out.join('\n');
+}
+
+/**
+ * What a change does about the apply workflow (BRK-307), in its pull request's words: the line under what changes
+ * when it adds or updates it, the note before Approve when it can't, or null when there's nothing to say.
+ * @param {{ state: string, note?: string | null } | null} runner
+ */
+export function runnerWords(runner) {
+  if (runner?.state === 'added') return `Adds the apply workflow, \`${RUNNER_WORKFLOW}\`, so an approved plan can run.`;
+  if (runner?.state === 'updated')
+    return `Updates the apply workflow, \`${RUNNER_WORKFLOW}\`, so an approved plan can run.`;
+  return runner?.note ? `**Before Approve:** ${runner.note}` : null;
 }
 
 /** Whether a path is one a change may write a code file at: not in the desired-state folder or the workflows. */

@@ -101,6 +101,8 @@ export function infraFilesIn(files) {
  *   the policy file, when the pull request changes it, with what it loosens and tightens when it checks (WEB-123)
  * @property {Array<{ path: string, message: string }>} problems files no environment could have
  * @property {number} skipped environments past MAX_ENVIRONMENTS_PER_PULL, not planned
+ * @property {string | null} [runner] what the apply workflow still needs before Approve (BRK-307): a waiting note,
+ *   never a failure
  */
 
 /** Whether one environment's part fails the check: a file that doesn't check, or a plan the policy refuses. */
@@ -277,6 +279,7 @@ export function infraSummary(check, { page = null, outside = false } = {}) {
   for (const e of check.environments) lines.push(...(outside ? brief(e) : section(e)), '');
   if (check.skipped)
     lines.push(`${plural(check.skipped, 'more environment')} not planned: split the pull request to see them.`, '');
+  if (check.runner) lines.push(`**Before Approve:** ${check.runner}`, '');
   lines.push(
     '---',
     'Merging applies nothing. Once it’s merged, the board plans from the default branch, and the plan waits for you on the board unless the policy lets it through.',

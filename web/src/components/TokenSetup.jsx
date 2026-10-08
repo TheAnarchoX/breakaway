@@ -9,8 +9,9 @@ import { ProviderConnect } from './ProviderConnect.jsx';
  * Guided token setup (BRK-304): a checklist for one repository's infrastructure tokens, on its Connections card and in
  * Kickoff's Run it step. The board's read token for each provider its environments run on, with a link that opens the
  * provider's create-token page prefilled; then, for each GitHub environment the apply workflow runs in, the
- * environment, its branch rule, and a secret of the right name, checked through the GitHub App by name only. The board
- * never asks for a write token: the owner makes it from the list and adds it on GitHub.
+ * environment, its branch rule, and a secret of the right name, checked through the GitHub App by name only; then the
+ * apply workflow on the default branch (BRK-307). The board never asks for a write token: the owner makes it from the
+ * list and adds it on GitHub.
  *
  * `paste` shows the read token's paste field when it isn't connected (Kickoff; Connections has it on the provider's
  * own row). `onChange` hears each fresh checklist, so Kickoff can tell when it's done.
@@ -163,6 +164,12 @@ export function TokenSetup({ repo, paste = false, onChange }) {
             )}
           </li>
         ))}
+        {view.workflow && (
+          <li key="workflow" class="token-step">
+            <StepHead ok={view.workflow.ok === true} label={view.workflow.label} />
+            {view.workflow.ok !== true && view.workflow.fix && <p class="token-fix">{view.workflow.fix}.</p>}
+          </li>
+        )}
       </ol>
       {error && (
         <p class="field-error" role="alert">

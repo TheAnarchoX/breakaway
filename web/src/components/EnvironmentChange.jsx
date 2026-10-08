@@ -1587,6 +1587,18 @@ function ChangeCard({ ch }) {
           <li key={l}>{l}</li>
         ))}
       </ul>
+      {(change.runner?.state === 'added' || change.runner?.state === 'updated') && (
+        <p class="meta">
+          {change.runner.state === 'added' ? 'Adds' : 'Updates'} the apply workflow,{' '}
+          <code>.github/workflows/breakaway-infra.yml</code>, so an approved plan can run.
+        </p>
+      )}
+      {change.runner?.note && ['checking', 'waiting', 'merging', 'cant'].includes(card.state) && (
+        <p class="change-runner" role="note">
+          <TriangleAlert size={14} aria-hidden="true" />
+          <span>{change.runner.note}</span>
+        </p>
+      )}
       {card.state === 'checking' && <p class="meta">The board’s plan check is running on its pull request.</p>}
       {card.state === 'waiting' && plansNothing(change) && (
         <p class="meta">Nothing changes in {env.name}: merging records it as code.</p>
