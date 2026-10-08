@@ -88,6 +88,9 @@ export function infraFilesIn(files) {
  * @property {string | null} problem
  * @property {import('./infra-desired.js').DesiredError | null} error
  * @property {Record<string, any> | null} preview
+ * @property {{ name: string, from: 'change' | 'desired', label?: string } | null} [target] the target an environment
+ *   with none is planned with (BRK-298): its change's, or the one of the provider's target kind (`label`, a Worker)
+ *   its file makes
  */
 
 /**
@@ -137,6 +140,12 @@ export function policyWords(policy) {
   if (policy.outcome === 'allowed') return `Let through by ${which}’s rule “${policy.rule}”.`;
   return `Waits for you, by ${which}.`;
 }
+
+/** Which target an environment with none was planned with (BRK-298). */
+export const targetWords = (/** @type {EnvironmentCheck} */ e) =>
+  e.target?.from === 'change'
+    ? `${e.environment} has no target yet: planned with ${e.target.name}, the target its change gives it.`
+    : `${e.environment} has no target yet: planned with ${e.target?.name}, the one ${e.target?.label ?? 'target'} its file makes.`;
 
 /** One environment's line in the title. */
 function shortLine(/** @type {EnvironmentCheck} */ e) {
@@ -191,6 +200,7 @@ function section(/** @type {EnvironmentCheck} */ e) {
     return lines;
   }
   const p = e.preview ?? {};
+  if (e.target) lines.push(targetWords(e), '');
   if (!p.changes) {
     lines.push(`Nothing to change: ${e.environment} already matches \`${e.path}\`.`);
     return lines;

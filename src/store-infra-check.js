@@ -63,9 +63,12 @@ export const infraCheckMethods = {
       const policyFile = body.policy === null ? null : checkPolicyFile(body.policy);
       if (policyFile && 'error' in policyFile) return unchecked(POLICY_PATH, policyFile.error);
 
+      // An environment with no target plans with the one Worker its file makes, as its pull request's check does.
+      const at = this.infraPlanTarget(env, desired.desired);
+      if (at.problem) return unchecked(desiredPath(env.name), { line: null, field: 'target', message: at.problem });
       this.countInfraCheck(env.repo);
       const preview = await this.previewInfraPlan(
-        env,
+        at.env,
         desired.desired,
         policyFile && 'policy' in policyFile ? { policy: policyFile.policy, from: 'repository' } : {},
       );
