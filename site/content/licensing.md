@@ -30,14 +30,29 @@ A company funded by venture capital can’t get an exception, whatever its size.
 
 ## How to ask
 
-Open a [licence exception request](https://github.com/TheAnarchoX/breakaway/issues/new?template=licence-exception.yml) on breakaway’s GitHub. The form asks for:
+There are two ways. Asking in public comes first: everyone can see who asks and what the owner answers.
+
+1. **In public, on GitHub.** Open a [licence exception request](https://github.com/TheAnarchoX/breakaway/issues/new?template=licence-exception.yml) on breakaway’s GitHub.
+2. **In private, by email**, if you’d rather not ask in public. Write to the owner at this address, with this subject:
+
+```
+theanarchox@proton.me
+```
+
+```
+breakaway licence exception: <who you are>
+```
+
+Or [start the email in your mail app](mailto:theanarchox@proton.me?subject=breakaway%20licence%20exception%3A%20), with the subject filled in.
+
+Either way, say:
 
 - **Who you are**: your group’s name, and a link to its site or its work.
 - **What kind of group you are**: a worker co-op, a digital rights or privacy group, or something else, and why it fits.
 - **How you’re owned and funded**: who owns the group, and whether any of its money comes from venture capital.
 - **What you’d use breakaway for**: the work it would run, and roughly how many people would use it.
 
-A request on GitHub is public, so put nothing private in it. The owner answers on the request. A request isn’t a licence until the owner grants it in writing.
+A request on GitHub is public, so put nothing private in it; an email stays between you and the owner. The owner answers where you asked. A request isn’t a licence until the owner grants it in writing.
 
 ## Releases before 2.0.0
 
