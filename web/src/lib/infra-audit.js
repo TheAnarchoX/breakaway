@@ -52,6 +52,12 @@ const ENVIRONMENT_WORDS = {
 const PLAN_OUTCOME = { waiting: 'waiting for you' };
 
 /**
+ * A plan's state as an outcome when an envelope moved it (WEB-125): an envelope's act passes through waiting and is
+ * approved at once, so it never waits for the owner.
+ */
+const ENVELOPE_PLAN_OUTCOME = { waiting: 'inside its envelope' };
+
+/**
  * What the deploy flow recorded (BRK-195), from its summary's first words: it deploys, never applies, so its entries
  * read in the release flow's words.
  */
@@ -67,7 +73,7 @@ const ACTOR = {
 
 /**
  * An entry's label and outcome in words, with no outcome that only repeats the label.
- * @param {{ kind: string, outcome?: string | null, summary?: string | null }} e
+ * @param {{ kind: string, outcome?: string | null, summary?: string | null, by?: string | null }} e
  * @returns {{ label: string, outcome: string }}
  */
 export function auditWords(e) {
@@ -86,7 +92,10 @@ export function auditWords(e) {
   if (run) return run;
   const label = AUDIT_LABEL[e.kind] ?? e.kind;
   if (e.kind === 'lock-release' && outcome === 'released') return { label, outcome: '' };
-  if (e.kind === 'plan') return { label, outcome: PLAN_OUTCOME[outcome] ?? outcome };
+  if (e.kind === 'plan') {
+    const words = e.by === 'envelope' ? ENVELOPE_PLAN_OUTCOME : PLAN_OUTCOME;
+    return { label, outcome: words[outcome] ?? outcome };
+  }
   return { label, outcome: outcome.toLowerCase() === label.toLowerCase() ? '' : outcome };
 }
 
