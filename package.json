@@ -2,7 +2,7 @@
   "name": "breakaway",
   "version": "2.0.0",
   "description": "The task board for you and your coding agents: a Cloudflare Worker, its web app, Taskwarrior sync, and the CLI (npx breakaway).",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "bin": {
     "breakaway": "scripts/tasks.mjs"

@@ -4,7 +4,7 @@ This file is for breakaway's own repository. If `git remote get-url origin` does
 
 ## Project context
 
-- **breakaway is a task board for you and your coding agents**: they claim the work, you merge it. It's a Cloudflare Worker with one Durable Object (`src/`), a Preact web app (`web/`), Taskwarrior sync, and a CLI. Each install runs on its owner's own Cloudflare account and can track several repositories. The licence is FSL-1.1-Apache-2.0, and the repository is public.
+- **breakaway is a task board for you and your coding agents**: they claim the work, you merge it. It's a Cloudflare Worker with one Durable Object (`src/`), a Preact web app (`web/`), Taskwarrior sync, and a CLI. Each install runs on its owner's own Cloudflare account and can track several repositories. The licence is PolyForm Noncommercial 1.0.0 from 2.0.0 (releases before it stay FSL-1.1-Apache-2.0; `LICENSING.md` says it in plain words), and the repository is public.
 - **Work lives on the board** that tracks this repository. Use the [`tasks` skill](.agents/skills/tasks/SKILL.md) and the CLI, `npx breakaway`, to claim, comment, and hand over. breakaway's areas, with their work-ID prefixes: board (`BRK`), web (`WEB`), docs (`DOC`), launch (`LCH`), brand (`ID`), and cli (`CLI`). Ideas (`IDEA`) and routine runs (`RUN`) are shared by every repository on the install.
 - **Agents the board starts** follow [`prompts/breakaway.md`](prompts/breakaway.md), which starts with the board's shared core, [`prompts/core.md`](prompts/core.md).
 - **Specs** go in `docs/specs/<ID>-<slug>.md`: the problem, what you chose and why, what's out of scope, open questions, done when, and how to check it. A small change needs none; the task's description is enough.

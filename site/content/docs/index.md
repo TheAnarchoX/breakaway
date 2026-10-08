@@ -48,6 +48,6 @@ These are the claims the docs, the README, and this site all make, and the board
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board, a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
-- **Free, and the source is public.** The licence is FSL-1.1-Apache-2.0.
+- **Free for personal and noncommercial use, and the source is public.** The licence is PolyForm Noncommercial 1.0.0 ([`LICENSING.md`](https://github.com/TheAnarchoX/breakaway/blob/main/LICENSING.md)).
 
 > **Where the source of truth is.** These pages are a guide. The repository’s [`docs/tasks.md`](https://github.com/TheAnarchoX/breakaway/blob/main/docs/tasks.md) is the manual the code is written against, and `npx breakaway help` always lists the commands your version has.
