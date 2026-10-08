@@ -9975,6 +9975,102 @@ a.pl-mention {
   justify-content: flex-end;
 }
 
+/* Have an agent do it, for a new environment (WEB-121): the button's line, then the wizard's steps and choices. */
+.env-agent-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.env-agent-head {
+  display: grid;
+  gap: 12px;
+}
+.env-agent-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.env-agent-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.env-agent-steps li.now {
+  color: var(--text);
+  font-weight: 600;
+}
+.env-agent-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.env-agent-steps li.now .env-agent-dot {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg-2);
+}
+.env-agent-steps li.done .env-agent-dot {
+  border-color: var(--text);
+  color: var(--text);
+}
+.env-agent-q {
+  margin: 0;
+  font-size: 16px;
+}
+.env-agent-q:focus {
+  outline: none;
+}
+.env-agent-how {
+  display: grid;
+  gap: 8px;
+}
+.env-agent-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.env-agent-option:hover {
+  border-color: var(--line-strong);
+}
+.env-agent-option:has(input:checked) {
+  border-color: var(--text);
+}
+.env-agent-option input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.env-agent-option > span {
+  display: grid;
+  gap: 2px;
+}
+.env-agent-prompt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.env-agent-facts {
+  margin: 0;
+}
+
 /* ---------- cost and budgets (WEB-65) ---------- */
 
 /* An environment's month against its budget: the amount, a bar of how much is used, and its state in words. */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
+  Bot,
   CircleCheck,
   CircleDashed,
   CircleX,
@@ -34,6 +35,7 @@ import { BudgetLine, CostOverview } from '../components/InfraCosts.jsx';
 import { InventoryRefresh } from '../components/InventoryRefresh.jsx';
 import { StaleLine } from '../components/InventoryStale.jsx';
 import { AccountAlerts } from '../components/AccountAlerts.jsx';
+import { EnvironmentAgentDialog } from '../components/EnvironmentAgent.jsx';
 
 /**
  * The Infrastructure view (WEB-60; docs/specs/IDEA-19-architect.md, "Views"): each repository's environments with
@@ -459,6 +461,7 @@ export function InfrastructureView() {
     }),
   );
   const [adding, setAdding] = useState(false);
+  const [wizard, setWizard] = useState(false);
   const load = async () => {
     setState((s) => ({ ...s, loading: true }));
     try {
@@ -583,6 +586,21 @@ export function InfrastructureView() {
       <Dialog open={adding} onClose={() => setAdding(false)} labelledBy="infra-add-title">
         <div class="sheet">
           <h2 id="infra-add-title">Add an environment</h2>
+          <div class="env-agent-start">
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setAdding(false);
+                setWizard(true);
+              }}
+            >
+              <Bot size={16} aria-hidden="true" />
+              Have an agent do it
+            </button>
+            <span class="meta">Describe what it needs, or let an agent work it out from the repository.</span>
+          </div>
           {adding && (
             <AddEnvironmentForm
               onDone={(env) => {
@@ -593,6 +611,7 @@ export function InfrastructureView() {
           )}
         </div>
       </Dialog>
+      <EnvironmentAgentDialog open={wizard} onClose={() => setWizard(false)} onAdded={replace} />
     </div>
   );
 }
