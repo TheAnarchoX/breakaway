@@ -413,6 +413,9 @@ async function handleApi(request, env, url, ctx) {
       }),
     );
   }
+  // Every open task's footprint at once (WEB-130), for the Graph view; one task's is GET /api/tasks/:id/footprint.
+  if (parts[0] === 'footprints' && parts.length === 1 && method === 'GET')
+    return send(await s.footprintsApi(url.searchParams.get('repo') || null));
   if (parts[0] === 'stats' && parts.length === 1 && method === 'GET')
     return send(
       await s.statsApi({

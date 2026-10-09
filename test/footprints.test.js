@@ -448,3 +448,49 @@ describe('a footprint in words (IDEA-55 section 5)', () => {
     expect(claimLines({ released: [] })).toEqual(['Nothing to release.']);
   });
 });
+
+describe('every open task’s footprint at once, for the Graph view (WEB-130)', () => {
+  let one;
+  let two;
+  let none;
+  let shut;
+  beforeAll(async () => {
+    const created = await body(
+      await api('tasks', {
+        method: 'POST',
+        body: [
+          { description: 'Tune the doohickey', brief: 'Change apps/doohickey/tune.js.', project: 'ops', force: true },
+          { description: 'Test the doohickey', brief: 'Cover apps/doohickey/tune.js.', project: 'ops', force: true },
+          { description: 'Think about the doohickey', project: 'ops', force: true },
+          { description: 'Retire the doohickey', brief: 'Delete apps/doohickey/old.js.', project: 'ops', force: true },
+        ],
+      }),
+    );
+    [one, two, none, shut] = created.tasks.map((t) => t.wid);
+    expect((await api(`tasks/${shut}/done`, { method: 'POST', body: { note: 'not needed' } })).status).toBe(200);
+  });
+
+  it('lists each open task’s footprint by repository, with the shared files and the hit rate', async () => {
+    const res = await body(await api('footprints'));
+    expect(res.status).toBe(200);
+    const [repo] = res.repos;
+    expect(repo).toMatchObject({ repo: expect.any(String), shared: expect.any(Array) });
+    expect(repo.hitRate).toMatchObject({ count: expect.any(Number), trusted: expect.any(Boolean) });
+    const of = (wid) => repo.footprints.find((f) => f.task === wid);
+    expect(of(one)).toMatchObject({ kind: 'predicted', patterns: ['apps/doohickey/tune.js'] });
+    expect(of(one).paths[0]).toMatchObject({ pattern: 'apps/doohickey/tune.js', state: 'predicted' });
+    expect(of(two).patterns).toEqual(['apps/doohickey/tune.js']);
+    expect(of(none)).toMatchObject({ kind: 'unknown', patterns: [] });
+    expect(of(shut)).toBeUndefined();
+    const narrowed = await body(await api(`footprints?repo=${encodeURIComponent(repo.repo)}`));
+    expect(narrowed.repos.map((r) => r.repo)).toEqual([repo.repo]);
+    expect((await body(await api('footprints?repo=acme%2Fnowhere'))).repos).toEqual([]);
+  });
+
+  it('only reads: a task’s prediction isn’t stored by it', async () => {
+    const uuid = await inStore((s) => s.resolve(one));
+    await inStore((s) => s.sql.exec('DELETE FROM footprints WHERE uuid = ?', uuid));
+    await api('footprints');
+    expect(await sql('SELECT kind FROM footprints WHERE uuid = ?', uuid)).toEqual([]);
+  });
+});
