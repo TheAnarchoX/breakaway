@@ -1270,6 +1270,10 @@ export const actions = {
   remove: (t) => change(() => api(path(t), { method: 'PATCH', body: { status: 'deleted' } }), `${ref(t)} is deleted.`),
   update: (t, changes, message = 'Saved.') => change(() => api(path(t), { method: 'PATCH', body: changes }), message),
   comment: (t, text) => change(() => api(`${path(t)}/comments`, { method: 'POST', body: { text } }), 'Comment added.'),
+  /** Keeps the owner's words on the task, quoted, for every agent that picks it up (BRK-284). */
+  quote: (t, text, from = 'comment') =>
+    change(() => api(`${path(t)}/said`, { method: 'POST', body: { text, from } }), 'Kept for agents.'),
+  unquote: (t, q) => change(() => api(`${path(t)}/said/${q.id}`, { method: 'DELETE', body: {} }), 'Quote removed.'),
   /**
    * Submits the owner's answers (the board finishes the task and unblocks what waited; a kickoff's IDEA stays open).
    * With `carryOn` (a kickoff's Send answers and carry on, BRK-134), the board also starts the next run on it, or

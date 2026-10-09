@@ -199,7 +199,7 @@ Never put personal data about anyone (accounts, handles, names) or any secret in
 For agents this is the [`tasks` skill](../.agents/skills/tasks/SKILL.md). In short:
 
 1. **Pick.** `npx breakaway next --claim --as <you>` takes the best ready task in one step, or `claim <ID>` if you were asked for a specific one. A `409` means someone else has it or it's blocked; pick another.
-2. **Read.** `show <ID>`: the description, done when, comments, spec, what it waits for and what it holds up. Read `AGENTS.md` and the [decision log](decisions.md) if you haven't this session.
+2. **Read.** `show <ID>`: [the owner's words](#the-owners-words) first, when the task has some, then the description, done when, comments, spec, what it waits for and what it holds up. Read `AGENTS.md` and the [decision log](decisions.md) if you haven't this session.
 3. **Work** on a branch. Check in on the [peloton](#the-peloton) first, so agents running at the same time know what you'll touch. Add comments as you learn things (`comment <ID> "…"`; `note` is the same), and add new tasks for work you find (`add`), with `--depends` where one waits for another.
 4. **Hand over.** Open the pull request with `Closes <ID>.` in its description, then `modify <ID> --pr <number>` and a `comment` with the result. The board shows the task **In review** with the pull request's checks and reviews, and marks it done when the pull request merges ([GitHub](#github)). If you stop before a pull request, `release <ID>` with a note saying where you got to.
 
@@ -217,6 +217,7 @@ npx breakaway list --ready         # ready and unclaimed (also --blocked --activ
 npx breakaway show BRK-12          # everything about one task
 npx breakaway next --claim --as claude-brk-12
 npx breakaway comment BRK-12 "The inbox sorts by age; the oldest ping is first."
+npx breakaway quote BRK-12 "Oldest first, always." --from "peloton #12"   # the owner's exact words, kept on a task you hold
 npx breakaway done BRK-12 --pr 31 --note "The inbox sorts by age."
 npx breakaway horizon close --dry-run   # what closing now would move; drop --dry-run to do it (owner only)
 npx breakaway add "Check the inbox order after the deploy" --project board --tag owner --horizon now --depends BRK-12
@@ -313,7 +314,7 @@ The three headers are what the CLI reads from its settings and the checkout:
 | `X-Breakaway-Agent: <name>` | The name the client claims and comments as, as `BREAKAWAY_AGENT` is. Every tool that writes refuses without it, and it can't be `owner` or `board`. |
 | `X-Breakaway-Repo: <slug>` | The repository the client works in, as the checkout's `origin` is. It scopes `list_tasks`, `next_task`, `add_task`, and `list_specs`, and `claim_task` refuses another repository's task. A slug the board doesn't track is refused when the client connects. |
 
-**The tools** are an agent's: `health`, `list_tasks`, `show_task`, `next_task` (`claim: true` claims it too), `claim_task`, `release_task`, `comment`, `add_task`, `modify_task`, `ping_owner`, `review`, `peloton`, `peloton_post` (`checkin`, `step`, `reply`, `note`, `ask`, `propose`, `review`), `messages`, `list_specs`, `show_spec`, `features`, and `pull_request`. The read-only ones are marked so a client can run them without asking. A refused call (a `409` claim, a `403`) comes back as the tool's error with the board's own message. Beside them, **resources** (`breakaway://task/<ID>`, `breakaway://spec/<path>`, and `breakaway://prompt`, the repository's agent prompt with the core) and **prompts** (`work_on_task` for a work ID, `shape_idea` for an `IDEA-`) give a client that never read the `tasks` skill the same loop.
+**The tools** are an agent's: `health`, `list_tasks`, `show_task`, `next_task` (`claim: true` claims it too), `claim_task`, `release_task`, `comment`, `quote_owner`, `add_task`, `modify_task`, `ping_owner`, `review`, `peloton`, `peloton_post` (`checkin`, `step`, `reply`, `note`, `ask`, `propose`, `review`), `messages`, `list_specs`, `show_spec`, `features`, and `pull_request`. The read-only ones are marked so a client can run them without asking. A refused call (a `409` claim, a `403`) comes back as the tool's error with the board's own message. Beside them, **resources** (`breakaway://task/<ID>`, `breakaway://spec/<path>`, and `breakaway://prompt`, the repository's agent prompt with the core) and **prompts** (`work_on_task` for a work ID, `shape_idea` for an `IDEA-`) give a client that never read the `tasks` skill the same loop.
 
 **What's never a tool**, whatever a client asks: `done` (pull requests close tasks), `force` on anything, `autostart`, starting agents, chases, routines, repositories, merging, releasing, promoting, rolling back, answering a decision, resolving a ping, messaging an agent, settings, and updates. Those are yours, on the board or with your own CLI.
 
@@ -560,6 +561,16 @@ How they work:
 **Deploys need one more permission.** An App made before `CLD-32` can't read Deployments, so the board shows none until you accept the new permission: on GitHub, Settings → Developer settings → GitHub Apps → your board's App → Permissions & events, set **Deployments** to read-only and subscribe to **Deployment**, **Deployment status**, and **Release**, save, then accept the request on the installation (the App's install page shows it). Without it the board carries on and just has no deploys. An App made from the board's manifest already has them.
 
 Because the App can merge, a leaked key matters more: if it leaks, generate a new private key in the App's settings on GitHub, and store it as the board's `GITHUB_KEY` secret as one line of base64 PKCS#8 (`node -e "console.log(require('crypto').createPrivateKey(require('fs').readFileSync('key.pem')).export({type:'pkcs8',format:'der'}).toString('base64'))"`, piped into `wrangler secrets-store secret update … --remote`, or `wrangler secret put` on an install without a Secrets Store), then delete the old key on GitHub. To disconnect, uninstall the App on GitHub.
+
+## The owner's words
+
+The way you put something is often the best brief an agent gets: "don't make me open a code editor" settles more than a paragraph about it. So a task keeps your words, quoted, and shows them first: at the top of the task on the board, before the description in `show`, in what `claim` prints (and the MCP server's `claim_task`), and in the payload of every agent the board starts on it. Every agent that picks the task up reads them before anything else.
+
+- **Yours.** Under one of your own comments on the board, **Keep for agents** quotes it on the task. Only the signed-in board adds your own words (`POST /api/tasks/<ID>/said` with your cookie), so the token every agent holds can't put words in your mouth.
+- **Quoted by an agent.** An agent that holds the task (or may edit it, as a general or chase agent) quotes what you wrote in a message, a peloton post, a ping, a decision, or a comment: `npx breakaway quote <ID> "<your words>" --from message|peloton|ping|decision|comment`, with a pointer when it has one (`--from "peloton #12"`), or the MCP server's `quote_owner`. The quote is marked as that agent's, with where it came from, so you can tell your own words from an agent's copy of them.
+- **Removing one** is yours: **Remove** beside it on the board. A task keeps up to 20 quotes of up to 2,000 characters, and the same words only once.
+
+Storage is plain properties beside the comments (`said_<epoch>`, `said_from_<epoch>`, `said_by_<epoch>`), so Taskwarrior and `task sync` carry them.
 
 ## Decisions
 

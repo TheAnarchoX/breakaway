@@ -2985,6 +2985,22 @@ a code {
   border-style: dashed;
   color: var(--muted);
 }
+/* The owner's words on a task (BRK-284). */
+.said-quote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--muted);
+}
+.note .said-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.note-keep {
+  margin-top: 4px;
+}
 .section-head {
   display: flex;
   align-items: center;

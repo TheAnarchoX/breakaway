@@ -1153,6 +1153,14 @@ async function handleApi(request, env, url, ctx) {
       if (parts.length === 3 && method === 'GET') return send(await s.messagesApi(ref));
       if (parts[3] === 'waiting' && parts.length === 4 && method === 'GET')
         return send(await s.messagesWaitingApi(ref, url.searchParams.get('agent')));
+    } else if (action === 'said') {
+      // The owner's words (BRK-284): their own quote and removing one are the signed-in board's; an agent quotes with its name.
+      if (parts.length === 3 && method === 'POST') return send(await s.quoteOwner(ref, body, via === 'cookie'));
+      if (parts.length === 4 && method === 'DELETE') {
+        if (via !== 'cookie')
+          return json(403, { error: "only the owner, on the signed-in web board, removes the owner's words" });
+        return send(await s.unquoteOwner(ref, parts[3]));
+      }
     } else if (action === 'decision' && parts[3] === 'answers' && parts.length === 4) {
       // Send answers and carry on starts an agent (BRK-134): the owner's press on the signed-in board, never the bearer token.
       if (method === 'POST' && body.carryOn && via !== 'cookie')

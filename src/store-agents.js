@@ -224,6 +224,20 @@ const TRIGGER_TEXT = {
 };
 
 /**
+ * The owner's words quoted on a task (BRK-284), as the payload and an agent's prompt show them: each quote, then where
+ * it came from and who put it there.
+ * @param {{ text: string, from: string, by: string, at: string | null }[]} said
+ */
+export function saidLines(said) {
+  return said.flatMap((q) => [
+    ...String(q.text)
+      .split('\n')
+      .map((l) => `> ${l}`.trimEnd()),
+    `  (${q.from}, ${q.by === 'owner' ? 'from the owner' : `quoted by ${q.by}`}${q.at ? `, ${q.at.slice(0, 10)}` : ''})`,
+  ]);
+}
+
+/**
  * What the routine gets: the work ID it acts on, and context it may read. `repo` is the task's registered
  * repository: the agent checks its checkout is that one before it claims (IDEA-14 section 4).
  */
@@ -265,6 +279,8 @@ export function firePayload(
     ...(actKey ? [`Act key: ${actKey}`] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
     ...(attachments > 0 ? [`Attachments: ${attachments}`] : []),
+    // The owner's words quoted on the task (BRK-284), first of the context: every agent that picks it up reads them.
+    ...(task.ownerSaid?.length ? ['', 'The owner said (quoted on the task):', ...saidLines(task.ownerSaid)] : []),
     ...(note
       ? [
           '',

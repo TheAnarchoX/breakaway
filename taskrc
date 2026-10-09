@@ -38,7 +38,8 @@ uda.alert.label=Alert
 
 # The task structure (docs/specs/IDEA-5-task-structure.md): the current description and what done
 # looks like, in Markdown. Comments are annotations; `brief_by` and `by_<epoch>` (who wrote it) are
-# plain properties Taskwarrior keeps without declaring them.
+# plain properties Taskwarrior keeps without declaring them, and so are the owner's words, quoted:
+# `said_<epoch>`, `said_from_<epoch>` (where they said it), and `said_by_<epoch>` (who quoted them).
 uda.brief.type=string
 uda.brief.label=Description
 uda.done_when.type=string

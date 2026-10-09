@@ -1056,6 +1056,44 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
+   * Puts the owner's words on a task, quoted (BRK-284): shown first on the task and handed to every agent that claims
+   * it, before the description. `owner` is true only for the signed-in web board, so the owner's own quote can't be
+   * forged with the bearer token every agent holds. Anyone else is an agent, named in `by`, quoting the owner from a
+   * message, a peloton post, a ping, a decision, or a comment on a task it holds (or may edit, as a general or chase
+   * agent): the quote is marked as that agent's.
+   * @param {string} ref
+   * @param {{ text?: unknown, from?: unknown, by?: unknown }} body
+   * @param {boolean} owner
+   */
+  quoteOwner(ref, body, owner) {
+    return this.run(() => {
+      const uuid = this.resolve(ref);
+      const map = this.tasks.get(uuid);
+      if (map.status !== 'pending') throw new Conflict(`${label(this.detail(uuid))} is ${map.status}`);
+      if (owner)
+        return ok({
+          task: this.change(uuid, { said: { text: body?.text, from: body?.from ?? 'board', by: 'owner' } }),
+        });
+      const by = String(body?.by ?? '').trim();
+      if (!by || by === 'owner' || by === 'board')
+        throw new Forbidden(
+          'only the owner, on the board, adds their own words; an agent quotes them with its name and where they came from',
+        );
+      const name = agentName(by);
+      if (body?.from === undefined || body?.from === null || String(body.from).trim() === 'board')
+        throw new InputError('say where the owner said it: message, peloton, ping, decision, or comment');
+      if (map.claim !== name && !this.crossTaskRightsOf(name, uuid))
+        throw new Forbidden(`${name} doesn't hold ${label(this.detail(uuid))}: quote the owner on a task you hold`);
+      return ok({ task: this.change(uuid, { said: { text: body?.text, from: body.from, by: name } }) });
+    });
+  }
+
+  /** Removes a quote of the owner's words from a task: the owner's, on the signed-in board only (BRK-284). */
+  unquoteOwner(ref, id) {
+    return this.run(() => ok({ task: this.change(this.resolve(ref), { unsay: id }) }));
+  }
+
+  /**
    * The edit rule for the description and done when (IDEA-5): the owner can edit anywhere; an agent only
    * on a task it made (it wrote the description) or is refining (`*-refine-*`, claimed by it). Everyone
    * else comments. A request with no `by` is the owner's (the web board and the CLI's owner).
