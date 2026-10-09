@@ -37,6 +37,7 @@ import { screenshotsIn } from './chase-digest.js';
 import { budgetAfterSync, countsOf } from './github-budget.js';
 import { syncPace } from './github-pace.js';
 import { install } from './install.js';
+import { OWNER } from './permissions.js';
 import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
 import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
@@ -45,6 +46,8 @@ import { buildFlow, compareFacts, NEXT_STEPS, packageOf, pipelineOf, stableOf } 
 import { candidate, productionSha } from './promote.js';
 import { checkInputs, dispatchOf, validRef } from './workflows.js';
 
+/** The board's presses on a pull request (WEB-132): Publish, Update branch, Merge, and Merge when green on and off. */
+const PRESSES = ['pr_published', 'pr_branch_updated', 'pr_merged_by_owner', 'pr_auto_merge_on', 'pr_auto_merge_off'];
 const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 100 };
 const MAX_COMPARES = 10;
 const MAX_DETAILS = 20;
@@ -1614,6 +1617,8 @@ export const githubMethods = {
           infra: this.infraPullOut(repo.slug, p.number),
           // Its risky-path review (BRK-280); null when it touches nothing the repository lists.
           riskReview: this.riskReviewOut(repo.slug, p.number),
+          // The latest press on the board (WEB-132): who merged, published, updated it, or set Merge when green.
+          pressed: this.pullPressed(repo.slug, p.number),
           workers,
           deploys: workers.length > 0,
           // null: the repository has no deploy pipeline, so the page says nothing about deploys.
@@ -1649,6 +1654,38 @@ export const githubMethods = {
       if (!(error instanceof GitHubError)) throw error;
       return { status: error.status === 404 ? 404 : 502, body: { error: error.message } };
     }
+  },
+
+  /**
+   * The latest press of Merge, Publish, Update branch, or Merge when green on pull request `number` (WEB-132), from
+   * Activity's events: who pressed it (the owner, or a person by handle, BRK-303), when, and whether a pull request
+   * setting did it. Null when the board pressed nothing on it, or the press has aged out of the events it keeps.
+   * @param {string} slug
+   * @param {number} number
+   * @returns {{ kind: string, by: string, at: string, method: string | null, setting: boolean } | null}
+   */
+  pullPressed(slug, number) {
+    const row = this.sql
+      .exec(
+        `SELECT at, data FROM gh_events WHERE repo = ? AND json_extract(data, '$.number') = ?
+           AND json_extract(data, '$.kind') IN (${PRESSES.map(() => '?').join(', ')})
+         ORDER BY at DESC, id DESC LIMIT 1`,
+        slug,
+        Number(number),
+        ...PRESSES,
+      )
+      .toArray()[0];
+    if (!row) return null;
+    const data = JSON.parse(String(row.data));
+    return {
+      kind: data.kind,
+      // Before BRK-303 only the owner could press, so an event without `by` is theirs. BRK-331 removes this once
+      // those events have aged out.
+      by: data.by ?? OWNER,
+      at: new Date(Number(row.at)).toISOString(),
+      method: data.method ?? null,
+      setting: data.setting === true,
+    };
   },
 
   /**
