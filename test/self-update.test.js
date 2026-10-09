@@ -441,7 +441,7 @@ describe('turning self-update on', () => {
         const res = await s.selfUpdateEnable({ token: TOKEN, accountId: ACCOUNT });
         expect(res.status).toBe(400);
         expect(res.body.error).toBe(
-          'Cloudflare refused the token. Make a new one with Workers Scripts: edit and paste it here.',
+          'Cloudflare refused the token. Make a new one with Workers Editor on this board’s Worker (or the legacy Workers Scripts Edit) and paste it here.',
         );
         expect(s.selfUpdateConfig()).toBeNull();
       },
