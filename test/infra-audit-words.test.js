@@ -103,6 +103,16 @@ describe('auditActor', () => {
     expect(auditActor({ by: 'agent', agent: 'claude-acme-1' })).toBe('claude-acme-1');
     expect(auditActor({ by: 'agent' })).toBe('an agent');
   });
+
+  it('names a person by handle, and the person behind an agent (BRK-303)', () => {
+    expect(auditActor({ by: 'person', person: 'ana' })).toBe('ana');
+    expect(auditActor({ by: 'owner', person: 'owner' })).toBe('you');
+    expect(auditActor({ by: 'agent', agent: 'claude-acme-1', person: 'ana' })).toBe('claude-acme-1 for ana');
+    expect(auditActor({ by: 'agent', agent: 'claude-acme-1', person: 'owner' })).toBe('claude-acme-1');
+    expect(summaryText(auditSummary({ kind: 'lock-release', by: 'person', person: 'ana', plan: 'plan-3' }))).toBe(
+      'ana released the lock held for plan-3',
+    );
+  });
 });
 
 // A lock release reads in words, never as its raw holder (WEB-96): the plan the lock was for links to its page.

@@ -246,7 +246,7 @@ export function saidLines(said) {
     ...String(q.text)
       .split('\n')
       .map((l) => `> ${l}`.trimEnd()),
-    `  (${q.from}, ${q.by === 'owner' ? 'from the owner' : `quoted by ${q.by}`}${q.at ? `, ${q.at.slice(0, 10)}` : ''})`,
+    `  (${q.from}, ${q.by === 'owner' ? 'from the owner' : q.from === 'board' ? `${q.by}’s own words` : `quoted by ${q.by}`}${q.at ? `, ${q.at.slice(0, 10)}` : ''})`,
   ]);
 }
 
@@ -821,6 +821,7 @@ export const agentsMethods = {
         spec: d.spec,
         questions: d.decision,
         answers: d.decisionAnswers.answers,
+        by: d.decisionAnswers.by ?? null,
       },
       waiting,
       note,

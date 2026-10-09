@@ -151,6 +151,22 @@ function list(words) {
   return `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
 }
 
+/** Who pressed, from a change's `by` (BRK-303): "You" for the owner, anyone else by handle. */
+const you = (change) => (change.by && change.by !== 'owner' ? change.by : 'You');
+
+/**
+ * Who wrote a version (BRK-303): nothing for your own, a person by handle, an agent by name and who it's for.
+ * @param {{ person: string, agent: string | null, for: string | null } | undefined} who
+ */
+function whoWords(who) {
+  if (!who) return null;
+  if (who.agent) {
+    const behind = who.for ?? (who.person !== 'owner' ? who.person : null);
+    return behind ? `${who.agent} for ${behind}` : null;
+  }
+  return who.person === 'owner' ? null : who.person;
+}
+
 function describe(change) {
   switch (change.kind) {
     case 'created':
@@ -219,27 +235,27 @@ function describe(change) {
     case 'pr_merged':
       return `#${change.number} merged`;
     case 'pr_published':
-      return `You published #${change.number} for review`;
+      return `${you(change)} published #${change.number} for review`;
     case 'pr_branch_updated':
       return change.setting
         ? `Keep branches up to date updated #${change.number} with main`
-        : `You updated #${change.number} with main`;
+        : `${you(change)} updated #${change.number} with main`;
     case 'pr_merged_by_owner':
-      return `${change.setting ? 'Merge when green (your setting) merged' : 'You merged'} #${change.number} (${change.method === 'squash' ? 'squash' : 'merge commit'})`;
+      return `${change.setting ? 'Merge when green (your setting) merged' : `${you(change)} merged`} #${change.number} (${change.method === 'squash' ? 'squash' : 'merge commit'})`;
     case 'pr_auto_merge_on':
-      return `${change.setting ? 'Merge when green (your setting) set' : 'You set'} #${change.number} to merge when green (${change.method === 'squash' ? 'squash' : 'merge commit'})`;
+      return `${change.setting ? 'Merge when green (your setting) set' : `${you(change)} set`} #${change.number} to merge when green (${change.method === 'squash' ? 'squash' : 'merge commit'})`;
     case 'pr_auto_merge_off':
-      return `You turned off merge when green on #${change.number}`;
+      return `${you(change)} turned off merge when green on #${change.number}`;
     case 'promote_started':
-      return `You promoted ${change.sha7} to production${change.tasks?.length ? ` (${change.tasks.join(', ')})` : ''}`;
+      return `${you(change)} promoted ${change.sha7} to production${change.tasks?.length ? ` (${change.tasks.join(', ')})` : ''}`;
     case 'rollback_started':
-      return `You rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
+      return `${you(change)} rolled production back${change.version ? ` to ${change.version.slice(0, 8)}` : ''}: ${change.reason}`;
     case 'release_started':
-      return `You released ${change.package}@${change.prerelease} as ${change.version}${change.next && change.next !== 'patch' ? `, next ${change.next}` : ''}: it waits on npm for your approval`;
+      return `${you(change)} released ${change.package}@${change.prerelease} as ${change.version}${change.next && change.next !== 'patch' ? `, next ${change.next}` : ''}: it waits on npm for your approval`;
     case 'prerelease_started':
-      return `You started a pre-release of ${change.package} from ${change.branch}${change.merges ? `: ${change.merges} ${change.merges === 1 ? 'merge' : 'merges'} since ${change.after}` : ''}`;
+      return `${you(change)} started a pre-release of ${change.package} from ${change.branch}${change.merges ? `: ${change.merges} ${change.merges === 1 ? 'merge' : 'merges'} since ${change.after}` : ''}`;
     case 'workflow_started':
-      return `You ran ${change.workflow} on ${change.ref}${change.inputs?.length ? ` with ${change.inputs.join(', ')}` : ''}`;
+      return `${you(change)} ran ${change.workflow} on ${change.ref}${change.inputs?.length ? ` with ${change.inputs.join(', ')}` : ''}`;
     case 'pr_closed':
       return `#${change.number} closed without merging`;
     case 'ci_failed':
@@ -250,6 +266,10 @@ function describe(change) {
       return `#${change.number} approved`;
     case 'review_changes':
       return `Changes requested on #${change.number}`;
+    case 'ping':
+      return `${change.by ?? 'An agent'} pinged: ${change.text ?? change.pingKind}`;
+    case 'ping-resolved':
+      return `${you(change)} ${change.how === 'dismissed' ? 'dismissed' : 'marked as handled'} a ping`;
     case 'deployed':
     case 'rolled_back':
     case 'deploy_failed':
@@ -774,6 +794,7 @@ function Stream() {
                       </span>
                     </a>
                   ) : null}
+                  {whoWords(e.who) && <p class="event-who meta">By {whoWords(e.who)}</p>}
                   <ul class="event-changes">
                     {e.changes.map((c, i) => {
                       const Icon = ICONS[c.kind] ?? Pencil;

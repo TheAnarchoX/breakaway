@@ -174,9 +174,10 @@ export const infraShortLivedMethods = {
    * provider isn't connected, the repository is at its cap, or the name is taken. A task asks once: asking again
    * returns what it has, unless its last request was refused or its environment was removed.
    * @param {string} uuid
-   * @param {{ by: 'owner' | 'tag' }} input
+   * `person` is who pressed (BRK-303), when `by` is a press: the owner, or a person's handle.
+   * @param {{ by: 'owner' | 'tag', person?: string | null }} input
    */
-  async askShortLived(uuid, { by }) {
+  async askShortLived(uuid, { by, person = null }) {
     const map = this.tasks.get(uuid);
     if (!map) throw new AgentError('no such task', 404);
     if (closedTask(map)) throw new AgentError(`${map.wid ?? 'the task'} is closed, so it gets no environment`, 409);
@@ -259,7 +260,11 @@ export const infraShortLivedMethods = {
         repo,
         environment: name,
         environmentId: env.id,
-        by: by === 'owner' ? 'owner' : 'board',
+        ...(by === 'owner'
+          ? person && person !== 'owner'
+            ? { by: 'person', person }
+            : { by: 'owner' }
+          : { by: 'board' }),
         outcome: 'added',
         summary: `short-lived, for ${map.wid ?? 'a task'}, from ${SHORT_LIVED_PATH}${by === 'tag' ? ` (the task’s +${ASK_TAG} tag)` : ''}; nothing exists until its plan is applied`,
       });
@@ -500,7 +505,7 @@ export const infraShortLivedMethods = {
         'only the owner asks from the board; an agent tags its task +environment',
       );
       const uuid = this.resolve(ref);
-      const row = await this.askShortLived(uuid, { by: 'owner' });
+      const row = await this.askShortLived(uuid, { by: 'owner', person: this.pressedBy(body).person });
       return { status: 201, body: { shortLived: this.shortLivedOut(row) } };
     });
   },

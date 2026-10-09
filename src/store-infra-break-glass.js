@@ -10,6 +10,7 @@
  * The owner's, from the signed-in board only: the worker refuses the bearer token, and an agent's `by` is refused too.
  */
 import { AgentError } from './store-agents.js';
+import { personWords } from './store-permissions.js';
 import { OPEN_PLAN_STATES } from './infra-drift.js';
 import { breakGlassCovers, breakGlassKeys, breakGlassNote, breakGlassTask } from './infra-break-glass.js';
 import { planId } from './infra-plans.js';
@@ -81,9 +82,10 @@ export const infraBreakGlassMethods = {
    * the audit trail, makes the follow-up task in the environment's repository, and rejects the open drift plans that
    * would undo it. Marking the same changes again returns the first mark (`already`), with no second entry or task.
    * @param {string | number} ref the environment's ID or name
-   * @param {{ repo?: string | null, note?: unknown }} input
+   * `pressed` is who pressed (BRK-303), the owner unless a person did.
+   * @param {{ repo?: string | null, note?: unknown, pressed?: { by: 'owner' | 'person', person: string } }} input
    */
-  async markBreakGlass(ref, { repo = null, note } = {}) {
+  async markBreakGlass(ref, { repo = null, note, pressed = { by: 'owner', person: 'owner' } } = {}) {
     const text = breakGlassNote(note);
     const env = this.environmentRow(ref, repo);
     const refused = this.driftRefusal(env);
@@ -93,13 +95,13 @@ export const infraBreakGlassMethods = {
       throw new AgentError(`${env.name}’s drift is being marked already: wait for that to finish`, 409);
     this.breakGlassMarking.add(env.id);
     try {
-      return await this.markBreakGlassOnce(env, text);
+      return await this.markBreakGlassOnce(env, text, pressed);
     } finally {
       this.breakGlassMarking.delete(env.id);
     }
   },
 
-  async markBreakGlassOnce(env, text) {
+  async markBreakGlassOnce(env, text, pressed) {
     let diff;
     try {
       diff = await this.driftDiff(env);
@@ -167,7 +169,7 @@ export const infraBreakGlassMethods = {
         repo: env.repo,
         environment: env.name,
         environmentId: Number(env.id),
-        by: 'owner',
+        ...pressed,
         outcome: 'recorded',
         summary: `${diff.changes.length} ${diff.changes.length === 1 ? 'change' : 'changes'} made by hand, brought into code by ${wid}: ${text}`,
       });
@@ -182,7 +184,7 @@ export const infraBreakGlassMethods = {
       .toArray();
     for (const p of open)
       this.moveInfraPlan(planId(Number(p.n)), 'rejected', {
-        by: 'owner',
+        ...pressed,
         outcome: 'rejected',
         summary: `marked as break-glass: the board doesn’t undo a change made by hand; ${wid} brings it into code`,
       });
@@ -222,7 +224,7 @@ export const infraBreakGlassMethods = {
         () => this.environmentRow(ref, repo).repo,
         'only the owner marks drift as break-glass; agents read it',
       );
-      const marked = await this.markBreakGlass(ref, { repo, note: body.note });
+      const marked = await this.markBreakGlass(ref, { repo, note: body.note, pressed: this.pressedBy(body) });
       return { status: marked.already ? 200 : 201, body: marked };
     });
   },

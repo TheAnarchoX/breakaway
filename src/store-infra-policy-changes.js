@@ -15,6 +15,7 @@
  * audit trail of every environment the policy decides for.
  */
 import { AgentError } from './store-agents.js';
+import { personWords } from './store-permissions.js';
 import { GitHubError, fromBase64 } from './github.js';
 import { checkPolicyFile, DEFAULT_POLICY, evaluatePolicy, POLICY_MAX_BYTES, POLICY_PATH } from './infra-policy.js';
 import { changePullFate, LIVE_STATES } from './infra-changes.js';
@@ -87,7 +88,7 @@ export const infraPolicyChangesMethods = {
   },
 
   /** One `policy` audit entry for each environment the policy decides for: it changes what waits in each. */
-  auditPolicyChange(slug, { by, outcome, summary }) {
+  auditPolicyChange(slug, { by, person = null, outcome, summary }) {
     for (const env of this.plannableEnvironments(slug))
       this.appendInfraAudit({
         kind: 'policy',
@@ -95,6 +96,7 @@ export const infraPolicyChangesMethods = {
         environment: env.name,
         environmentId: Number(env.id),
         by,
+        person,
         outcome,
         summary,
       });
@@ -144,7 +146,7 @@ export const infraPolicyChangesMethods = {
   },
 
   /** Moves a policy change to `state`, with why, and its audit entries. */
-  movePolicyChange(row, state, { by, outcome, why = null, summary }) {
+  movePolicyChange(row, state, { by, person = null, outcome, why = null, summary }) {
     this.sql.exec(
       'UPDATE infra_policy_changes SET state = ?, why = ?, updated = ? WHERE n = ?',
       state,
@@ -152,7 +154,7 @@ export const infraPolicyChangesMethods = {
       Date.now(),
       row.n,
     );
-    this.auditPolicyChange(row.repo, { by, outcome, summary });
+    this.auditPolicyChange(row.repo, { by, person, outcome, summary });
   },
 
   /** Follows a policy change's pull request as GitHub reads it; true when it stopped being the board's open one. */
@@ -251,7 +253,7 @@ export const infraPolicyChangesMethods = {
       const checked = checkPolicyEdit(body.policy);
       if ('error' in checked)
         return refuse(422, `The policy doesn’t check: ${checked.error.message}`, { field: checked.error.field });
-      if (body.propose === true) return this.proposePolicyChange(slug, checked);
+      if (body.propose === true) return this.proposePolicyChange(slug, checked, this.pressedBy(body));
       const { policy: before } = this.infraPolicyFor(slug);
       const environments = this.policyEnvironments(slug);
       const diff = comparePolicies(before, checked.policy, {
@@ -269,8 +271,8 @@ export const infraPolicyChangesMethods = {
     });
   },
 
-  /** Propose the change: one at a time per repository. */
-  async proposePolicyChange(slug, checked) {
+  /** Propose the change: one at a time per repository. `pressed` is who pressed (BRK-303). */
+  async proposePolicyChange(slug, checked, pressed = { by: 'owner', person: 'owner' }) {
     this.infraPolicyProposing ??= new Set();
     if (this.infraPolicyProposing.has(slug))
       throw new AgentError(`The board is already proposing ${slug}’s policy: wait a moment`, 409);
@@ -284,7 +286,7 @@ export const infraPolicyChangesMethods = {
           'Connect GitHub on Connections first: the board proposes the policy as a pull request',
           409,
         );
-      return await this.openPolicyChange(slug, checked, github);
+      return await this.openPolicyChange(slug, checked, github, pressed);
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       return refuse(
@@ -297,7 +299,7 @@ export const infraPolicyChangesMethods = {
     }
   },
 
-  async openPolicyChange(slug, checked, { client, repo }) {
+  async openPolicyChange(slug, checked, { client, repo }, pressed = { by: 'owner', person: 'owner' }) {
     const branchOf = repo.defaultBranch || 'main';
     let live = this.livePolicyChangeRow(slug);
     if (live?.pull) {
@@ -375,9 +377,9 @@ export const infraPolicyChangesMethods = {
       );
     const mark = diff.loosens.length ? ' It loosens your policy.' : '';
     this.auditPolicyChange(slug, {
-      by: 'owner',
+      ...pressed,
       outcome: live ? 'replaced' : 'proposed',
-      summary: `${live ? 'replaced' : 'proposed'} by the owner as #${pull.number}: ${title}.${mark}`,
+      summary: `${live ? 'replaced' : 'proposed'} by ${personWords(pressed.person)} as #${pull.number}: ${title}.${mark}`,
     });
     // The plan check (BRK-185) posts the lines on the pull request at the next sync: ask for it now.
     await this.githubWebhook('pull_request', live ? 'synchronize' : 'opened', { slug });
@@ -415,7 +417,11 @@ export const infraPolicyChangesMethods = {
         const github = await this.changeGitHub({ repo: row.repo });
         if (!github)
           throw new AgentError('Connect GitHub on Connections first: approving merges its pull request', 409);
-        return await this.approvePolicyChange(row, github, { sha: String(body.sha), loosens: body.loosens });
+        return await this.approvePolicyChange(row, github, {
+          sha: String(body.sha),
+          loosens: body.loosens,
+          pressed: this.pressedBy(body),
+        });
       } catch (error) {
         if (!(error instanceof GitHubError)) throw error;
         return refuse(
@@ -429,7 +435,7 @@ export const infraPolicyChangesMethods = {
     });
   },
 
-  async approvePolicyChange(row, { client, repo }, { sha, loosens }) {
+  async approvePolicyChange(row, { client, repo }, { sha, loosens, pressed = { by: 'owner', person: 'owner' } }) {
     // 1. The pull request: still open, still the board's, at the head the owner saw.
     const pull = await orNull(client.get(`/pulls/${row.pull}`));
     if (!pull) {
@@ -513,9 +519,9 @@ export const infraPolicyChangesMethods = {
       return refuse(409, this.mergeRefusal(row, error), { change: change() });
     }
     this.movePolicyChange(this.policyChangeRow(row.n), 'merged', {
-      by: 'owner',
+      ...pressed,
       outcome: 'merged',
-      summary: `#${row.pull} merged on the owner’s approval (${method})${diff.loosens.length ? `, confirming what no longer waits: ${diff.loosens.join(' ')}` : ''}. Plans already made keep their answer`,
+      summary: `#${row.pull} merged on ${pressed.person === 'owner' ? 'the owner’s' : `${pressed.person}’s`} approval (${method})${diff.loosens.length ? `, confirming what no longer waits: ${diff.loosens.join(' ')}` : ''}. Plans already made keep their answer`,
     });
     // The sync reads the merged policy for the plans made after it.
     await this.githubWebhook('pull_request', null, { slug: row.repo });
@@ -562,11 +568,12 @@ export const infraPolicyChangesMethods = {
           { github: error.status },
         );
       }
+      const pressed = this.pressedBy(body);
       this.movePolicyChange(row, 'rejected', {
-        by: 'owner',
+        ...pressed,
         outcome: 'rejected',
-        why: 'rejected by the owner',
-        summary: `rejected by the owner; #${row.pull} is closed and the policy stays as it was`,
+        why: `rejected by ${personWords(pressed.person)}`,
+        summary: `rejected by ${personWords(pressed.person)}; #${row.pull} is closed and the policy stays as it was`,
       });
       return { status: 200, body: { change: this.policyChangeOut(this.policyChangeRow(row.n)) } };
     });

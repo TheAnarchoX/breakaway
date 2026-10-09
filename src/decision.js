@@ -228,8 +228,11 @@ function show(q, answer) {
   return String(value);
 }
 
-/** The plain comment the board adds when a decision is submitted. Nothing reads it back. */
-export function summarize(questions, answers) {
+/**
+ * The plain comment the board adds when a decision is submitted. Nothing reads it back. `by` is who answered
+ * (BRK-303): the owner, or the maintainer who did, by handle.
+ */
+export function summarize(questions, answers, by = 'owner') {
   const parts = questions.map((q) => {
     const answer = answers[q.id];
     const body = answer
@@ -237,7 +240,7 @@ export function summarize(questions, answers) {
       : 'no answer';
     return `${clip(text(q.prompt).replace(/\s+/gu, ' '), 60)} = ${body}`;
   });
-  return `Decided by the owner: ${parts.join('; ')}`;
+  return `Decided by ${!by || by === 'owner' ? 'the owner' : by}: ${parts.join('; ')}`;
 }
 
 /** Tags that aren't a feature's (IDEA-28 section 1): the board's own, horizons, and release tags. */
@@ -267,18 +270,21 @@ const MAX_BRIEF = 10000;
  * agent that brings the work waiting for an answered decision in line with its answers. `decision` is the decision's
  * task (its `ref` is its work ID or short ID), `waiting` the open tasks that depend on it, and `note` the owner's,
  * which goes under the board's prompt. Returns the task's title and description.
- * @param {{ ref: string, description: string, spec?: string | null, questions: any[], answers: Record<string, any> }} decision
+ * `by` is who answered (BRK-303): the owner, or a maintainer's handle.
+ * @param {{ ref: string, description: string, spec?: string | null, questions: any[], answers: Record<string, any>,
+ *   by?: string | null }} decision
  * @param {{ ref: string, description: string, tags?: string[], spec?: string | null }[]} waiting
  * @param {string | null} [note]
  */
 export function refinePrompt(decision, waiting, note = null) {
+  const who = !decision.by || decision.by === 'owner' ? 'the owner' : decision.by;
   const title = clip(`Refine from the answers to ${decision.ref}: ${decision.description}`, 200);
   const questions = decision.questions.flatMap((q, i) => {
     const answer = decision.answers[q.id];
     return [
       `${i + 1}. ${q.prompt.trim()}`,
       `   Answer: ${spell(q, answer)}`,
-      ...(answer?.comment ? [`   The owner's note: ${answer.comment.trim()}`] : []),
+      ...(answer?.comment ? [`   ${who === 'the owner' ? 'The owner' : who}'s note: ${answer.comment.trim()}`] : []),
     ];
   });
   const specs = [...new Set([decision.spec, ...waiting.map((t) => t.spec)].filter(Boolean))];
@@ -296,7 +302,7 @@ export function refinePrompt(decision, waiting, note = null) {
     '- If nothing in the repository needs to change, comment what you changed on the board, task by task, and release your task.',
     ...(note && String(note).trim() ? ['', 'Note from the owner:', String(note).trim().slice(0, 4000)] : []),
   ];
-  const intro = `The owner answered the decision on ${decision.ref} (${decision.description}). Bring the work waiting for it in line with the answers.`;
+  const intro = `${who === 'the owner' ? 'The owner' : who} answered the decision on ${decision.ref} (${decision.description}). Bring the work waiting for it in line with the answers.`;
   const rest = [
     '',
     `Waiting for ${decision.ref}`,

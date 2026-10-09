@@ -550,7 +550,8 @@ function saidSource(q) {
       comment: 'in a comment',
     }[kind] ?? kind;
   const pointer = rest.length ? ` (${rest.join(' ')})` : '';
-  return `${q.by === 'owner' ? 'You' : `Quoted by ${q.by}`}, ${where}${pointer} · ${day(q.at)}`;
+  const who = q.by === 'owner' ? 'You' : kind === 'board' ? q.by : `Quoted by ${q.by}`;
+  return `${who}, ${where}${pointer} · ${day(q.at)}`;
 }
 
 /**

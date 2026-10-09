@@ -467,7 +467,7 @@ function ownerSaidMarkdown(t) {
         .split('\n')
         .map((l) => `> ${l}`.trimEnd()),
       '',
-      `(${q.from}, ${q.by === 'owner' ? 'from the owner' : `quoted by ${q.by}`}${q.at ? `, ${day(q.at)}` : ''})`,
+      `(${q.from}, ${q.by === 'owner' ? 'from the owner' : q.from === 'board' ? `${q.by}’s own words` : `quoted by ${q.by}`}${q.at ? `, ${day(q.at)}` : ''})`,
       '',
     );
   return out;
@@ -683,10 +683,13 @@ const READS = [
       }
       const data = body(await ctx.store.messagesWaitingApi(ref, me));
       const lines = [
-        ...(data.messages ?? []).map((m) => `Message from the owner (via the board, ${when(m.sent)} UTC): ${m.text}`),
+        ...(data.messages ?? []).map(
+          (m) =>
+            `Message from ${m.from && m.from !== 'owner' ? m.from : 'the owner'} (via the board, ${when(m.sent)} UTC): ${m.text}`,
+        ),
         ...(data.peloton ?? []).map(
           (p) =>
-            `Peloton (${p.peloton} #${p.id}, ${p.agent === 'owner' && !p.task ? 'from the owner via the board' : `${p.agent}${p.task ? ` on ${p.task}` : ''}`}): ${p.text}`,
+            `Peloton (${p.peloton} #${p.id}, ${p.agent === 'owner' && !p.task ? 'from the owner via the board' : p.task ? `${p.agent} on ${p.task}` : `${p.agent} via the board`}): ${p.text}`,
         ),
       ];
       return { text: lines.length ? lines.join('\n\n') : `No new messages on ${ref}.`, data: { task: ref, ...data } };
