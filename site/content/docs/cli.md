@@ -59,6 +59,7 @@ npx breakaway export --out tasks-backup.json
 | `specs` | The repository’s specs, newest first: each one’s status and its tasks. `--repo <slug>` for another repository. |
 | `specs show <path>` | One spec: its status, last change, Markdown, and the tasks that link it. |
 | `export` | Every task of every repository as JSON, checked against `health`’s count. |
+| `import <file>` | Restores an export into an empty board: each task’s work ID and comments, with claims cleared. The owner’s; refused on a board that has tasks. |
 
 ## Working a task
 

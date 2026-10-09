@@ -126,7 +126,21 @@ Run it in a clone of the install repository, the one with `breakaway.config.json
 
 The board's data lives in its Durable Object, so it's safe as long as the Worker and its `store` stay on the same account: a deploy, a rollback, or a deleted version never touches it. Cloudflare keeps the Durable Object's storage restorable for 30 days.
 
-A Durable Object on a new account starts empty, and the board can't read an export back in yet. The environments are quick to add again from `environments.json`, on the Infrastructure view; each repository's desired state comes back by itself from Git. Your tasks are in `tasks-backup.json`, and a Taskwarrior replica that synced recently holds them too. The audit trail stays in `audit.json`, as the record of what happened before.
+A Durable Object on a new account starts empty. Bring your tasks back from `tasks-backup.json`:
+
+1. **Register the repositories again**, with the same slugs and areas as before: `npx breakaway repos add <slug> <owner/name> --area <project:PREFIX>`, once for each. The import refuses an export with tasks of a repository the board doesn't have, and names it.
+2. **Import the export**, before anyone adds a task:
+
+   ```sh
+   npx breakaway import tasks-backup.json
+   ```
+
+   Every task comes back with its work ID, repository, area, horizon, tags, dependencies, decision, your quoted words, and comments with who wrote them and when. Claims and autostart are cleared: nobody holds work on a board that just came back, so start agents again from the board. The import runs only on a board with no tasks, so it never mixes two boards; on one that has tasks it changes nothing and says so.
+3. **Start each Taskwarrior replica again** (move `.task/` aside, then `task sync`): the new board has a new history, so an old replica gets `410 Gone`.
+
+**Check:** `import` says how many tasks it restored, and `npx breakaway health` shows the same total as the export's `count`.
+
+The environments are quick to add again from `environments.json`, on the Infrastructure view; each repository's desired state comes back by itself from Git. The audit trail stays in `audit.json`, as the record of what happened before.
 
 ## Rebuild an environment by hand
 

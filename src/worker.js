@@ -435,6 +435,8 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'horizons' && parts[1] === 'close' && parts.length === 2 && method === 'POST')
     return send(await s.closeHorizon({ dryRun: Boolean(body.dryRun) }));
   if (parts[0] === 'admin' && parts[1] === 'rebuild' && method === 'POST') return send(await s.rebuild());
+  // Restoring the board from an export (BRK-234): the owner's, into an empty board only (an agent's `by` is refused).
+  if (parts[0] === 'import' && parts.length === 1 && method === 'POST') return send(await s.importApi(body));
   if (parts[0] === 'github' && parts.length === 1 && method === 'GET')
     return send(await s.githubOverview(url.searchParams.get('repo')));
   // Connections (IDEA-14): anyone signed in reads them; Check now asks GitHub live and dismissing a note is the owner's, so both are the signed-in browser's only.
