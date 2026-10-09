@@ -2480,7 +2480,7 @@ Everything is in the Durable Object’s SQLite. Task fields are Taskwarrior prop
 An install keeps its data. It calls only what you connect:
 
 - **GitHub**, through your private App, to read repositories and to do what you press ([GitHub](https://leavethepack.dev/docs/github/) lists it).
-- **Claude**, to start the sessions you ask for.
+- **Claude**, to start the sessions you ask for, and its status page every 5 minutes, so chases wait out an outage.
 - **Web Push**, if you turn on notifications.
 - **The providers you connect for Architect**: Cloudflare’s API, with the read-only token you paste. What it reads is redacted and stays in the Durable Object.
 - **breakaway’s update feed** on leavethepack.dev, to look for updates, once the install’s config names its install repository.

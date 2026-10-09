@@ -48,11 +48,11 @@ const NOTICES_KEPT_MS = 30 * 86_400_000;
 /** Connections whose "needs attention" fixes itself and isn't worth an inbox note: the hourly budget rolls over. */
 const QUIET = new Set(['claude.budget']);
 /**
- * Connections whose trouble is someone else's and ends by itself (BRK-219): GitHub's own outages. The board
+ * Connections whose trouble is someone else's and ends by itself (BRK-219): GitHub's and Claude's own outages. The board
  * already waits them out, so the inbox hears only when they end: a hidden `held` note marks the outage, and
  * "working again" replaces it.
  */
-const ENDS_BY_ITSELF = new Set(['github.status']);
+const ENDS_BY_ITSELF = new Set(['github.status', 'claude.status']);
 const ROUTINES_URL = 'https://claude.ai/code/routines';
 /** Providers' read-only tokens get their own key from the sync key (BRK-194), and each is bound to its provider. */
 const PROVIDER_TOKENS = new TextEncoder().encode('breakaway provider tokens v1');
@@ -330,8 +330,9 @@ export const connectionsMethods = {
       }
     }
     this.setMeta('conn_live', JSON.stringify(live));
-    // GitHub's status page (BRK-217) is part of Check now too.
+    // GitHub's status page (BRK-217) and Claude's (BRK-315) are part of Check now too.
     await this.githubStatusCheck({ force: true });
+    await this.claudeStatusCheck({ force: true });
     return live;
   },
 
@@ -398,6 +399,7 @@ export const connectionsMethods = {
       ...(await this.githubStatusConnection()),
       ...this.npmConnections(),
       ...(await this.claudeConnections()),
+      ...(await this.claudeStatusConnection()),
       ...(await this.providerConnections()),
       this.cliConnection(),
       this.taskwarriorConnection(),
@@ -858,6 +860,50 @@ export const connectionsMethods = {
     return [
       entry('github.status', 'github', name, 'working', {
         detail: `${v.components.map((c) => c.name).join(', ') || 'GitHub'} working, as ${host} says`,
+        at: v.at,
+        link: v.page,
+      }),
+    ];
+  },
+
+  /**
+   * Claude's status (BRK-315): what status.claude.com says about the parts of Claude the agents run on, and whether
+   * chases are waiting on it. None without a routine connected, or when the install reads no status page.
+   */
+  async claudeStatusConnection() {
+    const v = this.claudeStatusView();
+    if (!v || !(await this.claudeConnected())) return [];
+    const host = new URL(v.page).host;
+    const name = 'Claude’s status';
+    if (!v.checked)
+      return [
+        entry('claude.status', 'claude', name, 'attention', {
+          detail: 'not checked yet',
+          fix: `Press Check now; the cron reads ${host} every 5 minutes.`,
+          link: v.page,
+        }),
+      ];
+    if (v.held)
+      return [
+        entry('claude.status', 'claude', name, 'attention', {
+          detail: `${v.summary}, since ${v.since}. Chases start no new agents`,
+          at: v.at,
+          fix: `Nothing to fix on the board: chases start agents again by themselves once ${host} says it’s working again. Sessions already running may fail or stop mid-work; their agents leave a Not pushed comment on their task.`,
+          link: v.incidents.find((i) => i.url)?.url ?? v.page,
+        }),
+      ];
+    if (v.error)
+      return [
+        entry('claude.status', 'claude', name, 'attention', {
+          detail: `couldn’t read ${host}: ${v.error}; nothing waits on it meanwhile`,
+          at: v.at,
+          fix: `Press Check now. If it keeps failing, look at ${host} yourself before you start agents.`,
+          link: v.page,
+        }),
+      ];
+    return [
+      entry('claude.status', 'claude', name, 'working', {
+        detail: `${v.components.map((c) => c.name).join(', ') || 'Claude'} working, as ${host} says`,
         at: v.at,
         link: v.page,
       }),

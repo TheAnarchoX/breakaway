@@ -2118,8 +2118,9 @@ export const agentsMethods = {
     } catch (error) {
       errors.push(error.message); /* tries again next time */
     }
-    // GitHub's status page (BRK-217), before the chase: while GitHub is down, a chase starts nothing new.
+    // GitHub's status page (BRK-217) and Claude's (BRK-315), before the chase: while either is down, a chase starts nothing new.
     await this.githubStatusCheck();
+    await this.claudeStatusCheck();
     // A chase starts after auto-start, so security fixes, general agents, and Start-when-ready tasks go first.
     try {
       await this.chaseTick();
