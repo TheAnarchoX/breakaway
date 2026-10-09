@@ -17,6 +17,7 @@ import { repoSlugOf, routineCaps } from './repos.js';
 import { specPrompt } from './spec-prompt.js';
 import { REFINE_FEATURE_TITLE, featurePrompt } from './feature-prompt.js';
 import { normalPath } from './specs.js';
+import { besideLines } from './footprint-text.js';
 import { CLAUDE_LIMITS, DEFAULT_PLAN, hourlyCeiling, isPlan, planChoices, planLimits, planOf, PLANS } from './plans.js';
 
 const RUNNING_HOURS = 12; // after this, a claimed task no longer counts as a running agent
@@ -267,6 +268,7 @@ export function firePayload(
   runIt = null,
   captain = null,
   risky = null,
+  beside = null,
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
@@ -295,6 +297,8 @@ export function firePayload(
     ...(actKey ? [`Act key: ${actKey}`] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
     ...(attachments > 0 ? [`Attachments: ${attachments}`] : []),
+    // The agents already running in the repository and what each is changing (IDEA-55 section 4): information.
+    ...besideLines(beside),
     // The owner's words quoted on the task (BRK-284), first of the context: every agent that picks it up reads them.
     ...(task.ownerSaid?.length ? ['', 'The owner said (quoted on the task):', ...saidLines(task.ownerSaid)] : []),
     ...(note
@@ -1608,6 +1612,8 @@ export const agentsMethods = {
           actKey,
           runIt,
           captainOf ? { slug: captainOf.slug, log: this.captainLastLog(captainOf.slug) } : null,
+          null,
+          this.ridingBesideFor(uuid, kind),
         ),
         isDefault ? null : repo.slug,
       );

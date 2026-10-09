@@ -20,10 +20,11 @@ export function sentAt(sent) {
 /**
  * The board's answer to the session post, and the hook's event → the JSON the hook prints, or
  * null when there's nothing to say (no messages or posts, an event that can't carry them, a bad answer).
+ * `note` is the hook's own word after them: a conflict on a changed path (IDEA-55 section 1b).
  */
-export function messageOutput(answer, event) {
+export function messageOutput(answer, event, note = '') {
   if (!CONTEXT_EVENTS.has(event)) return null;
-  const text = waitingText(answer);
+  const text = [waitingText(answer), note].filter(Boolean).join('\n\n');
   if (!text) return null;
   return { hookSpecificOutput: { hookEventName: event, additionalContext: text } };
 }

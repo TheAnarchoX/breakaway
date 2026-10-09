@@ -337,7 +337,15 @@ export const pelotonMethods = {
         )
         .one();
       const view = this.postView(row);
-      return { agent: row.agent, task: view.task, repo: row.repo, since: view.at, last: this.postView(last) };
+      return {
+        agent: row.agent,
+        task: view.task,
+        repo: row.repo,
+        since: view.at,
+        last: this.postView(last),
+        // Read by rosterFootprints (IDEA-55 section 4), which takes it off again.
+        uuid: row.task ?? null,
+      };
     });
   },
 
@@ -358,7 +366,8 @@ export const pelotonMethods = {
       kind: p.kind,
       ...(p.feature ? { feature: p.feature.slug, title: p.feature.title } : {}),
       open: p.open,
-      roster: this.pelotonRoster(p.name, p.open),
+      // Each rider with what it's changing (IDEA-55 section 4).
+      roster: this.rosterFootprints(this.pelotonRoster(p.name, p.open)),
       huddle: this.huddleOf(p),
       plan: this.planOf(p),
       posts: this.pelotonPosts(p.name),
@@ -475,7 +484,8 @@ export const pelotonMethods = {
       ...(p.feature ? { feature: p.feature.slug, title: p.feature.title } : {}),
       open: p.open,
       task: map?.wid ?? uuid.slice(0, 8),
-      roster: this.pelotonRoster(p.name, p.open),
+      // Each rider with what it's changing, and where the reader's own paths meet it (IDEA-55 section 4).
+      roster: this.rosterFootprints(this.pelotonRoster(p.name, p.open), uuid),
       huddle: this.huddleOf(p),
       plan: this.planOf(p),
       posts,

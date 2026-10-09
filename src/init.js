@@ -21,10 +21,15 @@ export { routinePrompt };
  */
 export const CLI_PACKAGE = 'breakaway@2';
 /**
- * Where the CLI starts: the command, and the two session hooks. repos init no longer copies them (BRK-7): an old copy
- * is replaced by npx, and these still version the CLI and say which files an old copy holds.
+ * Where the CLI starts: the command, and the session hooks (the edit hook since IDEA-55). repos init no longer copies
+ * them (BRK-7): an old copy is replaced by npx, and these still version the CLI and say which files an old copy holds.
  */
-export const CLI_ENTRIES = ['scripts/tasks.mjs', 'scripts/tasks/session-hook.mjs', 'scripts/tasks/message-wait.mjs'];
+export const CLI_ENTRIES = [
+  'scripts/tasks.mjs',
+  'scripts/tasks/session-hook.mjs',
+  'scripts/tasks/message-wait.mjs',
+  'scripts/tasks/edit-hook.mjs',
+];
 /**
  * While breakaway was private, nothing reached npm (BRK-57), so repos init copied the two hooks and what they import
  * under HOOKS_DIR and settings.json ran them from there (BRK-64). breakaway is public and on npm now, so the hooks run
@@ -32,7 +37,24 @@ export const CLI_ENTRIES = ['scripts/tasks.mjs', 'scripts/tasks/session-hook.mjs
  */
 export const HOOKS_FROM_COPY = false;
 /** The session hooks' entry files, and where their copy goes: its own folder, so it never touches the repository's src/. */
-export const HOOK_ENTRIES = ['scripts/tasks/session-hook.mjs', 'scripts/tasks/message-wait.mjs'];
+export const HOOK_ENTRIES = [
+  'scripts/tasks/session-hook.mjs',
+  'scripts/tasks/message-wait.mjs',
+  'scripts/tasks/edit-hook.mjs',
+];
+/** Each session hook's name (`npx breakaway hook <name>`) → its entry file. */
+const HOOK_FILES = { session: 'session-hook', wait: 'message-wait', edit: 'edit-hook' };
+/**
+ * The edit tools the edit hook runs on (IDEA-55 section 1a), as a PreToolUse matcher: exact tool names split by `|`
+ * (source: the matcher table in Claude Code's hooks reference, https://code.claude.com/docs/en/hooks).
+ */
+export const EDIT_MATCHER = 'Edit|Write|MultiEdit|NotebookEdit';
+/**
+ * The edit hook's `timeout`, in seconds: the field is in seconds and a command hook's defaults to 600, and a PreToolUse
+ * command hook that times out doesn't block the tool call (source: https://code.claude.com/docs/en/hooks, the hook
+ * handler fields and PreToolUse). Room for npx to start the CLI and for the hook's own wait on the board (3 s).
+ */
+export const EDIT_HOOK_TIMEOUT = 15;
 export const HOOKS_DIR = 'tools/tasks/cli/';
 /**
  * The release helpers a repository's Deploy, Promote, Roll back, and Release workflows run (BRK-45), copied with what
@@ -84,7 +106,7 @@ export function pluginSettings() {
 
 /** Whether a hook command is one of the session hooks repos init wrote: through npx, any version, or an old copy's. */
 const BOARD_HOOK =
-  /\bbreakaway(?:@[^\s"]+)? hook (?:session|wait)\b|scripts\/tasks\/(?:session-hook|message-wait)\.mjs/u;
+  /\bbreakaway(?:@[^\s"]+)? hook (?:session|wait|edit)\b|scripts\/tasks\/(?:session-hook|message-wait|edit-hook)\.mjs/u;
 
 /**
  * settings.json moved to the plugin (repos init --update): the session hooks repos init wrote are gone, with any event
@@ -229,11 +251,18 @@ export function cliCopySources(read) {
 /** The command a session hook runs: from the copy under HOOKS_DIR while breakaway is private, else through npx (BRK-7). */
 export function hookCommand(name, { fromCopy = HOOKS_FROM_COPY, pkg = CLI_PACKAGE } = {}) {
   if (!fromCopy) return `npx --yes ${pkg} hook ${name}`;
-  const entry = HOOK_ENTRIES.find((path) => path.includes(name === 'wait' ? 'message-wait' : 'session-hook'));
+  const file = HOOK_FILES[/** @type {keyof typeof HOOK_FILES} */ (name)] ?? HOOK_FILES.session;
+  const entry = HOOK_ENTRIES.find((path) => path.endsWith(`/${file}.mjs`));
   return `node "$CLAUDE_PROJECT_DIR/${HOOKS_DIR}${entry}"`;
 }
 
-/** The session hooks .claude/settings.json runs (see HOOKS_FROM_COPY). */
+/**
+ * The session hooks .claude/settings.json runs (see HOOKS_FROM_COPY). All run in the background but the edit hook
+ * (IDEA-55 section 1a), which claims the file an edit names before the edit runs: a hook with `async: true` runs in
+ * the background without blocking, so it couldn't turn an edit away (source: https://code.claude.com/docs/en/hooks,
+ * the `async` field). It has a short `timeout` instead (EDIT_HOOK_TIMEOUT), and a board that doesn't answer lets the
+ * edit through.
+ */
 export function sessionHooks(pkg = CLI_PACKAGE) {
   const hook = (name, extra = {}) => ({
     type: 'command',
@@ -242,9 +271,11 @@ export function sessionHooks(pkg = CLI_PACKAGE) {
     ...extra,
   });
   const session = [{ hooks: [hook('session')] }];
+  const edit = { type: 'command', command: hookCommand('edit', { pkg }), timeout: EDIT_HOOK_TIMEOUT };
   return {
     SessionStart: session,
     UserPromptSubmit: session,
+    PreToolUse: [{ matcher: EDIT_MATCHER, hooks: [edit] }],
     PostToolUse: session,
     Stop: [{ hooks: [hook('session'), hook('wait', { asyncRewake: true, timeout: 300 })] }],
   };
@@ -256,7 +287,7 @@ export function sessionHooks(pkg = CLI_PACKAGE) {
  */
 export function rewireHooks(text) {
   let out = text;
-  for (const name of ['session', 'wait'])
+  for (const name of ['session', 'wait', 'edit'])
     for (const fromCopy of [true, false]) {
       const was = JSON.stringify(hookCommand(name, { fromCopy })).slice(1, -1);
       const now = JSON.stringify(hookCommand(name)).slice(1, -1);
@@ -265,7 +296,7 @@ export function rewireHooks(text) {
   const current = (_, name) => JSON.stringify(hookCommand(name === 'message-wait' ? 'wait' : name)).slice(1, -1);
   return (
     out
-      .replace(/npx --yes breakaway(?:@[^\s"\\]+)? hook (session|wait)\b/gu, current)
+      .replace(/npx --yes breakaway(?:@[^\s"\\]+)? hook (session|wait|edit)\b/gu, current)
       // The old CLI copy's hook scripts, from before BRK-7, quoted or not (BRK-79): its copy is about to go.
       .replace(
         /node (\\")?(?:\$CLAUDE_PROJECT_DIR\/)?(?:tools\/tasks\/cli\/)?scripts\/tasks\/(session-hook|message-wait)\.mjs\1/gu,
@@ -591,6 +622,11 @@ export function initPlan({
     )
       notes.push(
         `.claude/settings.json is already there: set its session hooks to \`${hookCommand('session')}\` (and \`${hookCommand('wait')}\` on Stop), or a started agent's output won't show on its task.${HOOKS_FROM_COPY ? '' : ' Hooks that run scripts/tasks/session-hook.mjs stop working once the old copy is removed.'}`,
+      );
+    // Settings from before the edit hook (IDEA-55): agents there don't claim the files they edit until it's added.
+    if (!rewired.includes(hookCommand('edit')))
+      notes.push(
+        `.claude/settings.json has no edit hook: add ${JSON.stringify({ PreToolUse: sessionHooks().PreToolUse })} to its hooks, so agents claim each file before they edit it.`,
       );
   }
   if (readTarget('.claude/skills') === null) files.push({ path: '.claude/skills', link: '../.agents/skills' });
