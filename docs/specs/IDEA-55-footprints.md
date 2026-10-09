@@ -15,7 +15,7 @@ The board already sees most of what it needs. GitHub tells it which files every 
 - **The person who runs the board decides.** Footprints only change which ready task a starter starts first, and when the owner presses Start on one task they warn, never refuse. They start nothing a starter wouldn't and never merge. Path claims are advisory: the edit hook turns an agent away from a path another agent claims with a message it reads, nothing is locked, a board that's down lets every edit through, and the owner can release any claim.
 - **An install keeps its data.** Everything comes from GitHub, which the owner connected, and from the board itself. No model call: the prediction is plain code, so it costs nothing and gives the same answer every time.
 - **Taskwarrior stays first-class.** Footprints live in a table of their own, not on the task, so sync and the task model don't change.
-- **One claim per task.** Unchanged: a task still has one holder. A path claim is held by that task, ends with it, and never outlives its time limit.
+- **One claim per task.** Unchanged: a task still has one holder. A path claim is held by that task, ends with it, and never outlives its time limit; an agent's task claim lapses only when it has gone silent with no pull request open (section 1c), which is the board releasing for a holder that's gone.
 
 ## Design
 
@@ -61,6 +61,15 @@ The board doesn't rely on agents asking. The session hook also reports the agent
 - A dirty path another task's live claim matches is a **conflict**, flagged at once: the agent hears it in its next hook context ("you changed `web/src/views/GraphView.jsx`, which claude-web-40 claims on WEB-40"), and the board posts once on the peloton, mentioning both agents (section 4). It doesn't undo anything: only the two agents can settle it, and the second one backs off by default.
 - Pushes count the same way: a task's branch and its pull request's files are dirty paths for agents whose session doesn't report them.
 
+### 1c. Task claims lapse too, for agents
+
+The owner agreed (9 Oct 2026) that a task's own claim gets a time limit as well, kept by the same heartbeats, and only where it's safe:
+
+- **An agent's claim with no open pull request lapses after 60 minutes without a heartbeat** (no tool call, check-in, or `peloton listen`). The board releases it with a comment ("lapsed: claude-brk-12 silent since 14:20 UTC"), keeps any `Not pushed:` handover and names the branch if one was pushed, and the task is ready again for the next start. *Why 60, not 10:* releasing a task costs more than freeing a path; it leaves room for a long test run and a cloud session's idle pause.
+- **An agent's claim with an open pull request doesn't lapse**: the pull request is its lease, because that agent waits on CI or on the owner and may be silent for hours. Fix agents can already take over from a quiet one, and its path claims lapse as above.
+- **A person's claim never lapses.** People don't send heartbeats. After 3 days without activity on the task the board marks it stale for the owner, and does nothing else.
+- **"One claim per task" holds.** A task still has exactly one holder at a time; a lapse is the board releasing for a holder that's gone, and claiming stays atomic. An agent whose claim lapsed and comes back finds it released and claims again, or stops if someone else has it.
+
 ### 2. The prediction
 
 Plain code in `src/footprint.js`, pure so it's tested on fixtures. In order of weight:
@@ -105,12 +114,10 @@ The auto-start queue on the Agents view, `agents next --dry-run`, `chase --dry-r
 - Asking a model to predict footprints.
 - Warning on claim when another open change touches the same files: BRK-19, on Artifacts, can build on the stored file lists later.
 - Mandatory locks (on the file system or git) and undoing an agent's changes: claims are advisory, refused at the edit tool, and a conflict is flagged, not reverted.
-- A time limit on task claims themselves: a separate question (below).
 
 ## Open questions
 
-- Should a task's own claim also run out when its agent goes quiet, the way path claims do? Today a task claim lasts until it's released or its pull request merges, and a stale one needs the owner. It touches "one claim per task", so it's a decision for the owner, not part of this spec.
-- Are a 10-minute lease and a 4-hour ceiling right? The build task checks them against breakaway's agent logs.
+- Are a 10-minute lease, a 4-hour ceiling, and a 60-minute lapse for task claims right? The build tasks check them against breakaway's agent logs.
 - Is 40% of the last 50 merged pull requests the right line for a shared file? The build task picks it from breakaway's own history and says what it found.
 - Should the owner be able to mark a file shared, or never shared, in Repo settings? Left out of the first version; added if the computed list gets it wrong.
 
@@ -124,7 +131,8 @@ One pull request each, all waiting for this spec to merge, in the feature `footp
 4. **BRK-319 · Every starter schedules by footprints**: the shared rule in section 3 in `chaseQueue`, `autostartQueue`, and `startNext`, Agents per area, the exemptions, the owner's Start warning, the reasons, and the fallback. Waits for 3.
 5. **BRK-320 · Claim at the edit, and tell the riders who touches what**: the synchronous edit hook in `sessionHooks()` and the plugin (claim, refuse with the reason, let through when the board is down), dirty paths from the session hook, the start payload's line, the check-in's output, the conflict note, and the core prompt, for every agent. Waits for 3.
 6. **WEB-130 · Footprints on the board**: the task panel, the held tasks' reasons on the chase and the Agents view, the hit rate, Agents per area in Settings, the Start warning, and the Graph view's shared-files edges. Waits for 3 and 4.
-7. **DOC-49 · Document footprints**: the manual, the site's docs, and IDEA-28's section 3.4 pointing here. Waits for 4, 5, and 6.
+7. **DOC-49 · Document footprints**: the manual, the site's docs, and IDEA-28's section 3.4 pointing here. Waits for 4, 5, 6, and 8.
+8. **BRK-321 · Task claims lapse by heartbeat**: section 1c: an agent's claim without an open pull request lapses after 60 silent minutes with a comment and the task ready again; with one, it holds; a person's is marked stale after 3 days. Waits for 3.
 
 ## How to check it
 
@@ -138,5 +146,5 @@ Once the tasks are built and the board is deployed:
 6. Press Start on a task whose file a running agent is changing: the board warns you which agent and file, and starts it if you press again.
 7. Open the Graph view: the two tasks that share a file are joined by a dashed "shares files" line.
 8. On the peloton, a new agent's check-in lists what the others are changing. An agent that claims `apps/web/api/**` while another holds a file under it is told who holds it and until when. If one starts changing another's claimed file, the board posts a note naming both.
-9. Have an agent try to edit a file another agent claims: its edit is refused with who holds it and until when, and it carries on with other files.
-10. Stop an agent's session mid-task: within about 10 minutes its claims are gone from the task's Footprint, and the files are free.
+9. Have an agent try to edit a file another agent claims: its edit is refused with who holds it, and it carries on with other files.
+10. Stop an agent's session mid-task: within about 10 minutes its claims are gone from the task's Footprint, and the files are free. Within about an hour, if it opened no pull request, the task itself is released with a "lapsed" comment and is ready to start again.
