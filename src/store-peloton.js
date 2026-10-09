@@ -8,7 +8,7 @@
  * (all heads on one question, one at a time) and the chase's plan (one text, every revision kept).
  */
 import { AgentError } from './store-agents.js';
-import { InputError } from './model.js';
+import { commentsOf, InputError } from './model.js';
 import { looksLikeSecret } from './ping.js';
 import { repoSlugOf } from './repos.js';
 
@@ -59,6 +59,15 @@ const RESERVED = new Set(['owner', 'board']);
 const MENTION = /(?<![\w.@:/-])@([\w.:/-]{1,64})/gu;
 
 const iso = (ms) => new Date(Number(ms)).toISOString();
+
+/** The board's comment on a task its agent left with posts to it unanswered (BRK-281). */
+function openNote(agent, posts) {
+  const lines = posts.map((p) => {
+    const text = p.text.length > 160 ? `${p.text.slice(0, 157)}…` : p.text;
+    return `- peloton #${p.id} on ${p.peloton}, from ${p.agent}: ${text}`;
+  });
+  return `${agent} left with ${posts.length === 1 ? 'a post' : `${posts.length} posts`} to it unanswered on the peloton:\n${lines.join('\n')}`;
+}
 
 /** The names a stored post mentions. */
 function mentionsOf(row) {
@@ -272,6 +281,7 @@ export const pelotonMethods = {
     if (!rows.length) return;
     let chases = null;
     const features = new Map();
+    const noted = new Set();
     for (const row of rows) {
       let stays = this.holdsTask(row.agent, row.task);
       if (row.peloton.startsWith(CHASE)) {
@@ -293,13 +303,23 @@ export const pelotonMethods = {
       else if (!map.claim) why = `released ${id}`;
       else if (map.claim !== row.agent) why = `${id}’s claim moved to ${map.claim}`;
       else why = `${id} isn’t in this chase any more`;
+      // What it left unanswered (BRK-281): the riders hear it in the leave post, and the task keeps it, once.
+      const open = this.openPosts(row.agent, row.task);
+      const ids = open.map((p) => `#${p.id}`).join(', ');
       this.addPost(row.peloton, {
         agent: row.agent,
         task: row.task,
         repo: row.repo,
         kind: 'leave',
-        text: `Left: ${why}.`,
+        text: open.length
+          ? `Left: ${why}, with ${open.length === 1 ? 'a post' : `${open.length} posts`} to it unanswered (${ids}).`
+          : `Left: ${why}.`,
       });
+      const once = `${row.agent}\n${row.task}`;
+      if (open.length && map && !noted.has(once) && !this.meta('replica_error')) {
+        noted.add(once);
+        this.change(row.task, { annotate: openNote(row.agent, open), by: 'board' });
+      }
     }
   },
 
@@ -545,7 +565,13 @@ export const pelotonMethods = {
     const uuid = task !== null && task !== undefined && task !== '' ? this.resolve(task) : this.listenTask(name);
     const quiet = { urgent: false, posts: [], more: 0, messages: [], pr: null };
     if (!uuid || !this.holdsTask(name, uuid))
-      return { agent: name, task: uuid ? this.widOf(uuid) : null, ...quiet, stop: this.listenGone(name, uuid) };
+      return {
+        agent: name,
+        task: uuid ? this.widOf(uuid) : null,
+        ...quiet,
+        stop: this.listenGone(name, uuid),
+        open: uuid ? this.openPosts(name, uuid) : [],
+      };
     const chases = this.chasing() ? this.openChases() : [];
     const pull = this.pullOfTask(uuid);
     const peloton = this.takePeloton(name, { listen: true });
@@ -565,6 +591,7 @@ export const pelotonMethods = {
       messages,
       pr,
       stop,
+      ...(stop ? { open: this.openPosts(name, uuid) } : {}),
     };
   },
 
@@ -600,6 +627,65 @@ export const pelotonMethods = {
     if (map.status !== 'pending') return `${id} is ${map.status}: the claim is gone`;
     if (map.claim && map.claim !== agent) return `the claim on ${id} moved to ${map.claim}`;
     return `the claim on ${id} is gone: it was released`;
+  },
+
+  /**
+   * The posts to `agent` it hasn't answered or handed over, as it leaves task `uuid` (BRK-281): someone else's post
+   * that mentions it, or replies to a post it made on the task, with no reply of its own to it (or to the same post
+   * on another peloton) and no comment of its own on the task naming it as `peloton #<id>`, which `peloton handover`
+   * writes. A reply to one of its replies doesn't count, so a thank-you ends a thread; the board's lines never ask.
+   * Oldest first, each once.
+   */
+  openPosts(agent, uuid) {
+    const name = String(agent ?? '').trim();
+    if (!name || !uuid) return [];
+    const own = this.sql
+      .exec('SELECT id, kind, reply_to FROM peloton_posts WHERE agent = ? AND task = ?', name, uuid)
+      .toArray();
+    const mine = new Set(own.filter((r) => r.kind !== 'leave').map((r) => r.id));
+    const myReplies = new Set(own.filter((r) => r.kind === 'reply').map((r) => r.id));
+    const answered = new Set(
+      this.sql
+        .exec("SELECT reply_to FROM peloton_posts WHERE agent = ? AND kind = 'reply'", name)
+        .toArray()
+        .map((r) => r.reply_to),
+    );
+    const map = this.tasks.get(uuid);
+    for (const c of map ? commentsOf(map) : [])
+      if (c.by === name) for (const m of c.text.matchAll(/peloton #(\d+)/gu)) answered.add(Number(m[1]));
+    const candidates = this.sql
+      .exec(
+        `SELECT * FROM peloton_posts WHERE agent != ? AND agent != 'board' AND kind != 'leave'
+           AND (mentions LIKE ? OR (kind = 'reply' AND reply_to IN (SELECT id FROM peloton_posts WHERE agent = ? AND task = ?)))
+         ORDER BY id`,
+        name,
+        `%${JSON.stringify(name)}%`,
+        name,
+        uuid,
+      )
+      .toArray();
+    const firsts = new Set();
+    const open = [];
+    for (const row of candidates) {
+      const toMe = row.kind === 'reply' && mine.has(row.reply_to);
+      if (!toMe && !mentionsOf(row).includes(name)) continue;
+      if (row.kind === 'reply' && myReplies.has(row.reply_to)) continue;
+      const first = row.twin ?? row.id;
+      if (firsts.has(first)) continue;
+      firsts.add(first);
+      const ids = [row.id, ...this.twinsOf(row).map((t) => t.id)];
+      if (ids.some((id) => answered.has(id))) continue;
+      open.push(this.postView(row));
+    }
+    return open;
+  },
+
+  /** GET /api/peloton/open?agent=<name>: the posts to `agent` still open on the task it holds or last held (BRK-281). */
+  openPostsOf(agent, task = null) {
+    const name = String(agent ?? '').trim();
+    if (!AGENT.test(name)) throw new InputError('say which agent: ?agent=<name>');
+    const uuid = task !== null && task !== undefined && task !== '' ? this.resolve(task) : this.listenTask(name);
+    return { agent: name, task: uuid ? this.widOf(uuid) : null, posts: uuid ? this.openPosts(name, uuid) : [] };
   },
 
   /**
