@@ -18,6 +18,7 @@ import {
   createProblems,
   createStart,
   declaredFor,
+  deployLine,
   editLines,
   editMarks,
   endedWords,
@@ -826,5 +827,58 @@ describe('the change’s card', () => {
     const now = Date.now();
     expect(recentChange({ updated: new Date(now - 60_000).toISOString() }, now)).toBe(true);
     expect(recentChange({ updated: new Date(now - 25 * 3_600_000).toISOString() }, now)).toBe(false);
+  });
+});
+
+describe('what the next deploy sets (BRK-313)', () => {
+  const FROM = 'the wrangler config';
+  const fields = FIELDS.map((f) => (f.path === 'usageModel' ? f : { ...f, deploy: FROM }));
+  const editable = {
+    worker: { fields },
+    queue: { fields: [{ path: 'deliveryDelay', label: 'Delay', type: 'number', help: 'Wait.' }] },
+  };
+  const at = { declared: [worker, queue, route], editable, workers: ['acme-api'] };
+
+  it('says a setting the deploy sets goes back unless its config says it too', () => {
+    expect(deployLine({ op: 'set', resource: worker.id, path: 'observability', value: true }, at)).toBe(
+      'The next deploy sets acme-api’s workers logs from the wrangler config: change it there too, or the deploy puts it back.',
+    );
+    expect(deployLine({ op: 'set', resource: worker.id, path: 'bindings', value: [] }, at)).toMatch(
+      /^The next deploy sets acme-api’s bindings from the wrangler config/u,
+    );
+  });
+
+  it('says a binding to a Worker the deploy sets needs its config too, once the resource exists', () => {
+    const edit = {
+      op: 'create',
+      kind: 'queue',
+      name: 'acme-mail',
+      attrs: {},
+      bindTo: { worker: 'acme-api', binding: 'MAIL' },
+    };
+    expect(deployLine(edit, at)).toBe(
+      'The next deploy sets acme-api’s bindings from the wrangler config: once this plan applies, add MAIL there too, or the deploy takes it off.',
+    );
+  });
+
+  it('says nothing for what the deploy leaves alone', () => {
+    // A setting the provider doesn't mark as the deploy's.
+    expect(deployLine({ op: 'set', resource: worker.id, path: 'usageModel', value: 'bundled' }, at)).toBeNull();
+    // Another kind, a Worker the deploy flow doesn't deploy, and a repository without one.
+    expect(deployLine({ op: 'set', resource: queue.id, path: 'deliveryDelay', value: 5 }, at)).toBeNull();
+    const set = { op: 'set', resource: worker.id, path: 'observability', value: true };
+    expect(deployLine(set, { ...at, workers: ['acme-web'] })).toBeNull();
+    expect(deployLine(set, { ...at, workers: [] })).toBeNull();
+    // A new resource bound to no Worker, or to one the deploy doesn't deploy; a removal, a rename, a template.
+    expect(deployLine({ op: 'create', kind: 'queue', name: 'q', attrs: {} }, at)).toBeNull();
+    expect(
+      deployLine(
+        { op: 'create', kind: 'queue', name: 'q', attrs: {}, bindTo: { worker: 'acme-web', binding: 'Q' } },
+        at,
+      ),
+    ).toBeNull();
+    expect(deployLine({ op: 'remove', resource: worker.id }, at)).toBeNull();
+    expect(deployLine({ op: 'rename', resource: route.id, name: 'x/*' }, at)).toBeNull();
+    expect(deployLine({ op: 'add', template: 'queue', inputs: { name: 'q' } }, at)).toBeNull();
   });
 });

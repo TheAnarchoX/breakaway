@@ -120,6 +120,12 @@ const BINDING_WORDS = {
 };
 const CRON = '^\\S+( \\S+){4}$';
 const VALUES_ELSEWHERE = 'Set with the Worker’s deploy, never here.';
+/**
+ * Where `wrangler deploy` sets a Worker's settings from: its bindings, compatibility date and flags, Workers Logs,
+ * placement, and cron triggers are each a key of the wrangler config, and each deploy sets what it says (BRK-313;
+ * developers.cloudflare.com/workers/wrangler/configuration/, "Source of truth").
+ */
+const DEPLOY_SETS = 'the wrangler config';
 
 /**
  * The settings the console may change, by kind (BRK-262; docs/specs/BRK-258-plan-from-the-board.md): exactly what the
@@ -132,6 +138,7 @@ export const EDITABLE = {
     fields: [
       {
         path: 'compatibilityDate',
+        deploy: DEPLOY_SETS,
         label: 'Compatibility date',
         type: 'text',
         pattern: '^\\d{4}-\\d{2}-\\d{2}$',
@@ -139,6 +146,7 @@ export const EDITABLE = {
       },
       {
         path: 'compatibilityFlags',
+        deploy: DEPLOY_SETS,
         label: 'Compatibility flags',
         type: 'names',
         pattern: '^[a-z0-9_]+$',
@@ -158,12 +166,14 @@ export const EDITABLE = {
       },
       {
         path: 'observability',
+        deploy: DEPLOY_SETS,
         label: 'Workers Logs',
         type: 'yesno',
         help: 'Keep the Worker’s logs on Cloudflare, to read in its dashboard.',
       },
       {
         path: 'placement',
+        deploy: DEPLOY_SETS,
         label: 'Placement',
         type: 'choice',
         optional: true,
@@ -172,6 +182,7 @@ export const EDITABLE = {
       },
       {
         path: 'crons',
+        deploy: DEPLOY_SETS,
         label: 'Cron triggers',
         type: 'names',
         pattern: CRON,
@@ -179,6 +190,7 @@ export const EDITABLE = {
       },
       {
         path: 'bindings',
+        deploy: DEPLOY_SETS,
         label: 'Bindings',
         type: 'bindings',
         targets: BINDABLE,

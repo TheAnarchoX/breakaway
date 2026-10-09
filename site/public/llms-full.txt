@@ -4073,6 +4073,7 @@ Without the App’s **Variables** permission the freeze still holds on the board
 
 A few Worker settings are in both lanes’ files: its bindings, compatibility date and flags, Workers Logs, placement, and cron triggers. Each deploy sets them from the wrangler config; each plan sets them from the environment’s file. When the two disagree, every deploy puts back what the wrangler config says, and the board shows the difference as drift.
 
+- **The console says so where you make the change.** On an environment whose repository has the deploy flow, an edit to one of these settings on a Worker the flow deploys, or a resource you add with **Bind it to** that Worker, carries a line in **Your change**: the next deploy sets it from the wrangler config, so put it there too, or the deploy puts it back.
 - **Change both in one pull request.** When a binding or a setting changes, the wrangler config and the environment’s file say the same thing, so the deploy and the plan agree.
 - **Or leave the setting out of the file.** A setting the file leaves out isn’t compared, so it stays the deploy’s. For a Worker that only the deploy flow changes, a file that lists the Worker with no `attrs` still lets Architect watch it, and manage everything around it.
 - **Drift after a deploy** is a draft plan, with no push. Don’t approve it to undo a deploy: bring the two files into agreement by pull request, and the drift settles.
