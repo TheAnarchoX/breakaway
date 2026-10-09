@@ -38,7 +38,7 @@ import {
   selectedFeature,
 } from '../lib/store.js';
 import { ClaimChip, Dialog, RepoChip, Segmented, widClass } from '../components/ui.jsx';
-import { ChasePanel, RoadCaptain } from '../components/Chase.jsx';
+import { ChasePanel, ReviewPill, RoadCaptain } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
@@ -90,6 +90,7 @@ function FeatureCard({ f, pace }) {
         <span class="fr-card-top">
           <span class="fr-slug">+{f.slug}</span>
           {f.chase?.on && <span class="fr-pill fr-pill-chase">Chasing</span>}
+          <ReviewPill chase={f.chase} />
           {f.shipped && <span class="fr-pill">Released</span>}
           {!f.shipped && f.done && <span class="fr-pill">Done</span>}
         </span>

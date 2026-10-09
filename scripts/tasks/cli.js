@@ -371,16 +371,17 @@ export function featureBody({ title, brief, release, state } = {}) {
 }
 
 /**
- * The request behind `npx breakaway chase <slug> [stop] [--parallel <n>] [--dry-run]` (BRK-85, IDEA-28 section 3):
- * without `stop` it starts the chase, or keeps a running one going with the new `--parallel`; `--dry-run` shows what
+ * The request behind `npx breakaway chase <slug> [stop] [--parallel <n>] [--review-cap <n>] [--dry-run]` (BRK-85,
+ * IDEA-28 section 3): without `stop` it starts the chase, or keeps a running one going with the new `--parallel` or
+ * `--review-cap` (BRK-276); `--dry-run` shows what
  * would start now and changes nothing. It always says who asks, so the board refuses an agent's name: a chase is the
  * owner's.
  * @param {string | undefined} slug
  * @param {string | undefined} action
- * @param {{ parallel?: string | number, dryRun?: boolean, by?: string, captain?: boolean, watch?: string | number }} [options]
+ * @param {{ parallel?: string | number, reviewCap?: string | number, dryRun?: boolean, by?: string, captain?: boolean, watch?: string | number }} [options]
  * @returns {{ error?: string, request?: [string, string, Record<string, unknown>] }}
  */
-export function chaseRequest(slug, action, { parallel, dryRun = false, by, captain, watch } = {}) {
+export function chaseRequest(slug, action, { parallel, reviewCap, dryRun = false, by, captain, watch } = {}) {
   if (!slug) return { error: 'say which feature: npx breakaway chase <slug> [stop] [--parallel <n>] [--dry-run]' };
   if (action !== undefined && action !== 'stop')
     return { error: `chase has no "${String(action).slice(0, 40)}": npx breakaway chase <slug> [stop]` };
@@ -392,6 +393,16 @@ export function chaseRequest(slug, action, { parallel, dryRun = false, by, capta
   }
   if (action === 'stop' && limit !== undefined)
     return { error: '--parallel is for a chase that runs: npx breakaway chase <slug> --parallel <n>' };
+  let cap;
+  if (reviewCap !== undefined) {
+    cap = Number(reviewCap);
+    if (!Number.isInteger(cap) || cap < 1 || cap > 50)
+      return {
+        error: '--review-cap is how many of the chase’s pull requests may wait for you: a whole number from 1 to 50',
+      };
+  }
+  if (action === 'stop' && cap !== undefined)
+    return { error: '--review-cap is for a chase that runs: npx breakaway chase <slug> --review-cap <n>' };
   let hours;
   if (watch !== undefined) {
     hours = Number(watch);
@@ -403,6 +414,7 @@ export function chaseRequest(slug, action, { parallel, dryRun = false, by, capta
   const body = {
     on: action !== 'stop',
     ...(limit !== undefined ? { parallel: limit } : {}),
+    ...(cap !== undefined ? { reviewCap: cap } : {}),
     // The road captain (BRK-275): left out, the board decides from the chase's size.
     ...(captain !== undefined ? { captain: Boolean(captain) } : {}),
     ...(hours !== undefined ? { captainHours: hours } : {}),
@@ -505,6 +517,13 @@ export function chaseLines(chase, slug = '<slug>') {
   }[chase.state];
   out.push(`  Chase       ${head ?? chase.state}`);
   if (chase.summary) out.push(`              ${chase.summary}`);
+  // Its review cap (BRK-276): how many of its pull requests may wait for you before it starts nothing new but fixes.
+  if (chase.reviewCap)
+    out.push(
+      chase.review
+        ? `  Review cap  ${chase.review.waiting} of ${chase.reviewCap} pull requests wait for you${chase.review.full ? ': it starts nothing new but fixes' : ''}`
+        : `  Review cap  up to ${plural(chase.reviewCap, 'pull request')} waiting for you`,
+    );
   if (chase.state === 'on') out.push(...captainLines(chase.captain));
   for (const n of chase.needsYou ?? []) out.push(`  Needs you   ${idOf(n)} ${n.why}${blocking(n)}`);
   for (const s of chase.stuck ?? [])
