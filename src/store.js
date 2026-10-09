@@ -28,6 +28,7 @@ import {
   withChanges,
 } from './model.js';
 import { secret } from './secrets.js';
+import { similarLine, similarTasks } from './similar.js';
 import { githubMethods } from './store-github.js';
 import { packagesMethods } from './store-packages.js';
 import { DecisionError, summarize, validateAnswers } from './decision.js';
@@ -713,10 +714,17 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     return this.run(() => ok({ rights: this.crossTaskRightsOf(agent, this.resolve(ref)) }));
   }
 
-  /** Creates one or more tasks in one version; later items may depend on earlier ones by work ID. */
-  create(items) {
+  /**
+   * Creates one or more tasks in one version; later items may depend on earlier ones by work ID. With `similar`, as
+   * the API's add asks for, an item that resembles an open task of its repository is refused with the list (BRK-283),
+   * unless it says `force` or links each of them in `related` or `depends`.
+   * @param {any[]} items
+   * @param {{ similar?: boolean }} [options]
+   */
+  create(items, { similar = false } = {}) {
     return this.run(() => {
       this.writable();
+      if (similar) this.refuseSimilar(items);
       const now = new Date();
       const timestamp = now.toISOString();
       const working = new Map([...this.tasks].map(([uuid, map]) => [uuid, { ...map }]));
@@ -780,6 +788,42 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       this.commit(ops);
       return ok({ tasks: created.map((uuid) => this.detail(uuid)) }, 201);
     });
+  }
+
+  /**
+   * Refuses a new task that resembles an open one in its repository (BRK-283). Ideas and routine runs are neither
+   * checked nor compared: an idea is the owner's words, and a run is one of many alike on purpose.
+   * @param {any[]} items
+   */
+  refuseSimilar(items) {
+    const skip = new Set(['ideas', 'routines']);
+    const found = new Map();
+    for (const item of items) {
+      if (!item || typeof item !== 'object' || item.force === true || skip.has(item.project)) continue;
+      const repo = this.checkRepoSlug(item.repo);
+      const linked = new Set(
+        [...arrayOf(item.related), ...arrayOf(item.depends)].map((r) => resolveRef(String(r), this.tasks)),
+      );
+      const open = this.views(
+        (t) => t.status === 'pending' && t.repo === repo && !skip.has(t.project) && !linked.has(t.uuid),
+      );
+      const brief = item.brief ?? item.note;
+      for (const { task } of similarTasks({ description: item.description, brief }, open))
+        found.set(task.uuid, task);
+    }
+    if (!found.size) return;
+    const tasks = [...found.values()].map((t) => ({
+      uuid: t.uuid,
+      wid: t.wid,
+      short: t.short,
+      description: t.description,
+      claim: t.claim,
+      ready: t.ready,
+    }));
+    throw new Conflict(
+      `it resembles open tasks: ${tasks.map(similarLine).join('; ')}. Link them as related, or add it anyway`,
+      { similar: tasks },
+    );
   }
 
   update(ref, input) {

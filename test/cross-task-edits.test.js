@@ -4,7 +4,7 @@ import { api } from './helpers.js';
 // IDEA-30 section 2 (BRK-125): a general agent edits other open tasks in its repository directly, each change noted.
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const make = async (fields = {}) =>
-  (await body(await api('tasks', { method: 'POST', body: [{ description: 'A task', project: 'ops', ...fields }] })))
+  (await body(await api('tasks', { method: 'POST', body: [{ description: 'A task', project: 'ops', force: true, ...fields }] })))
     .tasks[0];
 const edit = (ref, changes) => api(`tasks/${ref}`, { method: 'PATCH', body: changes });
 
