@@ -356,6 +356,8 @@ export const peopleMethods = {
     const reach = this.personReach(by, person);
     if (reach) return fail(403, reach);
     this.revokeAccess(person.handle);
+    // Their own Claude routines go too (BRK-302): nothing starts on them again.
+    this.dropPersonClaude(person.handle);
     this.sql.exec('DELETE FROM grants WHERE handle = ?', person.handle);
     this.sql.exec('UPDATE people SET removed = ? WHERE handle = ?', Date.now(), person.handle);
     return ok({ removed: person.handle });
