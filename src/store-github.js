@@ -443,6 +443,14 @@ export const githubMethods = {
       if (!(error instanceof GitHubError)) throw error;
       automation.errors.push(error.message);
     }
+    // Risky-path review (BRK-280): a pull request touching a listed path gets a separate reviewer and a check.
+    try {
+      const problem = await this.checkRiskyPulls(client, repo, fetched.pulls);
+      if (problem) automation.errors.push(problem);
+    } catch (error) {
+      if (!(error instanceof GitHubError)) throw error;
+      automation.errors.push(error.message);
+    }
     // Changes from the console (BRK-259): each one's pull request merged, closed, or taken over, from the same list.
     this.followInfraChanges(repo.slug, fetched.pulls);
     // Policy changes from the board (WEB-123), the same way.
@@ -1355,6 +1363,8 @@ export const githubMethods = {
       return {
         ...pr,
         verdict: pr.state === 'open' ? prVerdict(pr) : null,
+        // Why Merge when green waits on its risky-path review (BRK-280), so the settings skip it.
+        riskHold: pr.state === 'open' ? this.riskHoldOf(repo.slug, pr.number) : null,
         tasks: [
           ...closes.map((w) => ({ ...taskBrief(w), closes: true })),
           ...mentions.map((w) => ({ ...taskBrief(w), closes: false })),
@@ -1602,6 +1612,8 @@ export const githubMethods = {
           agentReview: this.agentReviewOf(repo.slug, p.number, p.head?.sha ?? null),
           // The plan its infrastructure files would make, as its check says (BRK-185); null when it changes none.
           infra: this.infraPullOut(repo.slug, p.number),
+          // Its risky-path review (BRK-280); null when it touches nothing the repository lists.
+          riskReview: this.riskReviewOut(repo.slug, p.number),
           workers,
           deploys: workers.length > 0,
           // null: the repository has no deploy pipeline, so the page says nothing about deploys.
@@ -1756,6 +1768,13 @@ export const githubMethods = {
             headSha: p.head.sha,
           },
         };
+      // A risky-path review holds Merge when green (BRK-280): turning it on, or a merge the settings make. The owner's
+      // own Merge press goes through: merging is theirs.
+      const riskHeld =
+        (action === 'auto-merge' && enable !== false) || (action === 'merge' && setting === true)
+          ? this.riskHoldOf(repo.slug, p.number)
+          : null;
+      if (riskHeld) return { status: 409, body: { error: `#${number}: ${riskHeld}.`, riskHold: true } };
       const known = this.sql
         .exec('SELECT data FROM gh_pulls WHERE repo = ? AND number = ?', repo.slug, p.number)
         .toArray()[0];

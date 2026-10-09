@@ -536,6 +536,53 @@ function authorLabel(by) {
   return by;
 }
 
+/** Where the owner's words came from, as the section says it (BRK-284). */
+function saidSource(q) {
+  const [kind, ...rest] = String(q.from ?? 'board').split(' ');
+  const where =
+    {
+      board: 'on this task',
+      message: 'in a message',
+      peloton: 'on the peloton',
+      ping: 'answering a ping',
+      decision: 'in a decision',
+      comment: 'in a comment',
+    }[kind] ?? kind;
+  const pointer = rest.length ? ` (${rest.join(' ')})` : '';
+  return `${q.by === 'owner' ? 'You' : `Quoted by ${q.by}`}, ${where}${pointer} · ${day(q.at)}`;
+}
+
+/**
+ * The owner's words, quoted (BRK-284): first on the task, and handed to every agent that picks it up before the
+ * description. Shown only when the task has some; Keep for agents under the owner's comments adds them.
+ * @param {Record<string, any>} props
+ */
+function OwnerSaid({ task: t }) {
+  const said = t.ownerSaid ?? [];
+  if (!said.length) return null;
+  return (
+    <section class="panel-section" aria-labelledby={`said-${t.uuid}`}>
+      <h3 id={`said-${t.uuid}`}>You said</h3>
+      <p class="meta">Every agent that picks this task up reads these first.</p>
+      <ol class="notes">
+        {said.map((q) => (
+          <li key={q.id} class="note said">
+            <blockquote class="said-quote">
+              <RichText text={q.text} />
+            </blockquote>
+            <span class="meta said-meta">
+              <span>{saidSource(q)}</span>
+              <button type="button" class="btn btn-quiet btn-sm" onClick={() => actions.unquote(t, q)}>
+                Remove<span class="visually-hidden"> this quote</span>
+              </button>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Comments({ task: t }) {
   const [draft, setDraft] = useState('');
@@ -576,6 +623,13 @@ function Comments({ task: t }) {
                 </time>
               </span>
               <RichText text={c.text} />
+              {c.by === 'owner' &&
+                t.status === 'pending' &&
+                !(t.ownerSaid ?? []).some((q) => q.text === c.text.trim()) && (
+                  <button type="button" class="btn btn-quiet btn-sm note-keep" onClick={() => actions.quote(t, c.text)}>
+                    Keep for agents
+                  </button>
+                )}
             </li>
           ))}
         </ol>
@@ -895,6 +949,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
         <Actions task={t} />
         <ModeButton modal={false} />
       </div>
+      <OwnerSaid task={t} />
       <AgentSection task={t} />
       <DecisionSection task={t} />
       <IncidentSection task={t} />
@@ -995,6 +1050,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
             <AgentSection task={t} />
           </div>
           <div class="modal-main">
+            <OwnerSaid task={t} />
             <DecisionSection task={t} />
             <IncidentSection task={t} />
             <RunEventLine task={t} />

@@ -1159,6 +1159,14 @@ async function handleApi(request, env, url, ctx) {
       if (parts.length === 3 && method === 'GET') return send(await s.messagesApi(ref));
       if (parts[3] === 'waiting' && parts.length === 4 && method === 'GET')
         return send(await s.messagesWaitingApi(ref, url.searchParams.get('agent')));
+    } else if (action === 'said') {
+      // The owner's words (BRK-284): their own quote and removing one are the signed-in board's; an agent quotes with its name.
+      if (parts.length === 3 && method === 'POST') return send(await s.quoteOwner(ref, body, via === 'cookie'));
+      if (parts.length === 4 && method === 'DELETE') {
+        if (via !== 'cookie')
+          return json(403, { error: "only the owner, on the signed-in web board, removes the owner's words" });
+        return send(await s.unquoteOwner(ref, parts[3]));
+      }
     } else if (action === 'decision' && parts[3] === 'answers' && parts.length === 4) {
       // Send answers and carry on starts an agent (BRK-134): the owner's press on the signed-in board, never the bearer token.
       if (method === 'POST' && body.carryOn && via !== 'cookie')
@@ -1175,6 +1183,9 @@ async function handleApi(request, env, url, ctx) {
       if (action === 'done') return send(await s.done(ref, body.note, body.by));
       if (action === 'comments' || action === 'annotate') return send(await s.comment(ref, body.text, body.by));
       if (action === 'review') return send(await s.taskReviewApi(ref, body));
+      if (action === 'risk-review') return send(await s.riskReviewApi(ref, body));
+      if (action === 'risk-answer')
+        return send(await s.riskAnswerApi(ref, body, { owner: via === 'cookie' && !body.by }));
       if (action === 'session') return send(await s.sessionLogApi(ref, body));
       if (action === 'pings') {
         const result = await s.pingCreate(ref, body);
@@ -1182,6 +1193,8 @@ async function handleApi(request, env, url, ctx) {
         if (result.status === 201 && result.body.ping.push) ctx?.waitUntil(s.pushPing(result.body.ping.id));
         return send(result);
       }
+    } else if (action === 'risk-review' && method === 'GET') {
+      return send(await s.riskReviewsApi(ref));
     } else if (action === 'session' && method === 'GET') {
       return send(await s.sessionApi(ref, url.searchParams.get('after')));
     }

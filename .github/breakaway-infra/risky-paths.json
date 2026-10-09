@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "areas": [
+    {
+      "name": "Merging",
+      "why": "What merges a pull request, or sets one to merge on green, without a person pressing Merge.",
+      "paths": [
+        "src/store-github.js",
+        "src/store-infra-change-approval.js",
+        "src/store-chase.js",
+        "src/store-risky-review.js",
+        "src/risky-paths.js",
+        "web/src/lib/autopilot.js"
+      ]
+    },
+    {
+      "name": "Git refs and force",
+      "why": "What creates, moves, or force-moves a branch, or writes commits into a repository.",
+      "paths": [
+        "src/store-init.js",
+        "src/store-specs.js",
+        "src/store-infra-changes.js",
+        "src/store-infra-policy-changes.js",
+        "src/init.js",
+        "src/move.js"
+      ]
+    },
+    {
+      "name": "Credentials and tokens",
+      "why": "What holds, makes, reads, or checks a secret, a token, a key, or a session.",
+      "paths": [
+        "src/auth.js",
+        "src/oauth.js",
+        "src/store-oauth.js",
+        "src/crypto.js",
+        "src/secrets.js",
+        "src/release-key.js",
+        "src/github-access.js",
+        "src/infra-tokens.js",
+        "src/store-infra-tokens.js",
+        "src/infra-cloudflare-tokens.js",
+        "src/infra-short-lived.js",
+        "src/store-infra-short-lived.js",
+        "src/redact.js"
+      ]
+    },
+    {
+      "name": "Incidents, pings, and pushes",
+      "why": "What opens an incident, pings the owner, or sends a push to their phone.",
+      "paths": [
+        "src/infra-incidents.js",
+        "src/store-infra-incidents.js",
+        "src/infra-signals.js",
+        "src/store-infra-signals.js",
+        "src/infra-deploy-signals.js",
+        "src/store-infra-deploy-signals.js",
+        "src/ping.js",
+        "src/store-pings.js",
+        "src/push.js",
+        "src/store-push.js",
+        "src/web-push.js"
+      ]
+    },
+    {
+      "name": "Deletes and applies",
+      "why": "What deletes resources or data, or changes infrastructure, including the workflows that run with write tokens.",
+      "paths": [
+        "src/infra-cleanup.js",
+        "src/store-infra-cleanup.js",
+        "src/infra-break-glass.js",
+        "src/store-infra-break-glass.js",
+        "src/infra-envelopes.js",
+        "src/store-infra-envelopes.js",
+        "src/infra-runner.js",
+        "src/store-infra-runs.js",
+        "src/cloudflare-deploy.js",
+        "template/infra/",
+        ".github/workflows/"
+      ]
+    },
+    {
+      "name": "This list",
+      "why": "Changing what counts as risky changes what gets a separate review.",
+      "paths": [".github/breakaway-infra/risky-paths.json"]
+    }
+  ]
+}

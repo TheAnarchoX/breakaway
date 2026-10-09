@@ -447,9 +447,25 @@ function taskLine(t) {
   return `${idOf(t).padEnd(8)}  ${(t.horizon ?? '-').padEnd(5)}  ${(t.project ?? '-').padEnd(8)}  ${t.description}${extra.length ? `  (${extra.join('; ')})` : ''}`;
 }
 
+/** The owner's words quoted on a task (BRK-284), first, as a Markdown section; nothing when there are none. */
+function ownerSaidMarkdown(t) {
+  if (!t.ownerSaid?.length) return [];
+  const out = ['## The owner said (read this first)', ''];
+  for (const q of t.ownerSaid)
+    out.push(
+      ...String(q.text)
+        .split('\n')
+        .map((l) => `> ${l}`.trimEnd()),
+      '',
+      `(${q.from}, ${q.by === 'owner' ? 'from the owner' : `quoted by ${q.by}`}${q.at ? `, ${day(q.at)}` : ''})`,
+      '',
+    );
+  return out;
+}
+
 /** A task in full, as `npx breakaway show` prints it, in Markdown. */
 export function taskDetail(t) {
-  const out = [`# ${idOf(t)} · ${t.description}`, ''];
+  const out = [`# ${idOf(t)} · ${t.description}`, '', ...ownerSaidMarkdown(t)];
   const row = (k, v) => v && out.push(`- **${k}:** ${v}`);
   const inReview = t.status === 'pending' && (t.github ?? []).some((p) => p.closes && p.state === 'open');
   row(
@@ -825,7 +841,14 @@ const WRITERS = [
       const me = named(ctx);
       const { slug } = await scoped(ctx);
       const { task } = body(await ctx.store.claim(args.task, me, false, slug));
-      return { text: `Claimed ${idOf(task)} as ${task.claim}: ${task.description}`, data: { task } };
+      // The owner's words go to every agent that claims the task, before the description (BRK-284).
+      const said = ownerSaidMarkdown(task);
+      return {
+        text: [`Claimed ${idOf(task)} as ${task.claim}: ${task.description}`, ...(said.length ? ['', ...said] : [])]
+          .join('\n')
+          .trimEnd(),
+        data: { task },
+      };
     },
   },
   {
@@ -868,6 +891,31 @@ const WRITERS = [
       const me = named(ctx);
       const { task } = body(await ctx.store.comment(args.task, args.text, me));
       return { text: `Commented on ${idOf(task)}.`, data: { task } };
+    },
+  },
+  {
+    name: 'quote_owner',
+    title: 'Quote the owner',
+    description:
+      'Put the owner’s exact words on a task you hold, quoted and marked as yours: they show first on the task and go to every agent that claims it, before the description. Quote only what the owner wrote, word for word, and say where: a message, a peloton post, a ping, a decision, or a comment.',
+    inputSchema: input(
+      {
+        task: TASK_REF,
+        text: { type: 'string', description: 'The owner’s words, exactly as they wrote them', maxLength: 2000 },
+        from: {
+          type: 'string',
+          description:
+            'Where they said it: message, peloton, ping, decision, or comment, with a pointer if you have one, like "peloton #12"',
+          maxLength: 60,
+        },
+      },
+      ['task', 'text', 'from'],
+    ),
+    annotations: WRITES,
+    async run(args, ctx) {
+      const me = named(ctx);
+      const { task } = body(await ctx.store.quoteOwner(args.task, { text: args.text, from: args.from, by: me }, false));
+      return { text: `Quoted the owner on ${idOf(task)}.`, data: { task } };
     },
   },
   {
@@ -1141,6 +1189,7 @@ const ORDER = [
   'claim_task',
   'release_task',
   'comment',
+  'quote_owner',
   'add_task',
   'modify_task',
   'ping_owner',
