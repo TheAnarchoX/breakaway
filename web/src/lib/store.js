@@ -1700,8 +1700,8 @@ export const actions = {
     return result?.feature ? result : null;
   },
   /**
-   * Starts or stops the chase on feature `f`, or sets how many agents it allows in an area (`body`: `on`,
-   * `parallel`). The feature page and the Agents view follow the answer straight away.
+   * Starts or stops the chase on feature `f`, or sets how many agents it allows in an area or how many of its pull
+   * requests may wait for you (`body`: `on`, `parallel`, `reviewCap`). The feature page and the Agents view follow the answer straight away.
    */
   async chase(f, body, message) {
     const result = await change(() => api(`features/${enc(f.slug)}/chase`, { method: 'POST', body }), message);

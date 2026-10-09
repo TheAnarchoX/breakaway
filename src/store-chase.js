@@ -11,6 +11,8 @@
  * A chase can have a road captain (BRK-275, docs/specs/BRK-275-road-captain.md): one agent the board starts with it
  * on a task of its own, which keeps the plan and runs the peloton, writes a captain's log, and hands over to a fresh
  * captain after its watch.
+ * A chase waits for its owner (BRK-276): at its review cap, the pull requests it opened that wait on the owner, it
+ * starts nothing new but fixes, and it resumes as the owner merges or closes them.
  */
 import { prVerdict } from './github.js';
 import { AgentError } from './store-agents.js';
@@ -18,6 +20,11 @@ import { InputError, rank } from './model.js';
 import { looksLikeSecret } from './ping.js';
 
 const DEFAULT_PARALLEL = 3;
+/** How many of a chase's pull requests may wait on the owner before it starts nothing new (BRK-276). */
+const DEFAULT_REVIEW_CAP = 5;
+const REVIEW_CAP_MAX = 50;
+/** Verdicts of an open pull request that waits on the owner: its checks are done and an agent has nothing to fix. */
+const WAITS_ON_OWNER = new Set(['ready', 'review', 'behind', 'unknown']);
 /** Refusals (failed starts, or an agent that let go without a pull request) before a task is Stuck. */
 const STUCK_AFTER = 2;
 const NOTES_KEPT_MS = 30 * 86_400_000;
@@ -43,6 +50,7 @@ const inReview = (t) => Boolean(t.github?.some((p) => p.closes && p.state === 'o
 const openPull = (t) => t.github?.find((p) => p.closes && p.state === 'open') ?? null;
 const areaOf = (t) => `${t.repo}:${t.project}`;
 const agents = (n) => `${n} ${n === 1 ? 'agent is' : 'agents are'}`;
+const pulls = (n) => `${n} ${n === 1 ? 'pull request waits' : 'pull requests wait'}`;
 const iso = (ms) => (ms ? new Date(Number(ms)).toISOString() : null);
 
 /** The chase's tasks: the feature's own, then every open task that blocks one of them, from anywhere on the board. */
@@ -87,6 +95,8 @@ export const chaseMethods = {
     if (!columns.includes('chase_started')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_started INTEGER');
     if (!columns.includes('chase_parallel'))
       this.sql.exec(`ALTER TABLE features ADD COLUMN chase_parallel INTEGER NOT NULL DEFAULT ${DEFAULT_PARALLEL}`);
+    if (!columns.includes('chase_review_cap'))
+      this.sql.exec(`ALTER TABLE features ADD COLUMN chase_review_cap INTEGER NOT NULL DEFAULT ${DEFAULT_REVIEW_CAP}`);
     if (!columns.includes('chase_stalled')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_stalled INTEGER');
     if (!columns.includes('chase_ended')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_ended INTEGER');
     // The road captain (BRK-275): whether the chase has one, its watch in hours, and when the board asked it to hand over.
@@ -147,14 +157,19 @@ export const chaseMethods = {
     return this.sql.exec("SELECT 1 FROM features WHERE chase = 'on' LIMIT 1").toArray().length > 0;
   },
 
-  /** The chase's record as the API shows it. */
-  chaseState(row) {
+  /**
+   * The chase's record as the API shows it; with `review` (from chaseReview), how many of its pull requests wait on
+   * the owner.
+   */
+  chaseState(row, review = null) {
     const state = STATES.includes(row.chase) ? row.chase : 'off';
     return {
       state,
       on: state === 'on',
       startedAt: iso(row.chase_started),
       parallel: Number(row.chase_parallel ?? DEFAULT_PARALLEL),
+      reviewCap: Number(row.chase_review_cap ?? DEFAULT_REVIEW_CAP),
+      ...(review ? { review } : {}),
       stalledPingAt: iso(row.chase_stalled),
       endedAt: iso(row.chase_ended),
       captain: this.captainView(row),
@@ -225,12 +240,29 @@ export const chaseMethods = {
   },
 
   /**
+   * The chase's pull requests that wait on the owner (BRK-276): open, closing one of its tasks, checks done, nothing
+   * for an agent to fix (no conflict, no failing check, not a draft), and not set to merge by itself. `set` is
+   * chaseMembers'. At `cap` of them, the chase is `full`: it starts nothing new but fixes.
+   */
+  chaseReview(row, set) {
+    const cap = Number(row.chase_review_cap ?? DEFAULT_REVIEW_CAP);
+    const waiting = [];
+    for (const { t } of set) {
+      if (t.status !== 'pending' || t.tags.includes('captain') || !inReview(t)) continue;
+      const pr = openPull(t);
+      if (WAITS_ON_OWNER.has(pr.verdict) && !this.chasePullMergesItself(t, pr)) waiting.push(pr.number);
+    }
+    waiting.sort((a, b) => a - b);
+    return { waiting: waiting.length, cap, full: waiting.length >= cap, pulls: waiting };
+  },
+
+  /**
    * Who a chase on feature `row` starts now and why each other task in it waits (section 3): its tasks and
    * their blockers, sorted into done, in review, running, waiting, Needs you, Stuck, and the queue. `views`
    * and `connected` are the board's now. The queue counts what auto-start starts first (security fixes,
    * general agents, and Start-when-ready tasks), then keeps to the shared slots and budget, each repository's
    * caps, `parallel` agents per area (counting every agent running there), and never two agents on related
-   * tasks in one area.
+   * tasks in one area. At its review cap (chaseReview) it starts only fixes.
    */
   /** The chase's tasks, as `{ t, blocks, member }`: the feature's own, then what blocks them (its peloton's too). */
   chaseMembers(row, views) {
@@ -276,6 +308,7 @@ export const chaseMethods = {
       return room.get(repo);
     };
     const autoNow = new Set(ahead.map((t) => t.uuid));
+    const review = this.chaseReview(row, set);
 
     const brief = ({ t, blocks, member }) => ({
       uuid: t.uuid,
@@ -378,7 +411,11 @@ export const chaseMethods = {
       const hold = connected ? this.routineHold(t.repo) : null;
       if (autoNow.has(t.uuid)) reason = 'auto-start starts it now';
       else if (hold) reason = this.holdReason(t.repo, hold);
-      else if (related)
+      else if (!fix && review.full) {
+        // Only the owner frees it, so it isn't capacity: a chase held only by its cap pings like any stall.
+        reason = `${review.waiting} of the chase’s pull requests wait for you, the most it lets wait: it starts more as you merge or close them`;
+        capacity = false;
+      } else if (related)
         reason = `it’s related to ${label(related)}, which an agent is working on in ${name}: never two at once`;
       else if (t.project && (inArea.get(area) ?? 0) >= parallel)
         reason = `${agents(inArea.get(area))} already working in ${name}, the most this chase allows`;
@@ -410,10 +447,12 @@ export const chaseMethods = {
       inReview: count('in-review'),
       done: count('done'),
       total: tasks.length,
+      review: review.waiting,
+      reviewCap: review.cap,
     };
     const order = new Map(set.map((e, i) => [e.t.uuid, i]));
     tasks.sort((a, b) => order.get(a.uuid) - order.get(b.uuid));
-    return { tasks, needsYou, stuck, queue, start, line, watch };
+    return { tasks, needsYou, stuck, queue, start, line, watch, review };
   },
 
   /** "3 running, 2 ready, 1 waiting for you": the chase's live line (section 3.9). */
@@ -422,14 +461,18 @@ export const chaseMethods = {
     if (line.waiting) parts.push(`${line.waiting} waiting on other tasks`);
     if (line.needsYou) parts.push(`${line.needsYou} waiting for you`);
     if (line.stuck) parts.push(`${line.stuck} stuck`);
-    return parts.join(', ');
+    const live = parts.join(', ');
+    // At its review cap (BRK-276), what it waits for comes first.
+    if (line.reviewCap && line.review >= line.reviewCap)
+      return `${pulls(line.review)} for you: the chase starts nothing new until you merge or close one. ${live[0].toUpperCase()}${live.slice(1)}`;
+    return live;
   },
 
   /** The feature's chase as its page shows it: the record, and with `plan`, who starts next and what holds the rest. */
   chaseView(row, plan = null) {
     const held = row.chase === 'on' ? (this.githubHold() ?? this.claudeHold()) : null;
     return {
-      ...this.chaseState(row),
+      ...this.chaseState(row, plan?.review ?? null),
       ...(held ? { held } : {}),
       ...(plan
         ? {
@@ -465,13 +508,26 @@ export const chaseMethods = {
   },
 
   /**
-   * POST /api/features/<slug>/chase: `on` starts or stops it, `parallel` sets the per-area limit (a running chase
-   * follows it on the next tick), `dryRun` shows what would start now without starting or changing anything, and
-   * `dismiss` clears its ended note from the inbox. The owner's alone: agents never start a chase.
+   * POST /api/features/<slug>/chase: `on` starts or stops it, `parallel` sets the per-area limit and `reviewCap` how
+   * many of its pull requests may wait on the owner (a running chase follows either on the next tick), `dryRun` shows
+   * what would start now without starting or changing anything, and `dismiss` clears its ended note from the inbox.
+   * `digestPush` turns the push of its digests on or off, and `dismissDigests` clears them from the inbox (BRK-277).
+   * The owner's alone: agents never start a chase.
    */
   async chaseFeature(
     slug,
-    { on, parallel, captain, captainHours, digestPush, dryRun = false, dismiss = false, dismissDigests = false, by } = {},
+    {
+      on,
+      parallel,
+      reviewCap,
+      captain,
+      captainHours,
+      digestPush,
+      dryRun = false,
+      dismiss = false,
+      dismissDigests = false,
+      by,
+    } = {},
   ) {
     await this.ready();
     if (by !== undefined && by !== null && by !== '' && by !== 'owner')
@@ -495,10 +551,23 @@ export const chaseMethods = {
       if (!Number.isInteger(limit) || limit < 1 || limit > most)
         throw new InputError(`parallel is how many agents at once in one area: a number from 1 to ${most}`);
     }
+    let cap;
+    if (reviewCap !== undefined && reviewCap !== null) {
+      cap = Number(reviewCap);
+      if (typeof reviewCap === 'boolean' || !Number.isInteger(cap) || cap < 1 || cap > REVIEW_CAP_MAX)
+        throw new InputError(
+          `reviewCap is how many of the chase’s pull requests may wait for you before it starts nothing new: a number from 1 to ${REVIEW_CAP_MAX}`,
+        );
+    }
     const connected = await this.connectedRepos();
     if (dryRun) {
       const plan = this.chaseQueue(
-        { ...row, chase: on === false ? row.chase : 'on', chase_parallel: limit ?? row.chase_parallel },
+        {
+          ...row,
+          chase: on === false ? row.chase : 'on',
+          chase_parallel: limit ?? row.chase_parallel,
+          chase_review_cap: cap ?? row.chase_review_cap,
+        },
         this.views(),
         connected,
       );
@@ -518,11 +587,12 @@ export const chaseMethods = {
     if (dismissDigests) this.chaseDigestDismiss(row.slug);
     if (digestPush !== undefined && digestPush !== null) this.chaseDigestPush(row.slug, digestPush);
     if (limit !== undefined) this.sql.exec('UPDATE features SET chase_parallel = ? WHERE slug = ?', limit, row.slug);
+    if (cap !== undefined) this.sql.exec('UPDATE features SET chase_review_cap = ? WHERE slug = ?', cap, row.slug);
     if (hours !== undefined)
       this.sql.exec('UPDATE features SET chase_captain_hours = ? WHERE slug = ?', hours, row.slug);
     let started = [];
     if (on === true && row.chase !== 'on') {
-      const plan = this.chaseQueue(row, this.views(), connected);
+      const plan = this.chaseQueue(this.featureRow(row.slug), this.views(), connected);
       if (!plan.tasks.length) throw new AgentError(`${row.title} has no tasks to chase: tag some with ${row.slug}`);
       if (plan.tasks.every((x) => x.state === 'done'))
         throw new AgentError(`every task in ${row.title} is done: there’s nothing to chase`);
@@ -568,7 +638,7 @@ export const chaseMethods = {
       );
       if (captain) await this.captainTick(this.featureRow(row.slug));
       else this.captainStandDown(row, 'The owner turned the road captain off: it stands down.');
-    } else if (limit !== undefined && row.chase === 'on') this.scheduleAgentsCheck();
+    } else if ((limit !== undefined || cap !== undefined) && row.chase === 'on') this.scheduleAgentsCheck();
     // A chase that isn't on keeps the owner's choice for the next Chase.
     if (row.chase !== 'on' && on !== true && captain !== undefined && captain !== null)
       this.sql.exec('UPDATE features SET chase_captain = ? WHERE slug = ?', captain ? 1 : 0, row.slug);

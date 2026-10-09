@@ -28,6 +28,7 @@ import {
 import { Title } from '../lib/richtext.jsx';
 import { Segmented } from './ui.jsx';
 import { STANDINGS, featureHref, nextUp } from './Feature.jsx';
+import { ReviewPill } from './Chase.jsx';
 
 /**
  * The roadmap as a timeline (WEB-102): a lane per release, a bar per feature with its tasks' states inside.
@@ -202,6 +203,7 @@ function Bar({ f, p, x, px, now, past, lanes, compact, onShow, laneAt, setOver }
             </span>
             <span class="tl-when">
               {f.chase?.on && <span class="fr-pill fr-pill-chase">Chasing</span>}
+              <ReviewPill chase={f.chase} />
               {f.needsYou.length > 0 && !f.done && <Hand size={13} aria-label="Needs you" />}
               {when}
               <PlanStatus status={status} />
@@ -230,7 +232,7 @@ function Bar({ f, p, x, px, now, past, lanes, compact, onShow, laneAt, setOver }
           </span>
         )}
         <span id={id} class="visually-hidden">
-          {`${f.title}: ${why} ${nextUp(f)}${fixed ? '' : ' Alt+left and Alt+right move it a day, with Shift its end; Alt+up and Alt+down move it to another release.'}`}
+          {`${f.title}: ${why} ${nextUp(f)}${f.chase?.on && f.chase.review?.full ? ` Its chase waits: ${f.chase.review.waiting} of its pull requests wait for you to review.` : ''}${fixed ? '' : ' Alt+left and Alt+right move it a day, with Shift its end; Alt+up and Alt+down move it to another release.'}`}
         </span>
       </a>
     </li>

@@ -446,6 +446,27 @@ describe('chase (BRK-85)', () => {
     expect(chaseRequest('x', 'stop', { parallel: 2 }).error).toMatch(/^--parallel is for a chase that runs/u);
   });
 
+  it('sets the review cap, from 1 to 50, on a chase that runs (BRK-276)', () => {
+    expect(chaseRequest('x', undefined, { reviewCap: '2' })).toEqual({
+      request: ['POST', 'features/x/chase', { on: true, reviewCap: 2 }],
+    });
+    for (const n of ['0', '51', '1.5', 'five'])
+      expect(chaseRequest('x', undefined, { reviewCap: n }).error).toMatch(/^--review-cap is how many/u);
+    expect(chaseRequest('x', 'stop', { reviewCap: 2 }).error).toMatch(/^--review-cap is for a chase that runs/u);
+  });
+
+  it('prints the review cap, and says when the chase is at it (BRK-276)', () => {
+    expect(chaseLines({ state: 'off', parallel: 3, reviewCap: 5 }, 'x')).toContain(
+      '  Review cap  up to 5 pull requests waiting for you',
+    );
+    expect(
+      chaseLines(
+        { state: 'on', parallel: 3, reviewCap: 2, review: { waiting: 2, cap: 2, full: true, pulls: [41, 42] } },
+        'x',
+      ),
+    ).toContain('  Review cap  2 of 2 pull requests wait for you: it starts nothing new but fixes');
+  });
+
   it('asks for a road captain, or none, and its watch (BRK-275)', () => {
     expect(chaseRequest('x', undefined, { captain: true, watch: '6' })).toEqual({
       request: ['POST', 'features/x/chase', { on: true, captain: true, captainHours: 6 }],

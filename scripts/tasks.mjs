@@ -261,6 +261,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
   chase <slug>           start a chase (owner): the board starts an agent on every ready task in the feature and on
                          what blocks it, within its limits, until all are done or in review
     --parallel <n>       the most agents at once in one area (default 3); on a running chase, it changes it
+    --review-cap <n>     the most of its pull requests that wait for you before it starts nothing new but fixes
+                         (default 5, from 1 to 50); on a running chase, it changes it
     --dry-run            show what would start now, and start nothing
     --captain, --no-captain   start a road captain with it, or not (by default, one for more than 10 tasks); on a
                          running chase, start or stand down its captain
@@ -1590,6 +1592,7 @@ const commands = {
   async chase() {
     const built = chaseRequest(args[0], args[1], {
       parallel: opts.parallel,
+      reviewCap: opts['review-cap'],
       dryRun: Boolean(opts['dry-run']),
       by: opts.as ?? setting('AGENT'),
       captain: opts['no-captain'] ? false : opts.captain ? true : undefined,
