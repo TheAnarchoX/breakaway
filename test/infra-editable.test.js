@@ -33,6 +33,8 @@ describe('editable settings in the provider interface (BRK-262)', () => {
     expect(() => one({ ...base, help: undefined })).toThrow(/no label or no help/u);
     expect(() => one({ ...base, type: 'slider' })).toThrow(/unknown type "slider"/u);
     expect(() => checkEditable(provider, 'service', { fields: [base, base] })).toThrow(/listed twice/u);
+    expect(() => one({ ...base, deploy: true })).toThrow(/deploy is not words/u);
+    expect(() => one({ ...base, deploy: 'the deploy’s config' })).not.toThrow();
   });
 
   it('refuses a path the plan doesn’t compare, when the kind lists its settings', () => {
@@ -115,6 +117,21 @@ describe('Cloudflare’s editable settings (BRK-262)', () => {
     expect(worker.shown).toEqual([
       { path: 'secrets', label: 'Secrets', help: 'Set with the Worker’s deploy, never here.' },
     ]);
+  });
+
+  it('marks the Worker settings each deploy sets from its wrangler config (BRK-313)', () => {
+    const deploys = EDITABLE.worker.fields.filter((f) => f.deploy).map((f) => f.path);
+    expect(deploys).toEqual([
+      'compatibilityDate',
+      'compatibilityFlags',
+      'observability',
+      'placement',
+      'crons',
+      'bindings',
+    ]);
+    expect(new Set(EDITABLE.worker.fields.flatMap((f) => (f.deploy ? [f.deploy] : [])))).toEqual(
+      new Set(['the wrangler config']),
+    );
   });
 
   it('binds only to Cloudflare resources, never a variable or a secret', () => {

@@ -14,7 +14,7 @@ import {
 } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { writeDraft } from '../lib/drafts.js';
-import { confirmDialog, github, hashFor, newAgent, pullParam, repoName, toast } from '../lib/store.js';
+import { confirmDialog, github, hashFor, newAgent, pullParam, repoBySlug, repoName, toast } from '../lib/store.js';
 import { ago } from '../lib/model.js';
 import { planOverlay } from '../lib/topology.js';
 import {
@@ -38,6 +38,7 @@ import {
   createProblems,
   createStart,
   declaredFor,
+  deployLine,
   editLines,
   editMarks,
   endedWords,
@@ -1776,6 +1777,7 @@ export function ChangePanel({ ch, cant }) {
                     </span>
                   ))}
                   <NeedsCode ch={ch} edit={edits[n]} />
+                  <DeploySets ch={ch} edit={edits[n]} />
                 </li>
               ))}
             </ul>
@@ -1874,6 +1876,34 @@ function NeedsCode({ ch, edit }) {
         <Bot size={14} aria-hidden="true" />
         Have an agent write it
       </button>
+    </span>
+  );
+}
+
+/** How to keep the deploy's config and the environment's file in agreement, on the site (DOC-48). */
+const AGREEMENT_DOCS =
+  'https://leavethepack.dev/docs/architect-deploy-flow/#keep-the-wrangler-config-and-the-file-in-agreement';
+
+/**
+ * Under an edit the next deploy would undo (BRK-313): a setting of a Worker the repository's deploy flow deploys that
+ * each deploy sets from its config, or a binding a new resource gives it. The diff shows it as drift after the deploy;
+ * this says so where the change is made.
+ * @param {{ ch: Change, edit: import('../lib/infra-change.js').Edit }} props
+ */
+function DeploySets({ ch, edit }) {
+  const workers = /** @type {any} */ (repoBySlug.value.get(ch.env.repo))?.pipeline?.workers ?? {};
+  const line = deployLine(edit, {
+    declared: ch.declared,
+    editable: ch.editable,
+    workers: [workers.staging, workers.production].filter(Boolean),
+  });
+  if (!line) return null;
+  return (
+    <span class="change-line-code">
+      {line}{' '}
+      <a href={AGREEMENT_DOCS} target="_blank" rel="noopener noreferrer">
+        How to keep them in agreement
+      </a>
     </span>
   );
 }
