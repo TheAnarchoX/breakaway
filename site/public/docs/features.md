@@ -50,7 +50,7 @@ Every ready task starts at once, without waiting for the others. A task that bec
 
 A chase has no budget of its own. It shares the board’s agents at once and starts an hour, keeps to each repository’s caps and its routine’s limits, and never forces a start. Security fixes, agents started from a prompt, and other tasks that start by themselves go first; then the chase, with the task that frees the most work first. Waiting for a slot shows on the feature, and never pings you.
 
-**Several agents in one area.** Outside a chase, one agent works in an area at a time. Inside one, up to **parallel** agents may run at once in an area of a repository: 3 by default, from 1 (the usual rule) up to the agents-at-once ceiling, counting every agent running there. Two tasks `related` to each other never run at once. Set it when you start the chase, or while it runs.
+**Several agents in one area.** Up to **parallel** agents may run at once in an area of a repository: 3 by default, from 1 up to the agents-at-once ceiling, counting every agent running there. Set it when you start the chase, or while it runs. Which tasks run side by side is up to their [footprints](https://leavethepack.dev/docs/agents/#footprints): two tasks that would change the same files never run at once, and two that wouldn’t do, related or not. Only when a task’s footprint is unknown do two `related` tasks in one area wait for each other.
 
 ### Needs you, and Stuck
 
@@ -76,7 +76,7 @@ A chase ends when every task is done or in review. It leaves one note in your in
 
 ### Seeing it
 
-On the feature’s page, the **Chase** section has Chase and Stop chase, **See what would start** (a dry run that starts nothing), and the parallel setting. While the chase is on, it shows a live line, the running agents with their live output, Needs you, Stuck, and the next tasks in the order they’d start, with what holds each one: “3 agents are already working in web, the most this chase allows”. The **Agents** view lists every chase that’s on, with the same controls.
+On the feature’s page, the **Chase** section has Chase and Stop chase, **See what would start** (a dry run that starts nothing), and the parallel setting. While the chase is on, it shows a live line, the running agents with their live output, Needs you, Stuck, and the next tasks in the order they’d start, with what holds each one: “3 agents are already working in web, the most this chase allows”, or “it would touch `src/store-chase.js`, which BRK-12 is changing”. It also shows how well the board’s footprint guesses did in the repository. The **Agents** view lists every chase that’s on, with the same controls.
 
 Activity records a chase starting, stopping, and ending, and each agent it starts says “started by a chase”. A chase lives on the board only, never in a repository.
 

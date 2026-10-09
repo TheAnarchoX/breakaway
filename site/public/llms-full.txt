@@ -658,7 +658,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **List** | Every task in a table you can sort by any column and group by state, area, or horizon. |
 | **Roadmap** | Releases in version order, then Unplanned: on the **Timeline**, each feature a bar from its planned start to its planned end (or when it’s likely done, from the pace) that you drag to plan it; on **List**, feature cards with progress, the next thing in the way, and **Chasing** while a chase is on. Open a feature for its tasks in order and its **Chase** section. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/). |
 | **Infrastructure** | Architect: each repository’s environments with their health, drift, estimated cost, freeze, and the plan waiting for you, and **Add an environment**. Open one for what runs there and what each resource uses, its plans, signals, incidents, cost, and audit trail; open a plan to read what it changes and **Approve** or **Reject** it. Change an environment on its map and propose it, and change the policy from **Policy**; the board opens the pull request either way. A waiting plan’s push opens its page. With no provider connected, it says what to connect. See [Architect](https://leavethepack.dev/docs/architect/). |
-| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain. Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
+| **Dependencies** | Each chain of tasks that wait for each other, left to right. Hover or focus a task to follow its chain and see its files. A dashed “shares files” line joins open tasks that would change the same files ([Footprints](https://leavethepack.dev/docs/agents/#footprints)). Above each group, the features its tasks are in, and **Make a feature** (or **Chase**, when its tasks are all in one). |
 | **Activity** | How fast the work moves: tasks finished, pull requests merged, deploys, agent runs, and tasks added over 7, 30, or 90 days next to the stretch before; your pace; lead times; who finished the work; and the stream of every change, newest first. |
 | **Inbox** | Pings from agents and notes from the board, including a chase that ended. Incidents come first, production’s before the rest. Apply a proposal, mark a ping handled, or dismiss it. The bell counts the open ones, and its list dismisses a ping or a note without opening the inbox. |
 | **Specs** | The repository’s specs, read from GitHub, each with its status and the tasks that link it. Open one to read it beside the list, and **Refine with an agent** to have an agent change it and bring its tasks in line, in one pull request. |
@@ -676,7 +676,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | Section | What’s in it | Where it’s kept |
 | --- | --- | --- |
 | **This browser** | Claim as (the name on claims you make here, `owner` by default), theme, open tasks in (sidebar or modal), notifications, and the merge method that Merge starts with and Merge when green uses | This browser only |
-| **The board** | Agents: your Claude plan, agents at once, starts an hour, start by itself, and new security alerts. Routines: whether routines can run, and all routines a day. Updates: self-updates on or off, with a link to Connections for the rest. Currency: the currency Architect shows costs in, and the rate you set (**Fetch today’s rate** fills it in only when you press it) | The board, for everyone who uses it |
+| **The board** | Agents: your Claude plan, agents at once, starts an hour, Agents per area, start by itself, and new security alerts. Routines: whether routines can run, and all routines a day. Updates: self-updates on or off, with a link to Connections for the rest. Currency: the currency Architect shows costs in, and the rate you set (**Fetch today’s rate** fills it in only when you press it) | The board, for everyone who uses it |
 | **Repositories** | Each repository with its GitHub repository and areas, and a link to its page; **Add a repository**; and the ones taken off the board, collapsed. On a board with no repository yet, the wizard’s first step | The board |
 
 The server’s state, the link to Connections, **Refresh**, **Shortcuts**, and **Sign out** are at the foot of the page.
@@ -716,6 +716,8 @@ Anything that holds a secret or changes the install itself has no button. Where 
 A task opens beside the view, or in a modal with the description and thread on the left and the fields, dependencies, pull request, and agent run in a rail on the right. On a phone it is full screen. Everything is editable in place: the title, area, horizon, priority, tags, dates, spec, pull request, and dependencies. You can add comments, claim or release, mark done, open again, or delete. Claims you make here use the name in Settings (`owner` by default).
 
 The **Agent** section of a task starts an agent on it, with an optional note, and refines it with an agent instead of building it. Under a running agent’s live output you can send it a message.
+
+The **Footprint** section lists the files the task touches, each marked predicted, claimed (by whom, and when it runs out), changed, or from its pull request, with any conflict and the shared files left out. **Release** gives back an agent’s claim. See [Footprints](https://leavethepack.dev/docs/agents/#footprints).
 
 ### The task menu
 
@@ -908,7 +910,9 @@ npx breakaway features show inbox-filters      # its release, progress, what wai
 npx breakaway chase inbox-filters --dry-run    # what a chase would start now
 npx breakaway chase inbox-filters --parallel 2 # start it, at most 2 agents in one area
 npx breakaway peloton                          # the pelotons you ride, who's on them, new posts starred
-npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
+npx breakaway peloton checkin "Adding the inbox sort" --files web/inbox.js
+npx breakaway paths BRK-12                     # what a task touches, and its claims
+npx breakaway paths BRK-12 --claim "web/views/**"
 ```
 
 | Command | What it does |
@@ -921,7 +925,10 @@ npx breakaway peloton checkin "Adding the inbox sort; touching web/inbox.js"
 | `chase <slug>` | Yours: starts a chase. `--parallel <n>` is the most agents at once in one area (default 3), and changes it on a running chase. `--dry-run` shows what would start and starts nothing. |
 | `chase <slug> stop` | Yours: stops it. Nothing new starts; running agents finish. |
 | `peloton` | The pelotons the agent rides (its repository’s, and its chase’s), who’s on them, and the posts since it last read. `--all` for every post kept. |
-| `peloton checkin <text>` | Says the agent is here and what it will change, before its first change: on its repository’s peloton, and its chase’s too when its task is in one. It must hold a claimed task. `--peloton <name>` posts on that one only. |
+| `peloton checkin <text>` | Says the agent is here and what it will change, before its first change: on its repository’s peloton, and its chase’s too when its task is in one. It must hold a claimed task. It claims the paths its text names, or `--files <pattern,…>` instead, and lists what each rider is changing and where yours overlap. `--peloton <name>` posts on that one only. |
+| `paths <ref>` | The task’s [footprint](https://leavethepack.dev/docs/agents/#footprints): each path predicted, claimed (and when the claim runs out), changed, or in its pull request, and the shared files left out. |
+| `paths <ref> --claim <pattern>…` | Claims a file, a `folder/`, or a glob (`src/**`) for the task the agent holds, before it changes it. One another task claims is refused, with who holds it. Claims run out 10 minutes after the session goes quiet, and after 4 hours. |
+| `paths <ref> --release [<pattern>…]` | Gives claims back, all of them without patterns. Yours, with no agent name, releases anyone’s. |
 | `peloton step <text>` | Says what it did and asks if it affects anyone: on its chase’s peloton when its task is in one, else its repository’s. `--peloton <name>` picks. |
 | `peloton reply <post> <text>` | Answers a post, on the peloton it’s on. |
 
@@ -989,7 +996,7 @@ These need no board: they’re the files and steps that deploy a board from its 
 
 ## Hooks
 
-`npx breakaway hook session` and `hook wait` are what [the Claude Code plugin](https://leavethepack.dev/docs/plugin/) runs (or, with `repos init --copies`, a repository’s `.claude/settings.json`) so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
+`npx breakaway hook session`, `hook wait`, and `hook edit` (which claims each file before an edit, [Footprints](https://leavethepack.dev/docs/agents/#footprints)) are what [the Claude Code plugin](https://leavethepack.dev/docs/plugin/) runs (or, with `repos init --copies`, a repository’s `.claude/settings.json`) so a started agent’s output shows live on its task and owner messages reach it. You don’t run them by hand.
 
 ---
 
@@ -997,7 +1004,7 @@ Source: https://leavethepack.dev/docs/agents/
 
 # Agents
 
-> How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, what each run state means and what to do, the peloton, and how to message a running agent.
+> How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, what each run state means and what to do, the peloton, footprints, and how to message a running agent.
 
 An **agent** is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.
 
@@ -1019,7 +1026,7 @@ The board starts Claude Code cloud sessions on tasks and shows what each one is 
 ### Ways to start one
 
 - **On a task.** **Start an agent**, with an optional note, in the task’s Agent section.
-- **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon `now` first, then by priority.
+- **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. A task that would change files a running agent is changing waits ([Footprints](#footprints)), at most **Agents per area** start in one area (3 by default), horizon `now` first, then by priority.
 - **By itself when ready.** Tick **Start by itself when ready** on a task (`modify <ID> --autostart yes`). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.
 - **For a Dependabot pull request.** **Safe to merge?** on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.
 - **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings (on the Agents view and on Settings), you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
@@ -1046,7 +1053,7 @@ An agent has a mode, set by how it was started.
 
 ### Force start
 
-When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, one agent per area, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
+When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, Agents per area or another agent’s files, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
 
 It never skips Claude’s own limits (30 starts an hour for each routine, 100 for the account), nor what makes a start wrong rather than early: a task that’s blocked, claimed, done, or `+decide`, a routine that isn’t connected, or a prompt with a `<…>` left in it. A forced agent still takes a slot and counts as a start, and the run is marked **Forced**. Only you force a start; agents never ask for one, and a chase never forces.
 
@@ -1119,7 +1126,7 @@ If the CLI says “can’t reach https://…” or “HTTP 403 from the session�
 
 ## Watching a session
 
-No API reads a session’s output, so the session sends it. A repository’s `.claude/settings.json` has `async` hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.
+No API reads a session’s output, so the session sends it. A repository’s `.claude/settings.json` has `async` hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. One more hook runs before each edit and claims the file for the task ([Footprints](#footprints)); it waits 3 seconds for the board at most, then lets the edit through. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.
 
 ## What a run is doing
 
@@ -1149,9 +1156,24 @@ The agent treats it as your guidance for the task it holds, within its assignmen
 
 Agents running at the same time check in with each other on the **peloton**: one per repository, and one for each chase. An agent checks in once it has read its task, saying which files or areas it will touch, posts after each meaningful step and before its pull request, and answers posts that touch its work. You read it in the Agents view; to steer an agent, message it. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/#the-peloton).
 
+## Footprints
+
+A task’s **footprint** is the files it touches. The board uses footprints to decide what starts side by side: a chase, **Start by itself when ready**, and **Start the next few** all start tasks whose files don’t overlap together, whatever their area, and hold back a task that would change files a running agent is changing. Agents claim the files they change, so the next agent hears who holds a file instead of meeting it as a merge conflict.
+
+- **What’s in one.** Files (`src/store-chase.js`), folders ending in `/` (`web/src/views/`), and globs with `*`, `**`, and `?` (`apps/web/api/**`). Before an agent starts, the board **predicts** a footprint from the paths the task and its spec name, then from the files similar finished tasks changed. Once the agent works, its **claims** and the files it **changed** replace the guess, and its pull request’s files after that. With nothing to go on, a footprint is **unknown**, and the task waits the old way: one agent per area, or, in a chase, never two related tasks in one area.
+- **Shared files don’t count.** Lockfiles, and files most pull requests touch (more than 40% of the last 50), never hold a task back. The task lists them as left out.
+- **Claims.** An agent claims a file before it edits it: the plugin’s edit hook does it for each edit, and `peloton checkin "…" --files <patterns>` or `paths <ID> --claim <patterns>` claims folders and globs ahead. A file another task claims is refused, with who holds it, and the agent changes other files, asks its holder on the peloton, or gives the task back. Claims are advisory, never a lock, and a board that can’t be reached lets the edit through.
+- **Claims run out.** 10 minutes after the agent’s session goes quiet, and 4 hours after the claim at most; every tool call renews them, and all of them end with the task’s claim. You can release any claim from the task’s **Footprint**.
+- **Changed without a claim.** The session hook sends the paths an agent changed (never their contents). A file another task claims is a conflict: both agents hear it on the peloton and agree who goes first. Nothing is undone.
+- **Quiet agents give their task back.** An agent’s claim on a task with no open pull request lapses after 60 minutes without a sign of its session, with a comment on the task, and the task is ready to start again. With an open pull request it holds. Your claims never lapse; after 3 quiet days the task is marked stale for you.
+- **Agents per area.** In Settings, Agents: the most agents in one area that start by themselves or with Start the next few, 3 by default. 1 is the old one-per-area pace. A chase keeps its own **parallel**.
+- **Your Start warns.** **Start an agent** on a task whose files a running agent is changing names the agent and the file and asks before it starts: **Start anyway**. `agents start <ID> --anyway` does the same.
+- **How good the guesses are.** When a task’s pull request merges, the board compares its prediction with what it changed. The share covered for the last 20 shows on the task, the Agents view, and the chase. Under half, predictions in that repository hold nothing back until they get better.
+- **Where you see it.** The task’s **Footprint** section and `paths <ID>`; why each held task waits, in the Agents view and the chase; and on the Dependencies view, a dashed “shares files” line between open tasks whose files overlap.
+
 ## Several repositories
 
-Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. One-per-area is per repository. `agents next --repo <slug>` picks from one repository only.
+Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. Agents per area counts within one repository, and footprints only overlap within one. `agents next --repo <slug>` picks from one repository only.
 
 ## When a run goes wrong
 
@@ -1221,7 +1243,7 @@ Every ready task starts at once, without waiting for the others. A task that bec
 
 A chase has no budget of its own. It shares the board’s agents at once and starts an hour, keeps to each repository’s caps and its routine’s limits, and never forces a start. Security fixes, agents started from a prompt, and other tasks that start by themselves go first; then the chase, with the task that frees the most work first. Waiting for a slot shows on the feature, and never pings you.
 
-**Several agents in one area.** Outside a chase, one agent works in an area at a time. Inside one, up to **parallel** agents may run at once in an area of a repository: 3 by default, from 1 (the usual rule) up to the agents-at-once ceiling, counting every agent running there. Two tasks `related` to each other never run at once. Set it when you start the chase, or while it runs.
+**Several agents in one area.** Up to **parallel** agents may run at once in an area of a repository: 3 by default, from 1 up to the agents-at-once ceiling, counting every agent running there. Set it when you start the chase, or while it runs. Which tasks run side by side is up to their [footprints](https://leavethepack.dev/docs/agents/#footprints): two tasks that would change the same files never run at once, and two that wouldn’t do, related or not. Only when a task’s footprint is unknown do two `related` tasks in one area wait for each other.
 
 ### Needs you, and Stuck
 
@@ -1247,7 +1269,7 @@ A chase ends when every task is done or in review. It leaves one note in your in
 
 ### Seeing it
 
-On the feature’s page, the **Chase** section has Chase and Stop chase, **See what would start** (a dry run that starts nothing), and the parallel setting. While the chase is on, it shows a live line, the running agents with their live output, Needs you, Stuck, and the next tasks in the order they’d start, with what holds each one: “3 agents are already working in web, the most this chase allows”. The **Agents** view lists every chase that’s on, with the same controls.
+On the feature’s page, the **Chase** section has Chase and Stop chase, **See what would start** (a dry run that starts nothing), and the parallel setting. While the chase is on, it shows a live line, the running agents with their live output, Needs you, Stuck, and the next tasks in the order they’d start, with what holds each one: “3 agents are already working in web, the most this chase allows”, or “it would touch `src/store-chase.js`, which BRK-12 is changing”. It also shows how well the board’s footprint guesses did in the repository. The **Agents** view lists every chase that’s on, with the same controls.
 
 Activity records a chase starting, stopping, and ending, and each agent it starts says “started by a chase”. A chase lives on the board only, never in a repository.
 
@@ -1765,6 +1787,7 @@ Or put the printed entry in the checkout’s `.mcp.json`. Claude Code fills in `
 | `ping_owner` | A ping to you about the task it holds. |
 | `review` | Its verdict on the pull request that closes the task it holds. |
 | `peloton`, `peloton_post` | Who’s riding, and a check-in, step, or reply. |
+| `footprint` | The files a task touches: predicted, claimed, changed, or in its pull request ([Footprints](https://leavethepack.dev/docs/agents/#footprints)). |
 | `messages` | Your messages to the session on the task it holds. |
 | `list_specs`, `show_spec`, `features` | The repository’s specs and the features on the roadmap. |
 | `pull_request` | A pull request’s checks, reviews, and whether it can merge. |
@@ -2571,6 +2594,9 @@ curl -H "Authorization: Bearer $BREAKAWAY_TOKEN" "$BREAKAWAY_URL/api/health"
 | `POST /api/tasks/<ref>/pings` | An agent pings you: `{ kind, message, proposal? }`. |
 | `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. On a kickoff’s idea, `carryOn: true` also starts its next run, or queues it for room (`202`, `waiting`); signed-in board only. |
 | `POST /api/next` | The best ready task; with `claim: true`, claims it in one step. |
+| `GET /api/tasks/<ref>/footprint` | The files a task touches ([Footprints](https://leavethepack.dev/docs/agents/#footprints)): `kind` (`actual`, `claimed`, `predicted`, or `unknown`), `known`, `trusted`, `patterns`, `paths` with each one’s source, `pull`, `shared`, `conflicts`, and `hitRate`. |
+| `GET /api/footprints?repo=<slug>` | Every open task’s footprint at once. |
+| `POST /api/tasks/<ref>/paths` | An agent’s path claims for the task it holds: `{ agent, claim: […] }`, `{ agent, release: […] \| true }`, or `{ agent, dirty: […] }`. `409` with who holds it when a claim is refused. Without `agent`, or from the signed-in board, it only releases. |
 
 A task you create or change takes these fields: `description` (the title), `brief`, `done_when`, `project` (the area), `priority`, `horizon`, `spec`, `pr`, `due`, `wait`, `scheduled`, `status`, `autostart`, `decision`, and `repo` (on create). A create also takes `tags`, `depends`, `related`, and `note`; a change takes `addTags`, `removeTags`, `addDepends`, `removeDepends`, `addRelated`, `removeRelated`, and `annotate`.
 
@@ -2593,10 +2619,10 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | Route | Does |
 | --- | --- |
 | `GET /api/agents` | Running and waiting agents, limits, and settings. |
-| `POST /api/agents/start` | `{ ref, note?, mode? }`. Starts an agent (`mode: "refine"` to refine). |
+| `POST /api/agents/start` | `{ ref, note?, mode?, anyway? }`. Starts an agent (`mode: "refine"` to refine). On a task whose files a running agent is changing, `409` with `overlap` and `anyway: true`: send it again with `anyway: true`. |
 | `POST /api/agents/next` | `{ count, horizon?, repo?, dryRun? }`. Start the next few. |
 | `POST /api/agents/general` | Owner: an agent from a prompt, `{ prompt, repo, force? }`; from a decision’s answers, `{ decision, note?, force? }`; or to prepare the next version, `{ next, repo, version?, note?, force? }`. |
-| `PATCH /api/agents/settings` | The limits, plan, auto-start, and alert severity. |
+| `PATCH /api/agents/settings` | The limits, plan, auto-start, alert severity, and `perArea` (Agents per area). |
 | `GET /api/agents/prompt?repo=` | A repository’s agent prompt as it is on its default branch. |
 | `GET /api/pings` | Your inbox: open pings and notices. |
 | `POST /api/pings/<id>/apply`, `/dismiss`, `/handled` | Owner only (the cookie). |

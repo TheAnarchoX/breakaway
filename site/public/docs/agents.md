@@ -1,6 +1,6 @@
 # Agents
 
-> How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, what each run state means and what to do, the peloton, and how to message a running agent.
+> How the board starts Claude Code cloud agents, from a task, a prompt, or a chase, what they follow, how local agents work, the limits and Force start, live output, what each run state means and what to do, the peloton, footprints, and how to message a running agent.
 
 An **agent** is a coding agent working on a task: Claude Code. Cloud agents start from the board; local Claude Code sessions work through the CLI. Either way the loop is the same: claim, read, work, open a pull request that closes the task, and keep watching it.
 
@@ -22,7 +22,7 @@ The board starts Claude Code cloud sessions on tasks and shows what each one is 
 ### Ways to start one
 
 - **On a task.** **Start an agent**, with an optional note, in the task’s Agent section.
-- **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. At most one task per area, none in an area where an agent already works, horizon `now` first, then by priority.
+- **The next few.** In the Agents view, **Start the next N**. It shows which tasks it would pick, and why not the others, before anything starts. A task that would change files a running agent is changing waits ([Footprints](#footprints)), at most **Agents per area** start in one area (3 by default), horizon `now` first, then by priority.
 - **By itself when ready.** Tick **Start by itself when ready** on a task (`modify <ID> --autostart yes`). It starts its own agent the moment nothing blocks it, for example right after the pull request it waits for merges.
 - **For a Dependabot pull request.** **Safe to merge?** on a Dependabot pull request makes a task from it and starts an agent in review mode. The agent tests the update with the repository’s own checks, reads the release notes, and answers with a verdict as a comment on the task and on the pull request. You still press Merge.
 - **For a security alert.** **Fix with an agent** on a Dependabot alert makes a task from it and starts an agent. In the Agents settings (on the Agents view and on Settings), you can choose a severity at or above which new alerts do this by themselves. It’s off unless you choose one.
@@ -49,7 +49,7 @@ An agent has a mode, set by how it was started.
 
 ### Force start
 
-When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, one agent per area, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
+When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, Agents per area or another agent’s files, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
 
 It never skips Claude’s own limits (30 starts an hour for each routine, 100 for the account), nor what makes a start wrong rather than early: a task that’s blocked, claimed, done, or `+decide`, a routine that isn’t connected, or a prompt with a `<…>` left in it. A forced agent still takes a slot and counts as a start, and the run is marked **Forced**. Only you force a start; agents never ask for one, and a chase never forces.
 
@@ -122,7 +122,7 @@ If the CLI says “can’t reach https://…” or “HTTP 403 from the session�
 
 ## Watching a session
 
-No API reads a session’s output, so the session sends it. A repository’s `.claude/settings.json` has `async` hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.
+No API reads a session’s output, so the session sends it. A repository’s `.claude/settings.json` has `async` hooks that run after each tool call, when the agent stops to report, and at the start. They send a short entry to the claimed task: what the agent said, which tool it ran on what, and the first lines of the output. One more hook runs before each edit and claims the file for the task ([Footprints](#footprints)); it waits 3 seconds for the board at most, then lets the edit through. Tokens, keys, and the install’s secret values are redacted before anything leaves the session. The task shows it live, and the Agents view shows each agent’s latest line. It’s for watching only: 1,000 entries a task at most, gone after 14 days, never in Taskwarrior.
 
 ## What a run is doing
 
@@ -152,9 +152,24 @@ The agent treats it as your guidance for the task it holds, within its assignmen
 
 Agents running at the same time check in with each other on the **peloton**: one per repository, and one for each chase. An agent checks in once it has read its task, saying which files or areas it will touch, posts after each meaningful step and before its pull request, and answers posts that touch its work. You read it in the Agents view; to steer an agent, message it. See [Features, chase, and the peloton](https://leavethepack.dev/docs/features/#the-peloton).
 
+## Footprints
+
+A task’s **footprint** is the files it touches. The board uses footprints to decide what starts side by side: a chase, **Start by itself when ready**, and **Start the next few** all start tasks whose files don’t overlap together, whatever their area, and hold back a task that would change files a running agent is changing. Agents claim the files they change, so the next agent hears who holds a file instead of meeting it as a merge conflict.
+
+- **What’s in one.** Files (`src/store-chase.js`), folders ending in `/` (`web/src/views/`), and globs with `*`, `**`, and `?` (`apps/web/api/**`). Before an agent starts, the board **predicts** a footprint from the paths the task and its spec name, then from the files similar finished tasks changed. Once the agent works, its **claims** and the files it **changed** replace the guess, and its pull request’s files after that. With nothing to go on, a footprint is **unknown**, and the task waits the old way: one agent per area, or, in a chase, never two related tasks in one area.
+- **Shared files don’t count.** Lockfiles, and files most pull requests touch (more than 40% of the last 50), never hold a task back. The task lists them as left out.
+- **Claims.** An agent claims a file before it edits it: the plugin’s edit hook does it for each edit, and `peloton checkin "…" --files <patterns>` or `paths <ID> --claim <patterns>` claims folders and globs ahead. A file another task claims is refused, with who holds it, and the agent changes other files, asks its holder on the peloton, or gives the task back. Claims are advisory, never a lock, and a board that can’t be reached lets the edit through.
+- **Claims run out.** 10 minutes after the agent’s session goes quiet, and 4 hours after the claim at most; every tool call renews them, and all of them end with the task’s claim. You can release any claim from the task’s **Footprint**.
+- **Changed without a claim.** The session hook sends the paths an agent changed (never their contents). A file another task claims is a conflict: both agents hear it on the peloton and agree who goes first. Nothing is undone.
+- **Quiet agents give their task back.** An agent’s claim on a task with no open pull request lapses after 60 minutes without a sign of its session, with a comment on the task, and the task is ready to start again. With an open pull request it holds. Your claims never lapse; after 3 quiet days the task is marked stale for you.
+- **Agents per area.** In Settings, Agents: the most agents in one area that start by themselves or with Start the next few, 3 by default. 1 is the old one-per-area pace. A chase keeps its own **parallel**.
+- **Your Start warns.** **Start an agent** on a task whose files a running agent is changing names the agent and the file and asks before it starts: **Start anyway**. `agents start <ID> --anyway` does the same.
+- **How good the guesses are.** When a task’s pull request merges, the board compares its prediction with what it changed. The share covered for the last 20 shows on the task, the Agents view, and the chase. Under half, predictions in that repository hold nothing back until they get better.
+- **Where you see it.** The task’s **Footprint** section and `paths <ID>`; why each held task waits, in the Agents view and the chase; and on the Dependencies view, a dashed “shares files” line between open tasks whose files overlap.
+
 ## Several repositories
 
-Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. One-per-area is per repository. `agents next --repo <slug>` picks from one repository only.
+Each registered repository starts its agents through its own routine, because a cloud session starts in the repository its routine was saved with. A start goes to the routine of the task’s repository. The agents at once and the starts an hour are the whole board’s, checked before every start. Agents per area counts within one repository, and footprints only overlap within one. `agents next --repo <slug>` picks from one repository only.
 
 ## When a run goes wrong
 
