@@ -21,7 +21,7 @@ Do the work the way `AGENTS.md` says: tests first for the Worker and anything sh
 
 ## Pull requests
 
-The title is the work ID and a plain sentence (`BRK-12: Sort the inbox by age`), with no other prefix. The description says what changed and why, what you ran and whether it passed, a **Brand** section with the guide's checklist when people will see the change, and **After merging** with what the owner has to do (or "Nothing"). It ends with `Closes <ID>.` (or `Part of <ID>.`). Open it ready for review unless the task says otherwise. The repository is public: the description holds nothing from another repository on the board and no secret.
+The title is the work ID and a plain sentence (`BRK-12: Sort the inbox by age`), with no other prefix. The description says what changed and why, what you ran and whether it passed, a **Sources** section when it states a fact about Cloudflare, GitHub, Claude, Taskwarrior, or another platform (a limit, a price, a default, how it behaves: one line each, with the docs URL, the code line, or the command and its output, or `Unverified:` and why), a **Brand** section with the guide's checklist when people will see the change, and **After merging** with what the owner has to do (or "Nothing"). It ends with `Closes <ID>.` (or `Part of <ID>.`). The template in `.github/pull_request_template.md` has these sections. Open it ready for review unless the task says otherwise. The repository is public: the description holds nothing from another repository on the board and no secret.
 
 ## Direction
 
