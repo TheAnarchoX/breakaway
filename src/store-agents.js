@@ -1017,7 +1017,8 @@ export const agentsMethods = {
   /**
    * An agent's answer on a pull request (`review <ID> --verdict …`, BRK-111): a comment on the task, as every agent's
    * answer is, and kept for the pull request with the head commit it reviewed. Only the agent holding the task leaves
-   * one, on an open pull request that closes it (`pr` picks one when it has several). Safe to merge? answers this way too.
+   * one, or the road captain of an open chase the task is in (BRK-326), on an open pull request that closes it (`pr`
+   * picks one when it has several). Safe to merge? answers this way too.
    */
   recordAgentReview(ref, { verdict, note, by, pr = null } = {}) {
     if (!REVIEW_VERDICTS[verdict]) throw new AgentError('verdict is ready, follow-up, or changes', 400);
@@ -1030,9 +1031,9 @@ export const agentsMethods = {
     const map = this.tasks.get(uuid);
     const id = map.wid ?? uuid.slice(0, 8);
     if (map.status !== 'pending') throw new AgentError(`${id} isn’t open`);
-    if (map.claim !== agent)
-      throw new AgentError(`${id} is ${map.claim ? `${map.claim}’s` : 'unclaimed'}: claim it first`);
     const slug = this.repoOfTask(map)?.slug ?? this.defaultRepoSlug();
+    if (map.claim !== agent && !this.captainMayReview(agent, uuid, slug))
+      throw new AgentError(`${id} is ${map.claim ? `${map.claim}’s` : 'unclaimed'}: claim it first`);
     const open = this.sql
       .exec('SELECT data FROM gh_pulls WHERE repo = ?', slug)
       .toArray()
@@ -1075,6 +1076,23 @@ export const agentsMethods = {
       'agents',
     );
     return { review: this.agentReviewRow(rowId, sha), task: this.detail(uuid) };
+  },
+
+  /**
+   * Whether `agent` is the road captain of an open chase that task `uuid` is in, in the task's repository `slug`
+   * (BRK-326): it holds that chase's captain task. Its review of the chase's pull requests counts as the holder's would.
+   * @param {string} agent
+   * @param {string} uuid
+   * @param {string} slug
+   */
+  captainMayReview(agent, uuid, slug) {
+    if (!this.chasing()) return false;
+    return this.openChases().some(({ row, tasks }) => {
+      if (!tasks.has(uuid)) return false;
+      const captain = this.captainTask(row.slug);
+      if (captain?.claim !== agent) return false;
+      return (this.repoOfTask(this.tasks.get(captain.uuid))?.slug ?? this.defaultRepoSlug()) === slug;
+    });
   },
 
   /** The latest agent's review of pull request `number`, marked `moved` when its branch has a newer head, or null. */
