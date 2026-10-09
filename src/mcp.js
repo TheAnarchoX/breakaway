@@ -13,6 +13,7 @@
  * src/mcp-resources.js, and Architect's read-only tools (BRK-202) in src/mcp-infra.js.
  */
 import { authenticate } from './auth.js';
+import { hasPersonalToken } from './people.js';
 import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
 import { footprintLines } from './footprint-text.js';
@@ -76,6 +77,14 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   // The bearer token only, never the web board's cookie: the browser has the web board (section 2). A connection
   // from MCP apps has its own token, for its one repository and agent name (section 8).
   let pinned = null;
+  // A person's own token opens /mcp once roles are enforced (BRK-301); until then it's refused, by name (BRK-300).
+  if (hasPersonalToken(request))
+    return rpcError(
+      403,
+      null,
+      INVALID_REQUEST,
+      'personal tokens don’t open /mcp on this board yet: roles come in a later update',
+    );
   if ((await authenticate(request, env)) !== 'token') {
     const found = await connectionOf(request, store);
     if (!found?.connection) {
