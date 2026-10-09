@@ -82,6 +82,8 @@ import {
   pullAgentRequest,
   pullAgentSummary,
   reviewRequest,
+  riskAnswerRequest,
+  riskReviewRequest,
   staleCliWarning,
   releaseBehind,
   removedRepoByHand,
@@ -306,6 +308,11 @@ Working
                          message, peloton, ping, decision, or comment, with a pointer if you have one ("peloton #12")
   review <ref> --verdict ready|follow-up|changes <note>   your review of the pull request that closes the task you
                          hold: a comment on it, and the review on the pull request's page (the note is Markdown)  [--pr <n>]
+  risk-review <ref> --file <findings.json>   a risky-path reviewer's findings on the pull request the board started it
+                         for: { "summary", "findings": [{ "severity": "blocking"|"note", "text", "path", "line" }] }
+                         [--pr <n>]; without --file, the task's reviews and their answers
+  risk-answer <ref> <finding> <text>   answer a finding of the review on your pull request: what you changed, or
+                         why it's safe; a blocking one holds Merge when green until you do  [--pr <n>]
   done <ref>             finish it  [--note <text>] [--pr <url>]
   add <description>      new task; gets the next work ID for its project
     --project <p> --tag <t>… --priority H|M|L --horizon now|next|later
@@ -1734,6 +1741,48 @@ const commands = {
     if (built.error || !built.request) fail(built.error ?? 'bad request');
     const { review, task } = await call(...built.request);
     print({ review, task }, (r) => `Left your review of #${r.review.pr} on ${ref(r.task)}: ${r.review.label}.`);
+  },
+  async 'risk-review'() {
+    let text = null;
+    if (typeof opts.file === 'string') {
+      try {
+        text = readFileSync(opts.file, 'utf8');
+      } catch (error) {
+        fail(`couldn’t read ${opts.file}: ${error.message}`);
+      }
+    }
+    const built = riskReviewRequest(args[0], text, { by: agent(), pr: opts.pr });
+    if (built.error || !built.request) fail(built.error ?? 'bad request');
+    const out = await call(...built.request);
+    if (text === null)
+      return print(out, (r) =>
+        r.reviews.length
+          ? r.reviews
+              .map(
+                (v) =>
+                  `#${v.pr} ${v.state}${v.hold ? ` (holds Merge when green: ${v.hold})` : ''}${v.summary ? `\n  ${v.summary}` : ''}${v.findings
+                    .map((f) => {
+                      const a = v.answers.find((x) => x.finding === f.n);
+                      return `\n  ${f.n}. ${f.severity}${f.path ? ` ${f.path}${f.line ? `:${f.line}` : ''}` : ''}: ${f.text}${a ? `\n     answered by ${a.by}: ${a.text}` : ''}`;
+                    })
+                    .join('')}`,
+              )
+              .join('\n')
+          : 'No risky-path review on its pull requests.',
+      );
+    print(out, (r) =>
+      r.review.hold
+        ? `Posted your review of ${r.review.task}'s pull request: ${r.review.hold}.`
+        : `Posted your review of ${r.review.task}'s pull request: nothing holds it.`,
+    );
+  },
+  async 'risk-answer'() {
+    const built = riskAnswerRequest(args[0], args[1], args.slice(2).join(' '), { by: agent(), pr: opts.pr });
+    if (built.error || !built.request) fail(built.error ?? 'bad request');
+    const out = await call(...built.request);
+    print(out, (r) =>
+      r.review.hold ? `Answered. Still held: ${r.review.hold}.` : 'Answered. Nothing holds Merge when green now.',
+    );
   },
   // The board's `annotate` route is the comments route's alias; using it keeps this working on a board that hasn't deployed /comments yet.
   async comment() {

@@ -9,8 +9,9 @@
  * one `{ id, kind, name, attrs? }`. `provider` is optional and, when given, must be the environment's. `health` is
  * optional too: `{ "url": "https://…" }`, the owner's own health address the board GETs on each refresh as an active
  * check of the environment's front door (BRK-266, src/infra-health.js). Nothing else
- * goes at the top level: policy (BRK-181) is `policy.json` and scaling rules (BRK-186) are `scaling.json` in the same
- * folder, so neither name is an environment's, and envelope bounds live on the board, never in the repository.
+ * goes at the top level: policy (BRK-181) is `policy.json`, scaling rules (BRK-186) are `scaling.json`, and the risky
+ * paths (BRK-280) are `risky-paths.json` in the same folder, so none of those names is an environment's, and envelope
+ * bounds live on the board, never in the repository.
  */
 import { checkHealthField } from './infra-health.js';
 import { checkDesired } from './infra-provider.js';
@@ -24,7 +25,7 @@ export const desiredPath = (environment) => `${DESIRED_DIR}/${environment}.json`
  * Files in the folder that aren't an environment's: policy (BRK-181), scaling rules (BRK-186), and the template
  * short-lived environments are made from (BRK-200).
  */
-export const RESERVED_FILES = ['policy', 'scaling', 'short-lived'];
+export const RESERVED_FILES = ['policy', 'scaling', 'short-lived', 'risky-paths'];
 /** The only version there is. */
 export const DESIRED_VERSION = 1;
 /** Bigger than any one environment needs, and small enough to keep a copy of each in the store. */
