@@ -17,7 +17,7 @@ const boundOf = (handle, slug) => `person:${handle}:${slug}`;
 
 /** The words a person sees when they start where they have no routine and none is lent. */
 export const noRoutineWords = (slug) =>
-  `you have no Claude routine for ${slug}: connect yours in your settings, or ask the owner to lend ${slug}’s routine`;
+  `you have no Claude routine for ${slug}: connect yours in your settings, or ask the owner to lend you the repository’s routine`;
 
 const iso = (ms) => (ms ? new Date(ms).toISOString() : null);
 

@@ -157,7 +157,7 @@ describe('bringing your own Claude', () => {
     const res = await json(await start(ana, t.uuid));
     expect(res.status).toBe(403);
     expect(res.error).toBe(
-      `you have no Claude routine for widgets: connect yours in your settings, or ask the owner to lend widgets’s routine`,
+      `you have no Claude routine for widgets: connect yours in your settings, or ask the owner to lend you the repository’s routine`,
     );
     const mine = await json(await call('/api/me/claude', { cookie: ana.cookie }));
     expect(mine.claude.plan).toBeNull();
