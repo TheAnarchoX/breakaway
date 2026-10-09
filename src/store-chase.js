@@ -173,6 +173,8 @@ export const chaseMethods = {
       stalledPingAt: iso(row.chase_stalled),
       endedAt: iso(row.chase_ended),
       captain: this.captainView(row),
+      // Its digests (BRK-277): whether they push, and the latest, for the feature's list.
+      digest: this.chaseDigestList(row),
     };
   },
 
@@ -509,11 +511,23 @@ export const chaseMethods = {
    * POST /api/features/<slug>/chase: `on` starts or stops it, `parallel` sets the per-area limit and `reviewCap` how
    * many of its pull requests may wait on the owner (a running chase follows either on the next tick), `dryRun` shows
    * what would start now without starting or changing anything, and `dismiss` clears its ended note from the inbox.
+   * `digestPush` turns the push of its digests on or off, and `dismissDigests` clears them from the inbox (BRK-277).
    * The owner's alone: agents never start a chase.
    */
   async chaseFeature(
     slug,
-    { on, parallel, reviewCap, captain, captainHours, dryRun = false, dismiss = false, by } = {},
+    {
+      on,
+      parallel,
+      reviewCap,
+      captain,
+      captainHours,
+      digestPush,
+      dryRun = false,
+      dismiss = false,
+      dismissDigests = false,
+      by,
+    } = {},
   ) {
     await this.ready();
     if (by !== undefined && by !== null && by !== '' && by !== 'owner')
@@ -569,6 +583,9 @@ export const chaseMethods = {
     this.writable();
     if (dismiss)
       this.sql.exec("UPDATE chase_events SET dismissed = 1 WHERE slug = ? AND kind = 'chase_ended'", row.slug);
+    // The chase's digests (BRK-277): clearing them from the inbox, and whether each pushes.
+    if (dismissDigests) this.chaseDigestDismiss(row.slug);
+    if (digestPush !== undefined && digestPush !== null) this.chaseDigestPush(row.slug, digestPush);
     if (limit !== undefined) this.sql.exec('UPDATE features SET chase_parallel = ? WHERE slug = ?', limit, row.slug);
     if (cap !== undefined) this.sql.exec('UPDATE features SET chase_review_cap = ? WHERE slug = ?', cap, row.slug);
     if (hours !== undefined)
@@ -596,6 +613,11 @@ export const chaseMethods = {
       // Stopping starts nothing new; running agents finish and open their pull requests (section 3.7).
       this.sql.exec("UPDATE features SET chase = 'stopped', chase_ended = ? WHERE slug = ?", Date.now(), row.slug);
       this.chaseEvent(row.slug, 'chase_stopped', row.title);
+      // Its last digest (BRK-277), written before the captain stands down.
+      await this.chaseDigestWrite(this.featureRow(row.slug), this.chaseQueue(row, this.views(), connected), {
+        kind: 'final',
+        ended: 'The chase stopped.',
+      });
       this.captainStandDown(row, 'The chase stopped: its road captain stands down.');
       this.pelotonLine(
         row.slug,
@@ -678,6 +700,8 @@ export const chaseMethods = {
       if (on) {
         await this.captainTick(this.featureRow(row.slug));
         await this.chaseSettle(this.featureRow(row.slug), startedHere ? null : plan);
+        // The hourly digest (BRK-277), for a chase still on: one that ended wrote its last in chaseSettle.
+        await this.chaseDigestTick(this.featureRow(row.slug), connected);
       }
     }
     return started;
@@ -736,6 +760,7 @@ export const chaseMethods = {
         row.slug,
       );
       this.chaseEvent(row.slug, 'chase_ended', detail);
+      await this.chaseDigestWrite(this.featureRow(row.slug), plan, { kind: 'final', ended: detail });
       this.captainStandDown(row, 'The chase ended: its road captain stands down.');
       this.pelotonLine(
         row.slug,
@@ -977,7 +1002,7 @@ export const chaseMethods = {
    * the board takes its task back and starts the next captain, which reads the log first. Only the agent holding the
    * chase's captain task may.
    */
-  async captainLog(slug, { log, handover = false, by } = {}) {
+  async captainLog(slug, { log, digest, handover = false, by } = {}) {
     await this.ready();
     const row = this.featureRow(slug);
     const t = row.chase === 'on' ? this.captainTask(row.slug) : null;
@@ -989,6 +1014,12 @@ export const chaseMethods = {
         403,
       );
     if (typeof handover !== 'boolean') throw new InputError('handover is true or false');
+    // The captain's lines for the owner's next digest (BRK-277), instead of its log.
+    if (digest !== undefined && digest !== null) {
+      if (log !== undefined && log !== null) throw new InputError('send the log or the digest’s lines, one at a time');
+      this.writable();
+      return { digest: this.captainDigestNote(row, t, digest) };
+    }
     const text = String(log ?? '').trim();
     if (!text) throw new InputError('write the log: where the chase stands, what you decided, and what comes next');
     if (text.length > CAPTAIN_LOG_MAX)

@@ -537,21 +537,30 @@ export function chaseLines(chase, slug = '<slug>') {
 }
 
 /**
- * What `npx breakaway captain <slug> [log --file <path> [--handover]]` sends (BRK-275): with no action, the feature, for
- * its captain and log; `log`, the captain's log, read from `text`, and with `handover`, the hand over.
+ * What `npx breakaway captain <slug> [log --file <path> [--handover] | digest --file <path>]` sends (BRK-275): with no
+ * action, the feature, for its captain and log; `log`, the captain's log, read from `text`, and with `handover`, the
+ * hand over; `digest`, the captain's lines for the owner's next digest of the chase (BRK-277).
  * @param {string | undefined} slug
  * @param {string | undefined} action
  * @param {{ text?: string | null, handover?: boolean, by?: string }} [options]
  */
 export function captainRequest(slug, action, { text = null, handover = false, by } = {}) {
-  const usage = 'npx breakaway captain <feature> [log --file <path> [--handover]]';
+  const usage = 'npx breakaway captain <feature> [log --file <path> [--handover] | digest --file <path>]';
   if (!slug) return { error: `say which feature: ${usage}` };
   const route = `features/${encodeURIComponent(slug.toLowerCase())}`;
   if (action === undefined) {
     if (handover || text !== null) return { error: `--file and --handover go with log: ${usage}` };
     return { request: ['GET', route] };
   }
-  if (action !== 'log') return { error: `captain has no "${String(action).slice(0, 40)}": ${usage}` };
+  if (action !== 'log' && action !== 'digest')
+    return { error: `captain has no "${String(action).slice(0, 40)}": ${usage}` };
+  if (action === 'digest') {
+    if (handover) return { error: `--handover goes with log: ${usage}` };
+    if (text === null) return { error: 'write the lines for the owner’s digest in a file and pass --file <path>' };
+    if (!String(text).trim()) return { error: 'the lines are empty: what the owner should know, briefly' };
+    if (!by) return { error: 'say who you are: the digest’s lines are the road captain’s (BREAKAWAY_AGENT or --as)' };
+    return { request: ['POST', `${route}/captain`, { digest: String(text), by }] };
+  }
   if (text === null) return { error: 'write the log in a file and pass --file <path>' };
   if (!String(text).trim())
     return { error: 'the log is empty: where the chase stands, what you decided, what comes next' };
