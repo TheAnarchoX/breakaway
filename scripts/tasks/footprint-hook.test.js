@@ -192,7 +192,7 @@ describe('the edit hook, run as Claude Code runs it', () => {
   afterAll(() => new Promise((resolve) => server.close(() => resolve(undefined))));
 
   /** Runs the hook on `input` against the board at `url`: its exit code and what it printed. */
-  const run = (input, url = `http://127.0.0.1:${port}`) =>
+  const run = (input, url = `http://127.0.0.1:${port}`, argv = [HOOK]) =>
     new Promise((resolve) => {
       const env = {
         PATH: process.env.PATH,
@@ -201,7 +201,7 @@ describe('the edit hook, run as Claude Code runs it', () => {
         CLAUDE_PROJECT_DIR: root,
         BREAKAWAY_URL: url,
       };
-      const child = spawn(process.execPath, [HOOK], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(process.execPath, argv, { env, stdio: ['pipe', 'pipe', 'pipe'] });
       let out = '';
       child.stdout.on('data', (c) => {
         out += c;
@@ -229,6 +229,15 @@ describe('the edit hook, run as Claude Code runs it', () => {
       permissionDecision: 'deny',
       permissionDecisionReason: '`src/a.js` is claimed by claude-web-40 on WEB-40.',
     });
+  });
+
+  it('runs through the CLI as `hook edit`, the command the settings name', async () => {
+    const CLI = fileURLToPath(new URL('../tasks.mjs', import.meta.url));
+    answer = { status: 409, body: { error: 'Held by claude-web-40.', refused: [] } };
+    const res = await run(edit(join(root, 'src', 'b.js')), `http://127.0.0.1:${port}`, [CLI, 'hook', 'edit']);
+    expect(res.code).toBe(0);
+    expect(res.out.hookSpecificOutput.permissionDecisionReason).toBe('Held by claude-web-40.');
+    expect(seen.at(-1).body).toEqual({ agent: 'claude-ops-7', claim: ['src/b.js'] });
   });
 
   it('fails open when the board can’t be reached, and stays out of files outside the checkout', async () => {

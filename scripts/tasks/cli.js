@@ -13,7 +13,7 @@ export const SUBCOMMANDS = {
   routines: ['add', 'modify', 'run', 'trigger', 'revoke', 'pause', 'resume', 'cap', 'new'],
   features: ['list', 'add', 'show', 'modify', 'pull'],
   horizon: ['close'],
-  hook: ['session', 'wait'],
+  hook: ['session', 'wait', 'edit'],
   peloton: [
     'checkin',
     'step',
