@@ -30,7 +30,9 @@ function stem(word) {
  */
 export function titleWords(text) {
   const out = new Set();
-  for (const raw of String(text ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+  for (const raw of String(text ?? '')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)) {
     if (raw.length < 3 || STOP.has(raw)) continue;
     const word = stem(raw);
     if (!STOP.has(word)) out.add(word);
@@ -45,7 +47,11 @@ export function titleWords(text) {
 export function filesNamed(text) {
   const out = new Set();
   for (const match of String(text ?? '').matchAll(FILE)) {
-    const parts = match[0].toLowerCase().replace(/[./]+$/u, '').split('/').filter(Boolean);
+    const parts = match[0]
+      .toLowerCase()
+      .replace(/[./]+$/u, '')
+      .split('/')
+      .filter(Boolean);
     const last = parts.at(-1);
     if (!last || !/[a-z]/u.test(last)) continue;
     // A file goes by its name, so `src/store.js` and `store.js` meet; a folder by its whole path, and a single

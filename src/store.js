@@ -810,8 +810,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         (t) => t.status === 'pending' && t.repo === repo && !skip.has(t.project) && !linked.has(t.uuid),
       );
       const brief = item.brief ?? item.note;
-      for (const { task } of similarTasks({ description: item.description, brief }, open))
-        found.set(task.uuid, task);
+      for (const { task } of similarTasks({ description: item.description, brief }, open)) found.set(task.uuid, task);
     }
     if (!found.size) return;
     const tasks = [...found.values()].map((t) => ({

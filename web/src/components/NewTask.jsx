@@ -70,16 +70,16 @@ function Form({ defaults }) {
       {
         description,
         project: data.get('project'),
-      repo: multiRepo.value ? repo : undefined,
-      horizon: data.get('horizon') || undefined,
-      priority: data.get('priority') || undefined,
-      tags: data.getAll('tags'),
-      depends: String(data.get('depends'))
-        .split(/[\s,]+/u)
-        .filter(Boolean),
-      spec: String(data.get('spec')).trim() || undefined,
-      brief: String(data.get('brief')).trim() || undefined,
-      done_when: String(data.get('done_when')).trim() || undefined,
+        repo: multiRepo.value ? repo : undefined,
+        horizon: data.get('horizon') || undefined,
+        priority: data.get('priority') || undefined,
+        tags: data.getAll('tags'),
+        depends: String(data.get('depends'))
+          .split(/[\s,]+/u)
+          .filter(Boolean),
+        spec: String(data.get('spec')).trim() || undefined,
+        brief: String(data.get('brief')).trim() || undefined,
+        done_when: String(data.get('done_when')).trim() || undefined,
         related: link ? alike.map((t) => t.uuid) : undefined,
         force: alike.length && !link ? true : undefined,
       },

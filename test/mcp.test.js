@@ -742,7 +742,9 @@ describe('the MCP endpoint (BRK-154)', () => {
     it('add_task: names the open tasks it resembles, and adds it linked or anyway (BRK-283)', async () => {
       const refused = await call('add_task', { title: 'Document how the pager works', project: 'ops' }, as(WRITER));
       expect(refused.isError).toBe(true);
-      expect(text(refused)).toMatch(/resembles open tasks: OPS-\d+ Document the pager.*with related, or with add_anyway/u);
+      expect(text(refused)).toMatch(
+        /resembles open tasks: OPS-\d+ Document the pager.*with related, or with add_anyway/u,
+      );
       const pager = text(refused).match(/(OPS-\d+) Document the pager/u)[1];
       const linked = await call(
         'add_task',
@@ -793,7 +795,11 @@ describe('the MCP endpoint (BRK-154)', () => {
 
       // The description of a task it made, without holding it; another's description stays the owner's.
       const made = (
-        await call('add_task', { title: 'Write the pager runbook', project: 'ops', brief: 'A runbook.', add_anyway: true }, as(WRITER))
+        await call(
+          'add_task',
+          { title: 'Write the pager runbook', project: 'ops', brief: 'A runbook.', add_anyway: true },
+          as(WRITER),
+        )
       ).structuredContent.task;
       const brief = await call('modify_task', { task: made.wid, brief: 'Step by step.' }, as(WRITER));
       expect(brief.structuredContent.task.brief).toBe('Step by step.');

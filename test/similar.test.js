@@ -19,11 +19,9 @@ describe('similar tasks, the pure part', () => {
   });
 
   it('reads the files and folders a text names, by name', () => {
-    expect([...filesNamed('Touch src/store.js, store.js again, web/src/components/ and the README.md')].sort()).toEqual([
-      'readme.md',
-      'store.js',
-      'web/src/components',
-    ]);
+    expect([...filesNamed('Touch src/store.js, store.js again, web/src/components/ and the README.md')].sort()).toEqual(
+      ['readme.md', 'store.js', 'web/src/components'],
+    );
     expect(filesNamed('and/or, a web/ folder, version 1.2')).toEqual(new Set());
   });
 
@@ -53,9 +51,10 @@ describe('similar tasks, the pure part', () => {
       'Cache the replica',
     ]);
     // One file and a title that's partly alike.
-    expect(titles(similarTasks({ description: 'Log less from the replica', brief: 'src/replica.js' }, open))).toEqual(
-      ['Quiet the replica logs', 'Cache the replica'],
-    );
+    expect(titles(similarTasks({ description: 'Log less from the replica', brief: 'src/replica.js' }, open))).toEqual([
+      'Quiet the replica logs',
+      'Cache the replica',
+    ]);
     // One file and nothing else in common isn't enough.
     expect(similarTasks({ description: 'Count versions', brief: 'src/replica.js' }, open)).toEqual([]);
   });

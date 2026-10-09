@@ -971,7 +971,9 @@ const WRITERS = [
         if (args[key] !== undefined && args[key] !== null) item[key] = args[key];
       const made = await ctx.store.create([item], { similar: true });
       if (made.body?.similar)
-        throw new ToolError(`${made.body.error}: with related, or with add_anyway once you checked it isn’t one of them.`);
+        throw new ToolError(
+          `${made.body.error}: with related, or with add_anyway once you checked it isn’t one of them.`,
+        );
       const { tasks } = body(made);
       const [task] = tasks;
       return { text: `Added ${idOf(task)}: ${task.description}`, data: { task } };
