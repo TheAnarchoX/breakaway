@@ -147,8 +147,7 @@ export const pipelineMethods = {
    */
   async moveApi(slug, body = {}) {
     return this.run(async () => {
-      if (body?.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        return { status: 403, body: { error: 'only the owner moves a repository to the deploy flow' } };
+      this.allowOn(body, 'repo.move', () => String(slug).toLowerCase(), 'only the owner moves a repository to the deploy flow');
       const repo = this.repoBySlug(String(slug).toLowerCase());
       if (!repo) return { status: 404, body: { error: `no repository "${String(slug).slice(0, 40)}"` } };
       if (repo.pipeline)
@@ -219,8 +218,11 @@ export const pipelineMethods = {
    */
   async turnOnDeploysApi(slug, body = {}) {
     await this.ready();
-    if (body?.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-      return { status: 403, body: { error: 'only the owner turns on deploys' } };
+    try {
+      this.allowOn(body, 'repo.deploys', () => String(slug).toLowerCase(), 'only the owner turns on deploys');
+    } catch (error) {
+      return { status: 403, body: { error: error.message } };
+    }
     const repo = this.repoBySlug(String(slug).toLowerCase());
     if (!repo) return { status: 404, body: { error: `no repository "${String(slug).slice(0, 40)}"` } };
     if (repo.pipeline)

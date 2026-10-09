@@ -54,8 +54,6 @@ const BRANCH_TRIES = 3;
 /** The changes an environment's list shows. */
 const LIST_LIMIT = 20;
 
-/** Whether `by` is the owner's: none, or `owner`. Anything else is an agent's name, and is refused. */
-const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
 const refPath = (b) => b.split('/').map(encodeURIComponent).join('/');
 
 /** A read GitHub answers 404 (not there) to is nothing found. */
@@ -404,7 +402,12 @@ export const infraChangesMethods = {
    */
   infraChangesApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner changes an environment from the board', 403);
+      this.allowOn(
+        body,
+        'change.propose',
+        () => this.changeEnvironment(ref, body.repo ?? null).repo,
+        'only the owner changes an environment from the board',
+      );
       const env = this.changeEnvironment(ref, body.repo ?? null);
       const checked = checkEdits(body.edits);
       if ('problem' in checked) return unfit([checked.problem]);
@@ -947,7 +950,7 @@ export const infraChangesMethods = {
    */
   infraChangeRejectApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner rejects a change, from the board', 403);
+      this.allowOn(body, 'change.approve', () => this.changeRow(ref).repo, 'only the owner rejects a change, from the board');
       const row = this.changeRow(ref);
       if (!LIVE_STATES.includes(row.state))
         throw new AgentError(`change ${row.n} is ${row.state}, so there’s nothing to reject`, 409);

@@ -48,8 +48,7 @@ export const infraCurrencyMethods = {
   /** PUT /api/infra/currency: the owner sets the currency and its rate. Stored estimates don't change. */
   currencySetApi(body = {}) {
     return this.run(async () => {
-      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner sets the board’s currency; agents read it', 403);
+      this.allow(body, 'currency', null, 'only the owner sets the board’s currency; agents read it');
       const checked = checkCurrency(body);
       if ('error' in checked) throw new AgentError(checked.error, 400);
       const { currency, rate } = checked.setting;
@@ -62,8 +61,7 @@ export const infraCurrencyMethods = {
   /** POST /api/infra/currency/rate: the owner pressed Fetch today's rate. Returns the rate; stores nothing. */
   currencyRateApi(body = {}) {
     return this.run(async () => {
-      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner fetches a rate, from Settings', 403);
+      this.allow(body, 'currency', null, 'only the owner fetches a rate, from Settings');
       const checked = checkCurrency({ currency: body.currency, rate: 1 });
       if ('error' in checked) throw new AgentError(checked.error, 400);
       const { currency } = checked.setting;

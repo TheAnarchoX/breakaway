@@ -23,9 +23,6 @@ import { install } from './install.js';
 /** The most a rejection's reason keeps, in the audit trail. */
 export const REASON_MAX = 300;
 
-/** Whether `by` is the owner's: none, or `owner`. Anything else is an agent's name, and is refused. */
-const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
-
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraApprovalsMethods = {
   initInfraApprovals() {
@@ -172,10 +169,18 @@ export const infraApprovalsMethods = {
     }
   },
 
+  /**
+   * Whether the request's person may `action` plan `ref`: a maintainer of its repository (BRK-301), never an agent.
+   * An agent hears so before the plan is looked up, as it always has.
+   */
+  allowPlan(body, ref, action, words) {
+    this.allowOn(body, action, () => this.planRow(ref).repo, words);
+  },
+
   /** POST /api/infra/plans/<id>/approve: the owner's, from the signed-in board only. */
   planApproveApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner approves a plan, from the board', 403);
+      this.allowPlan(body, ref, 'plan.approve', 'only the owner approves a plan, from the board');
       return { status: 200, body: { plan: await this.approveInfraPlan(ref, { by: 'owner' }) } };
     });
   },
@@ -183,7 +188,7 @@ export const infraApprovalsMethods = {
   /** POST /api/infra/plans/<id>/reject: the owner's, from the signed-in board only, with an optional reason. */
   planRejectApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner rejects a plan, from the board', 403);
+      this.allowPlan(body, ref, 'plan.approve', 'only the owner rejects a plan, from the board');
       const reason = redact(String(body.reason ?? ''))
         .replace(/\s+/gu, ' ')
         .trim()

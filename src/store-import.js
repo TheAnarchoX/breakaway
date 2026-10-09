@@ -105,8 +105,7 @@ export const importMethods = {
    */
   importApi(body) {
     return this.run(() => {
-      if (body?.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner restores the board from an export', 403);
+      this.allow(body, 'install.admin', null, 'only the owner restores the board from an export');
       this.writable();
       const tasks = body?.tasks;
       if (!Array.isArray(tasks) || !tasks.length)

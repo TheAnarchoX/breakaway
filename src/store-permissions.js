@@ -1,0 +1,166 @@
+/**
+ * TaskStore's side of who may do what (BRK-301, docs/specs/BRK-299-people-and-roles.md, points 3 and 4): the actor
+ * behind a call, with their grants as the store has them, and the one check, `src/permissions.js`'s `can`.
+ *
+ * The Worker resolves who's behind a request from its credential and hands it to the store as `actor`
+ * (`{ person, press }`) in what it sends. The store never takes grants from the request: it reads them here. A call
+ * with no actor is the board's own (the cron, a webhook, a run's steps) or the MCP server's, which is the owner's
+ * token, as before: every write there names an agent, so the agent ceiling applies to it.
+ */
+import { ACTIONS, AUDIT_WAITS, NAME_WAITS, OWNER, OWN_CLAUDE, agentOf, refusal } from './permissions.js';
+import { AgentError } from './store-agents.js';
+import { repoSlugOf } from './repos.js';
+import { resolveRef } from './model.js';
+
+/** @type {Record<string, (this: any, ...args: any[]) => any>} */
+export const permissionsMethods = {
+  /**
+   * Who's behind a store call: the Worker's actor (from the credential), or the owner for the board's own calls. A
+   * person who has been removed has no grants. `by`, when it names an agent, is the agent acting for them, capped by
+   * the person its run is for.
+   * @param {any} input what the call was given: `{ actor?, by? }`
+   * @returns {import('./permissions.js').Actor}
+   */
+  actorIn(input) {
+    const given = input && typeof input === 'object' ? input.actor : null;
+    const person = given && typeof given.person === 'string' && given.person ? given.person : OWNER;
+    const grants = person === OWNER ? [] : this.personRow(person) ? this.personGrants(person) : [];
+    const agent = agentOf(input?.by, person);
+    const forHandle = agent ? this.runForPerson(agent) : null;
+    return {
+      person,
+      grants,
+      ...(typeof given?.press === 'boolean' ? { press: given.press } : {}),
+      agent,
+      for:
+        forHandle && forHandle !== OWNER
+          ? { person: forHandle, grants: this.personRow(forHandle) ? this.personGrants(forHandle) : [] }
+          : null,
+    };
+  },
+
+  /** The person the newest run of agent `name` is for, or null when the board didn't start it. */
+  runForPerson(name) {
+    return (
+      this.sql
+        .exec('SELECT for_person FROM agent_runs WHERE agent = ? ORDER BY id DESC LIMIT 1', String(name))
+        .toArray()[0]?.for_person ?? null
+    );
+  },
+
+  /**
+   * Refuses unless `input`'s actor may do `action` in `repository` (null: install-wide). The store asks who, never
+   * how: whether the request was a press is the Worker's gate. `message` keeps the words an agent has always been
+   * refused with on the owner's token, so nothing changes for an install with nobody invited.
+   * @param {any} input
+   * @param {string} action
+   * @param {string | null} [repository]
+   * @param {string} [message]
+   */
+  allow(input, action, repository = null, message) {
+    const actor = this.actorIn(input);
+    const no = refusal({ ...actor, press: undefined }, action, repository);
+    if (no) throw new AgentError(message && no.code === 'agent' ? message : no.message, 403);
+    return actor;
+  },
+
+  /**
+   * `allow` for a check that needs a lookup to know the repository: an agent is refused first, and the owner passes,
+   * both before anything is looked up, so their answers come in the order they always have; a person's repository is
+   * `repoOf()`'s.
+   * @param {any} input
+   * @param {string} action
+   * @param {() => string | null} repoOf
+   * @param {string} [words]
+   */
+  allowOn(input, action, repoOf, words) {
+    const actor = this.actorIn(input);
+    if (actor.agent) this.allow(input, action, null, words);
+    if (actor.person === OWNER) return;
+    this.allow(input, action, repoOf(), words);
+  },
+
+  /** A task's repository by its reference (a 404 or 400 as resolving it would). */
+  repoOfRef(ref) {
+    return repoSlugOf(this.tasks.get(this.resolve(ref)), this.defaultRepoSlug());
+  },
+
+  /** Whether the actor behind `input` is the owner (or the board itself), and not a person. */
+  ownerActs(input) {
+    return this.actorIn(input).person === OWNER;
+  },
+
+  /**
+   * The repositories an action on `target` touches, as slugs, for the Worker's gate on a person's request. Null in
+   * the list is an install-wide action. Unknown targets answer 404 by throwing, as their own routes would.
+   * @param {Record<string, any>} target
+   * @returns {(string | null)[]}
+   */
+  targetRepos(target) {
+    const fallback = this.defaultRepoSlug();
+    const slug = (value) =>
+      value === undefined || value === null || value === '' ? fallback : String(value).trim().toLowerCase();
+    const ofTask = (ref) => {
+      const uuid = resolveRef(String(ref ?? ''), this.tasks);
+      if (!uuid) throw new AgentError(`no task "${String(ref ?? '').slice(0, 40)}"`, 404);
+      return repoSlugOf(this.tasks.get(uuid), fallback);
+    };
+    if (target.install) return [null];
+    if ('task' in target) return [ofTask(target.task)];
+    if (Array.isArray(target.tasks)) return [...new Set(target.tasks.map(ofTask))];
+    if ('plan' in target) return [this.planRow(target.plan).repo];
+    if ('change' in target) return [this.changeRow(target.change).repo];
+    if ('policyChange' in target) return [this.policyChangeRow(target.policyChange).repo];
+    if ('environment' in target) {
+      const repo = target.repo ? slug(target.repo) : null;
+      const row = this.environmentRow(target.environment, repo);
+      if (!row) throw new AgentError(`no environment ${String(target.environment).slice(0, 40)}`, 404);
+      return [row.repo];
+    }
+    if ('ping' in target) {
+      const row = this.sql.exec('SELECT task FROM pings WHERE id = ?', Number(target.ping) || 0).toArray()[0];
+      if (!row) throw new AgentError('no such ping', 404);
+      return [ofTask(row.task)];
+    }
+    if ('attachment' in target) {
+      const row = this.sql.exec('SELECT task FROM attachments WHERE id = ?', Number(target.attachment) || 0).toArray()[0];
+      if (!row) throw new AgentError('no such image', 404);
+      return [ofTask(row.task)];
+    }
+    if ('feature' in target) {
+      const row = this.featureRow(target.feature);
+      const repos = new Set();
+      for (const map of this.tasks.values()) if (map[`tag_${row.slug}`]) repos.add(repoSlugOf(map, fallback));
+      return repos.size ? [...repos] : [null];
+    }
+    if ('routine' in target) return [slug(this.routineRow(target.routine).repo)];
+    if ('peloton' in target) {
+      const p = this.pelotonOf(target.peloton);
+      if (p.kind === 'repo') return [p.name];
+      return this.targetRepos({ feature: p.feature.slug });
+    }
+    if (Array.isArray(target.repos)) return target.repos.length ? [...new Set(target.repos.map(slug))] : [fallback];
+    return [slug(target.repo)];
+  },
+
+  /**
+   * The Worker's gate for a person's request (BRK-301): may `actor` do `action` on `target`? `target.by` is the agent
+   * the request names, if any. A start runs on the starter's own Claude, which comes with BRK-302, so a person's start
+   * is refused until then, whatever their role; so is a press that writes the infrastructure audit, until BRK-303.
+   * @param {{ person: string, press?: boolean }} actor
+   * @param {string} action
+   * @param {Record<string, any>} [target]
+   */
+  permitApi(actor, action, target = {}) {
+    return this.run(() => {
+      const repos = this.targetRepos(target ?? {});
+      for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
+      const person = actor?.person && actor.person !== OWNER;
+      if (ACTIONS[action]?.starts && person) throw new AgentError(OWN_CLAUDE, 403);
+      // Until BRK-303 gives the audit trail a person, a person's press that writes it waits (the captain's call).
+      if (ACTIONS[action]?.audited && person) throw new AgentError(AUDIT_WAITS, 403);
+      if (ACTIONS[action]?.named && person) throw new AgentError(NAME_WAITS, 403);
+      return { status: 200, body: { ok: true, repos } };
+    });
+  },
+};

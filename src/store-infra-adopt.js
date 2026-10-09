@@ -135,13 +135,14 @@ export const infraAdoptMethods = {
    * routine isn't connected. A start the board's limits refuse leaves the task waiting for the owner's Start
    * (`waiting`); any other refusal takes the task away again.
    */
-  infraDescribeStartApi(ref, { repo, by, force } = {}) {
+  infraDescribeStartApi(ref, { repo, by, force, actor } = {}) {
     return this.run(async () => {
-      if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-        throw new AgentError(
-          'only the owner has an agent describe an environment as code; agents run infra adopt',
-          403,
-        );
+      this.allowOn(
+        { actor, by },
+        'environment.describe',
+        () => this.environmentRow(ref, repo ? String(repo).trim().toLowerCase() : null).repo,
+        'only the owner has an agent describe an environment as code; agents run infra adopt',
+      );
       const env = this.environmentRow(ref, repo ? String(repo).trim().toLowerCase() : null);
       const open = this.describeTaskOf(env);
       if (open) return { status: 200, body: { task: open, run: null, waiting: null, already: true } };

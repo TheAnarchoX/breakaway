@@ -540,12 +540,14 @@ export const chaseMethods = {
       dismiss = false,
       dismissDigests = false,
       by,
+      actor,
     } = {},
   ) {
     await this.ready();
-    if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-      throw new AgentError('only the owner can start or stop a chase', 403);
+    // A chase is a maintainer's in every repository the feature's tasks are in (BRK-301), and never an agent's.
+    if (this.actorIn({ actor, by }).agent) this.allow({ actor, by }, 'chase', null, 'only the owner can start or stop a chase');
     const row = this.featureRow(slug);
+    for (const repo of this.targetRepos({ feature: row.slug })) this.allow({ actor, by }, 'chase', repo);
     if (on !== undefined && typeof on !== 'boolean') throw new InputError('on is true or false');
     if (captain !== undefined && captain !== null && typeof captain !== 'boolean')
       throw new InputError('captain is true or false: whether the chase has a road captain');

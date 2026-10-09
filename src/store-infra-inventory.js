@@ -717,8 +717,8 @@ export const infraInventoryMethods = {
    */
   inventoryRefreshApi(body = {}) {
     return this.run(async () => {
-      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner or the board refreshes the inventory; agents read it', 403);
+      // A provider's inventory is every repository's on it: install-wide for a person (BRK-301).
+      this.allow(body, 'inventory.refresh', null, 'only the owner or the board refreshes the inventory; agents read it');
       const provider = String(body.provider ?? '').trim();
       if (provider) {
         const refreshed = await this.refreshInventoryNow(provider);

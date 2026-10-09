@@ -37,8 +37,6 @@ const LIST_LIMIT = 10;
 /** The plans the Policy view shows the rules of. */
 const RECENT_PLANS = 10;
 
-/** Whether `by` is the owner's: none, or `owner`. Anything else is an agent's name, and is refused. */
-const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
 const refPath = (b) => b.split('/').map(encodeURIComponent).join('/');
 const refuse = (status, error, extra = {}) => ({ status, body: { error, ...extra } });
 
@@ -243,7 +241,7 @@ export const infraPolicyChangesMethods = {
    */
   infraPolicyChangesApi(body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner changes the policy, from the board', 403);
+      this.allowOn(body, 'policy.propose', () => this.policyRepo(body.repo), 'only the owner changes the policy, from the board');
       const slug = this.policyRepo(body.repo);
       const checked = checkPolicyEdit(body.policy);
       if ('error' in checked)
@@ -391,8 +389,10 @@ export const infraPolicyChangesMethods = {
    */
   infraPolicyChangeApproveApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner approves a policy change, from the board', 403);
+      // One that loosens the policy is the owner's alone; one that only tightens it a maintainer's (BRK-301).
+      this.allowOn(body, 'policy.tighten', () => this.policyChangeRow(ref).repo, 'only the owner approves a policy change, from the board');
       const row = this.policyChangeRow(ref);
+      if (JSON.parse(row.lines).some((l) => l.effect === 'loosens')) this.allow(body, 'policy.loosen', row.repo);
       if (!LIVE_STATES.includes(row.state))
         throw new AgentError(`policy change ${row.n} is ${row.state}, so there’s nothing to approve`, 409);
       if (!/^[0-9a-f]{7,64}$/iu.test(String(body.sha ?? '')))
@@ -518,7 +518,7 @@ export const infraPolicyChangesMethods = {
    */
   infraPolicyChangeRejectApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner rejects a policy change, from the board', 403);
+      this.allowOn(body, 'policy.tighten', () => this.policyChangeRow(ref).repo, 'only the owner rejects a policy change, from the board');
       const row = this.policyChangeRow(ref);
       if (!LIVE_STATES.includes(row.state))
         throw new AgentError(`policy change ${row.n} is ${row.state}, so there’s nothing to reject`, 409);

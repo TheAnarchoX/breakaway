@@ -185,9 +185,9 @@ export const reposMethods = {
     );
   },
 
-  ownerOnlyRepos(by) {
-    if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-      throw new AgentError('only the owner adds, changes, or removes repositories', 403);
+  /** Adding, removing, and releasing a repository is the owner's; changing one a maintainer's of it (BRK-301). */
+  ownerOnlyRepos(body, action, slug = null) {
+    this.allow(body, action, slug, 'only the owner adds, changes, or removes repositories');
   },
 
   /** prefix → the repository of a task that already has a work ID with it. */
@@ -284,7 +284,7 @@ export const reposMethods = {
 
   reposAddApi(body) {
     return this.run(async () => {
-      this.ownerOnlyRepos(body?.by);
+      this.ownerOnlyRepos(body, 'repo.add');
       // Without a branch given, take GitHub's: a repository whose default isn't main would otherwise be registered wrong.
       if (
         body &&
@@ -325,7 +325,7 @@ export const reposMethods = {
 
   reposModifyApi(slug, body) {
     return this.run(() => {
-      this.ownerOnlyRepos(body?.by);
+      this.ownerOnlyRepos(body, 'repo.modify', String(slug).toLowerCase());
       const current = this.repoBySlug(String(slug).toLowerCase());
       if (!current) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
       // The web app sends the row's last-changed time it loaded (BRK-129); a change made since wins, and the page
@@ -384,7 +384,7 @@ export const reposMethods = {
    */
   reposRemoveApi(slug, body) {
     return this.run(async () => {
-      this.ownerOnlyRepos(body?.by);
+      this.ownerOnlyRepos(body, 'repo.add');
       const current = this.repoBySlug(String(slug).toLowerCase());
       if (!current) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
       if (current.isDefault)
@@ -483,7 +483,7 @@ export const reposMethods = {
    */
   reposReleaseApi(slug, body) {
     return this.run(() => {
-      this.ownerOnlyRepos(body?.by);
+      this.ownerOnlyRepos(body, 'repo.add');
       const name = String(slug).toLowerCase();
       if (this.repoBySlug(name))
         throw new AgentError(`${name} is still on the board; take it off first with repos remove ${name}`, 409);

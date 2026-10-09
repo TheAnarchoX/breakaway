@@ -34,11 +34,8 @@ const COLUMNS = {
   pipeline: 'TEXT',
 };
 
-/** Only the owner adds, changes, or removes an environment: no `by`, or `owner`, is them. */
-function ownerOnly(by) {
-  if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-    throw new AgentError('only the owner adds, changes, or removes an environment; agents read them', 403);
-}
+/** What an agent has always been told: environments are a person's to change (src/permissions.js decides who). */
+const OWNER_WORDS = 'only the owner adds, changes, or removes an environment; agents read them';
 
 /**
  * The fields an owner's change can move, in the audit trail's words, and how each value reads there.
@@ -179,7 +176,7 @@ export const infraEnvironmentsMethods = {
   /** POST /api/infra/environments: the owner's. `gates` and `observeOnly` only come from the signed-in board. */
   environmentsCreateApi(body = {}) {
     return this.run(async () => {
-      ownerOnly(body.by);
+      this.allowOn(body, 'environment.write', () => this.checkRepoSlug(body.repo), OWNER_WORDS);
       const repo = this.checkRepoSlug(body.repo);
       const name = checkEnvironmentName(body.name);
       const kind = checkEnvironmentKind(body.kind);
@@ -229,8 +226,10 @@ export const infraEnvironmentsMethods = {
    */
   environmentsModifyApi(ref, body = {}) {
     return this.run(async () => {
-      ownerOnly(body.by);
-      const row = this.environmentRow(ref, body.repo ? String(body.repo).trim().toLowerCase() : null);
+      const where = body.repo ? String(body.repo).trim().toLowerCase() : null;
+      this.allowOn(body, 'environment.write', () => this.environmentRow(ref, where).repo, OWNER_WORDS);
+      if (body.frozen !== undefined) this.allowOn(body, 'environment.freeze', () => this.environmentRow(ref, where).repo);
+      const row = this.environmentRow(ref, where);
       const worker = install(this.env).worker;
       const own = runsTheBoard(row, worker);
       const next = { ...row };
@@ -314,7 +313,12 @@ export const infraEnvironmentsMethods = {
   /** DELETE /api/infra/environments/<id>: the owner's; a frozen one stays until it's unfrozen. */
   environmentsDeleteApi(ref, body = {}) {
     return this.run(async () => {
-      ownerOnly(body.by);
+      this.allowOn(
+        body,
+        'environment.write',
+        () => this.environmentRow(ref, body.repo ? String(body.repo).trim().toLowerCase() : null).repo,
+        OWNER_WORDS,
+      );
       const row = this.environmentRow(ref, body.repo ? String(body.repo).trim().toLowerCase() : null);
       if (row.frozen)
         throw new AgentError(`${row.name} is frozen: unfreeze it first, on the board, if you mean to remove it`, 409);

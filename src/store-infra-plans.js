@@ -454,6 +454,10 @@ export const infraPlansMethods = {
    */
   plansCreateApi(body = {}) {
     return this.run(async () => {
+      // A person makes drafts in the repositories they're a member of (BRK-301); an agent as the owner's token allows.
+      this.allowOn(body, 'plan.create', () =>
+        this.environmentRow(body.environment, body.repo ? String(body.repo).trim().toLowerCase() : null).repo,
+      );
       const who = actor(body.by);
       const plan = await this.makeInfraPlan(body.environment, {
         repo: body.repo ? String(body.repo).trim().toLowerCase() : null,
@@ -473,9 +477,12 @@ export const infraPlansMethods = {
    */
   planModifyApi(ref, body = {}) {
     return this.run(async () => {
-      const who = actor(body.by);
-      if (who.by !== 'owner')
-        throw new AgentError('only the owner puts a plan in front of the owner; agents make drafts', 403);
+      this.allowOn(
+        body,
+        'plan.front',
+        () => this.planRow(ref).repo,
+        'only the owner puts a plan in front of the owner; agents make drafts',
+      );
       if (body.state !== 'waiting')
         throw new AgentError(
           'a plan’s state changes here only to waiting; approve and reject it at /approve and /reject',
