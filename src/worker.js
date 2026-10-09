@@ -830,6 +830,9 @@ async function handleApi(request, env, url, ctx) {
     // A chase (section 3) is the owner's: an agent's `by` is refused.
     if (parts.length === 3 && parts[2] === 'chase' && method === 'POST')
       return send(await s.featureChaseApi(parts[1], body));
+    // A chase's digest (BRK-277): anyone signed in reads it.
+    if (parts.length === 4 && parts[2] === 'digests' && method === 'GET')
+      return send(await s.featureDigestApi(parts[1], parts[3]));
     // The road captain's log and handover (BRK-275): the captain's own, by its `by`.
     if (parts.length === 3 && parts[2] === 'captain' && method === 'POST')
       return send(await s.featureCaptainApi(parts[1], body));

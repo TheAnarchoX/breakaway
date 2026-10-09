@@ -114,7 +114,11 @@ export const pingsMethods = {
       });
       // The inbox's notes about connections (CLD-121) come with them: fyi, no task, no push.
       // And an ended chase's note (IDEA-28 section 3.7) comes with them too: no push.
-      return { status: 200, body: { pings, notices: this.connectionNotices(), chases: this.chaseNotes() } };
+      // And each chase's newest digest (BRK-277): one per chase, the newest replacing the last.
+      return {
+        status: 200,
+        body: { pings, notices: this.connectionNotices(), chases: this.chaseNotes(), digests: this.chaseDigestNotes() },
+      };
     });
   },
 
