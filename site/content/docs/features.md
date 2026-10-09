@@ -65,7 +65,7 @@ When a chase task’s pull request conflicts with its base branch or its checks 
 
 ### Its road captain
 
-**Start a road captain** on a chase that’s on or has run (on the feature’s page, or the chase in the Agents view) asks what it should do, and starts an agent with your prompt and the chase as it stands under it: the live line, each open pull request and what’s wrong with it, and what’s Stuck or needs you. It rides the chase’s peloton, follows the rules for an agent started from a prompt, and always starts past the board’s limits. Use it to look over the chase and add the tasks it’s missing.
+A chase of more than 10 tasks starts with a **road captain**, and **Start a road captain with it** under Chase turns it on or off for any chase. It’s one agent on a task of its own that keeps the chase’s plan, answers the other agents on its peloton (they reach it as `@captain`), fixes the chase’s tasks and adds the ones it’s missing, and looks over its riskier pull requests. It never changes anything outside the chase, and like every agent it never merges. After its watch, 12 hours by default, it writes a captain’s log and the board starts a fresh captain that reads it first; it hands over sooner when its context runs full. The feature’s page shows who holds the role, when its watch ends, and the log. On a running chase without one, **Start a road captain** starts it now, with an optional note from you; **Stand down road captain** turns it off.
 
 ### When nothing can move
 

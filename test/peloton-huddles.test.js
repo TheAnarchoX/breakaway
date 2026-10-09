@@ -366,7 +366,7 @@ describe('huddles and the chase’s plan (IDEA-36)', () => {
 
     it('goes in the road captain’s brief', async () => {
       await runInDurableObject(store(), (instance) => {
-        const { brief } = instance.roadCaptain('squad', 'Keep it moving.', instance.views(), []);
+        const { brief } = instance.roadCaptain('squad', instance.views(), []);
         expect(brief).toContain('## The chase’s plan (version 5)');
         expect(brief).toContain('PRD-2, then PRD-1.');
         expect(brief).toMatch(/you keep the plan/);

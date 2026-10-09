@@ -114,6 +114,7 @@ const ICONS = {
   chase_stopped: Bot,
   chase_stalled: CircleAlert,
   chase_ended: CircleCheck,
+  captain_handover: Bot,
   feature_planned: CalendarRange,
   agent_planned: Milestone,
 };
@@ -201,6 +202,8 @@ function describe(change) {
       return change.detail ?? `The chase on ${change.feature} waits for you`;
     case 'chase_ended':
       return `The chase on ${change.feature} ended: ${change.detail ?? 'every task is done or in review'}`;
+    case 'captain_handover':
+      return `The road captain of the chase on ${change.feature} handed over (${change.detail ?? 'to a fresh one'})`;
     case 'feature_planned':
       return planned(change);
     case 'agent_planned':

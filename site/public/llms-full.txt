@@ -555,7 +555,7 @@ This is the way to run a board: you say what you want, and agents shape it, buil
 4. **Chase it.** **See what would start** first, or `npx breakaway chase <slug> --dry-run`, then **Chase**. The board starts an agent on every ready task in the feature, and on what blocks it, within your limits, and starts the next as soon as what it waits for merges. **Parallel** sets how many agents may work in one area at once.
 5. **Let the peloton do the coordinating.** Every agent checks in on the chase’s peloton before its first change, says what it did after each meaningful step, and agrees there who goes first on shared files and who adds work that’s missing. Watch it on the feature’s page; you don’t post on it. To steer one agent, message it.
 6. **Answer Needs you, and merge.** The chase stops at what only you can do: a decision, an owner step, a pull request in review. Each shows as **Needs you**, with what it unblocks. A pull request that conflicts or fails its checks gets a fix agent by itself. If nothing can move, the chase pings you once, naming the one thing that frees the most.
-7. **Start a road captain when it drifts.** **Start a road captain** on the chase starts an agent with your prompt and the chase as it stands: what’s open, what’s wrong with each pull request, what’s Stuck. Use it to look the chase over and add the tasks it’s missing.
+7. **Give a big chase a road captain.** A chase of more than 10 tasks gets one by itself; on a smaller one that drifts, **Start a road captain** with a note on what to look at. It keeps the plan, answers the agents, and adds the tasks the chase is missing, and a fresh one takes over after each watch.
 8. **Ship it.** The chase ends when every task is done or in review, and leaves a note in your inbox. Mark the feature shipped when its release goes out (`features modify <slug> --state shipped`).
 
 ```sh
@@ -1234,7 +1234,7 @@ When a chase task’s pull request conflicts with its base branch or its checks 
 
 ### Its road captain
 
-**Start a road captain** on a chase that’s on or has run (on the feature’s page, or the chase in the Agents view) asks what it should do, and starts an agent with your prompt and the chase as it stands under it: the live line, each open pull request and what’s wrong with it, and what’s Stuck or needs you. It rides the chase’s peloton, follows the rules for an agent started from a prompt, and always starts past the board’s limits. Use it to look over the chase and add the tasks it’s missing.
+A chase of more than 10 tasks starts with a **road captain**, and **Start a road captain with it** under Chase turns it on or off for any chase. It’s one agent on a task of its own that keeps the chase’s plan, answers the other agents on its peloton (they reach it as `@captain`), fixes the chase’s tasks and adds the ones it’s missing, and looks over its riskier pull requests. It never changes anything outside the chase, and like every agent it never merges. After its watch, 12 hours by default, it writes a captain’s log and the board starts a fresh captain that reads it first; it hands over sooner when its context runs full. The feature’s page shows who holds the role, when its watch ends, and the log. On a running chase without one, **Start a road captain** starts it now, with an optional note from you; **Stand down road captain** turns it off.
 
 ### When nothing can move
 

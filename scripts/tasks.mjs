@@ -58,6 +58,8 @@ import {
   promptSections,
 } from './tasks/init.js';
 import {
+  captainLines,
+  captainRequest,
   chaseRequest,
   chaseSummary,
   featureBody,
@@ -260,7 +262,12 @@ Reading                (list, next, claim, and add work in this checkout's repos
                          what blocks it, within its limits, until all are done or in review
     --parallel <n>       the most agents at once in one area (default 3); on a running chase, it changes it
     --dry-run            show what would start now, and start nothing
+    --captain, --no-captain   start a road captain with it, or not (by default, one for more than 10 tasks); on a
+                         running chase, start or stand down its captain
+    --watch <hours>      a road captain's watch before the board starts a fresh one (default 12)
   chase <slug> stop      stop it (owner): nothing new starts; running agents finish
+  captain <slug>         the chase's road captain: who it is, when its watch ends, and its log
+  captain <slug> log --file <path>   the road captain writes its log  [--handover] then the board starts the next one
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
   github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>] [--force]
   github review <n>      start an agent that reviews a pull request that can merge as it stands, on the task it closes, as
@@ -522,6 +529,9 @@ const FLAGS = new Set([
   'check',
   'headers',
   'days',
+  'captain',
+  'no-captain',
+  'handover',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline', 'copies']);
@@ -1581,6 +1591,8 @@ const commands = {
       parallel: opts.parallel,
       dryRun: Boolean(opts['dry-run']),
       by: opts.as ?? setting('AGENT'),
+      captain: opts['no-captain'] ? false : opts.captain ? true : undefined,
+      watch: opts.watch,
     });
     if (built.error) fail(built.error);
     const answer = await call(...built.request);
@@ -1589,6 +1601,35 @@ const commands = {
         stop: args[1] === 'stop',
         parallel: opts.parallel === undefined ? undefined : Number(opts.parallel),
       }),
+    );
+  },
+  /** The chase's road captain and its log; the captain writes its log, and hands over, with `log` (BRK-275). */
+  async captain() {
+    let text = null;
+    if (opts.file !== undefined) {
+      try {
+        text = readFileSync(opts.file, 'utf8');
+      } catch (error) {
+        fail(`can't read ${opts.file}: ${reasonOf(error)}`);
+      }
+    }
+    const built = captainRequest(args[0], args[1], {
+      text,
+      handover: Boolean(opts.handover),
+      by: opts.as ?? setting('AGENT'),
+    });
+    if (built.error) fail(built.error);
+    const answer = await call(...built.request);
+    if (args[1] === undefined)
+      return print(answer.feature?.chase?.captain ?? null, (c) =>
+        [`${answer.feature.title} (${answer.feature.slug})`, ...captainLines(c, { all: true })].join('\n'),
+      );
+    print(answer, (d) =>
+      d.successor
+        ? `Logged and handed over: ${d.successor.agent} starts as the road captain and reads your log first. Stop here.`
+        : d.waiting
+          ? `Logged and handed over. The next captain waits to start: ${d.waiting}. Stop here.`
+          : 'Logged.',
     );
   },
   async next() {

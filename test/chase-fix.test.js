@@ -215,34 +215,21 @@ describe('a chase fixes its own pull requests', () => {
     expect(fixes()).toHaveLength(4);
   });
 
-  it('starts a road captain on a chase: the owner’s prompt, the chase under it, its repository, force started', async () => {
+  it('tells a road captain about the chase’s pull requests, and starts one only on a running chase', async () => {
     const captain = (input) => api('agents/general', { method: 'POST', body: input });
     expect((await captain({ chase: 'fast', prompt: 'Look', by: 'claude-x-1' })).status).toBe(403);
-    expect((await captain({ chase: 'fast', prompt: '  ' })).status).toBe(400);
     expect((await captain({ chase: 'fast', prompt: 'Look', repo: 'elsewhere' })).status).toBe(400);
     expect((await api('features', { method: 'POST', body: { slug: 'quiet' } })).status).toBe(201);
     const off = await body(await captain({ chase: 'quiet', prompt: 'Look' }));
     expect(off).toMatchObject({ status: 409, error: expect.stringMatching(/no chase yet/) });
-
-    // Full: the board's limits don't hold a road captain back.
-    const { running } = await body(await api('agents'));
-    await api('agents/settings', { method: 'PATCH', body: { max: Math.max(1, running.length) } });
-    const before = routine.fires.length;
-    const res = await body(await captain({ chase: 'fast', prompt: 'Fix the conflicts on the open pull requests.' }));
-    expect(res.status).toBe(201);
-    expect(routine.fires).toHaveLength(before + 1);
-    const text = routine.fires.at(-1);
-    expect(text).toContain('Mode: general');
-    expect(text).toContain('Started: by the owner, as the road captain of a chase');
-    expect(text).toContain('Title: Road captain for Fast: Fix the conflicts on the open pull requests.');
-    const t = await task(res.task.uuid);
-    expect(t.tags).toEqual(expect.arrayContaining(['agent', 'general', 'fast']));
-    expect(t.brief).toMatch(/^Fix the conflicts on the open pull requests\.\n\n## The chase on Fast \(\+fast\)/);
-    expect(t.brief).toContain('- #41 closes OPS-1 (widgets): conflicts with its base branch');
-    expect(t.brief).toContain("You're its road captain");
-    const { events } = await body(await api('activity'));
-    expect(events.flatMap((e) => e.changes).find((c) => c.trigger === 'road-captain')).toMatchObject({
-      forced: true,
+    const stopped = await body(await captain({ chase: 'fast', prompt: 'Look' }));
+    expect(stopped).toMatchObject({ status: 409, error: expect.stringMatching(/isn’t running/) });
+    // The road captain's brief (BRK-275) carries the chase as it stands, its pull requests included.
+    await runInDurableObject(stub(), (instance) => {
+      const made = instance.roadCaptain('fast', instance.views(), new Set(['widgets']));
+      expect(made).toMatchObject({ repo: 'widgets', title: 'Road captain for Fast' });
+      expect(made.brief).toContain('- #41 closes OPS-1 (widgets): conflicts with its base branch');
+      expect(made.brief).toMatch(/^You're the road captain of the chase on Fast \(\+fast\)/);
     });
   });
 });

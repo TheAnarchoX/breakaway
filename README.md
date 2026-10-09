@@ -77,7 +77,7 @@ Group tasks into a **feature**, aimed at a release, and press **Chase**. The boa
 - **Within your limits.** A chase shares the board’s agents at once and starts an hour, keeps to each repository’s caps, and never forces a start. By default up to 3 agents work in one area at once, and you set how many.
 - **It stops at you.** Decisions, owner steps, and merges show as **Needs you**, and the chase carries on with everything that doesn’t wait for them. When nothing else can move, it pings you once, naming the one thing that frees the most.
 - **It fixes its own pull requests.** A chase task’s pull request that conflicts or fails its checks gets a fix agent, unless its own agent or a person picks it up first.
-- **A road captain, if you want one.** Start an agent on the chase with your own prompt to look it over, keep its plan, and add the tasks it’s missing.
+- **A road captain for a big chase.** The board starts one with a chase of more than 10 tasks, or when you ask: it keeps the plan, answers the other agents, and fixes the chase’s tasks, never anything outside it. After its watch (12 hours by default) it writes a captain’s log, and a fresh one takes over from it.
 - **You start it, you stop it.** Agents never start a chase. **Stop chase**, and running agents finish their pull requests.
 
 ```sh

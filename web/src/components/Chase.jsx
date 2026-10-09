@@ -103,9 +103,9 @@ function ParallelField({ feature, chase, id, onChange }) {
 }
 
 /**
- * Start a road captain (BRK-137): an agent with the owner's prompt that helps this chase along, in the chase's
- * repository, with the chase as it stands under the prompt. It always starts now, past the board's limits. In a
- * dialog, `titleId` names its heading.
+ * Start a road captain (BRK-137, BRK-275): the board's, which keeps this chase's plan and runs its peloton, with what
+ * the owner writes as an optional note. It always starts now, past the board's limits. In a dialog, `titleId` names
+ * its heading.
  * @param {{ feature: { slug: string, title: string }, onDone: () => void, titleId?: string }} props
  */
 function RoadCaptainForm({ feature, onDone, titleId }) {
@@ -118,8 +118,8 @@ function RoadCaptainForm({ feature, onDone, titleId }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await actions.startGeneral({ prompt, chase: feature.slug });
-      toast(`Road captain started on ${result.task?.wid ?? 'its task'}.`);
+      const result = await actions.startGeneral({ prompt: prompt.trim() || undefined, chase: feature.slug });
+      toast(result.run?.agent ? `Road captain ${result.run.agent} started.` : 'Road captain started.');
       setPrompt('');
       onDone();
     } catch (err) {
@@ -131,7 +131,7 @@ function RoadCaptainForm({ feature, onDone, titleId }) {
     <form class={titleId ? 'sheet ch-captain' : 'ch-captain'} onSubmit={submit}>
       {titleId && <h2 id={titleId}>Start a road captain</h2>}
       <label class="field">
-        <span class="field-label">What should the road captain do?</span>
+        <span class="field-label">Anything it should look at first? (optional)</span>
         <Dictate>
           <textarea
             class="input"
@@ -143,8 +143,9 @@ function RoadCaptainForm({ feature, onDone, titleId }) {
           />
         </Dictate>
         <span class="field-hint">
-          It works in the chase’s repository and rides its peloton, with the chase as it stands now under your prompt.
-          It starts now, even when the board is at its limits.
+          It keeps the chase’s plan, answers its agents on the peloton, and fixes the chase’s tasks, never anything
+          outside the chase. It starts now, even when the board is at its limits, and hands over to a fresh one after
+          its watch.
         </span>
       </label>
       {error && (
@@ -153,7 +154,7 @@ function RoadCaptainForm({ feature, onDone, titleId }) {
         </p>
       )}
       <div class="launch-row">
-        <button type="submit" class="btn btn-primary btn-sm" disabled={busy || !prompt.trim()} aria-busy={busy}>
+        <button type="submit" class="btn btn-primary btn-sm" disabled={busy} aria-busy={busy}>
           <Megaphone size={15} aria-hidden="true" />
           Start road captain
         </button>
@@ -167,12 +168,12 @@ function RoadCaptainForm({ feature, onDone, titleId }) {
 
 /**
  * Start a road captain from a feature's header (WEB-43), beside Edit: the button, and the form in a dialog. Only
- * once the feature has been chased, as in the chase's own controls.
+ * while the chase runs without one, as in the chase's own controls.
  * @param {{ feature: { slug: string, title: string, chase?: Record<string, any> | null }, onDone?: () => void }} props
  */
 export function RoadCaptain({ feature, onDone }) {
   const [open, setOpen] = useState(false);
-  if (!feature.chase || feature.chase.state === 'off') return null;
+  if (!feature.chase?.on || feature.chase.captain?.on) return null;
   const titleId = `rc-${feature.slug}-title`;
   const close = () => setOpen(false);
   return (
@@ -197,11 +198,79 @@ export function RoadCaptain({ feature, onDone }) {
   );
 }
 
+/** A chase with more tasks than this starts with a road captain unless the owner says not (src/store-chase.js). */
+const CAPTAIN_OVER = 10;
+const clockTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * The chase's road captain (BRK-275): who holds the role, since when, and when its watch ends, then its log, newest
+ * first. Stand down turns it off for this chase.
+ * @param {{ feature: { slug: string }, chase: Record<string, any>, onChange?: () => void }} props
+ */
+function Captain({ feature, chase, onChange }) {
+  const [all, setAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const captain = chase.captain;
+  if (!chase.on || !captain?.on) return null;
+  const log = captain.log ?? [];
+  const shown = all ? log : log.slice(0, 3);
+  const standDown = async () => {
+    setBusy(true);
+    await actions.chase(feature, { captain: false }, 'The road captain stands down.');
+    setBusy(false);
+    onChange?.();
+  };
+  return (
+    <div class="ch-group">
+      <h3>
+        <Megaphone size={16} aria-hidden="true" />
+        Road captain
+      </h3>
+      <p class="meta">
+        {captain.agent ? (
+          <>
+            <a href={hashFor({ task: captain.task.uuid })}>{captain.agent}</a> since {ago(captain.since)}. Its{' '}
+            {captain.hours}-hour watch ends at {clockTime(captain.watchEndsAt)}
+            {captain.askedAt ? ': asked to hand over' : ', then a fresh one takes over'}.
+          </>
+        ) : (
+          'Starts on the next check.'
+        )}
+      </p>
+      {shown.length > 0 && (
+        <ol class="ch-list">
+          {shown.map((entry) => (
+            <li key={entry.id} class="ch-row">
+              <span class="meta">
+                {entry.agent === 'board' ? 'The board' : entry.agent} · {ago(entry.at)}
+                {entry.handover ? ' · handed over' : ''}
+              </span>
+              <span class="ch-last">{entry.text}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div class="launch-row">
+        {shown.length < log.length && (
+          <button type="button" class="btn btn-quiet btn-sm" onClick={() => setAll(true)}>
+            Show the whole log ({log.length})
+          </button>
+        )}
+        <button type="button" class="btn btn-quiet btn-sm" disabled={busy} aria-busy={busy} onClick={standDown}>
+          Stand down road captain
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Controls({ feature, chase, open, captain, onChange }) {
   const [captainOpen, setCaptain] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
+  const sized = (chase.tasks?.length ?? 0) > CAPTAIN_OVER;
+  const [withCaptain, setWithCaptain] = useState(chase.state === 'off' ? sized : Boolean(chase.captain?.on));
   useEffect(() => setPreview(null), [chase.on, chase.parallel]);
   const run = async (body, message) => {
     setBusy(true);
@@ -210,7 +279,7 @@ function Controls({ feature, chase, open, captain, onChange }) {
     onChange?.();
   };
   const start = () =>
-    run({ on: true }, (r) =>
+    run({ on: true, captain: withCaptain }, (r) =>
       r.started.length ? `Chasing. Started ${r.started.join(', ')}.` : 'Chasing. Nothing can start yet.',
     );
   const stop = () => run({ on: false }, 'Chase stopped.');
@@ -240,7 +309,7 @@ function Controls({ feature, chase, open, captain, onChange }) {
             </button>
           </>
         )}
-        {captain && chase.state !== 'off' && !captainOpen && (
+        {captain && chase.on && !chase.captain?.on && !captainOpen && (
           <button type="button" class="btn btn-outline btn-sm" onClick={() => setCaptain(true)}>
             <Megaphone size={15} aria-hidden="true" />
             Start a road captain
@@ -255,6 +324,18 @@ function Controls({ feature, chase, open, captain, onChange }) {
             onChange?.();
           }}
         />
+      )}
+      {!chase.on && open && (
+        <label class="check-row">
+          <input type="checkbox" checked={withCaptain} onChange={(e) => setWithCaptain(e.currentTarget.checked)} />
+          <span>
+            Start a road captain with it
+            <span class="meta">
+              {' '}
+              An agent that keeps the plan and answers the others. On by default for more than {CAPTAIN_OVER} tasks.
+            </span>
+          </span>
+        </label>
       )}
       {!open && <p class="meta">Nothing left to chase: every task is done.</p>}
       {chase.on && <p class="meta">Stopping starts nothing new. Agents already working finish their tasks.</p>}
@@ -407,6 +488,7 @@ export function ChasePanel({ feature, chase, open = true, compact = false, capta
         </div>
       )}
       <Controls feature={feature} chase={chase} open={open} captain={captain} onChange={onChange} />
+      {!compact && <Captain feature={feature} chase={chase} onChange={onChange} />}
       <ParallelField feature={feature} chase={chase} id={id} onChange={onChange} />
       {chase.on && (
         <>

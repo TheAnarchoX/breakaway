@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CLI_PACKAGE } from './init.js';
 import {
+  captainLines,
+  captainRequest,
   chaseLines,
   chaseRequest,
   chaseSummary,
@@ -444,6 +446,16 @@ describe('chase (BRK-85)', () => {
     expect(chaseRequest('x', 'stop', { parallel: 2 }).error).toMatch(/^--parallel is for a chase that runs/u);
   });
 
+  it('asks for a road captain, or none, and its watch (BRK-275)', () => {
+    expect(chaseRequest('x', undefined, { captain: true, watch: '6' })).toEqual({
+      request: ['POST', 'features/x/chase', { on: true, captain: true, captainHours: 6 }],
+    });
+    expect(chaseRequest('x', undefined, { captain: false }).request[2]).toEqual({ on: true, captain: false });
+    for (const n of ['0', '73', '1.5', 'long'])
+      expect(chaseRequest('x', undefined, { watch: n }).error).toMatch(/^--watch is a road captain’s watch/u);
+    expect(chaseRequest('x', 'stop', { captain: true }).error).toMatch(/for a chase that runs/u);
+  });
+
   const chase = {
     state: 'on',
     on: true,
@@ -709,5 +721,62 @@ describe('routines new, and who writes a routine (CLI-19)', () => {
   it('knows new and cap as routines subcommands', () => {
     expect(unknownSubcommand('routines', 'new')).toBeNull();
     expect(unknownSubcommand('routines', 'cap')).toBeNull();
+  });
+});
+
+describe('captain (BRK-275)', () => {
+  it('reads the captain, and writes its log as the agent that runs it', () => {
+    expect(captainRequest('Crew', undefined)).toEqual({ request: ['GET', 'features/crew'] });
+    expect(captainRequest('crew', 'log', { text: 'Where it stands', by: 'claude-captain-crew-1' })).toEqual({
+      request: [
+        'POST',
+        'features/crew/captain',
+        { log: 'Where it stands', handover: false, by: 'claude-captain-crew-1' },
+      ],
+    });
+    expect(
+      captainRequest('crew', 'log', { text: 'Done', handover: true, by: 'claude-captain-crew-1' }).request[2],
+    ).toMatchObject({
+      handover: true,
+    });
+  });
+
+  it('refuses what can’t be right before asking the board', () => {
+    expect(captainRequest(undefined, undefined).error).toMatch(/^say which feature/u);
+    expect(captainRequest('crew', 'steer').error).toMatch(/captain has no "steer"/u);
+    expect(captainRequest('crew', undefined, { handover: true }).error).toMatch(/go with log/u);
+    expect(captainRequest('crew', 'log', { by: 'claude-a' }).error).toMatch(/--file <path>/u);
+    expect(captainRequest('crew', 'log', { text: '  ', by: 'claude-a' }).error).toMatch(/the log is empty/u);
+    expect(captainRequest('crew', 'log', { text: 'Log' }).error).toMatch(/say who you are/u);
+  });
+
+  it('prints who holds it, when its watch ends, and the log', () => {
+    const captain = {
+      on: true,
+      hours: 12,
+      agent: 'claude-captain-crew-2',
+      since: '2026-10-09T08:00:00.000Z',
+      watchEndsAt: '2026-10-09T20:00:00.000Z',
+      askedAt: null,
+      log: [
+        {
+          at: '2026-10-09T07:59:00.000Z',
+          agent: 'claude-captain-crew-1',
+          text: 'OPS-1 next.\nThen OPS-2.',
+          handover: true,
+        },
+      ],
+    };
+    expect(captainLines(captain)).toEqual([
+      '  Captain     claude-captain-crew-2, since 2026-10-09 08:00 UTC; its watch ends 2026-10-09 20:00 UTC',
+      '  Log         2026-10-09 07:59 claude-captain-crew-1 (handed over): OPS-1 next. Then OPS-2.',
+    ]);
+    expect(captainLines({ on: true, hours: 12, agent: null, log: [] })).toEqual([
+      '  Captain     on: the board starts one on its next check (12-hour watches)',
+    ]);
+    expect(captainLines({ on: false, log: [] })).toEqual(['  Captain     off']);
+    expect(chaseLines({ ...captain, state: 'on', parallel: 3, startedAt: captain.since, captain }, 'crew')).toContain(
+      '  Captain     claude-captain-crew-2, since 2026-10-09 08:00 UTC; its watch ends 2026-10-09 20:00 UTC',
+    );
   });
 });
