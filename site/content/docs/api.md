@@ -45,6 +45,9 @@ curl -H "Authorization: Bearer $BREAKAWAY_TOKEN" "$BREAKAWAY_URL/api/health"
 | `POST /api/tasks/<ref>/pings` | An agent pings you: `{ kind, message, proposal? }`. |
 | `POST /api/tasks/<ref>/decision/answers` | You answer a decision. `DELETE` reopens it. On a kickoff’s idea, `carryOn: true` also starts its next run, or queues it for room (`202`, `waiting`); signed-in board only. |
 | `POST /api/next` | The best ready task; with `claim: true`, claims it in one step. |
+| `GET /api/tasks/<ref>/footprint` | The files a task touches ([Footprints](/docs/agents/#footprints)): `kind` (`actual`, `claimed`, `predicted`, or `unknown`), `known`, `trusted`, `patterns`, `paths` with each one’s source, `pull`, `shared`, `conflicts`, and `hitRate`. |
+| `GET /api/footprints?repo=<slug>` | Every open task’s footprint at once. |
+| `POST /api/tasks/<ref>/paths` | An agent’s path claims for the task it holds: `{ agent, claim: […] }`, `{ agent, release: […] \| true }`, or `{ agent, dirty: […] }`. `409` with who holds it when a claim is refused. Without `agent`, or from the signed-in board, it only releases. |
 
 A task you create or change takes these fields: `description` (the title), `brief`, `done_when`, `project` (the area), `priority`, `horizon`, `spec`, `pr`, `due`, `wait`, `scheduled`, `status`, `autostart`, `decision`, and `repo` (on create). A create also takes `tags`, `depends`, `related`, and `note`; a change takes `addTags`, `removeTags`, `addDepends`, `removeDepends`, `addRelated`, `removeRelated`, and `annotate`.
 
@@ -67,10 +70,10 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | Route | Does |
 | --- | --- |
 | `GET /api/agents` | Running and waiting agents, limits, and settings. |
-| `POST /api/agents/start` | `{ ref, note?, mode? }`. Starts an agent (`mode: "refine"` to refine). |
+| `POST /api/agents/start` | `{ ref, note?, mode?, anyway? }`. Starts an agent (`mode: "refine"` to refine). On a task whose files a running agent is changing, `409` with `overlap` and `anyway: true`: send it again with `anyway: true`. |
 | `POST /api/agents/next` | `{ count, horizon?, repo?, dryRun? }`. Start the next few. |
 | `POST /api/agents/general` | Owner: an agent from a prompt, `{ prompt, repo, force? }`; from a decision’s answers, `{ decision, note?, force? }`; or to prepare the next version, `{ next, repo, version?, note?, force? }`. |
-| `PATCH /api/agents/settings` | The limits, plan, auto-start, and alert severity. |
+| `PATCH /api/agents/settings` | The limits, plan, auto-start, alert severity, and `perArea` (Agents per area). |
 | `GET /api/agents/prompt?repo=` | A repository’s agent prompt as it is on its default branch. |
 | `GET /api/pings` | Your inbox: open pings and notices. |
 | `POST /api/pings/<id>/apply`, `/dismiss`, `/handled` | Owner only (the cookie). |

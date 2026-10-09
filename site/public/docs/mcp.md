@@ -50,6 +50,7 @@ Or put the printed entry in the checkout’s `.mcp.json`. Claude Code fills in `
 | `ping_owner` | A ping to you about the task it holds. |
 | `review` | Its verdict on the pull request that closes the task it holds. |
 | `peloton`, `peloton_post` | Who’s riding, and a check-in, step, or reply. |
+| `footprint` | The files a task touches: predicted, claimed, changed, or in its pull request ([Footprints](https://leavethepack.dev/docs/agents/#footprints)). |
 | `messages` | Your messages to the session on the task it holds. |
 | `list_specs`, `show_spec`, `features` | The repository’s specs and the features on the roadmap. |
 | `pull_request` | A pull request’s checks, reviews, and whether it can merge. |
