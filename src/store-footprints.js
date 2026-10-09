@@ -458,7 +458,7 @@ export const footprintsMethods = {
    * The task's open pull request and its files, or null, with whether they hold starts: while its head moved in the
    * last PULL_HOLD_MS or an agent holds the task. A head the board hasn't seen before counts as a move.
    */
-  pullFootprint(uuid, context, now = Date.now()) {
+  pullFootprint(uuid, context, now = Date.now(), { store = true } = {}) {
     const map = this.tasks.get(uuid);
     if (!map) return null;
     const number = /^\d+$/u.test(String(map.pr ?? '')) ? Number(map.pr) : null;
@@ -474,14 +474,16 @@ export const footprintsMethods = {
     let moved = row ? Number(row.moved) : null;
     if (!row || row.head !== head) {
       moved = row ? now : Math.min(now, Date.parse(pr.rowUpdated) || now);
-      this.sql.exec(
-        "INSERT INTO footprints (uuid, kind, paths, head, moved, updated) VALUES (?, 'pull', ?, ?, ?, ?) ON CONFLICT (uuid, kind) DO UPDATE SET paths = excluded.paths, head = excluded.head, moved = excluded.moved, updated = excluded.updated",
-        uuid,
-        JSON.stringify(pr.files),
-        head,
-        moved,
-        now,
-      );
+      // A read that only looks (footprintsApi) works out the same answer without writing it down.
+      if (store)
+        this.sql.exec(
+          "INSERT INTO footprints (uuid, kind, paths, head, moved, updated) VALUES (?, 'pull', ?, ?, ?, ?) ON CONFLICT (uuid, kind) DO UPDATE SET paths = excluded.paths, head = excluded.head, moved = excluded.moved, updated = excluded.updated",
+          uuid,
+          JSON.stringify(pr.files),
+          head,
+          moved,
+          now,
+        );
     }
     const agentHolds = map.status === 'pending' && Boolean(map.claim);
     return {
@@ -501,7 +503,7 @@ export const footprintsMethods = {
    * under half of what its tasks changed, so the starters treat a prediction there as unknown.
    * @param {string} uuid
    */
-  taskFootprint(uuid, { context = null, now = Date.now() } = {}) {
+  taskFootprint(uuid, { context = null, now = Date.now(), store = true } = {}) {
     const map = this.tasks.get(uuid);
     const repo = repoSlugOf(map, this.defaultRepoSlug());
     const ctx = context ?? this.footprintContext(repo);
@@ -511,7 +513,7 @@ export const footprintsMethods = {
       .toArray()[0];
     const dirty =
       dirtyRow && map?.status === 'pending' && map.claim === dirtyRow.agent ? JSON.parse(String(dirtyRow.paths)) : [];
-    const pull = this.pullFootprint(uuid, ctx, now);
+    const pull = this.pullFootprint(uuid, ctx, now, { store });
     /** @type {Map<string, any>} */
     const paths = new Map();
     /** @type {Set<string>} */
@@ -537,10 +539,12 @@ export const footprintsMethods = {
     if (pending && !map.claim && !paths.size) {
       // Before an agent starts, the prediction follows the task's words; once one does, it's kept as it was.
       predicted = this.predictionFor(uuid, ctx);
-      this.storePrediction(uuid, predicted, now);
+      if (store) this.storePrediction(uuid, predicted, now);
     }
     predicted ??= this.predictionFor(uuid, ctx);
-    const rate = this.footprintHitRate(repo, ctx);
+    // Once per context: a read of many tasks (a starter's pass, GET /api/footprints) walks the history once.
+    ctx.hitRate ??= this.footprintHitRate(repo, ctx);
+    const rate = ctx.hitRate;
     const current = [...paths.values()];
     const kind = current.length
       ? current.some((p) => p.state !== 'claimed')
@@ -645,6 +649,48 @@ export const footprintsMethods = {
   /** GET /api/tasks/:id/footprint, and the MCP server's footprint read. */
   footprintApi(ref) {
     return this.run(() => ({ status: 200, body: { footprint: this.taskFootprint(this.resolve(ref)) } }));
+  },
+
+  /**
+   * GET /api/footprints: every open task's footprint at once, by repository (`repo` narrows it to one), for the Graph
+   * view's shared-files edges and the Agents view's hit rate (WEB-130). One context per repository, and a pure read:
+   * it stores no prediction and no pull request's head, so looking never changes what a starter later sees.
+   * @param {string | null} [repo]
+   */
+  footprintsApi(repo = null, now = Date.now()) {
+    return this.run(() => {
+      const fallback = this.defaultRepoSlug();
+      /** @type {Map<string, string[]>} */
+      const open = new Map();
+      for (const [uuid, map] of this.tasks) {
+        if (map.status !== 'pending') continue;
+        const slug = repoSlugOf(map, fallback);
+        if (repo && slug !== repo) continue;
+        open.set(slug, [...(open.get(slug) ?? []), uuid]);
+      }
+      const repos = [...open].map(([slug, uuids]) => {
+        const context = this.footprintContext(slug);
+        const footprints = uuids.map((uuid) => {
+          const fp = this.taskFootprint(uuid, { context, now, store: false });
+          return {
+            uuid,
+            task: fp.task,
+            kind: fp.kind,
+            trusted: fp.trusted,
+            patterns: fp.patterns,
+            paths: fp.paths.map((/** @type {any} */ p) => ({ pattern: p.pattern, state: p.state, agent: p.agent })),
+          };
+        });
+        const rate = context.hitRate ?? this.footprintHitRate(slug, context);
+        return {
+          repo: slug,
+          shared: context.shared,
+          hitRate: { rate: rate.rate, count: rate.count, trusted: rate.trusted },
+          footprints,
+        };
+      });
+      return { status: 200, body: { repos } };
+    });
   },
 
   /**

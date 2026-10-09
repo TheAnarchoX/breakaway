@@ -62,6 +62,11 @@ export function AgentSettings({ d }) {
     const n = Number(e.currentTarget.value);
     if (Number.isInteger(n) && n >= 1 && n <= limits.hourly) actions.agentSettings({ hourly: n });
   };
+  // Agents per area (IDEA-55 section 3): up to the agents at once; a board from before footprints has no such setting.
+  const setPerArea = (e) => {
+    const n = Number(e.currentTarget.value);
+    if (Number.isInteger(n) && n >= 1 && n <= s.max) actions.agentSettings({ perArea: n });
+  };
   const setMax = (e) => {
     const n = Number(e.currentTarget.value);
     if (Number.isInteger(n) && n >= 1 && n <= limits.agents) actions.agentSettings({ max: n });
@@ -119,6 +124,25 @@ export function AgentSettings({ d }) {
             ). Every start uses your Claude subscription.
           </span>
         </label>
+        {s.perArea !== undefined && (
+          <label class="field">
+            <span class="field-label">Agents per area</span>
+            <input
+              class="input input-sm"
+              type="number"
+              min="1"
+              max={s.max}
+              step="1"
+              defaultValue={s.perArea}
+              key={`${s.max}-${s.perArea}`}
+              onChange={setPerArea}
+            />
+            <span class="field-hint">
+              Most agents in one area that start by themselves or with Start the next few, 1 to {s.max}. Tasks that
+              would change the same files never start side by side. A chase keeps its own number.
+            </span>
+          </label>
+        )}
         <div class="field">
           <span class="field-label">Start by itself</span>
           <Segmented

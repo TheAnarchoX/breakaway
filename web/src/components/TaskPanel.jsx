@@ -70,6 +70,7 @@ import { FeatureSection } from './Feature.jsx';
 import { IncidentSection } from './Incidents.jsx';
 import { RunEventLine } from './InfraEvents.jsx';
 import { ShortLivedSection } from './ShortLived.jsx';
+import { FootprintSection } from './Footprint.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
 
@@ -962,6 +963,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
       <Shipping task={t} />
       <ShortLivedSection task={t} />
       <PullRequests task={t} />
+      <FootprintSection task={t} />
       <Dependencies task={t} />
       <Related task={t} />
       <Comments task={t} />
@@ -1073,6 +1075,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
             <Shipping task={t} />
             <ShortLivedSection task={t} />
             <PullRequests task={t} />
+            <FootprintSection task={t} />
             <Dependencies task={t} />
             <Related task={t} />
             <p class="panel-meta meta">

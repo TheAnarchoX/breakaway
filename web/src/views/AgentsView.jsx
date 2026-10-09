@@ -24,6 +24,7 @@ import { ForcedMark, MessageButton, RunStatus, TRIGGER_LABEL, runWords } from '.
 import { AgentSettings } from '../components/BoardSettings.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
 import { ChasePill } from '../components/Feature.jsx';
+import { HeldReason, HitRates } from '../components/Footprint.jsx';
 import { PelotonPanel } from '../components/Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
@@ -311,8 +312,8 @@ function Launcher({ d }) {
         Start the next few
       </h2>
       <p class="muted small">
-        The best ready tasks for agents{repoScope.value ? ` in ${repoName(repoScope.value)}` : ''}, one per area and
-        none where an agent is already working, so they stay out of each other’s files.{' '}
+        The best ready tasks for agents{repoScope.value ? ` in ${repoName(repoScope.value)}` : ''}: none that would
+        touch files an agent is already changing, and at most {d.settings.perArea ?? 1} an area.{' '}
         {free ? `${free} of ${d.settings.max} slots free.` : `All ${d.settings.max} slots are in use.`}
       </p>
       <div class="launch-row">
@@ -366,7 +367,7 @@ function Launcher({ d }) {
               <ul>
                 {plan.skipped.slice(0, 20).map((t) => (
                   <li key={t.uuid}>
-                    <span class="wid">{t.wid}</span> {t.reason}
+                    <span class="wid">{t.wid}</span> <HeldReason entry={t} />
                   </li>
                 ))}
               </ul>
@@ -695,7 +696,7 @@ export function AgentsView() {
                         <span class="wid">{ref(q)}</span> <RepoChip slug={q.repo} /> <Title text={q.description} />
                       </a>
                       <span class={`meta ${q.ready ? 'queue-ready' : ''}`}>
-                        {q.ready ? 'Starts on the next check' : q.reason}
+                        {q.ready ? 'Starts on the next check' : <HeldReason entry={q} />}
                       </span>
                       {q.forceable && (
                         <button
@@ -715,6 +716,7 @@ export function AgentsView() {
                   Mark a task Start when ready and it waits here until nothing blocks it, then starts its own agent.
                 </p>
               )}
+              <HitRates entries={d.queue} repoLabel={(slug) => (multiRepo.value ? repoName(slug) : null)} />
             </section>
             <section class="gh-section" aria-labelledby="recent-runs">
               <h2 id="recent-runs">Recent starts</h2>
