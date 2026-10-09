@@ -270,6 +270,7 @@ Reading                (list, next, claim, and add work in this checkout's repos
   chase <slug> stop      stop it (owner): nothing new starts; running agents finish
   captain <slug>         the chase's road captain: who it is, when its watch ends, and its log
   captain <slug> log --file <path>   the road captain writes its log  [--handover] then the board starts the next one
+  captain <slug> digest --file <path>   the road captain's lines for the owner's next hourly digest of the chase
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
   github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>] [--force]
   github review <n>      start an agent that reviews a pull request that can merge as it stands, on the task it closes, as
@@ -1628,6 +1629,8 @@ const commands = {
       return print(answer.feature?.chase?.captain ?? null, (c) =>
         [`${answer.feature.title} (${answer.feature.slug})`, ...captainLines(c, { all: true })].join('\n'),
       );
+    if (args[1] === 'digest')
+      return print(answer, (d) => `Kept for the owner’s next digest, due ${d.digest.nextAt.slice(11, 16)} UTC.`);
     print(answer, (d) =>
       d.successor
         ? `Logged and handed over: ${d.successor.agent} starts as the road captain and reads your log first. Stop here.`

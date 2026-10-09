@@ -35,10 +35,12 @@ import {
   repoScope,
   roadmapLayout,
   selected,
+  selectedDigest,
   selectedFeature,
 } from '../lib/store.js';
 import { ClaimChip, Dialog, RepoChip, Segmented, widClass } from '../components/ui.jsx';
 import { ChasePanel, ReviewPill, RoadCaptain } from '../components/Chase.jsx';
+import { DigestPage, Digests } from '../components/ChaseDigest.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Progress, STANDINGS, featureHref, nextUp } from '../components/Feature.jsx';
 import { RefineFeature } from '../components/RefineFeature.jsx';
@@ -443,6 +445,7 @@ function FeatureDetail({ slug }) {
               <ChasePanel feature={f} chase={f.chase} open={f.progress.total > 0 && !f.done} captain={false} />
             </section>
           )}
+          {f.chase && <Digests feature={f} chase={f.chase} onChange={() => loadFeature(slug)} />}
           <FeaturePlanning f={f} />
           {f.conflicts.length > 0 && (
             <section class="gh-section" aria-labelledby="fr-conflicts-title">
@@ -691,5 +694,7 @@ export function RoadmapView() {
   useEffect(() => {
     if (!slug) navOrder.value = [];
   }, [slug]);
+  const digest = selectedDigest.value;
+  if (slug && digest) return <DigestPage slug={slug} id={digest} />;
   return slug ? <FeatureDetail slug={slug} /> : <Overview />;
 }

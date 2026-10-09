@@ -75,7 +75,9 @@ const KINDS = ['merge', 'decide', 'owner', 'connect', 'untagged'];
 /**
  * What waits for the owner, in the order they'd best take it: the task's priority, then how much work it frees, then
  * merges before decisions before steps.
- * @param {{ kind: string, priority?: string | null, unblocks?: number }[]} items
+ * @template {{ kind: string, priority?: string | null, unblocks?: number }} T
+ * @param {T[]} items
+ * @returns {T[]}
  */
 export function ownerOrder(items) {
   const p = (x) => PRIORITY[/** @type {'H'|'M'|'L'} */ (x.priority)] ?? 3;

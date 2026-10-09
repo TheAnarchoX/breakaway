@@ -226,7 +226,8 @@ export const chaseDigestMethods = {
       const r = /^\d{1,15}$/u.test(String(id))
         ? this.sql.exec('SELECT * FROM chase_digests WHERE slug = ? AND id = ?', row.slug, Number(id)).toArray()[0]
         : null;
-      if (!r) throw new AgentError(`no digest ${String(id).slice(0, 20)} for ${row.title}: it may be over 30 days old`, 404);
+      if (!r)
+        throw new AgentError(`no digest ${String(id).slice(0, 20)} for ${row.title}: it may be over 30 days old`, 404);
       return { status: 200, body: { digest: this.digestView(r) } };
     });
   },
@@ -240,7 +241,9 @@ export const chaseDigestMethods = {
     const note = String(text ?? '').trim();
     if (!note) throw new InputError('write the lines for the owner’s next digest: what they should know, briefly');
     if (note.length > DIGEST_NOTE_MAX)
-      throw new InputError(`a captain’s lines in a digest are up to ${DIGEST_NOTE_MAX} characters, and this is ${note.length}`);
+      throw new InputError(
+        `a captain’s lines in a digest are up to ${DIGEST_NOTE_MAX} characters, and this is ${note.length}`,
+      );
     if (looksLikeSecret(note)) throw new InputError('that looks like a token or key: a digest never holds one');
     const at = Date.now();
     this.sql.exec(
