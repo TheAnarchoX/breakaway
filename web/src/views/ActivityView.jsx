@@ -3,6 +3,7 @@ import { UndoChange, planningWords } from '../components/AgentPlanning.jsx';
 import {
   Activity,
   Archive,
+  ArchiveRestore,
   CircleCheck,
   CirclePlus,
   Hand,
@@ -76,6 +77,7 @@ const ICONS = {
   changed: Pencil,
   numbered: Hash,
   'horizon-closed': Archive,
+  'board-imported': ArchiveRestore,
   unreadable: CircleAlert,
   pr_opened: GitPullRequest,
   pr_ready: GitPullRequest,
@@ -171,6 +173,8 @@ function describe(change) {
       return `Changed the ${list(change.fields)}`;
     case 'horizon-closed':
       return `You closed now: ${change.archived} archived, ${change.movedUp} moved up`;
+    case 'board-imported':
+      return `You restored ${plural(change.tasks, 'task')} from an export`;
     case 'numbered':
       return `Got its work ID, ${change.wid}`;
     case 'agent_started':

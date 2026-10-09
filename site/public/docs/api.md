@@ -86,6 +86,7 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `POST /api/routines/<slug>/run` | Run it now. |
 | `POST /api/routines/<slug>/triggers`, `DELETE …/triggers/<id>` | Make or revoke a webhook trigger. |
 | `POST /api/horizons/close` | Close now; `{ dryRun: true }` only counts. |
+| `POST /api/import` | Restore an export into an empty board: `{ tasks, count }` as `export` wrote it. The owner’s; `409` on a board that has tasks. |
 | `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ into: "next" }` stages it in next instead, from the next release with work in later; `{ dryRun: true }` only lists them. The owner's or an agent's (with its `by`), whose pull is kept for undo. |
 | `POST /api/planning/<id>/undo` | Undo an agent's change to the plan: a feature's release, title, or brief, a pull, or another task's fields. Refused when someone changed the same field since. Yours, from the signed-in web board. |
 

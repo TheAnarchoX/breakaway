@@ -61,6 +61,7 @@ import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
 import { kickoffsMethods } from './store-kickoffs.js';
+import { importMethods } from './store-import.js';
 import { isKickoffIdea } from './kickoff.js';
 import { initMethods } from './store-init.js';
 import { routineKeepMethods } from './store-routine-keep.js';
@@ -1327,6 +1328,12 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           events.push({ seq: row.seq, at, source, task: null, changes: [{ kind: 'unreadable' }] });
           continue;
         }
+        // Restoring from an export (BRK-234) is one event per version, not one per task it brought back.
+        if (row.source === 'import') {
+          const tasks = new Set(ops.filter((o) => o.type === 'create').map((o) => o.uuid)).size;
+          events.push({ seq: row.seq, at, source, task: null, changes: [{ kind: 'board-imported', tasks }] });
+          continue;
+        }
         if (row.source === 'horizon') {
           const set = ops.filter((o) => o.type === 'update' && o.property === 'horizon');
           const count = (v) => set.filter((o) => o.value === v).length;
@@ -1625,6 +1632,7 @@ Object.assign(
   selfUpdateMethods,
   wizardMethods,
   kickoffsMethods,
+  importMethods,
   initMethods,
   routineKeepMethods,
   oauthMethods,

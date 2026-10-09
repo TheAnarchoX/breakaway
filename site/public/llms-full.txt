@@ -849,6 +849,7 @@ npx breakaway export --out tasks-backup.json
 | `specs` | The repository’s specs, newest first: each one’s status and its tasks. `--repo <slug>` for another repository. |
 | `specs show <path>` | One spec: its status, last change, Markdown, and the tasks that link it. |
 | `export` | Every task of every repository as JSON, checked against `health`’s count. |
+| `import <file>` | Restores an export into an empty board: each task’s work ID and comments, with claims cleared. The owner’s; refused on a board that has tasks. |
 
 ## Working a task
 
@@ -2191,7 +2192,7 @@ npx breakaway export --out tasks-backup.json
 
 It writes every task in every repository, with status and horizon, as the board’s JSON with comments, and checks the count against `health`, failing when they differ. Keep the file out of Git. A Taskwarrior replica is a full copy only while it syncs: compare `task count` with `health`’s total. A point-in-time restore of the Durable Object puts every replica that synced after the restore point in the same state: each one gets `410 Gone` and has to be started again.
 
-To redeploy the board, or rebuild an environment, with the board down, see [Recover without the board](https://leavethepack.dev/docs/recovery/). Its first section is what to export while the board still answers.
+To read an export back into a board that starts empty, on a new account or with a new store, register its repositories again and run `npx breakaway import tasks-backup.json` (the owner's, and only on a board with no tasks). To redeploy the board, or rebuild an environment, with the board down, see [Recover without the board](https://leavethepack.dev/docs/recovery/). Its first section is what to export while the board still answers.
 
 ## The install
 
@@ -2369,7 +2370,21 @@ Run it in a clone of the install repository, the one with `breakaway.config.json
 
 The board's data lives in its Durable Object, so it's safe as long as the Worker and its `store` stay on the same account: a deploy, a rollback, or a deleted version never touches it. Cloudflare keeps the Durable Object's storage restorable for 30 days.
 
-A Durable Object on a new account starts empty, and the board can't read an export back in yet. The environments are quick to add again from `environments.json`, on the Infrastructure view; each repository's desired state comes back by itself from Git. Your tasks are in `tasks-backup.json`, and a Taskwarrior replica that synced recently holds them too. The audit trail stays in `audit.json`, as the record of what happened before.
+A Durable Object on a new account starts empty. Bring your tasks back from `tasks-backup.json`:
+
+1. **Register the repositories again**, with the same slugs and areas as before: `npx breakaway repos add <slug> <owner/name> --area <project:PREFIX>`, once for each. The import refuses an export with tasks of a repository the board doesn't have, and names it.
+2. **Import the export**, before anyone adds a task:
+
+   ```sh
+   npx breakaway import tasks-backup.json
+   ```
+
+   Every task comes back with its work ID, repository, area, horizon, tags, dependencies, decision, your quoted words, and comments with who wrote them and when. Claims and autostart are cleared: nobody holds work on a board that just came back, so start agents again from the board. The import runs only on a board with no tasks, so it never mixes two boards; on one that has tasks it changes nothing and says so.
+3. **Start each Taskwarrior replica again** (move `.task/` aside, then `task sync`): the new board has a new history, so an old replica gets `410 Gone`.
+
+**Check:** `import` says how many tasks it restored, and `npx breakaway health` shows the same total as the export's `count`.
+
+The environments are quick to add again from `environments.json`, on the Infrastructure view; each repository's desired state comes back by itself from Git. The audit trail stays in `audit.json`, as the record of what happened before.
 
 ## Rebuild an environment by hand
 
@@ -2598,6 +2613,7 @@ Images are `POST /api/tasks/<ref>/attachments` (the raw image as the body, with 
 | `POST /api/routines/<slug>/run` | Run it now. |
 | `POST /api/routines/<slug>/triggers`, `DELETE …/triggers/<id>` | Make or revoke a webhook trigger. |
 | `POST /api/horizons/close` | Close now; `{ dryRun: true }` only counts. |
+| `POST /api/import` | Restore an export into an empty board: `{ tasks, count }` as `export` wrote it. The owner’s; `409` on a board that has tasks. |
 | `POST /api/releases/<version>/pull` | Pull a release into now: its open tasks and every open task they wait for. Only the next release with work outside now; `{ into: "next" }` stages it in next instead, from the next release with work in later; `{ dryRun: true }` only lists them. The owner's or an agent's (with its `by`), whose pull is kept for undo. |
 | `POST /api/planning/<id>/undo` | Undo an agent's change to the plan: a feature's release, title, or brief, a pull, or another task's fields. Refused when someone changed the same field since. Yours, from the signed-in web board. |
 
