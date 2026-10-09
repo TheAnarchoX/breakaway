@@ -31,7 +31,7 @@ const SHOWN_MAX = 200;
  * An entry as stored and shown.
  * @typedef {{ id: number, at: number, kind: string, repo: string, environment: string, environmentId: number | null,
  *   plan: string | null,
- *   by: string, agent: string | null, envelope: string | null, outcome: string, summary: string }} AuditEntry
+ *   by: string, person: string | null, agent: string | null, envelope: string | null, outcome: string, summary: string }} AuditEntry
  */
 
 /** @typedef {import('./infra-audit.js').AuditInput} AuditInput */
@@ -47,6 +47,7 @@ function shown(row) {
     environmentId: row.environment_id === null || row.environment_id === undefined ? null : Number(row.environment_id),
     plan: row.plan ?? null,
     by: row.by,
+    person: row.person ?? null,
     agent: row.agent ?? null,
     envelope: row.envelope ?? null,
     outcome: row.outcome,
@@ -95,6 +96,14 @@ export const infraAuditMethods = {
         SELECT RAISE(ABORT, 'the audit trail keeps every entry for at least a year');
       END;
     `);
+    // Who's behind each press (BRK-303): the owner, or a person's handle. Older entries have none: the owner then.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_audit)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('person')) this.sql.exec('ALTER TABLE infra_audit ADD COLUMN person TEXT');
   },
 
   /**
@@ -107,7 +116,7 @@ export const infraAuditMethods = {
     const entry = auditEntry(input);
     const row = this.sql
       .exec(
-        'INSERT INTO infra_audit (at, kind, repo, environment, environment_id, plan, by, agent, envelope, outcome, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+        'INSERT INTO infra_audit (at, kind, repo, environment, environment_id, plan, by, person, agent, envelope, outcome, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
         Date.now(),
         entry.kind,
         entry.repo,
@@ -115,6 +124,7 @@ export const infraAuditMethods = {
         entry.environmentId,
         entry.plan,
         entry.by,
+        entry.person,
         entry.agent,
         entry.envelope,
         entry.outcome,

@@ -25,7 +25,9 @@ export const APPROVAL_LAPSE_MS = 24 * 60 * 60 * 1000;
  * What the owner approved, kept on the change: the head and the plan's digest they saw, the digest of the part of it
  * drift's plan keeps after the merge (`kept`), the policy's rules that applied, when, how it merges, and, once the
  * merged plan is made, that plan and what became of it.
- * @typedef {{ by: 'owner', at: string, sha: string, digest: string, kept: string, rules: string[],
+ * `person` is who approved it (BRK-303): the owner, or a person's handle; an approval from before has none, the owner's.
+ * @typedef {{ by: 'owner' | 'person', person?: string, at: string, sha: string, digest: string, kept: string,
+ *   rules: string[],
  *   merge: MergeMode | null, plan: string | null, settled: 'approved' | 'waits' | 'refused' | null }} ChangeApproval
  */
 

@@ -102,10 +102,18 @@ export function auditWords(e) {
 }
 
 /**
- * Who made an entry: an agent by its name, anyone else in words.
- * @param {{ by: string, agent?: string | null }} e
+ * Who made an entry: an agent by its name (and the person behind it, when that's not you), a person by their handle
+ * (BRK-303), anyone else in words.
+ * @param {{ by: string, agent?: string | null, person?: string | null }} e
  */
-export const auditActor = (e) => (e.by === 'agent' ? (e.agent ?? 'an agent') : (ACTOR[e.by] ?? e.by));
+export const auditActor = (e) => {
+  if (e.by === 'agent') {
+    const agent = e.agent ?? 'an agent';
+    return e.person && e.person !== 'owner' ? `${agent} for ${e.person}` : agent;
+  }
+  if (e.by === 'person') return e.person ?? 'someone';
+  return ACTOR[e.by] ?? e.by;
+};
 
 /**
  * A lock release in words (WEB-96), by who released it, with the plan the lock was for as a part to link: the stored
@@ -118,13 +126,18 @@ const LOCK_RELEASE = {
   board: (plan) => (plan ? ['The lock held for ', { plan }, ' expired'] : ['The lock expired']),
 };
 
+/** A person's lock release (BRK-303), by handle. */
+const personRelease = (person, plan) =>
+  plan ? [`${person} released the lock held for `, { plan }] : [`${person} released the lock`];
+
 /**
  * An entry's summary as parts: text, and the plan as `{ plan }` where it should link to its page. Only a lock release
  * is reworded; any other entry is its stored summary.
- * @param {{ kind: string, by: string, plan?: string | null, summary?: string | null }} e
+ * @param {{ kind: string, by: string, person?: string | null, plan?: string | null, summary?: string | null }} e
  * @returns {(string | { plan: string })[]}
  */
 export function auditSummary(e) {
+  if (e.kind === 'lock-release' && e.by === 'person') return personRelease(e.person ?? 'someone', e.plan ?? null);
   const words = e.kind === 'lock-release' ? LOCK_RELEASE[e.by] : null;
   if (words) return words(e.plan ?? null);
   return e.summary ? [e.summary] : [];

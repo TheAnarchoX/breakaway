@@ -1726,7 +1726,7 @@ export const githubMethods = {
    * `setting` marks a write the owner's pull request settings made (Keep branches up to date, Merge
    * when green), so Activity can say so; it changes nothing else.
    */
-  async githubWrite(number, action, { sha, method, enable, setting, repo: slug = null } = {}) {
+  async githubWrite(number, action, { sha, method, enable, setting, repo: slug = null, actor = null } = {}) {
     await this.ready();
     const { repo, error: missing } = this.githubRepoOr404(slug);
     if (missing) return missing;
@@ -1832,6 +1832,8 @@ export const githubMethods = {
           ...base,
           method: ['update-branch', 'publish'].includes(action) ? undefined : method,
           setting: setting === true || undefined,
+          // Who pressed (BRK-303): the owner, or a maintainer by handle, so Activity and the pull request say so.
+          by: this.actorIn({ actor }).person,
         }),
         repo.slug,
       );
@@ -1859,14 +1861,16 @@ export const githubMethods = {
    * rollback.yml) on its default branch, with inputs the workflow checks again. Only for a repository with
    * a pipeline. The owner's, from the signed-in browser only (the Worker refuses anything else).
    */
-  async githubRelease(action, { sha, destructiveOk, version, reason, next, repo: slug = null } = {}) {
+  async githubRelease(action, { sha, destructiveOk, version, reason, next, repo: slug = null, actor = null } = {}) {
     await this.ready();
     const { repo, error: missing } = this.githubRepoOr404(slug);
     if (missing) return missing;
     const credentials = await appCredentials(this.env);
     if (!credentials) return { status: 409, body: { error: 'GitHub isn’t connected yet' } };
-    if (action === 'release') return this.packageRelease(repo, credentials, version, next);
-    if (action === 'prerelease') return this.buildPrerelease(repo, credentials);
+    // Who pressed (BRK-303): the owner, or a maintainer by handle, so Activity says so.
+    const by = this.actorIn({ actor }).person;
+    if (action === 'release') return this.packageRelease(repo, credentials, version, next, by);
+    if (action === 'prerelease') return this.buildPrerelease(repo, credentials, by);
     const pipeline = pipelineOf(repo);
     if (!pipeline)
       return {
@@ -1919,7 +1923,7 @@ export const githubMethods = {
         reason: text,
       };
     }
-    return this.dispatchRelease(repo, credentials, { workflow, ref: pipeline.branch, inputs, event });
+    return this.dispatchRelease(repo, credentials, { workflow, ref: pipeline.branch, inputs, event, by });
   },
 
   /**
@@ -1931,7 +1935,7 @@ export const githubMethods = {
    * when the next version is already set, by a later pre-release or an open +version task. The workflow checks the
    * tags again.
    */
-  async packageRelease(repo, credentials, version, next = null) {
+  async packageRelease(repo, credentials, version, next = null, by = null) {
     const pkg = packageOf(repo);
     if (!pkg)
       return {
@@ -1991,6 +1995,7 @@ export const githubMethods = {
       ref: pkg.branch,
       inputs,
       event,
+      by,
     });
     if (answer.status === 409 && answer.body.github === 422 && /unexpected inputs/iu.test(answer.body.error ?? ''))
       return {
@@ -2009,7 +2014,7 @@ export const githubMethods = {
    * pre-releases by hand (BRK-273), and refused while one builds, when the latest pre-release already has everything
    * on the branch, or while CI on its latest commit isn't green: the workflow checks those again and would stop.
    */
-  async buildPrerelease(repo, credentials) {
+  async buildPrerelease(repo, credentials, by = null) {
     const pkg = packageOf(repo);
     const build = this.githubRepoView(repo, true).releaseBuild;
     if (!pkg || !build)
@@ -2034,11 +2039,12 @@ export const githubMethods = {
       ref: pkg.branch,
       inputs: { prerelease: '' },
       event,
+      by,
     });
   },
 
   /** Starts `workflow` on `ref` with `inputs` through the GitHub App, and records `event` in Activity once it has. */
-  async dispatchRelease(repo, credentials, { workflow, ref, inputs, event }) {
+  async dispatchRelease(repo, credentials, { workflow, ref, inputs, event, by = null }) {
     const client = this.githubClient(credentials, repo);
     try {
       await client.send('POST', `/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, { ref, inputs });
@@ -2060,7 +2066,8 @@ export const githubMethods = {
     this.sql.exec(
       'INSERT INTO gh_events (at, data, repo) VALUES (?, ?, ?)',
       Date.now(),
-      JSON.stringify(event),
+      // Who pressed (BRK-303): the owner, or a maintainer by handle.
+      JSON.stringify(by ? { ...event, by } : event),
       repo.slug,
     );
     await this.githubWebhook('workflow_run', null, { slug: repo.slug }); // sync 5 seconds from now
@@ -2183,7 +2190,7 @@ export const githubMethods = {
    * `inputs` checked against the ones the board read. The owner's, from the signed-in browser only (the Worker refuses
    * anything else). Activity records the workflow, the ref, and the inputs' names, never their values.
    */
-  async runWorkflowApi({ repo: slug = null, workflow, ref, inputs } = {}) {
+  async runWorkflowApi({ repo: slug = null, workflow, ref, inputs, actor = null } = {}) {
     await this.ready();
     const { repo, error: missing } = this.githubRepoOr404(slug);
     if (missing) return missing;
@@ -2223,6 +2230,7 @@ export const githubMethods = {
       ref: on,
       inputs: checked.inputs,
       event,
+      by: this.actorIn({ actor }).person,
     });
     if (answer.status !== 200) return answer;
     return { status: 200, body: { ...answer.body, name: found.name, ref: on, url: found.url } };

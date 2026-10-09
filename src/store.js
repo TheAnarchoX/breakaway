@@ -79,6 +79,7 @@ import { infraCostsMethods } from './store-infra-costs.js';
 import { infraLocksMethods } from './store-infra-locks.js';
 import { infraCheckMethods } from './store-infra-check.js';
 import { infraPlansMethods } from './store-infra-plans.js';
+import { infraApprovalRulesMethods } from './store-infra-approval-rules.js';
 import { infraApprovalsMethods } from './store-infra-approvals.js';
 import { infraPolicyMethods } from './store-infra-policy.js';
 import { infraPullsMethods } from './store-infra-pulls.js';
@@ -136,6 +137,16 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       );
       CREATE TABLE IF NOT EXISTS tasks (uuid TEXT PRIMARY KEY, data TEXT NOT NULL);
     `);
+    // Who wrote each version (BRK-303): the person behind the request, the agent it named, and who that agent's run
+    // is for. Versions from before, from Taskwarrior, and the board's own have none.
+    const versionColumns = new Set(
+      this.sql
+        .exec('PRAGMA table_info(versions)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    for (const column of ['person', 'agent', 'for_person'])
+      if (!versionColumns.has(column)) this.sql.exec(`ALTER TABLE versions ADD COLUMN ${column} TEXT`);
     this.tasks = null;
     this.key = null;
     this.initGitHub();
@@ -172,6 +183,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraAudit();
     this.initInfraPlans();
     this.initInfraApprovals();
+    this.initInfraApprovalRules();
     this.initInfraDeploys();
     this.initInfraPolicy();
     this.initInfraPulls();
@@ -330,18 +342,48 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     }
   }
 
-  /** Stores a version as the new latest and counts it towards the next snapshot. */
+  /**
+   * Stores a version as the new latest and counts it towards the next snapshot, with who wrote it (BRK-303) when a
+   * request did: `this.writer`, set by `as()` around the write.
+   */
   insertVersion(versionId, parentVersionId, segment, source) {
+    const who = this.writer ?? null;
     this.sql.exec(
-      'INSERT INTO versions (version_id, parent_version_id, segment, source, created) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO versions (version_id, parent_version_id, segment, source, created, person, agent, for_person) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       versionId,
       parentVersionId,
       segment,
       source,
       Date.now(),
+      who?.person ?? null,
+      who?.agent ?? null,
+      who?.for ?? null,
     );
     this.setMeta('latest_version_id', versionId);
     this.sql.exec('UPDATE snapshot SET versions_since = versions_since + 1 WHERE id = 1');
+  }
+
+  /**
+   * Runs `fn`, whose writes are recorded as `input`'s (BRK-303): the person behind the request's credential, the agent
+   * it names, and who that agent's run is for. `fn` must be synchronous: nothing else runs in the store until it
+   * returns, so no other request's write is recorded as this one's.
+   * @template T
+   * @param {any} input what the call was given: `{ actor?, by? }`
+   * @param {() => T} fn
+   * @returns {T}
+   */
+  as(input, fn) {
+    const before = this.writer;
+    // A write the board makes inside a request's (a task a press adds) stays that request's.
+    if (!(before && !input?.actor)) this.writer = this.whoIn(input);
+    try {
+      const result = fn();
+      if (result && typeof (/** @type {any} */ (result).then) === 'function')
+        throw new Error('as() records a synchronous write: await outside it');
+      return result;
+    } finally {
+      this.writer = before;
+    }
   }
 
   /** Applies decrypted operations to the replica. */
@@ -734,75 +776,78 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * the API's add asks for, an item that resembles an open task of its repository is refused with the list (BRK-283),
    * unless it says `force` or links each of them in `related` or `depends`.
    * @param {any[]} items
-   * @param {{ similar?: boolean }} [options]
+   * `actor` is who's behind the request (BRK-303), so the version names them.
+   * @param {{ similar?: boolean, actor?: any }} [options]
    */
-  create(items, { similar = false } = {}) {
-    return this.run(() => {
-      this.writable();
-      if (similar) this.refuseSimilar(items);
-      const now = new Date();
-      const timestamp = now.toISOString();
-      const working = new Map([...this.tasks].map(([uuid, map]) => [uuid, { ...map }]));
-      const ops = [];
-      const created = [];
-      for (const item of items) {
-        if (!item || typeof item !== 'object') throw new InputError('each task is an object');
-        const { tags, depends, related, note, entry, end, ...rest } = item;
-        const changes = pick(rest, [
-          'brief',
-          'done_when',
-          'by',
-          'description',
-          'project',
-          'priority',
-          'horizon',
-          'spec',
-          'pr',
-          'wid',
-          'status',
-          'due',
-          'wait',
-          'scheduled',
-          'autostart',
-          'alert',
-          'decision',
-        ]);
-        // The task's repository (the default when none is given) decides which areas, and so prefixes, it may have.
-        const repo = this.checkRepoSlug(rest.repo);
-        const prefix = this.checkAreaPrefix(repo, changes.project);
-        changes.repo = this.storedRepo(repo);
-        if (changes.wid) {
-          changes.wid = String(changes.wid).toUpperCase();
-          this.checkWidPrefix(repo, changes.wid);
-          if ([...working.values()].some((m) => m.wid === changes.wid)) {
-            throw new Conflict(`${changes.wid} already exists`);
+  create(items, { similar = false, actor = null } = {}) {
+    return this.run(() =>
+      this.as({ actor, by: Array.isArray(items) ? items[0]?.by : null }, () => {
+        this.writable();
+        if (similar) this.refuseSimilar(items);
+        const now = new Date();
+        const timestamp = now.toISOString();
+        const working = new Map([...this.tasks].map(([uuid, map]) => [uuid, { ...map }]));
+        const ops = [];
+        const created = [];
+        for (const item of items) {
+          if (!item || typeof item !== 'object') throw new InputError('each task is an object');
+          const { tags, depends, related, note, entry, end, ...rest } = item;
+          const changes = pick(rest, [
+            'brief',
+            'done_when',
+            'by',
+            'description',
+            'project',
+            'priority',
+            'horizon',
+            'spec',
+            'pr',
+            'wid',
+            'status',
+            'due',
+            'wait',
+            'scheduled',
+            'autostart',
+            'alert',
+            'decision',
+          ]);
+          // The task's repository (the default when none is given) decides which areas, and so prefixes, it may have.
+          const repo = this.checkRepoSlug(rest.repo);
+          const prefix = this.checkAreaPrefix(repo, changes.project);
+          changes.repo = this.storedRepo(repo);
+          if (changes.wid) {
+            changes.wid = String(changes.wid).toUpperCase();
+            this.checkWidPrefix(repo, changes.wid);
+            if ([...working.values()].some((m) => m.wid === changes.wid)) {
+              throw new Conflict(`${changes.wid} already exists`);
+            }
+          } else if (prefix) {
+            changes.wid = nextWid(prefix, working);
           }
-        } else if (prefix) {
-          changes.wid = nextWid(prefix, working);
+          // `note` is the old name for the description: it becomes the brief, and only a second text stays a comment.
+          if (note && !changes.brief) changes.brief = String(note);
+          const uuid = crypto.randomUUID();
+          const after = withChanges(
+            null,
+            {
+              ...changes,
+              addTags: arrayOf(tags),
+              addDepends: this.depRefs(arrayOf(depends), working),
+              addRelated: this.depRefs(arrayOf(related), working),
+              ...(note && changes.brief !== String(note) ? { annotate: note } : {}),
+              entry: entry ? toSeconds(entry) : undefined,
+              end: end ? toSeconds(end) : undefined,
+            },
+            now,
+          );
+          working.set(uuid, after);
+          ops.push(...diffOps(uuid, null, after, timestamp));
+          created.push(uuid);
         }
-        // `note` is the old name for the description: it becomes the brief, and only a second text stays a comment.
-        if (note && !changes.brief) changes.brief = String(note);
-        const uuid = crypto.randomUUID();
-        const after = withChanges(
-          null,
-          {
-            ...changes,
-            addTags: arrayOf(tags),
-            addDepends: this.depRefs(arrayOf(depends), working),
-            addRelated: this.depRefs(arrayOf(related), working),
-            ...(note && changes.brief !== String(note) ? { annotate: note } : {}),
-            entry: entry ? toSeconds(entry) : undefined,
-            end: end ? toSeconds(end) : undefined,
-          },
-          now,
-        );
-        working.set(uuid, after);
-        ops.push(...diffOps(uuid, null, after, timestamp));
-        created.push(uuid);
-      }
-      this.commit(ops);
-      return ok({ tasks: created.map((uuid) => this.detail(uuid)) }, 201);
-    });
+        this.commit(ops);
+        return ok({ tasks: created.map((uuid) => this.detail(uuid)) }, 201);
+      }),
+    );
   }
 
   /**
@@ -841,100 +886,111 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   update(ref, input) {
-    return this.run(() => {
-      const uuid = this.resolve(ref);
-      const changes = pick(input, [
-        'description',
-        'brief',
-        'done_when',
-        'by',
-        'project',
-        'priority',
-        'horizon',
-        'spec',
-        'pr',
-        'wid',
-        'status',
-        'due',
-        'wait',
-        'scheduled',
-        'annotate',
-        'autostart',
-        'decision',
-      ]);
-      const repo = this.repoOfTask(this.tasks.get(uuid))?.slug ?? this.tasks.get(uuid).repo;
-      if ('repo' in input && this.checkRepoSlug(input.repo) !== repo)
-        throw new InputError('a task stays in its repository; make a new task there and link them with a dependency');
-      if (changes.project) {
-        const prefix = this.checkAreaPrefix(repo, changes.project);
-        const current = this.tasks.get(uuid);
-        // An open task with no work ID gets the next one in its area, once, when it gets that area (IDEA-30).
-        if (!current.wid && !changes.wid && current.status === 'pending') {
-          if (current.tag_general && changes.project in SHARED_AREAS)
-            throw new InputError(`pick one of ${repo}'s own areas, not ${changes.project}`);
-          changes.wid = nextWid(prefix, this.tasks);
+    return this.run(() =>
+      this.as(input, () => {
+        const uuid = this.resolve(ref);
+        const changes = pick(input, [
+          'description',
+          'brief',
+          'done_when',
+          'by',
+          'project',
+          'priority',
+          'horizon',
+          'spec',
+          'pr',
+          'wid',
+          'status',
+          'due',
+          'wait',
+          'scheduled',
+          'annotate',
+          'autostart',
+          'decision',
+        ]);
+        const repo = this.repoOfTask(this.tasks.get(uuid))?.slug ?? this.tasks.get(uuid).repo;
+        if ('repo' in input && this.checkRepoSlug(input.repo) !== repo)
+          throw new InputError('a task stays in its repository; make a new task there and link them with a dependency');
+        if (changes.project) {
+          const prefix = this.checkAreaPrefix(repo, changes.project);
+          const current = this.tasks.get(uuid);
+          // An open task with no work ID gets the next one in its area, once, when it gets that area (IDEA-30).
+          if (!current.wid && !changes.wid && current.status === 'pending') {
+            if (current.tag_general && changes.project in SHARED_AREAS)
+              throw new InputError(`pick one of ${repo}'s own areas, not ${changes.project}`);
+            changes.wid = nextWid(prefix, this.tasks);
+          }
         }
-      }
-      if (changes.wid) {
-        changes.wid = String(changes.wid).toUpperCase();
-        this.checkWidPrefix(repo, changes.wid);
-        if ([...this.tasks].some(([other, m]) => other !== uuid && m.wid === changes.wid))
-          throw new Conflict(`${changes.wid} already exists`);
-      }
-      if (input.related) {
-        changes.addRelated = this.depRefs(arrayOf(input.related));
-        changes.removeRelated = relatedOf(this.tasks.get(uuid)).filter((r) => !changes.addRelated.includes(r));
-      }
-      // A general agent editing another task (IDEA-30 section 2), or a chase agent editing another of its chase's
-      // (IDEA-36 section 6), follows the cross-task rule instead.
-      const general = this.crossTaskRightsOf(changes.by, uuid);
-      if (general) {
-        this.checkCrossTaskEdit(uuid, input, general);
-        // The description stays the owner's when an agent rewrites it this way, so it never becomes one the agent made.
-        if ('brief' in changes && !AGENT_NAME.test(this.tasks.get(uuid).brief_by ?? ''))
-          Reflect.deleteProperty(changes, 'by');
-      } else {
-        this.checkBriefEdit(uuid, changes);
-        this.checkAgentDelete(uuid, changes);
-      }
-      this.checkPrField(uuid, changes);
-      if (input.addTags) changes.addTags = arrayOf(input.addTags);
-      if (input.removeTags) changes.removeTags = arrayOf(input.removeTags);
-      if (input.addDepends) changes.addDepends = this.depRefs(arrayOf(input.addDepends));
-      if (input.removeDepends) changes.removeDepends = this.depRefs(arrayOf(input.removeDepends));
-      if (input.addRelated)
-        changes.addRelated = [...new Set([...(changes.addRelated ?? []), ...this.depRefs(arrayOf(input.addRelated))])];
-      if (input.removeRelated)
-        changes.removeRelated = [
-          ...new Set([...(changes.removeRelated ?? []), ...this.depRefs(arrayOf(input.removeRelated))]),
-        ];
-      if (changes.addRelated?.includes(uuid)) throw new InputError("a task can't be related to itself");
-      if (changes.addDepends?.includes(uuid)) throw new InputError("a task can't depend on itself");
-      const before = this.detail(uuid);
-      const task = this.change(uuid, changes);
-      // An agent's change to a task that isn't its own work is kept, for Activity and the owner's undo (BRK-274).
-      const agent = String(input.by ?? '');
-      if (AGENT_NAME.test(agent) && before.claim !== agent && before.briefBy !== agent && changes.status !== 'deleted')
-        this.recordTaskPlanning(agent, uuid, before, task);
-      if (general) {
-        const fields = CROSS_TASK_FIELDS.filter(([keys]) => keys.some((k) => k in input)).map(([, name]) => name);
-        const its = general.wid ?? general.uuid.slice(0, 8);
-        const note = changes.status === 'deleted' ? `Deleted by ${its}.` : `Changed by ${its}: ${fields.join(', ')}.`;
-        return ok({ task: this.change(uuid, { annotate: note, by: 'board' }) });
-      }
-      // Editing the questions keeps the answers that still fit; say which ones went.
-      if (changes.decision && before.decisionAnswers) {
-        const dropped = Object.keys(before.decisionAnswers.answers).filter((id) => !task.decisionAnswers?.answers[id]);
-        if (dropped.length)
-          return ok({
-            task: this.change(uuid, {
-              annotate: `The questions changed, so these answers were dropped: ${dropped.join(', ')}.`,
-              by: 'board',
-            }),
-          });
-      }
-      return ok({ task });
-    });
+        if (changes.wid) {
+          changes.wid = String(changes.wid).toUpperCase();
+          this.checkWidPrefix(repo, changes.wid);
+          if ([...this.tasks].some(([other, m]) => other !== uuid && m.wid === changes.wid))
+            throw new Conflict(`${changes.wid} already exists`);
+        }
+        if (input.related) {
+          changes.addRelated = this.depRefs(arrayOf(input.related));
+          changes.removeRelated = relatedOf(this.tasks.get(uuid)).filter((r) => !changes.addRelated.includes(r));
+        }
+        // A general agent editing another task (IDEA-30 section 2), or a chase agent editing another of its chase's
+        // (IDEA-36 section 6), follows the cross-task rule instead.
+        const general = this.crossTaskRightsOf(changes.by, uuid);
+        if (general) {
+          this.checkCrossTaskEdit(uuid, input, general);
+          // The description stays the owner's when an agent rewrites it this way, so it never becomes one the agent made.
+          if ('brief' in changes && !AGENT_NAME.test(this.tasks.get(uuid).brief_by ?? ''))
+            Reflect.deleteProperty(changes, 'by');
+        } else {
+          this.checkBriefEdit(uuid, changes);
+          this.checkAgentDelete(uuid, changes);
+        }
+        this.checkPrField(uuid, changes);
+        if (input.addTags) changes.addTags = arrayOf(input.addTags);
+        if (input.removeTags) changes.removeTags = arrayOf(input.removeTags);
+        if (input.addDepends) changes.addDepends = this.depRefs(arrayOf(input.addDepends));
+        if (input.removeDepends) changes.removeDepends = this.depRefs(arrayOf(input.removeDepends));
+        if (input.addRelated)
+          changes.addRelated = [
+            ...new Set([...(changes.addRelated ?? []), ...this.depRefs(arrayOf(input.addRelated))]),
+          ];
+        if (input.removeRelated)
+          changes.removeRelated = [
+            ...new Set([...(changes.removeRelated ?? []), ...this.depRefs(arrayOf(input.removeRelated))]),
+          ];
+        if (changes.addRelated?.includes(uuid)) throw new InputError("a task can't be related to itself");
+        if (changes.addDepends?.includes(uuid)) throw new InputError("a task can't depend on itself");
+        const before = this.detail(uuid);
+        const task = this.change(uuid, changes);
+        // An agent's change to a task that isn't its own work is kept, for Activity and the owner's undo (BRK-274).
+        const agent = String(input.by ?? '');
+        if (
+          AGENT_NAME.test(agent) &&
+          before.claim !== agent &&
+          before.briefBy !== agent &&
+          changes.status !== 'deleted'
+        )
+          this.recordTaskPlanning(agent, uuid, before, task);
+        if (general) {
+          const fields = CROSS_TASK_FIELDS.filter(([keys]) => keys.some((k) => k in input)).map(([, name]) => name);
+          const its = general.wid ?? general.uuid.slice(0, 8);
+          const note = changes.status === 'deleted' ? `Deleted by ${its}.` : `Changed by ${its}: ${fields.join(', ')}.`;
+          return ok({ task: this.change(uuid, { annotate: note, by: 'board' }) });
+        }
+        // Editing the questions keeps the answers that still fit; say which ones went.
+        if (changes.decision && before.decisionAnswers) {
+          const dropped = Object.keys(before.decisionAnswers.answers).filter(
+            (id) => !task.decisionAnswers?.answers[id],
+          );
+          if (dropped.length)
+            return ok({
+              task: this.change(uuid, {
+                annotate: `The questions changed, so these answers were dropped: ${dropped.join(', ')}.`,
+                by: 'board',
+              }),
+            });
+        }
+        return ok({ task });
+      }),
+    );
   }
 
   /**
@@ -977,17 +1033,19 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       // The next run's own checks, before anything is answered: a routine that isn't connected refuses the press.
       const repo = body?.carryOn ? this.repoOfTask(this.tasks.get(uuid)) : null;
       if (repo) await this.checkRoutineReady(repo.slug);
-      const answered = this.change(uuid, {
-        // Who answered: the owner, or the maintainer who did (BRK-301).
-        decisionAnswers: { by: this.actorIn(body).person, at: new Date().toISOString(), answers },
-        removeTags: ['decide'],
-        ...(keepOpen ? {} : { status: 'completed' }),
-        // A routine maker's task was made to start by itself; once answered it waits for carry on or a Start.
-        ...(maker ? { autostart: null } : {}),
-        claim: null,
-        annotate: summarize(task.decision, answers),
-        by: 'board',
-      });
+      const answered = this.as(body, () =>
+        this.change(uuid, {
+          // Who answered: the owner, or the maintainer who did (BRK-301).
+          decisionAnswers: { by: this.actorIn(body).person, at: new Date().toISOString(), answers },
+          removeTags: ['decide'],
+          ...(keepOpen ? {} : { status: 'completed' }),
+          // A routine maker's task was made to start by itself; once answered it waits for carry on or a Start.
+          ...(maker ? { autostart: null } : {}),
+          claim: null,
+          annotate: summarize(task.decision, answers, this.actorIn(body).person),
+          by: 'board',
+        }),
+      );
       if (!body?.carryOn) return ok({ task: answered });
       try {
         const started = await this.startAgent(
@@ -1013,32 +1071,34 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * no agent holds it.
    */
   reopenDecision(ref, body) {
-    return this.run(() => {
-      const uuid = this.resolve(ref);
-      this.allowDecision(body, uuid, 'reopen a decision');
-      const task = this.detail(uuid);
-      const who = this.actorIn(body).person;
-      const reopened = `Decision reopened by ${who === 'owner' ? 'the owner' : who}.`;
-      if (!task.decision || !task.decisionAnswers)
-        throw new Conflict(`${label(task)} has no submitted decision`, { task });
-      if ((isKickoffIdea(task) || isRoutineMaker(task)) && task.status === 'pending') {
-        if (task.tags.includes('decide')) throw new Conflict(`${label(task)}'s questions are open already`, { task });
-        if (task.claim) throw new Conflict(`${label(task)} is claimed by ${task.claim}`, { task });
+    return this.run(() =>
+      this.as(body, () => {
+        const uuid = this.resolve(ref);
+        this.allowDecision(body, uuid, 'reopen a decision');
+        const task = this.detail(uuid);
+        const who = this.actorIn(body).person;
+        const reopened = `Decision reopened by ${who === 'owner' ? 'the owner' : who}.`;
+        if (!task.decision || !task.decisionAnswers)
+          throw new Conflict(`${label(task)} has no submitted decision`, { task });
+        if ((isKickoffIdea(task) || isRoutineMaker(task)) && task.status === 'pending') {
+          if (task.tags.includes('decide')) throw new Conflict(`${label(task)}'s questions are open already`, { task });
+          if (task.claim) throw new Conflict(`${label(task)} is claimed by ${task.claim}`, { task });
+          return ok({
+            task: this.change(uuid, { addTags: ['decide'], annotate: reopened, by: 'board' }),
+          });
+        }
+        if (task.status !== 'completed')
+          throw new Conflict(`${label(task)} isn't decided; it's ${task.status}`, { task });
         return ok({
-          task: this.change(uuid, { addTags: ['decide'], annotate: reopened, by: 'board' }),
+          task: this.change(uuid, {
+            status: 'pending',
+            addTags: ['decide'],
+            annotate: reopened,
+            by: 'board',
+          }),
         });
-      }
-      if (task.status !== 'completed')
-        throw new Conflict(`${label(task)} isn't decided; it's ${task.status}`, { task });
-      return ok({
-        task: this.change(uuid, {
-          status: 'pending',
-          addTags: ['decide'],
-          annotate: reopened,
-          by: 'board',
-        }),
-      });
-    });
+      }),
+    );
   }
 
   /**
@@ -1055,16 +1115,18 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * `repo`, when the CLI sends it, is the checkout's repository (CLD-123): a task of another repository
    * is refused, so an agent can't build breakaway's task in another repository's checkout. `force` doesn't skip it.
    */
-  claim(ref, agent, force = false, repo = null) {
-    return this.run(() => {
-      const uuid = this.resolve(ref);
-      if (repo) this.checkClaimRepo(uuid, String(repo).toLowerCase());
-      const result = this.claimUuid(uuid, agent, force);
-      // The Add a repository wizard's first-task step (CLD-194): the first claim from a checkout of the task's own repository.
-      if (repo && !this.meta(`setup_claimed:${String(repo).toLowerCase()}`))
-        this.setMeta(`setup_claimed:${String(repo).toLowerCase()}`, uuid);
-      return result;
-    });
+  claim(ref, agent, force = false, repo = null, actor = null) {
+    return this.run(() =>
+      this.as({ actor, by: agent }, () => {
+        const uuid = this.resolve(ref);
+        if (repo) this.checkClaimRepo(uuid, String(repo).toLowerCase());
+        const result = this.claimUuid(uuid, agent, force);
+        // The Add a repository wizard's first-task step (CLD-194): the first claim from a checkout of the task's own repository.
+        if (repo && !this.meta(`setup_claimed:${String(repo).toLowerCase()}`))
+          this.setMeta(`setup_claimed:${String(repo).toLowerCase()}`, uuid);
+        return result;
+      }),
+    );
   }
 
   claimUuid(uuid, agent, force) {
@@ -1087,52 +1149,58 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     return ok({ task: claimed });
   }
 
-  release(ref, agent, force = false) {
-    return this.run(() => {
-      const uuid = this.resolve(ref);
-      const task = this.detail(uuid);
-      const name = agent ? agentName(agent) : null;
-      if (task.claim && name !== task.claim && !force)
-        throw new Conflict(`${label(task)} is claimed by ${task.claim}, not ${name ?? 'you'}`, { task });
-      // A general agent that stops with no pull request has finished: its changes, if any, are on the board. A routine
-      // maker that stops with its questions open hasn't: the owner's answers start it again (BRK-220 section 3).
-      const asking = isRoutineMaker(task) && task.tags.includes('decide');
-      // The posts to the agent it leaves unanswered (BRK-281): release lists them, and the peloton's sweep notes them.
-      const open = task.claim ? this.openPosts(task.claim, uuid) : [];
-      if (task.tags.includes('general') && task.status === 'pending' && !task.pr && !asking)
-        return ok({
-          task: this.change(uuid, {
-            claim: null,
-            start: false,
-            status: 'completed',
-            annotate: 'Closed by the board: the agent released it with no pull request.',
-            by: 'board',
-          }),
-          open,
-        });
-      return ok({ task: this.change(uuid, { claim: null, start: false }), open });
-    });
+  release(ref, agent, force = false, actor = null) {
+    return this.run(() =>
+      this.as({ actor, by: agent }, () => {
+        const uuid = this.resolve(ref);
+        const task = this.detail(uuid);
+        const name = agent ? agentName(agent) : null;
+        if (task.claim && name !== task.claim && !force)
+          throw new Conflict(`${label(task)} is claimed by ${task.claim}, not ${name ?? 'you'}`, { task });
+        // A general agent that stops with no pull request has finished: its changes, if any, are on the board. A routine
+        // maker that stops with its questions open hasn't: the owner's answers start it again (BRK-220 section 3).
+        const asking = isRoutineMaker(task) && task.tags.includes('decide');
+        // The posts to the agent it leaves unanswered (BRK-281): release lists them, and the peloton's sweep notes them.
+        const open = task.claim ? this.openPosts(task.claim, uuid) : [];
+        if (task.tags.includes('general') && task.status === 'pending' && !task.pr && !asking)
+          return ok({
+            task: this.change(uuid, {
+              claim: null,
+              start: false,
+              status: 'completed',
+              annotate: 'Closed by the board: the agent released it with no pull request.',
+              by: 'board',
+            }),
+            open,
+          });
+        return ok({ task: this.change(uuid, { claim: null, start: false }), open });
+      }),
+    );
   }
 
-  done(ref, note, by) {
-    return this.run(() => {
-      const uuid = this.resolve(ref);
-      if (this.tasks.get(uuid).status === 'completed') return ok({ task: this.detail(uuid) });
-      return ok({
-        task: this.change(uuid, { status: 'completed', ...(note ? { annotate: note, by: commentAuthor(by) } : {}) }),
-      });
-    });
+  done(ref, note, by, actor = null) {
+    return this.run(() =>
+      this.as({ actor, by }, () => {
+        const uuid = this.resolve(ref);
+        if (this.tasks.get(uuid).status === 'completed') return ok({ task: this.detail(uuid) });
+        return ok({
+          task: this.change(uuid, { status: 'completed', ...(note ? { annotate: note, by: commentAuthor(by) } : {}) }),
+        });
+      }),
+    );
   }
 
   /**
    * Adds a comment (the old `annotate` route is an alias). `by` is who wrote it: the owner when it's empty,
    * an agent's name, or `board` / `routine:<slug>` for what the server writes.
    */
-  comment(ref, text, by) {
-    return this.run(() => {
-      if (!text || !String(text).trim()) throw new InputError('a comment needs text');
-      return ok({ task: this.change(this.resolve(ref), { annotate: String(text).trim(), by: commentAuthor(by) }) });
-    });
+  comment(ref, text, by, actor = null) {
+    return this.run(() =>
+      this.as({ actor, by }, () => {
+        if (!text || !String(text).trim()) throw new InputError('a comment needs text');
+        return ok({ task: this.change(this.resolve(ref), { annotate: String(text).trim(), by: commentAuthor(by) }) });
+      }),
+    );
   }
 
   /**
@@ -1146,26 +1214,31 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * @param {boolean} owner
    */
   quoteOwner(ref, body, owner) {
-    return this.run(() => {
-      const uuid = this.resolve(ref);
-      const map = this.tasks.get(uuid);
-      if (map.status !== 'pending') throw new Conflict(`${label(this.detail(uuid))} is ${map.status}`);
-      if (owner)
-        return ok({
-          task: this.change(uuid, { said: { text: body?.text, from: body?.from ?? 'board', by: 'owner' } }),
-        });
-      const by = String(body?.by ?? '').trim();
-      if (!by || by === 'owner' || by === 'board')
-        throw new Forbidden(
-          'only the owner, on the board, adds their own words; an agent quotes them with its name and where they came from',
-        );
-      const name = agentName(by);
-      if (body?.from === undefined || body?.from === null || String(body.from).trim() === 'board')
-        throw new InputError('say where the owner said it: message, peloton, ping, decision, or comment');
-      if (map.claim !== name && !this.crossTaskRightsOf(name, uuid))
-        throw new Forbidden(`${name} doesn't hold ${label(this.detail(uuid))}: quote the owner on a task you hold`);
-      return ok({ task: this.change(uuid, { said: { text: body?.text, from: body.from, by: name } }) });
-    });
+    return this.run(() =>
+      this.as(body, () => {
+        const uuid = this.resolve(ref);
+        const map = this.tasks.get(uuid);
+        if (map.status !== 'pending') throw new Conflict(`${label(this.detail(uuid))} is ${map.status}`);
+        // A press is the words of whoever pressed (BRK-303): the owner, or a person by handle, never the owner's.
+        if (owner)
+          return ok({
+            task: this.change(uuid, {
+              said: { text: body?.text, from: body?.from ?? 'board', by: this.actorIn(body).person },
+            }),
+          });
+        const by = String(body?.by ?? '').trim();
+        if (!by || by === 'owner' || by === 'board')
+          throw new Forbidden(
+            'only the owner, on the board, adds their own words; an agent quotes them with its name and where they came from',
+          );
+        const name = agentName(by);
+        if (body?.from === undefined || body?.from === null || String(body.from).trim() === 'board')
+          throw new InputError('say where the owner said it: message, peloton, ping, decision, or comment');
+        if (map.claim !== name && !this.crossTaskRightsOf(name, uuid))
+          throw new Forbidden(`${name} doesn't hold ${label(this.detail(uuid))}: quote the owner on a task you hold`);
+        return ok({ task: this.change(uuid, { said: { text: body?.text, from: body.from, by: name } }) });
+      }),
+    );
   }
 
   /** Removes a quote of the owner's words from a task: the owner's, on the signed-in board only (BRK-284). */
@@ -1329,13 +1402,16 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const rows = before
         ? this.sql
             .exec(
-              'SELECT seq, parent_version_id, segment, source, created FROM versions WHERE seq < ? ORDER BY seq DESC LIMIT ?',
+              'SELECT seq, parent_version_id, segment, source, created, person, agent, for_person FROM versions WHERE seq < ? ORDER BY seq DESC LIMIT ?',
               Number(before),
               n,
             )
             .toArray()
         : this.sql
-            .exec('SELECT seq, parent_version_id, segment, source, created FROM versions ORDER BY seq DESC LIMIT ?', n)
+            .exec(
+              'SELECT seq, parent_version_id, segment, source, created, person, agent, for_person FROM versions ORDER BY seq DESC LIMIT ?',
+              n,
+            )
             .toArray();
       const events = [];
       // Each event's task says its repository (IDEA-14 section 6), so the stream follows the board's switcher.
@@ -1350,6 +1426,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       for (const row of rows) {
         const at = new Date(row.created).toISOString();
         if (row.source === 'backfill') continue;
+        // Who wrote it (BRK-303): the person behind the request, the agent it named, and who that agent's run is for.
+        const who = row.person ? { person: row.person, agent: row.agent ?? null, for: row.for_person ?? null } : null;
         const source = row.source === 'replica' ? 'taskwarrior' : row.source;
         let ops;
         try {
@@ -1395,6 +1473,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
               repo: repoSlugOf(now ?? set, fallback),
             },
             changes,
+            ...(who ? { who } : {}),
           });
         }
       }
@@ -1519,7 +1598,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           at: new Date(p.at).toISOString(),
           source: 'pings',
           task: map ? brief(p.task, map) : null,
-          changes: [{ kind: 'ping-resolved', pingKind: p.kind, how: p.how, by: 'owner' }],
+          changes: [{ kind: 'ping-resolved', pingKind: p.kind, how: p.how, by: p.person ?? 'owner' }],
         });
       }
       events.sort((a, b) => b.at.localeCompare(a.at));
@@ -1676,6 +1755,7 @@ Object.assign(
   infraLocksMethods,
   infraAuditMethods,
   infraPlansMethods,
+  infraApprovalRulesMethods,
   infraApprovalsMethods,
   infraDeploysMethods,
   infraPauseMethods,
@@ -1969,7 +2049,7 @@ const apiActions = {
   messageSendApi(ref, body) {
     return this.run(() => {
       const uuid = this.resolve(ref);
-      const message = this.sendMessage(uuid, body?.text);
+      const message = this.sendMessage(uuid, body?.text, this.actorIn(body).person);
       return ok({ message, ...this.messagesFor(uuid) }, 201);
     });
   },
@@ -2013,7 +2093,9 @@ const apiActions = {
   },
   /** The owner's post (IDEA-36 section 7): the worker sends it here from the signed-in board only. */
   pelotonOwnerPostApi(peloton, body) {
-    return this.run(() => ok(this.postPeloton(peloton, body ?? {}, { owner: true }), 201));
+    return this.run(() =>
+      ok(this.postPeloton(peloton, body ?? {}, { owner: true, person: this.pressedBy(body).person }), 201),
+    );
   },
   /** The chase's plan (IDEA-36 section 5): its revisions, and a revision by an agent or, from the board, the owner. */
   pelotonPlanApi(peloton) {
@@ -2024,7 +2106,9 @@ const apiActions = {
   },
   /** The owner's revision: the worker sends it here from the signed-in board only. */
   pelotonOwnerPlanApi(peloton, body) {
-    return this.run(() => ok(this.revisePlan(peloton, body ?? {}, { owner: true })));
+    return this.run(() =>
+      ok(this.revisePlan(peloton, body ?? {}, { owner: true, person: this.pressedBy(body).person })),
+    );
   },
   sessionApi(ref, after) {
     return this.run(() => ok(this.sessionLog(this.resolve(ref), after)));

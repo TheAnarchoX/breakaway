@@ -46,6 +46,17 @@ const DISABLE_AUTO_MERGE =
 const ENABLE_AUTO_MERGE =
   'mutation($id: ID!, $method: PullRequestMergeMethod!, $sha: GitObjectID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $sha }) { clientMutationId } }';
 
+/**
+ * Who approved a change, for the entries that follow from it (BRK-303): an approval from before people has none, and
+ * was the owner's.
+ * @param {ChangeApproval | null} approval
+ * @returns {{ by: 'owner' | 'person', person: string }}
+ */
+const approverOf = (approval) =>
+  approval?.by === 'person' && approval.person
+    ? { by: 'person', person: approval.person }
+    : { by: 'owner', person: 'owner' };
+
 /** A read GitHub answers 404 (not there) to is nothing found. */
 async function orNull(promise) {
   try {
@@ -255,14 +266,14 @@ export const infraChangeApprovalMethods = {
         const github = await this.changeGitHub(env);
         if (!github)
           throw new AgentError('Connect GitHub on Connections first: approving merges its pull request', 409);
-        return await this.approveInfraChange(row, env, github, { sha: String(body.sha), digest: body.digest });
+        return await this.approveInfraChange(row, env, github, { sha: String(body.sha), digest: body.digest, body });
       } finally {
         this.infraApproving.delete(Number(row.n));
       }
     });
   },
 
-  async approveInfraChange(row, env, { client, repo }, { sha, digest }) {
+  async approveInfraChange(row, env, { client, repo }, { sha, digest, body = {} }) {
     let approved = false;
     try {
       // 1. The pull request: still open, still the board's, at the head the owner saw.
@@ -307,11 +318,41 @@ export const infraChangeApprovalMethods = {
         return refuse(409, `Your policy refuses it${why ? `: ${why}` : ''}`, { preview });
       }
 
-      // 3. Keep the approval, then merge as the owner's action.
+      // 3. Count the approval under the environment's rule (BRK-303): under the two-person rule the first is kept and
+      // the change still waits for a second.
+      const pressed = this.pressedBy(body);
+      const counted = this.countApproval(
+        'change',
+        Number(row.n),
+        {
+          environment: Number(row.environment),
+          repo: row.repo,
+          proposer: row.person ?? 'owner',
+          what: `change ${row.n}`,
+        },
+        body,
+      );
+      if (!counted.done) {
+        this.appendInfraAudit({
+          kind: 'change',
+          repo: row.repo,
+          environment: row.name,
+          environmentId: Number(row.environment),
+          ...pressed,
+          outcome: 'needs another approval',
+          summary: `${counted.words}, at ${sha.slice(0, 7)}`,
+        });
+        return {
+          status: 200,
+          body: { change: this.changeOut(this.changeRow(row.n)), preview, approval: counted.view },
+        };
+      }
+
+      // 4. Keep the approval, then merge as the approver's action.
       const edits = JSON.parse(row.edits);
       /** @type {ChangeApproval} */
       const approval = {
-        by: 'owner',
+        ...pressed,
         at: new Date().toISOString(),
         sha,
         digest: preview.digest,
@@ -333,12 +374,12 @@ export const infraChangeApprovalMethods = {
         repo: row.repo,
         environment: row.name,
         environmentId: Number(row.environment),
-        by: 'owner',
+        ...pressed,
         outcome: 'approved',
-        summary: `approved by the owner at ${sha.slice(0, 7)}; digest ${preview.digest.slice(0, 12)}. The board merges #${row.pull}`,
+        summary: `${counted.words} at ${sha.slice(0, 7)}; digest ${preview.digest.slice(0, 12)}. The board merges #${row.pull}`,
       });
       // A new environment takes the target its change adds now, so the plan from the merge is made for it (BRK-291).
-      this.giveChangeTarget(row, 'owner');
+      this.giveChangeTarget(row, pressed);
       await this.mergeInfraChange(this.changeRow(row.n), env, { client, repo }, pull);
       return { status: 200, body: { change: this.changeOut(this.changeRow(row.n)), preview } };
     } catch (error) {
@@ -419,10 +460,11 @@ export const infraChangeApprovalMethods = {
     const approval = /** @type {ChangeApproval} */ (this.changeApproval(row));
     const merged = await client.send('PUT', `/pulls/${row.pull}/merge`, { sha, merge_method: method });
     this.setChangeApproval(row.n, { ...approval, merge: approval.merge ?? 'now' });
+    const pressed = approverOf(approval);
     this.moveInfraChange(this.changeRow(row.n), 'merged', {
-      by: 'owner',
+      ...pressed,
       outcome: 'merged',
-      summary: `#${row.pull} merged on the owner’s approval (${method}); the board plans from the merge`,
+      summary: `#${row.pull} merged on ${pressed.person === 'owner' ? 'the owner’s' : `${pressed.person}’s`} approval (${method}); the board plans from the merge`,
     });
     this.keepChangeMerge(row.n, typeof merged?.sha === 'string' ? merged.sha : null, Date.now());
     this.sql.exec(
@@ -626,7 +668,7 @@ export const infraChangeApprovalMethods = {
         summary: `#${change.pull} merged a change you approved on the console`,
       });
       plan = await this.approveInfraPlan(plan.id, {
-        by: 'owner',
+        ...approverOf(approval),
         summary: `approved on the console before #${change.pull} merged; digest ${digest.slice(0, 12)}`,
       });
       settled = 'approved';

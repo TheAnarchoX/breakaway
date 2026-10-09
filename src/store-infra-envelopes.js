@@ -17,6 +17,7 @@
  * while that agent holds the run, for ACT_KEY_MS at most, and for acts only.
  */
 import { AgentError } from './store-agents.js';
+import { personWords } from './store-permissions.js';
 import { sameSecret } from './auth.js';
 import { InputError, resolveRef } from './model.js';
 import { install } from './install.js';
@@ -231,6 +232,7 @@ export const infraEnvelopesMethods = {
       throw error;
     }
     const now = Date.now();
+    const pressed = this.pressedBy({ actor, by });
     this.ctx.storage.transactionSync(() => {
       const had = this.sql.exec('SELECT 1 FROM infra_envelopes WHERE environment = ?', env.id).toArray().length > 0;
       this.sql.exec(
@@ -248,9 +250,9 @@ export const infraEnvelopesMethods = {
         environment: env.name,
         environmentId: env.id,
         envelope: envelopeRef(env),
-        by: 'owner',
+        ...pressed,
         outcome: had ? 'changed' : 'set',
-        summary: `${had ? 'changed' : 'set'} by the owner: ${envelopeWords(kept)}`,
+        summary: `${had ? 'changed' : 'set'} by ${personWords(pressed.person)}: ${envelopeWords(kept)}`,
       });
     });
     return this.envelopeOut(env);
@@ -265,6 +267,7 @@ export const infraEnvelopesMethods = {
       'only the owner revokes an envelope, from the board',
     );
     const env = this.environmentRow(ref, repo);
+    const pressed = this.pressedBy({ actor, by });
     this.ctx.storage.transactionSync(() => {
       const row = this.sql.exec('SELECT envelope FROM infra_envelopes WHERE environment = ?', env.id).toArray()[0];
       if (!row) throw new AgentError(`${env.name} has no envelope`, 404);
@@ -275,9 +278,9 @@ export const infraEnvelopesMethods = {
         environment: env.name,
         environmentId: env.id,
         envelope: envelopeRef(env),
-        by: 'owner',
+        ...pressed,
         outcome: 'revoked',
-        summary: `revoked by the owner; every scale and restart waits for you again (was ${envelopeWords(JSON.parse(row.envelope))})`,
+        summary: `revoked by ${personWords(pressed.person)}; every scale and restart waits for you again (was ${envelopeWords(JSON.parse(row.envelope))})`,
       });
     });
     return this.envelopeOut(env);

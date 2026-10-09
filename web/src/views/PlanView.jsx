@@ -425,11 +425,49 @@ function Steps({ run, audit, names, envId }) {
   );
 }
 
+/** A person as the board names them (BRK-303): "you" for the owner, anyone else by handle. */
+const personName = (p) => (p === 'owner' ? 'you' : p);
+
+/** A list in words: "ana", "ana and ben", "ana, ben, and you". */
+const listWords = (items) =>
+  items.length < 3 ? items.join(' and ') : `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+
 /**
- * Approve and Reject, the owner's: Approve only for a plan that can still be approved, in an environment that isn't
- * frozen. Approving a draft puts it in front of the owner first, quietly, since they're reading it.
+ * Who must approve a waiting plan under its environment's rule (BRK-303), who has, and who else may.
+ * @param {{ approval: { words: string, needs: number, approvals: { person: string }[], mayApprove: string[] } | null }} props
  */
-function Answer({ plan, env, outOfDate, onChange }) {
+function Approvals({ approval }) {
+  if (!approval) return null;
+  const have = approval.approvals.map((a) => personName(a.person));
+  const others = approval.mayApprove.map(personName);
+  return (
+    <div class="infra-plan-approvals">
+      <p>
+        <strong>Approved by:</strong> {approval.words}
+        {have.length ? <>. {listWords(have)} approved</> : null}
+        {approval.needs > 0 && have.length ? (
+          <>, so it waits for {approval.needs === 1 ? 'one more' : `${approval.needs} more`}</>
+        ) : null}
+        .
+      </p>
+      {approval.needs > 0 && (
+        <p class="meta">
+          {others.length
+            ? `Who else can approve it: ${listWords(others)}.`
+            : 'Nobody else can approve it: the owner can approve it alone.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Approve and Reject: Approve only for a plan that can still be approved, in an environment that isn't frozen.
+ * Approving a draft puts it in front of the owner first, quietly, since they're reading it. Under the environment's
+ * approval rule (BRK-303) an approval may wait for another person's; when nobody else could give it, the owner may
+ * approve alone, after a second confirm.
+ */
+function Answer({ plan, env, outOfDate, approval, onChange }) {
   const [busy, setBusy] = useState(/** @type {'approve' | 'reject' | null} */ (null));
   // An approved plan can still be rejected until the executor starts applying it (BRK-183).
   const open = plan.state === 'draft' || plan.state === 'waiting';
@@ -448,11 +486,13 @@ function Answer({ plan, env, outOfDate, onChange }) {
       if (plan.state === 'draft')
         await api(`infra/plans/${enc(plan.id)}`, {
           method: 'PATCH',
-          body: { state: 'waiting', quiet: true, by: 'owner' },
+          body: { state: 'waiting', quiet: true },
         });
-      await api(`infra/plans/${enc(plan.id)}/approve`, { method: 'POST', body: { by: 'owner' } });
+      const answer = await api(`infra/plans/${enc(plan.id)}/approve`, { method: 'POST', body: {} });
       onChange();
-      toast(`Approved. The board applies it to ${env.name} next.`, 'success');
+      if (answer?.plan?.state === 'waiting')
+        toast('Your approval is kept. It waits for another person to approve it too.', 'success');
+      else toast(`Approved. The board applies it to ${env.name} next.`, 'success');
     } catch (error) {
       toast(error.message, 'error');
       onChange();
@@ -470,7 +510,7 @@ function Answer({ plan, env, outOfDate, onChange }) {
     if (!ok) return;
     setBusy('reject');
     try {
-      await api(`infra/plans/${enc(plan.id)}/reject`, { method: 'POST', body: { by: 'owner' } });
+      await api(`infra/plans/${enc(plan.id)}/reject`, { method: 'POST', body: {} });
       onChange();
       toast('Rejected. Nothing changes.', 'success');
     } catch (error) {
@@ -479,8 +519,31 @@ function Answer({ plan, env, outOfDate, onChange }) {
       setBusy(null);
     }
   };
+  const alone = async () => {
+    const ok = await confirmDialog({
+      title: `Approve this plan alone?`,
+      body: `${env.name}’s rule is ${approval?.words ?? 'two people'}, and nobody else can approve it. The audit trail records that you approved it alone.`,
+      confirmLabel: 'Approve alone',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBusy('approve');
+    try {
+      await api(`infra/plans/${enc(plan.id)}/approve`, { method: 'POST', body: { alone: true } });
+      onChange();
+      toast(`Approved alone. The board applies it to ${env.name} next.`, 'success');
+    } catch (error) {
+      toast(error.message, 'error');
+      onChange();
+    } finally {
+      setBusy(null);
+    }
+  };
+  // The owner's own approval is in, and nobody else could give the second.
+  const canAlone = canApprove && approval?.alone && approval.approvals.some((a) => a.person === 'owner');
   return (
     <div class="infra-plan-answer">
+      {open && <Approvals approval={approval} />}
       {!open && <p class="infra-plan-why-not">Approved: the board applies it next. Reject it to stop that.</p>}
       {open && !canApprove && (
         <p class="infra-plan-why-not">
@@ -509,7 +572,18 @@ function Answer({ plan, env, outOfDate, onChange }) {
           <CircleX size={16} aria-hidden="true" />
           Reject
         </button>
-        {canApprove && (
+        {canAlone && (
+          <button
+            type="button"
+            class="btn btn-outline"
+            onClick={alone}
+            disabled={busy !== null}
+            aria-busy={busy === 'approve'}
+          >
+            Approve alone
+          </button>
+        )}
+        {canApprove && !canAlone && (
           <button
             type="button"
             class="btn btn-primary"
@@ -544,7 +618,7 @@ export function StartAgain({ plan, env, run, onDone, lead = true, size = '' }) {
     if (!ok) return;
     setBusy(true);
     try {
-      await api(`infra/plans/${enc(plan.id)}/start-again`, { method: 'POST', body: { by: 'owner' } });
+      await api(`infra/plans/${enc(plan.id)}/start-again`, { method: 'POST', body: {} });
       toast(`Started again. The board applies ${plan.id} to ${env.name} next.`, 'success');
       onDone?.();
     } catch (error) {
@@ -583,10 +657,11 @@ export function PlanView() {
   const envId = environmentId.value;
   const ref = planRef.value;
   const [state, setState] = useState(
-    /** @type {{ plan: any, env: any, outOfDate: string | null, names: Map<string, string>, audit: any[], run: any, error: string | null, notFound: boolean, loading: boolean }} */ ({
+    /** @type {{ plan: any, env: any, outOfDate: string | null, approval: any, names: Map<string, string>, audit: any[], run: any, error: string | null, notFound: boolean, loading: boolean }} */ ({
       plan: null,
       env: null,
       outOfDate: null,
+      approval: null,
       names: new Map(),
       audit: [],
       run: null,
@@ -598,7 +673,7 @@ export function PlanView() {
   const load = async () => {
     setState((s) => ({ ...s, loading: true }));
     try {
-      const [{ plan, outOfDate }, { environment }] = await Promise.all([
+      const [{ plan, outOfDate, approval }, { environment }] = await Promise.all([
         api(`infra/plans/${enc(ref)}`),
         api(`infra/environments/${enc(envId)}`),
       ]);
@@ -620,6 +695,7 @@ export function PlanView() {
         plan,
         env: environment,
         outOfDate: outOfDate ?? null,
+        approval: approval ?? null,
         names,
         audit: [...audit.entries].reverse(),
         run,
@@ -804,7 +880,7 @@ export function PlanView() {
       <Policy policy={plan.policy} open={plan.state === 'draft' || plan.state === 'waiting'} />
       <Cost cost={plan.cost} />
       <Reach blast={plan.blastRadius} names={state.names} />
-      <Answer plan={plan} env={env} outOfDate={state.outOfDate} onChange={load} />
+      <Answer plan={plan} env={env} outOfDate={state.outOfDate} approval={state.approval} onChange={load} />
       <StartAgain plan={plan} env={env} run={state.run} onDone={load} />
       <Steps run={state.run} audit={state.audit} names={state.names} envId={envId} />
     </div>
