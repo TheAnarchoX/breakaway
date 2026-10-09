@@ -12947,3 +12947,55 @@ button.infra-plan-row {
   align-items: center;
   gap: 8px;
 }
+
+/* A chase's digests (BRK-277): the feature's list and a digest's page. */
+.dg-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.dg-page {
+  max-width: 760px;
+}
+.dg-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.dg-items > li {
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dg-items p {
+  margin: 2px 0 0;
+}
+.dg-shots {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.dg-shots li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dg-captain {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dg-last {
+  overflow-wrap: anywhere;
+}

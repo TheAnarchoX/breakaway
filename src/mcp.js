@@ -866,9 +866,15 @@ const WRITERS = [
     annotations: WRITES,
     async run(args, ctx) {
       const me = named(ctx);
-      let { task } = body(await ctx.store.release(args.task, me, false));
+      const released = body(await ctx.store.release(args.task, me, false));
+      let { task } = released;
+      const open = released.open ?? [];
       if (args.comment?.trim()) ({ task } = body(await ctx.store.comment(args.task, args.comment, me)));
-      return { text: `Released ${idOf(task)}.`, data: { task } };
+      // What it left unanswered on the peloton (BRK-281): the board notes it on the task too.
+      const left = open.length
+        ? `\n\nLeft unanswered on the peloton (the board notes ${open.length === 1 ? 'it' : 'them'} on ${idOf(task)}):\n${open.map((p) => `- #${p.id} on ${p.peloton}, from ${p.agent}: ${p.text}`).join('\n')}`
+        : '';
+      return { text: `Released ${idOf(task)}.${left}`, data: { task, open } };
     },
   },
   {

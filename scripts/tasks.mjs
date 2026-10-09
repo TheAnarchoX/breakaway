@@ -97,6 +97,8 @@ import {
   mergeViews,
   pelotonLines,
   pelotonPost,
+  openLines,
+  handoverComment,
   pickPeloton,
   pickPlanPeloton,
   planRevision,
@@ -271,6 +273,7 @@ Reading                (list, next, claim, and add work in this checkout's repos
   chase <slug> stop      stop it (owner): nothing new starts; running agents finish
   captain <slug>         the chase's road captain: who it is, when its watch ends, and its log
   captain <slug> log --file <path>   the road captain writes its log  [--handover] then the board starts the next one
+  captain <slug> digest --file <path>   the road captain's lines for the owner's next hourly digest of the chase
   horizon close          close now: finished tasks go to the archive, next becomes now, later becomes next  [--dry-run]
   github fix <n>         start an agent on a pull request's conflicts, failing checks, or review comments (owner)  [--problem conflicts|failing|review] [--note <text>] [--repo <slug>] [--force]
   github review <n>      start an agent that reviews a pull request that can merge as it stands, on the task it closes, as
@@ -324,6 +327,10 @@ Working
                          tasks, or ask for a look at your approach; posts on your chase's peloton if your task is in
                          one, else your repository's  [--peloton <name>] picks one
   peloton reply <post> <text>   answer a post, on the peloton it's on
+  peloton open           the posts to you that you haven't answered or handed over: answer or hand over each before
+                         you release your task or stop after its pull request merges  [--task <ref>]
+  peloton handover <post> <text>   hand a post over: a comment on your task naming who or which task follows it up
+                         (works after you've left, too)  [--task <ref>]
   peloton huddle <question>     call a huddle on your chase's peloton: every agent stops to talk one thing through
   peloton in <huddle> [<text>]  join the open huddle (or say why not now)
   peloton outcome <huddle> <text>   close the huddle you called with what was agreed, and who does what
@@ -896,7 +903,8 @@ function print(data, human) {
 // ---- commands ----------------------------------------------------------------------------
 
 /** A board from before a route answers 404 with "no route for …", or reads `listen` as a peloton's name. */
-const noRoute = (res) => res.status === 404 && /^no route for|no peloton "listen"/u.test(String(res.data?.error ?? ''));
+const noRoute = (res) =>
+  res.status === 404 && /^no route for|no peloton "(?:listen|open)"/u.test(String(res.data?.error ?? ''));
 
 /**
  * `peloton listen`: waits for what's for the agent (IDEA-36 section 3), asking the board every 5 seconds, and prints
@@ -920,6 +928,39 @@ async function pelotonListen(me) {
     window: window.ms,
   });
   print(heard, listenText);
+}
+
+/** The posts to the agent it hasn't answered or handed over (BRK-281), from the board; null on a board without them. */
+async function openPosts(me) {
+  const path = `peloton/open?agent=${enc(me)}${opts.task ? `&task=${enc(opts.task)}` : ''}`;
+  const res = await call('GET', path, undefined, { raw: true });
+  if (noRoute(res)) return null;
+  if (!res.ok) fail(res.data?.error ?? `HTTP ${res.status}`);
+  return res.data;
+}
+
+/** `peloton open`: what's still to answer or hand over before the agent leaves its task (BRK-281). */
+async function pelotonOpen(me) {
+  const open = await openPosts(me);
+  if (!open) fail('this board doesn’t list open posts yet: it runs an older release');
+  print(open, (d) =>
+    d.posts.length
+      ? openLines(d.posts, d.task)
+      : `Nothing to you is unanswered on the peloton${d.task ? ` for ${d.task}` : ''}.`,
+  );
+}
+
+/** `peloton handover <post> <text>`: a comment on the agent's task naming who follows the post up (BRK-281). */
+async function pelotonHandover(me) {
+  const open = await openPosts(me);
+  const id = /^#?(\d+)$/u.exec(String(args[1] ?? ''))?.[1];
+  const post = open?.posts.find((p) => String(p.id) === id) ?? null;
+  const built = handoverComment(args.slice(1), post);
+  if ('error' in built) return fail(built.error);
+  const task = opts.task ?? open?.task;
+  if (!task) fail('say which task it’s on: --task <ref>');
+  const out = await call('POST', `tasks/${enc(task)}/annotate`, { text: built.text, by: me });
+  print(out.task, (t) => `Handed over #${built.post} on ${ref(t)}.`);
 }
 
 /** `peloton plan` prints the chase's plan; with `--file <path> --why <text>`, it revises it (IDEA-36 section 5). */
@@ -1633,6 +1674,8 @@ const commands = {
       return print(answer.feature?.chase?.captain ?? null, (c) =>
         [`${answer.feature.title} (${answer.feature.slug})`, ...captainLines(c, { all: true })].join('\n'),
       );
+    if (args[1] === 'digest')
+      return print(answer, (d) => `Kept for the owner’s next digest, due ${d.digest.nextAt.slice(11, 16)} UTC.`);
     print(answer, (d) =>
       d.successor
         ? `Logged and handed over: ${d.successor.agent} starts as the road captain and reads your log first. Stop here.`
@@ -1676,12 +1719,15 @@ const commands = {
     );
   },
   async release() {
-    const { task } = await call('POST', `tasks/${enc(need(args[0], 'task'))}/release`, {
+    const released = await call('POST', `tasks/${enc(need(args[0], 'task'))}/release`, {
       agent: agent(),
       force: Boolean(opts.force),
     });
+    const { task, open = [] } = released;
     unmarkSession(task);
-    print(task, (t) => `Released ${ref(t)}.`);
+    print({ ...task, open }, (t) =>
+      [`Released ${ref(t)}.`, openLines(open, ref(t), { released: true })].filter(Boolean).join('\n\n'),
+    );
   },
   async review() {
     const built = reviewRequest(args[0], opts.verdict, args.slice(1).join(' '), { by: agent(), pr: opts.pr });
@@ -1776,6 +1822,8 @@ const commands = {
     }
     if (args[0] === 'listen') return pelotonListen(me);
     if (args[0] === 'plan') return pelotonPlan(me);
+    if (args[0] === 'open') return pelotonOpen(me);
+    if (args[0] === 'handover') return pelotonHandover(me);
     const post = pelotonPost(args[0], args.slice(1));
     if ('error' in post) return fail(post.error);
     // Read first: it says which peloton the post goes to, and which posts were new before it.

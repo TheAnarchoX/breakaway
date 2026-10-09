@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONTEXT_POSTS,
+  handoverComment,
   LISTEN_EVERY_MS,
   LISTEN_GATHER_MS,
   listenFor,
   listenText,
   listenWindow,
   mergeViews,
+  openLines,
   pelotonContext,
   pelotonLines,
   pelotonPost,
@@ -575,5 +577,66 @@ describe('peloton listen (IDEA-36 section 3)', () => {
       posts: [mention],
     });
     expect(asked).toEqual([0, 5000]);
+  });
+});
+
+describe('closing open posts before leaving (BRK-281)', () => {
+  const asked = post(7, { kind: 'ask', text: '@claude-wid-1 which\nfile?' });
+  const owners = post(9, { agent: 'owner', task: null, peloton: 'chase:gadgets', text: '@claude-wid-1 ship it?' });
+
+  it('lists what’s open with what to do, and nothing when nothing is', () => {
+    expect(openLines([], 'WID-1')).toBe('');
+    expect(openLines([asked, owners], 'WID-1')).toBe(
+      [
+        '2 posts to you are still unanswered on the peloton. Answer or hand over each before you leave:',
+        '  #7 on widgets, from claude-wid-2 on WID-2: @claude-wid-1 which file?',
+        '  #9 on chase:gadgets, from the owner: @claude-wid-1 ship it?',
+        'Answer with npx breakaway peloton reply <post> "<text>" while you hold the task, or hand it over with npx breakaway peloton handover <post> "<who or which task follows it up>".',
+      ].join('\n'),
+    );
+    expect(openLines([asked], 'WID-1', { released: true })).toBe(
+      [
+        'You left a post to you unanswered on the peloton; the board notes it on WID-1:',
+        '  #7 on widgets, from claude-wid-2 on WID-2: @claude-wid-1 which file?',
+        'Hand each over: npx breakaway peloton handover <post> "<who or which task follows it up>".',
+      ].join('\n'),
+    );
+  });
+
+  it('writes a handover comment that names the post', () => {
+    expect(handoverComment(['#7', 'WID-9', 'follows', 'it', 'up.'], asked)).toEqual({
+      post: 7,
+      text: 'Handed over peloton #7 from claude-wid-2 on WID-2: WID-9 follows it up.',
+    });
+    expect(handoverComment(['7', 'the captain has it.'])).toEqual({
+      post: 7,
+      text: 'Handed over peloton #7: the captain has it.',
+    });
+    expect(handoverComment([])).toHaveProperty('error');
+    expect(handoverComment(['7'])).toHaveProperty('error');
+  });
+
+  it('prints what’s open when listening stops', async () => {
+    const io = {
+      ask: async () => ({
+        task: 'WID-1',
+        posts: [],
+        messages: [],
+        stop: 'WID-1’s pull request #12 merged',
+        open: [asked],
+      }),
+      sleep: async () => {},
+      now: () => 0,
+    };
+    const heard = await listenFor(io);
+    expect(listenText(heard)).toBe(
+      [
+        'A post to you is still unanswered on the peloton. Answer or hand over each before you leave:',
+        '  #7 on widgets, from claude-wid-2 on WID-2: @claude-wid-1 which file?',
+        'Answer with npx breakaway peloton reply <post> "<text>" while you hold the task, or hand it over with npx breakaway peloton handover <post> "<who or which task follows it up>".',
+        '',
+        'Stop listening: WID-1’s pull request #12 merged.',
+      ].join('\n'),
+    );
   });
 });
