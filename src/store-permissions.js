@@ -7,7 +7,7 @@
  * with no actor is the board's own (the cron, a webhook, a run's steps) or the MCP server's, which is the owner's
  * token, as before: every write there names an agent, so the agent ceiling applies to it.
  */
-import { ACTIONS, AUDIT_WAITS, NAME_WAITS, OWNER, OWN_CLAUDE, agentOf, refusal } from './permissions.js';
+import { ACTIONS, OWNER, OWN_CLAUDE, agentOf, refusal } from './permissions.js';
 import { AgentError } from './store-agents.js';
 import { repoSlugOf } from './repos.js';
 import { resolveRef } from './model.js';
@@ -190,9 +190,6 @@ export const permissionsMethods = {
       for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
       const person = actor?.person && actor.person !== OWNER;
       if (ACTIONS[action]?.starts && person) throw new AgentError(OWN_CLAUDE, 403);
-      // Until BRK-303 gives the audit trail a person, a person's press that writes it waits (the captain's call).
-      if (ACTIONS[action]?.audited && person) throw new AgentError(AUDIT_WAITS, 403);
-      if (ACTIONS[action]?.named && person) throw new AgentError(NAME_WAITS, 403);
       return { status: 200, body: { ok: true, repos } };
     });
   },
@@ -286,7 +283,36 @@ export const permissionsMethods = {
       return answer;
     });
   },
+
+  /**
+   * Who pressed, for the infrastructure audit trail (BRK-303): the owner's press is `by: 'owner'`, a person's is
+   * `by: 'person'` with their handle. Spread it where an entry used to say `by: 'owner'`.
+   * @param {any} input what the call was given: `{ actor?, by? }`
+   * @returns {{ by: 'owner' | 'person', person: string }}
+   */
+  pressedBy(input) {
+    const { person } = this.actorIn(input);
+    return person === OWNER ? { by: 'owner', person: OWNER } : { by: 'person', person };
+  },
+
+  /**
+   * Who did it, for anything that records a write (BRK-303): the person behind the credential, the agent the request
+   * names (if any), and the person that agent's run is for (when the board started it for someone else).
+   * @param {any} input
+   * @returns {{ person: string, agent: string | null, for: string | null }}
+   */
+  whoIn(input) {
+    const actor = this.actorIn(input);
+    const runFor = actor.agent ? this.runForPerson(actor.agent) : null;
+    return { person: actor.person, agent: actor.agent, for: runFor && runFor !== actor.person ? runFor : null };
+  },
 };
+
+/**
+ * A person as the board's words name them (BRK-303): "the owner", or their handle.
+ * @param {string | null | undefined} person
+ */
+export const personWords = (person) => (!person || person === OWNER ? 'the owner' : person);
 
 /** The words a read gets when what it asks about doesn't exist: the same for one in a repository the person can't read. */
 function notThere(target) {

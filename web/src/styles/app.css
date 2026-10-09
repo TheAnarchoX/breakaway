@@ -11183,6 +11183,43 @@ a.pl-mention {
   justify-content: flex-end;
   gap: 10px;
 }
+/* Who wrote a change in Activity, when it wasn't you (BRK-303). */
+.event-who {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+/* An environment's approval rule in its settings (BRK-303). */
+.ifs-approval {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0;
+}
+.ifs-approval-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.ifs-approval-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ifs-approval-row .select {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+/* Who must approve, who has, and who else may (BRK-303). */
+.infra-plan-approvals {
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+}
+.infra-plan-approvals p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .infra-plan-run h3 {
   font-size: 15px;
   margin: 0 0 6px;

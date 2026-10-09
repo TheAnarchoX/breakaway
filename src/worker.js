@@ -827,6 +827,25 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
       return send(await s.infraChangeApproveApi(parts[2], body));
     }
   }
+  // Who approves an environment's plans and changes (BRK-303): anyone who reads the environment reads its rule;
+  // tightening it is a maintainer's press, loosening it the owner's (the store checks which).
+  if (
+    parts[0] === 'infra' &&
+    parts[1] === 'environments' &&
+    parts[3] === 'approval' &&
+    parts.length === 4 &&
+    ['GET', 'PUT'].includes(method)
+  ) {
+    const repo = url.searchParams.get('repo');
+    if (method === 'GET') return send(await s.approvalRuleApi(parts[2], { repo }));
+    const no = await gate(
+      'policy.tighten',
+      { environment: parts[2], repo },
+      'only the signed-in web board can change who approves a plan',
+    );
+    if (no) return no;
+    return send(await s.approvalRuleSetApi(parts[2], { repo, ...body }));
+  }
   // Environments (BRK-174): anyone signed in reads them; adding, changing, and removing one is the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold (BRK-233). An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'environments' && parts.length <= 3) {
@@ -949,7 +968,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
         'only the signed-in web board can release an environment’s lock',
       );
       if (no) return no;
-      return send(await s.lockReleaseApi(parts[2], { repo }));
+      return send(await s.lockReleaseApi(parts[2], { repo, actor }));
     }
   }
   // The executor's runs (BRK-183): anyone signed in reads them. The runner's own calls come in with its OIDC token,
@@ -1350,7 +1369,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     );
     if (no) return no;
     if (parts[2] === 'apply') return send(await s.pingApply(parts[1], body));
-    return send(await (parts[2] === 'dismiss' ? s.pingDismiss(parts[1]) : s.pingHandled(parts[1])));
+    return send(await (parts[2] === 'dismiss' ? s.pingDismiss(parts[1], body) : s.pingHandled(parts[1], body)));
   }
   if (parts[0] === 'agents') {
     if (parts.length === 1 && method === 'GET') return send(await s.agentsApi());
@@ -1440,6 +1459,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
         enable: body.enable,
         setting: body.setting,
         repo: body.repo ?? url.searchParams.get('repo'),
+        actor,
       }),
     );
   }
@@ -1458,6 +1478,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
         version: body.version,
         reason: body.reason,
         repo: body.repo ?? url.searchParams.get('repo'),
+        actor,
       }),
     );
   }
@@ -1473,6 +1494,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
         version: body.version,
         next: body.next,
         repo: body.repo ?? url.searchParams.get('repo'),
+        actor,
       }),
     );
   }
@@ -1512,6 +1534,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
         workflow: body.workflow,
         ref: body.ref,
         inputs: body.inputs,
+        actor,
       }),
     );
   }
@@ -1574,7 +1597,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
         });
         if (no) return no;
         // Anyone adding a task first hears of the open ones it resembles (BRK-283); `force` on an item adds it anyway.
-        return send(await s.create(items.map(theirs), { similar: true }));
+        return send(await s.create(items.map(theirs), { similar: true, actor }));
       }
     } else if (!action) {
       if (method === 'GET') return send(await s.get(ref));
@@ -1632,11 +1655,12 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
       if (action === 'claim') {
         // A cloud session's report on its environment verifies the routine that started it (BRK-142), claimed or not.
         if (body.session) await s.sessionReport(ref, body.session);
-        return send(await s.claim(ref, body.agent, Boolean(body.force), body.repo));
+        return send(await s.claim(ref, body.agent, Boolean(body.force), body.repo, actor));
       }
-      if (action === 'release') return send(await s.release(ref, body.agent, Boolean(body.force)));
-      if (action === 'done') return send(await s.done(ref, body.note, theirs(body).by));
-      if (action === 'comments' || action === 'annotate') return send(await s.comment(ref, body.text, theirs(body).by));
+      if (action === 'release') return send(await s.release(ref, body.agent, Boolean(body.force), actor));
+      if (action === 'done') return send(await s.done(ref, body.note, theirs(body).by, actor));
+      if (action === 'comments' || action === 'annotate')
+        return send(await s.comment(ref, body.text, theirs(body).by, actor));
       if (action === 'review') return send(await s.taskReviewApi(ref, body));
       if (action === 'risk-review') return send(await s.riskReviewApi(ref, body));
       if (action === 'risk-answer')

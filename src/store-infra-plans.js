@@ -54,13 +54,6 @@ const frozen = (env) => `${env.name} is frozen: nothing changes there until the 
 const policySummary = (p) =>
   p.outcome === 'allowed' ? `policy allows it by “${p.rule}”` : `policy: needs the owner (${p.rule})`;
 
-/** Who acts on a plan, from the API's `by`: none, or `owner`, is the owner; anything else is an agent's name. */
-function actor(by) {
-  return by === undefined || by === null || by === '' || by === 'owner'
-    ? { by: 'owner', agent: null }
-    : { by: 'agent', agent: String(by) };
-}
-
 /** A call to the provider that may fail without failing the plan: the plan says what it couldn't learn. */
 async function tryCall(fn) {
   try {
@@ -244,13 +237,23 @@ export const infraPlansMethods = {
    * builds from what the provider discovered; so is `only`, which keeps part of the diff (computeInfraPlan). Refused
    * on an observe-only environment, one with no provider or no desired state, and when nothing would change.
    * @param {string | number} ref the environment's ID or name
-   * @param {{ repo?: string | null, source: string, sourceRef?: string | null, by: 'owner' | 'board' | 'agent',
-   *   agent?: string | null, desired?: DesiredState, diff?: import('./infra-provider.js').PlanDiff,
+   * @param {{ repo?: string | null, source: string, sourceRef?: string | null,
+   *   by: 'owner' | 'person' | 'board' | 'agent', person?: string | null, agent?: string | null, desired?: DesiredState, diff?: import('./infra-provider.js').PlanDiff,
    *   only?: (change: import('./infra-provider.js').Change) => boolean }} input
    */
   async makeInfraPlan(
     ref,
-    { repo = null, source, sourceRef = null, by, agent = null, desired, diff, only } = /** @type {any} */ ({}),
+    {
+      repo = null,
+      source,
+      sourceRef = null,
+      by,
+      person = null,
+      agent = null,
+      desired,
+      diff,
+      only,
+    } = /** @type {any} */ ({}),
   ) {
     const from = checkSource(source, sourceRef);
     const env = this.environmentRow(ref, repo);
@@ -315,6 +318,7 @@ export const infraPlansMethods = {
         environmentId: env.id,
         plan: planId(n),
         by,
+        person,
         agent,
         outcome: 'draft',
         summary: `${stored.changes.length} change${stored.changes.length === 1 ? '' : 's'} from ${from.source}${from.ref ? ` ${from.ref}` : ''}${stored.reversible ? '' : ', not all reversible'}; ${policySummary(policy)}${at.target ? `; builds ${at.target}, ${env.name}’s target once you approve it` : ''}`,
@@ -330,9 +334,10 @@ export const infraPlansMethods = {
    * @param {string} ref the plan's ID
    * @param {string} to
    * `digest`, on a move to approved, is planDigest() of the plan's diff (store-infra-approvals.js), kept with the time.
-   * @param {{ by: 'owner' | 'board' | 'executor' | 'envelope' | 'agent', agent?: string | null, outcome?: string, summary?: string, digest?: string }} input
+   * `person` is who pressed (BRK-303): the owner, or a person's handle with `by: 'person'`.
+   * @param {{ by: 'owner' | 'person' | 'board' | 'executor' | 'envelope' | 'agent', person?: string | null, agent?: string | null, outcome?: string, summary?: string, digest?: string }} input
    */
-  moveInfraPlan(ref, to, { by, agent = null, outcome, summary = '', digest } = /** @type {any} */ ({})) {
+  moveInfraPlan(ref, to, { by, person = null, agent = null, outcome, summary = '', digest } = /** @type {any} */ ({})) {
     let row;
     this.ctx.storage.transactionSync(() => {
       row = this.planRow(ref);
@@ -368,6 +373,7 @@ export const infraPlansMethods = {
         environmentId: Number(row.environment),
         plan: planId(Number(row.n)),
         by,
+        person,
         agent,
         outcome: outcome ?? to,
         summary: summary || `${row.state} → ${to}`,
@@ -443,7 +449,9 @@ export const infraPlansMethods = {
       // Why an open plan can't be approved any more (store-infra-approvals.js), so the plan page says so up front.
       const open = ['draft', 'waiting'].includes(row.state);
       const outOfDate = open ? (row.env_gone ? 'its environment was removed' : this.outOfDatePlan(row)) : null;
-      return { status: 200, body: { plan: planView(row), outOfDate } };
+      // Who has approved it and who else may, under its environment's approval rule (BRK-303).
+      const approval = row.state === 'waiting' && !row.env_gone ? this.planApprovalView(row) : null;
+      return { status: 200, body: { plan: planView(row), outOfDate, approval } };
     });
   },
 
@@ -460,7 +468,9 @@ export const infraPlansMethods = {
         'plan.create',
         () => this.environmentRow(body.environment, body.repo ? String(body.repo).trim().toLowerCase() : null).repo,
       );
-      const who = actor(body.by);
+      // An agent's draft names the agent and the person behind its credential; a press names who pressed (BRK-303).
+      const { person, agent } = this.whoIn(body);
+      const who = agent ? { by: 'agent', person, agent } : { ...this.pressedBy(body), agent: null };
       const plan = await this.makeInfraPlan(body.environment, {
         repo: body.repo ? String(body.repo).trim().toLowerCase() : null,
         source: body.source,
@@ -490,7 +500,10 @@ export const infraPlansMethods = {
           'a plan’s state changes here only to waiting; approve and reject it at /approve and /reject',
           400,
         );
-      return { status: 200, body: { plan: await this.waitForOwner(ref, { by: 'owner', quiet: body.quiet === true }) } };
+      return {
+        status: 200,
+        body: { plan: await this.waitForOwner(ref, { ...this.pressedBy(body), quiet: body.quiet === true }) },
+      };
     });
   },
 };

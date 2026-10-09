@@ -19,6 +19,7 @@ import { planId, planView } from './infra-plans.js';
 import { planMessage } from './push.js';
 import { redact } from './redact.js';
 import { install } from './install.js';
+import { personWords } from './store-permissions.js';
 
 /** The most a rejection's reason keeps, in the audit trail. */
 export const REASON_MAX = 300;
@@ -91,12 +92,13 @@ export const infraApprovalsMethods = {
   },
 
   /**
-   * Moves a plan to approved with the digest of its diff, refusing one that's out of date. The owner's press, or the
-   * board's when the repository's policy lets the plan through.
+   * Moves a plan to approved with the digest of its diff, refusing one that's out of date. A press (the owner's, or a
+   * person's once its environment's approval rule is met: BRK-303), or the board's when the repository's policy lets
+   * the plan through.
    * @param {string} ref the plan's ID
-   * @param {{ by: 'owner' | 'board' | 'envelope', summary?: string }} input
+   * @param {{ by: 'owner' | 'person' | 'board' | 'envelope', person?: string | null, summary?: string }} input
    */
-  async approveInfraPlan(ref, { by, summary = '' }) {
+  async approveInfraPlan(ref, { by, person = null, summary = '' }) {
     // A plan's diff never changes, so its digest comes first; from here on nothing awaits, so the checks hold.
     const digest = await planDigest(JSON.parse(this.planRow(ref).diff));
     const row = this.planRow(ref);
@@ -120,7 +122,8 @@ export const infraApprovalsMethods = {
       );
     this.moveInfraPlan(id, 'approved', {
       by,
-      summary: summary || `approved by the owner; digest ${digest.slice(0, 12)}`,
+      person,
+      summary: summary || `approved by ${personWords(person)}; digest ${digest.slice(0, 12)}`,
       digest,
     });
     // An environment with no target takes the one this plan was made for from its desired state, now (BRK-309).
@@ -136,11 +139,11 @@ export const infraApprovalsMethods = {
    * the owner: the owner's own press (PATCH /api/infra/plans/<id>), or the board's (a pull request's plan, an envelope
    * outside its bounds). `reason` is the push's second line, when the plan's policy isn't why it waits.
    * @param {string} ref the plan's ID
-   * @param {{ by: 'owner' | 'board', summary?: string, reason?: string, quiet?: boolean }} input `quiet` sends no
-   *   push: the owner is already reading the plan
+   * @param {{ by: 'owner' | 'person' | 'board', person?: string | null, summary?: string, reason?: string,
+   *   quiet?: boolean }} input `quiet` sends no push: the owner is already reading the plan
    */
-  async waitForOwner(ref, { by, summary = '', reason, quiet = false }) {
-    const plan = this.moveInfraPlan(ref, 'waiting', { by, summary });
+  async waitForOwner(ref, { by, person = null, summary = '', reason, quiet = false }) {
+    const plan = this.moveInfraPlan(ref, 'waiting', { by, person, summary });
     if (!quiet) await this.pushInfraPlan(plan, reason);
     return plan;
   },
@@ -177,11 +180,72 @@ export const infraApprovalsMethods = {
     this.allowOn(body, action, () => this.planRow(ref).repo, words);
   },
 
-  /** POST /api/infra/plans/<id>/approve: the owner's, from the signed-in board only. */
+  /**
+   * Where approving an open plan stands under its environment's approval rule (BRK-303), for its page: who has
+   * approved, how many more it needs, who else may, and whether the owner may approve alone.
+   * @param {Record<string, any>} row the plan's row
+   */
+  planApprovalView(row) {
+    const id = planId(Number(row.n));
+    return this.approvalView('plan', Number(row.n), {
+      environment: Number(row.environment),
+      repo: row.repo,
+      proposer: this.planProposer(id),
+    });
+  },
+
+  /**
+   * POST /api/infra/plans/<id>/approve: a press, from the signed-in board only, by someone its environment's approval
+   * rule lets approve (BRK-303). Under the two-person rule the first approval is kept and the plan still waits; the
+   * second approves it. `{ alone: true }` is the owner's Approve alone, when nobody else could approve.
+   */
   planApproveApi(ref, body = {}) {
     return this.run(async () => {
       this.allowPlan(body, ref, 'plan.approve', 'only the owner approves a plan, from the board');
-      return { status: 200, body: { plan: await this.approveInfraPlan(ref, { by: 'owner' }) } };
+      const row = this.planRow(ref);
+      const id = planId(Number(row.n));
+      if (row.state !== 'waiting')
+        throw new AgentError(
+          `${id} is ${row.state}: only a plan that waits for you can be approved${row.state === 'draft' ? '; put it in front of you first' : ''}`,
+          409,
+        );
+      const stale = this.outOfDatePlan(row);
+      if (stale)
+        throw new AgentError(
+          `${id} is out of date: ${stale}. Reject it, and the next plan is drafted from what’s there now.`,
+          409,
+        );
+      const pressed = this.pressedBy(body);
+      if (this.planGivesTarget(row) && pressed.by !== 'owner')
+        throw new AgentError(
+          `${id} gives ${row.env_name} its target, ${row.target}: only the owner approves that, on the board`,
+          409,
+        );
+      const counted = this.countApproval(
+        'plan',
+        Number(row.n),
+        { environment: Number(row.environment), repo: row.repo, proposer: this.planProposer(id), what: id },
+        body,
+      );
+      if (!counted.done) {
+        this.appendInfraAudit({
+          kind: 'approve',
+          repo: row.repo,
+          environment: row.env_name,
+          environmentId: Number(row.environment),
+          plan: id,
+          ...pressed,
+          outcome: 'needs another approval',
+          summary: counted.words,
+        });
+        return { status: 200, body: { plan: planView(this.planRow(id)), approval: this.planApprovalView(row) } };
+      }
+      const plan = await this.approveInfraPlan(ref, {
+        ...pressed,
+        // One approval is today's words; a second, or approving alone, says who and how.
+        summary: counted.view.approvals.length > 1 || counted.alone ? counted.words : '',
+      });
+      return { status: 200, body: { plan, approval: this.planApprovalView(this.planRow(id)) } };
     });
   },
 
@@ -193,9 +257,11 @@ export const infraApprovalsMethods = {
         .replace(/\s+/gu, ' ')
         .trim()
         .slice(0, REASON_MAX);
+      const pressed = this.pressedBy(body);
+      const who = personWords(pressed.person);
       const plan = this.moveInfraPlan(ref, 'rejected', {
-        by: 'owner',
-        summary: reason ? `rejected by the owner: ${reason}` : 'rejected by the owner; nothing changes',
+        ...pressed,
+        summary: reason ? `rejected by ${who}: ${reason}` : `rejected by ${who}; nothing changes`,
       });
       // An approved plan that hasn't started applying leaves the executor's queue.
       this.sql.exec("DELETE FROM infra_runs WHERE n = ? AND phase = 'queued'", Number(this.planRow(ref).n));

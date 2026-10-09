@@ -308,7 +308,7 @@ export const infraTokensMethods = {
           repo: repo.slug,
           environment: env?.name ?? github,
           environmentId: env?.id ?? null,
-          by: 'owner',
+          ...this.pressedBy(body),
           outcome,
           summary,
         });

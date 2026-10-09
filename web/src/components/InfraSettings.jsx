@@ -419,8 +419,86 @@ function EnvelopeForm({ env, out, currency, onSaved, onCancel }) {
   );
 }
 
+/** The approval rules there are (BRK-303), in the order they get stricter. */
+const RULES = [
+  { key: 'maintainer:1', role: 'maintainer', people: 1, label: 'One maintainer' },
+  { key: 'maintainer:2', role: 'maintainer', people: 2, label: 'Two different maintainers' },
+  { key: 'owner:1', role: 'owner', people: 1, label: 'The owner' },
+  { key: 'owner:2', role: 'owner', people: 2, label: 'The owner and one other person' },
+];
+
 /**
- * One environment: its kind and flags, Freeze, and its envelope with Add, Change, and Revoke.
+ * Who approves an environment's plans and changes (BRK-303): one maintainer by default, or the two-person rule, or
+ * the owner. Tightening it is a maintainer's; loosening it the owner's, and the board says so if it refuses.
+ * @param {{ env: any }} props
+ */
+function ApprovalRule({ env }) {
+  const [rule, setRule] = useState(/** @type {string | null} */ (null));
+  const [picked, setPicked] = useState('');
+  const [busy, setBusy] = useState(false);
+  const where = `infra/environments/${enc(env.id)}/approval?repo=${enc(env.repo)}`;
+  useEffect(() => {
+    api(where)
+      .then((r) => {
+        const key = `${r.rule.role}:${r.rule.people}`;
+        setRule(key);
+        setPicked(key);
+      })
+      .catch(() => setRule(null));
+  }, [env.id]);
+  if (!rule) return null;
+  const save = async () => {
+    const next = RULES.find((r) => r.key === picked);
+    if (!next || picked === rule) return;
+    const ok = await confirmDialog({
+      title: `Change who approves ${env.name}’s plans?`,
+      body: `${next.label} must approve each plan and change from now on. Plans inside an envelope still apply without asking.`,
+      confirmLabel: 'Change',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const saved = await api(where, { method: 'PUT', body: { role: next.role, people: next.people } });
+      setRule(`${saved.rule.role}:${saved.rule.people}`);
+      toast(`${next.label} approves ${env.name}’s plans now.`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+      setPicked(rule);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="ifs-approval">
+      <label class="ifs-approval-label" for={`approval-${env.id}`}>
+        Who approves its plans
+      </label>
+      <div class="ifs-approval-row">
+        <select
+          class="select"
+          id={`approval-${env.id}`}
+          value={picked}
+          onChange={(e) => setPicked(/** @type {HTMLSelectElement} */ (e.currentTarget).value)}
+          disabled={busy}
+        >
+          {RULES.map((r) => (
+            <option key={r.key} value={r.key}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        {picked !== rule && (
+          <button type="button" class="btn btn-outline btn-sm" onClick={save} disabled={busy} aria-busy={busy}>
+            Change
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One environment: its kind and flags, Freeze, who approves its plans, and its envelope with Add, Change, and Revoke.
  * @param {{ env: any, out: any | null, currency: string | null, onEnv: (env: any) => void, onOut: (out: any) => void }} props
  */
 function Environment({ env, out, currency, onEnv, onOut }) {
@@ -519,6 +597,7 @@ function Environment({ env, out, currency, onEnv, onOut }) {
         </span>
       </div>
       <EnvironmentFlags env={env} />
+      {!env.observeOnly && <ApprovalRule env={env} />}
       {body}
     </li>
   );

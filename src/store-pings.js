@@ -30,7 +30,10 @@ const view = (row, wid) => ({
   by: row.agent,
   at: new Date(row.created).toISOString(),
   push: !row.quiet && (PUSH_KINDS.includes(row.kind) || BOARD_PING_KINDS.includes(row.kind)),
-  resolved: row.resolved ? { at: new Date(row.resolved).toISOString(), how: row.resolution } : null,
+  // Who resolved it (BRK-303): the owner, or a person by handle; older pings were the owner's, or the board's.
+  resolved: row.resolved
+    ? { at: new Date(row.resolved).toISOString(), how: row.resolution, by: row.resolved_by ?? null }
+    : null,
 });
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
@@ -50,6 +53,7 @@ export const pingsMethods = {
       .toArray()
       .map((c) => c.name);
     if (!columns.includes('quiet')) this.sql.exec('ALTER TABLE pings ADD COLUMN quiet INTEGER NOT NULL DEFAULT 0');
+    if (!columns.includes('resolved_by')) this.sql.exec('ALTER TABLE pings ADD COLUMN resolved_by TEXT');
   },
 
   /**
@@ -229,7 +233,7 @@ export const pingsMethods = {
   pingResolutions(after, upTo) {
     return this.sql
       .exec(
-        "SELECT id, task, kind, resolution AS how, resolved AS at FROM pings WHERE resolution IN ('dismissed', 'handled') AND resolved > ? AND resolved <= ? ORDER BY resolved DESC",
+        "SELECT id, task, kind, resolution AS how, resolved AS at, resolved_by AS person FROM pings WHERE resolution IN ('dismissed', 'handled') AND resolved > ? AND resolved <= ? ORDER BY resolved DESC",
         after,
         upTo,
       )
@@ -248,31 +252,36 @@ export const pingsMethods = {
     return fresh;
   },
 
-  resolvePing(row, how) {
+  /** Resolves a ping `how`, by `person` when someone pressed (BRK-303): the owner, or a person's handle. */
+  resolvePing(row, how, person = null) {
     this.sql.exec(
-      'UPDATE pings SET resolved = ?, resolution = ? WHERE id = ? AND resolved IS NULL',
+      'UPDATE pings SET resolved = ?, resolution = ?, resolved_by = ? WHERE id = ? AND resolved IS NULL',
       Date.now(),
       how,
+      person,
       row.id,
     );
     return view(this.sql.exec('SELECT * FROM pings WHERE id = ?', row.id).one(), this.tasks.get(row.task)?.wid);
   },
 
   /** POST /api/pings/<id>/dismiss: resolves a ping without applying anything. Owner only (the route checks the cookie). */
-  pingDismiss(id) {
+  pingDismiss(id, body = {}) {
     return this.run(() => {
       this.writable();
-      return { status: 200, body: { ping: this.resolvePing(this.openPing(id), 'dismissed') } };
+      return {
+        status: 200,
+        body: { ping: this.resolvePing(this.openPing(id), 'dismissed', this.actorIn(body).person) },
+      };
     });
   },
 
   /** POST /api/pings/<id>/handled: resolves a ping that has no proposal to apply. */
-  pingHandled(id) {
+  pingHandled(id, body = {}) {
     return this.run(() => {
       this.writable();
       const row = this.openPing(id);
       if (row.proposal) throw new InputError('that ping has a proposal; apply it or dismiss it');
-      return { status: 200, body: { ping: this.resolvePing(row, 'handled') } };
+      return { status: 200, body: { ping: this.resolvePing(row, 'handled', this.actorIn(body).person) } };
     });
   },
 
@@ -286,6 +295,8 @@ export const pingsMethods = {
     return this.run(() => {
       this.writable();
       const row = this.openPing(id);
+      // Who applied it (BRK-303): what it adds and says is theirs, the owner's or a person's by handle.
+      const who = this.actorIn(body).person;
       if (!row.proposal) throw new InputError('that ping has no proposal to apply; mark it handled or dismiss it');
       const proposal = JSON.parse(row.proposal);
       const chosen = body?.chosen === undefined ? proposal.map((_, i) => i) : body.chosen;
@@ -356,7 +367,7 @@ export const pingsMethods = {
               ...(c.priority ? { priority: c.priority } : {}),
               brief: c.brief,
               done_when: c.done_when,
-              by: 'owner',
+              by: who,
               addTags: c.tags,
             },
             now,
@@ -383,17 +394,17 @@ export const pingsMethods = {
             ...(c.horizon ? { horizon: c.horizon } : {}),
             ...(c.addTags ? { addTags: c.addTags } : {}),
             ...(c.removeTags ? { removeTags: c.removeTags } : {}),
-            ...(c.brief ? { brief: c.brief, by: 'owner' } : {}),
+            ...(c.brief ? { brief: c.brief, by: who } : {}),
             ...(c.done_when ? { done_when: c.done_when } : {}),
           });
           lines.push(`edited ${name(target)}`);
         } else if (c.type === 'done') {
           const target = at(c.task);
-          edit(target, { status: 'completed', ...(c.note ? { annotate: c.note, by: 'owner' } : {}) });
+          edit(target, { status: 'completed', ...(c.note ? { annotate: c.note, by: who } : {}) });
           lines.push(`finished ${name(target)}`);
         } else if (c.type === 'delete') {
           const target = at(c.task);
-          edit(target, { status: 'deleted', ...(c.note ? { annotate: c.note, by: 'owner' } : {}) });
+          edit(target, { status: 'deleted', ...(c.note ? { annotate: c.note, by: who } : {}) });
           lines.push(`deleted ${name(target)}`);
         } else if (c.type === 'release') {
           const target = at(c.task);
@@ -409,10 +420,12 @@ export const pingsMethods = {
         ...added.flatMap(({ uuid: made }) => diffOps(made, null, working.get(made), timestamp)),
         ...[...touched].flatMap((u) => diffOps(u, this.tasks.get(u), working.get(u), timestamp)),
       ];
-      this.atomically(() => {
-        this.commit(ops);
-        this.resolvePing(row, 'applied');
-      });
+      this.as(body, () =>
+        this.atomically(() => {
+          this.commit(ops);
+          this.resolvePing(row, 'applied', who);
+        }),
+      );
       return {
         status: 200,
         body: {

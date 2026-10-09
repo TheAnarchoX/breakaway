@@ -3,17 +3,7 @@
 // Fixtures are made-up people (ana, ben, …) and repositories (acme/widgets, acme/gadgets).
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import {
-  ACTIONS,
-  AUDIT_WAITS,
-  NAME_WAITS,
-  OWN_CLAUDE,
-  ROLE_RANK,
-  agentOf,
-  can,
-  refusal,
-  roleIn,
-} from '../src/permissions.js';
+import { ACTIONS, OWN_CLAUDE, ROLE_RANK, agentOf, can, refusal, roleIn } from '../src/permissions.js';
 import { NOT_YET } from '../src/people.js';
 import { makeAuthenticator } from './authenticator.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -126,39 +116,6 @@ const STARTS = new Set([
   'chase',
   'repo.move',
 ]);
-/** Writes the infrastructure audit, which can't name a person until BRK-303: a person's waits until then. */
-const AUDITED = new Set([
-  'plan.create',
-  'plan.approve',
-  'plan.start-again',
-  'plan.front',
-  'change.propose',
-  'change.approve',
-  'policy.propose',
-  'policy.tighten',
-  'policy.loosen',
-  'envelope.set',
-  'envelope.set-production',
-  'envelope.revoke',
-  'environment.write',
-  'environment.freeze',
-  'inventory.refresh',
-  'lock.release',
-  'drift.break-glass',
-  'github-environment.make',
-  'short-lived.ask',
-]);
-/** Shows the person's words to agents or in the inbox as the owner's until BRK-303 names them. */
-const NAMED = new Set([
-  'peloton.post',
-  'peloton.plan',
-  'agent.message',
-  'ping.apply',
-  'task.quote',
-  'decision.answer',
-  'decision.carry-on',
-]);
-
 const ROLES = [null, 'viewer', 'member', 'maintainer'];
 const rank = (role) => (role ? ROLE_RANK[role] : 0);
 /** What the spec says a person with `role` there may do, as a press or not. */
@@ -177,8 +134,6 @@ describe('the permissions module (src/permissions.js)', () => {
       expect(Boolean(ACTIONS[action].press), action).toBe(press);
       expect(Boolean(ACTIONS[action].agents), action).toBe(AGENTS_MAY.has(action));
       expect(Boolean(ACTIONS[action].starts), action).toBe(STARTS.has(action));
-      expect(Boolean(ACTIONS[action].audited), action).toBe(AUDITED.has(action));
-      expect(Boolean(ACTIONS[action].named), action).toBe(NAMED.has(action));
     }
   });
 
@@ -367,7 +322,7 @@ beforeAll(async () => {
       .one().id;
     const plan = store.sql
       .exec(
-        "INSERT INTO infra_plans (environment, repo, provider, source, state, diff, cost, blast, reversible, by, created, updated) VALUES (?, 'widgets', 'fake', 'manual', 'waiting', '[]', '{}', '{}', 1, 'owner', ?, ?) RETURNING n",
+        "INSERT INTO infra_plans (environment, repo, provider, source, state, diff, cost, blast, reversible, by, created, updated) VALUES (?, 'widgets', 'fake', 'manual', 'waiting', '{\"changes\":[]}', '{}', '{}', 1, 'owner', ?, ?) RETURNING n",
         env,
         now,
         now,
@@ -426,6 +381,19 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => fetchSpy?.mockRestore());
+
+/** Puts the environment back as it was made, by its ID, when a maintainer's run removed it. */
+const restoreEnvironment = () =>
+  inStore((store) => {
+    const now = Date.now();
+    store.sql.exec(
+      "INSERT OR IGNORE INTO infra_environments (id, repo, name, kind, created, edited) VALUES (?, 'widgets', ?, 'staging', ?, ?)",
+      world.env,
+      world.name,
+      now,
+      now,
+    );
+  });
 
 /** The role a person has where a route acts: their grant there, or their `*` grant. */
 const roleOf = (who, repo) => roleIn(who.grants, repo);
@@ -523,7 +491,6 @@ function routes(w) {
     r('POST', `/api/infra/changes/${w.change}/approve`, 'change.approve'),
     r('POST', '/api/infra/environments', 'environment.write', { repo: 'widgets', name: 'x', kind: 'staging' }),
     r('PATCH', `/api/infra/environments/${env}?repo=widgets`, 'environment.write'),
-    r('DELETE', `/api/infra/environments/${env}?repo=widgets`, 'environment.write'),
     r('POST', '/api/infra/policy/changes', 'policy.propose', { repo: 'widgets' }),
     r('POST', `/api/infra/policy/changes/${w.policy}/approve`, 'policy.tighten'),
     r('POST', `/api/infra/policy/changes/${w.policy}/reject`, 'policy.tighten'),
@@ -570,12 +537,16 @@ function routes(w) {
     r('POST', '/api/oauth/requests/x/approve', 'oauth', {}, null),
     r('POST', '/api/push/subscriptions', 'push', {}, null),
     r('POST', '/api/people/invites', 'people.manage', { grants: [{ repository: 'widgets', role: 'viewer' }] }),
+    // Who approves an environment's plans (BRK-303): tightening is a maintainer's, loosening the owner's.
+    r('PUT', `/api/infra/environments/${env}/approval?repo=widgets`, 'policy.tighten', { people: 2 }),
+    // Last, since a maintainer's goes through (BRK-303): the next role finds it put back.
+    r('DELETE', `/api/infra/environments/${env}?repo=widgets`, 'environment.write'),
   ];
 }
 
 /**
  * What a person's request to `route` must answer: a refusal by press or role when the spec refuses it, the wait for
- * BRK-302 or BRK-303 when the spec allows it but it starts an agent or can't name them yet, and otherwise anything but
+ * BRK-302 when the spec allows it but it starts an agent, and otherwise anything but
  * a refusal by role (it may still fail on its own terms: no GitHub here, a missing field).
  */
 async function check(route, who, credential) {
@@ -595,16 +566,9 @@ async function check(route, who, credential) {
     else expect(body.error, where).toMatch(ROLE_REFUSAL);
     return;
   }
-  const waits = STARTS.has(action)
-    ? OWN_CLAUDE
-    : AUDITED.has(action)
-      ? AUDIT_WAITS
-      : NAMED.has(action)
-        ? NAME_WAITS
-        : null;
-  if (waits) {
+  if (STARTS.has(action)) {
     expect(res.status, where).toBe(403);
-    expect(body.error, where).toBe(waits);
+    expect(body.error, where).toBe(OWN_CLAUDE);
     return;
   }
   if (res.status === 403) expect(body.error, where).not.toMatch(ROLE_REFUSAL);
@@ -625,6 +589,7 @@ describe('every gated write route, for every role (BRK-301)', () => {
       const who = world.people[role];
       // What a maintainer before them deleted comes back, so every role meets the same board.
       await owner('/api/features', { method: 'POST', body: { slug: world.feature } });
+      await restoreEnvironment();
       world.image = await inStore(
         (store) =>
           store.sql
@@ -636,11 +601,22 @@ describe('every gated write route, for every role (BRK-301)', () => {
             )
             .one().id,
       );
+      const since = await inStore(
+        (store) => store.sql.exec('SELECT COALESCE(MAX(id), 0) AS id FROM infra_audit').one().id,
+      );
       for (const route of routes(world)) await check(route, who, { cookie: who.cookie });
+      // Every press of theirs that reached the audit trail names them, never the owner (BRK-303).
+      const pressed = await inStore((store) =>
+        store.sql
+          .exec("SELECT by, person FROM infra_audit WHERE id > ? AND by IN ('owner', 'person')", since)
+          .toArray(),
+      );
+      for (const entry of pressed) expect(entry).toEqual({ by: 'person', person: who.handle });
     }, 120_000);
 
   it('answers a member’s personal token on each route as the spec says: never a press', async () => {
     const who = world.people.member;
+    await restoreEnvironment();
     for (const route of routes(world)) await check(route, who, { token: who.token });
   }, 120_000);
 
@@ -769,7 +745,7 @@ describe('a person’s writes (BRK-301)', () => {
     expect(tokenMade.status).toBe(403);
   });
 
-  it('keeps a maintainer’s decision answers for BRK-303, which names them: agents read answers as the owner’s', async () => {
+  it('names the maintainer who answers a decision, never the owner (BRK-303)', async () => {
     const max = world.people.maintainer;
     const made = await owner('/api/tasks', {
       method: 'POST',
@@ -786,10 +762,10 @@ describe('a person’s writes (BRK-301)', () => {
       cookie: max.cookie,
       body: { answers: { q: { value: 'yes' } } },
     });
-    expect(res.status).toBe(403);
-    expect((await res.json()).error).toBe(NAME_WAITS);
+    expect(res.status).toBe(200);
     const task = (await (await owner(`/api/tasks/${uuid}`)).json()).task;
-    expect(task.decisionAnswers).toBeNull();
+    expect(task.decisionAnswers.by).toBe(max.handle);
+    expect(task.comments.at(-1).text).toMatch(new RegExp(`^Decided by ${max.handle}: `, 'u'));
     // A viewer hears it's a maintainer's first.
     const viewer = await call(`/api/tasks/${uuid}/decision/answers`, {
       method: 'POST',

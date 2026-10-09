@@ -24,6 +24,7 @@ import { checkTemplate, TEMPLATE_FILE, TEMPLATES_DIR } from './infra-templates.j
 import { creatableKinds, targetKinds } from './infra-provider.js';
 import { planView } from './infra-plans.js';
 import { redact } from './redact.js';
+import { personWords } from './store-permissions.js';
 import {
   applyEdits,
   changeBody,
@@ -115,6 +116,8 @@ export const infraChangesMethods = {
     if (!have.has('target')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN target TEXT');
     // What it did about the apply workflow (BRK-307): `{ state, note }`, shown on its card before Approve.
     if (!have.has('runner')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN runner TEXT');
+    // Who proposed it (BRK-303): the owner, or a person's handle. Under the two-person rule they don't approve it.
+    if (!have.has('person')) this.sql.exec('ALTER TABLE infra_changes ADD COLUMN person TEXT');
   },
 
   /** Environment `ref`'s row, when the board may change it from the console; else a 409 saying why not. */
@@ -176,7 +179,7 @@ export const infraChangesMethods = {
   },
 
   /** Moves a change to `state`, with why, and its audit entry. */
-  moveInfraChange(row, state, { by, outcome, why = null, summary }) {
+  moveInfraChange(row, state, { by, person = null, outcome, why = null, summary }) {
     const now = Date.now();
     this.sql.exec('UPDATE infra_changes SET state = ?, why = ?, updated = ? WHERE n = ?', state, why, now, row.n);
     this.appendInfraAudit({
@@ -185,6 +188,7 @@ export const infraChangesMethods = {
       environment: row.name,
       environmentId: Number(row.environment),
       by,
+      person,
       outcome,
       summary,
     });
@@ -412,7 +416,7 @@ export const infraChangesMethods = {
       const checked = checkEdits(body.edits);
       if ('problem' in checked) return unfit([checked.problem]);
       const chose = checkTarget(body.target);
-      if (body.propose === true) return this.proposeInfraChange(env, checked.edits, chose);
+      if (body.propose === true) return this.proposeInfraChange(env, checked.edits, chose, this.pressedBy(body));
       const github = checked.edits.some((e) => e.op === 'add') ? await this.changeGitHub(env) : null;
       const base = this.changeBaseKept(env);
       const planned = await this.planInfraChange(env, checked.edits, base, github, { chose });
@@ -432,8 +436,14 @@ export const infraChangesMethods = {
     });
   },
 
-  /** Propose the change: one at a time per environment. */
-  async proposeInfraChange(env, edits, chose = null) {
+  /**
+   * Propose the change: one at a time per environment. `pressed` is who pressed (BRK-303), the owner by default.
+   * @param {Record<string, any>} env
+   * @param {any[]} edits
+   * @param {any} [chose]
+   * @param {{ by: 'owner' | 'person', person: string }} [pressed]
+   */
+  async proposeInfraChange(env, edits, chose = null, pressed = { by: 'owner', person: 'owner' }) {
     this.infraProposing ??= new Set();
     const id = Number(env.id);
     if (this.infraProposing.has(id))
@@ -446,7 +456,7 @@ export const infraChangesMethods = {
           `Connect GitHub on Connections first: the board proposes ${env.name}’s change as a pull request`,
           409,
         );
-      return await this.openInfraChange(env, edits, github, chose);
+      return await this.openInfraChange(env, edits, github, chose, pressed);
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       return {
@@ -461,7 +471,7 @@ export const infraChangesMethods = {
     }
   },
 
-  async openInfraChange(env, edits, { client, repo }, chose = null) {
+  async openInfraChange(env, edits, { client, repo }, chose = null, pressed = { by: 'owner', person: 'owner' }) {
     const branchOf = repo.defaultBranch || 'main';
     let live = this.liveChangeRow(env.id);
     // The change already open: still the board's? Merged, closed, or pushed to by someone else, it isn't.
@@ -577,7 +587,7 @@ export const infraChangesMethods = {
     if (live)
       this.sql.exec(
         `UPDATE infra_changes SET edits = ?, lines = ?, base_sha = ?, commit_sha = ?, digest = ?, changes = ?, policy = ?,
-           target = ?, runner = ?, approval = NULL, state = 'open', why = NULL, updated = ? WHERE n = ?`,
+           target = ?, runner = ?, approval = NULL, state = 'open', why = NULL, updated = ?, person = ? WHERE n = ?`,
         JSON.stringify(edits),
         JSON.stringify(planned.lines),
         head,
@@ -588,13 +598,14 @@ export const infraChangesMethods = {
         planned.target.name,
         kept,
         now,
+        pressed.person,
         n,
       );
     else
       this.sql.exec(
         `INSERT INTO infra_changes (n, environment, repo, name, edits, lines, base_sha, commit_sha, branch, pull, pull_url,
-           digest, changes, policy, target, runner, approval, state, why, created, updated)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?)`,
+           digest, changes, policy, target, runner, approval, state, why, created, updated, person)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', NULL, ?, ?, ?)`,
         n,
         Number(env.id),
         env.repo,
@@ -613,15 +624,18 @@ export const infraChangesMethods = {
         kept,
         now,
         now,
+        pressed.person,
       );
+    // A replaced change is approved afresh: what was approved before isn't what's there now.
+    this.sql.exec("DELETE FROM infra_approvals WHERE kind = 'change' AND n = ?", n);
     this.appendInfraAudit({
       kind: 'change',
       repo: env.repo,
       environment: env.name,
       environmentId: Number(env.id),
-      by: 'owner',
+      ...pressed,
       outcome: live ? 'replaced' : 'proposed',
-      summary: `${live ? 'replaced' : 'proposed'} by the owner as #${pull.number}: ${title}${live?.approval ? '; its approval is reset' : ''}`,
+      summary: `${live ? 'replaced' : 'proposed'} by ${personWords(pressed.person)} as #${pull.number}: ${title}${live?.approval ? '; its approval is reset' : ''}`,
     });
     this.infraEvent('change.proposed', env, {
       fields: {
@@ -786,9 +800,10 @@ export const infraChangesMethods = {
    * approval, or when the change merges on GitHub without one. The plan made from the merge, discovery, and health
    * follow it from then on. A target that would be the board's own Worker is never given.
    * @param {Record<string, any>} row the change's row
-   * @param {'owner' | 'board'} by
+   * @param {'board' | { by: 'owner' | 'person', person: string }} who the board, or who pressed Approve (BRK-303)
    */
-  giveChangeTarget(row, by) {
+  giveChangeTarget(row, who) {
+    const pressed = who === 'board' ? { by: 'board', person: null } : who;
     if (!row.target) return;
     const env = this.sql.exec('SELECT * FROM infra_environments WHERE id = ?', Number(row.environment)).toArray()[0];
     if (!env || env.target || runsTheBoard({ target: row.target }, install(this.env).worker)) return;
@@ -803,9 +818,9 @@ export const infraChangesMethods = {
       repo: env.repo,
       environment: env.name,
       environmentId: Number(env.id),
-      by,
+      ...pressed,
       outcome: 'changed',
-      summary: `${env.name}’s target is ${row.target}, from ${row.pull ? `#${row.pull}` : `change ${row.n}`}${by === 'owner' ? ', approved by the owner' : ', merged on GitHub'}`,
+      summary: `${env.name}’s target is ${row.target}, from ${row.pull ? `#${row.pull}` : `change ${row.n}`}${pressed.person ? `, approved by ${personWords(pressed.person)}` : ', merged on GitHub'}`,
     });
   },
 
@@ -987,11 +1002,13 @@ export const infraChangesMethods = {
           },
         };
       }
+      const pressed = this.pressedBy(body);
+      const who = personWords(pressed.person);
       this.moveInfraChange(row, 'rejected', {
-        by: 'owner',
+        ...pressed,
         outcome: 'rejected',
-        why: 'rejected by the owner',
-        summary: `rejected by the owner; #${row.pull} is closed and nothing changes`,
+        why: `rejected by ${who}`,
+        summary: `rejected by ${who}; #${row.pull} is closed and nothing changes`,
       });
       return { status: 200, body: { change: this.changeOut(this.changeRow(row.n)) } };
     });
