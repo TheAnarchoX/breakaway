@@ -160,9 +160,10 @@ export const chaseMethods = {
 
   /**
    * The chase's record as the API shows it; with `review` (from chaseReview), how many of its pull requests wait on
-   * the owner.
+   * the owner. `partial` is a person's read of a chase that spans a repository they can't see (BRK-323): the captain's
+   * log and the digests are free text about all of it, so they're left out.
    */
-  chaseState(row, review = null) {
+  chaseState(row, review = null, partial = false) {
     const state = STATES.includes(row.chase) ? row.chase : 'off';
     return {
       state,
@@ -173,9 +174,9 @@ export const chaseMethods = {
       ...(review ? { review } : {}),
       stalledPingAt: iso(row.chase_stalled),
       endedAt: iso(row.chase_ended),
-      captain: this.captainView(row),
+      captain: partial ? { ...this.captainView(row), log: [] } : this.captainView(row),
       // Its digests (BRK-277): whether they push, and the latest, for the feature's list.
-      digest: this.chaseDigestList(row),
+      digest: partial ? { push: Boolean(row.chase_digest_push), list: [] } : this.chaseDigestList(row),
     };
   },
 
@@ -483,10 +484,10 @@ export const chaseMethods = {
   },
 
   /** The feature's chase as its page shows it: the record, and with `plan`, who starts next and what holds the rest. */
-  chaseView(row, plan = null) {
+  chaseView(row, plan = null, partial = false) {
     const held = row.chase === 'on' ? (this.githubHold() ?? this.claudeHold()) : null;
     return {
-      ...this.chaseState(row, plan?.review ?? null),
+      ...this.chaseState(row, plan?.review ?? null, partial),
       ...(held ? { held } : {}),
       ...(plan
         ? {
@@ -514,11 +515,13 @@ export const chaseMethods = {
   },
 
   /** GET /api/features/<slug>: the feature with its chase worked out, connections included. */
-  async featureWithChase(slug) {
-    const detail = this.featureDetail(slug);
+  async featureWithChase(slug, seen = null) {
+    const detail = this.featureDetail(slug, seen);
     const row = this.featureRow(slug);
-    const plan = this.chaseQueue(row, this.views(), await this.connectedRepos());
-    return { ...detail, chase: this.chaseView(row, plan) };
+    const plan = this.chaseQueue(row, this.views(seen ?? undefined), await this.connectedRepos());
+    // A person's queue counts only what they see, against the install's caps: a picture of their part, not a promise.
+    const partial = Boolean(seen) && this.featureMembership(seen).partial.has(row.slug);
+    return { ...detail, chase: this.chaseView(row, plan, partial) };
   },
 
   /**

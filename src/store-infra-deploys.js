@@ -163,13 +163,47 @@ export const infraDeploysMethods = {
    * @param {Array<{ deploy: import('./infra-deploys.js').DeployRow }>} changes
    * @param {string} slug
    */
+  /**
+   * Who pressed the Promote or Roll back a Deployment came from (BRK-303): the board's newest such press in the
+   * repository up to a minute after the Deployment was made (a Promote's by its commit too), by handle, or the owner.
+   * @param {string} slug
+   * @param {import('./infra-deploys.js').DeployRow} deploy
+   * @param {'promote' | 'rollback' | 'deploy'} action
+   */
+  deployPresser(slug, deploy, action) {
+    const kind = action === 'rollback' ? 'rollback_started' : 'promote_started';
+    const made = Date.parse(deploy.created);
+    const rows = this.sql
+      .exec(
+        'SELECT data FROM gh_events WHERE repo = ? AND at <= ? ORDER BY id DESC LIMIT 200',
+        slug,
+        Number.isFinite(made) ? made + 60_000 : Date.now(),
+      )
+      .toArray();
+    for (const row of rows) {
+      let data;
+      try {
+        data = JSON.parse(row.data);
+      } catch {
+        continue;
+      }
+      if (data?.kind !== kind) continue;
+      if (kind === 'promote_started' && data.sha7 && !String(deploy.sha ?? '').startsWith(data.sha7)) continue;
+      return typeof data.by === 'string' && data.by ? data.by : 'owner';
+    }
+    return 'owner';
+  },
+
   recordDeploys(changes, slug) {
     const errors = [];
     for (const { deploy } of changes) {
       if (this.sql.exec('SELECT 1 FROM infra_deploys WHERE deploy = ?', deploy.id).toArray().length) continue;
       const env = this.environmentForDeploy(slug, deploy.env);
-      const record = env && deployRecord(deploy, env.pipeline);
-      if (!record) continue;
+      const found = env && deployRecord(deploy, env.pipeline);
+      if (!found) continue;
+      // A Promote or a Roll back is a press: the person who pressed it, from the board's own record (BRK-303).
+      const presser = found.by === 'owner' ? this.deployPresser(slug, deploy, found.action) : 'owner';
+      const record = presser === 'owner' ? found : { ...found, by: 'person' };
       try {
         this.ctx.storage.transactionSync(() => {
           const plan = record.plan ? this.recordDeployPlan(slug, env, deploy, record) : null;
@@ -180,6 +214,7 @@ export const infraDeploysMethods = {
             environmentId: env.id,
             plan,
             by: record.by,
+            ...(record.by === 'person' ? { person: presser } : {}),
             outcome: record.outcome,
             summary: deploySummary(deploy, record.action),
           });

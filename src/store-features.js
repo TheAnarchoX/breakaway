@@ -489,10 +489,15 @@ export const featuresMethods = {
    * Every feature's tasks, worked out once: a task is in the feature whose slug it carries as a tag,
    * the first alphabetically when it carries more than one (the rest are a warning).
    */
-  featureMembership() {
+  featureMembership(seen = null) {
     const rows = this.featureRows();
     const slugs = new Set(rows.map((r) => r.slug));
-    const views = this.views((t) => t.status !== 'deleted');
+    const every = this.views((t) => t.status !== 'deleted');
+    // The features with a task `seen` hides (BRK-323): their chase's free text (the captain's log, its digests) stays
+    // out, since nothing can take another repository's words out of it.
+    // Deleted tasks count here, as they do for a chase's room (hiddenFrom): the captain's words may still name them.
+    const partial = new Set(seen ? this.views((t) => !seen(t)).flatMap((t) => t.tags) : []);
+    const views = seen ? every.filter(seen) : every;
     const names = new Map(views.map((t) => [t.uuid, label(t)]));
     const members = new Map(rows.map((r) => [r.slug, []]));
     const conflicts = [];
@@ -506,7 +511,7 @@ export const featuresMethods = {
       members.get(mine[0]).push({ task: t, alsoIn: mine.slice(1) });
       if (mine.length > 1) conflicts.push({ wid: label(t), features: mine });
     }
-    return { rows, views, names, members, conflicts, loose };
+    return { rows, views, names, members, conflicts, loose, partial };
   },
 
   /** A feature with its progress; `full` adds its tasks in dependency order. */
@@ -561,15 +566,16 @@ export const featuresMethods = {
       chase: this.chaseState(
         row,
         row.chase === 'on' ? this.chaseReview(row, this.chaseMembers(row, membership.views)) : null,
+        membership.partial?.has(row.slug) ?? false,
       ),
       conflicts: conflicts.filter((c) => c.features.includes(row.slug)),
       ...(full ? { tasks: ordered.map(brief) } : {}),
     };
   },
 
-  featureDetail(slug) {
+  featureDetail(slug, seen = null) {
     const row = this.featureRow(slug);
-    const membership = this.featureMembership();
+    const membership = this.featureMembership(seen);
     // Agents' changes to its plan (BRK-274), newest first, each with the owner's undo.
     return {
       ...this.featureView(row, membership, { full: true }),
@@ -597,8 +603,8 @@ export const featuresMethods = {
    * The roadmap's data: features in release order then unplanned, the tags that could be features,
    * and the tasks with a release tag and no feature, under their release.
    */
-  listFeatures() {
-    const membership = this.featureMembership();
+  listFeatures(seen = null) {
+    const membership = this.featureMembership(seen);
     const features = membership.rows
       .sort((a, b) => byRelease(a.release, b.release) || a.title.localeCompare(b.title) || a.slug.localeCompare(b.slug))
       .map((row) => this.featureView(row, membership));

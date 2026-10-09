@@ -218,3 +218,36 @@ export function shipState(t) {
 
 /** "4f2c8a10" for a version ID, or the short commit. */
 export const shortVersion = (s) => (s?.version ?? s?.sha ?? '').slice(0, 8);
+
+/**
+ * Who pressed what on a pull request, on its page (WEB-132): the latest board press the page's `pressed` names, as a
+ * sentence. "you" for the owner, anyone else by handle (BRK-303); a press a pull request setting made says which.
+ * @param {{ kind: string, by: string, method: string | null, setting: boolean } | null} pressed
+ * @param {string} [base] the branch the pull request goes into
+ */
+export function pressedWords(pressed, base = 'main') {
+  if (!pressed) return null;
+  const who = pressed.by && pressed.by !== 'owner' ? pressed.by : 'you';
+  const whose = who === 'you' ? 'your' : `${who}’s`;
+  const how = pressed.method === 'squash' ? 'squash' : 'merge commit';
+  switch (pressed.kind) {
+    case 'pr_merged_by_owner':
+      return pressed.setting
+        ? `Merged on the board by ${whose} Merge when green setting (${how})`
+        : `Merged on the board by ${who} (${how})`;
+    case 'pr_published':
+      return `Published for review on the board by ${who}`;
+    case 'pr_branch_updated':
+      return pressed.setting
+        ? `Updated with ${base} on the board by ${whose} Keep branches up to date setting`
+        : `Updated with ${base} on the board by ${who}`;
+    case 'pr_auto_merge_on':
+      return pressed.setting
+        ? `Set to merge when green on the board by ${whose} Merge when green setting (${how})`
+        : `Set to merge when green on the board by ${who} (${how})`;
+    case 'pr_auto_merge_off':
+      return `Merge when green turned off on the board by ${who}`;
+    default:
+      return null;
+  }
+}

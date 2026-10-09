@@ -519,7 +519,7 @@ describe('Reset and remove', () => {
   });
 });
 
-describe('deny by default: reads until BRK-323, and writes by role since BRK-301', () => {
+describe('deny by default: writes by role since BRK-301, and reads by grant since BRK-323', () => {
   // Every first path segment the API routes on, read from the Worker's own source, so a route added later is covered.
   const segments = [...new Set([...workerSource.matchAll(/parts\[0\] === '([\w-]+)'/gu)].map((m) => m[1]))].filter(
     (s) => !['session', 'me', 'signin', 'join'].includes(s),
@@ -530,7 +530,7 @@ describe('deny by default: reads until BRK-323, and writes by role since BRK-301
       expect(segments).toContain(s);
   });
 
-  it('refuses a viewer’s cookie and personal token every read and every write, the owner’s cookie-only ones included', async () => {
+  it('refuses a viewer’s cookie and personal token every write, the owner’s cookie-only ones included', async () => {
     const owner = await ownerCookie();
     const { cookie } = await join((await invite(owner, [{ repository: 'widgets', role: 'viewer' }])).code, {
       handle: unique('ana'),
@@ -551,12 +551,14 @@ describe('deny by default: reads until BRK-323, and writes by role since BRK-301
               body: method === 'GET' ? undefined : {},
             });
             const body = await res.json().catch(() => ({}));
-            // A read waits for BRK-323. A write is the viewer's role's to answer: it changes nothing, and asking for
-            // the next task is a read (src/permissions.js).
+            // A write is the viewer's role's to answer: it changes nothing, and asking for the next task is a read
+            // (src/permissions.js). What a read shows is test/people-reads.test.js's.
             const read = method === 'GET' || segment === 'next';
-            if (read ? method === 'GET' && (res.status !== 403 || body.error !== NOT_YET) : res.status < 400)
+            if (!read && res.status < 400) passed.push(`${method} /api/${segment}${tail} ${res.status}`);
+            if (body.error === NOT_YET) passed.push(`${method} /api/${segment}${tail} never asked`);
+            // GitHub isn't reachable here, which a read of it (specs) passes on as a 502, for the owner too.
+            if (res.status >= 500 && !(read && res.status === 502))
               passed.push(`${method} /api/${segment}${tail} ${res.status}`);
-            if (res.status >= 500) passed.push(`${method} /api/${segment}${tail} ${res.status}`);
           }
     expect(passed).toEqual([]);
     expect(tries).toBeGreaterThan(400);
