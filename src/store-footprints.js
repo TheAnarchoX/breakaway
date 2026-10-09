@@ -542,7 +542,9 @@ export const footprintsMethods = {
       if (store) this.storePrediction(uuid, predicted, now);
     }
     predicted ??= this.predictionFor(uuid, ctx);
-    const rate = this.footprintHitRate(repo, ctx);
+    // Once per context: a read of many tasks (a starter's pass, GET /api/footprints) walks the history once.
+    ctx.hitRate ??= this.footprintHitRate(repo, ctx);
+    const rate = ctx.hitRate;
     const current = [...paths.values()];
     const kind = current.length
       ? current.some((p) => p.state !== 'claimed')
@@ -679,7 +681,7 @@ export const footprintsMethods = {
             paths: fp.paths.map((/** @type {any} */ p) => ({ pattern: p.pattern, state: p.state, agent: p.agent })),
           };
         });
-        const rate = this.footprintHitRate(slug, context);
+        const rate = context.hitRate ?? this.footprintHitRate(slug, context);
         return {
           repo: slug,
           shared: context.shared,
