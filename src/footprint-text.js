@@ -71,3 +71,23 @@ export function claimLines(result, now = Date.now()) {
     out.push(result.released.length ? `Released ${result.released.join(', ')}.` : 'Nothing to release.');
   return out;
 }
+
+/** Riders and patterns a start payload names before "and n more" (section 4). */
+const BESIDE_RIDERS = 8;
+const BESIDE_PATTERNS = 6;
+
+/**
+ * The start payload's "Riding beside you" lines (section 4): one per agent already running in the repository, with
+ * what it's changing. None when nobody with a known footprint is.
+ * @param {{ task: string, agent: string, patterns: string[] }[] | null | undefined} riders
+ * @returns {string[]}
+ */
+export function besideLines(riders) {
+  const list = riders ?? [];
+  const lines = list.slice(0, BESIDE_RIDERS).map((r) => {
+    const more = r.patterns.length - BESIDE_PATTERNS;
+    return `Riding beside you: ${r.task} (${r.agent}) is changing ${r.patterns.slice(0, BESIDE_PATTERNS).join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+  });
+  if (list.length > BESIDE_RIDERS) lines.push(`Riding beside you: ${list.length - BESIDE_RIDERS} more agents`);
+  return lines;
+}

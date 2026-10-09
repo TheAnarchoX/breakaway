@@ -13,9 +13,15 @@
  * that fails leaves its reason in the temp folder, which the CLI's next command here shows (BRK-86).
  *
  * Run by the plugin at SessionStart, it first passes the plugin's settings on to the session's Bash commands (CLI-8).
+ *
+ * After an edit tool's call and at a stop, at most once a minute, the post carries the agent's dirty paths (paths
+ * only, never contents), and the board answers with what they conflict with, which Claude hears on its next turn
+ * (docs/specs/IDEA-55-footprints.md, section 1b).
  */
 import { checkoutRunsHooks } from './plugin-hooks.js';
 import { boardConfig, claimedTask, dropClaim, projectRoot } from './hook-config.js';
+import { execFileSync } from 'node:child_process';
+import { conflictText, dirtyDue, dirtyPaths, keepNote, takeNote } from './footprint-hook.js';
 import { passPluginEnv } from './plugin-env.js';
 import { clearHookFailure, noteHookFailure, sessionRequest } from './proxy.js';
 import { entryFor } from './session-log.js';
@@ -37,6 +43,7 @@ async function main() {
 
   const { base, headers } = boardConfig(root);
   if (!base) return noteHookFailure(claim.uuid, 'no board address: set BREAKAWAY_URL');
+  const dirty = claim.agent && dirtyDue(hook, claim.uuid) ? dirtyPaths(git(root)) : null;
   let res;
   try {
     // Through curl in a cloud session, so it works on whichever Node runs hooks there (BRK-86).
@@ -50,6 +57,7 @@ async function main() {
         entries: [entry],
         // A Stop hook's output can't reach Claude, so it leaves the messages for the next event.
         messages: CONTEXT_EVENTS.has(hook.hook_event_name),
+        ...(dirty ? { dirty } : {}),
       }),
       timeoutMs: 4000,
     });
@@ -65,8 +73,29 @@ async function main() {
     if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
     return;
   }
-  const output = messageOutput(answer, hook.hook_event_name);
+  // What the dirty paths conflict with, and what an earlier event couldn't say, go with the messages.
+  const conflicts = conflictText(answer?.footprint);
+  if (!CONTEXT_EVENTS.has(hook.hook_event_name)) return keepNote(claim.uuid, conflicts);
+  const note = [takeNote(claim.uuid), conflicts].filter(Boolean).join('\n');
+  const output = messageOutput(answer, hook.hook_event_name, note);
   if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+}
+
+/** Runs git in the checkout: its output, or null when it fails. */
+function git(root) {
+  return (/** @type {string[]} */ args) => {
+    try {
+      return execFileSync('git', args, {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 2000,
+        maxBuffer: 4 * 1024 * 1024,
+      });
+    } catch {
+      return null;
+    }
+  };
 }
 
 main()

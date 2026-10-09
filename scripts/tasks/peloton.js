@@ -240,6 +240,23 @@ export function planLines(plan, { indent = '' } = {}) {
   return [head, ...body];
 }
 
+/** Patterns shown of one rider's footprint before "and n more". */
+const SHOWN_PATTERNS = 6;
+
+/**
+ * What a rider is changing, after its name (IDEA-55 section 4): its footprint, and which of the reader's own paths
+ * overlap it. '' when the board doesn't know.
+ * @param {{ changing?: string[], overlaps?: string[] }} rider
+ */
+export function riderFootprint(rider) {
+  const changing = rider?.changing ?? [];
+  if (!changing.length) return '';
+  const more = changing.length - SHOWN_PATTERNS;
+  const list = `${changing.slice(0, SHOWN_PATTERNS).join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+  const overlaps = rider.overlaps?.length ? `; overlaps yours: ${rider.overlaps.join(', ')}` : '';
+  return `: changing ${list}${overlaps}`;
+}
+
 /**
  * The agent's views → what `npx breakaway peloton` prints: each peloton's riders, its open huddle and its plan (a
  * chase's), then its new posts and the newest SHOWN_POSTS (every one with `all`), new ones starred.
@@ -258,7 +275,9 @@ export function pelotonLines(views, { agent, all = false } = {}) {
       const lines = [`${v.peloton} (you ride it on ${v.task}): ${state}`];
       for (const r of roster) {
         const since = sentAt(r.since);
-        lines.push(`  ${r.agent}${r.task ? ` on ${r.task}` : ''}${since ? `, since ${since}` : ''}`);
+        lines.push(
+          `  ${r.agent}${r.task ? ` on ${r.task}` : ''}${since ? `, since ${since}` : ''}${riderFootprint(r)}`,
+        );
       }
       if (v.huddle) lines.push(...huddleLines(v.huddle));
       if (v.plan) lines.push(...planLines(v.plan, { indent: '  ' }));

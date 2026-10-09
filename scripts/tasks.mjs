@@ -289,7 +289,7 @@ Reading                (list, next, claim, and add work in this checkout's repos
   specs                  the repository's specs, newest first: each one's status and its tasks  [--repo <slug>]
   specs show <path>      one spec: its status, last change, Markdown, and the tasks that link it  [--repo <slug>]
   github                 the checkout's repository on GitHub: open pull requests, checks, reviews, CI, deploys, alerts  [--sync] [--repo <slug>]
-  hook session|wait      the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
+  hook session|wait|edit the Claude Code session hooks a repository's .claude/settings.json runs (npx breakaway hook session)
   health                 the server's state
   mcp                    print the claude mcp add line and the .mcp.json entry that connect an MCP client to the board's
                          /mcp from this checkout, with the token as $BREAKAWAY_TOKEN, never its value. Writes nothing
@@ -1086,7 +1086,8 @@ function describeSources({ url, token, agent: name }) {
 const commands = {
   /** The Claude Code session hooks (BRK-7), so a repository's .claude/settings.json runs them through npx. */
   async hook() {
-    await import(args[0] === 'wait' ? './tasks/message-wait.mjs' : './tasks/session-hook.mjs');
+    const file = { wait: 'message-wait', edit: 'edit-hook' }[args[0]] ?? 'session-hook';
+    await import(`./tasks/${file}.mjs`);
   },
   async list() {
     const { tasks } = await call('GET', `tasks?status=${enc(opts.status ?? 'pending')}`);

@@ -362,6 +362,7 @@ export const footprintsMethods = {
     const claimed = free.length
       ? this.claimPaths(uuid, name, free, { source: 'dirty', now, context }).granted.map((g) => g.pattern)
       : [];
+    if (conflicts.some((c) => c.new)) this.notePathConflicts(uuid, now);
     return { claimed, conflicts };
   },
 
@@ -691,5 +692,119 @@ export const footprintsMethods = {
       }
       return { status: 200, body: out };
     });
+  },
+
+  // ---- telling the riders (BRK-320) --------------------------------------------------------------
+
+  /**
+   * The agents already running in task `uuid`'s repository and what each is changing (section 4), for the start
+   * payload's "Riding beside you" lines: `{ task, agent, patterns }`, the ones with a known footprint only.
+   * @param {string} uuid
+   */
+  ridingBeside(uuid, now = Date.now()) {
+    const map = this.tasks.get(uuid);
+    if (!map) return [];
+    const fallback = this.defaultRepoSlug();
+    const repo = repoSlugOf(map, fallback);
+    const context = this.footprintContext(repo);
+    const out = [];
+    for (const { task } of this.runningAgents(this.views())) {
+      if (task.uuid === uuid || repoSlugOf(this.tasks.get(task.uuid), fallback) !== repo) continue;
+      const fp = this.taskFootprint(task.uuid, { context, now });
+      if (fp.patterns.length) out.push({ task: fp.task, agent: task.claim, patterns: fp.patterns });
+    }
+    return out;
+  },
+
+  /**
+   * ridingBeside for the start of an agent of `kind`: only the kinds that change files hear it (a build, a fix, a
+   * routine's run, a general agent, a kickoff). A start never fails over it: on an error it names nobody.
+   * @param {string} uuid
+   * @param {string} kind
+   */
+  ridingBesideFor(uuid, kind) {
+    if (!['build', 'fix-pr', 'routine', 'general', 'kickoff'].includes(kind)) return [];
+    try {
+      return this.ridingBeside(uuid);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * A peloton's roster with each rider's footprint (`changing`: the patterns that hold now), and, for the agent reading
+   * it on task `viewer`, which of its own patterns overlap each rider's (`overlaps`). Section 4: a check-in lists what
+   * the others are changing, and where the new agent's paths meet theirs.
+   * @param {{ uuid?: string | null }[]} roster
+   * @param {string | null} viewer
+   */
+  rosterFootprints(roster, viewer = null, now = Date.now()) {
+    const fallback = this.defaultRepoSlug();
+    /** @type {Map<string, any>} */
+    const contexts = new Map();
+    const footprintOf = (/** @type {string} */ uuid) => {
+      const map = this.tasks.get(uuid);
+      if (map?.status !== 'pending') return null;
+      const repo = repoSlugOf(map, fallback);
+      if (!contexts.has(repo)) contexts.set(repo, this.footprintContext(repo));
+      const context = contexts.get(repo);
+      return { repo, shared: context.shared, patterns: this.taskFootprint(uuid, { context, now }).patterns };
+    };
+    const mine = viewer ? footprintOf(viewer) : null;
+    return roster.map((rider) => {
+      const { uuid, ...rest } = rider;
+      const fp = uuid ? footprintOf(uuid) : null;
+      if (!fp?.patterns.length) return rest;
+      const overlaps =
+        mine && uuid !== viewer && mine.repo === fp.repo
+          ? mine.patterns.filter((p) => footprintsOverlap([p], fp.patterns, { shared: fp.shared }))
+          : [];
+      return { ...rest, changing: fp.patterns, ...(overlaps.length ? { overlaps } : {}) };
+    });
+  },
+
+  /**
+   * Posts each conflict flagged on task `uuid` that nobody has posted yet, once per pair of tasks and path (section 4):
+   * as the board, mentioning both agents, on the chase both ride, else their repository's peloton. Never a block or a
+   * ping: only the two agents can settle who goes first.
+   * @param {string} uuid
+   */
+  notePathConflicts(uuid, now = Date.now()) {
+    const rows = this.sql
+      .exec('SELECT * FROM path_conflicts WHERE uuid = ? AND noted IS NULL ORDER BY at, path', uuid)
+      .toArray();
+    if (!rows.length) return;
+    const chases = this.chasing() ? this.openChases() : [];
+    for (const row of rows) {
+      // The other way round (the other task changed this path while this one claimed it) is the same pair and path.
+      const posted = this.sql
+        .exec(
+          'SELECT 1 FROM path_conflicts WHERE uuid = ? AND other = ? AND path = ? AND noted IS NOT NULL',
+          row.other,
+          row.uuid,
+          row.path,
+        )
+        .toArray().length;
+      if (!posted) {
+        const theirs = this.pelotonsOfTask(row.other, chases);
+        const both = this.pelotonsOfTask(row.uuid, chases).filter((name) => theirs.includes(name));
+        const peloton = both.find((name) => name.startsWith('chase:')) ?? both[0];
+        if (peloton)
+          this.addPost(peloton, {
+            agent: 'board',
+            repo: repoSlugOf(this.tasks.get(row.uuid), this.defaultRepoSlug()),
+            kind: 'note',
+            text: `@${row.agent} @${row.other_agent}: both of you are changing \`${row.path}\` (${this.widOf(row.uuid)} and ${this.widOf(row.other)}, which claims \`${row.pattern}\`); agree who goes first.`,
+            mentions: [row.agent, row.other_agent],
+          });
+      }
+      this.sql.exec(
+        'UPDATE path_conflicts SET noted = ? WHERE uuid = ? AND path = ? AND other = ?',
+        now,
+        row.uuid,
+        row.path,
+        row.other,
+      );
+    }
   },
 };
