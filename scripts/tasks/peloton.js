@@ -37,7 +37,9 @@ const usable = (p) => typeof p?.id === 'number' && typeof p?.text === 'string' &
 const fromOwner = (p) => p.agent === 'owner' && !p.task;
 const author = (p) => {
   if (fromOwner(p)) return 'the owner';
-  return p.agent === 'board' && !p.task ? 'the board' : `${p.agent}${p.task ? ` on ${p.task}` : ''}`;
+  if (p.agent === 'board' && !p.task) return 'the board';
+  // A person the owner invited posts from the board with no task (BRK-303): named, never taken for the owner.
+  return p.task ? `${p.agent} on ${p.task}` : `${p.agent} via the board`;
 };
 const noPeloton = (agent) =>
   `${agent || 'this agent'} rides no peloton: claim your task first (npx breakaway claim <task>), then check in`;

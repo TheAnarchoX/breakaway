@@ -35,12 +35,17 @@ export const AUDIT_KINDS = [
   'change',
   'policy',
 ];
-/** Who acted: the owner (never by name), the executor, an envelope acting with no press, or an agent proposing. */
-export const AUDIT_ACTORS = ['owner', 'executor', 'envelope', 'agent', 'board'];
+/**
+ * Who acted: the owner (never by name), a person the owner invited (by handle, in `person`: BRK-303), the executor, an
+ * envelope acting with no press, or an agent proposing.
+ */
+export const AUDIT_ACTORS = ['owner', 'person', 'executor', 'envelope', 'agent', 'board'];
 
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 const ENVIRONMENT = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 const AGENT = /^[\w.@:/-]{1,64}$/u;
+/** A person's handle (src/people.js keeps them to this), or `owner`. */
+const PERSON = /^[a-z0-9][a-z0-9_-]{0,31}$/u;
 const REF = /^[\w.:#/-]{1,100}$/u;
 const EMAIL = /\b[\w.%+-]+@[\w-]+(?:\.[\w-]+)+\b/gu;
 const OUTCOME_MAX = 120;
@@ -48,8 +53,10 @@ const SUMMARY_MAX = 500;
 
 /**
  * What the control plane appends: `at` is always the board's clock, never the caller's.
+ * `person` is who's behind the request (BRK-303): `owner`, or a person's handle. An owner's press is `by: 'owner'`, a
+ * person's is `by: 'person'` with their handle; an agent's entry names the person it acted as too.
  * @typedef {{ kind: string, repo: string, environment: string, environmentId?: number | null, by: string,
- *   plan?: string | null,
+ *   person?: string | null, plan?: string | null,
  *   agent?: string | null, envelope?: string | null, outcome?: string, summary?: string }} AuditInput
  */
 
@@ -91,6 +98,12 @@ export function auditEntry(input) {
   const agent = input?.agent ? String(input.agent) : null;
   if (agent !== null && !AGENT.test(agent)) throw new AgentError('agent must be an agent’s name on the board', 400);
   if (by === 'agent' && !agent) throw new AgentError('an entry by an agent names the agent', 400);
+  // The owner's press names the owner whatever it's given; a person's names them, and only them (BRK-303).
+  const given = input?.person ? String(input.person) : null;
+  if (given !== null && !PERSON.test(given)) throw new AgentError('person must be a person’s handle', 400);
+  if (by === 'person' && (!given || given === 'owner'))
+    throw new AgentError('an entry by a person names the person', 400);
+  const person = by === 'owner' ? 'owner' : by === 'person' || by === 'agent' ? given : null;
   return {
     kind,
     repo,
@@ -98,6 +111,7 @@ export function auditEntry(input) {
     environmentId,
     plan: ref(input?.plan, 'plan'),
     by,
+    person,
     agent: agent === null ? null : scrub(agent, 64),
     envelope: ref(input?.envelope, 'envelope'),
     outcome: scrub(input?.outcome, OUTCOME_MAX),

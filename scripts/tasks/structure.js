@@ -161,7 +161,7 @@ export function ownerSaidLines(t) {
         .map((l) => `    > ${l}`.trimEnd()),
     );
     out.push(
-      `      (${q.from}, ${q.by === 'owner' ? 'from the owner' : `quoted by ${q.by}`}${q.at ? `, ${String(q.at).slice(0, 10)}` : ''})`,
+      `      (${q.from}, ${q.by === 'owner' ? 'from the owner' : q.from === 'board' ? `${q.by}’s own words` : `quoted by ${q.by}`}${q.at ? `, ${String(q.at).slice(0, 10)}` : ''})`,
     );
   }
   return out;

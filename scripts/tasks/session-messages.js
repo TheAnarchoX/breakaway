@@ -43,7 +43,9 @@ export function messageText(answer) {
     .filter((m) => typeof m?.text === 'string' && m.text.trim())
     .map((m) => {
       const at = sentAt(m.sent);
-      return `Message from the owner (via the board${at ? `, ${at}` : ''}): ${m.text.trim()}`;
+      // A person's message names them (BRK-303): only the owner's reads "from the owner".
+      const from = typeof m.from === 'string' && m.from && m.from !== 'owner' ? m.from : 'the owner';
+      return `Message from ${from} (via the board${at ? `, ${at}` : ''}): ${m.text.trim()}`;
     })
     .join('\n\n');
 }

@@ -821,7 +821,7 @@ export const infraRunsMethods = {
    * Refused once anything applied, or may have: that's the rollback and drift path.
    * @param {string} ref the plan's ID
    */
-  async startInfraRunAgain(ref) {
+  async startInfraRunAgain(ref, pressed = { by: 'owner', person: 'owner' }) {
     const plan = this.planRow(ref);
     const id = planId(Number(plan.n));
     const row = this.runRow(id);
@@ -844,9 +844,9 @@ export const infraRunsMethods = {
       throw new AgentError(`${id} isn’t the plan that was approved: it can’t be started again`, 409);
     this.ctx.storage.transactionSync(() => {
       this.moveInfraPlan(id, 'approved', {
-        by: 'owner',
+        ...pressed,
         outcome: 'started again',
-        summary: `started again by the owner: the last run applied nothing (${String(row.error ?? row.outcome).slice(0, 200)})`,
+        summary: `started again by ${pressed.person === 'owner' ? 'the owner' : pressed.person}: the last run applied nothing (${String(row.error ?? row.outcome).slice(0, 200)})`,
         digest: plan.digest,
       });
       this.setRun(row.n, {
@@ -881,7 +881,7 @@ export const infraRunsMethods = {
         () => this.planRow(ref).repo,
         'only the owner starts a plan’s run again, from the board',
       );
-      return { status: 200, body: { run: await this.startInfraRunAgain(ref) } };
+      return { status: 200, body: { run: await this.startInfraRunAgain(ref, this.pressedBy(body)) } };
     });
   },
 

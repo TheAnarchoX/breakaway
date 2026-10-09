@@ -217,7 +217,7 @@ export const planningMethods = {
       back.title,
       back.brief,
       back.release,
-      'owner',
+      this.writer?.person ?? 'owner',
       Date.now(),
       row.target,
     );
@@ -268,7 +268,10 @@ export const planningMethods = {
   },
 
   planningUndoApi(id, body) {
-    return this.run(() => ({ status: 200, body: { change: this.undoPlanning(id, body ?? {}) } }));
+    return this.run(() => ({
+      status: 200,
+      body: { change: this.as(body ?? {}, () => this.undoPlanning(id, body ?? {})) },
+    }));
   },
 };
 

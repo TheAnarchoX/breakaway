@@ -786,10 +786,13 @@ export const pelotonMethods = {
   postPeloton(
     raw,
     { kind, text, reply_to: replyTo = null, agent, task = null, files = null } = {},
-    { owner = false } = {},
+    { owner = false, person = 'owner' } = {},
   ) {
     this.writable();
-    const name = owner ? 'owner' : String(agent ?? '').trim();
+    // From the board, a press names whoever pressed (BRK-303): the owner, or a person by handle. Only the owner's
+    // post is the owner's: a person's huddles and outcomes follow an agent's rules.
+    const name = owner ? person || 'owner' : String(agent ?? '').trim();
+    const theOwner = owner && name === 'owner';
     if (owner && agent !== undefined && agent !== null && agent !== '')
       throw new InputError('from the board you post as the owner: leave agent out');
     if (!owner && !AGENT.test(name)) throw new InputError('say which agent is posting: agent is its name on the board');
@@ -812,9 +815,9 @@ export const pelotonMethods = {
       throw new InputError('huddle, in, and outcome are only on a chase’s peloton: talk it through with ask or note');
     this.pelotonSweep();
     if (owner) {
-      const huddle = this.huddleRule(p, kind, 'owner', { owner: true });
+      const huddle = this.huddleRule(p, kind, name, { owner: theOwner });
       const row = this.addPost(p.name, {
-        agent: 'owner',
+        agent: name,
         kind,
         text: clean,
         replyTo: huddle?.post ?? this.replyTarget(p.name, kind, replyTo)?.id ?? null,
@@ -1041,9 +1044,10 @@ export const pelotonMethods = {
    * signed-in board, `owner`); while a road captain runs on the chase, only it; with none, any agent riding the chase.
    * Every revision is kept, and the board posts its line as a `plan` post.
    */
-  revisePlan(raw, { text, why, agent } = {}, { owner = false } = {}) {
+  revisePlan(raw, { text, why, agent } = {}, { owner = false, person = 'owner' } = {}) {
     this.writable();
-    const name = owner ? 'owner' : String(agent ?? '').trim();
+    // A maintainer revises it from the board under their own handle (BRK-303); the owner as the owner.
+    const name = owner ? person || 'owner' : String(agent ?? '').trim();
     if (owner && agent !== undefined && agent !== null && agent !== '')
       throw new InputError('from the board you revise the plan as the owner: leave agent out');
     if (!owner && !AGENT.test(name)) throw new InputError('say which agent revises it: agent is its name on the board');

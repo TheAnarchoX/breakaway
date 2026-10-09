@@ -33,13 +33,14 @@ export const infraLocksMethods = {
   },
 
   /** A release goes on the audit trail first; with no trail to write to, the release doesn't happen. */
-  auditLockRelease(env, lock, { by, outcome, summary }) {
+  auditLockRelease(env, lock, { by, person = null, outcome, summary }) {
     this.appendInfraAudit({
       kind: 'lock-release',
       repo: env.repo,
       environment: env.name,
       environmentId: env.id,
       by,
+      person,
       plan: lock.plan ?? null,
       outcome,
       summary,
@@ -161,17 +162,18 @@ export const infraLocksMethods = {
    * DELETE /api/infra/locks/<environment>: the owner's forced release, from the signed-in board only (the worker
    * refuses the bearer token), for a lock the executor left behind. Audited as the owner's.
    */
-  lockReleaseApi(ref, { repo } = {}) {
+  lockReleaseApi(ref, { repo, actor } = {}) {
     return this.run(async () => {
       const env = this.environmentRow(ref, repo ? String(repo).trim().toLowerCase() : null);
       let lock;
       this.ctx.storage.transactionSync(() => {
         lock = this.lockRow(env.id);
         if (!held(lock, Date.now())) throw new AgentError(`${env.name} isn’t locked`, 404);
+        const pressed = this.pressedBy({ actor });
         this.auditLockRelease(env, lock, {
-          by: 'owner',
+          ...pressed,
           outcome: 'forced',
-          summary: `the owner released ${lock.holder}’s lock`,
+          summary: `${pressed.person === 'owner' ? 'the owner' : pressed.person} released ${lock.holder}’s lock`,
         });
         this.sql.exec('DELETE FROM infra_locks WHERE environment = ?', env.id);
       });

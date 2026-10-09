@@ -27,6 +27,14 @@ export const messagesMethods = {
       CREATE INDEX IF NOT EXISTS agent_messages_task ON agent_messages (task, id);
       CREATE TABLE IF NOT EXISTS agent_message_polls (task TEXT PRIMARY KEY, agent TEXT NOT NULL, at INTEGER NOT NULL);
     `);
+    // Who sent it (BRK-303): the owner, or a person's handle. Older messages have none, and were the owner's.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(agent_messages)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('person')) this.sql.exec('ALTER TABLE agent_messages ADD COLUMN person TEXT');
   },
 
   /** Why the owner can't message a task's agent right now, or null: it needs an open, claimed task whose pull request hasn't merged. */
@@ -44,6 +52,7 @@ export const messagesMethods = {
       id: row.id,
       agent: row.agent,
       text: row.text,
+      from: row.person ?? 'owner',
       sent: new Date(row.sent).toISOString(),
       delivered: row.delivered ? new Date(row.delivered).toISOString() : null,
       status: row.delivered ? 'delivered' : live ? 'waiting' : 'undelivered',
@@ -74,8 +83,11 @@ export const messagesMethods = {
     };
   },
 
-  /** The owner's message to the task's agent. The worker lets only the signed-in board call this. */
-  sendMessage(uuid, text) {
+  /**
+   * A message to the task's agent, from `from`: the owner, or the person who sent it (BRK-303). The worker lets only
+   * the signed-in board call this.
+   */
+  sendMessage(uuid, text, from = 'owner') {
     const clean = String(text ?? '')
       .replace(/\r\n?/gu, '\n')
       .trim();
@@ -99,11 +111,12 @@ export const messagesMethods = {
       );
     const row = this.sql
       .exec(
-        'INSERT INTO agent_messages (task, agent, text, sent) VALUES (?, ?, ?, ?) RETURNING *',
+        'INSERT INTO agent_messages (task, agent, text, sent, person) VALUES (?, ?, ?, ?, ?) RETURNING *',
         uuid,
         map.claim,
         clean,
         Date.now(),
+        from,
       )
       .one();
     return this.messageView(row, map);
@@ -135,7 +148,13 @@ export const messagesMethods = {
       now,
       ...rows.map((r) => r.id),
     );
-    return rows.map((r) => ({ id: r.id, text: r.text, sent: new Date(r.sent).toISOString() }));
+    return rows.map((r) => ({
+      id: r.id,
+      text: r.text,
+      // Who sent it (BRK-303): the owner, or a person by handle, so the agent never takes a person's words as the owner's.
+      from: r.person ?? 'owner',
+      sent: new Date(r.sent).toISOString(),
+    }));
   },
 
   pruneMessages() {

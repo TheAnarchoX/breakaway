@@ -28,16 +28,13 @@ export const ROLE_RANK = { viewer: 1, member: 2, maintainer: 3 };
 
 /**
  * @typedef {'viewer' | 'member' | 'maintainer' | 'owner'} Need
- * @typedef {{ role: Need, press?: boolean, agents?: boolean, starts?: boolean, audited?: boolean, named?: boolean,
- *   what: string }} Rule
+ * @typedef {{ role: Need, press?: boolean, agents?: boolean, starts?: boolean, what: string }} Rule
  */
 
 /**
  * Every gated action (the spec's table in point 3), by what it needs: `role`, a `press` (a signed-in browser),
- * whether a named agent may do it (`agents`), whether it starts an agent (`starts`, so it runs on the starter's
- * Claude: BRK-302), and whether it writes Architect's audit trail (`audited`, which names a person once BRK-303 gives
- * it one), or shows its words to agents or in the inbox as the owner's (`named`, until BRK-303 names the person).
- * `what` finishes "only … can …" in a refusal.
+ * whether a named agent may do it (`agents`), and whether it starts an agent (`starts`, so it runs on the starter's
+ * Claude: BRK-302). Every write names the person behind it (BRK-303). `what` finishes "only … can …" in a refusal.
  * @type {Record<string, Rule>}
  */
 export const ACTIONS = {
@@ -59,34 +56,32 @@ export const ACTIONS = {
   'spec.status': { role: 'maintainer', press: true, what: 'mark a spec approved or built' },
 
   // Plans, changes, and policy.
-  'plan.create': { audited: true, role: 'member', agents: true, what: 'make a plan' },
-  'plan.approve': { audited: true, role: 'maintainer', press: true, what: 'approve or reject a plan' },
-  'plan.start-again': { audited: true, role: 'maintainer', press: true, what: 'start a plan’s run again' },
-  'plan.front': { audited: true, role: 'member', press: true, what: 'put a plan in front of you' },
-  'change.propose': { audited: true, role: 'member', press: true, what: 'change an environment' },
-  'change.approve': { audited: true, role: 'maintainer', press: true, what: 'approve or reject a change' },
-  'policy.propose': { audited: true, role: 'member', press: true, what: 'propose a policy change' },
-  'policy.tighten': { audited: true, role: 'maintainer', press: true, what: 'approve or reject a policy change' },
-  'policy.loosen': { audited: true, role: 'owner', press: true, what: 'approve a policy change that loosens it' },
+  'plan.create': { role: 'member', agents: true, what: 'make a plan' },
+  'plan.approve': { role: 'maintainer', press: true, what: 'approve or reject a plan' },
+  'plan.start-again': { role: 'maintainer', press: true, what: 'start a plan’s run again' },
+  'plan.front': { role: 'member', press: true, what: 'put a plan in front of you' },
+  'change.propose': { role: 'member', press: true, what: 'change an environment' },
+  'change.approve': { role: 'maintainer', press: true, what: 'approve or reject a change' },
+  'policy.propose': { role: 'member', press: true, what: 'propose a policy change' },
+  'policy.tighten': { role: 'maintainer', press: true, what: 'approve or reject a policy change' },
+  'policy.loosen': { role: 'owner', press: true, what: 'approve a policy change that loosens it' },
 
   // Envelopes, environments, and the rest of Infrastructure.
-  'envelope.set': { audited: true, role: 'maintainer', press: true, what: 'set or widen an envelope' },
+  'envelope.set': { role: 'maintainer', press: true, what: 'set or widen an envelope' },
   'envelope.set-production': {
-    audited: true,
     role: 'owner',
     press: true,
     what: 'set or widen an envelope on production',
   },
-  'envelope.revoke': { audited: true, role: 'maintainer', press: true, what: 'revoke or narrow an envelope' },
+  'envelope.revoke': { role: 'maintainer', press: true, what: 'revoke or narrow an envelope' },
   // An act is a runbook run's agent's, with its act key: never a person's (the key decides).
   'envelope.act': { role: 'owner', agents: true, what: 'act inside an envelope' },
   'environment.write': {
-    audited: true,
     role: 'maintainer',
     press: true,
     what: 'add, change, or remove an environment',
   },
-  'environment.freeze': { audited: true, role: 'maintainer', press: true, what: 'freeze or unfreeze an environment' },
+  'environment.freeze': { role: 'maintainer', press: true, what: 'freeze or unfreeze an environment' },
   'environment.describe': {
     role: 'maintainer',
     press: true,
@@ -94,30 +89,28 @@ export const ACTIONS = {
     what: 'have an agent describe an environment as code',
   },
   'inventory.refresh': {
-    audited: true,
     role: 'member',
     press: true,
     what: 'refresh the inventory or compare an environment now',
   },
   'infra.check': { role: 'member', agents: true, what: 'check a desired state' },
-  'lock.release': { audited: true, role: 'maintainer', press: true, what: 'release an environment’s lock' },
-  'drift.break-glass': { audited: true, role: 'maintainer', press: true, what: 'mark drift as break-glass' },
-  'github-environment.make': { audited: true, role: 'maintainer', press: true, what: 'make a GitHub environment' },
-  'short-lived.ask': { audited: true, role: 'member', press: true, what: 'ask for a short-lived environment' },
+  'lock.release': { role: 'maintainer', press: true, what: 'release an environment’s lock' },
+  'drift.break-glass': { role: 'maintainer', press: true, what: 'mark drift as break-glass' },
+  'github-environment.make': { role: 'maintainer', press: true, what: 'make a GitHub environment' },
+  'short-lived.ask': { role: 'member', press: true, what: 'ask for a short-lived environment' },
   'runbook.trigger': { role: 'maintainer', press: true, what: 'change a routine’s signal trigger' },
   currency: { role: 'owner', press: true, what: 'set the board’s currency or fetch its rate' },
   'provider.connect': { role: 'owner', press: true, what: 'connect or forget a provider' },
 
   // Decisions, pings, and agents.
-  'decision.answer': { named: true, role: 'maintainer', what: 'answer or reopen a decision' },
+  'decision.answer': { role: 'maintainer', what: 'answer or reopen a decision' },
   'decision.carry-on': {
-    named: true,
     role: 'maintainer',
     press: true,
     starts: true,
     what: 'send answers and start the next run',
   },
-  'ping.apply': { named: true, role: 'maintainer', press: true, what: 'apply a ping’s proposal' },
+  'ping.apply': { role: 'maintainer', press: true, what: 'apply a ping’s proposal' },
   'ping.resolve': { role: 'maintainer', press: true, what: 'dismiss a ping or mark it handled' },
   'agent.start': { role: 'member', agents: true, starts: true, what: 'start an agent' },
   'agent.force': { role: 'maintainer', starts: true, what: 'force start an agent' },
@@ -127,7 +120,7 @@ export const ACTIONS = {
     starts: true,
     what: 'start a general agent, an agent that reviews a pull request, or one that makes routines',
   },
-  'agent.message': { named: true, role: 'maintainer', press: true, what: 'message an agent' },
+  'agent.message': { role: 'maintainer', press: true, what: 'message an agent' },
   'agent.settings': { role: 'owner', what: 'change the agents’ settings' },
 
   // Tasks.
@@ -137,7 +130,7 @@ export const ACTIONS = {
     agents: true,
     what: 'force-release a claim, set a task to start by itself, or change a horizon-* tag',
   },
-  'task.quote': { named: true, role: 'maintainer', press: true, what: 'quote someone’s words on a task' },
+  'task.quote': { role: 'maintainer', press: true, what: 'quote someone’s words on a task' },
   'task.unquote': { role: 'maintainer', press: true, what: 'remove a quote from a task' },
   'planning.undo': { role: 'maintainer', press: true, what: 'undo an agent’s change' },
   'risk.answer': { role: 'maintainer', press: true, what: 'answer a risky-path finding' },
@@ -150,8 +143,8 @@ export const ACTIONS = {
     what: 'change a feature’s state, planned dates, or shape, or delete it',
   },
   chase: { role: 'maintainer', starts: true, what: 'start or stop a chase' },
-  'peloton.post': { named: true, role: 'member', press: true, what: 'post on the peloton' },
-  'peloton.plan': { named: true, role: 'maintainer', press: true, what: 'revise a chase’s plan' },
+  'peloton.post': { role: 'member', press: true, what: 'post on the peloton' },
+  'peloton.plan': { role: 'maintainer', press: true, what: 'revise a chase’s plan' },
 
   // Routines.
   'routine.write': { role: 'maintainer', what: 'make, change, or run a routine, or change its triggers' },
@@ -259,14 +252,6 @@ export function can(actor, action, repository = null) {
 /** The words a person sees when a start would run on their own Claude, which comes with BRK-302. */
 export const OWN_CLAUDE =
   'agents you start run on your own Claude routine, and this board can’t connect one for you yet: ask the owner to start it';
-
-/** The words a person sees for a press the audit trail can't name them in yet: it's append-only, so it waits. */
-export const AUDIT_WAITS =
-  'the infrastructure audit trail can’t name you yet, and it can’t be corrected later: this comes with BRK-303, so ask the owner for now';
-
-/** The words a person sees for a press the board would show as the owner's: an agent would take it as the owner's. */
-export const NAME_WAITS =
-  'the board can’t show this under your name yet, and agents would read it as the owner’s: this comes with BRK-303, so ask the owner for now';
 
 /** The owner, behind the board's token (`press: false`) or its cookie (`press: true`). */
 export const ownerActor = (press) => ({ person: OWNER, grants: [], press });

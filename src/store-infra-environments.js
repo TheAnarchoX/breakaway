@@ -6,6 +6,7 @@
  * own install is observe only, always.
  */
 import { AgentError } from './store-agents.js';
+import { personWords } from './store-permissions.js';
 import { InputError, resolveRef } from './model.js';
 import { install } from './install.js';
 import {
@@ -211,9 +212,9 @@ export const infraEnvironmentsMethods = {
         repo,
         environment: row.name,
         environmentId: row.id,
-        by: 'owner',
+        ...this.pressedBy(body),
         outcome: 'added',
-        summary: `added by the owner: ${row.kind}, ${row.provider ?? 'no provider'} ${row.target ?? 'no target'}${row.observe_only ? ', observe only' : ''}`,
+        summary: `added by ${personWords(this.pressedBy(body).person)}: ${row.kind}, ${row.provider ?? 'no provider'} ${row.target ?? 'no target'}${row.observe_only ? ', observe only' : ''}`,
       });
       this.infraEvent('environment.created', row, { fields: { state: 'added' }, dedupe: `added:${row.id}` });
       return { status: 201, body: { environment: this.environmentOut(row) } };
@@ -284,9 +285,9 @@ export const infraEnvironmentsMethods = {
           repo: updated.repo,
           environment: updated.name,
           environmentId: updated.id,
-          by: 'owner',
+          ...this.pressedBy(body),
           outcome: 'changed',
-          summary: `changed by the owner: ${moved}`,
+          summary: `changed by ${personWords(this.pressedBy(body).person)}: ${moved}`,
         });
       if (next.frozen === row.frozen) return { status: 200, body: { environment: this.environmentOut(updated) } };
       // One switch with DEPLOYS_PAUSED (BRK-236): the board's freeze already holds; then the pipeline's production
@@ -303,7 +304,7 @@ export const infraEnvironmentsMethods = {
         repo: updated.repo,
         environment: updated.name,
         environmentId: updated.id,
-        by: 'owner',
+        ...this.pressedBy(body),
         outcome: frozen ? 'on' : 'off',
         ...(pause ? { summary: pauseSummary(frozen, pause) } : note ? { summary: note } : {}),
       });
@@ -329,9 +330,9 @@ export const infraEnvironmentsMethods = {
         repo: row.repo,
         environment: row.name,
         environmentId: row.id,
-        by: 'owner',
+        ...this.pressedBy(body),
         outcome: 'removed',
-        summary: 'removed by the owner',
+        summary: `removed by ${personWords(this.pressedBy(body).person)}`,
       });
       this.infraEvent('environment.removed', row, { fields: { state: 'removed' }, dedupe: `removed:${row.id}` });
       return { status: 200, body: { removed: this.environmentOut(row) } };
