@@ -71,7 +71,9 @@ export function readOf(parts, q) {
       return n === 2 ? { target: { repo: b } } : null;
     case 'features':
       if (n === 1) return list;
-      if (n === 2 || (n === 4 && c === 'digests')) return { target: { feature: b } };
+      if (n === 2) return { target: { feature: b } };
+      // A digest is free text about the whole chase: only for someone who sees every repository it spans.
+      if (n === 4 && c === 'digests') return { target: { feature: b, whole: true } };
       return null;
     case 'specs':
       return byRepo('default');

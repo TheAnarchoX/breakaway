@@ -190,6 +190,27 @@ beforeAll(async () => {
         .one().n;
       out[repo] = { env: envId, name, plan, change };
     }
+    // The road captain's log and a digest on the feature that spans both: free text that names gadgets.
+    store.sql.exec(
+      "INSERT INTO captain_logs (slug, at, agent, text, handover) VALUES (?, ?, 'claude-captain-x', ?, 0)",
+      mixed,
+      now,
+      `gadgets: ${SECRET} is blocked on the queue rewrite`,
+    );
+    out.digest = store.sql
+      .exec(
+        "INSERT INTO chase_digests (slug, at, kind, data) VALUES (?, ?, 'hourly', ?) RETURNING id",
+        mixed,
+        now,
+        JSON.stringify({
+          merged: [],
+          waiting: [],
+          stuck: [],
+          summary: `${SECRET} in gadgets`,
+          note: `${SECRET} in gadgets`,
+        }),
+      )
+      .one().id;
     out.image = store.sql
       .exec(
         "INSERT INTO attachments (task, name, type, size, alt, added_at, data) VALUES (?, 'a.png', 'image/png', 1, '', ?, ?) RETURNING id",
@@ -304,7 +325,7 @@ function reads() {
     ok('/api/features'),
     ok(`/api/features/${w.mixed}`),
     hidden(`/api/features/${w.gadOnly}`),
-    ok(`/api/features/${w.mixed}/digests/1`),
+    hidden(`/api/features/${w.mixed}/digests/${w.digest}`),
     ok('/api/routines'),
     ok('/api/specs'),
     hidden('/api/specs?repo=gadgets'),

@@ -1286,7 +1286,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     const res = await oauthApi(parts, method, body, s, url.origin);
     if (res) return res;
   }
-  if (parts[0] === 'pings' && parts.length === 1 && method === 'GET') return send(await s.pingsApi());
+  if (parts[0] === 'pings' && parts.length === 1 && method === 'GET') return send(await s.pingsApi(reader));
   // Architect's audit trail (BRK-175): read only, for the token and the cookie alike; the control plane appends inside
   // the store, and nothing changes or removes an entry.
   if (parts[0] === 'infra' && parts[1] === 'audit' && parts.length === 2) {

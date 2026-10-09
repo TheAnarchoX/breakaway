@@ -273,7 +273,7 @@ export const permissionsMethods = {
       const target = read.target;
       const touched = this.targetRepos(target);
       // A feature or a chase's peloton spans repositories: a person reads the parts in theirs.
-      const spans = 'feature' in target || ('peloton' in target && touched.length !== 1);
+      const spans = ('feature' in target && !target.whole) || ('peloton' in target && touched.length !== 1);
       const ok = spans ? touched.some(readable) : touched.every(readable);
       if (!ok) throw new AgentError(notThere(target), 404);
       return answer;

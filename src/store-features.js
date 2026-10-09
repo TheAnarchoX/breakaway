@@ -484,7 +484,11 @@ export const featuresMethods = {
   featureMembership(seen = null) {
     const rows = this.featureRows();
     const slugs = new Set(rows.map((r) => r.slug));
-    const views = this.views((t) => t.status !== 'deleted' && (!seen || seen(t)));
+    const every = this.views((t) => t.status !== 'deleted');
+    // The features with a task `seen` hides (BRK-323): their chase's free text (the captain's log, its digests) stays
+    // out, since nothing can take another repository's words out of it.
+    const partial = new Set(seen ? every.filter((t) => !seen(t)).flatMap((t) => t.tags) : []);
+    const views = seen ? every.filter(seen) : every;
     const names = new Map(views.map((t) => [t.uuid, label(t)]));
     const members = new Map(rows.map((r) => [r.slug, []]));
     const conflicts = [];
@@ -498,7 +502,7 @@ export const featuresMethods = {
       members.get(mine[0]).push({ task: t, alsoIn: mine.slice(1) });
       if (mine.length > 1) conflicts.push({ wid: label(t), features: mine });
     }
-    return { rows, views, names, members, conflicts, loose };
+    return { rows, views, names, members, conflicts, loose, partial };
   },
 
   /** A feature with its progress; `full` adds its tasks in dependency order. */
@@ -553,6 +557,7 @@ export const featuresMethods = {
       chase: this.chaseState(
         row,
         row.chase === 'on' ? this.chaseReview(row, this.chaseMembers(row, membership.views)) : null,
+        membership.partial?.has(row.slug) ?? false,
       ),
       conflicts: conflicts.filter((c) => c.features.includes(row.slug)),
       ...(full ? { tasks: ordered.map(brief) } : {}),
