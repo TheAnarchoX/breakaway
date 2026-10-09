@@ -287,6 +287,7 @@ describe('the MCP endpoint (BRK-154)', () => {
         'health',
         'list_tasks',
         'show_task',
+        'footprint',
         'next_task',
         'claim_task',
         'release_task',
@@ -409,6 +410,13 @@ describe('the MCP endpoint (BRK-154)', () => {
       const missing = await call('show_task', { task: 'OPS-999' });
       expect(missing.isError).toBe(true);
       expect(text(missing)).toMatch(/no task/u);
+    });
+
+    it('footprint: what a task touches, in the CLI’s words (IDEA-55 section 5)', async () => {
+      const result = await call('footprint', { task: mine.wid });
+      expect(result.structuredContent.footprint).toMatchObject({ task: mine.wid, kind: expect.any(String) });
+      expect(text(result)).toMatch(/Footprint \(/u);
+      expect((await call('footprint', { task: 'OPS-999' })).isError).toBe(true);
     });
 
     it('peloton: the pelotons the agent rides, once it checks in', async () => {

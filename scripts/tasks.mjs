@@ -42,6 +42,7 @@ import {
 import { looksLikeSecret } from '../src/ping.js';
 import { sessionReport, shortHash, stubText } from '../src/session-report.js';
 import { promptPathOf } from '../src/repos.js';
+import { claimLines, footprintLines } from '../src/footprint-text.js';
 import { hookFailure, sessionProxy, routeThroughSessionProxy } from './tasks/proxy.js';
 import { githubFromRemote, inRepo, pickRepo } from './tasks/repo.js';
 import { appInPlace } from './tasks/github-connect.js';
@@ -332,7 +333,15 @@ Working
   peloton                who else is working (in your repository, and your chase's), the chase's plan and open
                          huddle, and what they posted since you last read: new posts are starred  [--all] every post
   peloton checkin <text> say you're here and what you'll change, the files or areas you'll touch, before your first
-                         change (you must hold a task); posts on your repository's peloton and your chase's too
+                         change (you must hold a task); posts on your repository's peloton and your chase's too,
+                         and claims the paths it names  [--files <pattern,…>] claims these instead
+  paths <ref>            what a task touches: predicted, claimed (and when each claim runs out), changed, or in its
+                         pull request, and the shared files left out
+  paths <ref> --claim <pattern>…   claim a file, a folder/, or a glob (src/**, test/*.test.js) for the task you
+                         hold before you change it; one another task claims is refused, with who holds it. Claims
+                         run out 10 minutes after your session goes quiet, and after 4 hours
+  paths <ref> --release [<pattern>…]   give your claims back (all of them without patterns); the owner, with no
+                         agent name, releases anyone's
   peloton step|note|ask|propose|review <text>   say what you did, talk, ask, propose a change to the plan or the
                          tasks, or ask for a look at your approach; posts on your chase's peloton if your task is in
                          one, else your repository's  [--peloton <name>] picks one
@@ -530,6 +539,7 @@ const REPEATABLE = new Set([
   'unrelated',
   'area',
   'remove-area',
+  'files',
 ]);
 const FLAGS = new Set([
   'json',
@@ -559,6 +569,8 @@ const FLAGS = new Set([
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline', 'copies']);
+/** Flags only in paths (IDEA-55): the patterns follow the task, and --release takes a version elsewhere. */
+const PATHS_FLAGS = new Set(['claim', 'release']);
 
 function parse(argv) {
   const positional = [];
@@ -571,7 +583,11 @@ function parse(argv) {
       continue;
     }
     const [name, inline] = arg.slice(2).split(/=(.*)/su);
-    if (FLAGS.has(name) || (INIT_FLAGS.has(name) && positional[0] === 'repos' && positional[1] === 'init')) {
+    if (
+      FLAGS.has(name) ||
+      (INIT_FLAGS.has(name) && positional[0] === 'repos' && positional[1] === 'init') ||
+      (PATHS_FLAGS.has(name) && positional[0] === 'paths')
+    ) {
       opts[name] = true;
       continue;
     }
@@ -1103,8 +1119,46 @@ const commands = {
     );
   },
   async show() {
-    const { task } = await call('GET', `tasks/${enc(need(args[0], 'task'))}`);
-    print(task, detail);
+    const ref = enc(need(args[0], 'task'));
+    const { task } = await call('GET', `tasks/${ref}`);
+    // Its footprint (IDEA-55 section 5), where the board has them; an older board just leaves the section out.
+    const fp = opts.json ? null : await call('GET', `tasks/${ref}/footprint`, undefined, { soft: true });
+    print(task, (t) => [detail(t), ...(fp?.footprint ? ['', ...footprintLines(fp.footprint)] : [])].join('\n'));
+  },
+  /**
+   * A task's footprint and its path claims (IDEA-55 section 1a): with no flag, what it touches; --claim <patterns> for
+   * the task you hold (a refused one exits non-zero, saying who holds it); --release [<patterns>] gives yours back, or
+   * any as the owner (no agent name), and every one without patterns.
+   */
+  async paths() {
+    const ref = enc(need(args[0], 'task'));
+    const patterns = args
+      .slice(1)
+      .flatMap((p) => p.split(','))
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (opts.claim && opts.release) fail('claim or release, not both at once');
+    if (!opts.claim && !opts.release) {
+      const { footprint } = await call('GET', `tasks/${ref}/footprint`);
+      return print(footprint, (fp) => footprintLines(fp).join('\n'));
+    }
+    if (opts.claim && !patterns.length)
+      fail('say which paths: npx breakaway paths <task> --claim <file, folder/, or glob> …');
+    const name = opts.as ?? setting('AGENT', null);
+    const res = await call(
+      'POST',
+      `tasks/${ref}/paths`,
+      opts.claim
+        ? { agent: agent(), claim: patterns }
+        : { ...(name ? { agent: name } : {}), release: patterns.length ? patterns : true },
+      { raw: true },
+    );
+    if (!res.ok && res.status !== 409) {
+      if (opts.json) console.log(JSON.stringify({ status: res.status, ...res.data }, null, 2));
+      fail(res.data.error ?? `HTTP ${res.status}`);
+    }
+    print(res.data, (d) => claimLines(d).join('\n'));
+    if (res.status === 409) process.exit(1);
   },
   /**
    * Every task on the board, in every repository, status, and horizon, as the board's JSON, checked against the
@@ -1924,6 +1978,7 @@ const commands = {
     const to = pickPeloton(views, { ...post, chosen: opts.peloton, agent: me });
     if ('error' in to) return fail(to.error);
     const posted = [];
+    let claims = null;
     let after = views;
     for (const peloton of to.pelotons) {
       const out = await call('POST', `peloton/${enc(peloton)}`, {
@@ -1931,13 +1986,20 @@ const commands = {
         kind: post.kind,
         text: post.text,
         ...(post.kind === 'reply' ? { reply_to: post.replyTo } : {}),
+        // A check-in claims --files, or the paths its text names (IDEA-55 section 1a).
+        ...(post.kind === 'checkin' && opts.files?.length ? { files: opts.files } : {}),
       });
       posted.push(out.post);
+      if (out.paths) claims = out.paths;
       after = mergeViews(after, out.peloton);
     }
     const where = posted.map((p) => `#${p.id} on ${p.peloton}`).join(' and ');
-    print({ post: posted[0], posts: posted, pelotons: after }, () =>
-      [`Posted ${where}.`, pelotonLines(after, { agent: me, all: opts.all })].join('\n\n'),
+    print({ post: posted[0], posts: posted, pelotons: after, ...(claims ? { paths: claims } : {}) }, () =>
+      [
+        `Posted ${where}.`,
+        ...(claims ? [claimLines(claims).join('\n')] : []),
+        pelotonLines(after, { agent: me, all: opts.all }),
+      ].join('\n\n'),
     );
   },
   async idea() {

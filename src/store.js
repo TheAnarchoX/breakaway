@@ -43,6 +43,7 @@ import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
 import { messagesMethods } from './store-messages.js';
 import { pelotonMethods } from './store-peloton.js';
+import { footprintsMethods } from './store-footprints.js';
 import { specsMethods } from './store-specs.js';
 import { pipelineMethods } from './store-pipeline.js';
 import { statsMethods } from './store-stats.js';
@@ -145,6 +146,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initPush();
     this.initMessages();
     this.initPeloton();
+    this.initFootprints();
     this.initStats();
     this.initRepos();
     this.initConnections();
@@ -623,6 +625,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const before = this.tasks.get(uuid);
     const after = withChanges(before, changes, now);
     this.commit(diffOps(uuid, before, after, now.toISOString()), source);
+    // A task's path claims end with its task claim (IDEA-55 section 1a), even when it's claimed again at once.
+    if ('claim' in changes || 'status' in changes) this.endPathClaimsOf(uuid, now.getTime());
     return this.detail(uuid);
   }
 
@@ -1615,6 +1619,7 @@ Object.assign(
   pushMethods,
   messagesMethods,
   pelotonMethods,
+  footprintsMethods,
   specsMethods,
   pipelineMethods,
   statsMethods,
@@ -1902,11 +1907,20 @@ const apiActions = {
       if (agent && (map?.status !== 'pending' || map.claim !== agent))
         return ok({ added: 0, messages: [], peloton: [], released: true });
       const added = this.appendSessionLog(uuid, body ?? {});
+      // Every post is a heartbeat that keeps the task's path claims (IDEA-55 section 1a), and may carry its dirty paths.
+      if (agent) this.heartbeat(uuid, agent);
+      const footprint = agent && Array.isArray(body?.dirty) ? this.reportDirty(uuid, agent, body.dirty) : undefined;
       // `messages: false` is a post that can't hand them on (a Stop hook): they stay waiting, and so do peloton posts.
-      if (body?.messages === false) return ok({ added, messages: [], peloton: [] }, 201);
+      if (body?.messages === false) return ok({ added, messages: [], peloton: [], footprint }, 201);
       const peloton = this.takePeloton(agent);
       return ok(
-        { added, messages: this.takeMessages(uuid, body?.agent), peloton: peloton.posts, pelotonMore: peloton.more },
+        {
+          added,
+          messages: this.takeMessages(uuid, body?.agent),
+          peloton: peloton.posts,
+          pelotonMore: peloton.more,
+          footprint,
+        },
         201,
       );
     });
@@ -1930,7 +1944,10 @@ const apiActions = {
     return this.run(() => {
       const uuid = this.resolve(ref);
       const name = String(agent ?? '').trim();
-      const peloton = this.holdsTask(name, uuid) ? this.takePeloton(name, { urgent: true }) : { posts: [], more: 0 };
+      const holds = this.holdsTask(name, uuid);
+      // The wait hook's poll is a heartbeat too: a waiting session keeps its path claims, up to their ceiling.
+      if (holds) this.heartbeat(uuid, name);
+      const peloton = holds ? this.takePeloton(name, { urgent: true }) : { posts: [], more: 0 };
       return ok({
         messages: this.takeMessages(uuid, agent, { poll: true }),
         peloton: peloton.posts,

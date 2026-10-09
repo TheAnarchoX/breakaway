@@ -2224,6 +2224,12 @@ export const agentsMethods = {
     } catch (error) {
       errors.push(error.message); /* the cron syncs it anyway */
     }
+    // Path claims (IDEA-55 section 1a): the ones that ran out or whose task claim ended, then a day's pruning.
+    try {
+      this.footprintsSweep();
+    } catch (error) {
+      errors.push(error.message); /* reads check claims as they go; the next tick sweeps */
+    }
     // Before the prune: agent runs and GitHub's rows live on in the dashboard's log (store-stats.js).
     this.archiveStats();
     this.pruneAgentLogs();
