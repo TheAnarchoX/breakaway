@@ -96,7 +96,8 @@ export const personClaudeMethods = {
   },
 
   /** A person's runs: running now and started in the last hour, on their own routines or on lent ones. */
-  personRunCounts(handle, running = this.runningAgents(this.views())) {
+  personRunCounts(handle, running = null) {
+    const live = running ?? this.runningAgents(this.views());
     const since = Date.now() - 3_600_000;
     const counted = "for_person = ? AND started > ? AND status IN ('started', 'starting', 'failed')";
     const own = this.sql
@@ -105,7 +106,7 @@ export const personClaudeMethods = {
     const lent = this.sql
       .exec(`SELECT COUNT(*) AS n FROM agent_runs WHERE ${counted} AND routine_of = ?`, handle, since, OWNER)
       .one().n;
-    const mine = running.filter(({ run }) => run.for_person === handle);
+    const mine = live.filter(({ run }) => run.for_person === handle);
     return {
       own: { running: mine.filter(({ run }) => run.routine_of === handle).length, started: own },
       lent: { running: mine.filter(({ run }) => run.routine_of === OWNER).length, started: lent },
@@ -252,9 +253,8 @@ export const personClaudeMethods = {
       const sealed = await sealJson(await this.keptRoutineKey(), boundOf(handle, repo.slug), checked);
       const now = Date.now();
       const replaced =
-        this.sql
-          .exec('SELECT 1 FROM person_routines WHERE handle = ? AND repo = ?', handle, repo.slug)
-          .toArray().length > 0;
+        this.sql.exec('SELECT 1 FROM person_routines WHERE handle = ? AND repo = ?', handle, repo.slug).toArray()
+          .length > 0;
       this.writable();
       this.sql.exec(
         'INSERT INTO person_routines (handle, repo, sealed, created, edited) VALUES (?, ?, ?, ?, ?) ON CONFLICT (handle, repo) DO UPDATE SET sealed = excluded.sealed, edited = excluded.edited',

@@ -700,6 +700,17 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
       if (no) return no;
       return send(await s.boardFilesApi(parts[1], { by: body.by, actor, origin: install(env).url ?? url.origin }));
     }
+    // Lend the repository's routine to people with none of their own (BRK-302): the owner's press, like connecting it.
+    if (
+      parts.length === 4 &&
+      parts[2] === 'routine' &&
+      parts[3] === 'lend' &&
+      (method === 'PUT' || method === 'DELETE')
+    ) {
+      const no = await gate('repo.routine', { install: true }, 'only the signed-in web board can lend a routine');
+      if (no) return no;
+      return send(await s.repoRoutineLendApi(parts[1], method === 'PUT', body));
+    }
     // Connect a routine from the board (BRK-133): the owner's form, the signed-in browser only, never the bearer token.
     if (parts.length === 3 && parts[2] === 'routine' && (method === 'PUT' || method === 'DELETE')) {
       const no = await gate('repo.routine', { install: true }, 'only the signed-in web board can connect a routine');
