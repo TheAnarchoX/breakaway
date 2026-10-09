@@ -209,6 +209,8 @@ In Claude Code with [the plugin](#claude-code-the-plugin), `/breakaway:claim <ID
 
 An owner part left after the agent part (for example "deploy, then check X") becomes its own `+owner` task, so the agent's task can be done.
 
+**Adding a task that's already there.** Before it adds a task, the board looks for open tasks in the same repository whose title says much the same, or that name the same files in their title or description. If it finds any, the add is refused with their work IDs and who has them: comment on that task instead, or add it again with `--related <IDs>` to link them, or `--force` if they're different work (on the MCP server, `related` or `add_anyway`). The web's **New task** shows them under the title as you type, with **Link them as related**, and asks once more before it adds the task anyway. Ideas and routine runs are never compared, and Taskwarrior's `task add` isn't checked.
+
 ## Commands
 
 `npx breakaway help` lists everything.

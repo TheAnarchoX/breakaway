@@ -321,6 +321,7 @@ Working
     --brief <text> | --brief-file <path>   the description (--note is the same)
     --done-when <text>   what has to be true to call it done
     --decision <file.json>   questions for the owner to answer on the board (adds +decide); see decision --template
+    --force              add it even though it resembles open tasks the board named (--related links them instead)
   decision <ref> --template   print an example decision file to edit (nothing here answers a decision: the owner does, on the board)
   ping <ref> <message>   tell the owner you need them, in the inbox and as a push (you must hold the task; only when they must act)
     --kind blocked|question|stale|done|fyi   blocked: needs the owner; question: a small question; stale: can't reproduce or already fine; done: looks finished; fyi: inbox only
@@ -1825,7 +1826,24 @@ const commands = {
     delete body.addDepends;
     delete body.addRelated;
     delete body.removeRelated;
-    const { tasks } = await call('POST', 'tasks', body);
+    if (opts.force) body.force = true;
+    const res = await call('POST', 'tasks', body, { raw: true });
+    // An open task it resembles comes back as a list (BRK-283): say which, and the two ways on.
+    if (res.status === 409 && Array.isArray(res.data.similar)) {
+      if (opts.json) console.log(JSON.stringify({ status: 409, ...res.data }, null, 2));
+      const lines = res.data.similar.map(
+        (t) => `  ${t.wid ?? t.short} ${t.description}${t.claim ? ` (claimed by ${t.claim})` : ''}`,
+      );
+      const ids = res.data.similar.map((t) => t.wid ?? t.short).join(',');
+      fail(
+        `not added: it resembles open tasks\n${lines.join('\n')}\nIf it's one of them, comment there instead. Otherwise add it again with --related ${ids} to link them, or --force if they're unrelated.`,
+      );
+    }
+    if (!res.ok) {
+      if (opts.json) console.log(JSON.stringify({ status: res.status, ...res.data }, null, 2));
+      fail(res.data.error ?? `HTTP ${res.status}`);
+    }
+    const { tasks } = res.data;
     print(tasks[0], (t) => `Added ${ref(t)}: ${t.description}`);
   },
   async decision() {

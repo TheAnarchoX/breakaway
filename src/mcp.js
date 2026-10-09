@@ -922,7 +922,7 @@ const WRITERS = [
     name: 'add_task',
     title: 'Add a task',
     description:
-      'A new task in this repository, for work you found instead of doing it too. Fill it in: an area, a horizon, agent or owner as a tag, what and why, done when, and depends for what it waits on. Ask the owner a question with decision.',
+      'A new task in this repository, for work you found instead of doing it too. Fill it in: an area, a horizon, agent or owner as a tag, what and why, done when, and depends for what it waits on. Ask the owner a question with decision. If it resembles an open task the board refuses it and names them: link them with related, or add_anyway once you checked it isn’t one of them.',
     inputSchema: input(
       {
         title: { type: 'string', description: 'What the work is, in a plain sentence', maxLength: 200 },
@@ -934,6 +934,12 @@ const WRITERS = [
         horizon: { type: 'string', enum: ['now', 'next', 'later'], description: 'When it should happen' },
         tags: TAGS('Tags, like agent, owner, or decide, and a feature’s slug; never a horizon-* tag'),
         depends: REFS('Tasks it waits for, by work ID'),
+        related: REFS('Tasks to link as related: a similar open task you add it next to'),
+        add_anyway: {
+          type: 'boolean',
+          description:
+            'Add it even though it resembles open tasks the board named; only once you checked it isn’t one of them',
+        },
         brief: { type: 'string', description: 'What and why', maxLength: TEXT_MAX },
         done_when: { type: 'string', description: 'What has to be true to call it done', maxLength: TEXT_MAX },
         spec: { type: 'string', description: 'Its spec’s path, like docs/specs/BRK-7-sort.md', maxLength: 300 },
@@ -958,10 +964,17 @@ const WRITERS = [
         by: me,
         ...(args.tags ? { tags: args.tags } : {}),
         ...(args.depends ? { depends: args.depends } : {}),
+        ...(args.related ? { related: args.related } : {}),
+        ...(args.add_anyway === true ? { force: true } : {}),
       };
       for (const key of ['project', 'horizon', 'brief', 'done_when', 'spec', 'decision'])
         if (args[key] !== undefined && args[key] !== null) item[key] = args[key];
-      const { tasks } = body(await ctx.store.create([item]));
+      const made = await ctx.store.create([item], { similar: true });
+      if (made.body?.similar)
+        throw new ToolError(
+          `${made.body.error}: with related, or with add_anyway once you checked it isn’t one of them.`,
+        );
+      const { tasks } = body(made);
       const [task] = tasks;
       return { text: `Added ${idOf(task)}: ${task.description}`, data: { task } };
     },

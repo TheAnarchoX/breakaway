@@ -7,8 +7,11 @@ import { api } from './helpers.js';
 // kept with its agent and before and after, and the owner undoes one with a press.
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const make = async (fields = {}) =>
-  (await body(await api('tasks', { method: 'POST', body: [{ description: 'A task', project: 'ops', ...fields }] })))
-    .tasks[0];
+  (
+    await body(
+      await api('tasks', { method: 'POST', body: [{ description: 'A task', project: 'ops', force: true, ...fields }] }),
+    )
+  ).tasks[0];
 const edit = async (ref, changes) => body(await api(`tasks/${ref}`, { method: 'PATCH', body: changes }));
 const task = async (ref) => (await body(await api(`tasks/${ref}`))).task;
 const feature = async (slug) => (await body(await api(`features/${slug}`))).feature;

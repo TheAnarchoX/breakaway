@@ -95,6 +95,7 @@ async function runningAgent(agent, { minutes = 20, repo = null } = {}) {
   const body = {
     description: `What ${agent} works on`,
     project: repo ? 'product' : 'cloud',
+    force: true,
     ...(repo ? { repo } : {}),
   };
   const { uuid } = (await (await api('tasks', { method: 'POST', body })).json()).tasks[0];

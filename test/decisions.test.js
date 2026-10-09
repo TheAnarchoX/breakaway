@@ -172,7 +172,7 @@ describe('a decision through the API', () => {
       await json(
         await api('tasks', {
           method: 'POST',
-          body: { description: 'Decide something', project: 'ops', decision: QUESTIONS, ...extra },
+          body: { description: 'Decide something', project: 'ops', decision: QUESTIONS, force: true, ...extra },
         }),
       )
     ).tasks[0];

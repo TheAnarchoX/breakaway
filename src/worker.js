@@ -1144,7 +1144,8 @@ async function handleApi(request, env, url, ctx) {
       if (method === 'GET') return send(await s.list(url.searchParams.get('status') ?? 'pending'));
       if (method === 'POST') {
         const items = Array.isArray(body) ? body : Array.isArray(body.tasks) ? body.tasks : [body];
-        return send(await s.create(items));
+        // Anyone adding a task first hears of the open ones it resembles (BRK-283); `force` on an item adds it anyway.
+        return send(await s.create(items, { similar: true }));
       }
     } else if (!action) {
       if (method === 'GET') return send(await s.get(ref));
