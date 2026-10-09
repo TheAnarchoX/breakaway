@@ -16,6 +16,7 @@
  */
 import { prVerdict } from './github.js';
 import { AgentError } from './store-agents.js';
+import { NO_FILES } from './store-collision.js';
 import { InputError, rank } from './model.js';
 import { looksLikeSecret } from './ping.js';
 
@@ -261,8 +262,9 @@ export const chaseMethods = {
    * their blockers, sorted into done, in review, running, waiting, Needs you, Stuck, and the queue. `views`
    * and `connected` are the board's now. The queue counts what auto-start starts first (security fixes,
    * general agents, and Start-when-ready tasks), then keeps to the shared slots and budget, each repository's
-   * caps, `parallel` agents per area (counting every agent running there), and never two agents on related
-   * tasks in one area. At its review cap (chaseReview) it starts only fixes.
+   * caps, `parallel` agents per area (counting every agent that changes code there), and collision (IDEA-55 section
+   * 3): a task waits when its footprint overlaps what runs beside it, or, when either footprint is unknown, when
+   * it's related to a task an agent works on in its area. At its review cap (chaseReview) it starts only fixes.
    */
   /** The chase's tasks, as `{ t, blocks, member }`: the feature's own, then what blocks them (its peloton's too). */
   chaseMembers(row, views) {
@@ -292,12 +294,17 @@ export const chaseMethods = {
       .filter((q) => q.ready)
       .map((q) => byUuid.get(q.uuid))
       .filter(Boolean);
+    // What runs beside the chase's starts (IDEA-55 section 3): every agent running, its open pull requests nobody runs,
+    // and what auto-start and the chase start this tick. Refine and review agents change no code: they don't count.
+    const book = this.footprintBook();
+    const beside = [
+      ...this.besideNow(views, runningList),
+      ...ahead.map((t) => ({ task: t, agent: null, kind: 'build', starting: true })),
+    ];
     const inArea = new Map();
-    const workingIn = new Map();
-    for (const t of [...runningList.map(({ task }) => task), ...ahead]) {
-      if (!t.project) continue;
-      inArea.set(areaOf(t), (inArea.get(areaOf(t)) ?? 0) + 1);
-      workingIn.set(areaOf(t), [...(workingIn.get(areaOf(t)) ?? []), t]);
+    for (const b of beside) {
+      if (b.review || NO_FILES.has(b.kind) || !b.task.project) continue;
+      inArea.set(areaOf(b.task), (inArea.get(areaOf(b.task)) ?? 0) + 1);
     }
     let free = max - runningList.length - ahead.length;
     let budget = hourly - this.startsThisHour() - ahead.length;
@@ -404,10 +411,9 @@ export const chaseMethods = {
     for (const { t, item, fix } of candidates) {
       let reason = null;
       let capacity = true;
+      let hit = null;
       const area = areaOf(t);
       const name = this.areaName(t.repo, t.project);
-      const near = t.project ? (workingIn.get(area) ?? []) : [];
-      const related = near.find((o) => o.uuid !== t.uuid && (t.related.includes(o.uuid) || o.related.includes(t.uuid)));
       const hold = connected ? this.routineHold(t.repo) : null;
       if (autoNow.has(t.uuid)) reason = 'auto-start starts it now';
       else if (hold) reason = this.holdReason(t.repo, hold);
@@ -415,8 +421,11 @@ export const chaseMethods = {
         // Only the owner frees it, so it isn't capacity: a chase held only by its cap pings like any stall.
         reason = `${review.waiting} of the chase’s pull requests wait for you, the most it lets wait: it starts more as you merge or close them`;
         capacity = false;
-      } else if (related)
-        reason = `it’s related to ${label(related)}, which an agent is working on in ${name}: never two at once`;
+      } else if ((hit = this.collision(t, beside, { chase: true, book })))
+        reason =
+          hit.why === 'files'
+            ? hit.reason
+            : `it’s related to ${hit.task}, which an agent is working on in ${name}: never two at once`;
       else if (t.project && (inArea.get(area) ?? 0) >= parallel)
         reason = `${agents(inArea.get(area))} already working in ${name}, the most this chase allows`;
       else if (free <= 0) reason = `no free slot (${runningList.length} of ${max} running)`;
@@ -427,13 +436,17 @@ export const chaseMethods = {
         free -= 1;
         budget -= 1;
         room.set(t.repo, roomOf(t.repo) - 1);
-        if (t.project) {
-          inArea.set(area, (inArea.get(area) ?? 0) + 1);
-          workingIn.set(area, [...near, t]);
-        }
+        if (t.project) inArea.set(area, (inArea.get(area) ?? 0) + 1);
+        beside.push({ task: t, agent: null, kind: fix ? 'fix-pr' : 'build', starting: true });
         start.push(fix ? { ...t, fix: item.fix } : t);
       }
-      queue.push({ ...item, ready: !reason, reason: reason ?? 'starting now', capacity: capacity && Boolean(reason) });
+      queue.push({
+        ...item,
+        ready: !reason,
+        reason: reason ?? 'starting now',
+        capacity: capacity && Boolean(reason),
+        ...(hit?.why === 'files' ? { footprint: { task: hit.task, agent: hit.agent, path: hit.path } } : {}),
+      });
       tasks.push({ ...item, state: 'ready', why: reason });
     }
 

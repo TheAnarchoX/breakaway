@@ -8,6 +8,7 @@ import { secret } from './secrets.js';
 import { shortHash } from './session-report.js';
 import { refinePrompt } from './decision.js';
 import { isKickoffIdea } from './kickoff.js';
+import { NO_FILES } from './store-collision.js';
 import { FAILED_CHECK, prVerdict } from './github.js';
 import { holdsTask, runState } from './run-state.js';
 import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
@@ -23,6 +24,8 @@ const RUNNING_HOURS = 12; // after this, a claimed task no longer counts as a ru
 const LIVE_MS = 120_000; // output within the last 2 minutes: the session is live
 const STARTING_MS = 600_000; // a session the board started and that hasn't said anything yet is still starting for 10 minutes
 const SILENT_MS = 30 * 60_000; // nothing from a started session for 30 minutes: it's Silent, and the owner hears once (BRK-145)
+/** Agents per area, the default: what auto-start and agents next run in one area when footprints keep them apart. */
+const DEFAULT_PER_AREA = 3;
 const FIX_TRIES = 2; // fix agents on one pull request that didn't get it green before a third is Needs you (BRK-145)
 /** The problems Fix with an agent mends, in the words a ping uses. */
 const FIX_WORDS = {
@@ -50,13 +53,20 @@ export class AgentError extends Error {
   /**
    * `forceable`: only the board's own limits refuse the start, so Force start (the owner's) could skip it.
    * `path`: the button that fits instead, for a pull request an agent can't review as it stands (`update` or `fix`).
+   * `overlap`: the owner's Start on a task whose footprint overlaps a running agent's (IDEA-55 section 3), `{ task,
+   * agent, path }`: a warning, so starting it anyway (`anyway`) goes ahead.
    * `hold`: how Claude's refusal holds the routine's next starts (BRK-144): `paused` (401, 403, 404), `limit` (429,
    * until `until`), or `backoff` (anything else Claude or the network answered, for a few minutes).
    */
-  constructor(message, status = 409, { forceable = false, path = null, hold = null, until = null } = {}) {
+  constructor(
+    message,
+    status = 409,
+    { forceable = false, path = null, hold = null, until = null, overlap = null } = {},
+  ) {
     super(message);
     this.status = status;
     this.forceable = forceable;
+    this.overlap = overlap;
     this.path = path;
     this.hold = hold;
     this.until = until;
@@ -848,6 +858,9 @@ export const agentsMethods = {
       max: Math.min(max, agents.most),
       hourly: Number(this.meta('agents_hourly') ?? Math.min(hourly.default, hourlyCeiling(this.repos().length))),
       autostart: this.meta('agents_autostart') !== 'off',
+      // Agents per area (IDEA-55 section 3): the most auto-start and agents next run in one area of a repository when
+      // footprints keep them apart. 1 is the old rule, one per area.
+      perArea: Math.min(Number(this.meta('agents_per_area') ?? DEFAULT_PER_AREA), Math.min(max, agents.most)),
       // New security alerts at or above this severity become tasks that start their own agent.
       alerts: this.meta('agents_alerts') ?? 'off',
     };
@@ -1480,7 +1493,7 @@ export const agentsMethods = {
    */
   async startAgent(
     uuid,
-    { trigger = 'manual', note = null, kind = 'build', pr = null, routine = null, force = false } = {},
+    { trigger = 'manual', note = null, kind = 'build', pr = null, routine = null, force = false, warn = false } = {},
   ) {
     await this.ready();
     if (kind === 'routine' && !routine) throw new AgentError('a routine run needs its routine', 400);
@@ -1516,6 +1529,16 @@ export const agentsMethods = {
       throw new AgentError(
         `${task?.wid ?? 'This task'} can’t ${kind === 'refine' ? 'be refined' : onPr ? 'take an agent on its pull request' : 'start an agent'}: ${blocker}`,
       );
+    // The owner's Start never refuses for a footprint (IDEA-55 section 3): it warns, and starts on a second press.
+    if (warn && (kind === 'build' || kind === 'fix-pr')) {
+      const hit = this.collision(task, this.besideNow(views, this.runningAgents(views)));
+      if (hit?.why === 'files')
+        throw new AgentError(
+          `${hit.task}${hit.agent ? ` (${hit.agent})` : ''} is changing ${hit.path}, which ${task.wid ?? 'this task'} would touch too`,
+          409,
+          { overlap: { task: hit.task, agent: hit.agent, path: hit.path } },
+        );
+    }
     const hold = this.routineHold(repo.slug);
     const room = this.agentRoomBlocker(repo.slug, views, { force });
     if (room) throw room;
@@ -1662,19 +1685,21 @@ export const agentsMethods = {
   },
 
   /**
-   * The best ready tasks for agents that won't collide: at most one per area of a repository, none in an
-   * area where an agent is already working, horizon `now` first, only where the repository's routine is
-   * connected, within the shared slots and budget and each repository's caps. Starts them unless `dryRun`.
+   * The best ready tasks for agents that won't collide (IDEA-55 section 3): none whose footprint overlaps an agent's
+   * running or picked this round, or, when a footprint is unknown, one per area of a repository; at most Agents per
+   * area in one area; horizon `now` first, only where the repository's routine is connected, within the shared
+   * slots and budget and each repository's caps. Starts them unless `dryRun`.
    */
   async startNext({ count = 3, horizon = null, repo = null, dryRun = false } = {}) {
     await this.ready();
     const connected = await this.connectedRepos();
     const only = repo ? this.checkRepoSlug(repo) : null;
     const views = this.views();
-    const { max, hourly } = this.agentSettings();
+    const { max, hourly, perArea } = this.agentSettings();
     const running = this.runningAgents(views);
-    const area = (t) => `${t.repo}:${t.project}`;
-    const busy = new Map(running.map(({ task }) => [area(task), task.wid]));
+    // What runs beside each pick (IDEA-55 section 3), and the picks of this round, joined as it goes.
+    const book = this.footprintBook();
+    const beside = this.besideNow(views, running);
     const room = Math.max(0, Math.min(Number(count) || 0, max - running.length, hourly - this.startsThisHour()));
     const repoRoom = new Map();
     const candidates = views
@@ -1689,16 +1714,24 @@ export const agentsMethods = {
       .sort(rank);
     const picked = [];
     const skipped = [];
-    const taken = new Set();
     for (const t of candidates) {
       const brief = { uuid: t.uuid, wid: t.wid, description: t.description, project: t.project, repo: t.repo };
       const name = this.areaName(t.repo, t.project);
       if (!repoRoom.has(t.repo)) repoRoom.set(t.repo, this.repoRoom(t.repo, running));
+      const hit = connected.has(t.repo) ? this.collision(t, beside, { book }) : null;
+      const inArea = this.inAreaBeside(t, beside);
       if (!connected.has(t.repo)) skipped.push({ ...brief, reason: `${t.repo}’s agent routine isn’t connected` });
-      else if (busy.has(area(t)))
-        skipped.push({ ...brief, reason: `an agent is already working in ${name} (${busy.get(area(t))})` });
-      else if (taken.has(area(t)))
-        skipped.push({ ...brief, reason: `one ${name} task at a time, to keep agents out of each other’s files` });
+      else if (hit?.why === 'files')
+        skipped.push({ ...brief, reason: hit.reason, footprint: { task: hit.task, agent: hit.agent, path: hit.path } });
+      else if (hit)
+        skipped.push({
+          ...brief,
+          reason: hit.agent
+            ? `an agent is already working in ${name} (${hit.task})`
+            : `one ${name} task at a time, to keep agents out of each other’s files`,
+        });
+      else if (!t.alert && inArea >= perArea)
+        skipped.push({ ...brief, reason: `${inArea} agents already work in ${name}, the most Agents per area allows` });
       else if (picked.length >= room)
         skipped.push({
           ...brief,
@@ -1709,7 +1742,7 @@ export const agentsMethods = {
         skipped.push({ ...brief, reason: this.repoCapBlocker(t.repo, running) ?? `${t.repo} is at its cap` });
       else {
         picked.push(brief);
-        taken.add(area(t));
+        beside.push({ task: t, agent: null, kind: 'build', starting: true });
         repoRoom.set(t.repo, repoRoom.get(t.repo) - 1);
       }
     }
@@ -1732,10 +1765,11 @@ export const agentsMethods = {
    */
   /** @this {any} */
   autostartQueue(views = this.views(), connected = null) {
-    const { max, autostart } = this.agentSettings();
+    const { max, autostart, perArea } = this.agentSettings();
     const running = this.runningAgents(views);
-    const area = (t) => `${t.repo}:${t.project}`;
-    const busy = new Map(running.map(({ task }) => [area(task), task.wid]));
+    // What runs beside each start (IDEA-55 section 3), and what this pass starts, joined as it goes.
+    const book = this.footprintBook();
+    const beside = this.besideNow(views, running);
     const repoRoom = new Map();
     let free = max - running.length;
     const queue = [];
@@ -1762,9 +1796,14 @@ export const agentsMethods = {
       // A routine Claude refused waits (BRK-144), so it doesn't fire every tick.
       const hold = !reason && connected ? this.routineHold(t.repo) : null;
       if (hold) reason = this.holdReason(t.repo, hold);
-      // A security fix doesn't wait for its area to be free.
-      if (!reason && busy.has(area(t)) && !t.alert && !general && !kickoff) {
-        reason = `an agent is already working in ${this.areaName(t.repo, t.project)} (${busy.get(area(t))})`;
+      // A security fix, a general agent, and a kickoff's run don't wait for files or for their area.
+      const hit = reason ? null : this.collision(t, beside, { book });
+      if (hit) {
+        reason = hit.reason ?? `an agent is already working in ${this.areaName(t.repo, t.project)} (${hit.task})`;
+        forceable = true;
+      }
+      if (!reason && !t.alert && !general && !kickoff && this.inAreaBeside(t, beside) >= perArea) {
+        reason = `${this.inAreaBeside(t, beside)} agents already work in ${this.areaName(t.repo, t.project)}, the most Agents per area allows`;
         forceable = true;
       }
       if (!reason && free <= 0) {
@@ -1778,7 +1817,7 @@ export const agentsMethods = {
       if (!reason) {
         free -= 1;
         repoRoom.set(t.repo, repoRoom.get(t.repo) - 1);
-        if (!general && !kickoff) busy.set(area(t), t.wid);
+        beside.push({ task: t, agent: null, kind: 'build', starting: true });
       }
       queue.push({
         uuid: t.uuid,
@@ -1792,6 +1831,7 @@ export const agentsMethods = {
         reason: reason ?? 'starting now',
         ready: !reason,
         forceable: Boolean(reason) && forceable,
+        ...(hit?.why === 'files' ? { footprint: { task: hit.task, agent: hit.agent, path: hit.path } } : {}),
       });
     }
     return queue;
@@ -2107,7 +2147,7 @@ export const agentsMethods = {
    * routines' daily cap to its defaults, and brings every cap above its ceilings down to them, so `max` and
    * `hourly` in the same request are checked against the new plan. Only the owner picks the plan (`by`).
    */
-  async updateAgentSettings({ plan, max, hourly, autostart, alerts, by }) {
+  async updateAgentSettings({ plan, max, hourly, autostart, alerts, perArea, by }) {
     await this.ready();
     if (plan !== undefined) {
       if (by !== undefined && by !== null && by !== '' && by !== 'owner')
@@ -2136,6 +2176,16 @@ export const agentsMethods = {
       this.setMeta('agents_hourly', n);
     }
     if (autostart !== undefined) this.setMeta('agents_autostart', autostart ? 'on' : 'off');
+    if (perArea !== undefined) {
+      const n = Number(perArea);
+      const most = this.agentSettings().max;
+      if (!Number.isInteger(n) || n < 1 || n > most)
+        throw new AgentError(
+          `agents per area is a number from 1 to ${most}, the agents at once (1 starts one agent per area)`,
+          400,
+        );
+      this.setMeta('agents_per_area', n);
+    }
     if (alerts !== undefined) {
       if (!['off', 'critical', 'high', 'medium', 'all'].includes(alerts))
         throw new AgentError('alerts is off, critical, high, medium, or all', 400);

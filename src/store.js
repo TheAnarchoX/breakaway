@@ -44,6 +44,7 @@ import { pushMethods } from './store-push.js';
 import { messagesMethods } from './store-messages.js';
 import { pelotonMethods } from './store-peloton.js';
 import { footprintsMethods } from './store-footprints.js';
+import { collisionMethods } from './store-collision.js';
 import { claimLapseMethods } from './store-claim-lapse.js';
 import { specsMethods } from './store-specs.js';
 import { pipelineMethods } from './store-pipeline.js';
@@ -606,6 +607,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         return fail(error.status, error.message, {
           ...(error.forceable ? { forceable: true } : {}),
           ...(error.path ? { path: error.path } : {}),
+          ...(error.overlap ? { overlap: error.overlap, anyway: true } : {}),
         });
       if (error instanceof NotFound) return fail(404, error.message);
       if (error instanceof InputError || error instanceof RefError || error instanceof DecisionError)
@@ -1626,6 +1628,7 @@ Object.assign(
   messagesMethods,
   pelotonMethods,
   footprintsMethods,
+  collisionMethods,
   claimLapseMethods,
   specsMethods,
   pipelineMethods,
@@ -1708,7 +1711,7 @@ const apiActions = {
       return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });
   },
-  agentsStartApi(ref, note, mode, { force = false, by } = {}) {
+  agentsStartApi(ref, note, mode, { force = false, anyway = false, by } = {}) {
     return this.run(async () => {
       if (force) ownerOnly(by, 'force start an agent');
       if (mode && !['build', 'refine', 'routine', 'general'].includes(mode))
@@ -1732,6 +1735,8 @@ const apiActions = {
           kind: routine ? 'routine' : (mode ?? 'build'),
           routine,
           force: Boolean(force),
+          // The owner's Start warns about a footprint's overlap; pressing again (`anyway`) starts it.
+          warn: !anyway,
         }),
       );
     });
