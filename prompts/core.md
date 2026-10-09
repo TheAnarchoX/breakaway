@@ -203,9 +203,9 @@ If a peloton command says the board has no route for it (an install from an olde
 
 ## When GitHub or the agent provider is down
 
-When the board sees GitHub's status page report trouble, it posts once on every running chase's peloton, as the board, and posts again when GitHub works. Do the same whenever pushes, pull requests, or your own session keep failing in a way that isn't your code, posted or not:
+When the board sees GitHub's or the agent provider's status page report trouble, it posts once on every running chase's peloton, as the board, and posts again when it works; chases start no new agents meanwhile. Do the same whenever pushes, pull requests, or your own session keep failing in a way that isn't your code, posted or not:
 
-1. **Keep your work.** Commit it on your branch, and keep committing as you go. Never reset, re-clone, or delete the branch to get unstuck.
+1. **Keep your work.** Commit it on your branch, and keep committing as you go. Never reset, re-clone, or delete the branch to get unstuck. When the agent provider is down, your session may end without warning: push what you have while GitHub works, and write the handover (step 3) early rather than at the end.
 2. **Stop retrying.** Don't loop on `git push`, opening a pull request, or the GitHub tools: one try, then wait. Retrying doesn't get through sooner and can leave half-written state.
 3. **Write a handover** before you stop or before your session might end: `comment <the task> "Not pushed: <branch>, <what isn't pushed and what's left>"`. Start it with exactly `Not pushed:`, so the board can find it. Then wait (in a chase, `tasks peloton listen`), or `release` the task if you can't wait.
 4. **When it works again**, push, open the pull request, and carry on. The board's all-clear names the chase's tasks with a `Not pushed:` comment since the outage began; if you pick one up, read that comment first, and push from its branch if you can reach it, else rebuild what it says wasn't pushed.

@@ -20,9 +20,9 @@ import { commentsOf } from './model.js';
 import { GITHUB_STATUS_URL, describeOutage, readGitHubStatus } from './github-status.js';
 
 /** How often the status page is read: every cron run. */
-const STATUS_EVERY_MS = 5 * 60_000;
+export const STATUS_EVERY_MS = 5 * 60_000;
 /** A reading older than this holds nothing: the status page has gone quiet, and the board shouldn't wait on it forever. */
-const STATUS_STALE_MS = 30 * 60_000;
+export const STATUS_STALE_MS = 30 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 /**
@@ -45,11 +45,44 @@ export const OUTAGE_PLAYBOOK =
   'If you have to stop, comment on your task first: `Not pushed: <branch>, <what isn’t pushed>`, then release it or wait. ' +
   'Chases start nothing new, and Keep branches up to date and Merge when green wait.';
 
-const iso = (ms) => (ms ? new Date(Number(ms)).toISOString() : null);
+export const iso = (ms) => (ms ? new Date(Number(ms)).toISOString() : null);
 const clip = (text, n = 200) => {
   const s = String(text ?? '').trim();
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 };
+
+/**
+ * Reads a Statuspage site's summary with `read`, after the reading `last`. The outage's start carries over while it
+ * lasts; a failed read keeps the last reading and says why. Never throws. Claude's status page (BRK-315) too.
+ * @param {string} page
+ * @param {(summary: any) => any} read
+ * @param {any} last
+ * @param {number} now
+ */
+export async function readPage(page, read, last, now) {
+  try {
+    const res = await fetch(`${page}/api/v2/summary.json`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'breakaway' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`it answered ${res.status}`);
+    const reading = read(await res.json());
+    return {
+      ...reading,
+      checked: now,
+      at: now,
+      since: reading.disrupted ? (last?.disrupted && last.since ? last.since : now) : null,
+      error: null,
+    };
+  } catch (error) {
+    const next = {
+      ...(last ?? { disrupted: false, components: [], affected: [], incidents: [], at: null, since: null }),
+    };
+    next.checked = now;
+    next.error = clip(error?.message ?? error);
+    return next;
+  }
+}
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const githubStatusMethods = {
@@ -71,26 +104,7 @@ export const githubStatusMethods = {
     const last = JSON.parse(this.meta('gh_status') ?? 'null');
     const now = Date.now();
     if (!force && last && now - Number(last.checked ?? 0) < STATUS_EVERY_MS) return last;
-    let next;
-    try {
-      const res = await fetch(`${page}/api/v2/summary.json`, {
-        headers: { Accept: 'application/json', 'User-Agent': 'breakaway' },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (!res.ok) throw new Error(`it answered ${res.status}`);
-      const reading = readGitHubStatus(await res.json());
-      next = {
-        ...reading,
-        checked: now,
-        at: now,
-        since: reading.disrupted ? (last?.disrupted && last.since ? last.since : now) : null,
-        error: null,
-      };
-    } catch (error) {
-      next = { ...(last ?? { disrupted: false, components: [], affected: [], incidents: [], at: null, since: null }) };
-      next.checked = now;
-      next.error = clip(error?.message ?? error);
-    }
+    const next = await readPage(page, readGitHubStatus, last, now);
     this.setMeta('gh_status', JSON.stringify(next));
     // Once the page says GitHub is working, the owner's override has done its job.
     if (!next.error && !next.disrupted) this.setMeta('gh_status_override', null);
@@ -107,37 +121,51 @@ export const githubStatusMethods = {
    */
   outageNotice() {
     try {
-      this.loadTasks();
-      const told = JSON.parse(this.meta('gh_outage_told') ?? 'null');
-      const outage = this.githubOutage();
-      if (outage) {
-        const chases = this.chasing() ? this.openChases() : [];
-        const fresh = chases.filter(({ row }) => !told?.chases?.includes(row.slug));
-        if (!fresh.length && told) return;
-        for (const { row } of fresh)
-          this.pelotonLine(row.slug, 'outage', `GitHub is down (${describeOutage(outage)}). ${OUTAGE_PLAYBOOK}`);
-        const since = Number(told?.since ?? outage.since ?? Date.now());
-        const slugs = [...(told?.chases ?? []), ...fresh.map(({ row }) => row.slug)];
-        this.setMeta('gh_outage_told', JSON.stringify({ since, chases: slugs }));
-        return;
-      }
-      if (!told) return;
       const s = JSON.parse(this.meta('gh_status') ?? 'null');
-      if (!this.githubOverride() && (s?.error || s?.disrupted)) return;
-      this.setMeta('gh_outage_told', null);
-      if (!this.chasing()) return;
-      for (const { row, tasks } of this.openChases()) {
-        const left = [...tasks]
-          .filter((uuid) => this.tasks.get(uuid)?.status === 'pending' && this.notPushedSince(uuid, told.since))
-          .map((uuid) => this.tasks.get(uuid).wid ?? uuid.slice(0, 8))
-          .sort();
-        const which = left.length
-          ? ` Work that wasn’t pushed: ${left.join(', ')}. Whoever picks one up, read its Not pushed comment first.`
-          : '';
-        this.pelotonLine(row.slug, 'clear', `GitHub works again: pushing is safe, and the chase carries on.${which}`);
-      }
+      this.tellChases({
+        key: 'gh_outage_told',
+        outage: this.githubOutage(),
+        over: Boolean(this.githubOverride()) || !(s?.error || s?.disrupted),
+        down: (outage) => `GitHub is down (${describeOutage(outage)}). ${OUTAGE_PLAYBOOK}`,
+        clear: 'GitHub works again: pushing is safe, and the chase carries on.',
+      });
     } catch (error) {
       console.error('the outage notice failed', error);
+    }
+  },
+
+  /**
+   * Posts an outage's playbook and its all-clear on the running chases' pelotons, for GitHub's outages and Claude's
+   * (BRK-315) alike, each kept under its own `key`. While `outage` holds, each chase that's on gets `down(outage)`
+   * once (a chase started during it gets it at the next reading). Once it doesn't and the outage is `over`, each chase
+   * that's on gets `clear`, with the tasks in it that carry a `Not pushed:` comment since the outage began.
+   * @param {{ key: string, outage: any, over: boolean, down: (outage: any) => string, clear: string }} o
+   */
+  tellChases({ key, outage, over, down, clear }) {
+    this.loadTasks();
+    const told = JSON.parse(this.meta(key) ?? 'null');
+    if (outage) {
+      const chases = this.chasing() ? this.openChases() : [];
+      const fresh = chases.filter(({ row }) => !told?.chases?.includes(row.slug));
+      if (!fresh.length && told) return;
+      for (const { row } of fresh) this.pelotonLine(row.slug, 'outage', down(outage));
+      const since = Number(told?.since ?? outage.since ?? Date.now());
+      const slugs = [...(told?.chases ?? []), ...fresh.map(({ row }) => row.slug)];
+      this.setMeta(key, JSON.stringify({ since, chases: slugs }));
+      return;
+    }
+    if (!told || !over) return;
+    this.setMeta(key, null);
+    if (!this.chasing()) return;
+    for (const { row, tasks } of this.openChases()) {
+      const left = [...tasks]
+        .filter((uuid) => this.tasks.get(uuid)?.status === 'pending' && this.notPushedSince(uuid, told.since))
+        .map((uuid) => this.tasks.get(uuid).wid ?? uuid.slice(0, 8))
+        .sort();
+      const which = left.length
+        ? ` Work that wasn’t pushed: ${left.join(', ')}. Whoever picks one up, read its Not pushed comment first.`
+        : '';
+      this.pelotonLine(row.slug, 'clear', `${clear}${which}`);
     }
   },
 

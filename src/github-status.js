@@ -27,14 +27,17 @@ const clip = (text, n = 200) => {
 const words = (status) => STATUS_WORDS[status] ?? String(status ?? 'unknown').replaceAll('_', ' ');
 
 /**
- * Reads the status page's summary: the watched components that aren't working, and the open incidents that touch
+ * Reads a Statuspage summary: the `watched` components that aren't working, and the open incidents that touch
  * one of them (or name no component yet, as an incident often doesn't while it's being investigated).
- * `disrupted` is whether either list has anything. Throws when the answer isn't a status summary.
+ * `disrupted` is whether either list has anything. Throws when the answer isn't a status summary. Claude's status
+ * page (BRK-315) is read the same way, with its own components.
  * @param {any} summary
+ * @param {string[]} watched
  */
-export function readGitHubStatus(summary) {
+export function readStatusPage(summary, watched) {
   if (!Array.isArray(summary?.components)) throw new Error('the status page’s answer has no components');
-  const components = WATCHED.map((name) => summary.components.find((c) => c?.name === name))
+  const components = watched
+    .map((name) => summary.components.find((c) => c?.name === name))
     .filter(Boolean)
     .map((c) => ({ name: c.name, status: String(c.status ?? 'unknown') }));
   const affected = components.filter((c) => c.status !== 'operational');
@@ -48,8 +51,8 @@ export function readGitHubStatus(summary) {
       started: typeof i.created_at === 'string' ? i.created_at : null,
       components: (Array.isArray(i.components) ? i.components : []).map((c) => c?.name).filter(Boolean),
     }))
-    .filter((i) => (i.components.length ? i.components.some((n) => WATCHED.includes(n)) : i.impact !== 'none'))
-    .map(({ components: named, ...i }) => ({ ...i, components: named.filter((n) => WATCHED.includes(n)) }));
+    .filter((i) => (i.components.length ? i.components.some((n) => watched.includes(n)) : i.impact !== 'none'))
+    .map(({ components: named, ...i }) => ({ ...i, components: named.filter((n) => watched.includes(n)) }));
   return {
     disrupted: affected.length > 0 || incidents.length > 0,
     components,
@@ -57,6 +60,12 @@ export function readGitHubStatus(summary) {
     incidents,
   };
 }
+
+/**
+ * GitHub's status page, read for the components the board leans on.
+ * @param {any} summary
+ */
+export const readGitHubStatus = (summary) => readStatusPage(summary, WATCHED);
 
 /**
  * What's wrong, in one line: each affected component with its status, then each incident by name.
