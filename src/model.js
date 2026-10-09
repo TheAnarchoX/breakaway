@@ -5,7 +5,8 @@
  * plus a `tags` list, `dep_<uuid>` plus a `depends` list, `annotation_<epoch>`, and UDAs
  * (`wid`, `horizon`, `spec`, `claim`, `pr`) as plain properties. The task structure (IDEA-5): `brief`
  (the current description), `brief_by`, `done_when`, `rel_<uuid>` plus a `related` list, and `by_<epoch>`
- beside `annotation_<epoch>` for a comment's author.
+ beside `annotation_<epoch>` for a comment's author. The owner's words (BRK-284): `said_<epoch>` (the quote),
+ `said_from_<epoch>` (where it came from), and `said_by_<epoch>` (who put it on the task).
  */
 
 import { keepAnswers, validateQuestions } from './decision.js';
@@ -108,6 +109,34 @@ export function commentsOf(map) {
     });
 }
 
+/** The longest one quote of the owner's words may be, and how many a task keeps (BRK-284). */
+export const MAX_SAID = 2000;
+export const MAX_SAID_COUNT = 20;
+/** Where the owner's words came from: the task on the board, a message, a peloton post, a ping, a decision, or a comment. */
+export const SAID_FROM = ['board', 'message', 'peloton', 'ping', 'decision', 'comment'];
+/** A source, with an optional pointer to it: `peloton #2243`, `decision BRK-12`, `message 2026-10-09`. */
+const SAID_SOURCE = new RegExp(`^(${SAID_FROM.join('|')})(?: [#\\w.:/-]{1,48})?$`, 'u');
+const SAID_KEY = /^said_(\d+)$/u;
+
+/**
+ * The owner's words on a task (BRK-284), oldest first: `{ id, text, from, by, at }`. `by` is `owner` when the owner put
+ * them there on the board, or the agent that quoted them; `id` is what removing one names.
+ */
+export function ownerSaidOf(map) {
+  return Object.keys(map)
+    .map((key) => SAID_KEY.exec(key))
+    .filter(Boolean)
+    .map((m) => Number(m[1]))
+    .sort((a, b) => a - b)
+    .map((epoch) => ({
+      id: epoch,
+      text: map[`said_${epoch}`],
+      from: map[`said_from_${epoch}`] ?? 'board',
+      by: map[`said_by_${epoch}`] ?? DEFAULT_AUTHOR,
+      at: iso(epoch),
+    }));
+}
+
 /** A JSON property Taskwarrior may have mangled → its value, or null. */
 function parseJson(text, shape) {
   try {
@@ -146,6 +175,7 @@ export function view(uuid, map, all, now = new Date()) {
     briefBy: map.brief_by ?? null,
     doneWhen: map.done_when ?? null,
     related: relatedOf(map),
+    ownerSaid: ownerSaidOf(map),
     status,
     project: map.project ?? null,
     priority: map.priority ?? '',
@@ -269,7 +299,8 @@ function setRelated(map, rel) {
  * changes: {description, project, priority, horizon, spec, pr, claim, wid (string or null),
  *   status, due, wait, scheduled (date text or null), start: true|false, entry, end (epoch),
  *   brief, done_when (text or null), addTags, removeTags, addDepends, removeDepends, addRelated,
- *   removeRelated (arrays), annotate (text), by (who wrote the annotation or the brief)}
+ *   removeRelated (arrays), annotate (text), by (who wrote the annotation or the brief),
+ *   said ({ text, from, by }: the owner's words, quoted), unsay (a quote's id, to remove it)}
  */
 export function withChanges(before, changes, now = new Date()) {
   const map = { ...(before ?? {}) };
@@ -367,6 +398,30 @@ export function withChanges(before, changes, now = new Date()) {
       throw new InputError(`a comment can be up to ${MAX_TEXT} characters`);
     map[`annotation_${key}`] = String(changes.annotate);
     if (changes.by) map[`by_${key}`] = String(changes.by);
+  }
+  if (changes.said) {
+    const text = String(changes.said.text ?? '').trim();
+    const from = String(changes.said.from ?? 'board').trim();
+    if (!text) throw new InputError("say what the owner said: the quote can't be empty");
+    if (text.length > MAX_SAID) throw new InputError(`a quote can be up to ${MAX_SAID} characters`);
+    if (!SAID_SOURCE.test(from))
+      throw new InputError(
+        `say where the owner said it: ${SAID_FROM.join(', ')}, optionally with a pointer like "peloton #12"`,
+      );
+    const held = ownerSaidOf(map);
+    if (held.some((q) => q.text === text)) throw new InputError('the task already quotes those words');
+    if (held.length >= MAX_SAID_COUNT)
+      throw new InputError(`a task keeps up to ${MAX_SAID_COUNT} quotes; the owner removes one first`);
+    let key = Number(nowSec);
+    while (map[`said_${key}`] !== undefined) key += 1;
+    map[`said_${key}`] = text;
+    map[`said_from_${key}`] = from;
+    map[`said_by_${key}`] = String(changes.said.by ?? DEFAULT_AUTHOR);
+  }
+  if (changes.unsay !== undefined && changes.unsay !== null) {
+    const key = String(changes.unsay);
+    if (!/^\d+$/u.test(key) || map[`said_${key}`] === undefined) throw new InputError(`the task has no quote ${key}`);
+    for (const prop of [`said_${key}`, `said_from_${key}`, `said_by_${key}`]) delete map[prop];
   }
   if (!map.description) throw new InputError('a task needs a description');
   map.modified = nowSec;
