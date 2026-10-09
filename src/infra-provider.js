@@ -269,6 +269,8 @@ const PATH = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$/u;
  *   from `template`)
  * @property {string} help one line, in plain words
  * @property {boolean} [optional] whether it can be left unset (null: the platform decides)
+ * @property {string} [deploy] where an app's deploy sets it too, in words (like `the wrangler config`): on a resource a
+ *   repository's deploy flow deploys, the console says the next deploy puts back what that says (BRK-313)
  * @property {number} [min] a number's least value
  * @property {number} [max] a number's greatest value
  * @property {boolean} [integer] a number must be whole
@@ -465,6 +467,7 @@ function checkFields(provider, what, fields, settings) {
     if (!text(f.label) || !text(f.help)) fail(at, 'has no label or no help');
     if (!EDITABLE_TYPES.includes(f.type)) fail(at, `has unknown type "${f.type}"`);
     if (f.optional !== undefined && typeof f.optional !== 'boolean') fail(at, 'optional is not true or false');
+    if (f.deploy !== undefined && !text(f.deploy)) fail(at, 'deploy is not words');
     if (f.pattern !== undefined) {
       if (f.type !== 'text' && f.type !== 'names') fail(at, 'only text and names take a pattern');
       checkPattern(at, 'pattern', f.pattern);

@@ -148,7 +148,7 @@ export function sameValue(/** @type {unknown} */ a, /** @type {unknown} */ b) {
  * @typedef {{ path: string, label: string, type: string, help: string, optional?: boolean, min?: number, max?: number,
  *   integer?: boolean, unit?: string, pattern?: string, options?: { value: string, label: string }[], kinds?: string[],
  *   targets?: { type: string, label: string, kind: string, field: string, by: 'id' | 'name' }[],
- *   fields?: EditableField[], template?: Record<string, unknown> }} EditableField
+ *   fields?: EditableField[], template?: Record<string, unknown>, deploy?: string }} EditableField
  */
 
 /**
@@ -365,6 +365,36 @@ export function editLines(edits, resources, labels = new Map(), names = new Map(
     const words = settingWords({ label, before: before ?? null, after: e.value ?? null, labels: bindingLabels(field) });
     return `~ ${name}: ${words ?? `${label} as it is`}`;
   });
+}
+
+/**
+ * What the next deploy does to an edit, in a line, or null when it leaves it alone (BRK-313): a setting the provider
+ * marks as the deploy's too (`deploy`, where the deploy reads it, like a Worker's wrangler config), on a Worker the
+ * repository's deploy flow deploys, goes back at the next deploy unless that config says it too; and so does a binding
+ * a new resource gives such a Worker. docs/specs/BRK-258's console never names a vendor: the words come from the field.
+ * @param {Edit} edit
+ * @param {{ declared: { id: string, name: string, kind: string }[], editable: Record<string, { fields?: EditableField[] }> | null,
+ *   workers: string[] }} at the desired state's resources, each kind's fields, and the Workers the deploy flow deploys
+ * @returns {string | null}
+ */
+export function deployLine(edit, { declared, editable, workers }) {
+  const fieldsOf = (/** @type {string} */ kind) => editable?.[kind]?.fields ?? [];
+  if (edit.op === 'set') {
+    const r = declared.find((d) => d.id === edit.resource);
+    if (!r || !workers.includes(r.name)) return null;
+    const field = fieldsOf(r.kind).find((f) => f.path === edit.path);
+    if (!field?.deploy) return null;
+    return `The next deploy sets ${r.name}’s ${field.label.toLowerCase()} from ${field.deploy}: change it there too, or the deploy puts it back.`;
+  }
+  if (edit.op === 'create' && edit.bindTo && workers.includes(edit.bindTo.worker)) {
+    const w = declared.find(
+      (d) => d.name === edit.bindTo?.worker && fieldsOf(d.kind).some((f) => f.type === 'bindings'),
+    );
+    const field = w ? fieldsOf(w.kind).find((f) => f.type === 'bindings') : null;
+    if (!field?.deploy) return null;
+    return `The next deploy sets ${edit.bindTo.worker}’s ${field.label.toLowerCase()} from ${field.deploy}: once this plan applies, add ${edit.bindTo.binding} there too, or the deploy takes it off.`;
+  }
+  return null;
 }
 
 /**
