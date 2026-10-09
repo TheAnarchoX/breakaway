@@ -11,6 +11,7 @@ import { ACTIONS, OWNER, OWN_CLAUDE, agentOf, refusal } from './permissions.js';
 import { AgentError } from './store-agents.js';
 import { repoSlugOf } from './repos.js';
 import { resolveRef } from './model.js';
+import { can, roleIn } from './permissions.js';
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const permissionsMethods = {
@@ -194,6 +195,96 @@ export const permissionsMethods = {
   },
 
   /**
+   * What `actor` can't read (BRK-323, the spec's point 3, "What a person sees"): the repositories they have no grant
+   * in, by slug and GitHub name, and those repositories' tasks, by UUID and work ID. Removed repositories, and tasks
+   * whose repository isn't registered, are only the `*` grant's. Empty for the owner.
+   * @param {{ person: string }} actor
+   * @returns {{ repos: string[], tasks: string[], readable: (slug: string | null) => boolean }}
+   */
+  hiddenFrom(actor) {
+    const { person, grants } = this.actorIn({ actor });
+    const all = person === OWNER || roleIn(grants, null) !== null;
+    const readable = (/** @type {string | null} */ slug) =>
+      all || (slug !== null && can({ person, grants }, 'read', slug));
+    if (all) return { repos: [], tasks: [], readable };
+    const fallback = this.defaultRepoSlug();
+    const repos = new Set();
+    for (const r of [...this.repos(), ...this.removedRepos()])
+      if (!readable(r.slug) || r.removed) {
+        repos.add(r.slug);
+        if (r.github) repos.add(r.github);
+      }
+    const tasks = [];
+    const features = new Set(this.featureRows().map((/** @type {any} */ r) => r.slug));
+    for (const [uuid, map] of this.tasks) {
+      const slug = repoSlugOf(map, fallback);
+      if (readable(slug) && this.repoBySlug(slug)) continue;
+      repos.add(slug);
+      tasks.push(uuid);
+      if (map.wid) tasks.push(map.wid);
+      // A chase's room spans its feature's repositories, and its plan and posts are free text about all of them: a
+      // person sees it only when they see every one (it's a peloton's name, which the scrub drops like a repository).
+      for (const key of Object.keys(map))
+        if (key.startsWith('tag_') && features.has(key.slice(4))) repos.add(`chase:${key.slice(4)}`);
+    }
+    return { repos: [...repos], tasks, readable };
+  },
+
+  /**
+   * Which task views `reader` (a person) sees, as a filter for a read that counts them (a feature's progress, a
+   * chase's queue), or null for the owner and the board, who see them all.
+   * @param {{ person: string } | null} reader
+   * @returns {((view: { repo: string }) => boolean) | null}
+   */
+  seenBy(reader) {
+    if (!reader || reader.person === OWNER) return null;
+    const { readable } = this.hiddenFrom(reader);
+    return (view) => readable(view.repo) && Boolean(this.repoBySlug(view.repo));
+  },
+
+  /**
+   * The Worker's gate for a person's read (BRK-323): may `actor` read what `read` (src/reads.js) is about? Answers
+   * what they can't see, for the scrub, or refuses: a 404, as if it weren't there, for a task, a plan, an environment,
+   * or a repository they have no grant in (never naming its repository), and a 403 for the install's own reads, which
+   * are the owner's and the `*` grant's. `read` null is a write's answer: only what they can't see.
+   * @param {{ person: string }} actor
+   * @param {import('./reads.js').Read | null} read
+   */
+  readGateApi(actor, read) {
+    return this.run(() => {
+      const { repos, tasks, readable } = this.hiddenFrom(actor);
+      const answer = { status: 200, body: { hidden: { repos, tasks } } };
+      if (!read || 'list' in read || 'single' in read) return answer;
+      const everywhere = () => {
+        const no = refusal(this.actorIn({ actor }), 'read', null);
+        if (no) throw new AgentError(`${no.message}: ask about one repository, with ?repo=<its slug>`, 403);
+      };
+      if ('install' in read) {
+        everywhere();
+        return answer;
+      }
+      if ('absent' in read) {
+        const slug = read.repo ? String(read.repo).trim().toLowerCase() : null;
+        if (slug) {
+          if (!readable(slug)) throw new AgentError(`no repository "${slug.slice(0, 40)}"`, 404);
+        } else if (read.absent === 'default') {
+          if (!readable(this.defaultRepoSlug())) everywhere();
+        } else if (read.absent === 'install') everywhere();
+        return answer;
+      }
+      const target = read.target;
+      const touched = this.targetRepos(target);
+      // A feature or a chase's peloton spans repositories: a person reads the parts in theirs.
+      // A feature spans repositories: a person reads the parts in theirs. A chase's room and a digest are free text
+      // about all of it, so they're only for someone who sees every one.
+      const spans = 'feature' in target && !target.whole;
+      const ok = spans ? touched.some(readable) : touched.every(readable);
+      if (!ok) throw new AgentError(notThere(target), 404);
+      return answer;
+    });
+  },
+
+  /**
    * Who pressed, for the infrastructure audit trail (BRK-303): the owner's press is `by: 'owner'`, a person's is
    * `by: 'person'` with their handle. Spread it where an entry used to say `by: 'owner'`.
    * @param {any} input what the call was given: `{ actor?, by? }`
@@ -222,3 +313,18 @@ export const permissionsMethods = {
  * @param {string | null | undefined} person
  */
 export const personWords = (person) => (!person || person === OWNER ? 'the owner' : person);
+
+/** The words a read gets when what it asks about doesn't exist: the same for one in a repository the person can't read. */
+function notThere(target) {
+  const text = (value, max = 40) => String(value ?? '').slice(0, max);
+  if ('task' in target) return `no task "${text(target.task)}"`;
+  if ('attachment' in target) return 'no such image';
+  if ('plan' in target) return `no plan ${text(target.plan)}`;
+  if ('change' in target) return `no change ${text(target.change, 20)}`;
+  if ('environment' in target)
+    return `no environment ${text(target.environment).trim().toLowerCase()}${target.repo ? ` in ${target.repo}` : ''}`;
+  if ('feature' in target) return `there’s no feature "${text(target.feature)}"`;
+  if ('peloton' in target)
+    return `there’s no peloton "${text(target.peloton)}": it’s a repository’s slug, or chase:<feature>`;
+  return `no repository "${text(target.repo)}"`;
+}

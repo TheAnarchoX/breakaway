@@ -11,7 +11,7 @@ import {
   LoaderCircle,
   MessageSquare,
 } from 'lucide-preact';
-import { ago, canAgentReview, isDependabot, plural } from '../lib/model.js';
+import { ago, canAgentReview, isDependabot, plural, pressedWords } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import {
   actions,
@@ -1201,6 +1201,8 @@ export function PullPage() {
     );
   }
   const v = VERDICT[page.verdict];
+  // Who pressed Merge, Publish, Update branch, or Merge when green on the board, last (WEB-132).
+  const pressed = pressedWords(page.pressed, page.base ?? 'main');
   return (
     <div class="github-view pr-page">
       {back}
@@ -1258,6 +1260,11 @@ export function PullPage() {
                 {page.verdict === 'ready' && mergeEffect(page) && ` ${mergeEffect(page)}`}
               </p>
             </>
+          )}
+          {pressed && (
+            <p class="meta">
+              {pressed}, {ago(page.pressed.at)}.
+            </p>
           )}
           <div class="pr-status-row">
             <Checks checks={page.checks} />
