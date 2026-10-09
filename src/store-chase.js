@@ -8,10 +8,14 @@
  * A chase also fixes its own pull requests (BRK-137): when one conflicts or its checks fail and no agent
  * picks it up within FIX_GRACE_MS, it starts a fix agent on it, and a chase that ended by itself keeps
  * doing that for its open pull requests.
+ * A chase can have a road captain (BRK-275, docs/specs/BRK-275-road-captain.md): one agent the board starts with it
+ * on a task of its own, which keeps the plan and runs the peloton, writes a captain's log, and hands over to a fresh
+ * captain after its watch.
  */
 import { prVerdict } from './github.js';
 import { AgentError } from './store-agents.js';
 import { InputError, rank } from './model.js';
+import { looksLikeSecret } from './ping.js';
 
 const DEFAULT_PARALLEL = 3;
 /** Refusals (failed starts, or an agent that let go without a pull request) before a task is Stuck. */
@@ -22,6 +26,17 @@ const STATES = ['off', 'on', 'stopped', 'done'];
 const FIX_GRACE_MS = 3 * 60_000;
 /** The problems a chase fixes on its pull requests, in the words its view uses. */
 const PROBLEMS = { conflicts: 'conflicts with its base branch', failing: 'has failing checks' };
+/** A chase of more than this many tasks starts with a road captain unless the owner says otherwise (BRK-275). */
+export const CAPTAIN_OVER = 10;
+/** A road captain's watch, in hours, before it hands over to a fresh one; the owner sets 1 to CAPTAIN_HOURS_MAX. */
+const CAPTAIN_HOURS = 12;
+const CAPTAIN_HOURS_MAX = 72;
+/** How long a captain whose watch is over has to write its log before the board hands over for it. */
+const CAPTAIN_GRACE_MS = 30 * 60_000;
+/** The least time between two starts of a chase's captain when the last one let go or failed to start. */
+const CAPTAIN_RETRY_MS = 15 * 60_000;
+const CAPTAIN_LOG_MAX = 8000;
+const CAPTAIN_LOGS_KEPT = 50;
 
 const label = (t) => t.wid ?? t.short;
 const inReview = (t) => Boolean(t.github?.some((p) => p.closes && p.state === 'open'));
@@ -74,6 +89,13 @@ export const chaseMethods = {
       this.sql.exec(`ALTER TABLE features ADD COLUMN chase_parallel INTEGER NOT NULL DEFAULT ${DEFAULT_PARALLEL}`);
     if (!columns.includes('chase_stalled')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_stalled INTEGER');
     if (!columns.includes('chase_ended')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_ended INTEGER');
+    // The road captain (BRK-275): whether the chase has one, its watch in hours, and when the board asked it to hand over.
+    if (!columns.includes('chase_captain'))
+      this.sql.exec('ALTER TABLE features ADD COLUMN chase_captain INTEGER NOT NULL DEFAULT 0');
+    if (!columns.includes('chase_captain_hours'))
+      this.sql.exec(`ALTER TABLE features ADD COLUMN chase_captain_hours INTEGER NOT NULL DEFAULT ${CAPTAIN_HOURS}`);
+    if (!columns.includes('chase_captain_asked'))
+      this.sql.exec('ALTER TABLE features ADD COLUMN chase_captain_asked INTEGER');
     // Chase started, stopped, stalled, and ended, and the owner's changes of plan (WEB-104), for Activity; an ended
     // chase's row is also its inbox note.
     this.sql.exec(`
@@ -86,6 +108,11 @@ export const chaseMethods = {
         task TEXT NOT NULL, pr INTEGER NOT NULL, head TEXT NOT NULL, problem TEXT NOT NULL, slug TEXT NOT NULL,
         seen INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (task, pr, head, problem)
       );
+      CREATE TABLE IF NOT EXISTS captain_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL, at INTEGER NOT NULL, agent TEXT NOT NULL,
+        text TEXT NOT NULL, handover INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS captain_logs_slug ON captain_logs (slug, id);
     `);
   },
 
@@ -130,6 +157,7 @@ export const chaseMethods = {
       parallel: Number(row.chase_parallel ?? DEFAULT_PARALLEL),
       stalledPingAt: iso(row.chase_stalled),
       endedAt: iso(row.chase_ended),
+      captain: this.captainView(row),
     };
   },
 
@@ -265,6 +293,8 @@ export const chaseMethods = {
     const watch = [];
     for (const entry of set) {
       const { t } = entry;
+      // The road captain rides the chase but isn't its work (BRK-275): the tick starts it on its own.
+      if (t.tags.includes('captain')) continue;
       const item = brief(entry);
       const add = (state, why, extra = {}) => tasks.push({ ...item, state, why, ...extra });
       if (t.status === 'completed') add('done', null);
@@ -437,12 +467,22 @@ export const chaseMethods = {
    * follows it on the next tick), `dryRun` shows what would start now without starting or changing anything, and
    * `dismiss` clears its ended note from the inbox. The owner's alone: agents never start a chase.
    */
-  async chaseFeature(slug, { on, parallel, dryRun = false, dismiss = false, by } = {}) {
+  async chaseFeature(slug, { on, parallel, captain, captainHours, dryRun = false, dismiss = false, by } = {}) {
     await this.ready();
     if (by !== undefined && by !== null && by !== '' && by !== 'owner')
       throw new AgentError('only the owner can start or stop a chase', 403);
     const row = this.featureRow(slug);
     if (on !== undefined && typeof on !== 'boolean') throw new InputError('on is true or false');
+    if (captain !== undefined && captain !== null && typeof captain !== 'boolean')
+      throw new InputError('captain is true or false: whether the chase has a road captain');
+    let hours;
+    if (captainHours !== undefined && captainHours !== null) {
+      hours = Number(captainHours);
+      if (!Number.isInteger(hours) || hours < 1 || hours > CAPTAIN_HOURS_MAX)
+        throw new InputError(
+          `captainHours is a road captain's watch before it hands over: whole hours from 1 to ${CAPTAIN_HOURS_MAX}`,
+        );
+    }
     let limit;
     if (parallel !== undefined && parallel !== null) {
       limit = Number(parallel);
@@ -457,21 +497,32 @@ export const chaseMethods = {
         this.views(),
         connected,
       );
-      return { dryRun: true, chase: this.chaseView(row, plan), started: [], wouldStart: plan.start.map(label) };
+      return {
+        dryRun: true,
+        chase: this.chaseView(row, plan),
+        started: [],
+        wouldStart: plan.start.map(label),
+        // Whether Chase would start a road captain with it (BRK-275): the owner's choice, else the chase's size.
+        captain: captain ?? (row.chase === 'on' ? Boolean(row.chase_captain) : plan.tasks.length > CAPTAIN_OVER),
+      };
     }
     this.writable();
     if (dismiss)
       this.sql.exec("UPDATE chase_events SET dismissed = 1 WHERE slug = ? AND kind = 'chase_ended'", row.slug);
     if (limit !== undefined) this.sql.exec('UPDATE features SET chase_parallel = ? WHERE slug = ?', limit, row.slug);
+    if (hours !== undefined)
+      this.sql.exec('UPDATE features SET chase_captain_hours = ? WHERE slug = ?', hours, row.slug);
     let started = [];
     if (on === true && row.chase !== 'on') {
       const plan = this.chaseQueue(row, this.views(), connected);
       if (!plan.tasks.length) throw new AgentError(`${row.title} has no tasks to chase: tag some with ${row.slug}`);
       if (plan.tasks.every((x) => x.state === 'done'))
         throw new AgentError(`every task in ${row.title} is done: there’s nothing to chase`);
+      const withCaptain = captain ?? plan.tasks.length > CAPTAIN_OVER;
       this.sql.exec(
-        "UPDATE features SET chase = 'on', chase_started = ?, chase_stalled = NULL, chase_ended = NULL WHERE slug = ?",
+        "UPDATE features SET chase = 'on', chase_started = ?, chase_stalled = NULL, chase_ended = NULL, chase_captain = ?, chase_captain_asked = NULL WHERE slug = ?",
         Date.now(),
+        withCaptain ? 1 : 0,
         row.slug,
       );
       this.sql.exec("UPDATE chase_events SET dismissed = 1 WHERE slug = ? AND kind = 'chase_ended'", row.slug);
@@ -484,12 +535,30 @@ export const chaseMethods = {
       // Stopping starts nothing new; running agents finish and open their pull requests (section 3.7).
       this.sql.exec("UPDATE features SET chase = 'stopped', chase_ended = ? WHERE slug = ?", Date.now(), row.slug);
       this.chaseEvent(row.slug, 'chase_stopped', row.title);
+      this.captainStandDown(row, 'The chase stopped: its road captain stands down.');
       this.pelotonLine(
         row.slug,
         'close',
         `The chase on ${row.title} stopped. This peloton takes no new posts and goes in a day.`,
       );
+    } else if (
+      row.chase === 'on' &&
+      captain !== undefined &&
+      captain !== null &&
+      captain !== Boolean(row.chase_captain)
+    ) {
+      // Turning the road captain on or off on a running chase: on starts one now, off stands it down.
+      this.sql.exec(
+        'UPDATE features SET chase_captain = ?, chase_captain_asked = NULL WHERE slug = ?',
+        captain ? 1 : 0,
+        row.slug,
+      );
+      if (captain) await this.captainTick(this.featureRow(row.slug));
+      else this.captainStandDown(row, 'The owner turned the road captain off: it stands down.');
     } else if (limit !== undefined && row.chase === 'on') this.scheduleAgentsCheck();
+    // A chase that isn't on keeps the owner's choice for the next Chase.
+    if (row.chase !== 'on' && on !== true && captain !== undefined && captain !== null)
+      this.sql.exec('UPDATE features SET chase_captain = ? WHERE slug = ?', captain ? 1 : 0, row.slug);
     const fresh = this.featureRow(row.slug);
     const plan = this.chaseQueue(fresh, this.views(), connected);
     return { dryRun: false, chase: this.chaseView(fresh, plan), started };
@@ -545,7 +614,10 @@ export const chaseMethods = {
           // It stays in the queue; a failed fire counts toward Stuck, and the next tick tries again.
         }
       }
-      if (on) await this.chaseSettle(this.featureRow(row.slug), startedHere ? null : plan);
+      if (on) {
+        await this.captainTick(this.featureRow(row.slug));
+        await this.chaseSettle(this.featureRow(row.slug), startedHere ? null : plan);
+      }
     }
     return started;
   },
@@ -603,6 +675,7 @@ export const chaseMethods = {
         row.slug,
       );
       this.chaseEvent(row.slug, 'chase_ended', detail);
+      this.captainStandDown(row, 'The chase ended: its road captain stands down.');
       this.pelotonLine(
         row.slug,
         'close',
@@ -623,16 +696,16 @@ export const chaseMethods = {
   },
 
   /**
-   * A road captain for the chase on feature `slug` (BRK-137): an agent the owner starts with their own prompt to
-   * help the chase along. Its repository is the one most of the feature's own tasks are in; its brief is the
-   * owner's prompt with the chase as it stands under it: the live line, the open pull requests and what's wrong
-   * with each, and what's Stuck or needs the owner.
+   * The road captain's task for the chase on feature `slug` (BRK-137, BRK-275): its repository is the one most of
+   * the feature's own tasks are in, and its brief is the board's: what a captain does, then the chase as it stands
+   * (the live line, the open pull requests and what's wrong with each, what's Stuck or needs the owner, and the
+   * plan). The owner's `note`, if any, goes in each captain's payload, not here.
    */
-  roadCaptain(slug, prompt, views, connected) {
+  roadCaptain(slug, views, connected) {
     const row = this.featureRow(slug);
     if (row.chase === 'off')
       throw new AgentError(`${row.title} has no chase yet: press Chase first, then start its road captain`, 409);
-    const set = this.chaseMembers(row, views);
+    const set = this.chaseMembers(row, views).filter(({ t }) => !t.tags.includes('captain'));
     const counts = new Map();
     for (const { t, member } of set) if (member) counts.set(t.repo, (counts.get(t.repo) ?? 0) + 1);
     const repo = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? this.defaultRepoSlug();
@@ -648,16 +721,15 @@ export const chaseMethods = {
       ...plan.stuck.map((x) => `- ${x.wid ?? x.description}: stuck, ${x.why}`),
       ...plan.needsYou.map((x) => `- ${x.wid ?? x.description}: ${x.why}`),
     ];
-    const first = (prompt.split('\n').find((line) => line.trim()) ?? prompt).trim();
     const kept = this.planOf({ kind: 'chase', name: `chase:${row.slug}` });
     const brief = [
-      prompt,
+      `You're the road captain of the chase on ${row.title} (+${row.slug}), in ${repo}: the board started you with the chase, and starts a fresh captain after each watch of ${Number(row.chase_captain_hours ?? CAPTAIN_HOURS)} hours. "Captaining a chase" in the core says what you do: keep the plan, line the agents up, answer the peloton, look over risky pull requests, turn the owner's feedback into tasks, and hand over with a log.`,
       '',
-      `## The chase on ${row.title} (+${row.slug})`,
+      `\`npx breakaway chase ${row.slug} --dry-run\` shows the chase as it is when you read it, \`npx breakaway github\` the pull requests' checks, and \`npx breakaway captain ${row.slug}\` the captain's log.`,
       '',
-      `You're its road captain: the owner started you to help this chase along, in ${repo}. Your task carries the +${row.slug} tag, so you ride the chase's peloton too: read it, and answer its agents. \`npx breakaway chase ${row.slug} --dry-run\` shows it as it is when you read it, and \`npx breakaway github\` the pull requests' checks.`,
+      `## The chase when the board made this task`,
       '',
-      `When the owner pressed it: ${this.chaseLine(plan.line)} (state ${row.chase}).`,
+      `${this.chaseLine(plan.line)} (state ${row.chase}).`,
       ...(pulls.length ? ['', 'Its open pull requests:', ...pulls] : []),
       ...(held.length ? ['', 'What holds the rest:', ...held] : []),
       '',
@@ -667,13 +739,238 @@ export const chaseMethods = {
       '',
       'While you run, you keep the plan and run the room: only you and the owner revise the plan (the other agents propose changes on the peloton), and you call and close huddles.',
     ].join('\n');
+    return { slug: row.slug, feature: row.title, repo, brief, title: `Road captain for ${row.title}`.slice(0, 200) };
+  },
+
+  /** The chase's open road captain task (BRK-275), as its view, or null. */
+  captainTask(slug) {
+    return (
+      this.views((t) => t.status === 'pending' && t.tags.includes('captain') && t.tags.includes(slug))
+        .filter((t) => !t.tags.includes('general'))
+        .sort((a, b) => a.uuid.localeCompare(b.uuid))[0] ?? null
+    );
+  },
+
+  /** The latest run on the captain's task, or null. */
+  captainRun(uuid) {
+    return (
+      this.sql
+        .exec("SELECT * FROM agent_runs WHERE task = ? AND kind = 'captain' ORDER BY id DESC LIMIT 1", uuid)
+        .toArray()[0] ?? null
+    );
+  },
+
+  /** The chase's road captain as the feature's page shows it: the setting, who holds the role and since when, and the log. */
+  captainView(row) {
+    const on = Boolean(row.chase_captain);
+    const hours = Number(row.chase_captain_hours ?? CAPTAIN_HOURS);
+    const t = row.chase === 'off' ? null : this.captainTask(row.slug);
+    const run = t ? this.captainRun(t.uuid) : null;
+    const holding = Boolean(t?.claim && run && run.agent === t.claim && run.status !== 'failed');
+    const log = this.sql
+      .exec('SELECT * FROM captain_logs WHERE slug = ? ORDER BY id DESC LIMIT 20', row.slug)
+      .toArray()
+      .map((r) => ({ id: r.id, at: iso(r.at), agent: r.agent, text: r.text, handover: Boolean(r.handover) }));
     return {
-      slug: row.slug,
-      feature: row.title,
-      repo,
-      brief,
-      title: `Road captain for ${row.title}: ${first}`.slice(0, 200),
+      on,
+      hours,
+      task: t ? { uuid: t.uuid, short: t.short } : null,
+      agent: holding ? t.claim : null,
+      since: holding ? iso(run.started) : null,
+      watchEndsAt: holding ? iso(Number(run.started) + hours * 3_600_000) : null,
+      askedAt: holding ? iso(row.chase_captain_asked) : null,
+      log,
     };
+  },
+
+  /**
+   * Starts the chase's road captain (BRK-275): turns its setting on, makes its task the first time, and starts a fresh
+   * captain on it, force started. The owner's Start a road captain and the tick both come here; `note` is the
+   * owner's, for this captain's payload. Refused while a captain holds the task.
+   */
+  async startCaptain(slug, { note = null } = {}) {
+    await this.ready();
+    const row = this.featureRow(slug);
+    if (row.chase !== 'on')
+      throw new AgentError(
+        row.chase === 'off'
+          ? `${row.title} has no chase yet: press Chase first, then start its road captain`
+          : `the chase on ${row.title} isn’t running: chase it again to start its road captain`,
+        409,
+      );
+    this.writable();
+    const open = this.captainTask(row.slug);
+    if (open?.claim)
+      throw new AgentError(`${open.claim} is the road captain of ${row.title}: message it on its task instead`, 409);
+    if (!row.chase_captain) this.sql.exec('UPDATE features SET chase_captain = 1 WHERE slug = ?', row.slug);
+    let uuid = open?.uuid;
+    if (!uuid) {
+      const made = this.roadCaptain(row.slug, this.views(), await this.connectedRepos());
+      const res = await this.create([
+        {
+          description: made.title,
+          horizon: 'now',
+          tags: ['agent', 'captain', row.slug],
+          brief: made.brief,
+          ...(made.repo === this.defaultRepoSlug() ? {} : { repo: made.repo }),
+          by: 'board',
+        },
+      ]);
+      if (res.status !== 201)
+        throw new AgentError(res.body.error ?? 'couldn’t make the road captain’s task', res.status);
+      uuid = res.body.tasks[0].uuid;
+    }
+    this.sql.exec('UPDATE features SET chase_captain_asked = NULL WHERE slug = ?', row.slug);
+    // Activity shows the start as the agent run it is (trigger road-captain).
+    return await this.startAgent(uuid, { trigger: 'road-captain', kind: 'captain', note, force: true });
+  },
+
+  /**
+   * The road captain on the tick, for a chase that's on: starts one when the chase should have one and none holds its
+   * task (at most once every CAPTAIN_RETRY_MS); when one has run its watch, asks it once on the peloton to write its
+   * log and hand over, and after CAPTAIN_GRACE_MS hands over for it.
+   */
+  async captainTick(row) {
+    if (row.chase !== 'on' || !row.chase_captain) return;
+    const t = this.captainTask(row.slug);
+    const run = t ? this.captainRun(t.uuid) : null;
+    const now = Date.now();
+    if (!t?.claim) {
+      if (run && now - Number(run.started) < CAPTAIN_RETRY_MS) return;
+      try {
+        await this.startCaptain(row.slug);
+      } catch {
+        // Its run says why; the next tick past CAPTAIN_RETRY_MS tries again.
+      }
+      return;
+    }
+    if (!run || run.agent !== t.claim) return;
+    const hours = Number(row.chase_captain_hours ?? CAPTAIN_HOURS);
+    if (now - Number(run.started) < hours * 3_600_000) return;
+    if (!row.chase_captain_asked) {
+      this.sql.exec('UPDATE features SET chase_captain_asked = ? WHERE slug = ?', now, row.slug);
+      this.addPost(`chase:${row.slug}`, {
+        agent: 'board',
+        kind: 'note',
+        text: `@${t.claim} your ${hours}-hour watch as road captain is over: write your log and the plan, then hand over (npx breakaway captain ${row.slug} log --file <path> --handover). In ${CAPTAIN_GRACE_MS / 60_000} minutes the board hands over for you.`,
+        mentions: [t.claim],
+      });
+      return;
+    }
+    if (now - Number(row.chase_captain_asked) < CAPTAIN_GRACE_MS) return;
+    this.captainLogEntry(
+      row.slug,
+      'board',
+      `${t.claim} didn’t hand over within ${CAPTAIN_GRACE_MS / 60_000} minutes of the end of its watch, so the board did. Read the peloton and the plan for where it got to.`,
+      true,
+    );
+    await this.captainHandOver(row, t, 'board');
+  },
+
+  /** Takes the captain's task back from `t.claim` and starts the next captain on it. */
+  async captainHandOver(row, t, by) {
+    const from = t.claim;
+    this.change(
+      t.uuid,
+      {
+        claim: null,
+        start: false,
+        annotate: by === 'board' ? `The board handed over from ${from}.` : `${from} handed over.`,
+        by: 'board',
+      },
+      new Date(),
+      'agents',
+    );
+    this.chaseEvent(row.slug, 'captain_handover', by === 'board' ? `the board, for ${from}` : from);
+    try {
+      return await this.startCaptain(row.slug);
+    } catch (error) {
+      if (!(error instanceof AgentError)) throw error;
+      // The next tick tries again.
+      return { task: this.detail(t.uuid), run: null, waiting: error.message };
+    }
+  },
+
+  captainLogEntry(slug, agent, text, handover) {
+    const row = this.sql
+      .exec(
+        'INSERT INTO captain_logs (slug, at, agent, text, handover) VALUES (?, ?, ?, ?, ?) RETURNING *',
+        slug,
+        Date.now(),
+        agent,
+        text,
+        handover ? 1 : 0,
+      )
+      .one();
+    this.sql.exec(
+      'DELETE FROM captain_logs WHERE slug = ? AND id NOT IN (SELECT id FROM captain_logs WHERE slug = ? ORDER BY id DESC LIMIT ?)',
+      slug,
+      slug,
+      CAPTAIN_LOGS_KEPT,
+    );
+    return { id: row.id, at: iso(row.at), agent: row.agent, text: row.text, handover: Boolean(row.handover) };
+  },
+
+  /**
+   * POST /api/features/<slug>/captain (BRK-275): the road captain writes its log, and with `handover` hands over:
+   * the board takes its task back and starts the next captain, which reads the log first. Only the agent holding the
+   * chase's captain task may.
+   */
+  async captainLog(slug, { log, handover = false, by } = {}) {
+    await this.ready();
+    const row = this.featureRow(slug);
+    const t = row.chase === 'on' ? this.captainTask(row.slug) : null;
+    if (!t?.claim || String(by ?? '') !== t.claim)
+      throw new AgentError(
+        t?.claim
+          ? `only the road captain writes its log, and that’s ${t.claim}`
+          : `the chase on ${row.title} has no road captain running`,
+        403,
+      );
+    if (typeof handover !== 'boolean') throw new InputError('handover is true or false');
+    const text = String(log ?? '').trim();
+    if (!text) throw new InputError('write the log: where the chase stands, what you decided, and what comes next');
+    if (text.length > CAPTAIN_LOG_MAX)
+      throw new InputError(`a captain’s log is up to ${CAPTAIN_LOG_MAX} characters, and this is ${text.length}`);
+    if (looksLikeSecret(text)) throw new InputError('that looks like a token or key: a captain’s log never holds one');
+    this.writable();
+    const entry = this.captainLogEntry(row.slug, t.claim, text, handover);
+    if (!handover) return { log: entry, successor: null };
+    const next = await this.captainHandOver(row, t, t.claim);
+    return {
+      log: entry,
+      successor: next.run ? { agent: next.run.agent, task: next.task.uuid } : null,
+      waiting: next.waiting ?? null,
+    };
+  },
+
+  /** When the chase stops or ends, or the owner turns its captain off: the board finishes the captain's task. */
+  captainStandDown(row, why) {
+    const t = this.captainTask(row.slug);
+    if (!t) return;
+    this.change(t.uuid, { status: 'completed', claim: null, annotate: why, by: 'board' }, new Date(), 'agents');
+  },
+
+  /** For a captain task's view `t`: its chase's slug, and which captain the next start is (1 for the first). */
+  captainOfTask(t) {
+    const slugs = new Set(this.featureRows().map((r) => r.slug));
+    const slug = t.tags.filter((tag) => slugs.has(tag)).sort()[0];
+    if (!slug) throw new AgentError('a road captain’s task carries its feature’s tag', 400);
+    const names = this.sql
+      .exec(
+        "SELECT agent FROM agent_runs WHERE kind = 'captain' AND status != 'failed' AND agent LIKE ?",
+        `claude-captain-${slug}-%`,
+      )
+      .toArray()
+      .map((r) => Number(r.agent.slice(`claude-captain-${slug}-`.length)))
+      .filter(Number.isInteger);
+    return { slug, n: Math.max(0, ...names) + 1 };
+  },
+
+  /** The latest log entry for the chase, for the next captain's payload. */
+  captainLastLog(slug) {
+    const r = this.sql.exec('SELECT * FROM captain_logs WHERE slug = ? ORDER BY id DESC LIMIT 1', slug).toArray()[0];
+    return r ? { agent: r.agent, at: iso(r.at), text: r.text } : null;
   },
 
   /** The stall ping (section 3.6): a `blocked` ping on the task that frees the most, as the board, which pushes. */

@@ -469,6 +469,8 @@ export const featuresMethods = {
     const progress = { total: 0, done: 0, running: 0, ready: 0, waiting: 0, needsYou: 0, inReview: 0, shipped: 0 };
     const tasks = [];
     for (const { task: t, alsoIn } of members.get(row.slug) ?? []) {
+      // The chase's road captain rides it but isn't its work (BRK-275): the feature's riders list it instead.
+      if (t.tags.includes('captain')) continue;
       const { state, why } = standing(t, names);
       progress.total += 1;
       progress[COUNT_OF[state]] += 1;

@@ -215,7 +215,7 @@ const TRIGGER_TEXT = {
   general: 'by a prompt from the owner, from the board',
   chase: 'by the owner’s chase of a feature, because the task became ready',
   'chase-fix': 'by the owner’s chase of a feature, to fix a pull request its agent left',
-  'road-captain': 'by the owner, as the road captain of a chase',
+  'road-captain': 'by the board, as the road captain of a chase',
   kickoff: 'by “Send answers and carry on” on a kickoff’s decision, from the board',
   routines: 'by “Make with an agent” on the Routines view, from the board',
   'routines-carry-on': 'by “Send answers and carry on” on a routine maker’s decision, from the board',
@@ -240,6 +240,7 @@ export function firePayload(
   plan = null,
   actKey = null,
   runIt = null,
+  captain = null,
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
@@ -258,6 +259,8 @@ export function firePayload(
     // Run it's answer (BRK-305): whether the plan drafts the first environments' desired state, or leaves it to Run it.
     ...(kind === 'kickoff' ? ['Mode: kickoff', `Run it: ${runIt ?? 'not answered yet'}`] : []),
     ...(kind === 'routines' ? ['Mode: routines'] : []),
+    // A chase's road captain (BRK-275): the chase it captains.
+    ...(kind === 'captain' && captain ? ['Mode: captain', `Chase: ${captain.slug}`] : []),
     // A runbook's run's own key for `infra act` (BRK-252): only this payload carries it.
     ...(actKey ? [`Act key: ${actKey}`] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
@@ -271,6 +274,10 @@ export function firePayload(
       : []),
     // The chase's plan (IDEA-36 section 5), for an agent the chase starts: it starts lined up with the rest.
     ...(plan ? ['', `The chase’s plan (${plan.peloton}, version ${plan.version}):`, plan.text] : []),
+    // The last captain's log, for the next one to read first (BRK-275).
+    ...(captain?.log
+      ? ['', `The last road captain’s log (${captain.log.agent}, ${captain.log.at}):`, captain.log.text]
+      : []),
   ].join('\n');
 }
 
@@ -471,9 +478,8 @@ export const agentsMethods = {
    * `dryRun` it makes nothing and returns the prompt it would write (without the note), the open one if any, and
    * why the repository's routine can't start one, for the web's dialog to show first.
    *
-   * With `chase` (a feature's slug, BRK-137), the agent is that chase's road captain: the owner's prompt, with the
-   * chase as it stands now under it, in the chase's repository, tagged with the feature so it rides the chase's
-   * peloton. A road captain is always force started: the owner pressed for it while the chase holds the slots.
+   * With `chase` (a feature's slug, BRK-137), it starts that chase's road captain, the board's (BRK-275,
+   * startCaptain): the owner's prompt, if any, is its note.
    *
    * With `feature` (a feature's slug, BRK-150), the board writes the prompt from the feature and its tasks, with the
    * owner's `note` (what to refine, required) under it, in the repository most of its tasks are in (or `repo` when it
@@ -513,16 +519,12 @@ export const agentsMethods = {
         400,
       );
     if (given(chase)) {
-      if (dryRun) throw new AgentError('a road captain has no dry run: write what it should do', 400);
-      if (!text) throw new AgentError('write what the road captain should do first', 400);
-      const captain = this.roadCaptain(String(chase), text, this.views(), await this.connectedRepos());
+      // The board's road captain (BRK-275): the owner's prompt is an optional note for it.
+      if (dryRun) throw new AgentError('a road captain has no dry run: the board writes its prompt', 400);
+      const captain = this.roadCaptain(String(chase), this.views(), await this.connectedRepos());
       if (repo && String(repo).trim().toLowerCase() !== captain.repo)
         throw new AgentError(`the chase on ${captain.feature} runs in ${captain.repo}: its road captain does too`, 400);
-      repo = captain.repo;
-      text = captain.brief;
-      title = captain.title;
-      tags = ['agent', 'general', captain.slug];
-      force = true;
+      return { ...(await this.startCaptain(captain.slug, { note: text || null })), waiting: null };
     }
     /** @type {{ repo: string, open: [string, any] | undefined, write: (note: string | null) => { title: string, brief: string }, extra?: Record<string, any> } | null} */
     let source = null;
@@ -702,7 +704,7 @@ export const agentsMethods = {
     try {
       return {
         ...(await this.startAgent(uuid, {
-          trigger: given(chase) ? 'road-captain' : maker ? 'routines' : 'general',
+          trigger: maker ? 'routines' : 'general',
           kind: maker ? 'routines' : 'general',
           force,
         })),
@@ -1419,6 +1421,10 @@ export const agentsMethods = {
     if (kind === 'general' && isRoutineMaker(this.tasks.get(uuid))) kind = 'routines';
     if (kind === 'routines' && !isRoutineMaker(this.tasks.get(uuid)))
       throw new AgentError('that task isn’t a routine maker’s', 400);
+    // A road captain's task always starts its agent as a captain, and only it does (BRK-275).
+    if ((kind === 'build' || kind === 'general') && this.tasks.get(uuid)?.tag_captain) kind = 'captain';
+    if (kind === 'captain' && !this.tasks.get(uuid)?.tag_captain)
+      throw new AgentError('that task isn’t a road captain’s', 400);
     if (kind === 'refine' && !String(note ?? '').trim())
       throw new AgentError('say what it should look at or change', 400);
     const map = this.tasks.get(uuid);
@@ -1473,8 +1479,11 @@ export const agentsMethods = {
     // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check
     // `claude-<id>-check`, and a review of a pull request `claude-<id>-review`.
     const id = (kind === 'general' || kind === 'routines' ? task.short : (task.wid ?? task.short)).toLowerCase();
-    const agent =
-      kind === 'refine'
+    // A road captain is `claude-captain-<feature>-<n>`, the chase's nth (BRK-275).
+    const captainOf = kind === 'captain' ? this.captainOfTask(task) : null;
+    const agent = captainOf
+      ? `claude-captain-${captainOf.slug}-${captainOf.n}`
+      : kind === 'refine'
         ? `claude-refine-${id}`
         : kind === 'fix-pr'
           ? `claude-${id}-fix`
@@ -1514,7 +1523,7 @@ export const agentsMethods = {
 
     try {
       const attachments = this.sql.exec('SELECT COUNT(*) AS n FROM attachments WHERE task = ?', uuid).one().n;
-      const plan = trigger === 'chase' || trigger === 'chase-fix' ? this.planForTask(uuid) : null;
+      const plan = trigger === 'chase' || trigger === 'chase-fix' || kind === 'captain' ? this.planForTask(uuid) : null;
       const actKey = await this.runbookActKey(uuid, agent);
       const runIt =
         kind === 'kickoff'
@@ -1522,7 +1531,21 @@ export const agentsMethods = {
           : null;
       const session = await fireRoutine(
         credentials,
-        firePayload(task, agent, trigger, note, kind, pr, routine, attachments, repo, plan, actKey, runIt),
+        firePayload(
+          task,
+          agent,
+          trigger,
+          note,
+          kind,
+          pr,
+          routine,
+          attachments,
+          repo,
+          plan,
+          actKey,
+          runIt,
+          captainOf ? { slug: captainOf.slug, log: this.captainLastLog(captainOf.slug) } : null,
+        ),
         isDefault ? null : repo.slug,
       );
       this.sql.exec(
@@ -1591,6 +1614,7 @@ export const agentsMethods = {
       .filter(
         (t) =>
           !t.tags.includes('general') &&
+          !t.tags.includes('captain') &&
           !this.agentBlocker(t) &&
           (!horizon || t.horizon === horizon) &&
           (!only || t.repo === only),

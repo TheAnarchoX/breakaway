@@ -168,13 +168,15 @@ export const pelotonMethods = {
         riders.set(map.claim.toLowerCase(), { agent: map.claim, uuid });
     let captain = null;
     if (peloton.startsWith(CHASE)) {
+      // The board's road captain holds a +captain task (BRK-275); one the owner started before it, a road-captain run.
       const captains = new Set(
         this.sql
           .exec("SELECT DISTINCT task FROM agent_runs WHERE trigger = 'road-captain'")
           .toArray()
           .map((r) => r.task),
       );
-      captain = [...riders.values()].find((r) => captains.has(r.uuid))?.agent ?? null;
+      captain =
+        [...riders.values()].find((r) => this.tasks.get(r.uuid)?.tag_captain || captains.has(r.uuid))?.agent ?? null;
     }
     return { riders, captain };
   },

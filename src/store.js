@@ -1094,7 +1094,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * task.
    * @param {unknown} by
    * @param {string} uuid the task being edited
-   * @returns {{ uuid: string, wid: string | null, kind: 'general' | 'chase', chaseStarted?: number } | null}
+   * @returns {{ uuid: string, wid: string | null, kind: 'general' | 'chase', chaseStarted?: number, captain?: boolean } | null}
    */
   crossTaskRightsOf(by, uuid) {
     if (!by || !AGENT_NAME.test(String(by))) return null;
@@ -1108,7 +1108,14 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       if (tasks.has(uuid))
         for (const [own, m] of held)
           if (tasks.has(own) && (!found || Number(row.chase_started) < found.chaseStarted))
-            found = { uuid: own, wid: m.wid ?? null, kind: 'chase', chaseStarted: Number(row.chase_started) };
+            found = {
+              uuid: own,
+              wid: m.wid ?? null,
+              kind: 'chase',
+              chaseStarted: Number(row.chase_started),
+              // A road captain's rights are a chase agent's, inside its chase only (BRK-275).
+              ...(m.tag_captain ? { captain: true } : {}),
+            };
     return found;
   }
 
@@ -1124,10 +1131,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * such a task, on its own, when an agent wrote it (`brief_by`) after the chase started. Never finishing one.
    * @param {string} uuid
    * @param {Record<string, any>} input the request's body
-   * @param {{ uuid: string, kind: 'general' | 'chase', chaseStarted?: number }} own the agent's task that gives it the right
+   * @param {{ uuid: string, kind: 'general' | 'chase', chaseStarted?: number, captain?: boolean }} own the agent's task that gives it the right
    */
   checkCrossTaskEdit(uuid, input, own) {
-    const who = own.kind === 'chase' ? 'a chase agent' : 'a general agent';
+    const who = own.captain ? 'a road captain' : own.kind === 'chase' ? 'a chase agent' : 'a general agent';
     const refuse = (why) => {
       throw new Forbidden(`${who} ${why}; propose it to the owner in a ping instead`);
     };
@@ -1627,6 +1634,9 @@ const apiActions = {
   },
   featureChaseApi(slug, body) {
     return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
+  },
+  featureCaptainApi(slug, body) {
+    return this.run(async () => ok(await this.captainLog(slug, body ?? {})));
   },
   featuresCreateApi(body) {
     return this.run(async () => ok(await this.createFeature(body ?? {}), 201));

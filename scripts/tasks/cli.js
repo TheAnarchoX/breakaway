@@ -377,10 +377,10 @@ export function featureBody({ title, brief, release, state } = {}) {
  * owner's.
  * @param {string | undefined} slug
  * @param {string | undefined} action
- * @param {{ parallel?: string | number, dryRun?: boolean, by?: string }} [options]
+ * @param {{ parallel?: string | number, dryRun?: boolean, by?: string, captain?: boolean, watch?: string | number }} [options]
  * @returns {{ error?: string, request?: [string, string, Record<string, unknown>] }}
  */
-export function chaseRequest(slug, action, { parallel, dryRun = false, by } = {}) {
+export function chaseRequest(slug, action, { parallel, dryRun = false, by, captain, watch } = {}) {
   if (!slug) return { error: 'say which feature: npx breakaway chase <slug> [stop] [--parallel <n>] [--dry-run]' };
   if (action !== undefined && action !== 'stop')
     return { error: `chase has no "${String(action).slice(0, 40)}": npx breakaway chase <slug> [stop]` };
@@ -392,9 +392,20 @@ export function chaseRequest(slug, action, { parallel, dryRun = false, by } = {}
   }
   if (action === 'stop' && limit !== undefined)
     return { error: '--parallel is for a chase that runs: npx breakaway chase <slug> --parallel <n>' };
+  let hours;
+  if (watch !== undefined) {
+    hours = Number(watch);
+    if (!Number.isInteger(hours) || hours < 1 || hours > 72)
+      return { error: '--watch is a road captain’s watch before it hands over: whole hours from 1 to 72' };
+  }
+  if (action === 'stop' && (captain !== undefined || hours !== undefined))
+    return { error: 'the road captain is for a chase that runs: npx breakaway chase <slug> --captain' };
   const body = {
     on: action !== 'stop',
     ...(limit !== undefined ? { parallel: limit } : {}),
+    // The road captain (BRK-275): left out, the board decides from the chase's size.
+    ...(captain !== undefined ? { captain: Boolean(captain) } : {}),
+    ...(hours !== undefined ? { captainHours: hours } : {}),
     ...(dryRun ? { dryRun: true } : {}),
     ...(by ? { by } : {}),
   };
@@ -494,6 +505,7 @@ export function chaseLines(chase, slug = '<slug>') {
   }[chase.state];
   out.push(`  Chase       ${head ?? chase.state}`);
   if (chase.summary) out.push(`              ${chase.summary}`);
+  if (chase.state === 'on') out.push(...captainLines(chase.captain));
   for (const n of chase.needsYou ?? []) out.push(`  Needs you   ${idOf(n)} ${n.why}${blocking(n)}`);
   for (const s of chase.stuck ?? [])
     out.push(`  Stuck       ${idOf(s)} ${s.why}${s.last ? `; last: ${oneLine(s.last)}` : ''}`);
@@ -502,6 +514,57 @@ export function chaseLines(chase, slug = '<slug>') {
     out.push('  Next');
     for (const q of queue) out.push(`    ${idOf(q).padEnd(9)} ${q.ready ? 'ready to start' : q.reason}${blocking(q)}`);
   }
+  return out;
+}
+
+/**
+ * What `npx breakaway captain <slug> [log --file <path> [--handover]]` sends (BRK-275): with no action, the feature, for
+ * its captain and log; `log`, the captain's log, read from `text`, and with `handover`, the hand over.
+ * @param {string | undefined} slug
+ * @param {string | undefined} action
+ * @param {{ text?: string | null, handover?: boolean, by?: string }} [options]
+ */
+export function captainRequest(slug, action, { text = null, handover = false, by } = {}) {
+  const usage = 'npx breakaway captain <feature> [log --file <path> [--handover]]';
+  if (!slug) return { error: `say which feature: ${usage}` };
+  const route = `features/${encodeURIComponent(slug.toLowerCase())}`;
+  if (action === undefined) {
+    if (handover || text !== null) return { error: `--file and --handover go with log: ${usage}` };
+    return { request: ['GET', route] };
+  }
+  if (action !== 'log') return { error: `captain has no "${String(action).slice(0, 40)}": ${usage}` };
+  if (text === null) return { error: 'write the log in a file and pass --file <path>' };
+  if (!String(text).trim())
+    return { error: 'the log is empty: where the chase stands, what you decided, what comes next' };
+  if (!by) return { error: 'say who you are: the log is the road captain’s (BREAKAWAY_AGENT or --as)' };
+  return { request: ['POST', `${route}/captain`, { log: String(text), handover: Boolean(handover), by }] };
+}
+
+/**
+ * The chase's road captain in a few lines (BRK-275): who holds it and when its watch ends, or whether it starts with
+ * the chase, then its log, newest first.
+ * @param {any} captain the chase view's `captain`
+ * @param {{ all?: boolean }} [options] all prints every entry kept, else the last 3
+ */
+export function captainLines(captain, { all = false } = {}) {
+  if (!captain) return [];
+  const when = (iso) =>
+    String(iso ?? '')
+      .slice(0, 16)
+      .replace('T', ' ');
+  const out = [];
+  if (captain.agent)
+    out.push(
+      `  Captain     ${captain.agent}, since ${when(captain.since)} UTC; its watch ends ${when(captain.watchEndsAt)} UTC${captain.askedAt ? ' (asked to hand over)' : ''}`,
+    );
+  else if (captain.on)
+    out.push(`  Captain     on: the board starts one on its next check (${captain.hours}-hour watches)`);
+  else out.push('  Captain     off');
+  const log = all ? (captain.log ?? []) : (captain.log ?? []).slice(0, 3);
+  for (const entry of log)
+    out.push(
+      `  Log         ${when(entry.at)} ${entry.agent}${entry.handover ? ' (handed over)' : ''}: ${oneLine(entry.text)}`,
+    );
   return out;
 }
 
