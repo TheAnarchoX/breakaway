@@ -96,8 +96,8 @@ function ParallelField({ feature, chase, id, onChange }) {
         />
       )}
       <span class="field-hint">
-        Every agent working in the area counts, not only the chase’s. 1 keeps one agent per area, as outside a chase.{' '}
-        {chase.on ? 'A change applies on the next check.' : ''}
+        Every agent working in the area counts, not only the chase’s. Tasks that would change the same files never start
+        side by side. {chase.on ? 'A change applies on the next check.' : ''}
       </span>
     </div>
   );

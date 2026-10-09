@@ -13017,9 +13017,9 @@ button.infra-plan-row {
   gap: 4px;
 }
 .fp-path {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 2px 10px;
   padding: 6px 4px 6px 10px;
   border-radius: var(--radius-xs);
@@ -13035,18 +13035,21 @@ button.infra-plan-row {
   border-left-style: dashed;
 }
 .fp-pattern {
+  grid-column: 1;
+  justify-self: start;
   font-size: 12px;
   overflow-wrap: anywhere;
   min-width: 0;
 }
 .fp-mark {
-  flex: 1 1 auto;
+  grid-column: 1;
 }
 .fp-label {
   font-weight: 600;
 }
 .fp-release {
-  margin-left: auto;
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 .fp-conflict {
   display: flex;
@@ -13076,26 +13079,23 @@ button.infra-plan-row {
   stroke-dasharray: 2 5;
   stroke-linecap: round;
 }
-.edge-share-group {
-  transition: opacity var(--dur) var(--ease);
-}
-.edge-share-group.edge-dim {
-  opacity: 0.2;
+.chain-labels {
+  z-index: 2;
 }
 .edge-share-label {
   font: 500 11px / 1 var(--font-mono);
   fill: var(--muted);
+  transition: opacity var(--dur) var(--ease);
   paint-order: stroke;
   stroke: var(--bg);
   stroke-width: 4px;
   stroke-linejoin: round;
 }
-.node {
-  position: relative;
+.edge-share-label.edge-dim {
+  opacity: 0.2;
 }
-.node:hover,
-.node:focus-within {
-  z-index: 2;
+.edge-share-file {
+  fill: var(--text);
 }
 .node-fp {
   position: absolute;
@@ -13106,16 +13106,9 @@ button.infra-plan-row {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.node:hover .node-fp,
-.node:focus-within .node-fp {
-  top: calc(100% + 4px);
-  left: 0;
-  width: 100%;
-  height: auto;
-  margin: 0;
-  overflow: visible;
-  clip-path: none;
-  white-space: normal;
+.node-fp-pop {
+  position: fixed;
+  z-index: 20;
   display: grid;
   gap: 4px;
   padding: 8px 10px;
@@ -13125,15 +13118,16 @@ button.infra-plan-row {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-s);
   box-shadow: var(--shadow-pop);
+  pointer-events: none;
 }
-.node-fp p,
-.node-fp ul {
+.node-fp-pop p,
+.node-fp-pop ul {
   margin: 0;
 }
-.node-fp ul {
+.node-fp-pop ul {
   padding-left: 16px;
 }
-.node-fp code {
+.node-fp-pop code {
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -13142,7 +13136,7 @@ button.infra-plan-row {
   color: var(--muted);
 }
 @media (prefers-reduced-motion: reduce) {
-  .edge-share-group {
+  .edge-share-label {
     transition: none;
   }
 }

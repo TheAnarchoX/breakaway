@@ -53,6 +53,9 @@ const SOURCE_WORDS = {
   similar: 'changed by tasks like it',
 };
 
+/** How a claim was made, when it wasn't an edit or `tasks paths`. */
+const CLAIM_WORDS = { dirty: ' when it changed it', checkin: ' at check-in' };
+
 /** Minutes until `iso`, in words. */
 export function runsOut(iso, now = Date.now()) {
   const minutes = Math.max(0, Math.round((Date.parse(iso) - now) / 60_000));
@@ -69,7 +72,7 @@ export function pathMark(p, now = Date.now()) {
   if (p.state === 'claimed')
     return {
       label: 'Claimed',
-      detail: `by ${p.agent}${p.source && p.source !== 'claim' ? ` (${p.source === 'dirty' ? 'it changed it' : p.source})` : ''}, ${runsOut(p.until, now)}`,
+      detail: `by ${p.agent}${CLAIM_WORDS[p.source] ?? ''}, ${runsOut(p.until, now)}`,
     };
   if (p.state === 'dirty') return { label: 'Changed', detail: 'not claimed' };
   if (p.state === 'pull')

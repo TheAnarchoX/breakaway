@@ -1234,9 +1234,9 @@ export const forceOffer = signal(null);
  * footprint's overlap) asks once more, and a yes runs `request` again with `anyway`.
  * @param {(force: boolean, anyway?: boolean) => Promise<any>} request
  * @param {string | ((result: any) => string) | null} message
- * @param {{ forceable?: boolean, force?: boolean, anyway?: boolean, after?: (result: any) => void }} [options]
+ * @param {{ forceable?: boolean, force?: boolean, anyway?: boolean, what?: string, after?: (result: any) => void }} [options]
  */
-async function change(request, message, { forceable = false, force = false, anyway = false, after } = {}) {
+async function change(request, message, { forceable = false, force = false, anyway = false, what = 'it', after } = {}) {
   try {
     const result = await request(force, anyway);
     const said = typeof message === 'function' ? message(result) : message;
@@ -1252,16 +1252,16 @@ async function change(request, message, { forceable = false, force = false, anyw
     if (!anyway && error.data?.anyway && error.data.overlap) {
       const o = error.data.overlap;
       const ok = await confirmDialog({
-        title: 'Start it anyway?',
+        title: `Start ${what} anyway?`,
         body: `${o.task}${o.agent ? ` (${o.agent})` : ''} is changing ${o.path}. Two agents on the same files can end in a merge conflict.`,
         confirmLabel: 'Start anyway',
       });
-      return ok ? change(request, message, { forceable, force, anyway: true, after }) : null;
+      return ok ? change(request, message, { forceable, force, anyway: true, what, after }) : null;
     }
     if (forceable && !force && error.data?.forceable) {
       forceOffer.value = {
         reason: error.message,
-        run: () => change(request, message, { forceable, force: true, anyway, after }),
+        run: () => change(request, message, { forceable, force: true, anyway, what, after }),
       };
       return null;
     }
@@ -1417,7 +1417,7 @@ export const actions = {
           body: { ref: t.uuid, note: note || undefined, force: force || undefined, anyway: anyway || undefined },
         }),
       `Started an agent on ${ref(t)}.`,
-      { forceable: true, after },
+      { forceable: true, what: ref(t), after },
     );
     loadAgents();
     return result;

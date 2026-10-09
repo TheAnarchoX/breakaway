@@ -114,19 +114,23 @@ function layoutChain(chain, { showDone, unfold }) {
   return { tasks, steps: ordered, edges: folded.edges, shares: chain.shares, folded: folded.folded, routes, path };
 }
 
-/** A path for a label, cut from the front so its file name stays. */
-const shortPath = (p, most = 28) => (p.length > most ? `…${p.slice(-(most - 1))}` : p);
+/** A shared path's last part for a label (a folder keeps its slash), cut to fit; the node's list has it whole. */
+function fileName(path, most = 22) {
+  const name = path.endsWith('/') ? `${path.split('/').filter(Boolean).pop()}/` : (path.split('/').pop() ?? path);
+  return name.length > most ? `${name.slice(0, most - 1)}…` : name;
+}
 
 /**
  * What a node shows of its footprint on hover and focus (IDEA-55 section 5): a short list of the paths it touches and
- * the tasks it shares files with. Always in the page, so a screen reader reads it with the card.
- * @param {{ print: any, shares: [string, string][] }} props
+ * the tasks it shares files with. Each card carries it hidden, so a screen reader reads it with the card, and the
+ * chain shows the focused one's in a popover that the scroll area can't clip.
+ * @param {{ print: any, shares: [string, string][], class?: string, style?: any }} props
  */
-function NodeFootprint({ print, shares }) {
+function NodeFootprint({ print, shares, class: cls = 'node-fp', style }) {
   if (!print) return null;
   const shown = print.patterns.slice(0, 5);
   return (
-    <div class="node-fp">
+    <div class={cls} style={style} aria-hidden={cls === 'node-fp' ? undefined : 'true'}>
       <p class="node-fp-head">
         Footprint: {KIND_WORDS[print.kind]?.toLowerCase() ?? print.kind}
         {print.kind === 'unknown' ? ', so it’s scheduled by its area' : ''}
@@ -160,6 +164,28 @@ function Chain({ chain, layout, unfolded, onFold, prints }) {
   const [sharePaths, setSharePaths] = useState([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [focus, setFocus] = useState(null);
+  // Where the focused node's footprint pops up, from its card's place on screen; a scroll hides it.
+  const [tip, setTip] = useState(null);
+  useLayoutEffect(() => {
+    const t = focus ? layout.tasks.get(focus) : null;
+    if (t?.status !== 'pending' || !prints.get(focus)) return setTip(null);
+    const r = box.current?.querySelector(`[data-node="${CSS.escape(focus)}"]`)?.getBoundingClientRect();
+    if (!r) return setTip(null);
+    const below = window.innerHeight - r.bottom > 180;
+    setTip({
+      id: focus,
+      left: r.left,
+      width: r.width,
+      ...(below ? { top: r.bottom + 4 } : { bottom: window.innerHeight - r.top + 4 }),
+    });
+    const hide = () => setTip(null);
+    window.addEventListener('scroll', hide, { capture: true, passive: true });
+    window.addEventListener('resize', hide);
+    return () => {
+      window.removeEventListener('scroll', hide, { capture: true });
+      window.removeEventListener('resize', hide);
+    };
+  }, [focus, prints, layout]);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -235,8 +261,8 @@ function Chain({ chain, layout, unfolded, onFold, prints }) {
               to,
               file,
               d: `M${x(a.right)},${y(a)} C${right + 36},${y(a)} ${right + 36},${y(b)} ${x(b.right)},${y(b)}`,
-              lx: right + 30,
-              ly: (y(a) + y(b)) / 2 - 6,
+              lx: right + 27,
+              ly: (y(a) + y(b)) / 2,
             };
           })
           .filter(Boolean),
@@ -304,18 +330,41 @@ function Chain({ chain, layout, unfolded, onFold, prints }) {
             />
           );
         })}
-        {sharePaths.map((p) => {
-          const dim = lit(p.from) && lit(p.to) ? '' : 'edge-dim';
-          return (
-            <g key={`share-${p.from}-${p.to}`} class={`edge-share-group ${dim}`}>
-              <path d={p.d} class="edge edge-share" />
-              <text x={p.lx} y={p.ly} text-anchor="middle" class="edge-share-label">
-                shares files: {shortPath(p.file)}
-              </text>
-            </g>
-          );
-        })}
+        {sharePaths.map((p) => (
+          <path
+            key={`share-${p.from}-${p.to}`}
+            d={p.d}
+            class={`edge edge-share ${lit(p.from) && lit(p.to) ? '' : 'edge-dim'}`}
+          />
+        ))}
       </svg>
+      {/* The shared-files labels sit above the cards, so a label wider than the gap stays readable. */}
+      <svg class="chain-edges chain-labels" aria-hidden="true" width={size.w} height={size.h}>
+        {sharePaths.map((p) => (
+          <text
+            key={`share-${p.from}-${p.to}`}
+            x={p.lx}
+            y={p.ly}
+            text-anchor="middle"
+            class={`edge-share-label ${lit(p.from) && lit(p.to) ? '' : 'edge-dim'}`}
+          >
+            <tspan x={p.lx} dy="-0.2em">
+              shares files
+            </tspan>
+            <tspan x={p.lx} dy="1.2em" class="edge-share-file">
+              {fileName(p.file)}
+            </tspan>
+          </text>
+        ))}
+      </svg>
+      {tip && (
+        <NodeFootprint
+          print={prints.get(tip.id)}
+          shares={sharesOf(tip.id)}
+          class="node-fp-pop"
+          style={{ left: `${tip.left}px`, width: `${tip.width}px`, top: tip.top, bottom: tip.bottom }}
+        />
+      )}
       {layout.steps.map((ids, i) => (
         <ul key={i} class="chain-col" aria-label={i === 0 ? 'Starts with' : `Step ${i + 1}`}>
           {ids.map((id) => {

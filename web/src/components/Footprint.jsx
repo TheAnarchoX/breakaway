@@ -120,8 +120,14 @@ export function FootprintSection({ task: t }) {
         <p key={`${c.path}-${c.task}`} class="fp-conflict">
           <TriangleAlert size={14} aria-hidden="true" />
           <span>
-            Changed <code>{c.path}</code>, which {c.agent} claims on {c.task} (<code>{c.pattern}</code>). Agree who goes
-            first on the peloton.
+            Changed <code>{c.path}</code>, which {c.agent} claims on {c.task}
+            {c.pattern !== c.path ? (
+              <>
+                {' '}
+                as <code>{c.pattern}</code>
+              </>
+            ) : null}
+            . Agree who goes first on the peloton.
           </span>
         </p>
       ))}
