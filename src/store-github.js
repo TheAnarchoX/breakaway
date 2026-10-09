@@ -33,6 +33,7 @@ import {
   widsIn,
 } from './github.js';
 import BOARD_FILES from './board-files.json' with { type: 'json' };
+import { screenshotsIn } from './chase-digest.js';
 import { budgetAfterSync, countsOf } from './github-budget.js';
 import { syncPace } from './github-pace.js';
 import { install } from './install.js';
@@ -742,6 +743,7 @@ export const githubMethods = {
         const state = prState(p);
         const { closes, mentions, elsewhere } = this.linksOf(p, slug);
         const detail = details.get(p.number);
+        const images = screenshotsIn(p.body);
         const pr = {
           repo: slug,
           number: p.number,
@@ -772,6 +774,8 @@ export const githubMethods = {
           closes,
           mentions,
           ...(Object.keys(elsewhere).length ? { elsewhere } : {}),
+          // The screenshots its description carries, for a chase's digest (BRK-277): links to GitHub, never the images.
+          ...(images.length ? { images } : {}),
         };
         const base = { number: p.number, title: p.title, url: p.html_url, wids: closes.length ? closes : mentions };
         if (!prev && state === 'open') event('pr_opened', { ...base, by: pr.author, draft: pr.draft });

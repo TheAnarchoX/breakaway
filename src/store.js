@@ -36,6 +36,7 @@ import { routinesMethods } from './store-routines.js';
 import { featuresMethods } from './store-features.js';
 import { planningMethods } from './store-planning.js';
 import { chaseMethods } from './store-chase.js';
+import { chaseDigestMethods } from './store-chase-digest.js';
 import { attachmentsMethods } from './store-attachments.js';
 import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
@@ -134,6 +135,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initRoutines();
     this.initFeatures();
     this.initChase();
+    this.initChaseDigest();
     this.initPlanning();
     this.initAttachments();
     this.initPings();
@@ -1517,6 +1519,7 @@ Object.assign(
   featuresMethods,
   planningMethods,
   chaseMethods,
+  chaseDigestMethods,
   attachmentsMethods,
   pingsMethods,
   pushMethods,
@@ -1637,6 +1640,9 @@ const apiActions = {
   },
   featureChaseApi(slug, body) {
     return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
+  },
+  featureDigestApi(slug, id) {
+    return this.chaseDigestApi(slug, id);
   },
   featureCaptainApi(slug, body) {
     return this.run(async () => ok(await this.captainLog(slug, body ?? {})));

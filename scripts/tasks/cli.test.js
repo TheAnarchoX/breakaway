@@ -762,6 +762,16 @@ describe('captain (BRK-275)', () => {
     });
   });
 
+  it('sends the road captain’s lines for the owner’s next digest (BRK-277)', () => {
+    expect(captainRequest('crew', 'digest', { text: 'Two merged', by: 'claude-captain-crew-1' })).toEqual({
+      request: ['POST', 'features/crew/captain', { digest: 'Two merged', by: 'claude-captain-crew-1' }],
+    });
+    expect(captainRequest('crew', 'digest', { by: 'claude-captain-crew-1' }).error).toMatch(/--file/u);
+    expect(captainRequest('crew', 'digest', { text: ' ', by: 'claude-captain-crew-1' }).error).toMatch(/empty/u);
+    expect(captainRequest('crew', 'digest', { text: 'x' }).error).toMatch(/^say who you are/u);
+    expect(captainRequest('crew', 'digest', { text: 'x', handover: true, by: 'c' }).error).toMatch(/--handover/u);
+  });
+
   it('refuses what can’t be right before asking the board', () => {
     expect(captainRequest(undefined, undefined).error).toMatch(/^say which feature/u);
     expect(captainRequest('crew', 'steer').error).toMatch(/captain has no "steer"/u);

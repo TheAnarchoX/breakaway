@@ -158,7 +158,8 @@ export const features = signal({ loaded: false, data: null, error: null });
 /** The feature open on the roadmap, with its tasks: `{ slug, data, error }`, or null. */
 export const featureOpen = signal(null);
 /** The owner's inbox: open pings, newest first (docs/specs/IDEA-12-agent-pings.md). */
-export const pings = signal({ loaded: false, list: [], notices: [], chases: [], error: null });
+/** `digests` are each chase's newest digest (BRK-277): shown in the inbox, never counted on the bell. */
+export const pings = signal({ loaded: false, list: [], notices: [], chases: [], digests: [], error: null });
 /**
  * What's open in the inbox: pings, the notes about connections that broke or work again (CLD-121), and the notes
  * about chases that ended (docs/specs/IDEA-28-features-and-chase.md, section 3.7).
@@ -490,11 +491,18 @@ let pingsSeeded = false;
 /** Loads the open pings. Ones that turn up after the first load raise a toast while the board is open. */
 export async function loadPings() {
   try {
-    const { pings: list, notices, chases } = await api('pings');
+    const { pings: list, notices, chases, digests } = await api('pings');
     const fresh = pingsSeeded ? list.filter((p) => !seenPings.has(p.id) && p.kind !== 'fyi') : [];
     for (const p of list) seenPings.add(p.id);
     pingsSeeded = true;
-    pings.value = { loaded: true, list, notices: notices ?? [], chases: chases ?? [], error: null };
+    pings.value = {
+      loaded: true,
+      list,
+      notices: notices ?? [],
+      chases: chases ?? [],
+      digests: digests ?? [],
+      error: null,
+    };
     if (fresh.length === 1) toast(`${fresh[0].task ?? 'A task'} needs you: ${fresh[0].kind}. See the inbox.`, 'info');
     else if (fresh.length > 1) toast(`${fresh.length} pings need you. See the inbox.`, 'info');
   } catch (error) {
@@ -504,9 +512,9 @@ export async function loadPings() {
 
 /**
  * Dismiss one thing in the inbox, from the inbox or the bell: a ping, a note about a connection, or a note that a
- * chase ended. Says how it went in a toast and reloads the inbox either way; `dismissed` runs first, once it's gone
+ * chase ended, or a chase's digest. Says how it went in a toast and reloads the inbox either way; `dismissed` runs first, once it's gone
  * from the board and before it leaves the page.
- * @param {'ping' | 'notice' | 'chase'} type
+ * @param {'ping' | 'notice' | 'chase' | 'digest'} type
  * @param {Record<string, any>} item
  * @param {() => void} [dismissed]
  */
@@ -514,6 +522,8 @@ export async function dismissInboxItem(type, item, dismissed) {
   try {
     if (type === 'ping') await api(`pings/${enc(item.id)}/dismiss`, { method: 'POST', body: {} });
     else if (type === 'notice') await api(`connections/notices/${enc(item.id)}/dismiss`, { method: 'POST', body: {} });
+    else if (type === 'digest')
+      await api(`features/${enc(item.feature)}/chase`, { method: 'POST', body: { dismissDigests: true } });
     else await api(`features/${enc(item.feature)}/chase`, { method: 'POST', body: { dismiss: true } });
     toast('Dismissed.', 'success');
     dismissed?.();
@@ -861,6 +871,7 @@ export const listSort = signal({ key: 'rank', dir: 'asc' });
 export const listGroup = signal('none');
 export const selectedRoutine = signal(null); // a routine's slug, open in the routines view's panel
 export const selectedFeature = signal(null); // a feature's slug, open on the roadmap
+export const selectedDigest = signal(null); // a chase digest's id, open on its feature (BRK-277)
 /** The spec open in the Specs view (WEB-25): `{ slug, path }`, slug null for the default repository's, or null. */
 export const selectedSpec = signal(null);
 export const focusPing = signal(null); // the ping the inbox scrolls to and focuses, from #/inbox?ping=<id>
@@ -942,6 +953,7 @@ function parseHash() {
     selectedSpec.value = path === 'specs' ? readSpecParam(p.get('spec')) : null;
     const feature = path === 'roadmap' ? p.get('feature') : null;
     selectedFeature.value = feature && /^[a-z][a-z0-9_-]{0,39}$/u.test(feature) ? feature : null;
+    selectedDigest.value = selectedFeature.value && /^\d{1,15}$/u.test(p.get('digest') ?? '') ? p.get('digest') : null;
     focusPing.value = path === 'inbox' && /^\d+$/u.test(p.get('ping') ?? '') ? p.get('ping') : null;
     taskView.value = ['sidebar', 'modal'].includes(p.get('view')) ? p.get('view') : null;
     githubConnect.value = p.get('connect');
@@ -977,6 +989,7 @@ export function hashFor({
   mode = taskView.value,
   routine = selectedRoutine.value,
   feature = selectedFeature.value,
+  digest = feature === selectedFeature.value ? selectedDigest.value : null,
   ping = focusPing.value,
   settings = settingsSlug.value,
   spec = selectedSpec.value,
@@ -991,6 +1004,7 @@ export function hashFor({
   if (repoScope.value) p.set('repo', repoScope.value);
   if (v === 'routines' && routine) p.set('routine', routine);
   if (v === 'roadmap' && feature) p.set('feature', feature);
+  if (v === 'roadmap' && feature && digest) p.set('digest', String(digest));
   if (v === 'specs' && spec) p.set('spec', specParam(spec.path, spec.slug, repos.peek().default));
   if (v === 'inbox' && ping) p.set('ping', ping);
   if (v === 'infrastructure' && environment && plan) p.set('plan', plan);
