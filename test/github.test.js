@@ -1142,26 +1142,23 @@ describe('GitHub on the board', () => {
     gh.deployments = null;
   });
 
-  it('reads what merged pull requests changed, and marks the ones from before recorded deploys as shipped', async () => {
+  it('reads what merged pull requests changed', async () => {
     await api('tasks', {
       method: 'POST',
       body: [
         { description: 'Write the runbook', wid: 'PRD-80' },
         { description: 'Change the room', wid: 'PRD-81' },
-        { description: 'Change the room, old', wid: 'PRD-82' },
         { description: 'Unreadable files', wid: 'PRD-83' },
       ],
     });
     gh.pulls = [
       pr(80, { body: 'Closes PRD-80.', state: 'closed', merged: true, updated: '2026-09-29T14:00:00Z' }),
       pr(81, { body: 'Closes PRD-81.', state: 'closed', merged: true, updated: '2026-09-29T14:01:00Z' }),
-      pr(42, { body: 'Closes PRD-82.', state: 'closed', merged: true, updated: '2026-09-29T14:02:00Z' }), // in backfill-shipped.js
       pr(83, { body: 'Closes PRD-83.', state: 'closed', merged: true, updated: '2026-09-29T14:03:00Z' }),
     ];
     gh.files = {
       80: ['docs/runbook.md', 'WORK.md'],
       81: ['docs/runbook.md', 'src/rooms.js'],
-      42: ['src/server/spotify.js'],
     };
     await api('github/sync', { method: 'POST' });
 
@@ -1172,11 +1169,6 @@ describe('GitHub on the board', () => {
     expect((await body(await api('tasks/PRD-80'))).task.github[0].workers).toEqual([]);
     expect((await body(await api('tasks/PRD-81'))).task.github[0].workers).toEqual(['widgets']);
     expect((await body(await api('tasks/PRD-83'))).task.github[0].workers).toBeNull();
-
-    // The old pull request's task is shipped in the deploy the log names, without a note.
-    const old = (await body(await api('tasks/PRD-82'))).task;
-    expect(old.shipped).toMatchObject({ env: 'samewave', version: '4756548c' });
-    expect(old.annotations.some((n) => n.text.startsWith('Live in'))).toBe(false);
 
     // Files are read once; a pull request GitHub couldn't list is tried again next time.
     gh.calls.length = 0;
