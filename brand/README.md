@@ -286,6 +286,19 @@ All colors are tokens in [`tokens.css`](tokens.css), with the same names the boa
 | `--code-attr` | `#6fd4d4` | `#0d6868` | Attributes, properties, and variables |
 | `--code-meta` | `#ff9bb5` | `#a3214f` | Markup tags, list markers, and links |
 
+**Avatar tints.** Each person's avatar is a chip in one of eight tints, cut by gaps that lean 10° ([Avatars](#avatars)). The tints are for that and nothing else: never text, never a status, never a fill or an edge anywhere else in the board, and never on an agent. None is red, because red is the rider. Each passes 3:1 against every background and surface in its theme, which the contrast test checks with the hues' distance from red, the accent, danger, and each other.
+
+| Token | Carbon | Chalk | Use |
+| --- | --- | --- | --- |
+| `--avatar-1` | `#e8ab3e` | `#875d01` | Amber: a person's avatar only |
+| `--avatar-2` | `#b0c352` | `#616e02` | Lime: a person's avatar only |
+| `--avatar-3` | `#73d083` | `#137b33` | Green: a person's avatar only |
+| `--avatar-4` | `#0ed1d0` | `#067574` | Teal: a person's avatar only |
+| `--avatar-5` | `#71bfff` | `#016baa` | Blue: a person's avatar only |
+| `--avatar-6` | `#a3b2fe` | `#505bb5` | Indigo: a person's avatar only |
+| `--avatar-7` | `#c4a4fe` | `#734fa9` | Violet: a person's avatar only |
+| `--avatar-8` | `#eb94df` | `#924389` | Pink: a person's avatar only |
+
 ## Type
 
 Two open-source families (SIL Open Font License), self-hosted from `@fontsource-variable/archivo` and `@fontsource-variable/chivo-mono`, so no font requests go to a third party. Both come from the same foundry, Omnibus-Type.
@@ -326,6 +339,18 @@ Two open-source families (SIL Open Font License), self-hosted from `@fontsource-
 - **Bikes stay in the words.** No cyclists, jerseys, or race photos.
 - **Screenshots** show the board with made-up tasks (`BRK-`, `WEB-`, `DOC-` IDs and invented titles), never a real repository's private work.
 
+## Avatars
+
+People get a pattern, never a picture or initials ([spec](../docs/specs/ID-9-avatars.md)).
+
+![Avatars in carbon and chalk: the eight tints, 14 made-up people and 4 agents at every size from 16 to 40 px, and a claim chip, a list, and Shuffle.](previews/avatars.svg)
+
+- **A person is a race number**: a flat chip in one [avatar tint](#color), with tight corners, cut by gaps that lean 10° and sometimes a level cut across. The cuts are the ground showing through. Their handle is the seed until Shuffle picks a new one, and the seed decides the tint and the cuts.
+- **An agent stands upright**: an outlined chip with a 3 by 3 glyph from its name, in the neutrals, never tinted. A person and an agent never look alike.
+- **Smaller is simpler.** 16 to 20 px on the claim chip (one cut), 24 px in lists, 32 to 40 px in the header and People.
+- **The name always shows** beside it or in its label; the avatar is decoration, hidden from screen readers. Avatars never move.
+- **Drawn by one piece of code**, [`avatar.js`](avatar.js), for the previews and the board alike. Changing what a seed draws changes everyone's avatar.
+
 ## Where breakaway posts
 
 - **breakaway's own account**: [@leavethepackdev](https://x.com/leavethepackdev) on X, named for the site, `leavethepack.dev`. Its name is "breakaway", lowercase, and its profile (bio, photo, header) is in [`../launch/profile.md`](../launch/profile.md).
@@ -342,7 +367,7 @@ Before handing back anything people see or read:
 - [ ] Headlines are short and end in a full stop; no exclamation marks, no words from the never list.
 - [ ] Every claim is one from [Claims that must stay true](#claims-that-must-stay-true), and nothing counts what someone shipped with it.
 - [ ] Buttons, statuses, and errors are plain; cycling words only in headlines, one per screen at most.
-- [ ] Only tokens; one red thing per view; no red text below display size.
+- [ ] Only tokens; one red thing per view; no red text below display size; avatar tints only in avatars.
 - [ ] It works in carbon and chalk, narrow and wide, and the contrast test passes.
 - [ ] Keyboard, screen reader, and reduced motion still work.
 
@@ -354,6 +379,7 @@ Paths are from this folder.
 | --- | --- |
 | Design tokens | [`tokens.css`](tokens.css), and the other code colors in [`code-colors.css`](code-colors.css) |
 | Logo files | [`logo/`](logo/) |
+| Avatars | [`avatar.js`](avatar.js), the generator the previews and the board both draw with |
 | Preview sheets | [`previews/`](previews/) |
 | How they're built | [`tools/build.mjs`](tools/build.mjs): `cd tools && npm install && npm run build`. The geometry is in the file, the colors come from `tokens.css`, and every word is outlines, so the files need no fonts. |
 | Contrast and token checks | [`../test/brand.test.js`](../test/brand.test.js), in the board's tests |

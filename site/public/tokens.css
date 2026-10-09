@@ -7,7 +7,7 @@
  * --chalk, --lean, and the display and motion settings.
  *
  * Contrast is checked by test/brand.test.js in both themes: every text color passes 4.5:1 on every
- * background and surface, and status colors also on their own tinted pills.
+ * background and surface, and status colors also on their own tinted pills. The avatar tints pass 3:1 on all of them.
  */
 
 :root {
@@ -80,6 +80,17 @@
   --code-type: #d7a6ff;
   --code-attr: #6fd4d4;
   --code-meta: #ff9bb5;
+
+  /* Avatar tints (ID-9): one per person, only in their avatar, never text, never red. Each passes 3:1 on every
+     background and surface (test/brand.test.js), so the chip and the cuts through it hold in both themes. */
+  --avatar-1: #e8ab3e; /* amber */
+  --avatar-2: #b0c352; /* lime */
+  --avatar-3: #73d083; /* green */
+  --avatar-4: #0ed1d0; /* teal */
+  --avatar-5: #71bfff; /* blue */
+  --avatar-6: #a3b2fe; /* indigo */
+  --avatar-7: #c4a4fe; /* violet */
+  --avatar-8: #eb94df; /* pink */
 }
 
 @media (prefers-color-scheme: light) {
@@ -116,6 +127,14 @@
     --code-type: #7a3bb0;
     --code-attr: #0d6868;
     --code-meta: #a3214f;
+    --avatar-1: #875d01;
+    --avatar-2: #616e02;
+    --avatar-3: #137b33;
+    --avatar-4: #067574;
+    --avatar-5: #016baa;
+    --avatar-6: #505bb5;
+    --avatar-7: #734fa9;
+    --avatar-8: #924389;
   }
 }
 
@@ -152,4 +171,12 @@
   --code-type: #7a3bb0;
   --code-attr: #0d6868;
   --code-meta: #a3214f;
+  --avatar-1: #875d01;
+  --avatar-2: #616e02;
+  --avatar-3: #137b33;
+  --avatar-4: #067574;
+  --avatar-5: #016baa;
+  --avatar-6: #505bb5;
+  --avatar-7: #734fa9;
+  --avatar-8: #924389;
 }
