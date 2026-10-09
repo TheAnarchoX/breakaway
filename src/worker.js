@@ -24,7 +24,17 @@ import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
 import { RUNNER_HEADER } from './infra-runner.js';
 import { plansDates } from './store-features.js';
-import { endPersonSession, peopleOwnerApi, peoplePublic, personApi, personOf } from './people.js';
+import {
+  NOT_YET,
+  cutAnswer,
+  endPersonSession,
+  guardStore,
+  peopleOwnerApi,
+  peoplePublic,
+  personApi,
+  personOf,
+} from './people.js';
+import { ACTIONS, agentOf, ownerActor } from './permissions.js';
 
 export { TaskStore } from './store.js';
 
@@ -223,6 +233,18 @@ function withHeaders(response) {
 }
 
 const text = (status, body) => new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+
+/** Whether a task's add or change plans what only a maintainer plans: autostart, or a horizon-* tag (BRK-301). */
+function plansTask(item) {
+  if (!item || typeof item !== 'object') return false;
+  const tags = [item.tags, item.addTags, item.removeTags].flatMap((t) =>
+    Array.isArray(t) ? t : typeof t === 'string' ? t.split(',') : [],
+  );
+  return (
+    (item.autostart !== undefined && item.autostart !== null) ||
+    tags.some((t) => String(t).trim().startsWith('horizon-'))
+  );
+}
 const json = (status, body) => Response.json(body, { status });
 
 async function readBody(request) {
@@ -300,9 +322,8 @@ function contentType(request) {
 const MAX_IMAGE_BODY = 1024 * 1024 + 1;
 
 /** Image routes carry raw bytes, not JSON, so they're handled before the body is parsed. Null when the path isn't one. */
-async function handleImages(request, env, url, method, via) {
+async function handleImages(request, url, method, s, gate) {
   const parts = url.pathname.split('/').slice(2).map(decodeURIComponent);
-  const s = store(env);
   const send = (result) => json(result.status, result.body);
   const header = (name) => {
     try {
@@ -314,6 +335,8 @@ async function handleImages(request, env, url, method, via) {
   if (parts[0] === 'tasks' && parts[2] === 'attachments' && parts.length === 3) {
     if (method === 'GET') return send(await s.attachmentsList(parts[1]));
     if (method !== 'POST') return null;
+    const no = await gate('task.write', { task: parts[1] });
+    if (no) return no;
     if (Number(request.headers.get('Content-Length') ?? 0) > MAX_IMAGE_BODY)
       return json(413, { error: 'each image can be up to 1 MB, so shrink it or crop it first' });
     const bytes = await request.arrayBuffer();
@@ -324,7 +347,8 @@ async function handleImages(request, env, url, method, via) {
   // A kickoff's images (IDEA-26) are the owner's, from the signed-in browser only; they're read like any image.
   if (parts[0] === 'kickoffs' && parts[2] === 'images' && (parts.length === 3 || parts.length === 4)) {
     if (method === 'GET') return null;
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change a kickoff’s images' });
+    const no = await gate('kickoff', { install: true }, 'only the signed-in web board can change a kickoff’s images');
+    if (no) return no;
     if (parts.length === 4 && method === 'DELETE') return send(await s.kickoffImageDelete(parts[1], parts[3]));
     if (parts.length !== 3 || method !== 'POST') return null;
     if (Number(request.headers.get('Content-Length') ?? 0) > MAX_IMAGE_BODY)
@@ -335,7 +359,11 @@ async function handleImages(request, env, url, method, via) {
     );
   }
   if (parts[0] === 'attachments' && parts.length === 2 && /^\d{1,9}$/u.test(parts[1])) {
-    if (method === 'DELETE') return send(await s.attachmentDelete(parts[1]));
+    if (method === 'DELETE') {
+      const no = await gate('task.write', { attachment: parts[1] });
+      if (no) return no;
+      return send(await s.attachmentDelete(parts[1]));
+    }
     if (method === 'GET') {
       const result = await s.attachmentGet(parts[1]);
       if (result.status !== 200) return send(result);
@@ -362,23 +390,67 @@ async function handleApi(request, env, url, ctx) {
   const open = await peoplePublic(request, env, url, store(env));
   if (open) return open;
   const via = await authenticate(request, env);
-  if (!via) {
-    // Not the owner. A person's credential goes to their own routes and nowhere else, so it never reaches a gate
-    // below, the owner's cookie-only ones included (docs/specs/BRK-299-people-and-roles.md, point 9).
-    const person = await personOf(request, store(env));
-    if (person) return personApi(request, env, url, person, store(env));
-    return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
-  }
+  if (via) return routeApi(request, env, url, ctx, via, null);
+  // Not the owner: a person, or nobody (docs/specs/BRK-299-people-and-roles.md, points 2 and 3).
+  const person = await personOf(request, store(env));
+  if (!person) return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
+  const first = url.pathname.split('/')[2];
+  if (first === 'session' || first === 'me') return personApi(request, env, url, person, store(env));
+  // Reads by grant come with BRK-323: until then a person reads nothing but their own.
+  if (request.method === 'GET') return json(403, { error: NOT_YET });
+  // TODO(BRK-323): a person's write answers are cut to what can't show another repository until reads are filtered
+  // by grant; BRK-323 takes this cut away.
+  return cutAnswer(await routeApi(request, env, url, ctx, person.via, person));
+}
+
+/**
+ * Every API route past sign-in. `via` is how the request signed in: the owner's `token` or `cookie`, or a person's
+ * `person-token` or `person-cookie`, whose `person` it is. Every route that changes something asks `gate` first, which
+ * asks the one permissions module (src/permissions.js) with the person behind the credential, never with `by`.
+ */
+async function routeApi(request, env, url, ctx, via, person) {
+  const actor = person ? { person: person.handle, press: via === 'person-cookie' } : ownerActor(via === 'cookie');
+  // A press is a signed-in browser: the owner's cookie or a person's session, never a bearer token (BRK-299 point 3).
+  const press = actor.press;
   // A call with the token is the CLI (or a script with it), never the web board's cookie: Set up the board's CLI step (BRK-143).
   if (via === 'token' && Date.now() - cliNotedAt > 60_000) {
     cliNotedAt = Date.now();
     ctx?.waitUntil(store(env).connectionsCliSeen());
   }
   const method = request.method;
-  if (via === 'cookie' && method !== 'GET' && !sameOrigin(request))
-    return json(403, { error: 'cross-origin request refused' });
+  if (press && method !== 'GET' && !sameOrigin(request)) return json(403, { error: 'cross-origin request refused' });
 
-  const images = await handleImages(request, env, url, method, via);
+  // A person's request reaches the store only once a gate has let it through: anything else is refused (BRK-301).
+  let gated = false;
+  /** @type {any} */
+  const s = person ? guardStore(store(env), () => gated) : store(env);
+  let by = null;
+  let agent = null;
+  /** The repositories a person's last gate checked, so a route can keep them to those. */
+  /** @type {(string | null)[]} */
+  let repos = [];
+  /**
+   * Whether the request may do `action` on `target` (a repository, a task, a plan, …: src/store-permissions.js says
+   * which). The press comes first, in the words the route has always used; the owner may do everything else here
+   * (the store's own checks refuse an agent's `by`, as before); a person's role is the store's to check, with their
+   * grants. Answers the refusal, or null to go on. A person's gate gives back the repositories it checked.
+   * @param {string} action
+   * @param {Record<string, any>} [target]
+   * @param {string} [words]
+   */
+  const gate = async (action, target = {}, words) => {
+    const rule = ACTIONS[action];
+    if (rule.press && !press) return json(403, { error: words ?? `only the signed-in web board can ${rule.what}` });
+    if (person) {
+      const permit = await store(env).permitApi(actor, action, { ...target, by, agent });
+      if (permit.status !== 200) return json(permit.status, permit.body);
+      gated = true;
+      repos = permit.body.repos;
+    }
+    return null;
+  };
+
+  const images = await handleImages(request, url, method, s, gate);
   if (images) return images;
 
   let body = {};
@@ -392,10 +464,26 @@ async function handleApi(request, env, url, ctx) {
       }
     }
   }
+  // Who's behind the request is its credential's, never its body's: the store reads `actor` from here.
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    body.actor = actor;
+    by = body.by ?? null;
+    agent = typeof body.agent === 'string' ? body.agent : null;
+  }
+  if (person) {
+    // A person's `by` is only ever an agent's name: never the owner, the board, or a routine (BRK-301).
+    const items = Array.isArray(body) ? body : Array.isArray(body?.tasks) ? body.tasks : [body];
+    if (items.some((item) => /^(owner|board)$|^routine:/u.test(String(item?.by ?? '').trim())))
+      return json(403, { error: 'by names an agent: owner, board, and routines are the board’s own names' });
+  }
 
   const parts = url.pathname.split('/').slice(2).map(decodeURIComponent);
-  const s = store(env);
   const send = (result) => json(result.status, result.body);
+  /** A task write by a person names them (BRK-301): with no agent's `by`, it's theirs, by handle. */
+  const theirs = (item) =>
+    person && item && typeof item === 'object' && !agentOf(item.by, person.handle)
+      ? { ...item, by: person.handle }
+      : item;
 
   if (parts[0] === 'session' && method === 'GET') {
     // Which board this is, for the web app and the CLI: its name and where it answers, never a secret.
@@ -403,7 +491,7 @@ async function handleApi(request, env, url, ctx) {
     const { name, url: home, docs } = install(env);
     return json(200, { ok: true, via, install: { name, url: home ?? url.origin, docs } });
   }
-  const people = await peopleOwnerApi(parts, method, body, via, s);
+  const people = await peopleOwnerApi(parts, method, body, actor, person ? store(env) : s);
   if (people) return people;
   if (parts[0] === 'health' && method === 'GET') {
     const result = await s.health();
@@ -439,38 +527,76 @@ async function handleApi(request, env, url, ctx) {
         repo: url.searchParams.get('repo') ?? undefined,
       }),
     );
-  if (parts[0] === 'next' && parts.length === 1 && method === 'POST') return send(await s.next(body));
-  if (parts[0] === 'backfill' && parts[1] === 'structure' && parts.length === 2 && method === 'POST')
+  if (parts[0] === 'next' && parts.length === 1 && method === 'POST') {
+    const no = await gate(body.claim ? 'task.write' : 'read', { repo: body.repo });
+    if (no) return no;
+    // A person's next is in the repository they asked for, or the default: never another's.
+    return send(await s.next(person ? { ...body, repo: repos[0] } : body));
+  }
+  if (parts[0] === 'backfill' && parts[1] === 'structure' && parts.length === 2 && method === 'POST') {
+    const no = await gate('install.admin', { install: true });
+    if (no) return no;
     return send(await s.backfillStructureApi());
+  }
   // Pulling a release into now (BRK-126) or next (BRK-209): the owner's or an agent's, whose pull is kept for undo (BRK-274).
-  if (parts[0] === 'releases' && parts[2] === 'pull' && parts.length === 3 && method === 'POST')
+  if (parts[0] === 'releases' && parts[2] === 'pull' && parts.length === 3 && method === 'POST') {
+    const no = await gate('release.pull', { release: parts[1], into: body.into });
+    if (no) return no;
     return send(await s.releasePullApi(parts[1], body));
+  }
   // Undoing an agent's change to the plan (BRK-274) is the owner's, from the signed-in web board.
   if (parts[0] === 'planning' && parts[2] === 'undo' && parts.length === 3 && method === 'POST') {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can undo an agent’s change' });
-    return send(await s.planningUndoApi(parts[1], { by: 'owner' }));
+    const no = await gate(
+      'planning.undo',
+      { planning: parts[1] },
+      'only the signed-in web board can undo an agent’s change',
+    );
+    if (no) return no;
+    return send(await s.planningUndoApi(parts[1], { actor }));
   }
-  if (parts[0] === 'horizons' && parts[1] === 'close' && parts.length === 2 && method === 'POST')
+  if (parts[0] === 'horizons' && parts[1] === 'close' && parts.length === 2 && method === 'POST') {
+    const no = await gate('horizon.close', { install: true });
+    if (no) return no;
     return send(await s.closeHorizon({ dryRun: Boolean(body.dryRun) }));
-  if (parts[0] === 'admin' && parts[1] === 'rebuild' && method === 'POST') return send(await s.rebuild());
+  }
+  if (parts[0] === 'admin' && parts[1] === 'rebuild' && method === 'POST') {
+    const no = await gate('install.admin', { install: true });
+    if (no) return no;
+    return send(await s.rebuild());
+  }
   // Restoring the board from an export (BRK-234): the owner's, into an empty board only (an agent's `by` is refused).
-  if (parts[0] === 'import' && parts.length === 1 && method === 'POST') return send(await s.importApi(body));
+  if (parts[0] === 'import' && parts.length === 1 && method === 'POST') {
+    const no = await gate('install.admin', { install: true });
+    if (no) return no;
+    return send(await s.importApi(body));
+  }
   if (parts[0] === 'github' && parts.length === 1 && method === 'GET')
     return send(await s.githubOverview(url.searchParams.get('repo')));
   // Connections (IDEA-14): anyone signed in reads them; Check now asks GitHub live and dismissing a note is the owner's, so both are the signed-in browser's only.
   if (parts[0] === 'connections') {
     if (parts.length === 1 && method === 'GET') return send(await s.connectionsApi(url.origin));
     if (parts[1] === 'check' && parts.length === 2 && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can run Check now' });
+      const no = await gate('connections.check', { install: true }, 'only the signed-in web board can run Check now');
+      if (no) return no;
       return send(await s.connectionsCheckApi(url.origin));
     }
     // Treat GitHub as working while its status page lags behind (BRK-218): the owner's call, so the browser's only.
     if (parts[1] === 'github-status' && parts[2] === 'override' && parts.length === 3 && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can override GitHub’s status' });
+      const no = await gate(
+        'connections.owner',
+        { install: true },
+        'only the signed-in web board can override GitHub’s status',
+      );
+      if (no) return no;
       return send(await s.githubStatusOverrideApi(body));
     }
     if (parts[1] === 'notices' && parts.length === 4 && parts[3] === 'dismiss' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can dismiss a connection note' });
+      const no = await gate(
+        'connections.owner',
+        { install: true },
+        'only the signed-in web board can dismiss a connection note',
+      );
+      if (no) return no;
       return send(await s.connectionNoticeDismiss(parts[2]));
     }
   }
@@ -482,7 +608,8 @@ async function handleApi(request, env, url, ctx) {
     parts.length === 3 &&
     (method === 'PUT' || method === 'DELETE')
   ) {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can connect a provider' });
+    const no = await gate('provider.connect', { install: true }, 'only the signed-in web board can connect a provider');
+    if (no) return no;
     return send(method === 'PUT' ? await s.infraConnectApi(parts[2], body) : await s.infraForgetApi(parts[2], body));
   }
   // Self-update (BRK-53): an install with no repository of its own updates its Worker from the board. Every change is
@@ -494,8 +621,12 @@ async function handleApi(request, env, url, ctx) {
       method === 'POST' &&
       ['enable', 'disable', 'start', 'rollback', 'check'].includes(parts[1])
     ) {
-      if (via !== 'cookie')
-        return json(403, { error: 'only the signed-in web board can update or roll back the Worker' });
+      const no = await gate(
+        'install.update',
+        { install: true },
+        'only the signed-in web board can update or roll back the Worker',
+      );
+      if (no) return no;
       if (parts[1] === 'enable') return send(await s.selfUpdateEnable(body));
       if (parts[1] === 'disable') return send(await s.selfUpdateDisable());
       if (parts[1] === 'rollback') return send(await s.selfUpdateRollback());
@@ -514,33 +645,55 @@ async function handleApi(request, env, url, ctx) {
       );
     }
     if (parts.length === 2 && method === 'GET') return send(await s.repoApi(parts[1]));
-    if (parts.length === 1 && method === 'POST') return send(await s.reposAddApi(body));
-    if (parts.length === 2 && method === 'PATCH') return send(await s.reposModifyApi(parts[1], body));
-    if (parts.length === 2 && method === 'DELETE') return send(await s.reposRemoveApi(parts[1], body));
-    if (parts.length === 3 && parts[2] === 'release' && method === 'POST')
+    if (parts.length === 1 && method === 'POST') {
+      const no = await gate('repo.add', { install: true });
+      if (no) return no;
+      return send(await s.reposAddApi(body));
+    }
+    if (parts.length === 2 && method === 'PATCH') {
+      const no = await gate('repo.modify', { repo: parts[1] });
+      if (no) return no;
+      return send(await s.reposModifyApi(parts[1], body));
+    }
+    if (parts.length === 2 && method === 'DELETE') {
+      const no = await gate('repo.add', { install: true });
+      if (no) return no;
+      return send(await s.reposRemoveApi(parts[1], body));
+    }
+    if (parts.length === 3 && parts[2] === 'release' && method === 'POST') {
+      const no = await gate('repo.add', { install: true });
+      if (no) return no;
       return send(await s.reposReleaseApi(parts[1], body));
+    }
     // Add the board's files (BRK-132): the owner's press writes an empty repository's first commit through the App.
     if (parts.length === 3 && parts[2] === 'init' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can add the board’s files' });
-      return send(await s.boardFilesApi(parts[1], { by: body.by, origin: install(env).url ?? url.origin }));
+      const no = await gate('repo.init', { repo: parts[1] }, 'only the signed-in web board can add the board’s files');
+      if (no) return no;
+      return send(await s.boardFilesApi(parts[1], { by: body.by, actor, origin: install(env).url ?? url.origin }));
     }
     // Connect a routine from the board (BRK-133): the owner's form, the signed-in browser only, never the bearer token.
     if (parts.length === 3 && parts[2] === 'routine' && (method === 'PUT' || method === 'DELETE')) {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can connect a routine' });
+      const no = await gate('repo.routine', { install: true }, 'only the signed-in web board can connect a routine');
+      if (no) return no;
       return send(
         method === 'PUT' ? await s.repoRoutineConnectApi(parts[1], body) : await s.repoRoutineForgetApi(parts[1], body),
       );
     }
     // Turn on deploys (WEB-13) is the owner's press on the GitHub page: the signed-in browser only, never the bearer token.
     if (parts.length === 3 && parts[2] === 'pipeline' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can turn on deploys' });
+      const no = await gate('repo.deploys', { repo: parts[1] }, 'only the signed-in web board can turn on deploys');
+      if (no) return no;
       return send(await s.turnOnDeploysApi(parts[1], body));
     }
     // Move to breakaway's deploy flow (WEB-12): the owner's press adds the move's task and starts its agent. The
     // signed-in browser only, never the bearer token agents hold.
     if (parts.length === 3 && parts[2] === 'move' && method === 'POST') {
-      if (via !== 'cookie')
-        return json(403, { error: 'only the signed-in web board can move a repository to the deploy flow' });
+      const no = await gate(
+        'repo.move',
+        { repo: parts[1] },
+        'only the signed-in web board can move a repository to the deploy flow',
+      );
+      if (no) return no;
       return send(await s.moveApi(parts[1], body));
     }
   }
@@ -551,8 +704,14 @@ async function handleApi(request, env, url, ctx) {
       return send(await s.kickoffsApi({ idea: url.searchParams.get('idea'), repo: url.searchParams.get('repo') }));
     if (parts.length === 2 && method === 'GET')
       return send(await s.kickoffApi(parts[1], { check: url.searchParams.get('check') === '1' }));
-    if (method !== 'GET' && via !== 'cookie')
-      return json(403, { error: 'only the signed-in web board can kick off, change, or stop a project' });
+    if (method !== 'GET') {
+      const no = await gate(
+        'kickoff',
+        { install: true },
+        'only the signed-in web board can kick off, change, or stop a project',
+      );
+      if (no) return no;
+    }
     if (parts.length === 1 && method === 'POST') return send(await s.kickoffsCreateApi(body));
     if (parts.length === 2 && method === 'PATCH') return send(await s.kickoffsModifyApi(parts[1], body));
     if (parts.length === 2 && method === 'DELETE') return send(await s.kickoffsDeleteApi(parts[1], body));
@@ -583,9 +742,13 @@ async function handleApi(request, env, url, ctx) {
     const repo = url.searchParams.get('repo');
     if (method === 'GET') return send(await s.infraDescribeApi(parts[2], { repo }));
     if (method === 'POST') {
-      if (via !== 'cookie')
-        return json(403, { error: 'only the signed-in web board can have an agent describe an environment as code' });
-      return send(await s.infraDescribeStartApi(parts[2], { repo, by: body.by, force: body.force }));
+      const no = await gate(
+        'environment.describe',
+        { environment: parts[2], repo },
+        'only the signed-in web board can have an agent describe an environment as code',
+      );
+      if (no) return no;
+      return send(await s.infraDescribeStartApi(parts[2], { repo, by: body.by, force: body.force, actor }));
     }
   }
   // Changes from the console (BRK-259): anyone signed in reads them and the templates; previewing, proposing, and
@@ -604,7 +767,12 @@ async function handleApi(request, env, url, ctx) {
           : s.infraChangeTemplatesApi(parts[2], { repo })),
       );
     if (parts[3] === 'changes' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change an environment' });
+      const no = await gate(
+        'change.propose',
+        { environment: parts[2], repo },
+        'only the signed-in web board can change an environment',
+      );
+      if (no) return no;
       return send(await s.infraChangesApi(parts[2], { repo, ...body }));
     }
   }
@@ -615,12 +783,18 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'infra' && parts[1] === 'changes' && parts.length <= 4) {
     if (parts.length === 3 && method === 'GET') return send(await s.infraChangeApi(parts[2]));
     if (parts.length === 4 && parts[3] === 'reject' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can reject a change' });
+      const no = await gate('change.approve', { change: parts[2] }, 'only the signed-in web board can reject a change');
+      if (no) return no;
       return send(await s.infraChangeRejectApi(parts[2], body));
     }
     // Approve (BRK-260) merges the change's pull request as the owner's action: the signed-in browser only, like Merge.
     if (parts.length === 4 && parts[3] === 'approve' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can approve a change' });
+      const no = await gate(
+        'change.approve',
+        { change: parts[2] },
+        'only the signed-in web board can approve a change',
+      );
+      if (no) return no;
       return send(await s.infraChangeApproveApi(parts[2], body));
     }
   }
@@ -630,8 +804,14 @@ async function handleApi(request, env, url, ctx) {
     const repo = url.searchParams.get('repo');
     if (method === 'GET')
       return send(await (parts.length === 2 ? s.environmentsApi({ repo }) : s.environmentApi(parts[2], { repo })));
-    if (via !== 'cookie' && ['POST', 'PATCH', 'DELETE'].includes(method))
-      return json(403, { error: 'only the signed-in web board can add, change, or remove an environment' });
+    if (['POST', 'PATCH', 'DELETE'].includes(method)) {
+      const no = await gate(
+        'environment.write',
+        parts.length === 2 ? { repo: body.repo } : { environment: parts[2], repo },
+        'only the signed-in web board can add, change, or remove an environment',
+      );
+      if (no) return no;
+    }
     if (parts.length === 2 && method === 'POST') return send(await s.environmentsCreateApi(body));
     if (parts.length === 3 && method === 'PATCH')
       return send(await s.environmentsModifyApi(parts[2], { repo, ...body }));
@@ -651,7 +831,12 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'infra' && parts[1] === 'policy' && parts[2] === 'view' && parts.length === 3 && method === 'GET')
     return send(await s.infraPolicyViewApi({ repo: url.searchParams.get('repo') }));
   if (parts[0] === 'infra' && parts[1] === 'policy' && parts[2] === 'changes' && method === 'POST') {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change the policy' });
+    const no = await gate(
+      parts.length === 3 ? 'policy.propose' : 'policy.tighten',
+      parts.length === 3 ? { repo: body.repo } : { policyChange: parts[3] },
+      'only the signed-in web board can change the policy',
+    );
+    if (no) return no;
     if (parts.length === 3) return send(await s.infraPolicyChangesApi(body));
     if (parts.length === 5 && parts[4] === 'approve') return send(await s.infraPolicyChangeApproveApi(parts[3], body));
     if (parts.length === 5 && parts[4] === 'reject') return send(await s.infraPolicyChangeRejectApi(parts[3], body));
@@ -664,7 +849,8 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'infra' && parts[1] === 'currency' && parts.length === 2) {
     if (method === 'GET') return send(await s.currencyApi());
     if (method === 'PUT') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can set the board’s currency' });
+      const no = await gate('currency', { install: true }, 'only the signed-in web board can set the board’s currency');
+      if (no) return no;
       return send(await s.currencySetApi(body));
     }
   }
@@ -676,12 +862,16 @@ async function handleApi(request, env, url, ctx) {
     parts.length === 3 &&
     method === 'POST'
   ) {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can fetch a rate' });
+    const no = await gate('currency', { install: true }, 'only the signed-in web board can fetch a rate');
+    if (no) return no;
     return send(await s.currencyRateApi(body));
   }
   // infra check's preview (CLI-14): the plan a checkout's file would make, kept nowhere, so an agent may ask.
-  if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST')
+  if (parts[0] === 'infra' && parts[1] === 'check' && parts.length === 2 && method === 'POST') {
+    const no = await gate('infra.check', { repo: body.repo });
+    if (no) return no;
     return send(await s.infraCheckApi(body));
+  }
   // Inventory (BRK-177): anyone signed in reads it and when the board last looked; a refresh is the board's own (the
   // cron, a token just pasted) or the owner's Refresh, from the signed-in browser only (BRK-248). An agent's `by` is
   // refused too.
@@ -690,7 +880,12 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 3 && parts[2] === 'refresh' && method === 'GET')
       return send(await s.inventoryRefreshStateApi());
     if (parts.length === 3 && parts[2] === 'refresh' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can refresh the inventory' });
+      const no = await gate(
+        'inventory.refresh',
+        { install: true },
+        'only the signed-in web board can refresh the inventory',
+      );
+      if (no) return no;
       return send(await s.inventoryRefreshApi(body));
     }
     if (parts.length === 2 && method === 'GET')
@@ -719,8 +914,12 @@ async function handleApi(request, env, url, ctx) {
     if (method === 'GET')
       return send(await (parts.length === 2 ? s.locksApi({ repo }) : s.lockApi(parts[2], { repo })));
     if (parts.length === 3 && method === 'DELETE') {
-      if (via !== 'cookie')
-        return json(403, { error: 'only the signed-in web board can release an environment’s lock' });
+      const no = await gate(
+        'lock.release',
+        { environment: parts[2], repo },
+        'only the signed-in web board can release an environment’s lock',
+      );
+      if (no) return no;
       return send(await s.lockReleaseApi(parts[2], { repo }));
     }
   }
@@ -736,12 +935,20 @@ async function handleApi(request, env, url, ctx) {
   // signed-in browser only. An act is a runbook's agent's, for the run it holds; the board builds its plan.
   if (parts[0] === 'infra' && parts[1] === 'envelopes' && parts.length <= 4) {
     const repo = url.searchParams.get('repo');
-    if (parts.length === 4 && parts[3] === 'act' && method === 'POST')
+    if (parts.length === 4 && parts[3] === 'act' && method === 'POST') {
+      const no = await gate('envelope.act', { environment: parts[2], repo });
+      if (no) return no;
       return send(await s.envelopeActApi(parts[2], body));
+    }
     if (parts.length <= 3 && method === 'GET')
       return send(await (parts.length === 2 ? s.envelopesApi({ repo }) : s.envelopeApi(parts[2], { repo })));
     if (parts.length === 3 && ['PUT', 'DELETE'].includes(method)) {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can set or revoke an envelope' });
+      const no = await gate(
+        method === 'PUT' ? 'envelope.set' : 'envelope.revoke',
+        { environment: parts[2], repo },
+        'only the signed-in web board can set or revoke an envelope',
+      );
+      if (no) return no;
       return send(
         await (method === 'PUT'
           ? s.envelopeSetApi(parts[2], { repo, ...body })
@@ -753,13 +960,19 @@ async function handleApi(request, env, url, ctx) {
   // token agents and the CLI hold. An agent's `by` is refused too.
   if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length === 4 && ['approve', 'reject'].includes(parts[3])) {
     if (method !== 'POST') return json(405, { error: `${parts[3]} a plan with POST` });
-    if (via !== 'cookie') return json(403, { error: `only the signed-in web board can ${parts[3]} a plan` });
+    const no = await gate('plan.approve', { plan: parts[2] }, `only the signed-in web board can ${parts[3]} a plan`);
+    if (no) return no;
     return send(await (parts[3] === 'approve' ? s.planApproveApi(parts[2], body) : s.planRejectApi(parts[2], body)));
   }
   // Start the run again (BRK-308): the owner's, from the signed-in browser only, for a run that applied nothing.
   if (parts[0] === 'infra' && parts[1] === 'plans' && parts.length === 4 && parts[3] === 'start-again') {
     if (method !== 'POST') return json(405, { error: 'start a plan’s run again with POST' });
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can start a plan’s run again' });
+    const no = await gate(
+      'plan.start-again',
+      { plan: parts[2] },
+      'only the signed-in web board can start a plan’s run again',
+    );
+    if (no) return no;
     return send(await s.runStartAgainApi(parts[2], body));
   }
   // Plans (BRK-178): anyone signed in reads them; the owner and agents make drafts, which the board computes from the
@@ -778,9 +991,18 @@ async function handleApi(request, env, url, ctx) {
             })
           : s.planApi(parts[2])),
       );
-    if (parts.length === 2 && method === 'POST') return send(await s.plansCreateApi(body));
+    if (parts.length === 2 && method === 'POST') {
+      const no = await gate('plan.create', { environment: body.environment, repo: body.repo });
+      if (no) return no;
+      return send(await s.plansCreateApi(body));
+    }
     if (parts.length === 3 && method === 'PATCH') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can put a plan in front of you' });
+      const no = await gate(
+        'plan.front',
+        { plan: parts[2] },
+        'only the signed-in web board can put a plan in front of you',
+      );
+      if (no) return no;
       return send(await s.planModifyApi(parts[2], body));
     }
   }
@@ -791,7 +1013,12 @@ async function handleApi(request, env, url, ctx) {
     if (method === 'GET')
       return send(await (parts.length === 2 ? s.driftApi({ repo }) : s.driftOneApi(parts[2], { repo })));
     if (parts.length === 3 && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can compare an environment now' });
+      const no = await gate(
+        'inventory.refresh',
+        { environment: parts[2], repo },
+        'only the signed-in web board can compare an environment now',
+      );
+      if (no) return no;
       return send(await s.driftCheckApi(parts[2], { repo, ...body }));
     }
   }
@@ -807,7 +1034,12 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'GET')
       return send(await s.breakGlassApi({ repo, environment: url.searchParams.get('environment') }));
     if (parts.length === 3 && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can mark drift as break-glass' });
+      const no = await gate(
+        'drift.break-glass',
+        { environment: parts[2], repo },
+        'only the signed-in web board can mark drift as break-glass',
+      );
+      if (no) return no;
       return send(await s.breakGlassMarkApi(parts[2], { repo, ...body }));
     }
   }
@@ -817,7 +1049,12 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'GET')
       return send(await s.infraTokensApi({ repo: url.searchParams.get('repo'), fresh: url.searchParams.get('fresh') }));
     if (parts.length === 4 && parts[2] === 'environments' && method === 'POST') {
-      if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can make a GitHub environment' });
+      const no = await gate(
+        'github-environment.make',
+        { repo: url.searchParams.get('repo') },
+        'only the signed-in web board can make a GitHub environment',
+      );
+      if (no) return no;
       return send(await s.infraTokensMakeApi(parts[3], { repo: url.searchParams.get('repo') }, body));
     }
   }
@@ -827,10 +1064,12 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && method === 'GET')
       return send(await s.shortLivedApi({ repo: url.searchParams.get('repo') }));
     if (parts.length === 3 && method === 'POST') {
-      if (via !== 'cookie')
-        return json(403, {
-          error: 'only the signed-in web board asks for an environment; agents tag their task +environment',
-        });
+      const no = await gate(
+        'short-lived.ask',
+        { task: parts[2] },
+        'only the signed-in web board asks for an environment; agents tag their task +environment',
+      );
+      if (no) return no;
       return send(await s.shortLivedAskApi(parts[2], body));
     }
   }
@@ -838,32 +1077,84 @@ async function handleApi(request, env, url, ctx) {
   // release, changing it, and deleting it are the owner's (an agent's `by` is refused).
   if (parts[0] === 'features') {
     // A feature's planned dates are the owner's on the board (WEB-104): the CLI's token reads them and can't set them.
-    if ((method === 'POST' || method === 'PATCH') && via !== 'cookie' && plansDates(body))
+    if ((method === 'POST' || method === 'PATCH') && !press && plansDates(body))
       return json(403, {
         error: 'only the owner plans a feature’s dates, signed in to the web board: the CLI reads them',
       });
     if (parts.length === 1 && method === 'GET') return send(await s.featuresApi());
-    if (parts.length === 1 && method === 'POST') return send(await s.featuresCreateApi(body));
+    if (parts.length === 1 && method === 'POST') {
+      // A new feature is its tasks' repositories', or its idea's; one with neither is the whole board's. Making one
+      // from tasks, or shaping it, or giving it a state or dates, is a maintainer's; the rest a member's.
+      const shapes = 'tasks' in body || 'from' in body || body.shape || 'state' in body || plansDates(body);
+      const no = await gate(
+        shapes ? 'feature.shape' : 'feature.edit',
+        Array.isArray(body.tasks)
+          ? { tasks: body.tasks }
+          : body.from
+            ? { task: body.from }
+            : body.shape?.repo
+              ? { repo: body.shape.repo }
+              : { install: true },
+      );
+      if (no) return no;
+      return send(await s.featuresCreateApi(body));
+    }
     if (parts.length === 2 && method === 'GET') return send(await s.featureApi(parts[1]));
-    if (parts.length === 2 && method === 'PATCH') return send(await s.featuresModifyApi(parts[1], body));
-    if (parts.length === 2 && method === 'DELETE') return send(await s.featuresDeleteApi(parts[1], body));
+    if (parts.length === 2 && method === 'PATCH') {
+      const no = await gate('state' in body || plansDates(body) ? 'feature.shape' : 'feature.edit', {
+        feature: parts[1],
+      });
+      if (no) return no;
+      return send(await s.featuresModifyApi(parts[1], body));
+    }
+    if (parts.length === 2 && method === 'DELETE') {
+      const no = await gate('feature.shape', { feature: parts[1] });
+      if (no) return no;
+      return send(await s.featuresDeleteApi(parts[1], body));
+    }
     // A chase (section 3) is the owner's: an agent's `by` is refused.
-    if (parts.length === 3 && parts[2] === 'chase' && method === 'POST')
+    if (parts.length === 3 && parts[2] === 'chase' && method === 'POST') {
+      const no = await gate('chase', { feature: parts[1] });
+      if (no) return no;
       return send(await s.featureChaseApi(parts[1], body));
+    }
     // A chase's digest (BRK-277): anyone signed in reads it.
     if (parts.length === 4 && parts[2] === 'digests' && method === 'GET')
       return send(await s.featureDigestApi(parts[1], parts[3]));
     // The road captain's log and handover (BRK-275): the captain's own, by its `by`.
-    if (parts.length === 3 && parts[2] === 'captain' && method === 'POST')
+    if (parts.length === 3 && parts[2] === 'captain' && method === 'POST') {
+      const no = await gate('task.write', { feature: parts[1] });
+      if (no) return no;
       return send(await s.featureCaptainApi(parts[1], body));
+    }
   }
   if (parts[0] === 'routines') {
     if (parts.length === 1 && method === 'GET') return send(await s.routinesApi());
-    if (parts.length === 1 && method === 'POST') return send(await s.routinesCreateApi(body));
+    if (parts.length === 1 && method === 'POST') {
+      const no = await gate('routine.write', { repo: body.repo });
+      if (no) return no;
+      return send(await s.routinesCreateApi(body));
+    }
     // Make with an agent (BRK-220 section 2): the owner's, from the board or the owner's own CLI (no agent's `by`).
-    if (parts[1] === 'agent' && parts.length === 2 && method === 'POST') return send(await s.routinesAgentApi(body));
-    if (parts[1] === 'settings' && parts.length === 2 && (method === 'PATCH' || method === 'POST'))
+    if (parts[1] === 'agent' && parts.length === 2 && method === 'POST') {
+      const no = await gate('agent.general', { repo: body.repo });
+      if (no) return no;
+      return send(await s.routinesAgentApi(body));
+    }
+    if (parts[1] === 'settings' && parts.length === 2 && (method === 'PATCH' || method === 'POST')) {
+      const no = await gate('routine.settings', { install: true });
+      if (no) return no;
       return send(await s.routinesSettingsApi(body));
+    }
+    if (
+      (parts.length === 2 && method === 'PATCH') ||
+      (parts[2] === 'triggers' && parts.length === 3 && method === 'POST') ||
+      (parts[2] === 'triggers' && parts.length === 4 && method === 'DELETE') ||
+      (parts[2] === 'run' && parts.length === 3 && method === 'POST')
+    ) {
+      const no = await gate('routine.write', { routine: parts[1] });
+      if (no) return no;
+    }
     if (parts.length === 2 && method === 'PATCH') return send(await s.routinesModifyApi(parts[1], body));
     if (parts[2] === 'triggers' && parts.length === 3 && method === 'POST')
       return send(await s.routinesTriggerCreateApi(parts[1], body));
@@ -882,8 +1173,12 @@ async function handleApi(request, env, url, ctx) {
   if (parts[0] === 'infra' && parts[1] === 'runbooks' && parts.length <= 3) {
     if (parts.length === 2 && method === 'GET') return send(await s.runbooksApi());
     if (parts.length === 3 && (method === 'PUT' || method === 'DELETE')) {
-      if (via !== 'cookie')
-        return json(403, { error: 'only the signed-in web board can change a routine’s signal trigger' });
+      const no = await gate(
+        'runbook.trigger',
+        { routine: parts[2] },
+        'only the signed-in web board can change a routine’s signal trigger',
+      );
+      if (no) return no;
       return send(await (method === 'PUT' ? s.runbookSetApi(parts[2], body) : s.runbookRemoveApi(parts[2], body)));
     }
   }
@@ -944,7 +1239,12 @@ async function handleApi(request, env, url, ctx) {
   // Mark approved and Mark built on a spec (BRK-215) open a pull request: the owner's press, from the signed-in
   // browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'specs' && parts.length > 1 && method === 'POST') {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can mark a spec approved or built' });
+    const no = await gate(
+      'spec.status',
+      { repo: url.searchParams.get('repo') ?? body?.repo },
+      'only the signed-in web board can mark a spec approved or built',
+    );
+    if (no) return no;
     return send(
       await s.specStatusApi(url.searchParams.get('repo') ?? body?.repo ?? null, parts.slice(1).join('/'), body),
     );
@@ -952,7 +1252,8 @@ async function handleApi(request, env, url, ctx) {
   // Sign-ins from MCP apps (BRK-157): approving, denying, listing, and revoking are the owner's, from the
   // signed-in browser only, never the bearer token agents and the CLI hold.
   if (parts[0] === 'oauth') {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can approve or revoke a sign-in' });
+    const no = await gate('oauth', { install: true }, 'only the signed-in web board can approve or revoke a sign-in');
+    if (no) return no;
     const res = await oauthApi(parts, method, body, s, url.origin);
     if (res) return res;
   }
@@ -985,17 +1286,23 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 2 && parts[1] === 'open' && url.searchParams.has('agent') && method === 'GET')
       return send(await s.pelotonOpenApi(url.searchParams.get('agent'), url.searchParams.get('task')));
     if (parts.length === 2 && method === 'GET') return send(await s.pelotonDetailApi(parts[1]));
-    if (parts.length === 2 && method === 'POST')
-      return send(await (via === 'cookie' ? s.pelotonOwnerPostApi(parts[1], body) : s.pelotonPostApi(parts[1], body)));
+    // From the signed-in board a post is a person's own; with the token, an agent's.
+    if (parts.length === 2 && method === 'POST') {
+      const no = await gate(press ? 'peloton.post' : 'task.write', { peloton: parts[1] });
+      if (no) return no;
+      return send(await (press ? s.pelotonOwnerPostApi(parts[1], body) : s.pelotonPostApi(parts[1], body)));
+    }
     if (parts.length === 3 && parts[2] === 'plan' && method === 'GET') return send(await s.pelotonPlanApi(parts[1]));
-    if (parts.length === 3 && parts[2] === 'plan' && method === 'PUT')
-      return send(
-        await (via === 'cookie' ? s.pelotonOwnerPlanApi(parts[1], body) : s.pelotonPlanReviseApi(parts[1], body)),
-      );
+    if (parts.length === 3 && parts[2] === 'plan' && method === 'PUT') {
+      const no = await gate(press ? 'peloton.plan' : 'task.write', { peloton: parts[1] });
+      if (no) return no;
+      return send(await (press ? s.pelotonOwnerPlanApi(parts[1], body) : s.pelotonPlanReviseApi(parts[1], body)));
+    }
   }
   // Notifications are the owner's: the signed-in browser only, never the bearer token agents hold.
   if (parts[0] === 'push' && parts.length <= 2) {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change notifications' });
+    const no = await gate('push', { install: true }, 'only the signed-in web board can change notifications');
+    if (no) return no;
     if (parts.length === 1 && method === 'GET') return send(await s.pushConfigApi());
     if (parts[1] === 'subscriptions' && method === 'POST') return send(await s.pushSubscribeApi(body));
     if (parts[1] === 'subscriptions' && method === 'DELETE') return send(await s.pushUnsubscribeApi(body));
@@ -1007,8 +1314,12 @@ async function handleApi(request, env, url, ctx) {
     method === 'POST' &&
     ['apply', 'dismiss', 'handled'].includes(parts[2])
   ) {
-    if (via !== 'cookie')
-      return json(403, { error: 'only the signed-in web board can apply, dismiss, or mark a ping handled' });
+    const no = await gate(
+      parts[2] === 'apply' ? 'ping.apply' : 'ping.resolve',
+      { ping: parts[1] },
+      'only the signed-in web board can apply, dismiss, or mark a ping handled',
+    );
+    if (no) return no;
     if (parts[2] === 'apply') return send(await s.pingApply(parts[1], body));
     return send(await (parts[2] === 'dismiss' ? s.pingDismiss(parts[1]) : s.pingHandled(parts[1])));
   }
@@ -1016,16 +1327,26 @@ async function handleApi(request, env, url, ctx) {
     if (parts.length === 1 && method === 'GET') return send(await s.agentsApi());
     if (parts[1] === 'prompt' && parts.length === 2 && method === 'GET')
       return send(await s.routinePromptApi(url.searchParams.get('repo')));
-    if (parts[1] === 'start' && method === 'POST')
+    if (parts[1] === 'start' && method === 'POST') {
+      const no = await gate(body.force ? 'agent.force' : 'agent.start', { task: body.ref });
+      if (no) return no;
       return send(
         await s.agentsStartApi(body.ref, body.note ? String(body.note) : null, body.mode ? String(body.mode) : null, {
           force: body.force,
           anyway: Boolean(body.anyway),
           by: body.by,
+          actor,
         }),
       );
-    if (parts[1] === 'general' && parts.length === 2 && method === 'POST') return send(await s.agentsGeneralApi(body));
-    if (parts[1] === 'next' && method === 'POST')
+    }
+    if (parts[1] === 'general' && parts.length === 2 && method === 'POST') {
+      const no = await gate('agent.general', { repo: body.repo });
+      if (no) return no;
+      return send(await s.agentsGeneralApi(body));
+    }
+    if (parts[1] === 'next' && method === 'POST') {
+      const no = await gate('agent.next', { repo: body.repo });
+      if (no) return no;
       return send(
         await s.agentsNextApi({
           count: body.count,
@@ -1034,7 +1355,10 @@ async function handleApi(request, env, url, ctx) {
           dryRun: Boolean(body.dryRun),
         }),
       );
-    if (parts[1] === 'settings' && (method === 'PATCH' || method === 'POST'))
+    }
+    if (parts[1] === 'settings' && (method === 'PATCH' || method === 'POST')) {
+      const no = await gate('agent.settings', { install: true });
+      if (no) return no;
       return send(
         await s.agentsSettingsApi({
           max: body.max,
@@ -1044,8 +1368,10 @@ async function handleApi(request, env, url, ctx) {
           perArea: body.perArea,
           plan: body.plan,
           by: body.by,
+          actor,
         }),
       );
+    }
   }
   if (parts[0] === 'github' && parts[1] === 'pulls' && parts.length === 3 && method === 'GET')
     return send(await s.githubPullApi(parts[2], url.searchParams.get('repo')));
@@ -1057,8 +1383,13 @@ async function handleApi(request, env, url, ctx) {
         slug: url.searchParams.get('repo'),
       }),
     );
-  if (parts[0] === 'github' && parts[1] === 'pulls' && parts[3] === 'fix' && parts.length === 4 && method === 'POST')
+  if (parts[0] === 'github' && parts[1] === 'pulls' && parts[3] === 'fix' && parts.length === 4 && method === 'POST') {
+    const no = await gate(body.force ? 'agent.force' : 'agent.start', {
+      repo: body.repo ?? url.searchParams.get('repo'),
+    });
+    if (no) return no;
     return send(await s.fixPrApi(parts[2], { ...body, repo: body.repo ?? url.searchParams.get('repo') }));
+  }
   // Merging is the owner's: the signed-in browser only, never the bearer token agents and the CLI hold.
   if (
     parts[0] === 'github' &&
@@ -1067,10 +1398,12 @@ async function handleApi(request, env, url, ctx) {
     method === 'POST' &&
     ['update-branch', 'merge', 'auto-merge', 'publish'].includes(parts[3])
   ) {
-    if (via !== 'cookie')
-      return json(403, {
-        error: 'only the signed-in web board can publish, update, merge, or set auto-merge on a pull request',
-      });
+    const no = await gate(
+      'pull.write',
+      { repo: body.repo ?? url.searchParams.get('repo') },
+      'only the signed-in web board can publish, update, merge, or set auto-merge on a pull request',
+    );
+    if (no) return no;
     return send(
       await s.githubWrite(parts[2], parts[3], {
         sha: body.sha,
@@ -1083,7 +1416,12 @@ async function handleApi(request, env, url, ctx) {
   }
   // Promote and Roll back are the owner's too: the signed-in browser only, and the workflows check everything again.
   if (parts[0] === 'github' && ['promote', 'rollback'].includes(parts[1]) && parts.length === 2 && method === 'POST') {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can promote or roll back' });
+    const no = await gate(
+      'deploy.promote',
+      { repo: body.repo ?? url.searchParams.get('repo') },
+      'only the signed-in web board can promote or roll back',
+    );
+    if (no) return no;
     return send(
       await s.githubRelease(parts[1], {
         sha: body.sha,
@@ -1097,8 +1435,10 @@ async function handleApi(request, env, url, ctx) {
   // Release a package's pre-release as stable (BRK-103), with what main works toward next (WEB-39): the owner's, from the signed-in browser or the owner's own CLI
   // (a token with no agent's name). The board only starts release.yml's stable job; npm waits for the owner's 2FA.
   if (parts[0] === 'github' && parts[1] === 'release' && parts.length === 2 && method === 'POST') {
-    if (via !== 'cookie' && body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
+    if (!press && agentOf(body.by, actor.person))
       return json(403, { error: 'only the owner can release a package; agents never start a release' });
+    const no = await gate('release.publish', { repo: body.repo ?? url.searchParams.get('repo') });
+    if (no) return no;
     return send(
       await s.githubRelease('release', {
         version: body.version,
@@ -1110,8 +1450,13 @@ async function handleApi(request, env, url, ctx) {
   // Build a pre-release (WEB-113): starts the release workflow's pre-release job on the default branch. The owner's,
   // from the signed-in browser only; an agent never starts one.
   if (parts[0] === 'github' && parts[1] === 'prerelease' && parts.length === 2 && method === 'POST') {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can build a pre-release' });
-    if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
+    const no = await gate(
+      'release.prerelease',
+      { repo: body.repo ?? url.searchParams.get('repo') },
+      'only the signed-in web board can build a pre-release',
+    );
+    if (no) return no;
+    if (agentOf(body.by, actor.person))
       return json(403, { error: 'only the owner builds a pre-release; agents never start one' });
     return send(await s.githubRelease('prerelease', { repo: body.repo ?? url.searchParams.get('repo') }));
   }
@@ -1126,7 +1471,12 @@ async function handleApi(request, env, url, ctx) {
     parts.length === 3 &&
     method === 'POST'
   ) {
-    if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can run a workflow' });
+    const no = await gate(
+      'workflow.run',
+      { repo: body.repo ?? url.searchParams.get('repo') },
+      'only the signed-in web board can run a workflow',
+    );
+    if (no) return no;
     return send(
       await s.runWorkflowApi({
         repo: body.repo ?? url.searchParams.get('repo'),
@@ -1138,24 +1488,48 @@ async function handleApi(request, env, url, ctx) {
   }
   if (parts[0] === 'github' && parts[1] === 'packages' && parts.length === 2 && method === 'GET')
     return send(await s.packagesApi(url.searchParams.get('repo')));
-  if (parts[0] === 'github' && parts[1] === 'sync' && method === 'POST')
+  if (parts[0] === 'github' && parts[1] === 'sync' && method === 'POST') {
+    const no = await gate('github.sync', { repo: body.repo ?? url.searchParams.get('repo') });
+    if (no) return no;
     return send(await s.githubSyncApi(body.repo ?? url.searchParams.get('repo')));
-  if (parts[0] === 'github' && parts[1] === 'alerts' && parts[3] === 'fix' && method === 'POST')
+  }
+  if (parts[0] === 'github' && parts[1] === 'alerts' && parts[3] === 'fix' && method === 'POST') {
+    const no = await gate(body.force ? 'agent.force' : 'agent.start', {
+      repo: body.repo ?? url.searchParams.get('repo'),
+    });
+    if (no) return no;
     return send(
       await s.fixAlertApi(parts[2], body.note ? String(body.note) : null, body.repo ?? url.searchParams.get('repo'), {
         force: body.force,
         by: body.by,
+        actor,
       }),
     );
-  if (parts[0] === 'github' && parts[1] === 'pulls' && parts[3] === 'review' && parts.length === 4 && method === 'POST')
+  }
+  if (
+    parts[0] === 'github' &&
+    parts[1] === 'pulls' &&
+    parts[3] === 'review' &&
+    parts.length === 4 &&
+    method === 'POST'
+  ) {
+    const no = await gate(body.force ? 'agent.force' : 'agent.general', {
+      repo: body.repo ?? url.searchParams.get('repo'),
+    });
+    if (no) return no;
     return send(
       await s.reviewPullApi(parts[2], body.note ? String(body.note) : null, body.repo ?? url.searchParams.get('repo'), {
         force: body.force,
         by: body.by,
+        actor,
       }),
     );
-  if (parts[0] === 'github' && parts[1] === 'setup' && method === 'POST')
+  }
+  if (parts[0] === 'github' && parts[1] === 'setup' && method === 'POST') {
+    const no = await gate('github.setup', { install: true });
+    if (no) return no;
     return json(200, await s.githubSetup(url.origin));
+  }
   // Rotation is for the owner's CLI (bearer token), never the web board's cookie.
   if (parts[0] === 'admin' && parts[1] === 'rekey' && method === 'POST' && via === 'token')
     return send(await s.rekey(body.clientId, body.key));
@@ -1166,16 +1540,25 @@ async function handleApi(request, env, url, ctx) {
       if (method === 'GET') return send(await s.list(url.searchParams.get('status') ?? 'pending'));
       if (method === 'POST') {
         const items = Array.isArray(body) ? body : Array.isArray(body.tasks) ? body.tasks : [body];
+        const no = await gate(items.some(plansTask) ? 'task.plan' : 'task.write', {
+          repos: items.map((item) => item?.repo),
+        });
+        if (no) return no;
         // Anyone adding a task first hears of the open ones it resembles (BRK-283); `force` on an item adds it anyway.
-        return send(await s.create(items, { similar: true }));
+        return send(await s.create(items.map(theirs), { similar: true }));
       }
     } else if (!action) {
       if (method === 'GET') return send(await s.get(ref));
-      if (method === 'PATCH') return send(await s.update(ref, body));
+      if (method === 'PATCH') {
+        const no = await gate(plansTask(body) ? 'task.plan' : 'task.write', { task: ref });
+        if (no) return no;
+        return send(await s.update(ref, theirs(body)));
+      }
     } else if (action === 'messages') {
       // Telling an agent what to do is the owner's: the signed-in browser only, never the bearer token every agent holds (IDEA-15).
       if (parts.length === 3 && method === 'POST') {
-        if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can message an agent' });
+        const no = await gate('agent.message', { task: ref }, 'only the signed-in web board can message an agent');
+        if (no) return no;
         return send(await s.messageSendApi(ref, body));
       }
       if (parts.length === 3 && method === 'GET') return send(await s.messagesApi(ref));
@@ -1183,35 +1566,60 @@ async function handleApi(request, env, url, ctx) {
         return send(await s.messagesWaitingApi(ref, url.searchParams.get('agent')));
     } else if (action === 'said') {
       // The owner's words (BRK-284): their own quote and removing one are the signed-in board's; an agent quotes with its name.
-      if (parts.length === 3 && method === 'POST') return send(await s.quoteOwner(ref, body, via === 'cookie'));
+      if (parts.length === 3 && method === 'POST') {
+        const no = await gate(press ? 'task.quote' : 'task.write', { task: ref });
+        if (no) return no;
+        return send(await s.quoteOwner(ref, body, press));
+      }
       if (parts.length === 4 && method === 'DELETE') {
-        if (via !== 'cookie')
-          return json(403, { error: "only the owner, on the signed-in web board, removes the owner's words" });
+        const no = await gate(
+          'task.unquote',
+          { task: ref },
+          "only the owner, on the signed-in web board, removes the owner's words",
+        );
+        if (no) return no;
         return send(await s.unquoteOwner(ref, parts[3]));
       }
     } else if (action === 'decision' && parts[3] === 'answers' && parts.length === 4) {
       // Send answers and carry on starts an agent (BRK-134): the owner's press on the signed-in board, never the bearer token.
-      if (method === 'POST' && body.carryOn && via !== 'cookie')
-        return json(403, { error: 'only the signed-in web board can send answers and start the next run' });
+      if (method === 'POST' || method === 'DELETE') {
+        const no = await gate(
+          method === 'POST' && body.carryOn ? 'decision.carry-on' : 'decision.answer',
+          { task: ref },
+          'only the signed-in web board can send answers and start the next run',
+        );
+        if (no) return no;
+      }
       if (method === 'POST') return send(await s.submitDecision(ref, body));
       if (method === 'DELETE') return send(await s.reopenDecision(ref, body));
     } else if (method === 'POST') {
+      // Taking another's claim, or the owner's hand on a task's paths, is a maintainer's; the rest a member's.
+      const plans =
+        ((action === 'claim' || action === 'release') && body.force) ||
+        (action === 'paths' && (press || !String(body.agent ?? '').trim()));
+      const need = action === 'risk-answer' && press && !body.by ? 'risk.answer' : plans ? 'task.plan' : 'task.write';
+      const no = await gate(need, { task: ref });
+      if (no) return no;
       if (action === 'claim') {
         // A cloud session's report on its environment verifies the routine that started it (BRK-142), claimed or not.
         if (body.session) await s.sessionReport(ref, body.session);
         return send(await s.claim(ref, body.agent, Boolean(body.force), body.repo));
       }
       if (action === 'release') return send(await s.release(ref, body.agent, Boolean(body.force)));
-      if (action === 'done') return send(await s.done(ref, body.note, body.by));
-      if (action === 'comments' || action === 'annotate') return send(await s.comment(ref, body.text, body.by));
+      if (action === 'done') return send(await s.done(ref, body.note, theirs(body).by));
+      if (action === 'comments' || action === 'annotate') return send(await s.comment(ref, body.text, theirs(body).by));
       if (action === 'review') return send(await s.taskReviewApi(ref, body));
       if (action === 'risk-review') return send(await s.riskReviewApi(ref, body));
       if (action === 'risk-answer')
-        return send(await s.riskAnswerApi(ref, body, { owner: via === 'cookie' && !body.by }));
+        return send(
+          await s.riskAnswerApi(ref, body, {
+            owner: press && !body.by,
+            person: person && press && !body.by ? person.handle : null,
+          }),
+        );
       if (action === 'session') return send(await s.sessionLogApi(ref, body));
       // Path claims (IDEA-55 section 1a): an agent's for the task it holds; the signed-in board's, or no agent's, are the owner's.
-      if (action === 'paths' && parts.length === 3)
-        return send(await s.pathsApi(ref, body, { owner: via === 'cookie' }));
+      if (action === 'paths' && parts.length === 3) return send(await s.pathsApi(ref, body, { owner: press }));
       if (action === 'pings') {
         const result = await s.pingCreate(ref, body);
         // A new ping of a kind that needs the owner sends a push, after the answer (it never holds the agent up).

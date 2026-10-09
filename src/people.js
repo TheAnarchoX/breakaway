@@ -10,11 +10,13 @@
  *
  * The owner is the board's token, and its cookie, exactly as before (src/auth.js). A person's credential is
  * something else: a personal token (`bkp_…`) or a session cookie (`p<id>.<secret>`), neither of which the owner's
- * checks accept, so a person never passes a gate the owner's cookie passes. Until roles are enforced (BRK-301 and
- * BRK-323), a person's credential opens only the routes above that are theirs, and every other route refuses it.
+ * checks accept, so a person never passes a gate the owner's cookie passes. Since BRK-301, a person's writes go
+ * through the Worker's routes, each behind a gate that asks src/permissions.js with their role; their reads wait for
+ * BRK-323, which filters them by grant.
  */
 import { COOKIE, sameOrigin } from './auth.js';
 import { install } from './install.js';
+import { OWNER } from './permissions.js';
 import { SESSION_DAYS, TOKEN_PREFIX, hashOf } from './store-people.js';
 
 const MAX_BODY = 64 * 1024;
@@ -24,9 +26,66 @@ const TOKEN = /^bkp_[\w-]{40,64}$/u;
 const json = (status, body, headers = {}) => Response.json(body, { status, headers });
 const send = (result, headers) => json(result.status, result.body, headers);
 
-/** Refused to a person until BRK-301 and BRK-323 open what each role may do (point 9 of the spec). */
+/** A person's read, refused until BRK-323 filters reads by grant (point 9 of the spec). */
 export const NOT_YET =
-  'people can only sign in and look after their own passkeys, tokens, and sessions on this board for now: roles come in a later update';
+  'people can’t read the board here yet, only change what their role lets them: reading by repository comes in a later update';
+
+/**
+ * The store, for a person's request: a call goes through only once a gate has let the request through (BRK-301).
+ * Any other call answers 403, so a route that forgot its gate refuses a person instead of acting for them.
+ * @param {any} stub the store's Durable Object stub
+ * @param {() => boolean} isGated
+ */
+export function guardStore(stub, isGated) {
+  return new Proxy(
+    {},
+    {
+      get(_, name) {
+        return (/** @type {any[]} */ ...args) =>
+          isGated() ? stub[name](...args) : Promise.resolve({ status: 403, body: { error: NOT_YET } });
+      },
+    },
+  );
+}
+
+/**
+ * A person's write answer, cut to what can't show another repository (the captain's call on BRK-301): whether it
+ * worked, the ID and work ID of what it made or changed, and the error's text. A task's detail holds its dependencies
+ * and blockers, which can be another repository's, so it stays out until BRK-323 filters reads by grant, and takes
+ * this cut away. A secret made for the person (a routine trigger's, an invite's link) is theirs, shown once.
+ * @param {Response} res
+ */
+export async function cutAnswer(res) {
+  let body;
+  try {
+    body = await res.clone().json();
+  } catch {
+    return res;
+  }
+  if (res.status >= 400) return json(res.status, { error: body?.error ?? 'that didn’t work' });
+  const one = [
+    body?.task,
+    body?.tasks?.[0],
+    body?.feature,
+    body?.routine,
+    body?.plan,
+    body?.change,
+    body?.ping,
+    body?.run,
+    body?.environment,
+    body?.post,
+    body?.trigger,
+  ].find((x) => x && typeof x === 'object');
+  return json(res.status, {
+    ok: true,
+    id: one?.uuid ?? one?.id ?? one?.slug ?? null,
+    wid: one?.wid ?? null,
+    ...(typeof body?.secret === 'string' ? { secret: body.secret } : {}),
+    ...(body?.invite && typeof body.invite.code === 'string'
+      ? { invite: { id: body.invite.id, code: body.invite.code, expires: body.invite.expires } }
+      : {}),
+  });
+}
 
 /**
  * The relying party a passkey is made for: the board's host, from the install's config (src/install.js), or where
@@ -208,22 +267,26 @@ export async function personApi(request, env, url, person, store) {
 }
 
 /**
- * /api/people/* for the owner (`via` is the owner's 'token' or 'cookie'). Reading works with either; changing who's
- * in is a press on the signed-in board (the spec's table, People: press-only). Null for other paths.
+ * /api/people/*: who's on the board (point 3, "Managing people"). The owner reads it with the token or the cookie; a
+ * person's reads wait for BRK-323. Changing who's in is a press on the signed-in board (the spec's table, People:
+ * press-only): the owner's for anyone, and a maintainer's for members and viewers of the repositories they maintain,
+ * which the store checks. `actor` is the request's (src/permissions.js). Null for other paths.
  */
-export async function peopleOwnerApi(parts, method, body, via, store) {
+export async function peopleOwnerApi(parts, method, body, actor, store) {
   if (parts[0] !== 'people') return null;
   if (method === 'GET')
     return parts.length === 1 ? send(await store.peopleList()) : json(404, { error: 'no such route' });
-  if (via !== 'cookie') return json(403, { error: 'only the signed-in web board can change who’s on the board' });
+  if (!actor.press) return json(403, { error: 'only the signed-in web board can change who’s on the board' });
+  // The owner's reach is everyone's; a person's, the store works out from their grants.
+  const by = actor.person === OWNER ? null : actor.person;
   if (parts[1] === 'invites') {
-    if (parts.length === 2 && method === 'POST') return send(await store.peopleInviteCreate(body));
-    if (parts.length === 3 && method === 'DELETE') return send(await store.peopleInviteRevoke(parts[2]));
+    if (parts.length === 2 && method === 'POST') return send(await store.peopleInviteCreate(body, by));
+    if (parts.length === 3 && method === 'DELETE') return send(await store.peopleInviteRevoke(parts[2], by));
   } else if (parts.length === 2) {
-    if (method === 'PATCH') return send(await store.peopleGrantsSet(parts[1], body));
-    if (method === 'DELETE') return send(await store.peopleRemove(parts[1]));
+    if (method === 'PATCH') return send(await store.peopleGrantsSet(parts[1], body, by));
+    if (method === 'DELETE') return send(await store.peopleRemove(parts[1], by));
   } else if (parts.length === 3 && parts[2] === 'reset' && method === 'POST') {
-    return send(await store.peopleReset(parts[1]));
+    return send(await store.peopleReset(parts[1], by));
   }
   return json(404, { error: 'no such route' });
 }

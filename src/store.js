@@ -1283,7 +1283,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     }
     if ('status' in input) {
       if (own.kind !== 'chase' || input.status !== 'deleted') refuse(`doesn't finish, delete, or reopen ${name}`);
-      const other = Object.keys(input).filter((k) => k !== 'status' && k !== 'by');
+      const other = Object.keys(input).filter((k) => k !== 'status' && k !== 'by' && k !== 'actor');
       if (other.length) refuse(`deletes ${name} on its own, without changing ${other.join(', ')}`);
       // Entry is in seconds: a task added in the second the chase started counts as after it.
       const added = Number(map.entry) >= Math.floor(Number(own.chaseStarted) / 1000);
@@ -1294,7 +1294,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const tags = [...arrayOf(input.addTags ?? []), ...arrayOf(input.removeTags ?? [])].map(String);
     if (tags.some((t) => t.startsWith('horizon-'))) refuse("doesn't change a horizon-* tag: that's the owner's choice");
     if ('project' in input && input.project in SHARED_AREAS) refuse(`doesn't move ${name} into ${input.project}`);
-    const allowed = new Set(['by', ...CROSS_TASK_FIELDS.flatMap(([keys]) => keys)]);
+    // `actor` is who the Worker says is behind the request (BRK-301), never a field to change.
+    const allowed = new Set(['by', 'actor', ...CROSS_TASK_FIELDS.flatMap(([keys]) => keys)]);
     const other = Object.keys(input).filter((k) => !allowed.has(k));
     if (other.length)
       refuse(
@@ -2087,7 +2088,9 @@ function ownerWords(what) {
 
 /** The repository a body names, or the default one. */
 function repoOf(store, value) {
-  return value === undefined || value === null || value === '' ? store.defaultRepoSlug() : String(value).trim().toLowerCase();
+  return value === undefined || value === null || value === ''
+    ? store.defaultRepoSlug()
+    : String(value).trim().toLowerCase();
 }
 
 function agentName(agent) {

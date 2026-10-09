@@ -45,7 +45,11 @@ export const ACTIONS = {
   read: { role: 'viewer', agents: true, what: 'see it' },
 
   // Pull requests, deploys, workflows, and releases.
-  'pull.write': { role: 'maintainer', press: true, what: 'publish, update, merge, or set auto-merge on a pull request' },
+  'pull.write': {
+    role: 'maintainer',
+    press: true,
+    what: 'publish, update, merge, or set auto-merge on a pull request',
+  },
   'deploy.promote': { role: 'maintainer', press: true, what: 'promote or roll back' },
   'workflow.run': { role: 'maintainer', press: true, what: 'run a workflow' },
   'release.prerelease': { role: 'maintainer', press: true, what: 'build a pre-release' },
@@ -67,11 +71,21 @@ export const ACTIONS = {
 
   // Envelopes, environments, and the rest of Infrastructure.
   'envelope.set': { audited: true, role: 'maintainer', press: true, what: 'set or widen an envelope' },
-  'envelope.set-production': { audited: true, role: 'owner', press: true, what: 'set or widen an envelope on production' },
+  'envelope.set-production': {
+    audited: true,
+    role: 'owner',
+    press: true,
+    what: 'set or widen an envelope on production',
+  },
   'envelope.revoke': { audited: true, role: 'maintainer', press: true, what: 'revoke or narrow an envelope' },
   // An act is a runbook run's agent's, with its act key: never a person's (the key decides).
   'envelope.act': { role: 'owner', agents: true, what: 'act inside an envelope' },
-  'environment.write': { audited: true, role: 'maintainer', press: true, what: 'add, change, or remove an environment' },
+  'environment.write': {
+    audited: true,
+    role: 'maintainer',
+    press: true,
+    what: 'add, change, or remove an environment',
+  },
   'environment.freeze': { audited: true, role: 'maintainer', press: true, what: 'freeze or unfreeze an environment' },
   'environment.describe': {
     role: 'maintainer',
@@ -79,7 +93,12 @@ export const ACTIONS = {
     starts: true,
     what: 'have an agent describe an environment as code',
   },
-  'inventory.refresh': { audited: true, role: 'member', press: true, what: 'refresh the inventory or compare an environment now' },
+  'inventory.refresh': {
+    audited: true,
+    role: 'member',
+    press: true,
+    what: 'refresh the inventory or compare an environment now',
+  },
   'infra.check': { role: 'member', agents: true, what: 'check a desired state' },
   'lock.release': { audited: true, role: 'maintainer', press: true, what: 'release an environment’s lock' },
   'drift.break-glass': { audited: true, role: 'maintainer', press: true, what: 'mark drift as break-glass' },
@@ -185,7 +204,13 @@ export function roleIn(grants, repository) {
 
 const article = (role) => (role === 'owner' ? 'the owner' : `a ${role}`);
 
-/** Why `person` can't, by role alone (null when they can). */
+/**
+ * Why `person` can't, by role alone (null when they can).
+ * @param {Person} person
+ * @param {Rule} rule
+ * @param {string | null} repository
+ * @returns {Refusal | null}
+ */
 function roleRefusal(person, rule, repository) {
   if (person.person === OWNER) return null;
   if (rule.role === 'owner') return { code: 'owner', message: `only the owner can ${rule.what}` };
@@ -206,7 +231,8 @@ function roleRefusal(person, rule, repository) {
 export function refusal(actor, action, repository = null) {
   const rule = ACTIONS[action];
   if (!rule) return { code: 'unknown', message: `nobody can ${action}: the board has no such action` };
-  if (rule.press && actor.press === false) return { code: 'press', message: `only the signed-in web board can ${rule.what}` };
+  if (rule.press && actor.press === false)
+    return { code: 'press', message: `only the signed-in web board can ${rule.what}` };
   if (actor.agent && !rule.agents)
     return { code: 'agent', message: `agents never ${rule.what}, whoever started them: a person does, on the board` };
   const own = roleRefusal(actor, rule, repository);

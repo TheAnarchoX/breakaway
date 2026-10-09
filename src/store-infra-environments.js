@@ -228,7 +228,8 @@ export const infraEnvironmentsMethods = {
     return this.run(async () => {
       const where = body.repo ? String(body.repo).trim().toLowerCase() : null;
       this.allowOn(body, 'environment.write', () => this.environmentRow(ref, where).repo, OWNER_WORDS);
-      if (body.frozen !== undefined) this.allowOn(body, 'environment.freeze', () => this.environmentRow(ref, where).repo);
+      if (body.frozen !== undefined)
+        this.allowOn(body, 'environment.freeze', () => this.environmentRow(ref, where).repo);
       const row = this.environmentRow(ref, where);
       const worker = install(this.env).worker;
       const own = runsTheBoard(row, worker);

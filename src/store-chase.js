@@ -545,7 +545,8 @@ export const chaseMethods = {
   ) {
     await this.ready();
     // A chase is a maintainer's in every repository the feature's tasks are in (BRK-301), and never an agent's.
-    if (this.actorIn({ actor, by }).agent) this.allow({ actor, by }, 'chase', null, 'only the owner can start or stop a chase');
+    if (this.actorIn({ actor, by }).agent)
+      this.allow({ actor, by }, 'chase', null, 'only the owner can start or stop a chase');
     const row = this.featureRow(slug);
     for (const repo of this.targetRepos({ feature: row.slug })) this.allow({ actor, by }, 'chase', repo);
     if (on !== undefined && typeof on !== 'boolean') throw new InputError('on is true or false');

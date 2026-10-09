@@ -232,7 +232,12 @@ export const infraChangeApprovalMethods = {
    */
   infraChangeApproveApi(ref, body = {}) {
     return this.run(async () => {
-      this.allowOn(body, 'change.approve', () => this.changeRow(ref).repo, 'only the owner approves a change, from the board');
+      this.allowOn(
+        body,
+        'change.approve',
+        () => this.changeRow(ref).repo,
+        'only the owner approves a change, from the board',
+      );
       const row = this.changeRow(ref);
       if (!LIVE_STATES.includes(row.state))
         throw new AgentError(`change ${row.n} is ${row.state}, so there’s nothing to approve`, 409);

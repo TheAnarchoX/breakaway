@@ -53,7 +53,12 @@ export const initMethods = {
   async boardFilesApi(slug, { by = null, origin = null, actor = null } = {}) {
     await this.ready();
     try {
-      this.allowOn({ actor, by }, 'repo.init', () => String(slug).toLowerCase(), 'only the owner adds the board’s files to a repository');
+      this.allowOn(
+        { actor, by },
+        'repo.init',
+        () => String(slug).toLowerCase(),
+        'only the owner adds the board’s files to a repository',
+      );
     } catch (error) {
       return { status: 403, body: { error: error.message } };
     }

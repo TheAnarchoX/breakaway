@@ -241,7 +241,12 @@ export const infraPolicyChangesMethods = {
    */
   infraPolicyChangesApi(body = {}) {
     return this.run(async () => {
-      this.allowOn(body, 'policy.propose', () => this.policyRepo(body.repo), 'only the owner changes the policy, from the board');
+      this.allowOn(
+        body,
+        'policy.propose',
+        () => this.policyRepo(body.repo),
+        'only the owner changes the policy, from the board',
+      );
       const slug = this.policyRepo(body.repo);
       const checked = checkPolicyEdit(body.policy);
       if ('error' in checked)
@@ -390,7 +395,12 @@ export const infraPolicyChangesMethods = {
   infraPolicyChangeApproveApi(ref, body = {}) {
     return this.run(async () => {
       // One that loosens the policy is the owner's alone; one that only tightens it a maintainer's (BRK-301).
-      this.allowOn(body, 'policy.tighten', () => this.policyChangeRow(ref).repo, 'only the owner approves a policy change, from the board');
+      this.allowOn(
+        body,
+        'policy.tighten',
+        () => this.policyChangeRow(ref).repo,
+        'only the owner approves a policy change, from the board',
+      );
       const row = this.policyChangeRow(ref);
       if (JSON.parse(row.lines).some((l) => l.effect === 'loosens')) this.allow(body, 'policy.loosen', row.repo);
       if (!LIVE_STATES.includes(row.state))
@@ -518,7 +528,12 @@ export const infraPolicyChangesMethods = {
    */
   infraPolicyChangeRejectApi(ref, body = {}) {
     return this.run(async () => {
-      this.allowOn(body, 'policy.tighten', () => this.policyChangeRow(ref).repo, 'only the owner rejects a policy change, from the board');
+      this.allowOn(
+        body,
+        'policy.tighten',
+        () => this.policyChangeRow(ref).repo,
+        'only the owner rejects a policy change, from the board',
+      );
       const row = this.policyChangeRow(ref);
       if (!LIVE_STATES.includes(row.state))
         throw new AgentError(`policy change ${row.n} is ${row.state}, so there’s nothing to reject`, 409);

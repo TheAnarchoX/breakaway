@@ -147,7 +147,12 @@ export const pipelineMethods = {
    */
   async moveApi(slug, body = {}) {
     return this.run(async () => {
-      this.allowOn(body, 'repo.move', () => String(slug).toLowerCase(), 'only the owner moves a repository to the deploy flow');
+      this.allowOn(
+        body,
+        'repo.move',
+        () => String(slug).toLowerCase(),
+        'only the owner moves a repository to the deploy flow',
+      );
       const repo = this.repoBySlug(String(slug).toLowerCase());
       if (!repo) return { status: 404, body: { error: `no repository "${String(slug).slice(0, 40)}"` } };
       if (repo.pipeline)

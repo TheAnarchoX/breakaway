@@ -39,6 +39,11 @@ export const permissionsMethods = {
     };
   },
 
+  /** Whether `name` is a person's handle, now or once (a removed person's handle stays theirs). */
+  isPersonHandle(name) {
+    return this.sql.exec('SELECT 1 FROM people WHERE handle = ?', String(name)).toArray().length > 0;
+  },
+
   /** The person the newest run of agent `name` is for, or null when the board didn't start it. */
   runForPerson(name) {
     return (
@@ -123,7 +128,9 @@ export const permissionsMethods = {
       return [ofTask(row.task)];
     }
     if ('attachment' in target) {
-      const row = this.sql.exec('SELECT task FROM attachments WHERE id = ?', Number(target.attachment) || 0).toArray()[0];
+      const row = this.sql
+        .exec('SELECT task FROM attachments WHERE id = ?', Number(target.attachment) || 0)
+        .toArray()[0];
       if (!row) throw new AgentError('no such image', 404);
       return [ofTask(row.task)];
     }
@@ -134,6 +141,22 @@ export const permissionsMethods = {
       return repos.size ? [...repos] : [null];
     }
     if ('routine' in target) return [slug(this.routineRow(target.routine).repo)];
+    if ('release' in target) {
+      // The repositories whose tasks the pull would move: a release spans every repository that aims at it.
+      const into = target.into === 'next' ? 'next' : 'now';
+      const pull = this.releasePulls(undefined, into).find((p) => p.release === String(target.release ?? '').trim());
+      const moved = new Set((pull?.moves ?? []).map(({ task }) => repoSlugOf(this.tasks.get(task.uuid), fallback)));
+      return moved.size ? [...moved] : [fallback];
+    }
+    if ('planning' in target) {
+      const row = this.sql
+        .exec('SELECT kind, target FROM planning_edits WHERE id = ?', Number(target.planning) || 0)
+        .toArray()[0];
+      if (!row) throw new AgentError(`there’s no change ${String(target.planning).slice(0, 20)} to undo`, 404);
+      if (row.kind === 'task') return this.targetRepos({ task: row.target });
+      if (row.kind === 'feature') return this.targetRepos({ feature: row.target });
+      return [null];
+    }
     if ('peloton' in target) {
       const p = this.pelotonOf(target.peloton);
       if (p.kind === 'repo') return [p.name];
@@ -153,6 +176,15 @@ export const permissionsMethods = {
    */
   permitApi(actor, action, target = {}) {
     return this.run(() => {
+      // An agent's name is never another person's handle: nobody writes as someone else on the board.
+      for (const name of [target?.by, target?.agent])
+        if (
+          typeof name === 'string' &&
+          name.trim() &&
+          name.trim() !== actor?.person &&
+          this.isPersonHandle(name.trim())
+        )
+          throw new AgentError(`${name.trim()} is a person on this board, not an agent: write as yourself`, 403);
       const repos = this.targetRepos(target ?? {});
       for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
       const person = actor?.person && actor.person !== OWNER;

@@ -286,12 +286,9 @@ export const featuresMethods = {
     const shape = this.featureShape(input, owner, picked, f);
     // A person's new feature (BRK-301): its state, dates, tasks, and shape are a maintainer's where they land.
     if (owner && !this.ownerActs(input) && ('state' in input || plansDates(input) || picked || shape)) {
-      const repos = picked
-        ? picked.join.map((t) => t.uuid)
-        : shape
-          ? []
-          : this.featureTaskUuids(slug);
-      if (shape) this.allow(input, 'feature.shape', shape.repo ?? this.defaultRepoSlug(), 'only the owner shapes a feature');
+      const repos = picked ? picked.join.map((t) => t.uuid) : shape ? [] : this.featureTaskUuids(slug);
+      if (shape)
+        this.allow(input, 'feature.shape', shape.repo ?? this.defaultRepoSlug(), 'only the owner shapes a feature');
       else this.ownerOnlyFeatures(input, 'shape a feature', repos);
     }
     // Made from a suggestion or a group: the release its tasks' tags share, unless the owner said otherwise.
@@ -433,7 +430,8 @@ export const featuresMethods = {
     // repository its tasks are in.
     if (!agent && !this.ownerActs(input)) {
       const uuids = this.featureTaskUuids(row.slug);
-      if ('state' in input || plansDates(input)) this.ownerOnlyFeatures(input, 'mark a feature shipped or plan its dates', uuids);
+      if ('state' in input || plansDates(input))
+        this.ownerOnlyFeatures(input, 'mark a feature shipped or plan its dates', uuids);
       const fallback = this.defaultRepoSlug();
       const repos = new Set(uuids.map((uuid) => repoSlugOf(this.tasks.get(uuid), fallback)));
       for (const repo of repos.size ? repos : [null]) this.allow(input, 'feature.edit', repo);

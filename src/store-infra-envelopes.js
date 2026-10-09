@@ -210,7 +210,7 @@ export const infraEnvelopesMethods = {
   /**
    * Sets or changes an environment's envelope: the owner's approval, once, of the bounds. Audited as `envelope`.
    * @param {string | number} ref the environment's ID or name
-   * @param {{ repo?: string | null, envelope: unknown, by?: string }} input
+   * @param {{ repo?: string | null, envelope: unknown, by?: string, actor?: unknown }} input
    */
   setInfraEnvelope(ref, { repo = null, envelope, by, actor }) {
     // Outside production a maintainer's; on production the owner's alone (BRK-301). Never an agent's.
