@@ -12,8 +12,8 @@
  * The owner is the board's token, and its cookie, exactly as before (src/auth.js). A person's credential is
  * something else: a personal token (`bkp_…`) or a session cookie (`p<id>.<secret>`), neither of which the owner's
  * checks accept, so a person never passes a gate the owner's cookie passes. Since BRK-301, a person's writes go
- * through the Worker's routes, each behind a gate that asks src/permissions.js with their role; their reads wait for
- * BRK-323, which filters them by grant.
+ * through the Worker's routes, each behind a gate that asks src/permissions.js with their role; since BRK-323, their
+ * reads do too, filtered to the repositories they have a grant in (src/reads.js).
  */
 import { COOKIE, ownerSessionCookie, sameOrigin } from './auth.js';
 import { install } from './install.js';
@@ -27,9 +27,8 @@ const TOKEN = /^bkp_[\w-]{40,64}$/u;
 const json = (status, body, headers = {}) => Response.json(body, { status, headers });
 const send = (result, headers) => json(result.status, result.body, headers);
 
-/** A person's read, refused until BRK-323 filters reads by grant (point 9 of the spec). */
-export const NOT_YET =
-  'people can’t read the board here yet, only change what their role lets them: reading by repository comes in a later update';
+/** What a person's request gets from a route that never asked whether they may: refused, rather than let through. */
+export const NOT_YET = 'this isn’t open to people on this board yet: ask the owner';
 
 /**
  * The store, for a person's request: a call goes through only once a gate has let the request through (BRK-301).
@@ -47,45 +46,6 @@ export function guardStore(stub, isGated) {
       },
     },
   );
-}
-
-/**
- * A person's write answer, cut to what can't show another repository (the captain's call on BRK-301): whether it
- * worked, the ID and work ID of what it made or changed, and the error's text. A task's detail holds its dependencies
- * and blockers, which can be another repository's, so it stays out until BRK-323 filters reads by grant, and takes
- * this cut away. A secret made for the person (a routine trigger's, an invite's link) is theirs, shown once.
- * @param {Response} res
- */
-export async function cutAnswer(res) {
-  let body;
-  try {
-    body = await res.clone().json();
-  } catch {
-    return res;
-  }
-  if (res.status >= 400) return json(res.status, { error: body?.error ?? 'that didn’t work' });
-  const one = [
-    body?.task,
-    body?.tasks?.[0],
-    body?.feature,
-    body?.routine,
-    body?.plan,
-    body?.change,
-    body?.ping,
-    body?.run,
-    body?.environment,
-    body?.post,
-    body?.trigger,
-  ].find((x) => x && typeof x === 'object');
-  return json(res.status, {
-    ok: true,
-    id: one?.uuid ?? one?.id ?? one?.slug ?? null,
-    wid: one?.wid ?? null,
-    ...(typeof body?.secret === 'string' ? { secret: body.secret } : {}),
-    ...(body?.invite && typeof body.invite.code === 'string'
-      ? { invite: { id: body.invite.id, code: body.invite.code, expires: body.invite.expires } }
-      : {}),
-  });
 }
 
 /**
@@ -220,9 +180,9 @@ export async function peoplePublic(request, env, url, store) {
 }
 
 /**
- * Every API request a person's credential makes. Deny by default: what's here is theirs, and everything else is
- * refused, until BRK-301 and BRK-323 open the rest by role. A personal token only reads: it can't make more tokens or
- * passkeys, or end sessions, so a token left in an agent's environment can't make itself a way in that lasts.
+ * A person's own: who they are, and their name, passkeys, personal tokens, and sessions. Everything else goes through
+ * the Worker's routes, by role and by grant (BRK-301, BRK-323). A personal token only reads here: it can't make more
+ * tokens or passkeys, or end sessions, so a token left in an agent's environment can't make itself a way in that lasts.
  */
 export async function personApi(request, env, url, person, store) {
   const parts = url.pathname.split('/').slice(2).map(decodeURIComponent);
@@ -278,15 +238,18 @@ export async function personApi(request, env, url, person, store) {
 
 /**
  * /api/people/*: who's on the board (point 3, "Managing people"). The owner reads it with the token or the cookie; a
- * person's reads wait for BRK-323. Changing who's in is a press on the signed-in board (the spec's table, People:
+ * person reads the people they share a repository with. Changing who's in is a press on the signed-in board (the spec's table, People:
  * press-only): the owner's for anyone, and a maintainer's for members and viewers of the repositories they maintain,
  * which the store checks. `actor` is the request's (src/permissions.js). Null for other paths.
  */
 export async function peopleOwnerApi(parts, method, body, actor, store, env, request) {
   if (parts[0] === 'me' && actor.person === OWNER) return ownerMe(parts, method, body, actor, store, env, request);
   if (parts[0] !== 'people') return null;
-  if (method === 'GET')
-    return parts.length === 1 ? send(await store.peopleList()) : json(404, { error: 'no such route' });
+  if (method === 'GET') {
+    if (parts.length !== 1) return json(404, { error: 'no such route' });
+    // A person sees the people they share a repository with (BRK-323); the owner, everyone.
+    return send(await (actor.person === OWNER ? store.peopleList() : store.peopleListFor(actor.person)));
+  }
   if (!actor.press) return json(403, { error: 'only the signed-in web board can change who’s on the board' });
   // The owner's reach is everyone's; a person's, the store works out from their grants.
   const by = actor.person === OWNER ? null : actor.person;
