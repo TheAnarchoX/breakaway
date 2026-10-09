@@ -48,10 +48,16 @@ const DIRTY_A_REPORT = 500;
 const AGENT = /^[\w.@:/-]{1,64}$/u;
 
 /**
- * The sweep's steps, in order, each `this[step](now)`. BRK-321 adds its lapse of silent task claims here, as a step of
- * its own, rather than a second alarm.
+ * The sweep's steps, in order, each `this[step](now)`. The lapse of silent task claims and the stale mark on people's
+ * (BRK-321, src/store-claim-lapse.js) are steps here rather than a second alarm.
  */
-export const FOOTPRINT_SWEEP = ['endPathClaims', 'refreshPullHeads', 'prunePathClaims'];
+export const FOOTPRINT_SWEEP = [
+  'endPathClaims',
+  'refreshPullHeads',
+  'prunePathClaims',
+  'lapseSilentClaims',
+  'markStaleClaims',
+];
 
 /**
  * A pattern as the board keeps it, or an InputError naming what's wrong. No braces or negation (a list says the
