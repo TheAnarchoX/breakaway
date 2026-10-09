@@ -234,6 +234,7 @@ DOC-46 makes these edits, in the pull request that ships the last of the build:
 ### 9. Migration: nothing changes until the owner invites someone
 
 - The new tables (`people`, `grants`, `invites`, `passkeys`, `person_tokens`, `sessions`, `approval_rules`) start empty. `CREATE TABLE IF NOT EXISTS` and the store's `PRAGMA` upgrades add the new columns (`agent_runs.for_person`, `infra_audit.person`, the connection's `person`).
+- **Refused by default until roles are enforced.** The owner can cut a pre-release from `main` between any two of the build's pull requests, so each one must be safe on its own. Until BRK-301 and BRK-323 have both merged, a person's session or personal token is refused everything except signing in and out and managing their own passkeys, tokens, and sessions. A person's cookie never passes the owner's cookie-only gates. BRK-300 ships this way; BRK-301 and BRK-323 open up what each role may do. (The chase captain's call.)
 - With no people, every check resolves to the owner, as now: the board's token and the owner's cookie pass everything they pass today. Every existing owner test keeps passing unchanged (the chase's rule).
 - The two install-wide rows that tighten (agent settings, closing a horizon) need the owner. The owner's CLI and cookie are the owner, so nothing visible changes.
 - The web board shows **People** in Settings with an empty state: "Just you. Invite someone to work on a repository with you." The sign-in page is unchanged until someone has a passkey.
@@ -280,13 +281,14 @@ These go to the owner as one decision on the board, BRK-322. The spec's recommen
 | Order | Task | What | Waits for |
 | --- | --- | --- | --- |
 | 1 | BRK-300 | People sign in: the people, invites, passkeys, personal tokens, sessions, and Reset tables and routes; the credential resolves to a person; the board's token always the owner; `bkp_` tokens in the CLI and MCP | this spec |
-| 2 | BRK-301 | Roles enforced: one permissions module (`can(person, action, repository)`), every row of the table in point 3, the agent ceiling and `for_person`, repositories filtered by grant, and a table-driven test of every gated route and role | BRK-300 |
+| 2 | BRK-301 | Roles enforced: one permissions module (`can(person, action, repository)`), every row of the table in point 3, the agent ceiling and `for_person`, and a table-driven test of every gated route and role | BRK-300 |
+| 2b | BRK-323 | People see only their repositories: every read (tasks, Activity, pings, routines, pull requests, the peloton, Infrastructure, specs, search, MCP resources) filtered by the person's grants, as "What a person sees" in point 3 says | BRK-301 |
 | 3a | BRK-302 | Bring your own Claude: a person's routine connections, lending the repository's routine, starts on the starter's routine, caps per person and in total, a person's plan | BRK-301 |
 | 3b | BRK-303 | Who did it: the person on every write, in Activity, the audit, the inbox, and pull requests; approval rules and the two-person rule | BRK-301 |
-| 3c | WEB-124 | People on the web: the sign-in page, People, invites, grants, Reset, each person's settings (passkeys, tokens, their routine, push), the person in the header, and controls a role can't use shown with who can | BRK-301 |
+| 3c | WEB-124 | People on the web: the sign-in page, People, invites, grants, Reset, each person's settings (passkeys, tokens, their routine, push), the person in the header, and controls a role can't use shown with who can | BRK-301, BRK-323 |
 | 4 | DOC-46 | The manual, the site, the README, and point 8's changes to the brand guide, `AGENTS.md`, the decision log, and `prompts/core.md` | BRK-302, BRK-303, WEB-124 |
 
-3a, 3b, and 3c can run in parallel. They share only the settings page, which WEB-124 owns.
+2b follows BRK-301 because both change every store file's reads and writes. 3a, 3b, and 3c can run in parallel. They share only the settings page, which WEB-124 owns.
 
 ## How to check it
 
