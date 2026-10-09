@@ -24,17 +24,9 @@ import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
 import { RUNNER_HEADER } from './infra-runner.js';
 import { plansDates } from './store-features.js';
-import {
-  NOT_YET,
-  cutAnswer,
-  endPersonSession,
-  guardStore,
-  peopleOwnerApi,
-  peoplePublic,
-  personApi,
-  personOf,
-} from './people.js';
+import { endPersonSession, guardStore, peopleOwnerApi, peoplePublic, personApi, personOf } from './people.js';
 import { ACTIONS, agentOf, ownerActor } from './permissions.js';
+import { isHidden, lostTarget, readOf, scrub } from './reads.js';
 
 export { TaskStore } from './store.js';
 
@@ -396,22 +388,58 @@ async function handleApi(request, env, url, ctx) {
   if (!person) return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
   const first = url.pathname.split('/')[2];
   if (first === 'session' || first === 'me') return personApi(request, env, url, person, store(env));
-  // Reads by grant come with BRK-323: until then a person reads nothing but their own.
-  if (request.method === 'GET') return json(403, { error: NOT_YET });
-  // TODO(BRK-323): a person's write answers are cut to what can't show another repository until reads are filtered
-  // by grant; BRK-323 takes this cut away.
-  return cutAnswer(await routeApi(request, env, url, ctx, person.via, person));
+  return personRoute(request, env, url, ctx, person);
+}
+
+/**
+ * A person's request past their own settings (BRK-323): they see only the repositories they have a grant in. A read
+ * asks the store first what it's about (src/reads.js): one in a repository they can't read is a 404, as if it
+ * weren't there, and the install's own reads are the owner's and the `*` grant's. A route that isn't a read they may
+ * make is refused. Every answer, a write's too, comes back with what they can't see taken out.
+ */
+async function personRoute(request, env, url, ctx, person) {
+  let parts;
+  try {
+    parts = url.pathname.split('/').slice(2).map(decodeURIComponent);
+  } catch {
+    return json(400, { error: 'the path isn’t valid' });
+  }
+  const read = request.method === 'GET' ? readOf(parts, url.searchParams) : null;
+  if (request.method === 'GET' && !read) return json(404, { error: `no route for GET ${url.pathname}` });
+  const gate = await store(env).readGateApi({ person: person.handle }, read);
+  if (gate.status !== 200) return json(gate.status, gate.body);
+  const res = await routeApi(request, env, url, ctx, person.via, person, read !== null);
+  if (!(res.headers.get('Content-Type') ?? '').startsWith('application/json')) return res;
+  let body;
+  try {
+    body = await res.clone().json();
+  } catch {
+    return res;
+  }
+  const hidden = { repos: new Set(gate.body.hidden.repos), tasks: new Set(gate.body.hidden.tasks) };
+  // A read whose answer is itself about something they can't see (an agent's listening, by its name) isn't there.
+  if (res.status < 300 && read && isHidden(body, hidden))
+    return json(404, { error: 'single' in read ? read.single : 'not found' });
+  const shown = scrub(body, hidden);
+  if (res.status < 300 && read && ('target' in read || 'single' in read) && lostTarget(body, shown))
+    return json(404, { error: 'single' in read ? read.single : 'not found' });
+  if (res.status >= 400 && body && typeof body.error === 'string' && typeof shown?.error !== 'string')
+    shown.error = 'that didn’t work';
+  return json(res.status, shown);
 }
 
 /**
  * Every API route past sign-in. `via` is how the request signed in: the owner's `token` or `cookie`, or a person's
  * `person-token` or `person-cookie`, whose `person` it is. Every route that changes something asks `gate` first, which
  * asks the one permissions module (src/permissions.js) with the person behind the credential, never with `by`.
+ * `readable` is a person's read that personRoute's gate has let through.
  */
-async function routeApi(request, env, url, ctx, via, person) {
+async function routeApi(request, env, url, ctx, via, person, readable = false) {
   const actor = person ? { person: person.handle, press: via === 'person-cookie' } : ownerActor(via === 'cookie');
   // A press is a signed-in browser: the owner's cookie or a person's session, never a bearer token (BRK-299 point 3).
   const press = actor.press;
+  /** Who a read is for, when it counts what they can see: a person, or null for the owner (BRK-323). */
+  const reader = person ? { person: person.handle } : null;
   // A call with the token is the CLI (or a script with it), never the web board's cookie: Set up the board's CLI step (BRK-143).
   if (via === 'token' && Date.now() - cliNotedAt > 60_000) {
     cliNotedAt = Date.now();
@@ -421,7 +449,8 @@ async function routeApi(request, env, url, ctx, via, person) {
   if (press && method !== 'GET' && !sameOrigin(request)) return json(403, { error: 'cross-origin request refused' });
 
   // A person's request reaches the store only once a gate has let it through: anything else is refused (BRK-301).
-  let gated = false;
+  // A person's read has been through its own gate already (personRoute).
+  let gated = readable;
   /** @type {any} */
   const s = person ? guardStore(store(env), () => gated) : store(env);
   let by = null;
@@ -1081,7 +1110,7 @@ async function routeApi(request, env, url, ctx, via, person) {
       return json(403, {
         error: 'only the owner plans a feature’s dates, signed in to the web board: the CLI reads them',
       });
-    if (parts.length === 1 && method === 'GET') return send(await s.featuresApi());
+    if (parts.length === 1 && method === 'GET') return send(await s.featuresApi(reader));
     if (parts.length === 1 && method === 'POST') {
       // A new feature is its tasks' repositories', or its idea's; one with neither is the whole board's. Making one
       // from tasks, or shaping it, or giving it a state or dates, is a maintainer's; the rest a member's.
@@ -1099,7 +1128,7 @@ async function routeApi(request, env, url, ctx, via, person) {
       if (no) return no;
       return send(await s.featuresCreateApi(body));
     }
-    if (parts.length === 2 && method === 'GET') return send(await s.featureApi(parts[1]));
+    if (parts.length === 2 && method === 'GET') return send(await s.featureApi(parts[1], reader));
     if (parts.length === 2 && method === 'PATCH') {
       const no = await gate('state' in body || plansDates(body) ? 'feature.shape' : 'feature.edit', {
         feature: parts[1],

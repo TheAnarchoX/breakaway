@@ -6,8 +6,8 @@
  * secret (an invite's code, a personal token, a session's secret) is kept only as its SHA-256, so the store never holds
  * one it could give back; each is shown once, when it's made.
  *
- * Until roles are enforced (BRK-301, BRK-323), a person signs in and out and looks after their own passkeys, tokens,
- * and sessions, and nothing else: the Worker refuses every other route to a person's credential (`src/people.js`).
+ * Beyond signing in and their own passkeys, tokens, and sessions, what a person may do is their role's (BRK-301,
+ * `src/permissions.js`), and what they see is their grants' (BRK-323, `src/reads.js`).
  */
 import { PasskeyError, toBase64url, verifyAssertion, verifyRegistration } from './webauthn.js';
 import { refusal } from './permissions.js';
@@ -200,6 +200,35 @@ export const peopleMethods = {
       .exec('SELECT * FROM invites WHERE created > ? ORDER BY created DESC', Date.now() - MAX_INVITE_DAYS * DAY)
       .toArray();
     return ok({ people: people.map((p) => this.personView(p)), invites: invites.map((i) => this.inviteView(i)) });
+  },
+
+  /**
+   * GET /api/people for a person (BRK-323): the people who share a repository with them, themselves included, and the
+   * invites they made. How many passkeys, tokens, and sessions someone has shows only to whoever may Reset them. The
+   * Worker's scrub takes out the grants in repositories they can't read.
+   * @param {string} handle
+   */
+  peopleListFor(handle) {
+    const { readable } = this.hiddenFrom({ person: handle });
+    const shares = (grants) => grants.some((g) => g.repository === EVERY_REPO || readable(g.repository));
+    const people = this.sql
+      .exec('SELECT * FROM people WHERE removed IS NULL ORDER BY created')
+      .toArray()
+      .filter((p) => p.handle === handle || shares(this.personGrants(p.handle)))
+      .map((p) => {
+        const view = this.personView(p);
+        if (p.handle === handle || !this.personReach(handle, p)) return view;
+        const { passkeys: _p, tokens: _t, sessions: _s, ...rest } = view;
+        return rest;
+      });
+    const invites = this.sql
+      .exec(
+        'SELECT * FROM invites WHERE invited_by = ? AND created > ? ORDER BY created DESC',
+        handle,
+        Date.now() - MAX_INVITE_DAYS * DAY,
+      )
+      .toArray();
+    return ok({ people, invites: invites.map((i) => this.inviteView(i)) });
   },
 
   // ---- Managing people: the owner's, and a maintainer's within their repositories ---------------

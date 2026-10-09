@@ -481,10 +481,10 @@ export const featuresMethods = {
    * Every feature's tasks, worked out once: a task is in the feature whose slug it carries as a tag,
    * the first alphabetically when it carries more than one (the rest are a warning).
    */
-  featureMembership() {
+  featureMembership(seen = null) {
     const rows = this.featureRows();
     const slugs = new Set(rows.map((r) => r.slug));
-    const views = this.views((t) => t.status !== 'deleted');
+    const views = this.views((t) => t.status !== 'deleted' && (!seen || seen(t)));
     const names = new Map(views.map((t) => [t.uuid, label(t)]));
     const members = new Map(rows.map((r) => [r.slug, []]));
     const conflicts = [];
@@ -559,9 +559,9 @@ export const featuresMethods = {
     };
   },
 
-  featureDetail(slug) {
+  featureDetail(slug, seen = null) {
     const row = this.featureRow(slug);
-    const membership = this.featureMembership();
+    const membership = this.featureMembership(seen);
     // Agents' changes to its plan (BRK-274), newest first, each with the owner's undo.
     return {
       ...this.featureView(row, membership, { full: true }),
@@ -589,8 +589,8 @@ export const featuresMethods = {
    * The roadmap's data: features in release order then unplanned, the tags that could be features,
    * and the tasks with a release tag and no feature, under their release.
    */
-  listFeatures() {
-    const membership = this.featureMembership();
+  listFeatures(seen = null) {
+    const membership = this.featureMembership(seen);
     const features = membership.rows
       .sort((a, b) => byRelease(a.release, b.release) || a.title.localeCompare(b.title) || a.slug.localeCompare(b.slug))
       .map((row) => this.featureView(row, membership));

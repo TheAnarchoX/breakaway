@@ -513,10 +513,10 @@ export const chaseMethods = {
   },
 
   /** GET /api/features/<slug>: the feature with its chase worked out, connections included. */
-  async featureWithChase(slug) {
-    const detail = this.featureDetail(slug);
+  async featureWithChase(slug, seen = null) {
+    const detail = this.featureDetail(slug, seen);
     const row = this.featureRow(slug);
-    const plan = this.chaseQueue(row, this.views(), await this.connectedRepos());
+    const plan = this.chaseQueue(row, this.views(seen ?? undefined), await this.connectedRepos());
     return { ...detail, chase: this.chaseView(row, plan) };
   },
 

@@ -1760,11 +1760,12 @@ const apiActions = {
       );
     });
   },
-  featuresApi() {
-    return this.run(() => ok(this.listFeatures()));
+  /** `reader`, a person, sees a feature's parts in their repositories only (BRK-323). */
+  featuresApi(reader = null) {
+    return this.run(() => ok(this.listFeatures(this.seenBy(reader))));
   },
-  featureApi(slug) {
-    return this.run(async () => ok({ feature: await this.featureWithChase(slug) }));
+  featureApi(slug, reader = null) {
+    return this.run(async () => ok({ feature: await this.featureWithChase(slug, this.seenBy(reader)) }));
   },
   featureChaseApi(slug, body) {
     return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
