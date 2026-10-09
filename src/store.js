@@ -98,6 +98,7 @@ import { infraCurrencyMethods } from './store-infra-currency.js';
 import { infraShortLivedMethods } from './store-infra-short-lived.js';
 import { infraTokensMethods } from './store-infra-tokens.js';
 import { peopleMethods } from './store-people.js';
+import { ownerMethods } from './store-owner.js';
 import { permissionsMethods } from './store-permissions.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
@@ -1697,6 +1698,7 @@ Object.assign(
   infraShortLivedMethods,
   infraTokensMethods,
   peopleMethods,
+  ownerMethods,
   permissionsMethods,
 );
 

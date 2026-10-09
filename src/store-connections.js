@@ -487,10 +487,11 @@ export const connectionsMethods = {
   /**
    * A fresh install's setup steps, in order, each with the connection that shows it: register a repository,
    * connect the GitHub App, install it on that repository, add the board's files to it (repos init), connect
-   * its routine, connect a machine's CLI, sync Taskwarrior (optional), and the first result (BRK-143): a first
-   * agent's pull request merged when the repository has a routine, else a first task closed by its pull request,
-   * from the Add a repository wizard's own facts so the two agree. `repo` is that repository's slug, so the last
-   * step can open its wizard at the agent step (WEB-40). `done` once every step not `optional` is.
+   * its routine, connect a machine's CLI, add a passkey for the owner (optional, BRK-328), sync Taskwarrior
+   * (optional), and the first result (BRK-143): a first agent's pull request merged when the repository has a
+   * routine, else a first task closed by its pull request, from the Add a repository wizard's own facts so the two
+   * agree. `repo` is that repository's slug, so the last step can open its wizard at the agent step (WEB-40). `done`
+   * once every step not `optional` is.
    * Null on an older install.
    */
   setupSteps(connections) {
@@ -528,6 +529,14 @@ export const connectionsMethods = {
       },
       // Any call with the API token counts: Taskwarrior is a way in, not a step everyone takes (BRK-143).
       { id: 'cli', name: 'Connect the CLI', connection: 'cli', done: state('cli') === 'working' },
+      // A passkey of the owner's own, beside the token (BRK-328): optional, since the token always signs in.
+      {
+        id: 'passkey',
+        name: 'Add a passkey for yourself (optional)',
+        connection: null,
+        optional: true,
+        done: this.ownerHasPasskey(),
+      },
       {
         id: 'taskwarrior',
         name: 'Sync Taskwarrior (optional)',
