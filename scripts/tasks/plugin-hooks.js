@@ -10,6 +10,8 @@ import { join } from 'node:path';
 /** A session hook command repos init writes: through npx, any version, or an old copy's script. */
 const BOARD_HOOK =
   /\bbreakaway(?:@[^\s"]+)? hook (?:session|wait)\b|scripts\/tasks\/(?:session-hook|message-wait)\.mjs/u;
+/** The edit hook (IDEA-55): settings from before it run the other hooks but not this one. */
+const EDIT_HOOK = /\bbreakaway(?:@[^\s"]+)? hook edit\b|scripts\/tasks\/edit-hook\.mjs/u;
 
 /** A file's text, or null when it can't be read. */
 function readOptional(path) {
@@ -24,9 +26,8 @@ function readOptional(path) {
  * Whether this hook is the plugin's and the checkout's settings already run the board's hooks, so this one does
  * nothing. Outside the plugin it's always false: the checkout's own hooks always run.
  */
-export function checkoutRunsHooks(root, env = process.env, read = readOptional) {
+export function checkoutRunsHooks(root, env = process.env, read = readOptional, hook = 'session') {
   if (!env.CLAUDE_PLUGIN_ROOT) return false;
-  return ['settings.json', 'settings.local.json'].some((name) =>
-    BOARD_HOOK.test(read(join(root, '.claude', name)) ?? ''),
-  );
+  const runs = hook === 'edit' ? EDIT_HOOK : BOARD_HOOK;
+  return ['settings.json', 'settings.local.json'].some((name) => runs.test(read(join(root, '.claude', name)) ?? ''));
 }
