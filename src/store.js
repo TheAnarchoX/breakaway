@@ -45,6 +45,7 @@ import { messagesMethods } from './store-messages.js';
 import { pelotonMethods } from './store-peloton.js';
 import { footprintsMethods } from './store-footprints.js';
 import { collisionMethods } from './store-collision.js';
+import { claimLapseMethods } from './store-claim-lapse.js';
 import { specsMethods } from './store-specs.js';
 import { pipelineMethods } from './store-pipeline.js';
 import { statsMethods } from './store-stats.js';
@@ -148,6 +149,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initMessages();
     this.initPeloton();
     this.initFootprints();
+    this.initClaimLapse();
     this.initStats();
     this.initRepos();
     this.initConnections();
@@ -1061,7 +1063,11 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const by = task.dependsOn.filter((d) => task.blockedBy.includes(d.uuid)).map((d) => d.wid ?? d.uuid.slice(0, 8));
       throw new Conflict(`${label(task)} is blocked by ${by.join(', ')}`, { task });
     }
-    return ok({ task: this.change(uuid, { claim: name, start: true }) });
+    const claimed = this.change(uuid, { claim: name, start: true });
+    // Claiming is a heartbeat (IDEA-55 section 1c): a claim taken over keeps its start, so its new holder's clock
+    // starts here, not at the last holder's.
+    this.heartbeat(uuid, name);
+    return ok({ task: claimed });
   }
 
   release(ref, agent, force = false) {
@@ -1623,6 +1629,7 @@ Object.assign(
   pelotonMethods,
   footprintsMethods,
   collisionMethods,
+  claimLapseMethods,
   specsMethods,
   pipelineMethods,
   statsMethods,
