@@ -326,16 +326,16 @@ function Controls({ feature, chase, open, captain, onChange }) {
         />
       )}
       {!chase.on && open && (
-        <label class="check-row">
-          <input type="checkbox" checked={withCaptain} onChange={(e) => setWithCaptain(e.currentTarget.checked)} />
-          <span>
-            Start a road captain with it
-            <span class="meta">
-              {' '}
-              An agent that keeps the plan and answers the others. On by default for more than {CAPTAIN_OVER} tasks.
-            </span>
+        <div class="field">
+          <label class="check-row">
+            <input type="checkbox" checked={withCaptain} onChange={(e) => setWithCaptain(e.currentTarget.checked)} />
+            <span>Start a road captain with it</span>
+          </label>
+          <span class="field-hint">
+            An agent that keeps the plan, answers the others, and hands over to a fresh one after its watch. On by
+            default for more than {CAPTAIN_OVER} tasks.
           </span>
-        </label>
+        </div>
       )}
       {!open && <p class="meta">Nothing left to chase: every task is done.</p>}
       {chase.on && <p class="meta">Stopping starts nothing new. Agents already working finish their tasks.</p>}
