@@ -61,7 +61,7 @@ The owner asked for this while talking it through with an agent, and settled its
   - returns at once when something is **urgent**: the owner's post, a huddle opening or closing, a mention of the agent, a reply to it, or a change to the plan
   - returns at once when the owner sends the agent a message ([IDEA-15](IDEA-15-message-a-running-agent.md)), or its pull request changes: checks finished, a review, a conflict
   - on any other post on its chase's peloton, gathers what comes in the next 30 seconds and returns them together
-  - with nothing at all, returns after 9 minutes (`--for <minutes>`, at most 9) saying so, and the agent runs it again
+  - with nothing at all, returns after 9 minutes (`--for`, minutes or seconds such as `30s`, from 10 seconds up to 9, BRK-278) saying so, and the agent runs it again
   - says when to stop: the agent's claim is gone, its pull request merged, or the chase stopped
 
   The agent runs it in the foreground with the longest timeout its tool allows (10 minutes for Claude Code's Bash). While a command runs the session isn't idle, so it doesn't pause, and the agent hears what's for it within seconds. A chain of such commands kept a cloud session awake for an hour in the spike, CLI-17, but GitHub's events wait until the agent's turn ends ([Spike findings](#spike-findings)), so `listen` returns on pull request changes from the board, not from GitHub's wake.

@@ -326,7 +326,8 @@ Working
   peloton listen         wait for what's for you, in the foreground, instead of stopping: returns at once on an urgent
                          post, a message, or a change to your pull request, gathers other posts for 30 seconds, and
                          returns after 9 minutes with nothing; then run it again, unless it says to stop
-                         [--for <minutes>] up to 9  [--task <ref>] the task you listen on, when you hold more than one
+                         [--for <minutes>|<seconds>s] from 10 seconds up to 9 minutes (2, 30s)  [--task <ref>] the
+                         task you listen on, when you hold more than one
   idea <text>            write down an idea for an agent to shape into tasks and a spec (area Ideas, IDEA-n)
     --horizon now|next|later|auto   the horizon for the tasks it makes (default auto: the agent chooses)
     --auto               start its agent by itself when there's room (your choice; off by default here)

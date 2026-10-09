@@ -340,16 +340,23 @@ export function planText(answer, { all = false } = {}) {
   return lines.join('\n');
 }
 
+/** The shortest `peloton listen --for`: a quick look between steps (BRK-278). */
+export const LISTEN_MIN_SECONDS = 10;
+
 /**
- * `--for <minutes>` → how long `peloton listen` listens, in ms: 9 minutes without it, at most 9, at least 1.
+ * `--for <minutes>` or `--for <seconds>s` → how long `peloton listen` listens with nothing coming, in ms: 9 minutes
+ * without it, from 10 seconds up to 9 minutes with it (`2`, `2m`, `0.5`, `30s`).
  * @returns {{ ms: number } | { error: string }}
  */
-export function listenWindow(minutes) {
-  if (minutes === undefined || minutes === true) return { ms: LISTEN_MAX_MINUTES * 60_000 };
-  const n = Number(minutes);
-  if (!Number.isFinite(n) || n <= 0 || n > LISTEN_MAX_MINUTES)
-    return { error: `--for is the minutes to listen, up to ${LISTEN_MAX_MINUTES}` };
-  return { ms: Math.round(n * 60_000) };
+export function listenWindow(value) {
+  if (value === undefined || value === true) return { ms: LISTEN_MAX_MINUTES * 60_000 };
+  const m = /^(\d+(?:\.\d+)?)(s|m)?$/u.exec(String(value).trim());
+  const ms = m ? Number(m[1]) * (m[2] === 's' ? 1000 : 60_000) : Number.NaN;
+  if (!(ms >= LISTEN_MIN_SECONDS * 1000 && ms <= LISTEN_MAX_MINUTES * 60_000))
+    return {
+      error: `--for is how long to listen: minutes (2) or seconds (30s), from ${LISTEN_MIN_SECONDS} seconds up to ${LISTEN_MAX_MINUTES} minutes`,
+    };
+  return { ms: Math.round(ms) };
 }
 
 /**
