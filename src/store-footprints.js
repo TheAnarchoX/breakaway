@@ -652,9 +652,9 @@ export const footprintsMethods = {
   },
 
   /**
-   * GET /api/footprints: every open task's footprint at once, by repository (`repo` narrows it to one), for the Graph
-   * view's shared-files edges and the Agents view's hit rate (WEB-130). One context per repository, and a pure read:
-   * it stores no prediction and no pull request's head, so looking never changes what a starter later sees.
+   * GET /api/footprints: every open task's footprint at once, by repository (`repo` narrows it to one), for an API
+   * reader that wants them all (WEB-130; the Graph view no longer draws them, WEB-131). One context per repository, and
+   * a pure read: it stores no prediction and no pull request's head, so looking never changes what a starter later sees.
    * @param {string | null} [repo]
    */
   footprintsApi(repo = null, now = Date.now()) {
