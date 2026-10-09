@@ -11,6 +11,8 @@ import { AgentError } from './store-agents.js';
 import { commentsOf, InputError } from './model.js';
 import { looksLikeSecret } from './ping.js';
 import { repoSlugOf } from './repos.js';
+import { pathsNamed } from './footprint.js';
+import { cleanPattern } from './store-footprints.js';
 
 const AGENT = /^[\w.@:/-]{1,64}$/u;
 const CHASE = 'chase:';
@@ -572,6 +574,8 @@ export const pelotonMethods = {
         stop: this.listenGone(name, uuid),
         open: uuid ? this.openPosts(name, uuid) : [],
       };
+    // A listening agent is there: each ask is a heartbeat for its path claims.
+    this.heartbeat(uuid, name);
     const chases = this.chasing() ? this.openChases() : [];
     const pull = this.pullOfTask(uuid);
     const peloton = this.takePeloton(name, { listen: true });
@@ -769,7 +773,11 @@ export const pelotonMethods = {
    * view. With `owner` (the signed-in board, never the bearer token: the worker decides), it's the owner's post,
    * stored as `owner`, and answers with the post and the peloton.
    */
-  postPeloton(raw, { kind, text, reply_to: replyTo = null, agent, task = null } = {}, { owner = false } = {}) {
+  postPeloton(
+    raw,
+    { kind, text, reply_to: replyTo = null, agent, task = null, files = null } = {},
+    { owner = false } = {},
+  ) {
     this.writable();
     const name = owner ? 'owner' : String(agent ?? '').trim();
     if (owner && agent !== undefined && agent !== null && agent !== '')
@@ -821,6 +829,19 @@ export const pelotonMethods = {
         `${name} holds no claimed task that rides ${p.name}: claim your task first, and post on its repository’s or its chase’s peloton`,
         403,
       );
+    // A check-in claims the paths it names, or its --files (IDEA-55 section 1a); a bad pattern refuses the post first.
+    const claims =
+      kind !== 'checkin'
+        ? []
+        : files !== null && files !== undefined && files !== ''
+          ? (Array.isArray(files) ? files : String(files).split(',')).map(cleanPattern)
+          : pathsNamed(clean).flatMap((named) => {
+              try {
+                return [cleanPattern(named)];
+              } catch {
+                return [];
+              }
+            });
     const huddle = this.huddleRule(p, kind, name);
     const reply = this.replyTarget(p.name, kind, replyTo);
     const hour = this.sql
@@ -846,7 +867,10 @@ export const pelotonMethods = {
       mentions: this.mentionsIn(p.name, clean),
     });
     this.huddleAfter(p, kind, row, uuid);
-    return { post: this.postView(row), peloton: this.agentView(p.name, name, uuid) };
+    // Every post by a task's holder is a heartbeat for its path claims.
+    this.heartbeat(uuid, name);
+    const paths = claims.length ? this.claimPaths(uuid, name, claims.slice(0, 50), { source: 'checkin' }) : undefined;
+    return { post: this.postView(row), peloton: this.agentView(p.name, name, uuid), ...(paths ? { paths } : {}) };
   },
 
   /** The open huddle on `peloton`, as stored, or null. */

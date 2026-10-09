@@ -1189,12 +1189,17 @@ async function handleApi(request, env, url, ctx) {
       if (action === 'risk-answer')
         return send(await s.riskAnswerApi(ref, body, { owner: via === 'cookie' && !body.by }));
       if (action === 'session') return send(await s.sessionLogApi(ref, body));
+      // Path claims (IDEA-55 section 1a): an agent's for the task it holds; the signed-in board's, or no agent's, are the owner's.
+      if (action === 'paths' && parts.length === 3)
+        return send(await s.pathsApi(ref, body, { owner: via === 'cookie' }));
       if (action === 'pings') {
         const result = await s.pingCreate(ref, body);
         // A new ping of a kind that needs the owner sends a push, after the answer (it never holds the agent up).
         if (result.status === 201 && result.body.ping.push) ctx?.waitUntil(s.pushPing(result.body.ping.id));
         return send(result);
       }
+    } else if (action === 'footprint' && parts.length === 3 && method === 'GET') {
+      return send(await s.footprintApi(ref));
     } else if (action === 'risk-review' && method === 'GET') {
       return send(await s.riskReviewsApi(ref));
     } else if (action === 'session' && method === 'GET') {

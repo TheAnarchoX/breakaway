@@ -15,6 +15,7 @@
 import { authenticate } from './auth.js';
 import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
+import { footprintLines } from './footprint-text.js';
 import { INFRA_TOOL_NAMES, infraTools } from './mcp-infra.js';
 import { McpFailure, PROMPTS, RESOURCE_TEMPLATES, getPrompt, listResources, readResource } from './mcp-resources.js';
 import { MAX_MESSAGE, PING_KINDS, looksLikeSecret } from './ping.js';
@@ -630,6 +631,18 @@ const READS = [
     },
   },
   {
+    name: 'footprint',
+    title: 'A task’s footprint',
+    description:
+      'The files a task touches: predicted before an agent starts, claimed (with when each claim runs out), changed, or in its open pull request, the shared files left out, and how well predictions do in its repository.',
+    inputSchema: input({ task: TASK_REF }, ['task']),
+    annotations: READ_ONLY,
+    async run(args, ctx) {
+      const { footprint } = body(await ctx.store.footprintApi(args.task));
+      return { text: [`${footprint.task}`, ...footprintLines(footprint)].join('\n'), data: { footprint } };
+    },
+  },
+  {
     name: 'peloton',
     title: 'The peloton',
     description:
@@ -1187,6 +1200,7 @@ const ORDER = [
   'health',
   'list_tasks',
   'show_task',
+  'footprint',
   'next_task',
   'claim_task',
   'release_task',

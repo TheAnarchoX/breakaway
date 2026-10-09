@@ -21,6 +21,7 @@
     "!scripts/install/*.test.js",
     "src/cli-version.js",
     "src/decision.js",
+    "src/footprint-text.js",
     "src/infra-check.js",
     "src/infra-currency.js",
     "src/infra-desired.js",
