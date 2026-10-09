@@ -218,12 +218,17 @@ export const permissionsMethods = {
         if (r.github) repos.add(r.github);
       }
     const tasks = [];
+    const features = new Set(this.featureRows().map((/** @type {any} */ r) => r.slug));
     for (const [uuid, map] of this.tasks) {
       const slug = repoSlugOf(map, fallback);
       if (readable(slug) && this.repoBySlug(slug)) continue;
       repos.add(slug);
       tasks.push(uuid);
       if (map.wid) tasks.push(map.wid);
+      // A chase's room spans its feature's repositories, and its plan and posts are free text about all of them: a
+      // person sees it only when they see every one (it's a peloton's name, which the scrub drops like a repository).
+      for (const key of Object.keys(map))
+        if (key.startsWith('tag_') && features.has(key.slice(4))) repos.add(`chase:${key.slice(4)}`);
     }
     return { repos: [...repos], tasks, readable };
   },
@@ -273,7 +278,9 @@ export const permissionsMethods = {
       const target = read.target;
       const touched = this.targetRepos(target);
       // A feature or a chase's peloton spans repositories: a person reads the parts in theirs.
-      const spans = ('feature' in target && !target.whole) || ('peloton' in target && touched.length !== 1);
+      // A feature spans repositories: a person reads the parts in theirs. A chase's room and a digest are free text
+      // about all of it, so they're only for someone who sees every one.
+      const spans = 'feature' in target && !target.whole;
       const ok = spans ? touched.some(readable) : touched.every(readable);
       if (!ok) throw new AgentError(notThere(target), 404);
       return answer;

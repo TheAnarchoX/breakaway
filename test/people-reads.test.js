@@ -211,6 +211,12 @@ beforeAll(async () => {
         }),
       )
       .one().id;
+    store.sql.exec(
+      "INSERT INTO peloton_plans (peloton, version, text, agent, task, at, why) VALUES (?, 1, ?, 'owner', NULL, ?, 'start')",
+      `chase:${mixed}`,
+      `gadgets: ${SECRET} plan names src/billing/`,
+      now,
+    );
     out.image = store.sql
       .exec(
         "INSERT INTO attachments (task, name, type, size, alt, added_at, data) VALUES (?, 'a.png', 'image/png', 1, '', ?, ?) RETURNING id",
@@ -335,8 +341,9 @@ function reads() {
     ok('/api/peloton'),
     ok('/api/peloton/widgets'),
     hidden('/api/peloton/gadgets'),
-    ok(`/api/peloton/chase:${w.mixed}`),
-    ok(`/api/peloton/chase:${w.mixed}/plan`),
+    // A chase's room is free text about every repository it spans: only for someone who sees them all.
+    hidden(`/api/peloton/chase:${w.mixed}`),
+    hidden(`/api/peloton/chase:${w.mixed}/plan`),
     hidden(`/api/peloton/chase:${w.gadOnly}`),
     ok('/api/peloton/listen?agent=claude-gad-1'),
     ok('/api/peloton/open?agent=claude-gad-1'),
