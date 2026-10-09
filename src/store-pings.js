@@ -102,7 +102,11 @@ export const pingsMethods = {
   },
 
   /** Every open ping, newest first. */
-  pingsApi() {
+  /**
+   * The inbox. `reader`, a person, gets their repositories' pings (the Worker's scrub), the notes of chases they see
+   * every part of, and the connections' notes only with the `*` grant (BRK-323).
+   */
+  pingsApi(reader = null) {
     return this.run(() => {
       this.resolveFinishedPings();
       const rows = this.sql.exec('SELECT * FROM pings WHERE resolved IS NULL ORDER BY id DESC LIMIT 200').toArray();
@@ -119,9 +123,21 @@ export const pingsMethods = {
       // The inbox's notes about connections (CLD-121) come with them: fyi, no task, no push.
       // And an ended chase's note (IDEA-28 section 3.7) comes with them too: no push.
       // And each chase's newest digest (BRK-277): one per chase, the newest replacing the last.
+      const seen = this.seenBy(reader);
+      let whole = (/** @type {string} */ _slug) => true;
+      if (seen) {
+        const { partial, members } = this.featureMembership(seen);
+        whole = (slug) => !partial.has(slug) && (members.get(slug)?.length ?? 0) > 0;
+      }
+      const everything = !reader || this.hiddenFrom(reader).readable(null);
       return {
         status: 200,
-        body: { pings, notices: this.connectionNotices(), chases: this.chaseNotes(), digests: this.chaseDigestNotes() },
+        body: {
+          pings,
+          notices: everything ? this.connectionNotices() : [],
+          chases: this.chaseNotes().filter((n) => whole(n.feature)),
+          digests: this.chaseDigestNotes().filter((d) => whole(d.feature)),
+        },
       };
     });
   },

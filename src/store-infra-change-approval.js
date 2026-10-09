@@ -477,6 +477,8 @@ export const infraChangeApprovalMethods = {
         url: row.pull_url ?? null,
         wids: [],
         method,
+        // Who pressed (WEB-132): the approver whose Approve merged it, so Activity and the pull request page say so.
+        by: pressed.person,
       }),
       repo.slug,
     );
