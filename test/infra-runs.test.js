@@ -1,5 +1,5 @@
 import { env, runInDurableObject, SELF } from 'cloudflare:test';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './helpers.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 import { fakeProvider } from './fake-infra-provider.js';
@@ -358,7 +358,17 @@ describe('the executor (BRK-183)', () => {
     await runInDurableObject(store(), async (instance) => {
       instance.infraProviders = new ProviderRegistry();
       instance.infraProviders.register(provider);
+      // The board's own alarm runs the same tick as a test's tick(), 2 seconds after an approval or a run's end: on a
+      // slow runner it lands mid-test and starts, sweeps, or looks after a run before the test expects (BRK-325).
+      // Turned off for these tests, so a test's tick is the only one; the alarm stays set, and nothing else changes.
+      instance.alarm = async () => {};
       await instance.refreshInventory(PROVIDER);
+    });
+  });
+
+  afterAll(async () => {
+    await runInDurableObject(store(), (instance) => {
+      delete instance.alarm;
     });
   });
 
@@ -462,14 +472,9 @@ describe('the executor (BRK-183)', () => {
     return res.plan;
   }
   const tick = () => runInDurableObject(store(), (s) => s.infraRunsTick());
-  /** The board's own alarm runs the same tick in a moment: stopped, so a test's tick is the only one (BRK-308). */
-  const noAlarm = () => runInDurableObject(store(), (s) => s.ctx.storage.deleteAlarm());
-  /** The owner's Start the run again, then the tick that starts it. */
-  const startAgain = async (id, b = {}) => {
-    const res = await body(await board(`infra/plans/${id}/start-again`, { method: 'POST', body: b }));
-    await noAlarm();
-    return res;
-  };
+  /** The owner's Start the run again. */
+  const startAgain = async (id, b = {}) =>
+    body(await board(`infra/plans/${id}/start-again`, { method: 'POST', body: b }));
   const plan = async (id) => (await body(await api(`infra/plans/${id}`))).plan;
   const run = async (id) => (await body(await api(`infra/runs/${id}`))).run;
   /** The plan's own entries: the board looking again after its run (BRK-310) is tested on its own. */
@@ -897,7 +902,6 @@ describe('the executor (BRK-183)', () => {
 
   it('a run that never reached the board applied nothing, when its lock expires or is released (BRK-308)', async () => {
     const p = await approved(16);
-    await noAlarm();
     await tick();
     await runInDurableObject(store(), (s) =>
       s.sql.exec('UPDATE infra_locks SET expires = ? WHERE environment = ?', Date.now() - 1000, staging.id),
@@ -922,7 +926,6 @@ describe('the executor (BRK-183)', () => {
 
   it('finds a run that ended on GitHub before it asked for its plan, ends it, and starts it again on the owner’s press (BRK-308)', async () => {
     const p = await approved(17);
-    await noAlarm();
     await tick();
     expect(gh.dispatches).toHaveLength(1);
     // Within the first few minutes, GitHub isn't asked.
@@ -1036,7 +1039,6 @@ describe('the executor (BRK-183)', () => {
 
   it('starts a run again whose every step failed, never one that applied a step (BRK-308)', async () => {
     const q = await approved(18);
-    await noAlarm();
     await tick();
     provider.failOn.add('svc-api');
     expect((await applyAsRunner(q.id)).end).toMatchObject({ outcome: 'failed' });
@@ -1048,7 +1050,6 @@ describe('the executor (BRK-183)', () => {
 
     // One step applied, then the rollback: the move from failed back to approved is refused.
     const p = await approved(19, '/v3/*');
-    await noAlarm();
     await tick();
     provider.failOn.add('route-api');
     expect((await applyAsRunner(p.id)).end).toMatchObject({ phase: 'rollback-dispatched' });
