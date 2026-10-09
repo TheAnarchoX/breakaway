@@ -1238,7 +1238,8 @@ export const forceOffer = signal(null);
 async function change(request, message, { forceable = false, force = false, after } = {}) {
   try {
     const result = await request(force);
-    if (message) toast(typeof message === 'function' ? message(result) : message, 'success');
+    const said = typeof message === 'function' ? message(result) : message;
+    if (said) toast(said, 'success');
     await loadTasks();
     if (activity.value.loaded) loadActivity();
     loadHealth();
@@ -1801,11 +1802,27 @@ export const actions = {
     loadFeatures();
     return result;
   },
-  async create(input) {
+  /**
+   * Adds a task. With `onSimilar`, a refusal because it resembles open tasks (BRK-283) hands their list over instead
+   * of a toast, so the form can show them and ask.
+   * @param {Record<string, any>} input
+   * @param {{ onSimilar?: (tasks: any[]) => void }} [options]
+   */
+  async create(input, { onSimilar } = {}) {
+    let similar = null;
     const result = await change(
-      () => api('tasks', { method: 'POST', body: input }),
-      (r) => `Added ${ref(r.tasks[0])}.`,
+      async () => {
+        try {
+          return await api('tasks', { method: 'POST', body: input });
+        } catch (error) {
+          if (!onSimilar || error.status !== 409 || !Array.isArray(error.data?.similar)) throw error;
+          similar = error.data.similar;
+          return null;
+        }
+      },
+      (r) => (r ? `Added ${ref(r.tasks[0])}.` : null),
     );
+    if (similar) onSimilar(similar);
     return result?.tasks?.[0] ?? null;
   },
 };

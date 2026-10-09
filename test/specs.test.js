@@ -245,8 +245,8 @@ describe('reading specs from GitHub', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' },
-          { description: 'Show the age', project: 'cloud', spec: './docs/specs/BRK-7-sort.md' },
+          { description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md', force: true },
+          { description: 'Show the age', project: 'cloud', spec: './docs/specs/BRK-7-sort.md', force: true },
           { description: 'Unrelated', project: 'cloud' },
         ],
       }),
@@ -291,7 +291,7 @@ describe('reading specs from GitHub', () => {
     const add = await body(
       await api('tasks', {
         method: 'POST',
-        body: [{ description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' }],
+        body: [{ description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md', force: true }],
       }),
     );
     const spec = await body(await api('specs/docs/specs/BRK-7-sort.md'));
@@ -404,7 +404,7 @@ describe('reading specs from GitHub', () => {
   it('takes the CLI’s requests: specs and specs show <path>, and prints what the board answers', async () => {
     await api('tasks', {
       method: 'POST',
-      body: [{ description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' }],
+      body: [{ description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md', force: true }],
     });
     const [method, path] = specsRequest('widgets');
     const list = await api(path, { method });
@@ -528,8 +528,8 @@ describe('marking a spec approved or built (BRK-215)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' },
-          { description: 'Show the age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' },
+          { description: 'Sort by age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md', force: true },
+          { description: 'Show the age', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md', force: true },
           { description: 'Still open', project: 'cloud', spec: 'docs/specs/BRK-7-sort.md' },
         ],
       }),

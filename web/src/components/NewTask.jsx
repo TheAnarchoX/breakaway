@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { HORIZONS, PRIORITIES, ROLES, ref } from '../lib/model.js';
+import { HORIZONS, PRIORITIES, ROLES, ref, stateOf } from '../lib/model.js';
 import {
   actions,
   areasOfRepo,
   filters,
+  hashFor,
   multiRepo,
   newTask,
   openKickoff,
@@ -18,6 +19,10 @@ import { clearDraft, draftOf, fillDraft, readDraft, writeDraft } from '../lib/dr
 import { isImage, MAX_IMAGES, prepareImage } from '../lib/images.js';
 import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails, attachFiles, pastedImages } from './Attachments.jsx';
+import { similarTasks } from '../../../src/similar.js';
+
+/** Areas whose tasks are never compared with a new one: an idea is the owner's words, and runs are alike on purpose. */
+const NOT_COMPARED = ['ideas', 'routines'];
 
 /** @param {Record<string, any>} props */
 function Form({ defaults }) {
@@ -32,7 +37,17 @@ function Form({ defaults }) {
     if (typeof kept === 'string' && repos.value.list.some((r) => r.slug === kept)) return kept;
     return defaults.repo ?? repoScope.value ?? repos.value.default;
   });
-  const areas = areasOfRepo(repo).filter((a) => !['ideas', 'routines'].includes(a.id));
+  const areas = areasOfRepo(repo).filter((a) => !NOT_COMPARED.includes(a.id));
+  // The open tasks it resembles (BRK-283), as the title is typed, else the board's list from a refused add.
+  const [title, setTitle] = useState(() => String(draft.saved?.description ?? ''));
+  const [refused, setRefused] = useState(/** @type {any[] | null} */ (null));
+  const [confirmed, setConfirmed] = useState(false);
+  const alike =
+    refused?.map((r) => open.find((t) => t.uuid === r.uuid) ?? { ...r, status: 'pending', tags: [] }) ??
+    similarTasks(
+      { description: title },
+      open.filter((t) => t.repo === repo && !NOT_COMPARED.includes(t.project)),
+    ).map((s) => s.task);
   const wanted = defaults.project ?? (f.areas.length === 1 ? f.areas[0] : 'product');
   const initialArea = areas.some((a) => a.id === wanted) ? wanted : areas[0]?.id;
   const initialHorizon = defaults.horizon ?? (f.horizons.length === 1 ? f.horizons[0] : 'next');
@@ -45,21 +60,36 @@ function Form({ defaults }) {
       setError('Say what needs doing.');
       return;
     }
+    const link = alike.length > 0 && data.get('link_similar') === 'on';
+    if (alike.length && !link && !confirmed) {
+      setConfirmed(true);
+      return;
+    }
     setBusy(true);
-    const created = await actions.create({
-      description,
-      project: data.get('project'),
-      repo: multiRepo.value ? repo : undefined,
-      horizon: data.get('horizon') || undefined,
-      priority: data.get('priority') || undefined,
-      tags: data.getAll('tags'),
-      depends: String(data.get('depends'))
-        .split(/[\s,]+/u)
-        .filter(Boolean),
-      spec: String(data.get('spec')).trim() || undefined,
-      brief: String(data.get('brief')).trim() || undefined,
-      done_when: String(data.get('done_when')).trim() || undefined,
-    });
+    const created = await actions.create(
+      {
+        description,
+        project: data.get('project'),
+        repo: multiRepo.value ? repo : undefined,
+        horizon: data.get('horizon') || undefined,
+        priority: data.get('priority') || undefined,
+        tags: data.getAll('tags'),
+        depends: String(data.get('depends'))
+          .split(/[\s,]+/u)
+          .filter(Boolean),
+        spec: String(data.get('spec')).trim() || undefined,
+        brief: String(data.get('brief')).trim() || undefined,
+        done_when: String(data.get('done_when')).trim() || undefined,
+        related: link ? alike.map((t) => t.uuid) : undefined,
+        force: alike.length && !link ? true : undefined,
+      },
+      {
+        onSimilar: (list) => {
+          setRefused(list);
+          setConfirmed(true);
+        },
+      },
+    );
     setBusy(false);
     if (created) {
       draft.discard();
@@ -80,7 +110,12 @@ function Form({ defaults }) {
           maxLength={300}
           autoFocus
           aria-describedby={error ? 'new-error' : undefined}
-          onInput={() => setError(null)}
+          onInput={(e) => {
+            setError(null);
+            setTitle(e.currentTarget.value);
+            setRefused(null);
+            setConfirmed(false);
+          }}
         />
         {error && (
           <span class="field-error" id="new-error">
@@ -88,6 +123,7 @@ function Form({ defaults }) {
           </span>
         )}
       </label>
+      {alike.length > 0 && <Similar tasks={alike} confirmed={confirmed} />}
       {multiRepo.value && (
         <label class="field">
           <span class="field-label">Repository</span>
@@ -197,10 +233,43 @@ function Form({ defaults }) {
           Cancel
         </button>
         <button type="submit" class="btn btn-primary" disabled={busy}>
-          {busy ? 'Adding…' : 'Add task'}
+          {busy ? 'Adding…' : confirmed && alike.length ? 'Add anyway' : 'Add task'}
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * The open tasks a new one resembles (BRK-283), before it's added: open one to check, link them as related, or press
+ * Add again to add it anyway.
+ * @param {Record<string, any>} props
+ */
+function Similar({ tasks: list, confirmed }) {
+  return (
+    <div class="field" role="status">
+      <span class="field-label">{confirmed ? 'Add it anyway?' : 'Is it one of these?'}</span>
+      <span class="field-hint">
+        {confirmed
+          ? 'These open tasks look like it. Press Add anyway if it’s different, or link them.'
+          : 'These open tasks look like it. If it’s one of them, comment there instead.'}
+      </span>
+      <ul class="dep-list">
+        {list.map((t) => (
+          <li key={t.uuid} class="dep-row">
+            <span class={`state-dot dot-${stateOf(t)}`} aria-hidden="true" />
+            <a href={hashFor({ task: ref(t) })}>
+              <span class="wid">{ref(t)}</span> {t.description}
+            </a>
+            {t.claim && <span class="meta">{t.claim} has it</span>}
+          </li>
+        ))}
+      </ul>
+      <label class="check-row">
+        <input type="checkbox" name="link_similar" />
+        Link them as related
+      </label>
+    </div>
   );
 }
 
