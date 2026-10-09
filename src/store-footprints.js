@@ -274,9 +274,10 @@ export const footprintsMethods = {
    * Gives claims back: the agent its own, on the task it holds; the owner any. No patterns gives back every claim the
    * task holds.
    * @param {string} uuid
-   * @param {{ agent?: string | null, owner?: boolean, patterns?: unknown }} options
+   * `person` is who pressed when it's the board's hand, not an agent's (BRK-303): the owner, or a person's handle.
+   * @param {{ agent?: string | null, owner?: boolean, person?: string, patterns?: unknown }} options
    */
-  releasePaths(uuid, { agent = null, owner = false, patterns = [] } = {}, now = Date.now()) {
+  releasePaths(uuid, { agent = null, owner = false, person = 'owner', patterns = [] } = {}, now = Date.now()) {
     const name = owner ? null : this.pathsHolder(uuid, agent).name;
     const asked = new Set(listOf(patterns).map(cleanPattern));
     const rows = this.livePathClaims({ uuid, now }).filter(
@@ -286,7 +287,7 @@ export const footprintsMethods = {
       this.sql.exec(
         'UPDATE path_claims SET ended = ?, why = ? WHERE id = ?',
         now,
-        owner ? 'released by the owner' : 'released',
+        owner ? `released by ${person === 'owner' ? 'the owner' : person}` : 'released',
         row.id,
       );
     return { released: rows.map((row) => row.pattern) };
@@ -719,6 +720,7 @@ export const footprintsMethods = {
           this.releasePaths(uuid, {
             agent,
             owner: asOwner,
+            person: this.actorIn(body).person,
             patterns: body.release === true ? [] : body.release,
           }),
         );
