@@ -155,6 +155,19 @@ export const peopleMethods = {
     return { grants };
   },
 
+  /**
+   * A person's display name, checked: never one that passes for the owner, so nobody poses as the owner in People or
+   * on an invite's page (BRK-328): not ending in "(owner)", and not the owner's own name.
+   */
+  personName(value) {
+    const named = cleanName(value, 'your name');
+    if (named.error) return named;
+    const owner = this.ownerName();
+    if (/\(\s*owner\s*\)$/iu.test(named.name) || (owner && named.name.toLowerCase() === owner.toLowerCase()))
+      return { error: 'that name is the owner’s: pick another' };
+    return named;
+  },
+
   /** A person as the owner's People list shows them: no secret, ever. */
   personView(p) {
     const count = (table) => this.sql.exec(`SELECT COUNT(*) AS n FROM ${table} WHERE handle = ?`, p.handle).one().n;
@@ -486,7 +499,7 @@ export const peopleMethods = {
       const p = this.personRow(row.person);
       person = { handle: p.handle, name: p.name, webauthnId: p.webauthn_id };
     } else {
-      const named = cleanName(body?.name, 'your name');
+      const named = this.personName(body?.name);
       if (named.error) return fail(400, named.error);
       const handle = typeof body?.handle === 'string' ? body.handle.trim() : '';
       const problem = handleProblem(handle);
@@ -686,7 +699,7 @@ export const peopleMethods = {
 
   /** PATCH /api/me: `{ name }`. The handle never changes. */
   personRename(handle, body) {
-    const named = cleanName(body?.name, 'your name');
+    const named = this.personName(body?.name);
     if (named.error) return fail(400, named.error);
     if (!this.personRow(handle)) return fail(401, 'sign in again');
     this.sql.exec('UPDATE people SET name = ? WHERE handle = ?', named.name, handle);
