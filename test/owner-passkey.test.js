@@ -247,6 +247,32 @@ describe('the owner’s display name', () => {
     await tokenStillSignsIn();
   });
 
+  it('nobody else can take it: a person’s name can’t end in “(owner)” or be the owner’s', async () => {
+    const owner = await ownerCookie();
+    expect((await call('/api/me', { method: 'PATCH', cookie: owner, body: { name: 'Jo Silva' } })).status).toBe(200);
+    const { cookie } = await person(owner);
+    for (const name of ['Jo Silva', 'jo silva', 'Ana (owner)', 'Ana ( Owner )']) {
+      const res = await call('/api/me', { method: 'PATCH', cookie, body: { name } });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/owner’s/u);
+    }
+    expect((await call('/api/me', { method: 'PATCH', cookie, body: { name: 'Ana, owner of widgets' } })).status).toBe(
+      200,
+    );
+    // Joining by invite, the same.
+    const made = await call('/api/people/invites', {
+      method: 'POST',
+      cookie: owner,
+      body: { grants: [{ repository: '*', role: 'viewer' }] },
+    });
+    const { code } = (await made.json()).invite;
+    for (const name of ['Jo Silva', 'Ben (owner)']) {
+      const res = await call(`/api/join/${code}/options`, { method: 'POST', body: { name, handle: unique('ben') } });
+      expect(res.status).toBe(400);
+    }
+    await call('/api/me', { method: 'PATCH', cookie: owner, body: { name: null } });
+  });
+
   it('the owner has no personal tokens or sessions to manage: the token is theirs', async () => {
     const owner = await ownerCookie();
     expect((await call('/api/me/tokens', { method: 'POST', cookie: owner, body: { name: 'x' } })).status).toBe(404);
