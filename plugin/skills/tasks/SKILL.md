@@ -18,7 +18,7 @@ This repository's work is on the board that tracks it. The CLI is `npx breakaway
    - asked to "pick something" → `tasks next --claim` (add `--project`, `--horizon` to narrow it)
 
    A `409` means someone has it or it's blocked. Pick another; never `--force` someone else's claim.
-4. **Read it:** `tasks show <ID>` (description, done when, comments, spec, what it waits for and holds up), then `AGENTS.md` if you haven't this session.
+4. **Read it:** `tasks show <ID>` (the owner's words quoted on it first, then the description, done when, comments, spec, what it waits for and holds up), then `AGENTS.md` if you haven't this session.
 5. **Check in on the peloton, before any change:** `tasks peloton checkin "<what you'll change, the files or areas>"`. Never skip it, whatever started you. It posts on your repository's peloton and, when your task is in an open chase, on the chase's too, and shows who else is riding; agree who goes first with anyone on the same files.
 6. **Work** on a branch. Record what you learn as you go: `tasks comment <ID> "<finding>"`. Comments are append-only; the description is the current brief, and you edit it only on a task you made or are refining. New work you find becomes `tasks add "<title>" --project <area> --tag agent|owner --horizon <h> --brief "<what and why>" --done-when "<done when>"`, with `--depends <ID>` when it waits for something. This repository's areas are in its `AGENTS.md`.
 7. **Hand over:** open the pull request with `Closes <ID>.` in its description, then `tasks modify <ID> --pr <number>` and `tasks comment <ID> "<one-line result>"`. The board moves the task to In review and marks it done when the pull request merges; don't mark it done yourself. If you stop before a pull request: `comment` where you got to, then `release <ID>`.
@@ -27,6 +27,7 @@ This repository's work is on the board that tracks it. The CLI is `npx breakaway
 
 | Situation | Do |
 | --- | --- |
+| The owner's words settle how a task is done (a message, their peloton post, a ping's answer, a decision's note) | Quote them word for word on a task you hold: `quote <ID> "<their exact words>" --from message\|peloton\|ping\|decision\|comment` (with a pointer, like `--from "peloton #12"`). They show first on the task and to every agent that claims it. Never your summary of them. |
 | Task is `+decide` | Don't start it. If it has no questions, add some with `modify <ID> --decision <file.json>` (`decision --template` prints an example). |
 | You need the owner to choose | Ask with a decision, not prose: `add "<title>" --tag owner --decision <file.json>` and make the work that waits `--depends` on it. Only the owner answers, on the board; read the answers with `show`. |
 | Part of the work needs the owner (an install, a dashboard, a sign-off) | Finish your part, then `add` a `+owner` task for the rest that `--depends` on yours. |

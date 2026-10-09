@@ -146,6 +146,27 @@ function proposalLine(c) {
 /** How `show` prints a comment's author: `null` is a note from before comments had authors. */
 export const authorOf = (c) => c.by ?? 'earlier note';
 
+/**
+ * The owner's words quoted on a task (BRK-284), as `show` and `claim` print them, first: each quote, then where it came
+ * from and who put it there. Nothing when there are none.
+ */
+export function ownerSaidLines(t) {
+  const said = t.ownerSaid ?? [];
+  if (!said.length) return [];
+  const out = ['  The owner said (read this first)'];
+  for (const q of said) {
+    out.push(
+      ...String(q.text)
+        .split('\n')
+        .map((l) => `    > ${l}`.trimEnd()),
+    );
+    out.push(
+      `      (${q.from}, ${q.by === 'owner' ? 'from the owner' : `quoted by ${q.by}`}${q.at ? `, ${String(q.at).slice(0, 10)}` : ''})`,
+    );
+  }
+  return out;
+}
+
 /** The lines of `show` under the fields: description, done when, related, then the comments. */
 export function structureLines(t) {
   const out = [];

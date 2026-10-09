@@ -36,6 +36,7 @@ import {
   decisionField,
   proposalField,
   structureLines,
+  ownerSaidLines,
   textFields,
 } from './tasks/structure.js';
 import { looksLikeSecret } from '../src/ping.js';
@@ -302,6 +303,9 @@ Working
                          refuses another repository's task unless --repo names it
   release <ref>          give it back  [--force]
   comment <ref> <text>   add a comment (signed with your agent name); note is the same command
+  quote <ref> <words> --from <source>   put the owner's exact words on a task you hold, quoted and marked as yours:
+                         shown first on the task and to every agent that claims it. <source> is where they said it:
+                         message, peloton, ping, decision, or comment, with a pointer if you have one ("peloton #12")
   review <ref> --verdict ready|follow-up|changes <note>   your review of the pull request that closes the task you
                          hold: a comment on it, and the review on the pull request's page (the note is Markdown)  [--pr <n>]
   risk-review <ref> --file <findings.json>   a risky-path reviewer's findings on the pull request the board started it
@@ -846,7 +850,8 @@ function line(t) {
 }
 
 function detail(t) {
-  const out = [`${ref(t)} · ${t.description}`, ''];
+  const said = ownerSaidLines(t);
+  const out = [`${ref(t)} · ${t.description}`, '', ...(said.length ? [...said, ''] : [])];
   const row = (k, v) => v && out.push(`  ${k.padEnd(11)} ${v}`);
   const inReview = t.status === 'pending' && (t.github ?? []).some((p) => p.closes && p.state === 'open');
   row(
@@ -1712,7 +1717,13 @@ const commands = {
     });
     markSession(task);
     await startSessionLog(task);
-    print(task, (t) => `Claimed ${ref(t)} as ${t.claim}: ${t.description}`);
+    // The owner's words go to every agent that claims the task, before the description (BRK-284).
+    print(task, (t) =>
+      [
+        `Claimed ${ref(t)} as ${t.claim}: ${t.description}`,
+        ...(t.ownerSaid?.length ? ['', ...ownerSaidLines(t)] : []),
+      ].join('\n'),
+    );
   },
   async release() {
     const released = await call('POST', `tasks/${enc(need(args[0], 'task'))}/release`, {
@@ -1779,6 +1790,20 @@ const commands = {
     if (!text) fail(`say what to write: npx breakaway ${command} <task> <text>`);
     const { task } = await call('POST', `tasks/${enc(need(args[0], 'task'))}/annotate`, { text, by: agent() });
     print(task, (t) => `Commented on ${ref(t)}.`);
+  },
+  /** Quotes the owner's words on a task you hold (BRK-284), with where they came from. */
+  async quote() {
+    const text = args.slice(1).join(' ').trim();
+    if (!text || !opts.from)
+      fail(
+        `say what the owner said and where: npx breakaway quote <task> "<their words>" --from message|peloton|ping|decision|comment[ <pointer>]`,
+      );
+    const { task } = await call('POST', `tasks/${enc(need(args[0], 'task'))}/said`, {
+      text,
+      from: opts.from,
+      by: agent(),
+    });
+    print(task, (t) => `Quoted the owner on ${ref(t)}: every agent that picks it up reads it first.`);
   },
   async done() {
     const id = need(args[0], 'task');
