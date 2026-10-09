@@ -487,7 +487,8 @@ export const featuresMethods = {
     const every = this.views((t) => t.status !== 'deleted');
     // The features with a task `seen` hides (BRK-323): their chase's free text (the captain's log, its digests) stays
     // out, since nothing can take another repository's words out of it.
-    const partial = new Set(seen ? every.filter((t) => !seen(t)).flatMap((t) => t.tags) : []);
+    // Deleted tasks count here, as they do for a chase's room (hiddenFrom): the captain's words may still name them.
+    const partial = new Set(seen ? this.views((t) => !seen(t)).flatMap((t) => t.tags) : []);
     const views = seen ? every.filter(seen) : every;
     const names = new Map(views.map((t) => [t.uuid, label(t)]));
     const members = new Map(rows.map((r) => [r.slug, []]));
