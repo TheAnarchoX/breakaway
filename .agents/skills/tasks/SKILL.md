@@ -31,6 +31,7 @@ breakaway's work is on the board that tracks this repository. The CLI is `npx br
 | Task is `+decide` | Don't start it. If it has no questions, add some with `modify <ID> --decision <file.json>` (`decision --template` prints an example). |
 | You need the owner to choose | Ask with a decision, not prose: `add "<title>" --tag owner --decision <file.json>` and make the work that waits `--depends` on it. Only the owner answers, on the board; read the answers with `show`. |
 | Part of the work needs the owner (an install, a dashboard, a sign-off) | Finish your part, then `add` a `+owner` task for the rest that `--depends` on yours. |
+| Your change states a platform's limit, price, default, or behaviour | Name where it came from: a comment beside the value in code, and a line under **Sources** in the pull request (a docs URL, a code line, or a command and its output). Couldn't check it? Mark it `Unverified:` in both. "Facts about platforms carry their source" in the core. |
 | Task needs design choices | Write the spec in `docs/specs/<ID>-<slug>.md` and `modify <ID> --spec <path>`. |
 | Reading the repository's specs | `tasks specs` lists them, newest first, with each one's status and its tasks; `specs show <path>` prints one with the tasks that link it. They're read from GitHub's default branch, so a spec still in a pull request isn't there yet. |
 | `add` says it resembles open tasks | Read them first. If it's one of them, `comment` there instead; if it's related work, add it again with `--related <IDs>`; only if it's different work, `--force`. |

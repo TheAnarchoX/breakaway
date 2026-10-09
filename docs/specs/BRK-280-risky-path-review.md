@@ -38,7 +38,7 @@ During a sync, each open pull request whose head moved is looked at once (three 
 - A pull request from a fork, or one that closes no open task, starts no reviewer: the check says to read those paths before merging.
 - Each new head is reviewed again, up to **3 heads** a pull request; after that the board starts no more, and the check says so.
 
-The reviewer's instructions are a mode in the core ("Reviewing risky paths"): read the risky files whole and their callers; look for what could merge, delete, overwrite, force-push, leak, hold a credential too long or too wide, or page on one bad reading; check first runs, empty values, retries, races, and error answers; and mark a finding **blocking** only for a harm it traced from a real caller. It never claims, pushes, fixes, or answers.
+The reviewer's instructions are a mode in the core ("Reviewing risky paths"): read the risky files whole and their callers; look for what could merge, delete, overwrite, force-push, leak, hold a credential too long or too wide, or page on one bad reading; check first runs, empty values, retries, races, and error answers; flag a platform fact (a limit, price, default, or behaviour) the diff states without a source (BRK-282); and mark a finding **blocking** only for a harm it traced from a real caller. It never claims, pushes, fixes, or answers.
 
 ### 3. Posted as a check
 
