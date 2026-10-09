@@ -149,7 +149,15 @@ const AUDITED = new Set([
   'short-lived.ask',
 ]);
 /** Shows the person's words to agents or in the inbox as the owner's until BRK-303 names them. */
-const NAMED = new Set(['peloton.post', 'peloton.plan', 'agent.message', 'ping.apply', 'task.quote']);
+const NAMED = new Set([
+  'peloton.post',
+  'peloton.plan',
+  'agent.message',
+  'ping.apply',
+  'task.quote',
+  'decision.answer',
+  'decision.carry-on',
+]);
 
 const ROLES = [null, 'viewer', 'member', 'maintainer'];
 const rank = (role) => (role ? ROLE_RANK[role] : 0);
@@ -758,7 +766,7 @@ describe('a person’s writes (BRK-301)', () => {
     expect(tokenMade.status).toBe(403);
   });
 
-  it('records who answered a decision, and refuses a kickoff’s to everyone but the owner', async () => {
+  it('keeps a maintainer’s decision answers for BRK-303, which names them: agents read answers as the owner’s', async () => {
     const max = world.people.maintainer;
     const made = await owner('/api/tasks', {
       method: 'POST',
@@ -775,9 +783,17 @@ describe('a person’s writes (BRK-301)', () => {
       cookie: max.cookie,
       body: { answers: { q: { value: 'yes' } } },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe(NAME_WAITS);
     const task = (await (await owner(`/api/tasks/${uuid}`)).json()).task;
-    expect(task.decisionAnswers.by).toBe(max.handle);
+    expect(task.decisionAnswers).toBeNull();
+    // A viewer hears it's a maintainer's first.
+    const viewer = await call(`/api/tasks/${uuid}/decision/answers`, {
+      method: 'POST',
+      cookie: world.people.viewer.cookie,
+      body: { answers: { q: { value: 'yes' } } },
+    });
+    expect((await viewer.json()).error).toMatch(/^only a maintainer in widgets can answer or reopen a decision/u);
   });
 });
 

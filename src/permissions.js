@@ -109,8 +109,9 @@ export const ACTIONS = {
   'provider.connect': { role: 'owner', press: true, what: 'connect or forget a provider' },
 
   // Decisions, pings, and agents.
-  'decision.answer': { role: 'maintainer', what: 'answer or reopen a decision' },
+  'decision.answer': { named: true, role: 'maintainer', what: 'answer or reopen a decision' },
   'decision.carry-on': {
+    named: true,
     role: 'maintainer',
     press: true,
     starts: true,
