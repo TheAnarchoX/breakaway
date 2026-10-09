@@ -1002,6 +1002,7 @@ async function handleApi(request, env, url, ctx) {
       return send(
         await s.agentsStartApi(body.ref, body.note ? String(body.note) : null, body.mode ? String(body.mode) : null, {
           force: body.force,
+          anyway: Boolean(body.anyway),
           by: body.by,
         }),
       );
@@ -1022,6 +1023,7 @@ async function handleApi(request, env, url, ctx) {
           hourly: body.hourly,
           autostart: body.autostart,
           alerts: body.alerts,
+          perArea: body.perArea,
           plan: body.plan,
           by: body.by,
         }),

@@ -254,7 +254,7 @@ Reading                (list, next, claim, and add work in this checkout's repos
   agents new --next minor|major ["<note>"]   start an agent that sets package.json to the next minor or major release; the board writes its prompt  [--repo <slug>] [--force] (owner)
   agents new --spec <path> "<what should change>"   start an agent that changes a spec as you ask and brings the tasks that
                          link it in line; the board writes its prompt  [--repo <slug>] [--force] (owner)
-  agents start <ref>     start a Claude cloud agent on a task  [--note <text>] [--force]
+  agents start <ref>     start a Claude cloud agent on a task; warns when a running agent changes its files  [--note <text>] [--force] [--anyway]
   agents refine <ref>    start an agent that improves a task, not builds it  --note <what to look at or change> [--force]
   agents plan [<plan>]   your Claude plan and what it allows; pro, max5, or max20 picks one (owner) and sets the limits to its defaults
   agents next            start the next few ready tasks, one per area  [--count <n>] [--dry-run] [--repo <slug>]
@@ -566,6 +566,7 @@ const FLAGS = new Set([
   'captain',
   'no-captain',
   'handover',
+  'anyway',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline', 'copies']);
@@ -1278,11 +1279,27 @@ const commands = {
       return;
     }
     if (sub === 'start') {
-      const { task, run } = await call('POST', 'agents/start', {
-        ref: need(args[1], 'task'),
-        note: opts.note,
-        ...forceFields(opts.force, opts.as ?? setting('AGENT')),
-      });
+      const answer = await call(
+        'POST',
+        'agents/start',
+        {
+          ref: need(args[1], 'task'),
+          note: opts.note,
+          ...(opts.anyway ? { anyway: true } : {}),
+          ...forceFields(opts.force, opts.as ?? setting('AGENT')),
+        },
+        { raw: true },
+      );
+      if (!answer.ok) {
+        if (opts.json) console.log(JSON.stringify({ status: answer.status, ...answer.data }, null, 2));
+        // A footprint's overlap is a warning (IDEA-55 section 3): the owner decides, knowing.
+        fail(
+          answer.data?.overlap
+            ? `${answer.data.error}. Start it anyway: npx breakaway agents start ${args[1]} --anyway`
+            : (answer.data?.error ?? `HTTP ${answer.status}`),
+        );
+      }
+      const { task, run } = answer.data;
       print({ task, run }, () => `Started an agent on ${task.wid ?? task.short}: ${run.url}`);
       return;
     }
