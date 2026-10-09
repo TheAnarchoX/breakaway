@@ -267,3 +267,30 @@ describe('every write names who did it (BRK-303)', () => {
     );
   });
 });
+
+describe('path claims a person gives back (BRK-303)', () => {
+  it('says who released them', async () => {
+    const uuid = await addTask(unique('Paths'));
+    expect((await owner(`/api/tasks/${uuid}/claim`, { method: 'POST', body: { agent: 'claude-attr-4' } })).status).toBe(
+      200,
+    );
+    expect(
+      (
+        await owner(`/api/tasks/${uuid}/paths`, {
+          method: 'POST',
+          body: { agent: 'claude-attr-4', claim: ['src/attr/**'] },
+        })
+      ).status,
+    ).toBe(200);
+    const res = await call(`/api/tasks/${uuid}/paths`, {
+      method: 'POST',
+      cookie: world.max.cookie,
+      body: { release: true },
+    });
+    expect(res.status).toBe(200);
+    const why = await inStore((store) =>
+      store.sql.exec('SELECT why FROM path_claims WHERE uuid = ? AND ended IS NOT NULL', uuid).toArray(),
+    );
+    expect(why.map((r) => r.why)).toEqual([`released by ${world.max.handle}`]);
+  });
+});
