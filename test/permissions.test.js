@@ -620,7 +620,7 @@ describe('every gated write route, for every role (BRK-301)', () => {
     for (const route of routes(world)) await check(route, who, { token: who.token });
   }, 120_000);
 
-  it('still refuses a person every read, until BRK-323', async () => {
+  it('lets a person read their repository since BRK-323 (test/people-reads.test.js has the rest)', async () => {
     const who = world.people.maintainer;
     for (const path of [
       '/api/tasks',
@@ -630,14 +630,15 @@ describe('every gated write route, for every role (BRK-301)', () => {
       '/api/repos',
     ]) {
       const res = await call(path, { cookie: who.cookie });
-      expect(res.status, path).toBe(403);
-      expect((await res.json()).error, path).toBe(NOT_YET);
+      expect(res.status, path).toBe(200);
+      expect(await res.text(), path).not.toContain(world.gadget.uuid);
     }
+    expect((await call(`/api/tasks/${world.gadget.uuid}`, { cookie: who.cookie })).status).toBe(404);
   });
 });
 
 describe('a person’s writes (BRK-301)', () => {
-  it('answers a write with only what can’t show another repository', async () => {
+  it('answers a write whole, with what’s in another repository taken out (BRK-323)', async () => {
     const who = world.people.member;
     const res = await call('/api/tasks', {
       method: 'POST',
@@ -645,19 +646,21 @@ describe('a person’s writes (BRK-301)', () => {
       body: { description: unique('Waits on a gadget'), project: 'product', depends: [world.gadget.uuid], force: true },
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(Object.keys(body).sort()).toEqual(['id', 'ok', 'wid']);
-    expect(body.wid).toMatch(/^PRD-\d+$/u);
-    expect(JSON.stringify(body)).not.toContain(world.gadget.uuid);
-    expect(JSON.stringify(body)).not.toContain('gadget');
-    const changed = await call(`/api/tasks/${body.id}`, {
+    const made = (await res.json()).tasks[0];
+    expect(made.wid).toMatch(/^PRD-\d+$/u);
+    expect(made.depends).toEqual([]);
+    expect(JSON.stringify(made)).not.toContain(world.gadget.uuid);
+    expect(JSON.stringify(made)).not.toContain('gadgets');
+    const changed = await call(`/api/tasks/${made.uuid}`, {
       method: 'PATCH',
       cookie: who.cookie,
       body: { priority: 'M' },
     });
-    expect(Object.keys(await changed.json()).sort()).toEqual(['id', 'ok', 'wid']);
+    const text = await changed.text();
+    expect(JSON.parse(text).task.priority).toBe('M');
+    expect(text).not.toContain(world.gadget.uuid);
     // What it made names the person, not the owner.
-    const task = await (await owner(`/api/tasks/${body.id}`)).json();
+    const task = await (await owner(`/api/tasks/${made.uuid}`)).json();
     expect(task.task.briefBy ?? task.task.brief_by ?? who.handle).toBe(who.handle);
   });
 
