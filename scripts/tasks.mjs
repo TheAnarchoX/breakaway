@@ -310,7 +310,8 @@ Working
                          shown first on the task and to every agent that claims it. <source> is where they said it:
                          message, peloton, ping, decision, or comment, with a pointer if you have one ("peloton #12")
   review <ref> --verdict ready|follow-up|changes <note>   your review of the pull request that closes the task you
-                         hold: a comment on it, and the review on the pull request's page (the note is Markdown)  [--pr <n>]
+                         hold, or, as a chase's road captain, a task of your chase: a comment on it, and the review on
+                         the pull request's page (the note is Markdown)  [--pr <n>]
   risk-review <ref> --file <findings.json>   a risky-path reviewer's findings on the pull request the board started it
                          for: { "summary", "findings": [{ "severity": "blocking"|"note", "text", "path", "line" }] }
                          [--pr <n>]; without --file, the task's reviews and their answers
