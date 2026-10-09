@@ -104,7 +104,7 @@ The auto-start queue on the Agents view, `agents next --dry-run`, `chase --dry-r
 ### 5. Showing footprints
 
 - **The task panel and `tasks show`**: a Footprint section with the patterns, each marked predicted, claimed (with when it runs out), or from the pull request, and the shared files left out.
-- **The Graph view**: a task's node shows its footprint as a short list on hover and focus, and two open tasks whose footprints overlap get a dashed "shares files" edge between them, labelled with the first shared path. Both themes, no colour-only state, reduced motion respected.
+- **The Graph view** shows no footprints: it draws only what waits for what. (WEB-130 gave its nodes a footprint list on hover and focus and a dashed "shares files" edge between overlapping tasks; the owner found it too much, and WEB-131 took both out.)
 - **The Agents view and the feature's chase**: the held tasks' reasons, as above, and the prediction's hit rate for the repository ("predictions covered 78% of the files the last 20 merged tasks changed").
 - **The API and MCP server**: `GET /api/tasks/:id/footprint` and a `footprint` read tool return the same.
 
@@ -144,7 +144,7 @@ Once the tasks are built and the board is deployed:
 4. Open either running task: its Footprint lists the files, marked predicted, then claimed (with when the claim runs out) once its agent checks in, then from the pull request once it opens one.
 5. Outside a chase: turn auto-start on for two ready tasks in one area that name different files. Both start together. Turn it on for two that name the same file: one starts, and the Agents view says why the other waits.
 6. Press Start on a task whose file a running agent is changing: the board warns you which agent and file, and starts it if you press again.
-7. Open the Graph view: the two tasks that share a file are joined by a dashed "shares files" line.
+7. Open the Graph view: it shows only the dependency arrows, with no footprints and no "shares files" line.
 8. On the peloton, a new agent's check-in lists what the others are changing. An agent that claims `apps/web/api/**` while another holds a file under it is told who holds it and until when. If one starts changing another's claimed file, the board posts a note naming both.
 9. Have an agent try to edit a file another agent claims: its edit is refused with who holds it, and it carries on with other files.
 10. Stop an agent's session mid-task: within about 10 minutes its claims are gone from the task's Footprint, and the files are free. Within about an hour, if it opened no pull request, the task itself is released with a "lapsed" comment and is ready to start again.

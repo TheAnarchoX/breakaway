@@ -1,9 +1,8 @@
 import { api, enc } from './api.js';
-import { footprintsOverlap } from '../../../src/footprint.js';
 
 /**
  * Footprints on the board (docs/specs/IDEA-55-footprints.md, section 5): reading a task's footprint, and its paths and
- * hit rate in words, for the task panel, the Agents view, the chase, and the Graph view.
+ * hit rate in words, for the task panel, the Agents view, and the chase.
  */
 
 /** How long a task's footprint stays fresh, so stepping through tasks doesn't read each one again. */
@@ -91,52 +90,4 @@ export function hitRateWords(hit) {
   if (!hit?.count || hit.rate === null || hit.rate === undefined) return null;
   const words = `Predictions covered ${Math.round(hit.rate * 100)}% of the files the last ${hit.count === 1 ? 'merged task' : `${hit.count} merged tasks`} changed`;
   return hit.trusted === false ? `${words}, under half, so the board schedules by area here.` : `${words}.`;
-}
-
-/** How often the Graph view reads every open task's footprint again while it's open. */
-export const GRAPH_EVERY_MS = 60_000;
-
-/**
- * Every open task's footprint (GET /api/footprints, WEB-130) as a map by task UUID, each `{ repo, kind, patterns,
- * paths, trusted, shared }`. Resolves to an empty map on a board without the route.
- * @returns {Promise<Map<string, any>>}
- */
-export async function readFootprints() {
-  try {
-    const { repos } = await api('footprints');
-    const out = new Map();
-    for (const r of repos ?? [])
-      for (const f of r.footprints) out.set(f.uuid, { ...f, repo: r.repo, shared: r.shared });
-    return out;
-  } catch (error) {
-    if (error.status === 404) return new Map();
-    throw error;
-  }
-}
-
-/**
- * The open tasks among `uuids` whose footprints overlap, as `[a, b, path]` with the first shared path (the file
- * rather than the folder or glob it falls under). Only footprints a starter would trust count, and shared files never
- * do, the same as the board's own collision rule.
- * @param {string[]} uuids
- * @param {Map<string, any>} prints
- * @returns {[string, string, string][]}
- */
-export function sharePairs(uuids, prints) {
-  const hasGlob = (/** @type {string} */ p) => /[*?]|\/$/u.test(p);
-  const known = uuids.filter((u) => {
-    const f = prints.get(u);
-    return f && f.trusted !== false && f.patterns?.length;
-  });
-  /** @type {[string, string, string][]} */
-  const out = [];
-  for (let i = 0; i < known.length; i++)
-    for (let j = i + 1; j < known.length; j++) {
-      const a = prints.get(known[i]);
-      const b = prints.get(known[j]);
-      if (a.repo !== b.repo) continue;
-      const hit = footprintsOverlap(a.patterns, b.patterns, { shared: a.shared ?? [] });
-      if (hit) out.push([known[i], known[j], hasGlob(hit.a) && !hasGlob(hit.b) ? hit.b : hit.a]);
-    }
-  return out;
 }

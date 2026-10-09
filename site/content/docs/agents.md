@@ -166,7 +166,7 @@ A task’s **footprint** is the files it touches. The board uses footprints to d
 - **Agents per area.** In Settings, Agents: the most agents in one area that start by themselves or with Start the next few, 3 by default. 1 is the old one-per-area pace. A chase keeps its own **parallel**.
 - **Your Start warns.** **Start an agent** on a task whose files a running agent is changing names the agent and the file and asks before it starts: **Start anyway**. `agents start <ID> --anyway` does the same.
 - **How good the guesses are.** When a task’s pull request merges, the board compares its prediction with what it changed. The share covered for the last 20 shows on the task, the Agents view, and the chase. Under half, predictions in that repository hold nothing back until they get better.
-- **Where you see it.** The task’s **Footprint** section and `paths <ID>`; why each held task waits, in the Agents view and the chase; and on the Dependencies view, a dashed “shares files” line between open tasks whose files overlap.
+- **Where you see it.** The task’s **Footprint** section and `paths <ID>`; and why each held task waits, in the Agents view and the chase. The Dependencies view shows only what waits for what.
 
 ## Several repositories
 
