@@ -19,11 +19,6 @@ const KEEPS_OUT = 'checks that the files it covers never name it';
 /** Reviewed files: path → [most lines allowed, why]. A path ending in / covers the folder, without a count. */
 const ALLOWED = {
   // History.
-  'src/backfill-shipped.js': [
-    6,
-    `${HISTORY}: its first deployments are recorded under the first install’s Worker names`,
-  ],
-  'test/github.test.js': [1, 'checks the backfill of those deployments'],
   'docs/decisions.md': [3, HISTORY],
   'docs/specs/': [0, HISTORY],
   // The licensor: the owner's account, which the repository lives under.
