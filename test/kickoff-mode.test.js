@@ -27,13 +27,13 @@ const settings = (patch) => api('agents/settings', { method: 'PATCH', body: patc
 const task = async (ref) => (await body(await api(`tasks/${ref}`))).task;
 const make = async (item) => (await body(await api('tasks', { method: 'POST', body: [item] }))).tasks[0];
 const kickoffIdea = (description = 'A diary for my plants') =>
-  make({ description, project: 'ideas', horizon: 'next', tags: ['agent', 'idea', 'kickoff-project'] });
+  make({ description, project: 'ideas', horizon: 'next', who: 'agent', tags: ['idea', 'kickoff-project'] });
 
 describe('the kickoff mode, the pure parts (BRK-134)', () => {
   it('knows a kickoff’s idea by its tag and its area', () => {
-    expect(isKickoffIdea({ project: 'ideas', tags: ['agent', 'idea', 'kickoff-project'] })).toBe(true);
+    expect(isKickoffIdea({ project: 'ideas', who: 'agent', tags: ['idea', 'kickoff-project'] })).toBe(true);
     expect(isKickoffIdea({ project: 'ideas', 'tag_kickoff-project': 'x' })).toBe(true);
-    expect(isKickoffIdea({ project: 'ideas', tags: ['agent', 'idea'] })).toBe(false);
+    expect(isKickoffIdea({ project: 'ideas', who: 'agent', tags: ['idea'] })).toBe(false);
     expect(isKickoffIdea({ project: 'app', tags: ['kickoff-project'] })).toBe(false);
     expect(isKickoffIdea(null)).toBe(false);
   });
@@ -125,7 +125,7 @@ describe('the kickoff mode on the board (BRK-134)', () => {
   const ask = async (idea, agent) => {
     const asked = await body(await api(`tasks/${idea.wid}`, { method: 'PATCH', body: { decision: QUESTIONS } }));
     expect(asked.status).toBe(200);
-    expect(asked.task.tags).toContain('decide');
+    expect(asked.task.who).toBe('decision');
     await api(`tasks/${idea.wid}/release`, { method: 'POST', body: { agent } });
   };
 
@@ -145,7 +145,7 @@ describe('the kickoff mode on the board (BRK-134)', () => {
 
     expect(fires.at(-1).split('\n')).toContain('Run it: not answered yet');
 
-    const plain = await make({ description: 'An ordinary idea', project: 'ideas', tags: ['agent', 'idea'] });
+    const plain = await make({ description: 'An ordinary idea', project: 'ideas', who: 'agent', tags: ['idea'] });
     const build = await body(await api('agents/start', { method: 'POST', body: { ref: plain.wid } }));
     expect(build.run.kind).toBe('build');
     expect(fires.at(-1)).not.toContain('Mode:');
@@ -157,7 +157,7 @@ describe('the kickoff mode on the board (BRK-134)', () => {
     const res = await body(await answer(idea.wid));
     expect(res.status).toBe(200);
     expect(res.task).toMatchObject({ status: 'pending', claim: null, decisionAnswers: { answers: ANSWERS } });
-    expect(res.task.tags).not.toContain('decide');
+    expect(res.task.who).toBe('agent');
     expect(res.task.comments.at(-1).text).toMatch(/Who is it for\?/);
     // Answered already: a second press is refused until it's reopened.
     expect((await answer(idea.wid)).status).toBe(409);
@@ -167,11 +167,11 @@ describe('the kickoff mode on the board (BRK-134)', () => {
     expect(kinds).not.toContain('done');
   });
 
-  it('reopens a kickoff’s answers by putting +decide back, and keeps the idea open', async () => {
+  it('reopens a kickoff’s answers by making it a decision again, and keeps the idea open', async () => {
     const res = await body(await owner(`tasks/${idea.wid}/decision/answers`, { method: 'DELETE' }));
     expect(res.status).toBe(200);
     expect(res.task.status).toBe('pending');
-    expect(res.task.tags).toContain('decide');
+    expect(res.task.who).toBe('decision');
     expect((await owner(`tasks/${idea.wid}/decision/answers`, { method: 'DELETE' })).status).toBe(409);
   });
 
@@ -191,7 +191,7 @@ describe('the kickoff mode on the board (BRK-134)', () => {
     expect(refused.error).toMatch(/isn't a kickoff's idea/);
     // Nothing was answered.
     expect((await task(other.wid)).status).toBe('pending');
-    expect((await task(idea.wid)).tags).toContain('decide');
+    expect((await task(idea.wid)).who).toBe('decision');
   });
 
   it('answers and starts the next kickoff run in one press', async () => {
@@ -237,7 +237,7 @@ describe('the kickoff mode on the board (BRK-134)', () => {
     expect(res.run).toBeNull();
     expect(res.waiting).toMatch(/already running/);
     expect(res.task).toMatchObject({ status: 'pending', claim: null, autostart: true });
-    expect(res.task.tags).not.toContain('decide');
+    expect(res.task.who).toBe('agent');
     expect(fires.length).toBe(before);
     const queue = (await body(await api('agents'))).queue;
     expect(queue.find((q) => q.uuid === second.uuid)).toMatchObject({ kickoff: true, general: false });

@@ -73,10 +73,10 @@ describe('a road captain reviews its chase’s pull requests (BRK-326)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Crew one', project: 'ops', tags: ['agent', 'crew'], horizon: 'now' },
-          { description: 'Crew two', project: 'ops', tags: ['agent', 'crew'], horizon: 'now', depends: ['OPS-1'] },
-          { description: 'Duo one', project: 'product', tags: ['agent', 'duo'], horizon: 'now' },
-          { description: 'Alone', project: 'ops', tags: ['agent'], horizon: 'later' },
+          { description: 'Crew one', project: 'ops', who: 'agent', tags: ['crew'], horizon: 'now' },
+          { description: 'Crew two', project: 'ops', who: 'agent', tags: ['crew'], horizon: 'now', depends: ['OPS-1'] },
+          { description: 'Duo one', project: 'product', who: 'agent', tags: ['duo'], horizon: 'now' },
+          { description: 'Alone', project: 'ops', who: 'agent', horizon: 'later' },
         ],
       }),
     );

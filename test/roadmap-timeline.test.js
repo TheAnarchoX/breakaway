@@ -156,7 +156,7 @@ describe('project', () => {
     const tasks = [
       ...pace,
       task({ tags: ['a'] }),
-      task({ tags: ['a', 'owner'] }),
+      task({ who: 'person', assignee: 'owner', tags: ['a'] }),
       task({ tags: ['a'], github: [{ closes: true, state: 'open' }] }),
     ];
     const p = project([{ slug: 'a' }], tasks, NOW).get('a');
@@ -196,7 +196,7 @@ describe('explain', () => {
       ...finished(14, 'web'),
       a,
       task({ tags: ['a'], depends: [a.uuid] }),
-      task({ tags: ['a', 'decide'] }),
+      task({ who: 'decision', tags: ['a'] }),
     ];
     const past = history(tasks, NOW);
     const text = explain(project([{ slug: 'a' }], tasks, NOW, past).get('a'), past, NOW);
@@ -288,7 +288,9 @@ describe('the plan', () => {
 
   it('could slip when the planned end is between the pace’s best and its likely end', () => {
     // One open task and one of the owner's: the agents' work is done in a day, the owner's step after it.
-    const { f, p } = planned(1, { plannedEnd: '2026-10-08' }, [task({ tags: ['a', 'owner'] })]);
+    const { f, p } = planned(1, { plannedEnd: '2026-10-08' }, [
+      task({ who: 'person', assignee: 'owner', tags: ['a'] }),
+    ]);
     expect(p.likely).toBeGreaterThan(Date.parse('2026-10-09T00:00:00Z'));
     expect(planStatus(f, p, NOW)).toEqual({ kind: 'slip', days: 0 });
     expect(statusWords(planStatus(f, p, NOW))).toBe('Could slip');

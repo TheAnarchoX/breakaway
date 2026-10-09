@@ -495,7 +495,7 @@ export function runState(idea, now = Date.now()) {
     const last = Date.parse(run.lastAt ?? run.startedAt ?? '');
     return last && now - last > STALLED_MS ? 'stalled' : 'running';
   }
-  const decisionOpen = Boolean(idea.decision?.length) && idea.tags.includes('decide');
+  const decisionOpen = Boolean(idea.decision?.length) && idea.who === 'decision';
   if (!run?.startedAt || decisionOpen || idea.autostart) return null;
   // Answers sent after it ran mean it did its part: what's next is the next run, not this one again.
   const answeredAt = Date.parse(idea.decisionAnswers?.at ?? '') || 0;
@@ -861,7 +861,7 @@ function KickoffPage({ id }) {
   const idea = k.idea ? byUuid.value.get(k.idea.uuid) : null;
   const connected = Boolean(d.routine?.connected);
   const filesDone = step.init.done && step.prompt.done;
-  const decisionOpen = Boolean(idea?.decision?.length) && idea.tags.includes('decide');
+  const decisionOpen = Boolean(idea?.decision?.length) && idea?.who === 'decision';
   const answered = Boolean(idea?.decisionAnswers) && !decisionOpen;
   const planned = Boolean(idea?.pr);
   // A run that stopped with nothing to show offers Start it again instead of the usual start.

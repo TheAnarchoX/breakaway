@@ -42,9 +42,9 @@ describe('telling the riders who touches what (IDEA-55 section 4)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Rework the widget API', project: 'ops', tags: ['agent'], horizon: 'now', force: true },
-          { description: 'Restyle the widget list', project: 'ops', tags: ['agent'], horizon: 'now', force: true },
-          { description: 'Document the widgets', project: 'ops', tags: ['agent'], horizon: 'now', force: true },
+          { description: 'Rework the widget API', project: 'ops', who: 'agent', horizon: 'now', force: true },
+          { description: 'Restyle the widget list', project: 'ops', who: 'agent', horizon: 'now', force: true },
+          { description: 'Document the widgets', project: 'ops', who: 'agent', horizon: 'now', force: true },
         ],
       }),
     );

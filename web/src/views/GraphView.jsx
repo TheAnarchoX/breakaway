@@ -78,9 +78,9 @@ function buildChains(list, all) {
   return chains;
 }
 
-/** Whether the owner holds a task's next step: a step for them (+owner) or a decision they haven't answered. */
+/** Whether the owner holds a task's next step: a person's step or a decision they haven't answered. */
 const forOwner = (t) =>
-  t.tags.includes('owner') || t.tags.includes('decide') || Boolean(t.decision && !t.decisionAnswers);
+  t.who === 'person' || t.who === 'decision' || Boolean(t.decision && !t.decisionAnswers);
 
 /**
  * How a chain is drawn (WEB-98): finished work folded into one card a step unless `showDone` or the step is

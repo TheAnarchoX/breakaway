@@ -28,7 +28,7 @@ describe('open posts when an agent leaves (BRK-281)', () => {
         body: ['Leaver one', 'Asker two', 'Merger three'].map((description) => ({
           description,
           project: 'product',
-          tags: ['agent'],
+          who: 'agent',
           horizon: 'now',
         })),
       }),

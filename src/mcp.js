@@ -20,6 +20,7 @@ import { footprintLines } from './footprint-text.js';
 import { INFRA_TOOL_NAMES, infraTools } from './mcp-infra.js';
 import { McpFailure, PROMPTS, RESOURCE_TEMPLATES, getPrompt, listResources, readResource } from './mcp-resources.js';
 import { MAX_MESSAGE, PING_KINDS, looksLikeSecret } from './ping.js';
+import { WHO } from './model.js';
 
 /** The newest MCP revision: per-request metadata, no `initialize`. */
 export const PROTOCOL = '2026-07-28';
@@ -434,6 +435,19 @@ const WRITES = { readOnlyHint: false, destructiveHint: false, idempotentHint: fa
 const TAG = { type: 'string', pattern: '^[a-z][\\w-]{0,39}$' };
 const TAGS = (description) => ({ type: 'array', items: TAG, maxItems: 20, description });
 const REFS = (description) => ({ type: 'array', items: TASK_REF, maxItems: 20, description });
+/** Who does a task (BRK-330). */
+const WHO_ARG = {
+  type: 'string',
+  enum: WHO,
+  description:
+    'Who does it: agent (an agent builds it), person (a person does it), or decision (the owner decides first)',
+};
+const ASSIGNEE_ARG = {
+  type: 'string',
+  maxLength: 32,
+  description:
+    'On a person’s task: who it’s for, a person’s handle or owner (without one, any member of the repository)',
+};
 const TEXT_MAX = 10_000;
 const input = (properties = {}, required = []) => ({
   type: 'object',
@@ -447,9 +461,19 @@ const day = (at) => (at ? String(at).slice(0, 10) : '');
 const when = (at) => (at ? String(at).slice(0, 16).replace('T', ' ') : '');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** Who does a task (BRK-330), in words: an agent, a person (its assignee, or any member), or a decision. */
+export function whoWords(t) {
+  if (t.who === 'person')
+    return `a person: ${!t.assignee ? 'any member' : t.assignee === 'owner' ? 'the owner' : t.assignee}`;
+  if (t.who === 'agent') return 'an agent';
+  if (t.who === 'decision') return 'a decision first';
+  return 'nobody yet';
+}
+
 /** One task on one line, as `npx breakaway list` prints it. */
 function taskLine(t) {
   const extra = [];
+  if (t.who) extra.push(t.who === 'person' ? `person: ${t.assignee ?? 'anyone'}` : t.who);
   if (t.tags?.length) extra.push(t.tags.map((x) => `+${x}`).join(' '));
   if (t.claim) extra.push(`claimed by ${t.claim}`);
   if (t.blocked) extra.push(`blocked by ${t.blockedBy?.length ?? 0}`);
@@ -486,6 +510,7 @@ export function taskDetail(t) {
   row('Project', t.project);
   row('Horizon', t.horizon);
   row('Priority', t.priority);
+  row('Who does it', whoWords(t));
   row('Tags', (t.tags ?? []).map((x) => `+${x}`).join(' '));
   row('Claimed by', t.claim);
   row('Spec', t.spec);
@@ -590,13 +615,18 @@ const READS = [
     name: 'list_tasks',
     title: 'List tasks',
     description:
-      'The open tasks in this repository, best first. Narrow them with ready (ready and unclaimed), blocked, mine (claimed by you), project, tag, or horizon.',
+      'The open tasks in this repository, best first. Narrow them with ready (ready and unclaimed), blocked, mine (claimed by you), project, who does it, tag, or horizon.',
     inputSchema: input({
       ready: { type: 'boolean', description: 'Only tasks that are ready and unclaimed' },
       blocked: { type: 'boolean', description: 'Only tasks waiting on another task' },
       mine: { type: 'boolean', description: 'Only tasks you’ve claimed (needs X-Breakaway-Agent)' },
       project: { type: 'string', description: 'An area, like board or web', maxLength: 40 },
-      tag: { type: 'array', items: { type: 'string' }, description: 'Tags every task must have, like agent' },
+      who: WHO_ARG,
+      tag: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Tags every task must have, like a feature’s slug',
+      },
       horizon: { type: 'string', enum: ['now', 'next', 'later', 'archive'], description: 'Only this horizon' },
       limit: { type: 'integer', minimum: 1, maximum: 500, description: `At most this many (${LIST_LIMIT} by default)` },
     }),
@@ -612,6 +642,7 @@ const READS = [
           (!args.blocked || t.blocked) &&
           (!me || t.claim === me) &&
           (!args.project || t.project === args.project) &&
+          (!args.who || t.who === args.who) &&
           (args.horizon ? t.horizon === args.horizon : t.horizon !== 'archive') &&
           (args.tag ?? []).every((tag) => t.tags.includes(tag)),
       );
@@ -835,7 +866,7 @@ const WRITERS = [
       claim: { type: 'boolean', description: 'Claim it too' },
       project: { type: 'string', description: 'Only this area, like board or web', maxLength: 40 },
       horizon: { type: 'string', enum: ['now', 'next', 'later'], description: 'Only this horizon' },
-      tag: TAGS('Tags it must have besides agent'),
+      tag: TAGS('Tags it must have, like a feature’s slug'),
     }),
     annotations: WRITES,
     async run(args, ctx) {
@@ -848,7 +879,8 @@ const WRITERS = [
           project: args.project,
           horizon: args.horizon,
           repo: slug,
-          tags: ['agent', ...(args.tag ?? [])],
+          who: 'agent',
+          tags: args.tag ?? [],
         }),
       );
       if (!task) return { text: 'Nothing ready for an agent right now.', data: { task: null } };
@@ -947,7 +979,7 @@ const WRITERS = [
     name: 'add_task',
     title: 'Add a task',
     description:
-      'A new task in this repository, for work you found instead of doing it too. Fill it in: an area, a horizon, agent or owner as a tag, what and why, done when, and depends for what it waits on. Ask the owner a question with decision. If it resembles an open task the board refuses it and names them: link them with related, or add_anyway once you checked it isn’t one of them.',
+      'A new task in this repository, for work you found instead of doing it too. Fill it in: an area, a horizon, who does it (an agent, or a person: the owner or a member), what and why, done when, and depends for what it waits on. Ask the owner a question with decision. If it resembles an open task the board refuses it and names them: link them with related, or add_anyway once you checked it isn’t one of them.',
     inputSchema: input(
       {
         title: { type: 'string', description: 'What the work is, in a plain sentence', maxLength: 200 },
@@ -957,7 +989,9 @@ const WRITERS = [
           maxLength: 40,
         },
         horizon: { type: 'string', enum: ['now', 'next', 'later'], description: 'When it should happen' },
-        tags: TAGS('Tags, like agent, owner, or decide, and a feature’s slug; never a horizon-* tag'),
+        who: WHO_ARG,
+        assignee: ASSIGNEE_ARG,
+        tags: TAGS('Tags, like a feature’s slug; never a horizon-* tag'),
         depends: REFS('Tasks it waits for, by work ID'),
         related: REFS('Tasks to link as related: a similar open task you add it next to'),
         add_anyway: {
@@ -973,7 +1007,7 @@ const WRITERS = [
           items: { type: 'object' },
           maxItems: 20,
           description:
-            'Questions for the owner, as the CLI’s decision file: each with id, type (open, yesno, choice, multi, rank, scale, date), prompt, help, and options for choices. Adds +decide; only the owner answers.',
+            'Questions for the owner, as the CLI’s decision file: each with id, type (open, yesno, choice, multi, rank, scale, date), prompt, help, and options for choices. Makes it a decision (who: decision); only the owner answers.',
         },
       },
       ['title'],
@@ -992,7 +1026,7 @@ const WRITERS = [
         ...(args.related ? { related: args.related } : {}),
         ...(args.add_anyway === true ? { force: true } : {}),
       };
-      for (const key of ['project', 'horizon', 'brief', 'done_when', 'spec', 'decision'])
+      for (const key of ['project', 'horizon', 'who', 'assignee', 'brief', 'done_when', 'spec', 'decision'])
         if (args[key] !== undefined && args[key] !== null) item[key] = args[key];
       const made = await ctx.store.create([item], { similar: true });
       if (made.body?.similar)
@@ -1008,12 +1042,14 @@ const WRITERS = [
     name: 'modify_task',
     title: 'Change a task',
     description:
-      'Change a task you hold: its pull request, spec, tags, dependencies, and related tasks. On a task you made, also its description (brief) and done when. Never its status, a horizon-* tag, or whether it starts by itself: those are the owner’s.',
+      'Change a task you hold: its pull request, spec, who does it, tags, dependencies, and related tasks. On a task you made, also its description (brief) and done when. Never its status, a horizon-* tag, or whether it starts by itself: those are the owner’s.',
     inputSchema: input(
       {
         task: TASK_REF,
         pr: { type: 'integer', minimum: 1, description: 'The pull request that closes it (never a "Part of" one)' },
         spec: { type: 'string', description: 'Its spec’s path', maxLength: 300 },
+        who: WHO_ARG,
+        assignee: { ...ASSIGNEE_ARG, description: `${ASSIGNEE_ARG.description}; an empty string removes it` },
         tag: TAGS('Tags to add'),
         untag: TAGS('Tags to remove'),
         depends: REFS('Tasks it now waits for'),
@@ -1034,6 +1070,8 @@ const WRITERS = [
       if (args.spec !== undefined && args.spec !== null) changes.spec = args.spec;
       if (args.brief !== undefined && args.brief !== null) changes.brief = args.brief;
       if (args.done_when !== undefined && args.done_when !== null) changes.done_when = args.done_when;
+      if (args.who !== undefined && args.who !== null) changes.who = args.who;
+      if (args.assignee !== undefined && args.assignee !== null) changes.assignee = args.assignee;
       for (const [arg, key] of [
         ['tag', 'addTags'],
         ['untag', 'removeTags'],

@@ -79,25 +79,40 @@ describe('chase', () => {
     let res = await body(
       await add([
         // tiny: an agent task that waits for a step only the owner can do.
-        { description: 'Owner step', project: 'moderation', tags: ['owner', 'tiny'], horizon: 'now' },
+        {
+          description: 'Owner step',
+          project: 'moderation',
+          who: 'person',
+          assignee: 'owner',
+          tags: ['tiny'],
+          horizon: 'now',
+        },
         {
           description: 'After the step',
           project: 'moderation',
-          tags: ['agent', 'tiny'],
+          who: 'agent',
+          tags: ['tiny'],
           horizon: 'now',
           depends: ['MOD-1'],
         },
         // speed: four ready in Operations, two related in Tech debt, a decision, and one waiting on two repositories.
-        { description: 'Ops one', project: 'ops', tags: ['agent', 'speed'], horizon: 'now' },
-        { description: 'Ops two', project: 'ops', tags: ['agent', 'speed'], horizon: 'now' },
-        { description: 'Ops three', project: 'ops', tags: ['agent', 'speed'], horizon: 'now' },
-        { description: 'Ops four', project: 'ops', tags: ['agent', 'speed'], horizon: 'now' },
-        { description: 'Debt one', project: 'debt', tags: ['agent', 'speed'], horizon: 'now' },
-        { description: 'Debt two', project: 'debt', tags: ['agent', 'speed'], horizon: 'now', related: ['DEBT-1'] },
-        { description: 'Pick a name', project: 'moderation', tags: ['owner', 'decide', 'speed'], horizon: 'now' },
+        { description: 'Ops one', project: 'ops', who: 'agent', tags: ['speed'], horizon: 'now' },
+        { description: 'Ops two', project: 'ops', who: 'agent', tags: ['speed'], horizon: 'now' },
+        { description: 'Ops three', project: 'ops', who: 'agent', tags: ['speed'], horizon: 'now' },
+        { description: 'Ops four', project: 'ops', who: 'agent', tags: ['speed'], horizon: 'now' },
+        { description: 'Debt one', project: 'debt', who: 'agent', tags: ['speed'], horizon: 'now' },
+        {
+          description: 'Debt two',
+          project: 'debt',
+          who: 'agent',
+          tags: ['speed'],
+          horizon: 'now',
+          related: ['DEBT-1'],
+        },
+        { description: 'Pick a name', project: 'moderation', who: 'decision', tags: ['speed'], horizon: 'now' },
         // Outside any feature, in Operations.
-        { description: 'Ops elsewhere', project: 'ops', tags: ['agent'], horizon: 'now' },
-        { description: 'Ops later', project: 'ops', tags: ['agent'], horizon: 'next' },
+        { description: 'Ops elsewhere', project: 'ops', who: 'agent', horizon: 'now' },
+        { description: 'Ops later', project: 'ops', who: 'agent', horizon: 'next' },
         { description: 'Empty', project: 'debt', tags: ['empty-feature-x'], horizon: 'later' },
       ]),
     );
@@ -117,8 +132,8 @@ describe('chase', () => {
     ]);
     res = await body(
       await add([
-        { description: 'Breakaway part', project: 'product', repo: 'breakaway', tags: ['agent'], horizon: 'now' },
-        { description: 'Scratch part', project: 'product', repo: 'scratch', tags: ['agent'], horizon: 'now' },
+        { description: 'Breakaway part', project: 'product', repo: 'breakaway', who: 'agent', horizon: 'now' },
+        { description: 'Scratch part', project: 'product', repo: 'scratch', who: 'agent', horizon: 'now' },
       ]),
     );
     expect(res.tasks.map((t) => t.wid)).toEqual(['BRK-1', 'SCR-1']);
@@ -126,7 +141,8 @@ describe('chase', () => {
       await add({
         description: 'Needs both parts',
         project: 'product',
-        tags: ['agent', 'speed'],
+        who: 'agent',
+        tags: ['speed'],
         horizon: 'now',
         depends: ['BRK-1', 'SCR-1'],
       }),
@@ -161,7 +177,7 @@ describe('chase', () => {
     expect(res.started).toEqual([]);
     expect(res.chase).toMatchObject({ state: 'on', on: true, stalledPingAt: expect.any(String) });
     expect(res.chase.needsYou).toEqual([
-      expect.objectContaining({ wid: 'MOD-1', kind: 'owner', unblocks: 1, why: expect.stringMatching(/step for you/) }),
+      expect.objectContaining({ wid: 'MOD-1', kind: 'person', unblocks: 1, why: expect.stringMatching(/step for you/) }),
     ]);
     let { pings: open } = await pings();
     expect(open).toEqual([
@@ -234,7 +250,7 @@ describe('chase', () => {
     // Related tasks in one area never run together.
     expect(queued(f, 'DEBT-2').reason).toMatch(/related to DEBT-1, which an agent is working on in Tech debt/);
     expect(f.chase.needsYou.map((n) => [n.wid, n.kind])).toEqual([
-      ['MOD-3', 'decide'],
+      ['MOD-3', 'decision'],
       ['SCR-1', 'connect'],
     ]);
     expect(f.chase.needsYou[1].why).toMatch(/connect scratch/);
@@ -300,7 +316,7 @@ describe('chase', () => {
         body: {
           description: 'Ready by itself',
           project: 'product',
-          tags: ['agent'],
+          who: 'agent',
           horizon: 'later',
           autostart: 'yes',
         },

@@ -70,7 +70,7 @@ describe('Safe to merge? on Dependabot pull requests', () => {
     expect(res.status).toBe(200);
     expect(res.task).toMatchObject({
       project: 'debt',
-      tags: ['agent'],
+      who: 'agent',
       pr: '41',
       claim: `claude-${res.task.wid.toLowerCase()}-check`,
     });

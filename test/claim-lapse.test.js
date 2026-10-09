@@ -36,7 +36,7 @@ describe('task claims lapse by heartbeat (IDEA-55 section 1c)', () => {
         body: ['Lapse one', 'Lapse two', 'Lapse three', 'Lapse four', 'Lapse five', 'Lapse six'].map((d) => ({
           description: d,
           project: 'ops',
-          tags: ['agent'],
+          who: 'agent',
           horizon: 'now',
           force: true,
         })),
@@ -174,7 +174,16 @@ describe('a person’s claim never lapses, and is marked stale after 3 days (IDE
     const created = await body(
       await api('tasks', {
         method: 'POST',
-        body: [{ description: 'A person holds this', project: 'ops', tags: ['owner'], horizon: 'now', force: true }],
+        body: [
+          {
+            description: 'A person holds this',
+            project: 'ops',
+            who: 'person',
+            assignee: 'owner',
+            horizon: 'now',
+            force: true,
+          },
+        ],
       }),
     );
     wid = created.tasks[0].wid;

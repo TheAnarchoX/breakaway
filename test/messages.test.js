@@ -21,8 +21,8 @@ describe('messages to a running agent (IDEA-15)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Write the runbook', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Nobody has this', project: 'ops', tags: ['agent'], horizon: 'now' },
+          { description: 'Write the runbook', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Nobody has this', project: 'ops', who: 'agent', horizon: 'now' },
         ],
       }),
     );

@@ -98,7 +98,8 @@ describe('a spec’s title beside its work ID', () => {
 describe('the agent on a spec', () => {
   const t = (over) => ({
     status: 'pending',
-    tags: ['agent', 'general'],
+    who: 'agent',
+    tags: ['general'],
     spec: 'docs/specs/OPS-3-x.md',
     repo: null,
     ...over,
@@ -120,7 +121,7 @@ describe('the agent on a spec', () => {
     expect(refiningSpec([t({})], 'gadgets', path, 'widgets')).toBeNull();
     expect(refiningSpec([t({ repo: 'gadgets' })], 'gadgets', path, 'widgets')).not.toBeNull();
     expect(refiningSpec([t({ spec: 'docs/specs/OPS-4-y.md' })], 'widgets', path, 'widgets')).toBeNull();
-    expect(refiningSpec([t({ tags: ['agent'] })], 'widgets', path, 'widgets')).toBeNull();
+    expect(refiningSpec([t({ who: 'agent' })], 'widgets', path, 'widgets')).toBeNull();
     expect(refiningSpec(null, 'widgets', path, 'widgets')).toBeNull();
   });
 });

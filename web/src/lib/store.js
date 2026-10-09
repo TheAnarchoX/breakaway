@@ -861,7 +861,7 @@ export const VIEWS = [
 const PAGE_IDS = ['add-repo', 'settings', 'repo-settings', 'kickoff'];
 const VIEW_IDS = [...VIEWS.map((v) => v.id), ...PAGE_IDS];
 
-export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], roles: [], claim: 'any', done: 'recent' };
+export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], who: [], claim: 'any', done: 'recent' };
 export const view = signal('board');
 export const selected = signal(null);
 export const taskView = signal(null); // 'sidebar' or 'modal' when the URL says how to open the task, else null
@@ -972,7 +972,7 @@ function parseHash() {
       q: p.get('q') ?? '',
       areas: csv(p.get('area')),
       horizons: csv(p.get('horizon')),
-      roles: csv(p.get('role')),
+      who: csv(p.get('who')),
       claim: p.get('claim') ?? 'any',
       done: p.get('done') ?? 'recent',
     };
@@ -1018,7 +1018,7 @@ export function hashFor({
   if (f.q) p.set('q', f.q);
   if (f.areas.length) p.set('area', f.areas.join(','));
   if (f.horizons.length) p.set('horizon', f.horizons.join(','));
-  if (f.roles.length) p.set('role', f.roles.join(','));
+  if (f.who.length) p.set('who', f.who.join(','));
   if (f.claim !== 'any') p.set('claim', f.claim);
   if (f.done !== 'recent') p.set('done', f.done);
   if (v === 'list') {
@@ -1146,7 +1146,7 @@ export const activeFilters = computed(() => {
     (f.q ? 1 : 0) +
     f.areas.length +
     f.horizons.length +
-    f.roles.length +
+    f.who.length +
     (f.claim !== 'any' ? 1 : 0) +
     (f.done !== 'recent' ? 1 : 0)
   );
@@ -1191,7 +1191,7 @@ export const visible = computed(() => {
     if (t.horizon === 'archive' && !f.horizons.includes('archive')) return false;
     if (f.areas.length && !f.areas.includes(t.project)) return false;
     if (f.horizons.length && !f.horizons.includes(t.horizon)) return false;
-    if (f.roles.length && !f.roles.every((r) => t.tags.includes(r))) return false;
+    if (f.who.length && !f.who.includes(t.who)) return false;
     if (f.claim === 'unclaimed' && t.claim) return false;
     if (f.claim === 'claimed' && !t.claim) return false;
     if (f.claim === 'mine' && t.claim !== me.value) return false;
@@ -1329,13 +1329,13 @@ export const actions = {
       () => api(`${path(t)}/decision/answers`, { method: 'DELETE', body: {} }),
       `${ref(t)} is open again, with your answers kept.`,
     ),
-  /** A decision with no questions: the note becomes a comment, +decide goes, and the task is done, in one change. */
+  /** A decision with no questions: the note becomes a comment and the task is done, in one change. */
   decide: (t, text) =>
     change(
       () =>
         api(path(t), {
           method: 'PATCH',
-          body: { annotate: `Decided by the owner: ${text}`, removeTags: ['decide'], status: 'completed' },
+          body: { annotate: `Decided by the owner: ${text}`, status: 'completed' },
         }),
       `${ref(t)} is decided.`,
     ),

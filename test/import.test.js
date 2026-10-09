@@ -13,7 +13,7 @@ async function exportSource() {
     const add = async (items) => (await store.create(items)).body.tasks;
     const [first, second] = await add([
       { description: 'Restore the queue', project: 'ops', horizon: 'now', brief: 'The queue loses jobs', by: 'owner' },
-      { description: 'Write the runbook', project: 'ops', horizon: 'next', tags: ['agent'], priority: 'H' },
+      { description: 'Write the runbook', project: 'ops', horizon: 'next', who: 'agent', priority: 'H' },
     ]);
     await add([{ description: 'Check the restore', project: 'ops', depends: [first.wid], related: [second.wid] }]);
     await store.comment(first.wid, 'Found it: the retry drops them.', 'claude-ops-1');

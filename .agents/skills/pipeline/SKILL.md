@@ -108,7 +108,7 @@ Open it the way the repository's prompt's **Pull requests** says, closing the ta
 - **Deploy paths**: each pattern's parts and what they cover, so the owner can check them.
 - **After merging**: the owner's checklist below, the steps kept where they were, and anything you stopped short of.
 
-**The owner's part comes before the merge.** The merge itself runs Deploy and Release once its checks pass, so without the owner's part both fail. Add a `+owner` task for it, filled in like any task, with the checklist in its brief and only what this repository needs. It doesn't depend on the move task (it comes first), and the pull request's **After merging** repeats it under "Before you merge":
+**The owner's part comes before the merge.** The merge itself runs Deploy and Release once its checks pass, so without the owner's part both fail. Add a person's task for it (`--who person --assignee owner`), filled in like any task, with the checklist in its brief and only what this repository needs. It doesn't depend on the move task (it comes first), and the pull request's **After merging** repeats it under "Before you merge":
 
 - the staging and production Workers (or confirm the existing ones), and a Cloudflare API token for each;
 - the GitHub environments `staging` and `production`, each with its token as `CLOUDFLARE_API_TOKEN` and restricted to the default branch, and the repository variable `CLOUDFLARE_ACCOUNT_ID`;

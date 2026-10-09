@@ -22,7 +22,7 @@ import {
   HORIZONS,
   PICKS_AREA,
   PRIORITIES,
-  ROLES,
+  WHO,
   ago,
   dateInput,
   day,
@@ -220,7 +220,7 @@ function Actions({ task: t }) {
 /** @param {Record<string, any>} props */
 function Tags({ task: t }) {
   const [draft, setDraft] = useState('');
-  const others = t.tags.filter((x) => !ROLES.some((r) => r.id === x));
+  const others = t.tags;
   const add = (e) => {
     e.preventDefault();
     const tag = draft.trim().replace(/^\+/u, '');
@@ -234,18 +234,18 @@ function Tags({ task: t }) {
   };
   return (
     <div class="tags-editor">
-      <div class="segmented segmented-sm" role="group" aria-label="Who can move it">
-        {ROLES.map((r) => {
-          const on = t.tags.includes(r.id);
+      <div class="segmented segmented-sm" role="group" aria-label="Who does it">
+        {WHO.map((w) => {
+          const on = t.who === w.id;
           return (
             <button
-              key={r.id}
+              key={w.id}
               type="button"
               aria-pressed={on}
-              title={r.hint}
-              onClick={() => actions.update(t, on ? { removeTags: [r.id] } : { addTags: [r.id] }, null)}
+              title={w.hint}
+              onClick={() => actions.update(t, { who: on ? null : w.id }, null)}
             >
-              {r.label}
+              {w.label}
             </button>
           );
         })}

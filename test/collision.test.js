@@ -29,7 +29,7 @@ const add = async (items) => (await body(await api('tasks', { method: 'POST', bo
 const task = (description, project, brief, extra = {}) => ({
   description,
   project,
-  tags: ['agent'],
+  who: 'agent',
   horizon: 'now',
   force: true,
   ...(brief ? { brief } : {}),
@@ -140,13 +140,17 @@ describe('every starter schedules by footprints (IDEA-55, section 3)', () => {
 
   it('the chase: related tasks with disjoint footprints start together; a shared file waits; unknown keeps the old rule', async () => {
     // Related tasks name each other's paths only in the same folder (section 2), so these two are apart.
-    const [m1] = await add([task('Count the votes', 'moderation', 'Change src/votes.js.', { tags: ['agent', 'fp'] })]);
-    const [m2, m3, m4] = await add([
-      task('Show the votes', 'moderation', 'Change web/tally.jsx.', { tags: ['agent', 'fp'], related: [m1] }),
-      task('Count the votes faster', 'moderation', 'Also src/votes.js.', { tags: ['agent', 'fp'] }),
-      task('Moderate somewhere', 'moderation', null, { tags: ['agent', 'fp'] }),
+    const [m1] = await add([
+      task('Count the votes', 'moderation', 'Change src/votes.js.', { who: 'agent', tags: ['fp'] }),
     ]);
-    const [m5] = await add([task('Moderate elsewhere', 'moderation', null, { tags: ['agent', 'fp'], related: [m4] })]);
+    const [m2, m3, m4] = await add([
+      task('Show the votes', 'moderation', 'Change web/tally.jsx.', { who: 'agent', tags: ['fp'], related: [m1] }),
+      task('Count the votes faster', 'moderation', 'Also src/votes.js.', { who: 'agent', tags: ['fp'] }),
+      task('Moderate somewhere', 'moderation', null, { who: 'agent', tags: ['fp'] }),
+    ]);
+    const [m5] = await add([
+      task('Moderate elsewhere', 'moderation', null, { who: 'agent', tags: ['fp'], related: [m4] }),
+    ]);
     expect((await api('features', { method: 'POST', body: { slug: 'fp' } })).status).toBe(201);
     const dry = await body(await api('features/fp/chase', { method: 'POST', body: { on: true, dryRun: true } }));
     expect(dry.wouldStart).toEqual([m1, m2, m4]);

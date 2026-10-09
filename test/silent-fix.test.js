@@ -83,8 +83,8 @@ describe('a silent session (BRK-145)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Quiet one', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Fix target', project: 'product', tags: ['agent'], horizon: 'now' },
+          { description: 'Quiet one', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Fix target', project: 'product', who: 'agent', horizon: 'now' },
         ],
       }),
     );
@@ -167,7 +167,7 @@ describe('repeated fixes on one pull request (BRK-145)', () => {
     const res = await body(
       await api('tasks', {
         method: 'POST',
-        body: [{ description: 'Fix twice', project: 'brand', tags: ['agent'], horizon: 'now' }],
+        body: [{ description: 'Fix twice', project: 'brand', who: 'agent', horizon: 'now' }],
       }),
     );
     expect(res.tasks[0].wid).toBe('BRD-1');

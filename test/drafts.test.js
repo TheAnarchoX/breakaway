@@ -40,7 +40,7 @@ const taskForm = () => [
 describe('draftOf', () => {
   it('reads every kind of field, and says nothing was typed on a fresh form', () => {
     expect(draftOf(taskForm())).toEqual({
-      fields: { description: '', project: 'web', tags: ['agent'], horizon: 'auto', brief: '' },
+      fields: { description: '', project: 'web', who: 'agent', horizon: 'auto', brief: '' },
       typed: false,
     });
   });

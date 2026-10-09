@@ -578,8 +578,8 @@ describe('GitHub on the board', () => {
     await api('tasks', {
       method: 'POST',
       body: [
-        { description: 'Build the GitHub view', project: 'cloud', tags: ['agent'] },
-        { description: 'Tidy alerts', project: 'ops', tags: ['owner'] },
+        { description: 'Build the GitHub view', project: 'cloud', who: 'agent' },
+        { description: 'Tidy alerts', project: 'ops', who: 'person', assignee: 'owner' },
       ],
     });
     gh.pulls = [

@@ -1152,9 +1152,6 @@ a code {
 .tag::before {
   content: "+";
 }
-.tag-decide {
-  color: var(--text);
-}
 
 .claim {
   display: inline-flex;

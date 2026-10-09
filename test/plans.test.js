@@ -147,7 +147,7 @@ describe('the Claude plan on the board', () => {
       (
         await api('tasks', {
           method: 'POST',
-          body: [{ description: 'Footer links', project: 'product', tags: ['agent'], horizon: 'now' }],
+          body: [{ description: 'Footer links', project: 'product', who: 'agent', horizon: 'now' }],
         })
       ).status,
     ).toBe(201);

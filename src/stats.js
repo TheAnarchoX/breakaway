@@ -86,7 +86,7 @@ export function familyOf(claim) {
  * @param {number} input.now  ms
  * @param {number} input.days  how many calendar days, today included
  * @param {string} input.tz  an IANA time zone
- * @param {Array<{wid: string|null, project: string|null, status: string, horizon: string|null, tags: string[], claim: string|null, entry: number|null, end: number|null, ready: boolean, blocked: boolean}>} input.tasks
+ * @param {Array<{wid: string|null, project: string|null, status: string, horizon: string|null, tags: string[], who?: string|null, claim: string|null, entry: number|null, end: number|null, ready: boolean, blocked: boolean}>} input.tasks
  * @param {Array<{number: number, created: number, merged: number, author: string|null}>} input.prs  merged pull requests
  * @param {Array<{name: string, event: string|null, branch: string|null, conclusion: string|null, created: number, duration: number|null}>} input.runs  finished workflow runs
  * @param {Array<{env: string, task: string, state: string, landed: boolean, at: number}>} input.deploys  finished deployments
@@ -171,10 +171,10 @@ export function computeStats({ now, days, tz, tasks, prs, runs, deploys, ships, 
     if (t.status === 'pending') {
       flow.open += 1;
       area(t.project).open += 1;
-      if (t.ready && !t.claim && !t.tags.includes('decide')) flow.ready += 1;
+      if (t.ready && !t.claim && t.who !== 'decision') flow.ready += 1;
       if (t.blocked) flow.blocked += 1;
       if (t.claim) flow.claimed += 1;
-      if (t.tags.includes('decide')) flow.decide += 1;
+      if (t.who === 'decision') flow.decide += 1;
       if (t.project === 'ideas') flow.ideas += 1;
       if (t.horizon in horizons) horizons[t.horizon].open += 1;
     }
