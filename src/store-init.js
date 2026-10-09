@@ -50,10 +50,18 @@ export const initMethods = {
    * GitHub won't make a tree in a repository with no commits, so the first file goes in through the contents API,
    * and the full tree's commit, with no parent, then replaces it: the branch ends with one commit.
    */
-  async boardFilesApi(slug, { by = null, origin = null } = {}) {
+  async boardFilesApi(slug, { by = null, origin = null, actor = null } = {}) {
     await this.ready();
-    if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-      return { status: 403, body: { error: 'only the owner adds the board’s files to a repository' } };
+    try {
+      this.allowOn(
+        { actor, by },
+        'repo.init',
+        () => String(slug).toLowerCase(),
+        'only the owner adds the board’s files to a repository',
+      );
+    } catch (error) {
+      return { status: 403, body: { error: error.message } };
+    }
     const repo = this.repoBySlug(String(slug).toLowerCase());
     if (!repo) return { status: 404, body: { error: `no repository "${String(slug).slice(0, 40)}"` } };
     const command = `npx breakaway repos init ${repo.slug}`;

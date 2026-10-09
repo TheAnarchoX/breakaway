@@ -172,17 +172,32 @@ export const planningMethods = {
    * @param {{ by?: string }} input
    */
   undoPlanning(id, input = {}) {
-    if (input.by !== undefined && input.by !== null && input.by !== '' && input.by !== 'owner')
-      throw new AgentError('only the owner undoes an agent’s change', 403);
+    const words = 'only the owner undoes an agent’s change';
+    if (this.actorIn(input).agent) this.allow(input, 'planning.undo', null, words);
     const row = this.sql.exec('SELECT * FROM planning_edits WHERE id = ?', Number(id)).toArray()[0];
     if (!row) throw new AgentError(`there’s no change ${id} to undo`, 404);
+    // A maintainer's where the change was (BRK-301): a task's repository, a feature's, or the whole board's for a pull.
+    if (!this.ownerActs(input)) {
+      const repos =
+        row.kind === 'task'
+          ? this.targetRepos({ task: row.target })
+          : row.kind === 'feature'
+            ? this.targetRepos({ feature: row.target })
+            : [null];
+      for (const repo of repos) this.allow(input, 'planning.undo', repo, words);
+    }
     if (row.undone_at) throw new AgentError('that change is already undone', 409);
     this.writable();
     const fields = parse(row.fields);
     if (row.kind === 'feature') this.undoFeaturePlanning(row, fields);
     else if (row.kind === 'pull') this.undoPull(row, fields);
     else this.undoTaskPlanning(row, fields);
-    this.sql.exec('UPDATE planning_edits SET undone_at = ?, undone_by = ? WHERE id = ?', Date.now(), 'owner', row.id);
+    this.sql.exec(
+      'UPDATE planning_edits SET undone_at = ?, undone_by = ? WHERE id = ?',
+      Date.now(),
+      this.actorIn(input).person,
+      row.id,
+    );
     return this.planningView(this.sql.exec('SELECT * FROM planning_edits WHERE id = ?', row.id).toArray()[0]);
   },
 

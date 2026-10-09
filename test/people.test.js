@@ -519,7 +519,7 @@ describe('Reset and remove', () => {
   });
 });
 
-describe('deny by default, until roles are enforced (BRK-301, BRK-323)', () => {
+describe('deny by default: reads until BRK-323, and writes by role since BRK-301', () => {
   // Every first path segment the API routes on, read from the Worker's own source, so a route added later is covered.
   const segments = [...new Set([...workerSource.matchAll(/parts\[0\] === '([\w-]+)'/gu)].map((m) => m[1]))].filter(
     (s) => !['session', 'me', 'signin', 'join'].includes(s),
@@ -530,9 +530,9 @@ describe('deny by default, until roles are enforced (BRK-301, BRK-323)', () => {
       expect(segments).toContain(s);
   });
 
-  it('refuses a person’s cookie and personal token on every other route, the owner’s cookie-only ones included', async () => {
+  it('refuses a viewer’s cookie and personal token every read and every write, the owner’s cookie-only ones included', async () => {
     const owner = await ownerCookie();
-    const { cookie } = await join((await invite(owner, [{ repository: '*', role: 'maintainer' }])).code, {
+    const { cookie } = await join((await invite(owner, [{ repository: 'widgets', role: 'viewer' }])).code, {
       handle: unique('ana'),
     });
     const { token } = await (await call('/api/me/tokens', { method: 'POST', cookie, body: { name: 'cli' } })).json();
@@ -551,8 +551,12 @@ describe('deny by default, until roles are enforced (BRK-301, BRK-323)', () => {
               body: method === 'GET' ? undefined : {},
             });
             const body = await res.json().catch(() => ({}));
-            if (res.status !== 403 || body.error !== NOT_YET)
+            // A read waits for BRK-323. A write is the viewer's role's to answer: it changes nothing, and asking for
+            // the next task is a read (src/permissions.js).
+            const read = method === 'GET' || segment === 'next';
+            if (read ? method === 'GET' && (res.status !== 403 || body.error !== NOT_YET) : res.status < 400)
               passed.push(`${method} /api/${segment}${tail} ${res.status}`);
+            if (res.status >= 500) passed.push(`${method} /api/${segment}${tail} ${res.status}`);
           }
     expect(passed).toEqual([]);
     expect(tries).toBeGreaterThan(400);
@@ -619,16 +623,17 @@ describe('deny by default, until roles are enforced (BRK-301, BRK-323)', () => {
     ['POST', '/api/admin/rekey'],
   ];
 
-  it('refuses a person’s cookie on each of the owner’s cookie-only routes', async () => {
+  it('never takes a person’s personal token for a press, on each of the owner’s cookie-only routes', async () => {
     const owner = await ownerCookie();
     const { cookie } = await join((await invite(owner, [{ repository: '*', role: 'maintainer' }])).code, {
       handle: unique('ana'),
     });
+    const { token } = await (await call('/api/me/tokens', { method: 'POST', cookie, body: { name: 'cli' } })).json();
     const passed = [];
     for (const [method, path] of COOKIE_GATED) {
-      const res = await call(path, { method, cookie, body: { carryOn: true } });
-      const body = await res.json().catch(() => ({}));
-      if (res.status !== 403 || body.error !== NOT_YET) passed.push(`${method} ${path} ${res.status}`);
+      const res = await call(path, { method, token, body: { carryOn: true } });
+      // Refused, or a route that's no press at all and answers on its own terms; never done.
+      if (res.status < 400 || res.status >= 500) passed.push(`${method} ${path} ${res.status}`);
     }
     expect(passed).toEqual([]);
   }, 30_000);
