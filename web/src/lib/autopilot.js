@@ -23,7 +23,8 @@ export function planPullActions(
     if (p.state !== 'open' || p.draft || !p.headSha) continue;
     if (p.mergeable === false || p.mergeableState === 'dirty') continue; // conflicts are an agent's
     const sha = p.headSha;
-    if (mergeWhenGreen && !skip.has(p.number)) {
+    // A risky-path review holds it (BRK-280) until the author answers what blocks it.
+    if (mergeWhenGreen && !skip.has(p.number) && !p.riskHold) {
       if (p.verdict === 'ready') add({ action: 'merge', number: p.number, sha, method });
       else if (!p.autoMerge) add({ action: 'auto-merge', number: p.number, sha, method });
     }

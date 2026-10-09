@@ -77,6 +77,7 @@ import { infraPlansMethods } from './store-infra-plans.js';
 import { infraApprovalsMethods } from './store-infra-approvals.js';
 import { infraPolicyMethods } from './store-infra-policy.js';
 import { infraPullsMethods } from './store-infra-pulls.js';
+import { riskyReviewMethods } from './store-risky-review.js';
 import { infraDriftMethods } from './store-infra-drift.js';
 import { infraCleanupMethods } from './store-infra-cleanup.js';
 import { infraBreakGlassMethods } from './store-infra-break-glass.js';
@@ -164,6 +165,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraDeploys();
     this.initInfraPolicy();
     this.initInfraPulls();
+    this.initRiskyReview();
     this.initInfraChanges();
     this.initInfraPolicyChanges();
     this.initInfraDrift();
@@ -1558,6 +1560,7 @@ Object.assign(
   infraCheckMethods,
   infraPolicyMethods,
   infraPullsMethods,
+  riskyReviewMethods,
   infraDriftMethods,
   infraCleanupMethods,
   infraBreakGlassMethods,
@@ -1743,6 +1746,43 @@ const apiActions = {
         201,
       ),
     );
+  },
+  /** `risk-review <ID> --file …`: the risky-path reviewer's answer on the pull request it was started for (BRK-280). */
+  riskReviewApi(ref, body) {
+    return this.run(async () =>
+      ok(
+        await this.recordRiskReview(ref, {
+          by: body?.by,
+          pr: body?.pr ?? null,
+          summary: body?.summary,
+          findings: body?.findings,
+        }),
+        201,
+      ),
+    );
+  },
+  /** `risk-review <ID>`: the risky-path reviews on the task's pull requests. */
+  riskReviewsApi(ref) {
+    return this.run(async () => ok({ reviews: this.riskReviewsOfTask(ref) }));
+  },
+  /**
+   * `risk-answer <ID> <finding> <text>`: the author's answer to one finding (BRK-280). Without `by` it's the owner's,
+   * which only the signed-in board (`owner`) may send: every agent holds the bearer token.
+   */
+  riskAnswerApi(ref, body, { owner = false } = {}) {
+    return this.run(async () => {
+      if (!owner && !String(body?.by ?? '').trim())
+        throw new InputError('say who answers: the agent holding the task (--as, or BREAKAWAY_AGENT)');
+      return ok(
+        await this.answerRiskFinding(ref, {
+          by: owner ? null : body?.by,
+          pr: body?.pr ?? null,
+          finding: body?.finding,
+          text: body?.text,
+        }),
+        201,
+      );
+    });
   },
   fixPrApi(number, body) {
     return this.run(async () => {
