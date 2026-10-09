@@ -211,6 +211,48 @@ describe('listening on the peloton (IDEA-36)', () => {
     expect((await listen('claude-prd-1')).posts).toEqual([]);
   });
 
+  it('hands a post on both pelotons over once, whichever way reads it first (BRK-278)', async () => {
+    await hookPost('PRD-1', 'claude-prd-1');
+    const both = async (text, kind = 'checkin') => {
+      await post(repo, { agent: 'claude-prd-2', kind, text });
+      await post(CHASE, { agent: 'claude-prd-2', kind, text });
+    };
+    const pairs = (posts) => posts.map((p) => [p.peloton, p.text]);
+
+    // Listen hears it on the chase's, and the session answer doesn't hand over the repository's twin.
+    await both('PRD-2: src/a.js');
+    expect(pairs((await listen('claude-prd-1')).posts)).toEqual([[CHASE, 'PRD-2: src/a.js']]);
+    expect((await hookPost('PRD-1', 'claude-prd-1')).peloton).toEqual([]);
+
+    // The session answer takes both pelotons at once: one of them.
+    await both('PRD-2: src/b.js');
+    expect(pairs((await hookPost('PRD-1', 'claude-prd-1')).peloton)).toEqual([[repo, 'PRD-2: src/b.js']]);
+    expect((await listen('claude-prd-1')).posts).toEqual([]);
+
+    // Urgent on both, so the wait route takes it: once, and listen has nothing left.
+    await both('@claude-prd-1 one file each?', 'ask');
+    const waited = (await waiting('PRD-1', 'claude-prd-1')).peloton;
+    expect(pairs(waited)).toEqual([[repo, '@claude-prd-1 one file each?']]);
+    expect(waited[0].mentionsYou).toBe(true);
+    expect((await listen('claude-prd-1')).posts).toEqual([]);
+
+    // Reading the pelotons stars it new once; both rooms still list it.
+    await both('PRD-2: src/c.js');
+    const { pelotons } = await body(await api('peloton?agent=claude-prd-1'));
+    expect(pelotons.map((v) => [v.peloton, v.unseen])).toEqual([
+      [repo, 1],
+      [CHASE, 0],
+    ]);
+    for (const v of pelotons)
+      expect(v.posts.at(-1)).toMatchObject({ text: 'PRD-2: src/c.js', unseen: v.peloton === repo });
+    expect((await hookPost('PRD-1', 'claude-prd-1')).peloton).toEqual([]);
+
+    // Another agent riding only one of them still hears it there.
+    await api('peloton?agent=claude-prd-3');
+    await both('PRD-2: src/d.js');
+    expect(pairs((await hookPost('PRD-3', 'claude-prd-3')).peloton)).toEqual([[repo, 'PRD-2: src/d.js']]);
+  });
+
   it('hands over the owner’s messages for its task once, as urgent, whichever way asks first', async () => {
     expect((await message('PRD-1', 'Also update the docs.')).status).toBe(201);
     const res = await listen('claude-prd-1');

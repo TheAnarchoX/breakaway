@@ -547,11 +547,33 @@ describe('peloton listen (IDEA-36 section 3)', () => {
     ]);
   });
 
-  it('listens 9 minutes by default, and --for takes up to 9', () => {
+  it('listens 9 minutes by default, and --for takes minutes or seconds, from 10 seconds up to 9 minutes', () => {
     expect(listenWindow(undefined)).toEqual({ ms: 540_000 });
     expect(listenWindow('2')).toEqual({ ms: 120_000 });
+    expect(listenWindow('2m')).toEqual({ ms: 120_000 });
     expect(listenWindow('0.5')).toEqual({ ms: 30_000 });
-    for (const bad of ['10', '0', 'soon', '-1'])
-      expect(listenWindow(bad)).toEqual({ error: '--for is the minutes to listen, up to 9' });
+    expect(listenWindow('30s')).toEqual({ ms: 30_000 });
+    expect(listenWindow('10s')).toEqual({ ms: 10_000 });
+    expect(listenWindow('540s')).toEqual({ ms: 540_000 });
+    for (const bad of ['10', '0', '5s', '541s', 'soon', '-1', '2h', ''])
+      expect(listenWindow(bad)).toEqual({
+        error: '--for is how long to listen: minutes (2) or seconds (30s), from 10 seconds up to 9 minutes',
+      });
+  });
+
+  it('with a short --for, returns that soon when it’s quiet, and still at once on a mention (BRK-278)', async () => {
+    const quietly = board([]);
+    expect(await listenFor({ ...quietly.io, window: listenWindow('30s').ms })).toMatchObject({
+      why: 'quiet',
+      seconds: 30,
+    });
+    expect(quietly.asked).toEqual([0, 5000, 10_000, 15_000, 20_000, 25_000, 30_000]);
+    const mention = post(9, { kind: 'ask', mentionsYou: true, urgent: true, text: '@claude-wid-1 which file?' });
+    const { io, asked } = board([quiet, { ...quiet, urgent: true, posts: [mention] }]);
+    expect(await listenFor({ ...io, window: listenWindow('30s').ms })).toMatchObject({
+      why: 'urgent',
+      posts: [mention],
+    });
+    expect(asked).toEqual([0, 5000]);
   });
 });

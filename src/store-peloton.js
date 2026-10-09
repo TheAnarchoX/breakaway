@@ -21,6 +21,11 @@ export const POSTS_KEPT = 200; // per repository's peloton
 export const CHASE_POSTS_KEPT = 1000; // per chase's peloton
 /** How many posts a read hands back at once: the newest of what's kept. */
 const POSTS_SHOWN = 50;
+/**
+ * How close together an agent's two posts of the same kind and text on different pelotons are one post on both, its
+ * twin (BRK-278): a check-in goes to the repository's and the chase's, and a reader riding both hears it once.
+ */
+export const TWIN_MS = 5 * 60_000;
 /** How many unseen posts the session hooks get at once (IDEA-36 section 3): more in a chase. */
 export const HOOK_POSTS = 5;
 export const CHASE_HOOK_POSTS = 10;
@@ -97,6 +102,9 @@ export const pelotonMethods = {
       .toArray()
       .map((c) => c.name);
     if (!columns.includes('mentions')) this.sql.exec('ALTER TABLE peloton_posts ADD COLUMN mentions TEXT');
+    // The first of the same post on another peloton (BRK-278). Posts from before have none.
+    if (!columns.includes('twin')) this.sql.exec('ALTER TABLE peloton_posts ADD COLUMN twin INTEGER');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS peloton_posts_twin ON peloton_posts (twin)');
   },
 
   /** A peloton's name as given → its canonical name and what it is, or a 404 for one the board doesn't have. */
@@ -199,11 +207,23 @@ export const pelotonMethods = {
   },
 
   addPost(peloton, { agent, task = null, repo = null, kind, text, replyTo = null, mentions = [] }) {
+    const now = Date.now();
+    // The same post its author just made on another peloton makes this one its twin (BRK-278).
+    const first = this.sql
+      .exec(
+        'SELECT id, twin FROM peloton_posts WHERE agent = ? AND at > ? AND peloton != ? AND kind = ? AND text = ? ORDER BY id DESC LIMIT 1',
+        agent,
+        now - TWIN_MS,
+        peloton,
+        kind,
+        text,
+      )
+      .toArray()[0];
     const row = this.sql
       .exec(
-        'INSERT INTO peloton_posts (peloton, at, agent, task, repo, kind, text, reply_to, mentions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+        'INSERT INTO peloton_posts (peloton, at, agent, task, repo, kind, text, reply_to, mentions, twin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
         peloton,
-        Date.now(),
+        now,
         agent,
         task,
         repo,
@@ -211,6 +231,7 @@ export const pelotonMethods = {
         text,
         replyTo,
         mentions.length ? JSON.stringify(mentions) : null,
+        first ? (first.twin ?? first.id) : null,
       )
       .one();
     // 1,000 kept on a chase's peloton and 200 on a repository's: the oldest go first.
@@ -381,6 +402,19 @@ export const pelotonMethods = {
       .toArray();
   },
 
+  /** The same post as `row` on the other pelotons: its twins, and the first of them (BRK-278). */
+  twinsOf(row) {
+    const first = row.twin ?? row.id;
+    return this.sql
+      .exec('SELECT id, peloton FROM peloton_posts WHERE (id = ? OR twin = ?) AND id != ?', first, first, row.id)
+      .toArray();
+  },
+
+  /** Whether `agent` has already seen `row` as its twin on another peloton: each post reaches a reader once. */
+  seenAsTwin(row, agent) {
+    return this.twinsOf(row).some((t) => this.seenMark(t.peloton, agent) >= t.id);
+  },
+
   /**
    * GET /api/peloton?agent=<name>: the pelotons `agent` rides, each with its roster and newest posts (the ones it
    * hadn't seen flagged `unseen`), and marks them seen.
@@ -396,12 +430,17 @@ export const pelotonMethods = {
 
   agentView(peloton, agent, uuid) {
     const p = this.pelotonOf(peloton);
-    const mark = this.seenMark(p.name, agent);
+    // A post the agent saw on another peloton isn't new here: the room still lists it, unstarred.
+    const fresh = new Set(
+      this.unseenRows(p.name, agent)
+        .filter((row) => !this.seenAsTwin(row, agent))
+        .map((row) => row.id),
+    );
     const posts = this.pelotonPosts(p.name, POSTS_SHOWN).map((post) => ({
       ...post,
-      unseen: post.id > mark && post.agent !== agent,
+      unseen: fresh.has(post.id),
     }));
-    const unseen = this.unseenRows(p.name, agent).length;
+    const unseen = fresh.size;
     this.markSeen(p.name, agent, posts.at(-1)?.id ?? 0);
     const map = this.tasks.get(uuid);
     return {
@@ -421,7 +460,8 @@ export const pelotonMethods = {
   /**
    * The posts in `agent`'s pelotons it hasn't seen, for its session hooks, each once (IDEA-36 section 3): the owner's
    * first, then huddles opening and closing, mentions of and replies to the agent, plan changes, then the rest in order; up to 10 when it rides a chase and 5
-   * elsewhere. Every one is marked seen, and `more` says how many weren't handed over (`tasks peloton` shows them).
+   * elsewhere. A post on two of its pelotons comes once, and not at all when it saw the other already (BRK-278). Every
+   * one is marked seen, and `more` says how many weren't handed over (`tasks peloton` shows them).
    * `urgent`: the wait hook's ask, which takes them only when one of them is urgent (any but the rest), so a busy
    * peloton doesn't wake an idle agent. `listen`: the listen route's ask, which takes every post on a chase's peloton
    * and a repository's only when one of them there is urgent.
@@ -453,17 +493,26 @@ export const pelotonMethods = {
             : row.kind === 'plan'
               ? 3
               : 4;
-    const rows = [];
+    const taken = [];
     for (const peloton of rides.keys()) {
       const unseen = this.unseenRows(peloton, name);
       if (listen && !peloton.startsWith(CHASE) && !unseen.some((row) => rank(row) < 4)) continue;
-      rows.push(...unseen);
+      taken.push(...unseen);
     }
-    if (!rows.length || (urgent && !rows.some((row) => rank(row) < 4))) return none;
+    // One post on two pelotons is one post: the first of it taken here, unless the agent saw a twin before.
+    const firsts = new Set();
+    const rows = taken.filter((row) => {
+      const first = row.twin ?? row.id;
+      if (firsts.has(first)) return false;
+      firsts.add(first);
+      return !this.seenAsTwin(row, name);
+    });
+    if (!taken.length || (urgent && !rows.some((row) => rank(row) < 4))) return none;
     for (const peloton of rides.keys()) {
-      const last = rows.filter((r) => r.peloton === peloton).at(-1);
+      const last = taken.filter((r) => r.peloton === peloton).at(-1);
       if (last) this.markSeen(peloton, name, last.id);
     }
+    if (!rows.length) return none;
     const batch = [...rides.keys()].some((p) => p.startsWith(CHASE)) ? CHASE_HOOK_POSTS : HOOK_POSTS;
     const posts = rows
       .sort((a, b) => rank(a) - rank(b) || a.id - b.id)
