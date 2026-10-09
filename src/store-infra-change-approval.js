@@ -40,8 +40,6 @@ import {
 /** Where docs/tasks.md says what to do when GitHub refuses the board's merge (a required review, a ruleset). */
 export const REFUSED_DOCS = 'docs/tasks.md#approving-a-change-from-the-console';
 
-/** Whether `by` is the owner's: none, or `owner`. Anything else is an agent's name, and is refused. */
-const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
 const refPath = (b) => b.split('/').map(encodeURIComponent).join('/');
 const DISABLE_AUTO_MERGE =
   'mutation($id: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } }';
@@ -234,7 +232,12 @@ export const infraChangeApprovalMethods = {
    */
   infraChangeApproveApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner approves a change, from the board', 403);
+      this.allowOn(
+        body,
+        'change.approve',
+        () => this.changeRow(ref).repo,
+        'only the owner approves a change, from the board',
+      );
       const row = this.changeRow(ref);
       if (!LIVE_STATES.includes(row.state))
         throw new AgentError(`change ${row.n} is ${row.state}, so there’s nothing to approve`, 409);

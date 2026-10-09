@@ -129,6 +129,8 @@ export const routinesMethods = {
     // Who made it (BRK-221): the routine maker's task and its agent, or neither when the owner did.
     if (!columns.includes('made_by')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by TEXT');
     if (!columns.includes('made_by_agent')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by_agent TEXT');
+    // The person who made it (BRK-301), whose Claude its runs are for; null for the owner's, and every one from before.
+    if (!columns.includes('made_by_person')) this.sql.exec('ALTER TABLE routines ADD COLUMN made_by_person TEXT');
     // Which infrastructure events start it (BRK-293): a JSON list of src/infra-events.js's triggers, none by default.
     if (!columns.includes('infra_events'))
       this.sql.exec("ALTER TABLE routines ADD COLUMN infra_events TEXT NOT NULL DEFAULT '[]'");
@@ -292,9 +294,17 @@ export const routinesMethods = {
       .one().n;
   },
 
-  /** Only a request from the owner (no `by`, or `owner`) does `what`; an agent's name is refused. */
-  ownerOnlyRoutines(by, what = 'creates or changes routines') {
-    if (!isOwner(by)) throw new AgentError(`only the owner ${what}`, 403);
+  /**
+   * Only a person does `what`, a maintainer of every repository in `repos` (BRK-301; null is install-wide, the
+   * owner's); an agent's name is refused.
+   */
+  ownerOnlyRoutines(input, what = 'creates or changes routines', repos = [null], action = 'routine.write') {
+    for (const repo of repos) this.allow(input, action, repo, `only the owner ${what}`);
+  },
+
+  /** The repository a routine's `repo` names: the default when it names none. */
+  routineRepo(repo) {
+    return repo || this.defaultRepoSlug();
   },
 
   /**
@@ -404,6 +414,9 @@ export const routinesMethods = {
       // A routine maker's routine is in its task's repository unless it says otherwise.
       repo: writer && writer.repo !== this.defaultRepoSlug() ? writer.repo : null,
     });
+    // A person makes routines in the repositories they maintain (BRK-301).
+    if (!writer) this.ownerOnlyRoutines(input, 'creates or changes routines', [this.routineRepo(f.repo)]);
+    const person = writer ? null : this.actorIn(input).person;
     if (writer) {
       this.checkMakerRepo(writer, f.repo);
       const made = this.sql.exec('SELECT COUNT(*) AS n FROM routines WHERE made_by = ?', writer.uuid).one().n;
@@ -415,7 +428,7 @@ export const routinesMethods = {
     }
     const now = Date.now();
     this.sql.exec(
-      'INSERT INTO routines (slug, name, prompt, done_when, horizon, enabled, gap_minutes, daily_cap, edited_by, edited_at, created, schedule, last_slot, trigger_start, github_events, repo, made_by, made_by_agent, infra_events) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO routines (slug, name, prompt, done_when, horizon, enabled, gap_minutes, daily_cap, edited_by, edited_at, created, schedule, last_slot, trigger_start, github_events, repo, made_by, made_by_agent, infra_events, made_by_person) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       slug,
       f.name,
       f.prompt,
@@ -424,7 +437,7 @@ export const routinesMethods = {
       f.enabled,
       f.gap_minutes,
       f.daily_cap,
-      writer?.agent ?? 'owner',
+      writer?.agent ?? person ?? 'owner',
       now,
       now,
       f.schedule,
@@ -435,6 +448,7 @@ export const routinesMethods = {
       writer?.uuid ?? null,
       writer?.agent ?? null,
       f.infra_events,
+      person && person !== 'owner' ? person : null,
     );
     if (writer) this.routineEvent(slug, 'routine_made', { task: writer.uuid, agent: writer.agent });
     return this.routineView(this.routineRow(slug));
@@ -451,6 +465,11 @@ export const routinesMethods = {
       );
     const f = this.routineFields(input, row);
     if (writer) this.checkMakerRepo(writer, f.repo);
+    // A person changes routines in the repositories they maintain, where it was and where it goes (BRK-301).
+    else
+      this.ownerOnlyRoutines(input, 'creates or changes routines', [
+        ...new Set([this.routineRepo(row.repo), this.routineRepo(f.repo)]),
+      ]);
     // Turning it back on clears the reason it switched itself off.
     this.sql.exec(
       'UPDATE routines SET name = ?, prompt = ?, done_when = ?, horizon = ?, enabled = ?, gap_minutes = ?, daily_cap = ?, edited_by = ?, edited_at = ?, disabled_reason = ?, schedule = ?, trigger_start = ?, github_events = ?, repo = ?, infra_events = ? WHERE slug = ?',
@@ -461,7 +480,7 @@ export const routinesMethods = {
       f.enabled,
       f.gap_minutes,
       f.daily_cap,
-      writer?.agent ?? 'owner',
+      writer?.agent ?? this.actorIn(input).person,
       Date.now(),
       f.enabled ? null : row.disabled_reason,
       f.schedule ?? null,
@@ -566,7 +585,15 @@ export const routinesMethods = {
     if (!start) return { task: this.detail(uuid), routine: row.slug, waiting: true };
     try {
       return {
-        ...(await this.startAgent(uuid, { trigger, note, kind: 'routine', routine: row.slug, force })),
+        ...(await this.startAgent(uuid, {
+          trigger,
+          note,
+          kind: 'routine',
+          routine: row.slug,
+          force,
+          // A routine's runs are for whoever made it (BRK-299 point 4): the owner's, and every one from before.
+          forPerson: row.made_by_person ?? 'owner',
+        })),
         routine: row.slug,
       };
     } catch (error) {
@@ -628,8 +655,9 @@ export const routinesMethods = {
 
   /** Makes a trigger for a routine. The secret is returned once; only its SHA-256 is kept. Owner only. */
   async createTrigger(slug, input) {
-    this.ownerOnlyRoutines(input.by, TRIGGERS_WHAT);
+    if (this.actorIn(input).agent) this.ownerOnlyRoutines(input, TRIGGERS_WHAT);
     const row = this.routineRow(slug);
+    this.ownerOnlyRoutines(input, TRIGGERS_WHAT, [this.routineRepo(row.repo)]);
     const label = text(input.label ?? 'webhook', 'the label', 80) || 'webhook';
     const live = this.sql
       .exec('SELECT COUNT(*) AS n FROM routine_triggers WHERE slug = ? AND revoked IS NULL', row.slug)
@@ -652,9 +680,10 @@ export const routinesMethods = {
   },
 
   /** Revokes one; a rotation is a new trigger and then a revoke. */
-  revokeTrigger(slug, id, by) {
-    this.ownerOnlyRoutines(by, TRIGGERS_WHAT);
+  revokeTrigger(slug, id, input) {
+    if (this.actorIn(input).agent) this.ownerOnlyRoutines(input, TRIGGERS_WHAT);
     const row = this.routineRow(slug);
+    this.ownerOnlyRoutines(input, TRIGGERS_WHAT, [this.routineRepo(row.repo)]);
     const found = this.sql
       .exec(
         'UPDATE routine_triggers SET revoked = ? WHERE id = ? AND slug = ? AND revoked IS NULL RETURNING id',

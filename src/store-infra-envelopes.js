@@ -210,10 +210,18 @@ export const infraEnvelopesMethods = {
   /**
    * Sets or changes an environment's envelope: the owner's approval, once, of the bounds. Audited as `envelope`.
    * @param {string | number} ref the environment's ID or name
-   * @param {{ repo?: string | null, envelope: unknown, by?: string }} input
+   * @param {{ repo?: string | null, envelope: unknown, by?: string, actor?: unknown }} input
    */
-  setInfraEnvelope(ref, { repo = null, envelope, by }) {
-    if (!owners(by)) throw new AgentError('only the owner sets an envelope, from the board', 403);
+  setInfraEnvelope(ref, { repo = null, envelope, by, actor }) {
+    // Outside production a maintainer's; on production the owner's alone (BRK-301). Never an agent's.
+    this.allowOn(
+      { actor, by },
+      'envelope.set',
+      () => this.environmentRow(ref, repo).repo,
+      'only the owner sets an envelope, from the board',
+    );
+    if (this.environmentRow(ref, repo).kind === 'production')
+      this.allowOn({ actor, by }, 'envelope.set-production', () => this.environmentRow(ref, repo).repo);
     const { env, provider } = this.envelopeEnvironment(ref, repo);
     let kept;
     try {
@@ -249,8 +257,13 @@ export const infraEnvelopesMethods = {
   },
 
   /** Revokes an environment's envelope: from now on every scale and restart waits for the owner. */
-  revokeInfraEnvelope(ref, { repo = null, by } = {}) {
-    if (!owners(by)) throw new AgentError('only the owner revokes an envelope, from the board', 403);
+  revokeInfraEnvelope(ref, { repo = null, by, actor } = {}) {
+    this.allowOn(
+      { actor, by },
+      'envelope.revoke',
+      () => this.environmentRow(ref, repo).repo,
+      'only the owner revokes an envelope, from the board',
+    );
     const env = this.environmentRow(ref, repo);
     this.ctx.storage.transactionSync(() => {
       const row = this.sql.exec('SELECT envelope FROM infra_envelopes WHERE environment = ?', env.id).toArray()[0];
@@ -489,6 +502,7 @@ export const infraEnvelopesMethods = {
         repo: body.repo ? String(body.repo).trim().toLowerCase() : null,
         envelope: body.envelope,
         by: body.by,
+        actor: body.actor,
       }),
     }));
   },
@@ -500,6 +514,7 @@ export const infraEnvelopesMethods = {
       body: this.revokeInfraEnvelope(ref, {
         repo: body.repo ? String(body.repo).trim().toLowerCase() : null,
         by: body.by,
+        actor: body.actor,
       }),
     }));
   },

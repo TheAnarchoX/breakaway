@@ -10,6 +10,7 @@
  * and sessions, and nothing else: the Worker refuses every other route to a person's credential (`src/people.js`).
  */
 import { PasskeyError, toBase64url, verifyAssertion, verifyRegistration } from './webauthn.js';
+import { refusal } from './permissions.js';
 
 /** What a grant may give, per repository (point 3). `*` is every repository, including ones added later. */
 export const ROLES = ['maintainer', 'member', 'viewer'];
@@ -201,7 +202,39 @@ export const peopleMethods = {
     return ok({ people: people.map((p) => this.personView(p)), invites: invites.map((i) => this.inviteView(i)) });
   },
 
-  // ---- The owner's: invites, grants, Reset, remove -----------------------------------------
+  // ---- Managing people: the owner's, and a maintainer's within their repositories ---------------
+
+  /**
+   * Why `by` (a person's handle; null is the owner, who reaches everyone) can't give or touch `grants`, or null when
+   * they can. A maintainer gives members and viewers, on repositories they maintain, and nothing else: never a
+   * maintainer, and never `*` (BRK-301, the spec's point 3, "Managing people").
+   * @param {string | null} by
+   * @param {{ repository: string, role: string }[]} grants
+   */
+  peopleReach(by, grants) {
+    if (by === null) return null;
+    const own = this.personGrants(by);
+    for (const g of grants) {
+      if (g.repository === EVERY_REPO) return 'only the owner gives the grant on every repository';
+      if (g.role === 'maintainer') return 'only the owner makes someone a maintainer';
+      const no = refusal({ person: by, grants: own }, 'people.manage', g.repository);
+      if (no) return no.message;
+    }
+    return null;
+  },
+
+  /**
+   * Why `by` can't change who `person` is on the board (their grants, a Reset, removing them), or null: a maintainer
+   * only when every grant the person holds is in their reach, so they never take over another repository's people or
+   * lock out a peer.
+   */
+  personReach(by, person) {
+    if (by === null) return null;
+    if (person.handle === by) return 'ask someone else to change your own place on the board';
+    const grants = this.personGrants(person.handle);
+    if (grants.some((g) => g.role === 'maintainer')) return 'only the owner changes, resets, or removes a maintainer';
+    return this.peopleReach(by, grants);
+  },
 
   /** A new invite's code and its hash; the code is shown once and never kept. */
   async inviteSecret() {
@@ -226,10 +259,12 @@ export const peopleMethods = {
     return { ...this.inviteView(this.sql.exec('SELECT * FROM invites WHERE id = ?', id).one()), code };
   },
 
-  /** POST /api/people/invites: `{ grants: [{ repository, role }], days? }`. */
-  async peopleInviteCreate(body) {
+  /** POST /api/people/invites: `{ grants: [{ repository, role }], days? }`, by the owner or a maintainer (`by`). */
+  async peopleInviteCreate(body, by = null) {
     const checked = this.checkGrants(body?.grants);
     if (checked.error) return fail(400, checked.error);
+    const reach = this.peopleReach(by, checked.grants);
+    if (reach) return fail(403, reach);
     const days = body?.days ?? INVITE_DAYS;
     if (!Number.isInteger(days) || days < 1 || days > MAX_INVITE_DAYS)
       return fail(400, `an invite lasts 1 to ${MAX_INVITE_DAYS} days`);
@@ -239,24 +274,31 @@ export const peopleMethods = {
     if (open >= MAX_OPEN_INVITES)
       return fail(429, `there are ${open} open invites: revoke some before you make another`);
     const secret = await this.inviteSecret();
-    return ok({ invite: this.inviteInsert(secret, checked.grants, { days }) }, 201);
+    // Reachable again after the await: the maintainer's own grants may have changed meanwhile.
+    const still = this.peopleReach(by, checked.grants);
+    if (still) return fail(403, still);
+    return ok({ invite: this.inviteInsert(secret, checked.grants, { days, by: by ?? 'owner' }) }, 201);
   },
 
   /** DELETE /api/people/invites/:id. */
-  peopleInviteRevoke(id) {
+  peopleInviteRevoke(id, by = null) {
     const row = this.sql.exec('SELECT * FROM invites WHERE id = ?', String(id)).toArray()[0];
     if (!row) return fail(404, 'no such invite');
+    const reach = this.peopleReach(by, JSON.parse(row.grants));
+    if (reach) return fail(403, reach);
     if (this.inviteState(row) !== 'open') return fail(409, `that invite is already ${this.inviteState(row)}`);
     this.sql.exec('UPDATE invites SET revoked = ? WHERE id = ?', Date.now(), row.id);
     return ok({ invite: this.inviteView({ ...row, revoked: Date.now() }) });
   },
 
   /** PATCH /api/people/:handle: `{ grants }` replaces them. */
-  peopleGrantsSet(handle, body) {
+  peopleGrantsSet(handle, body, by = null) {
     const person = this.personRow(handle);
     if (!person) return fail(404, `no person “${handle}”`);
     const checked = this.checkGrants(body?.grants);
     if (checked.error) return fail(400, checked.error);
+    const reach = this.personReach(by, person) ?? this.peopleReach(by, checked.grants);
+    if (reach) return fail(403, reach);
     this.sql.exec('DELETE FROM grants WHERE handle = ?', person.handle);
     for (const g of checked.grants)
       this.sql.exec('INSERT INTO grants (handle, repo, role) VALUES (?, ?, ?)', person.handle, g.repository, g.role);
@@ -279,20 +321,27 @@ export const peopleMethods = {
    * POST /api/people/:handle/reset (the owner's 8 Oct decision): revokes the person's passkeys, personal tokens, and
    * sessions, and makes a new one-time invite with the same grants to share by hand.
    */
-  async peopleReset(handle) {
+  async peopleReset(handle, by = null) {
     const secret = await this.inviteSecret();
     // After the await, in one step: the person is cut off, and only the new link brings them back.
     const person = this.personRow(handle);
     if (!person) return fail(404, `no person “${handle}”`);
+    const reach = this.personReach(by, person);
+    if (reach) return fail(403, reach);
     this.revokeAccess(person.handle);
-    const invite = this.inviteInsert(secret, this.personGrants(person.handle), { person: person.handle });
+    const invite = this.inviteInsert(secret, this.personGrants(person.handle), {
+      person: person.handle,
+      by: by ?? 'owner',
+    });
     return ok({ person: this.personView(person), invite });
   },
 
   /** DELETE /api/people/:handle: their handle stays on what they did, and can't be given to anyone else. */
-  peopleRemove(handle) {
+  peopleRemove(handle, by = null) {
     const person = this.personRow(handle);
     if (!person) return fail(404, `no person “${handle}”`);
+    const reach = this.personReach(by, person);
+    if (reach) return fail(403, reach);
     this.revokeAccess(person.handle);
     this.sql.exec('DELETE FROM grants WHERE handle = ?', person.handle);
     this.sql.exec('UPDATE people SET removed = ? WHERE handle = ?', Date.now(), person.handle);

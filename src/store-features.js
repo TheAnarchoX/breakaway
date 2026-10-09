@@ -8,6 +8,8 @@
  * undo (store-planning.js). Planning its dates, marking it shipped, and deleting it stay the owner's.
  */
 import { AgentError } from './store-agents.js';
+import { OWNER } from './permissions.js';
+import { repoSlugOf } from './repos.js';
 import { featureIdea } from './feature-prompt.js';
 import { InputError, diffOps, rank, withChanges } from './model.js';
 
@@ -197,9 +199,26 @@ export const featuresMethods = {
     return row;
   },
 
-  ownerOnlyFeatures(by, what) {
-    if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-      throw new AgentError(`only the owner can ${what}`, 403);
+  /**
+   * A feature's state, planned dates, and shape are a maintainer's in every repository its tasks are in (BRK-301),
+   * and never an agent's. `uuids` are its tasks (a feature with none is install-wide: the owner's, or the `*`
+   * grant's).
+   */
+  ownerOnlyFeatures(input, what, uuids) {
+    const fallback = this.defaultRepoSlug();
+    const repos = new Set(uuids.map((uuid) => repoSlugOf(this.tasks.get(uuid), fallback)));
+    for (const repo of repos.size ? repos : [null])
+      this.allow(input, 'feature.shape', repo, `only the owner can ${what}`);
+  },
+
+  /** A feature's tasks, by the tag its slug is. */
+  featureTaskUuids(slug) {
+    return [...this.tasks].filter(([, map]) => map[`tag_${slug}`]).map(([uuid]) => uuid);
+  },
+
+  /** Who a feature's change is recorded as: the person behind the request (the owner's `owner`), when no agent. */
+  featurePerson(input) {
+    return this.actorIn(input).person ?? OWNER;
   },
 
   /** Who asks to change the plan: null for the owner, or the agent's name, checked. */
@@ -250,7 +269,7 @@ export const featuresMethods = {
     const owner = !input.by || input.by === 'owner';
     if (!owner && 'state' in input) throw new AgentError('only the owner marks a feature shipped', 403);
     if (!owner && plansDates(input)) throw new AgentError('only the owner plans a feature’s dates', 403);
-    const by = owner ? 'owner' : String(input.by).trim();
+    const by = owner ? this.featurePerson(input) : String(input.by).trim();
     if (!/^[\w.@:/-]{1,64}$/u.test(by))
       throw new InputError('say who is adding it: a name of letters, digits, and . _ - @ : / (up to 64)');
     if (this.sql.exec('SELECT 1 FROM features WHERE slug = ?', slug).toArray().length)
@@ -265,6 +284,13 @@ export const featuresMethods = {
     });
     const picked = this.featurePick(input, owner);
     const shape = this.featureShape(input, owner, picked, f);
+    // A person's new feature (BRK-301): its state, dates, tasks, and shape are a maintainer's where they land.
+    if (owner && !this.ownerActs(input) && ('state' in input || plansDates(input) || picked || shape)) {
+      const repos = picked ? picked.join.map((t) => t.uuid) : shape ? [] : this.featureTaskUuids(slug);
+      if (shape)
+        this.allow(input, 'feature.shape', shape.repo ?? this.defaultRepoSlug(), 'only the owner shapes a feature');
+      else this.ownerOnlyFeatures(input, 'shape a feature', repos);
+    }
     // Made from a suggestion or a group: the release its tasks' tags share, unless the owner said otherwise.
     if (owner && !('release' in input))
       f.release = sharedRelease(picked ? picked.join : this.views((t) => t.tags.includes(slug)));
@@ -400,6 +426,16 @@ export const featuresMethods = {
     if (agent && 'state' in input) throw new AgentError('only the owner marks a feature shipped or open again', 403);
     if (agent && plansDates(input)) throw new AgentError('only the owner plans a feature’s dates', 403);
     const row = this.featureRow(slug);
+    // A person (BRK-301): its title, brief, and release are a member's, its state and dates a maintainer's, in every
+    // repository its tasks are in.
+    if (!agent && !this.ownerActs(input)) {
+      const uuids = this.featureTaskUuids(row.slug);
+      if ('state' in input || plansDates(input))
+        this.ownerOnlyFeatures(input, 'mark a feature shipped or plan its dates', uuids);
+      const fallback = this.defaultRepoSlug();
+      const repos = new Set(uuids.map((uuid) => repoSlugOf(this.tasks.get(uuid), fallback)));
+      for (const repo of repos.size ? repos : [null]) this.allow(input, 'feature.edit', repo);
+    }
     const f = this.featureFields(input, {
       ...row,
       plannedStart: row.planned_start ?? null,
@@ -413,7 +449,7 @@ export const featuresMethods = {
       f.state,
       f.plannedStart,
       f.plannedEnd,
-      agent ?? 'owner',
+      agent ?? this.featurePerson(input),
       Date.now(),
       row.slug,
     );
@@ -433,8 +469,10 @@ export const featuresMethods = {
   },
 
   deleteFeature(slug, input) {
-    this.ownerOnlyFeatures(input.by, 'delete a feature');
+    // An agent never deletes one, and hears so before anything is looked up.
+    if (this.actorIn(input).agent) this.allow(input, 'feature.shape', null, 'only the owner can delete a feature');
     const row = this.featureRow(slug);
+    this.ownerOnlyFeatures(input, 'delete a feature', this.featureTaskUuids(row.slug));
     this.sql.exec('DELETE FROM features WHERE slug = ?', row.slug);
     return { deleted: row.slug };
   },
