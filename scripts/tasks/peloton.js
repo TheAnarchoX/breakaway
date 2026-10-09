@@ -402,6 +402,7 @@ export async function listenFor({
       if (answer.pr) heard.pr = answer.pr;
       if (answer.stop) {
         heard.stop = String(answer.stop);
+        if (Array.isArray(answer.open)) heard.open = answer.open.filter(usable);
         return finish('stop');
       }
       if (answer.urgent) return finish('urgent');
@@ -448,12 +449,58 @@ export function listenText(heard) {
   const posts = pelotonContext(heard.posts, heard.more);
   if (posts) parts.push(posts);
   const again = 'npx breakaway peloton listen';
-  if (heard.why === 'stop') parts.push(`Stop listening: ${heard.stop}.`);
-  else if (heard.why === 'quiet') {
+  if (heard.why === 'stop') {
+    const open = openLines(heard.open ?? [], heard.task);
+    if (open) parts.push(open);
+    parts.push(`Stop listening: ${heard.stop}.`);
+  } else if (heard.why === 'quiet') {
     const failed = heard.failed
       ? ` (the board didn’t answer ${heard.failed} time${heard.failed === 1 ? '' : 's'})`
       : '';
     parts.push(`Nothing new in ${duration(heard.seconds)}${failed}. Run ${again} again to keep listening.`);
   } else parts.push(`Answer what needs you, then run ${again} again while you wait.`);
   return parts.join('\n\n');
+}
+
+/**
+ * The posts to the agent it hasn't answered or handed over (BRK-281), as `peloton open`, `release`, and a `listen`
+ * that says to stop print them: each with what to do before leaving. '' when there are none.
+ * @param {any[]} posts
+ * @param {string | null} [task]
+ * @param {{ released?: boolean }} [options] `released`: release already gave the task back, so the board notes them on it
+ */
+export function openLines(posts, task = null, { released = false } = {}) {
+  const open = (Array.isArray(posts) ? posts : []).filter(usable);
+  if (!open.length) return '';
+  const one = open.length === 1;
+  const head = released
+    ? `You left ${one ? 'a post' : `${open.length} posts`} to you unanswered on the peloton; the board notes ${one ? 'it' : 'them'} on ${task ?? 'your task'}:`
+    : `${one ? 'A post' : `${open.length} posts`} to you ${one ? 'is' : 'are'} still unanswered on the peloton. Answer or hand over each before you leave:`;
+  const lines = open.map((p) => `  #${p.id} on ${p.peloton}, from ${author(p)}: ${p.text.replace(/\s+/gu, ' ')}`);
+  const how = released
+    ? 'Hand each over: npx breakaway peloton handover <post> "<who or which task follows it up>".'
+    : 'Answer with npx breakaway peloton reply <post> "<text>" while you hold the task, or hand it over with npx breakaway peloton handover <post> "<who or which task follows it up>".';
+  return [head, ...lines, how].join('\n');
+}
+
+/**
+ * `peloton handover <post> <text>` → the comment it writes on the agent's task, naming the post as `peloton #<id>` so
+ * the board counts it handed over (BRK-281), or `{ error }`.
+ * @param {string[]} words
+ * @param {any} [post] the open post it hands over, when the board listed it
+ * @returns {{ post: number, text: string } | { error: string }}
+ */
+export function handoverComment(words, post = null) {
+  const id = /^#?(\d+)$/u.exec(String(words[0] ?? ''))?.[1];
+  if (!id)
+    return {
+      error: 'say which post you hand over: npx breakaway peloton handover <post> "<who or which task follows it up>"',
+    };
+  const text = words.slice(1).join(' ').replace(/\s+/gu, ' ').trim();
+  if (!text)
+    return { error: `say who or which task follows it up: npx breakaway peloton handover ${id} "<the follow-up>"` };
+  if (looksLikeSecret(text))
+    return { error: 'that looks like it holds a token or key; say who follows it up without it' };
+  const from = post ? ` from ${author(post)}` : '';
+  return { post: Number(id), text: `Handed over peloton #${id}${from}: ${text}` };
 }

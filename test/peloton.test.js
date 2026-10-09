@@ -194,7 +194,8 @@ describe('the peloton (IDEA-32)', () => {
     expect(res.posts.at(-1)).toMatchObject({
       agent: 'claude-ops-1',
       kind: 'leave',
-      text: 'Left: OPS-1’s pull request #17 merged.',
+      // claude-ops-2's reply to its check-in is still unanswered (BRK-281).
+      text: expect.stringMatching(/^Left: OPS-1’s pull request #17 merged, with a post to it unanswered \(#\d+\)\.$/u),
     });
   });
 

@@ -1022,6 +1022,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       // A general agent that stops with no pull request has finished: its changes, if any, are on the board. A routine
       // maker that stops with its questions open hasn't: the owner's answers start it again (BRK-220 section 3).
       const asking = isRoutineMaker(task) && task.tags.includes('decide');
+      // The posts to the agent it leaves unanswered (BRK-281): release lists them, and the peloton's sweep notes them.
+      const open = task.claim ? this.openPosts(task.claim, uuid) : [];
       if (task.tags.includes('general') && task.status === 'pending' && !task.pr && !asking)
         return ok({
           task: this.change(uuid, {
@@ -1031,8 +1033,9 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
             annotate: 'Closed by the board: the agent released it with no pull request.',
             by: 'board',
           }),
+          open,
         });
-      return ok({ task: this.change(uuid, { claim: null, start: false }) });
+      return ok({ task: this.change(uuid, { claim: null, start: false }), open });
     });
   }
 
@@ -1813,6 +1816,10 @@ const apiActions = {
   /** What's waiting for an agent now (IDEA-36 section 3): the CLI asks every few seconds while the agent waits. */
   pelotonListenApi(agent, task) {
     return this.run(() => ok(this.listenPeloton(agent, task)));
+  },
+  /** The posts to an agent it hasn't answered or handed over (BRK-281): `peloton open` before it leaves. */
+  pelotonOpenApi(agent, task) {
+    return this.run(() => ok(this.openPostsOf(agent, task)));
   },
   pelotonDetailApi(peloton) {
     return this.run(() => ok(this.pelotonDetail(peloton)));
