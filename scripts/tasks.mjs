@@ -296,6 +296,8 @@ Reading                (list, next, claim, and add work in this checkout's repos
     --headers            …or print the headers Claude Code sends to /mcp as JSON, the token included: the plugin's
                          headersHelper. Only Authorization outside a repository the board tracks
   export                 every task (all repositories, statuses, and horizons) as JSON, checked against health's count  [--out <file>]
+  import <file>          restore an export into an empty board: every task with its work ID and comments, claims cleared
+                         (owner). Refused on a board that has tasks; register the export's repositories first
   connections            is everything the board leans on wired up: GitHub, Cloudflare, Claude, sync, push; the fix for each that isn't
 
 Working
@@ -1119,6 +1121,30 @@ const commands = {
         `exported ${tasks.length} tasks, but the board has ${total}: the export isn't complete. Try again; if it repeats, the board's list is missing some.`,
       );
     console.error(`Exported all ${tasks.length} tasks${opts.out ? ` to ${opts.out}` : ''}; the board has ${total}.`);
+  },
+  /**
+   * Restores what export wrote into an empty board (BRK-234): the owner's, so an agent's name is sent and refused.
+   * The board keeps each task's UUID, work ID, and comments, and clears claims and autostart.
+   */
+  async import() {
+    const file = need(args[0], 'file');
+    let data;
+    try {
+      data = JSON.parse(readFileSync(file, 'utf8'));
+    } catch (error) {
+      fail(`couldn't read ${file} as an export (${error.message}): it's the file npx breakaway export --out wrote`);
+    }
+    const signer = opts.as ?? setting('AGENT');
+    const r = await call('POST', 'import', {
+      tasks: data?.tasks,
+      count: data?.count,
+      ...(signer ? { by: signer } : {}),
+    });
+    print(
+      r,
+      (d) =>
+        `Restored ${d.imported} tasks with ${d.comments} comments; the board has ${d.total}.${d.cleared ? ` Cleared the claim or autostart on ${d.cleared}: start agents again from the board.` : ''}`,
+    );
   },
   async agents() {
     const sub = args[0];

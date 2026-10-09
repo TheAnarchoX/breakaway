@@ -208,6 +208,53 @@ try {
   const a = replica('a');
   const b = replica('b');
 
+  step('restoring an export into the empty board');
+  const restored = [randomUUID(), randomUUID()];
+  await api('POST', 'import', {
+    count: 2,
+    tasks: [
+      {
+        uuid: restored[0],
+        wid: 'DEBT-7',
+        description: 'Restored from an export',
+        status: 'completed',
+        project: 'debt',
+        tags: ['agent'],
+        entry: '2026-09-01T10:00:00.000Z',
+        end: '2026-09-02T10:00:00.000Z',
+        annotations: [{ entry: '2026-09-01T11:00:00.000Z', text: 'restored comment' }],
+        comments: [{ by: 'interop-agent', at: '2026-09-01T11:00:00.000Z', text: 'restored comment' }],
+      },
+      {
+        uuid: restored[1],
+        wid: 'DEBT-9',
+        description: 'Restored and waiting',
+        status: 'pending',
+        project: 'debt',
+        horizon: 'next',
+        depends: [restored[0]],
+        claim: 'interop-agent',
+        entry: '2026-09-03T10:00:00.000Z',
+      },
+    ],
+  });
+  a.sync();
+  await check('a replica gets the restored tasks with their UUIDs, work IDs, comments, and no claim', async () => {
+    const done = a.exportAll().find((t) => t.uuid === restored[0]);
+    assert.equal(done.wid, 'DEBT-7');
+    assert.equal(done.status, 'completed');
+    assert.equal(done.annotations[0].description, 'restored comment');
+    const waiting = a.exportAll().find((t) => t.uuid === restored[1]);
+    assert.equal(waiting.wid, 'DEBT-9');
+    assert.deepEqual(waiting.depends, [restored[0]]);
+    assert.equal(waiting.claim, undefined);
+    assert.equal(waiting.horizon, 'next');
+    assert.deepEqual(comparable(a.exportAll()), comparable(await apiTasks()));
+  });
+  await check('a second import is refused once the board has tasks', async () => {
+    await assert.rejects(api('POST', 'import', { tasks: [{ uuid: randomUUID(), description: 'x' }] }), /409/u);
+  });
+
   step('Taskwarrior → server');
   a.task('add', 'From replica A', 'project:ops', '+agent', 'horizon:now', 'priority:H');
   a.task('add', 'Loose end', '+owner');
