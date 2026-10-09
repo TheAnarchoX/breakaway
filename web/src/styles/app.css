@@ -12999,3 +12999,150 @@ button.infra-plan-row {
 .dg-last {
   overflow-wrap: anywhere;
 }
+
+/* WEB-130: a task's footprint on its panel (IDEA-55 section 5). Each path's mark is a word, never only a colour. */
+.fp-kind {
+  margin-left: 6px;
+  font: 600 11px / 1 var(--font-mono);
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.fp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.fp-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 6px 4px 6px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  border-left: 2px solid var(--line-strong);
+  font-size: 13px;
+}
+.fp-claimed,
+.fp-dirty {
+  border-left-color: var(--text);
+}
+.fp-predicted {
+  border-left-style: dashed;
+}
+.fp-pattern {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.fp-mark {
+  flex: 1 1 auto;
+}
+.fp-label {
+  font-weight: 600;
+}
+.fp-release {
+  margin-left: auto;
+}
+.fp-conflict {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.fp-conflict svg {
+  flex: none;
+  color: var(--warn);
+  transform: translateY(2px);
+}
+.fp-rate svg {
+  vertical-align: -2px;
+}
+.fp-held {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* WEB-130: open tasks that would change the same files share a dashed line, labelled with the first shared path, and
+   each open node shows its footprint on hover and focus. The label says it in words, so it's never colour alone. */
+.edge-share {
+  stroke: var(--muted);
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+.edge-share-group {
+  transition: opacity var(--dur) var(--ease);
+}
+.edge-share-group.edge-dim {
+  opacity: 0.2;
+}
+.edge-share-label {
+  font: 500 11px / 1 var(--font-mono);
+  fill: var(--muted);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.node {
+  position: relative;
+}
+.node:hover,
+.node:focus-within {
+  z-index: 2;
+}
+.node-fp {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.node:hover .node-fp,
+.node:focus-within .node-fp {
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-pop);
+}
+.node-fp p,
+.node-fp ul {
+  margin: 0;
+}
+.node-fp ul {
+  padding-left: 16px;
+}
+.node-fp code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.node-fp-head {
+  font-weight: 600;
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .edge-share-group {
+    transition: none;
+  }
+}

@@ -1230,14 +1230,15 @@ export const forceOffer = signal(null);
 /**
  * Runs a change and toasts the result. `request` gets whether this is a forced try. With `forceable`, a refusal
  * only the board's limits caused (`data.forceable`) opens the Force start offer instead of a toast; `after` runs
- * when the forced try works, since the caller has moved on by then.
- * @param {(force: boolean) => Promise<any>} request
+ * when the forced try works, since the caller has moved on by then. A Start the board warns about (`data.anyway`, a
+ * footprint's overlap) asks once more, and a yes runs `request` again with `anyway`.
+ * @param {(force: boolean, anyway?: boolean) => Promise<any>} request
  * @param {string | ((result: any) => string) | null} message
- * @param {{ forceable?: boolean, force?: boolean, after?: (result: any) => void }} [options]
+ * @param {{ forceable?: boolean, force?: boolean, anyway?: boolean, after?: (result: any) => void }} [options]
  */
-async function change(request, message, { forceable = false, force = false, after } = {}) {
+async function change(request, message, { forceable = false, force = false, anyway = false, after } = {}) {
   try {
-    const result = await request(force);
+    const result = await request(force, anyway);
     const said = typeof message === 'function' ? message(result) : message;
     if (said) toast(said, 'success');
     await loadTasks();
@@ -1246,10 +1247,21 @@ async function change(request, message, { forceable = false, force = false, afte
     if (force) after?.(result);
     return result;
   } catch (error) {
+    // The owner's Start on a task whose files a running agent is changing (IDEA-55 section 3): a warning, never a
+    // refusal, so pressing again starts it.
+    if (!anyway && error.data?.anyway && error.data.overlap) {
+      const o = error.data.overlap;
+      const ok = await confirmDialog({
+        title: 'Start it anyway?',
+        body: `${o.task}${o.agent ? ` (${o.agent})` : ''} is changing ${o.path}. Two agents on the same files can end in a merge conflict.`,
+        confirmLabel: 'Start anyway',
+      });
+      return ok ? change(request, message, { forceable, force, anyway: true, after }) : null;
+    }
     if (forceable && !force && error.data?.forceable) {
       forceOffer.value = {
         reason: error.message,
-        run: () => change(request, message, { forceable, force: true, after }),
+        run: () => change(request, message, { forceable, force: true, anyway, after }),
       };
       return null;
     }
@@ -1399,10 +1411,10 @@ export const actions = {
   /** `after` runs when the owner forces a start the board's limits refused. */
   async startAgent(t, note, after) {
     const result = await change(
-      (force) =>
+      (force, anyway) =>
         api('agents/start', {
           method: 'POST',
-          body: { ref: t.uuid, note: note || undefined, force: force || undefined },
+          body: { ref: t.uuid, note: note || undefined, force: force || undefined, anyway: anyway || undefined },
         }),
       `Started an agent on ${ref(t)}.`,
       { forceable: true, after },

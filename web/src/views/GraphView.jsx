@@ -10,17 +10,26 @@ import { Dialog } from '../components/ui.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Title } from '../lib/richtext.jsx';
+import { GRAPH_EVERY_MS, KIND_WORDS, readFootprints, sharePairs } from '../lib/footprint.js';
 
 /**
  * Chains of tasks that wait for each other, each laid out left to right: a task sits one
  * column to the right of everything it waits for. Finished tasks that something still points
- * to are shown faded, for context, or folded into one card a step (layoutChain).
+ * to are shown faded, for context, or folded into one card a step (layoutChain). Open tasks
+ * whose footprints overlap (`shares`, `[a, b, path]`, WEB-130) join a chain too, by a dashed
+ * line that doesn't change the columns.
  */
-function buildChains(list, all) {
+function buildChains(list, all, shares = []) {
   const nodes = new Map();
+  const listed = new Map(list.map((t) => [t.uuid, t]));
   for (const t of list) {
     if (t.status !== 'pending') continue;
     if (t.depends.length || t.blocking.length) nodes.set(t.uuid, t);
+  }
+  const sharing = shares.filter(([a, b]) => listed.has(a) && listed.has(b));
+  for (const [a, b] of sharing) {
+    nodes.set(a, listed.get(a));
+    nodes.set(b, listed.get(b));
   }
   for (const t of [...nodes.values()]) {
     for (const d of [...t.depends, ...t.blocking]) {
@@ -33,7 +42,7 @@ function buildChains(list, all) {
 
   // Connected groups, so separate chains don't tangle.
   const neighbours = new Map([...nodes.keys()].map((u) => [u, []]));
-  for (const [a, b] of edges) {
+  for (const [a, b] of [...edges, ...sharing]) {
     neighbours.get(a).push(b);
     neighbours.get(b).push(a);
   }
@@ -71,6 +80,7 @@ function buildChains(list, all) {
       id: start,
       columns: columns.filter(Boolean),
       edges: edges.filter(([a]) => members.includes(a)),
+      shares: sharing.filter(([a]) => members.includes(a)),
       size: members.length,
     });
   }
@@ -101,16 +111,53 @@ function layoutChain(chain, { showDone, unfold }) {
     folded.edges,
     (id) => tasks.get(id)?.status === 'pending',
   );
-  return { tasks, steps: ordered, edges: folded.edges, folded: folded.folded, routes, path };
+  return { tasks, steps: ordered, edges: folded.edges, shares: chain.shares, folded: folded.folded, routes, path };
+}
+
+/** A path for a label, cut from the front so its file name stays. */
+const shortPath = (p, most = 28) => (p.length > most ? `…${p.slice(-(most - 1))}` : p);
+
+/**
+ * What a node shows of its footprint on hover and focus (IDEA-55 section 5): a short list of the paths it touches and
+ * the tasks it shares files with. Always in the page, so a screen reader reads it with the card.
+ * @param {{ print: any, shares: [string, string][] }} props
+ */
+function NodeFootprint({ print, shares }) {
+  if (!print) return null;
+  const shown = print.patterns.slice(0, 5);
+  return (
+    <div class="node-fp">
+      <p class="node-fp-head">
+        Footprint: {KIND_WORDS[print.kind]?.toLowerCase() ?? print.kind}
+        {print.kind === 'unknown' ? ', so it’s scheduled by its area' : ''}
+      </p>
+      {shown.length > 0 && (
+        <ul>
+          {shown.map((p) => (
+            <li key={p}>
+              <code>{p}</code>
+            </li>
+          ))}
+          {print.patterns.length > shown.length && <li>and {print.patterns.length - shown.length} more</li>}
+        </ul>
+      )}
+      {shares.map(([other, path]) => (
+        <p key={other} class="node-fp-share">
+          Shares files with {other}: <code>{path}</code>
+        </p>
+      ))}
+    </div>
+  );
 }
 
 /** The tasks of a laid-out chain in the order they read: step by step, top to bottom. */
 const readingOrder = (layout) => layout.steps.flat().filter((id) => layout.tasks.has(id));
 
 /** @param {Record<string, any>} props */
-function Chain({ chain, layout, unfolded, onFold }) {
+function Chain({ chain, layout, unfolded, onFold, prints }) {
   const box = useRef(null);
   const [paths, setPaths] = useState([]);
+  const [sharePaths, setSharePaths] = useState([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [focus, setFocus] = useState(null);
 
@@ -160,6 +207,40 @@ function Chain({ chain, layout, unfolded, onFold }) {
           })
           .filter(Boolean),
       );
+      // A dashed line between two open tasks that share files: across the steps between them, or, in one step, out
+      // to the right and back, labelled with the first shared path.
+      setSharePaths(
+        layout.shares
+          .map(([from, to, file]) => {
+            let a = at(from);
+            let b = at(to);
+            if (!a || !b) return null;
+            if (b.left < a.left) [a, b] = [b, a];
+            if (a.right <= b.left) {
+              const x1 = x(a.right);
+              const x2 = x(b.left);
+              const dx = (x2 - x1) / 2;
+              return {
+                from,
+                to,
+                file,
+                d: `M${x1},${y(a)} C${x1 + dx},${y(a)} ${x2 - dx},${y(b)} ${x2},${y(b)}`,
+                lx: x1 + dx,
+                ly: (y(a) + y(b)) / 2 - 6,
+              };
+            }
+            const right = x(Math.max(a.right, b.right));
+            return {
+              from,
+              to,
+              file,
+              d: `M${x(a.right)},${y(a)} C${right + 36},${y(a)} ${right + 36},${y(b)} ${x(b.right)},${y(b)}`,
+              lx: right + 30,
+              ly: (y(a) + y(b)) / 2 - 6,
+            };
+          })
+          .filter(Boolean),
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -181,8 +262,17 @@ function Chain({ chain, layout, unfolded, onFold }) {
     };
     walk(focus, 'up');
     walk(focus, 'down');
+    for (const [a, b] of layout.shares) {
+      if (a === focus) related.add(`share${b}`);
+      if (b === focus) related.add(`share${a}`);
+    }
   }
-  const lit = (u) => !focus || u === focus || related.has(`up${u}`) || related.has(`down${u}`);
+  const lit = (u) =>
+    !focus || u === focus || related.has(`up${u}`) || related.has(`down${u}`) || related.has(`share${u}`);
+  const sharesOf = (id) =>
+    layout.shares
+      .filter(([a, b]) => a === id || b === id)
+      .map(([a, b, file]) => [ref(layout.tasks.get(a === id ? b : a)), file]);
   const onPath = new Set(layout.path);
   const pathEdge = new Set(layout.path.slice(1).map((id, i) => `${layout.path[i]}>${id}`));
   const finished = (id) => isFold(id) || layout.tasks.get(id)?.status === 'completed';
@@ -212,6 +302,17 @@ function Chain({ chain, layout, unfolded, onFold }) {
               class={`edge ${kind} ${lit(p.from) && lit(p.to) ? '' : 'edge-dim'}`}
               marker-end={`url(#arrow-${chain.id})`}
             />
+          );
+        })}
+        {sharePaths.map((p) => {
+          const dim = lit(p.from) && lit(p.to) ? '' : 'edge-dim';
+          return (
+            <g key={`share-${p.from}-${p.to}`} class={`edge-share-group ${dim}`}>
+              <path d={p.d} class="edge edge-share" />
+              <text x={p.lx} y={p.ly} text-anchor="middle" class="edge-share-label">
+                shares files: {shortPath(p.file)}
+              </text>
+            </g>
           );
         })}
       </svg>
@@ -264,6 +365,7 @@ function Chain({ chain, layout, unfolded, onFold }) {
                   </span>
                 )}
                 <TaskCard task={t} />
+                {open && <NodeFootprint print={prints.get(id)} shares={sharesOf(id)} />}
               </li>
             );
           })}
@@ -427,14 +529,40 @@ function ChainHead({ chain, onOpen }) {
 }
 
 export function GraphView() {
-  const chains = buildChains(visible.value, byUuid.value);
+  // Every open task's footprint (WEB-130), read again each minute while the view is open and the page is in front.
+  const [prints, setPrints] = useState(() => new Map());
+  useEffect(() => {
+    let live = true;
+    const read = () =>
+      readFootprints().then(
+        (map) => live && setPrints(map),
+        () => {},
+      );
+    read();
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') read();
+    }, GRAPH_EVERY_MS);
+    return () => {
+      live = false;
+      clearInterval(id);
+    };
+  }, []);
+  const shares = useMemo(
+    () =>
+      sharePairs(
+        visible.value.filter((t) => t.status === 'pending').map((t) => t.uuid),
+        prints,
+      ),
+    [visible.value, prints],
+  );
+  const chains = buildChains(visible.value, byUuid.value, shares);
   const [open, setOpen] = useState(null);
   // The steps the person unfolded, per chain: chain id, then step.
   const [unfolded, setUnfolded] = useState(() => new Map());
   const showDone = graphShowDone.value;
   const layouts = useMemo(
     () => chains.map((c) => layoutChain(c, { showDone, unfold: unfolded.get(c.id) ?? new Set() })),
-    [visible.value, byUuid.value, showDone, unfolded],
+    [visible.value, byUuid.value, showDone, unfolded, shares],
   );
   const fold = (id, step, out) =>
     setUnfolded((was) => {
@@ -457,8 +585,9 @@ export function GraphView() {
         <h1>Dependencies</h1>
         <p class="muted">
           Arrows point from a task to what waits for it. The bright line is the path to each group’s last task, and
-          Needs you marks your steps. Finished work folds into one card a step. Hover or focus a task to follow its
-          chain, and make a group a feature to chase it.
+          Needs you marks your steps. Finished work folds into one card a step. A dashed line joins open tasks that
+          would change the same files. Hover or focus a task to follow its chain and see its files, and make a group a
+          feature to chase it.
         </p>
         {chains.length > 0 && (
           <label class="check-row graph-show-done">
@@ -482,13 +611,16 @@ export function GraphView() {
               layout={layouts[i]}
               unfolded={showDone ? new Set() : (unfolded.get(c.id) ?? new Set())}
               onFold={(step, out) => fold(c.id, step, out)}
+              prints={prints}
             />
           </section>
         ))
       ) : visible.value.length || filters.value.q ? (
         <div class="empty">
           <h2>No task waits for another</h2>
-          <p class="muted">When one task depends on another, the chain shows here.</p>
+          <p class="muted">
+            When one task depends on another, or two would change the same files, the chain shows here.
+          </p>
         </div>
       ) : (
         <EmptyBoard />

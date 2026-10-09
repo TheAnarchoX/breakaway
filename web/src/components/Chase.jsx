@@ -4,6 +4,7 @@ import { ago, plural } from '../lib/model.js';
 import { actions, agents, byUuid, hashFor, toast } from '../lib/store.js';
 import { Dialog, RepoChip, Segmented, widClass, Dictate } from './ui.jsx';
 import { PelotonPanel } from './Peloton.jsx';
+import { HeldReason, HitRates } from './Footprint.jsx';
 import { Title } from '../lib/richtext.jsx';
 
 /**
@@ -508,7 +509,17 @@ function Queue({ chase, compact }) {
         {shown.map((q) => (
           <ChaseRow key={q.uuid} t={q}>
             <span class={`meta ${q.ready ? 'queue-ready' : ''}`}>
-              {q.ready ? (chase.on ? 'Starts on the next check.' : 'Would start now.') : `Waits: ${q.reason}.`}
+              {q.ready ? (
+                chase.on ? (
+                  'Starts on the next check.'
+                ) : (
+                  'Would start now.'
+                )
+              ) : (
+                <>
+                  Waits: <HeldReason entry={q} />.
+                </>
+              )}
             </span>
           </ChaseRow>
         ))}
@@ -518,6 +529,7 @@ function Queue({ chase, compact }) {
           Show all {queue.length}
         </button>
       )}
+      <HitRates entries={queue} />
     </div>
   );
 }
