@@ -60,6 +60,7 @@ describe('a fresh install', () => {
         ['init', false],
         ['routine', false],
         ['cli', false],
+        ['passkey', false],
         ['taskwarrior', false],
         ['first', false],
       ]);
@@ -177,6 +178,32 @@ describe('a fresh install', () => {
       },
       { vars },
     );
+  });
+});
+
+describe('the owner’s passkey step (BRK-328)', () => {
+  it('is optional, after Connect the CLI, and done once the owner has a passkey; a person’s doesn’t count', async () => {
+    await fresh('fresh-passkey', async (s) => {
+      const step = () => s.setupSteps([]).steps.find((st) => st.id === 'passkey');
+      const ids = s.setupSteps([]).steps.map((st) => st.id);
+      expect(ids.indexOf('passkey')).toBe(ids.indexOf('cli') + 1);
+      expect(step()).toMatchObject({ name: 'Add a passkey for yourself (optional)', optional: true, done: false });
+      const passkey = (id, handle) =>
+        s.sql.exec(
+          'INSERT INTO passkeys (id, handle, name, alg, jwk, sign_count, created) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          id,
+          handle,
+          'Laptop',
+          -7,
+          '{}',
+          0,
+          Date.now(),
+        );
+      passkey('made-up-person-key', 'ana');
+      expect(step().done).toBe(false);
+      passkey('made-up-owner-key', 'owner');
+      expect(step().done).toBe(true);
+    });
   });
 });
 
