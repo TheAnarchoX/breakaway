@@ -41,12 +41,7 @@ describe('the routines mode, the pure parts', () => {
       { uuid: '1a2b3c4d-0000-4000-8000-000000000000', wid: null, description: 'Update the changelog' },
       'claude-1a2b3c4d',
       'routines',
-      null,
-      'routines',
-      null,
-      null,
-      0,
-      { slug: 'widgets', github: 'acme/widgets' },
+      { kind: 'routines', repo: { slug: 'widgets', github: 'acme/widgets' } },
     );
     expect(text.split('\n')).toEqual([
       'Task: 1a2b3c4d-0000-4000-8000-000000000000',

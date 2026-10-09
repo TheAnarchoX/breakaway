@@ -113,7 +113,7 @@ describe('what an agent reads', () => {
   const task = { uuid: 'd676d69d-a69f-454a-80be-ff9e7d4c3a73', wid: 'OPS-7', description: 'A task', ownerSaid: said };
 
   it('the start payload carries the quotes, before the owner’s note', () => {
-    const text = firePayload(task, 'claude-ops-7', 'manual', 'Be quick.');
+    const text = firePayload(task, 'claude-ops-7', 'manual', { note: 'Be quick.' });
     expect(text).toContain(
       [
         'The owner said (quoted on the task):',

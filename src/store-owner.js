@@ -1,6 +1,6 @@
 /**
- * TaskStore's owner (BRK-328, docs/specs/BRK-299-people-and-roles.md, points 1 and 2): the owner's display name and
- * the owner's own passkeys.
+ * TaskStore's owner (BRK-328, docs/specs/BRK-299-people-and-roles.md, points 1 and 2): the owner's display name, their
+ * profile (BRK-329), and the owner's own passkeys.
  *
  * The owner is still the board's token, with no row in `people`: these only add a way in and a name. The owner's
  * passkeys sit in `passkeys` under the handle `owner`, which no person can have, so nothing a person does reaches
@@ -39,6 +39,26 @@ export const ownerMethods = {
   ownerLabel() {
     const name = this.ownerName();
     return name ? `${name} (owner)` : 'the owner';
+  },
+
+  /**
+   * The owner's profile (BRK-329): their work, their own words for Other, and their notes for agents, kept with the
+   * board's settings like their name. Only the owner sets it (store-people.js, profileSet).
+   * @returns {import('./profile.js').Profile}
+   */
+  ownerProfile() {
+    return {
+      work: this.meta('owner_work'),
+      other: this.meta('owner_work_other'),
+      notes: this.meta('owner_agent_notes'),
+    };
+  },
+
+  /** @param {import('./profile.js').Profile} profile a checked one (src/profile.js, profileChange) */
+  ownerProfileSet({ work, other, notes }) {
+    this.setMeta('owner_work', work);
+    this.setMeta('owner_work_other', other);
+    this.setMeta('owner_agent_notes', notes);
   },
 
   /** The owner as people-facing answers name them: the fixed handle, the display name, and the label. */
