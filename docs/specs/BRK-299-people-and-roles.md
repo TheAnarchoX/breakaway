@@ -189,7 +189,7 @@ Reads (`GET`) need viewer in the repository they're about. Install-wide reads (C
   3. the agent ceiling, which is today's agent rules: claim, comment, add tasks, ping, post on the peloton, open pull requests, and the chase's and refining limits.
 
   An agent is never a press. So it never merges, deploys, approves, answers a decision, or resolves a ping, whoever started it and whatever role that person has. The board's agent prompt says the same (`prompts/core.md`, "never merge"), and the press-only gates enforce it.
-- **How sure each is.** On a person's own routine (point 5), the agent's environment holds that person's personal token, so its rights are capped by the credential: it can't do more than its person even if it leaves out its name. On the repository's routine, the environment holds the board's token, as today. The run's starter caps it only while it names itself, which agents do through `BREAKAWAY_AGENT` and the MCP headers. That's today's trust in the token, and it's why lending the repository's routine to members is off by default (point 5). A run key that caps it by credential instead is an open question below.
+- **How sure each is.** On a person's own routine (point 5), the agent's environment holds that person's personal token, so its rights are capped by the credential: it can't do more than its person even if it leaves out its name. On the repository's routine, the environment holds the board's token, as today. The run's starter caps it only while it names itself, which agents do through `BREAKAWAY_AGENT` and the MCP headers. That's today's trust in the token, and it's why lending the repository's routine to members is off by default (point 5). Run keys (BRK-324, "Decided" below) close that gap: on a lent routine, the run's own key caps the agent by credential.
 - **Requests that name an agent the board didn't start** (a local Claude Code session with `--as`) act as the person behind the credential, under the agent ceiling. That's today's behaviour, with the person filled in.
 
 ### 5. Bring your own Claude
@@ -199,7 +199,7 @@ Reads (`GET`) need viewer in the repository they're about. Install-wide reads (C
 - **Connecting.** In their settings, a member or maintainer picks a repository they're a member of, gets the same copy-paste steps the owner's wizard gives today (the routine's name, the repository, the stub, the board's host to allow), and pastes the routine's URL and token into a form. The board checks and seals them the same way as kept routines (AES-GCM with the sync key's derived key, never shown again or returned by any API). Their cloud environment gets their **personal token** as its API credential for the board's host, never the board's token. The page says this in so many words.
 - **Starting.** An agent a person starts runs on their routine for that repository. A chase they start does too. Autostart, and agents the owner starts, run on the repository's routine, as now. **Routines on the board** (saved prompts) run on the connection of whoever made them, and the ones made before this stay on the owner's.
 - **Without their own.** A person with no routine for a repository can't start agents there, unless the owner turns on **Lend the repository's routine** for that repository. Then their starts use the owner's routine (and the owner's plan), still counted against their own caps. The owner's routine environment holds the board's token, so the start dialog says "runs on the owner's Claude, with the board's token" before the press. **Why off by default:** it spends the owner's subscription, and its agents hold the board's token (point 4).
-- **Caps, per person and in total.** The board's caps (agents at once, starts an hour, per repository, per area) stay install-wide and count every person's agents, so one person can't crowd out the rest. Each person also has their own agents at once and starts an hour. The owner sets the defaults (1 at once, 5 an hour) and can change them per person. Claude's own limits count per routine and per account, which the board already tracks per routine (`routineHold`). A person picks their own Claude plan in their settings, and it sets their ceilings the way `src/plans.js` sets the owner's.
+- **Caps, per person and in total.** The board's caps (agents at once, starts an hour, per repository, per area) stay install-wide and count every person's agents, so one person can't crowd out the rest. Each person also has their own agents at once and starts an hour. A new person gets 1 at once and 5 an hour; the owner can change them per person. An existing install's caps aren't overridden, and the owner's own limits stay today's install settings ("Decided" below). Claude's own limits count per routine and per account, which the board already tracks per routine (`routineHold`). A person picks their own Claude plan in their settings, and it sets their ceilings the way `src/plans.js` sets the owner's.
 - **How this relates to BRK-176.** BRK-176's `agent_connections` are per repository and provider. This adds one column, `person`, which is null for the repository's connection (the owner's, today's) and a handle for a person's own. The pool for a start for person P is P's connections for that repository in P's order, then the repository's connections if the owner lends them. Everything else in BRK-176 (holds per connection, the provider interface, `startAgent()` as the one seam) stays as it is. If BRK-302 lands before BRK-176's build, it adds `person` to `kept_routines` instead, and BRK-176's migration carries it over. A person could later connect another provider the same way: that's BRK-176's build, not this one.
 - **Runs show per person.** The Agents view groups running agents and the queue by person ("Ana: 1 of 1 at once"). The queue says when a start waits on a person's own cap. Runs and their starts are counted per person in Stats. The board counts starts, not money, as CLD-35 decided.
 
@@ -263,15 +263,15 @@ Campaigns, research, and organising need more than this: an area with no reposit
 - Billing, seats, or anything that counts people for a price.
 - Agents choosing whose routine they run on, or starting agents.
 
-## Open questions
+## Decided
 
-These go to the owner as one decision on the board, BRK-322. The spec's recommendation stands until they answer.
+The owner answered these on BRK-322 (9 Oct). They're no longer open:
 
-- **A run key for lent routines.** Should an agent on a lent routine get a short-lived key in its payload, like a runbook's act key, that carries exactly its person's rights, so it's capped by credential and not by naming itself? Recommended: yes, as a follow-up after BRK-302. It needs the CLI to prefer it over the environment's credential. Unverified: whether the cloud proxy's credential injection overrides an `Authorization` header the CLI sets.
-- **Approve alone.** Keep the owner's override of the two-person rule (recommended), or make the rule bind the owner too?
-- **Viewers and Infrastructure costs.** Should a viewer see costs, or only maintainers? Recommended: viewers see them, since cost is how a group decides together.
-- **Can a maintainer make maintainers?** This spec says no: a maintainer invites and manages only members and viewers, so maintainers can't take over each other's repositories. The chase's captain suggested a maintainer may grant any role up to their own in the repositories they maintain. Either way, people outside their repositories, and the owner, stay the owner's.
-- **The default per-person caps** (1 at once, 5 an hour), or none until the owner sets them.
+- **Run keys for lent routines: yes**, built as BRK-324 after BRK-302. An agent on a lent routine gets a short-lived key in its payload, like a runbook's act key. The key carries exactly the rights of the person the run is for, so the credential caps the agent, not its name. The CLI uses the key in place of the environment's credential. Unverified: whether the cloud proxy's credential injection overrides an `Authorization` header the CLI sets. BRK-324 checks this first and says how it handles it.
+- **The owner may approve alone**, with a second confirm, recorded in the audit (point 7).
+- **Maintainers make only members and viewers** (point 3, "Managing people").
+- **Viewers see Infrastructure costs.**
+- **Default caps: 1 agent at once and 5 starts an hour for a new person.** The owner added, in their words: "use the current default caps and dont override on installs, when an existing users creates an account, take over their settings". The reading (the chase captain's, which BRK-302 builds to): an existing install's caps stay as they are, and the owner's own limits are today's install settings, never the per-person defaults. A person's settings carry over to their account.
 
 ## Done when
 
@@ -286,9 +286,10 @@ These go to the owner as one decision on the board, BRK-322. The spec's recommen
 | 3a | BRK-302 | Bring your own Claude: a person's routine connections, lending the repository's routine, starts on the starter's routine, caps per person and in total, a person's plan | BRK-301 |
 | 3b | BRK-303 | Who did it: the person on every write, in Activity, the audit, the inbox, and pull requests; approval rules and the two-person rule | BRK-301 |
 | 3c | WEB-124 | People on the web: the sign-in page, People, invites, grants, Reset, each person's settings (passkeys, tokens, their routine, push), the person in the header, and controls a role can't use shown with who can | BRK-301, BRK-323 |
-| 4 | DOC-46 | The manual, the site, the README, and point 8's changes to the brand guide, `AGENTS.md`, the decision log, and `prompts/core.md` | BRK-302, BRK-303, WEB-124 |
+| 3d | BRK-324 | Run keys: a short-lived key in a lent routine's payload that carries the rights of the person the run is for, and the CLI preferring it over the environment's credential | BRK-302 |
+| 4 | DOC-46 | The manual, the site, the README, and point 8's changes to the brand guide, `AGENTS.md`, the decision log, and `prompts/core.md` | BRK-302, BRK-303, WEB-124, BRK-324 |
 
-2b follows BRK-301 because both change every store file's reads and writes. 3a, 3b, and 3c can run in parallel. They share only the settings page, which WEB-124 owns.
+2b follows BRK-301 because both change every store file's reads and writes. 3a, 3b, and 3c can run in parallel, and 3d follows 3a. They share only the settings page, which WEB-124 owns.
 
 ## How to check it
 
