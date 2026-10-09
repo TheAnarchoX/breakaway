@@ -29,7 +29,7 @@ Closes CLD-24.
 import { DEPLOY_PATHS, api, setPipeline } from './helpers.js';
 
 const RULES = compileDeployPaths({ widgets: DEPLOY_PATHS.widgets });
-import { shipState } from '../web/src/lib/model.js';
+import { pressedWords, shipState } from '../web/src/lib/model.js';
 
 const body = async (res) => ({ status: res.status, ...(await res.json()) });
 const encoder = new TextEncoder();
@@ -1504,6 +1504,50 @@ describe('Update branch, Merge, and Merge when green', () => {
     expect(gh.writes[0][2].query).toContain('markPullRequestReadyForReview');
     expect(gh.writes[0][2].variables).toEqual({ id: 'PR_40' });
     expect(JSON.stringify(await body(await api('activity')))).toContain('pr_published');
+  });
+
+  it('names who pressed last on the pull request page: you, a person by handle, or a setting (WEB-132)', async () => {
+    gh.pulls = [pr(42, { draft: true, sha: 'e00e001' }), pr(43, { sha: 'e00e002' })];
+    gh.mergeable = { 43: [true, 'behind'] };
+    gh.fileDetails = { 42: [], 43: [] };
+    expect((await body(await api('github/pulls/42'))).pressed).toBeNull();
+    const post = await browser();
+    expect((await post('github/pulls/42/publish', { sha: 'e00e001' })).status).toBe(200);
+    expect((await body(await api('github/pulls/42'))).pressed).toMatchObject({
+      kind: 'pr_published',
+      by: 'owner',
+      setting: false,
+    });
+    // A maintainer's press (BRK-303) names them, and a press on another pull request doesn't move this one's.
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
+    const set = await runInDurableObject(stub, (store) =>
+      store.githubWrite(43, 'auto-merge', { sha: 'e00e002', method: 'squash', actor: { person: 'ana' } }),
+    );
+    expect(set.status).toBe(200);
+    expect((await body(await api('github/pulls/42'))).pressed).toMatchObject({ kind: 'pr_published', by: 'owner' });
+    const page = await body(await api('github/pulls/43'));
+    expect(page.pressed).toMatchObject({ kind: 'pr_auto_merge_on', by: 'ana', method: 'squash', setting: false });
+    expect(Date.parse(page.pressed.at)).toBeGreaterThan(0);
+    expect(pressedWords(page.pressed)).toBe('Set to merge when green on the board by ana (squash)');
+    // The latest press wins, and a setting's press says so.
+    expect((await post('github/pulls/43/update-branch', { sha: 'e00e002', setting: true })).status).toBe(200);
+    const later = (await body(await api('github/pulls/43'))).pressed;
+    expect(later).toMatchObject({ kind: 'pr_branch_updated', by: 'owner', setting: true });
+    expect(pressedWords(later, 'main')).toBe('Updated with main on the board by your Keep branches up to date setting');
+    gh.fileDetails = {};
+  });
+
+  it('words each press the way Activity does, with you for the owner (WEB-132)', () => {
+    const p = (kind, more = {}) => ({ kind, by: 'owner', method: null, setting: false, ...more });
+    expect(pressedWords(null)).toBeNull();
+    expect(pressedWords(p('pr_merged_by_owner', { method: 'squash' }))).toBe('Merged on the board by you (squash)');
+    expect(pressedWords(p('pr_merged_by_owner', { method: 'merge', by: 'ben', setting: true }))).toBe(
+      'Merged on the board by ben’s Merge when green setting (merge commit)',
+    );
+    expect(pressedWords(p('pr_published', { by: 'ana' }))).toBe('Published for review on the board by ana');
+    expect(pressedWords(p('pr_branch_updated'), 'develop')).toBe('Updated with develop on the board by you');
+    expect(pressedWords(p('pr_auto_merge_off'))).toBe('Merge when green turned off on the board by you');
+    expect(pressedWords(p('pr_opened'))).toBeNull();
   });
 
   it('keeps each open pull request’s auto-merge from the sync, and marks what the owner’s settings did', async () => {
