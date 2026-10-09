@@ -21,7 +21,7 @@ export const STANDINGS = [
   { id: 'waiting', count: 'waiting', label: 'Waiting', words: 'waiting' },
 ];
 
-export const featureHref = (slug) => hashFor({ view: 'roadmap', feature: slug, task: null });
+export const featureHref = (slug) => hashFor({ view: 'roadmap', feature: slug, digest: null, task: null });
 
 /** What holds a feature up, in words: the first thing waiting on you, else what its tasks are doing. */
 export function nextUp(f) {

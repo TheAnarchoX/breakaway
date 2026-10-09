@@ -36,6 +36,7 @@ import { routinesMethods } from './store-routines.js';
 import { featuresMethods } from './store-features.js';
 import { planningMethods } from './store-planning.js';
 import { chaseMethods } from './store-chase.js';
+import { chaseDigestMethods } from './store-chase-digest.js';
 import { attachmentsMethods } from './store-attachments.js';
 import { pingsMethods } from './store-pings.js';
 import { pushMethods } from './store-push.js';
@@ -135,6 +136,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initRoutines();
     this.initFeatures();
     this.initChase();
+    this.initChaseDigest();
     this.initPlanning();
     this.initAttachments();
     this.initPings();
@@ -1022,6 +1024,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       // A general agent that stops with no pull request has finished: its changes, if any, are on the board. A routine
       // maker that stops with its questions open hasn't: the owner's answers start it again (BRK-220 section 3).
       const asking = isRoutineMaker(task) && task.tags.includes('decide');
+      // The posts to the agent it leaves unanswered (BRK-281): release lists them, and the peloton's sweep notes them.
+      const open = task.claim ? this.openPosts(task.claim, uuid) : [];
       if (task.tags.includes('general') && task.status === 'pending' && !task.pr && !asking)
         return ok({
           task: this.change(uuid, {
@@ -1031,8 +1035,9 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
             annotate: 'Closed by the board: the agent released it with no pull request.',
             by: 'board',
           }),
+          open,
         });
-      return ok({ task: this.change(uuid, { claim: null, start: false }) });
+      return ok({ task: this.change(uuid, { claim: null, start: false }), open });
     });
   }
 
@@ -1516,6 +1521,7 @@ Object.assign(
   featuresMethods,
   planningMethods,
   chaseMethods,
+  chaseDigestMethods,
   attachmentsMethods,
   pingsMethods,
   pushMethods,
@@ -1637,6 +1643,9 @@ const apiActions = {
   },
   featureChaseApi(slug, body) {
     return this.run(async () => ok(await this.chaseFeature(slug, body ?? {})));
+  },
+  featureDigestApi(slug, id) {
+    return this.chaseDigestApi(slug, id);
   },
   featureCaptainApi(slug, body) {
     return this.run(async () => ok(await this.captainLog(slug, body ?? {})));
@@ -1847,6 +1856,10 @@ const apiActions = {
   /** What's waiting for an agent now (IDEA-36 section 3): the CLI asks every few seconds while the agent waits. */
   pelotonListenApi(agent, task) {
     return this.run(() => ok(this.listenPeloton(agent, task)));
+  },
+  /** The posts to an agent it hasn't answered or handed over (BRK-281): `peloton open` before it leaves. */
+  pelotonOpenApi(agent, task) {
+    return this.run(() => ok(this.openPostsOf(agent, task)));
   },
   pelotonDetailApi(peloton) {
     return this.run(() => ok(this.pelotonDetail(peloton)));

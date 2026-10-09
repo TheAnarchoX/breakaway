@@ -830,6 +830,9 @@ async function handleApi(request, env, url, ctx) {
     // A chase (section 3) is the owner's: an agent's `by` is refused.
     if (parts.length === 3 && parts[2] === 'chase' && method === 'POST')
       return send(await s.featureChaseApi(parts[1], body));
+    // A chase's digest (BRK-277): anyone signed in reads it.
+    if (parts.length === 4 && parts[2] === 'digests' && method === 'GET')
+      return send(await s.featureDigestApi(parts[1], parts[3]));
     // The road captain's log and handover (BRK-275): the captain's own, by its `by`.
     if (parts.length === 3 && parts[2] === 'captain' && method === 'POST')
       return send(await s.featureCaptainApi(parts[1], body));
@@ -956,9 +959,11 @@ async function handleApi(request, env, url, ctx) {
   // the signed-in browser is the owner's, and only the signed-in browser posts as the owner, never the bearer token.
   if (parts[0] === 'peloton') {
     if (parts.length === 1 && method === 'GET') return send(await s.pelotonApi(url.searchParams.get('agent')));
-    // Listening always names the agent, so a repository whose slug is `listen` keeps its peloton's page.
+    // Listening and the open posts always name the agent, so a repository whose slug is `listen` or `open` keeps its page.
     if (parts.length === 2 && parts[1] === 'listen' && url.searchParams.has('agent') && method === 'GET')
       return send(await s.pelotonListenApi(url.searchParams.get('agent'), url.searchParams.get('task')));
+    if (parts.length === 2 && parts[1] === 'open' && url.searchParams.has('agent') && method === 'GET')
+      return send(await s.pelotonOpenApi(url.searchParams.get('agent'), url.searchParams.get('task')));
     if (parts.length === 2 && method === 'GET') return send(await s.pelotonDetailApi(parts[1]));
     if (parts.length === 2 && method === 'POST')
       return send(await (via === 'cookie' ? s.pelotonOwnerPostApi(parts[1], body) : s.pelotonPostApi(parts[1], body)));

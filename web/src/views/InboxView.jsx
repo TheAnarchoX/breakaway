@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Check, CircleCheck, FastForward, Inbox, Plug, Siren, TriangleAlert, X } from 'lucide-preact';
+import { Check, CircleCheck, FastForward, Inbox, Newspaper, Plug, Siren, TriangleAlert, X } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { HORIZONS, NOTICE_LABEL, PING_KIND_LABEL as KIND_LABEL, ago } from '../lib/model.js';
 import {
@@ -18,6 +18,7 @@ import {
 import { Title } from '../lib/richtext.jsx';
 import { Dialog, RepoChip, Dictate } from '../components/ui.jsx';
 import { IncidentWhere, stepNote } from '../components/Incidents.jsx';
+import { countsWords, digestHref } from '../components/ChaseDigest.jsx';
 
 const link = (wid) => (
   <a class="wid" href={hashFor({ task: wid })}>
@@ -527,6 +528,61 @@ function ChaseCard({ chase: x }) {
   );
 }
 
+/**
+ * A chase's newest digest (BRK-277): what merged, what waits for you, and what's stuck since the last one. The next
+ * replaces it; it never counts on the bell.
+ * @param {Record<string, any>} props
+ */
+function DigestCard({ digest: x }) {
+  const [busy, setBusy] = useState(false);
+  const dismiss = async () => {
+    setBusy(true);
+    await dismissInboxItem('digest', x);
+    setBusy(false);
+  };
+  const label = `${x.kind === 'final' ? 'Last digest' : 'Digest'}: ${x.title}`;
+  const href = digestHref(x.feature, x.id);
+  return (
+    <li class="ping notice">
+      <article aria-label={label}>
+        <header class="ping-head">
+          <span class="ping-kind">{x.kind === 'final' ? 'Last digest' : 'Digest'}</span>
+          <a class="event-task" href={href}>
+            <Newspaper size={15} aria-hidden="true" /> {x.title}
+          </a>
+          <span class="meta">
+            <time dateTime={x.at}>{ago(x.at)}</time>
+          </span>
+        </header>
+        <p class="ping-message">{x.kind === 'final' ? x.headline : `${countsWords(x.counts)}.`}</p>
+        {x.waiting.length > 0 && (
+          <ul class="dg-list">
+            {x.waiting.map((w) => (
+              <li key={w.wid ?? w.description}>
+                {w.wid ? (
+                  <a class="wid" href={hashFor({ task: w.wid })}>
+                    {w.wid}
+                  </a>
+                ) : null}{' '}
+                <span class="meta">{w.why}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div class="ping-actions">
+          <a class="btn btn-primary btn-sm" href={href}>
+            Open the digest<span class="visually-hidden"> {x.title}</span>
+          </a>
+          <button type="button" class="btn btn-quiet btn-sm" disabled={busy} onClick={dismiss}>
+            <X size={16} aria-hidden="true" />
+            Dismiss<span class="visually-hidden"> {label}</span>
+          </button>
+        </div>
+      </article>
+    </li>
+  );
+}
+
 export function InboxView() {
   const state = pings.value;
   const [applying, setApplying] = useState(null);
@@ -629,9 +685,20 @@ export function InboxView() {
           </ol>
         </section>
       )}
-      {(state.notices.length > 0 || state.chases.length > 0 || incidentPings.length > 0) && others.length > 0 && (
-        <h2 class="kicker inbox-pings-title">Pings</h2>
+      {state.digests.length > 0 && (
+        <section class="inbox-notices" aria-labelledby="digests-title">
+          <h2 id="digests-title" class="kicker">
+            Digests
+          </h2>
+          <ol class="pings">
+            {state.digests.map((x) => (
+              <DigestCard key={x.id} digest={x} />
+            ))}
+          </ol>
+        </section>
       )}
+      {(state.notices.length > 0 || state.chases.length > 0 || state.digests.length > 0 || incidentPings.length > 0) &&
+        others.length > 0 && <h2 class="kicker inbox-pings-title">Pings</h2>}
       <ol class="pings" aria-label="Open pings">
         {others.map((p) => (
           <PingCard key={p.id} ping={p} focused={String(p.id) === focus} onApply={() => setApplying(p.id)} />
