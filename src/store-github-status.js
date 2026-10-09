@@ -9,9 +9,14 @@
  * shows it open: the override covers the outage as it reads then, and the board holds again as soon as the page
  * reports something new (another incident, or a component's status changing). It's cleared once the page says
  * GitHub is working.
+ *
+ * Agents hear it too (BRK-279): once an outage holds the board, every running chase's peloton gets the playbook
+ * from the board, once, and when it's over, the all-clear, naming the tasks whose agents left work they couldn't
+ * push (a comment that starts `Not pushed:`).
  */
 import { AgentError } from './store-agents.js';
 import { appCredentials } from './github.js';
+import { commentsOf } from './model.js';
 import { GITHUB_STATUS_URL, describeOutage, readGitHubStatus } from './github-status.js';
 
 /** How often the status page is read: every cron run. */
@@ -30,6 +35,15 @@ const outageKey = (s) =>
     (s.affected ?? []).map((c) => `${c.name}:${c.status}`).sort(),
     (s.incidents ?? []).map((i) => i.name).sort(),
   ]);
+
+/** A handover comment for work an agent couldn't push: `Not pushed: <branch>, <what's only local>`. */
+const NOT_PUSHED = /^\s*not pushed\b/iu;
+
+/** What the board tells a chase's agents when GitHub goes down (BRK-279); the core prompt says the same. */
+export const OUTAGE_PLAYBOOK =
+  'Keep your work committed on your branch, and stop retrying pushes and pull requests until the board says GitHub works again. ' +
+  'If you have to stop, comment on your task first: `Not pushed: <branch>, <what isn’t pushed>`, then release it or wait. ' +
+  'Chases start nothing new, and Keep branches up to date and Merge when green wait.';
 
 const iso = (ms) => (ms ? new Date(Number(ms)).toISOString() : null);
 const clip = (text, n = 200) => {
@@ -80,7 +94,60 @@ export const githubStatusMethods = {
     this.setMeta('gh_status', JSON.stringify(next));
     // Once the page says GitHub is working, the owner's override has done its job.
     if (!next.error && !next.disrupted) this.setMeta('gh_status_override', null);
+    this.outageNotice();
     return next;
+  },
+
+  /**
+   * Tells the running chases' agents about an outage (BRK-279). While the board holds for one, each chase that's on
+   * gets the playbook once (a chase started during it gets it at the next reading). Once the board stops holding
+   * because the page says GitHub works or the owner said so, each chase that's on gets the all-clear, with the tasks
+   * in it that carry a `Not pushed:` comment since the outage began. A page that's gone quiet says neither: the next
+   * reading decides. Never throws: telling the agents mustn't stop the board's own work.
+   */
+  outageNotice() {
+    try {
+      this.loadTasks();
+      const told = JSON.parse(this.meta('gh_outage_told') ?? 'null');
+      const outage = this.githubOutage();
+      if (outage) {
+        const chases = this.chasing() ? this.openChases() : [];
+        const fresh = chases.filter(({ row }) => !told?.chases?.includes(row.slug));
+        if (!fresh.length && told) return;
+        for (const { row } of fresh)
+          this.pelotonLine(row.slug, 'outage', `GitHub is down (${describeOutage(outage)}). ${OUTAGE_PLAYBOOK}`);
+        const since = Number(told?.since ?? outage.since ?? Date.now());
+        const slugs = [...(told?.chases ?? []), ...fresh.map(({ row }) => row.slug)];
+        this.setMeta('gh_outage_told', JSON.stringify({ since, chases: slugs }));
+        return;
+      }
+      if (!told) return;
+      const s = JSON.parse(this.meta('gh_status') ?? 'null');
+      if (!this.githubOverride() && (s?.error || s?.disrupted)) return;
+      this.setMeta('gh_outage_told', null);
+      if (!this.chasing()) return;
+      for (const { row, tasks } of this.openChases()) {
+        const left = [...tasks]
+          .filter((uuid) => this.tasks.get(uuid)?.status === 'pending' && this.notPushedSince(uuid, told.since))
+          .map((uuid) => this.tasks.get(uuid).wid ?? uuid.slice(0, 8))
+          .sort();
+        const which = left.length
+          ? ` Work that wasn’t pushed: ${left.join(', ')}. Whoever picks one up, read its Not pushed comment first.`
+          : '';
+        this.pelotonLine(row.slug, 'clear', `GitHub works again: pushing is safe, and the chase carries on.${which}`);
+      }
+    } catch (error) {
+      console.error('the outage notice failed', error);
+    }
+  },
+
+  /** Whether task `uuid` has a `Not pushed:` comment from `since` (ms) on. */
+  notPushedSince(uuid, since) {
+    const map = this.tasks.get(uuid);
+    if (!map) return false;
+    return commentsOf(map).some(
+      (c) => NOT_PUSHED.test(c.text) && Date.parse(c.at) >= Math.floor(Number(since) / 1000) * 1000,
+    );
   },
 
   /** The last reading if it says GitHub is disrupted and is recent enough to act on, else null, override or not. */
@@ -112,11 +179,13 @@ export const githubStatusMethods = {
     if (typeof on !== 'boolean') throw new AgentError('say on: true or on: false', 400);
     if (!on) {
       this.setMeta('gh_status_override', null);
+      this.outageNotice();
       return;
     }
     const s = this.githubDisruption();
     if (!s) throw new AgentError('GitHub’s status isn’t holding anything, so there’s nothing to override', 409);
     this.setMeta('gh_status_override', JSON.stringify({ at: Date.now(), key: outageKey(s) }));
+    this.outageNotice();
   },
 
   /** POST /api/connections/github-status/override (the signed-in browser only): the override, then the report. */

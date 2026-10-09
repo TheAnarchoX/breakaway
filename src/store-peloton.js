@@ -46,6 +46,8 @@ export const HUDDLE_MS = 20 * 60_000;
 export const HUDDLE_EVERY_MS = 30 * 60_000;
 export const PLAN_MAX = 4000;
 const WHY_MAX = 300;
+/** The board's lines that reach agents as urgently as the owner's: GitHub going down and working again (BRK-279). */
+const BOARD_URGENT = new Set(['outage', 'clear']);
 /** Names no agent posts as: the owner's posts and the board's lines carry them. */
 const RESERVED = new Set(['owner', 'board']);
 /** `@<agent name>` or `@captain`, not inside a word or an address; a name's trailing punctuation isn't part of it. */
@@ -444,9 +446,9 @@ export const pelotonMethods = {
     );
     const toYou = (row) => row.kind === 'reply' && mine.has(row.reply_to);
     const mentionsYou = (row) => mentionsOf(row).includes(name);
-    // The spec's order: the owner's, huddles opening and closing, mentions and replies, plan changes, the rest.
+    // The spec's order: the owner's (and the board's outage lines), huddles opening and closing, mentions and replies, plan changes, the rest.
     const rank = (row) =>
-      row.agent === 'owner' && !row.task
+      (row.agent === 'owner' && !row.task) || (row.agent === 'board' && BOARD_URGENT.has(row.kind))
         ? 0
         : row.kind === 'huddle' || row.kind === 'outcome'
           ? 1

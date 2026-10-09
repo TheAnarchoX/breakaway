@@ -283,4 +283,85 @@ describe('the board watching GitHub’s status page', () => {
     expect(fires).toHaveLength(1);
     expect((await withPage((s) => s.featureWithChase('calm'))).chase.held).toBeUndefined();
   });
+
+  it('tells a running chase’s agents what to do once per outage, and when it’s over, which work wasn’t pushed', async () => {
+    const res = await body(
+      await api('tasks', {
+        method: 'POST',
+        body: [
+          { description: 'Ride one', project: 'ops', tags: ['agent', 'storm'], horizon: 'now' },
+          { description: 'Ride two', project: 'ops', tags: ['agent', 'storm'], horizon: 'now' },
+        ],
+      }),
+    );
+    const [one, two] = res.tasks.map((t) => t.wid);
+    expect((await api('features', { method: 'POST', body: { slug: 'storm' } })).status).toBe(201);
+    await withPage((s) => s.chaseFeature('storm', { on: true }));
+    const lines = () =>
+      inStore((s) => s.pelotonPosts('chase:storm').filter((p) => p.agent === 'board' && p.kind !== 'open'));
+    expect(await lines()).toEqual([]);
+
+    status.answer = summary({ components: { 'Git Operations': 'major_outage' } });
+    await check();
+    await check();
+    let posts = await lines();
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatchObject({ kind: 'outage' });
+    expect(posts[0].text).toMatch(/^GitHub is down \(Git Operations: major outage\)\. Keep your work committed/u);
+    expect(posts[0].text).toMatch(/stop retrying pushes/u);
+    expect(posts[0].text).toMatch(/Not pushed: <branch>/u);
+
+    // An agent riding the chase (the chase started it) gets it as urgently as the owner's post.
+    const rider = await inStore((s) => s.tasks.get(s.resolve(one)).claim);
+    expect(rider).toBeTruthy();
+    const heard = await inStore((s) => s.takePeloton(rider, { urgent: true }));
+    expect(heard.posts.find((p) => p.kind === 'outage')).toMatchObject({ agent: 'board', urgent: true });
+
+    // The page going quiet says nothing either way.
+    status.code = 503;
+    await check();
+    expect(await lines()).toHaveLength(1);
+
+    await api(`tasks/${one}/annotate`, {
+      method: 'POST',
+      body: { text: 'Not pushed: claude/storm-1, the last two commits' },
+    });
+    await api(`tasks/${two}/annotate`, { method: 'POST', body: { text: 'Pushed everything' } });
+    Object.assign(status, { answer: summary(), code: 200 });
+    await check();
+    await check();
+    posts = await lines();
+    expect(posts).toHaveLength(2);
+    expect(posts[1]).toMatchObject({ kind: 'clear' });
+    expect(posts[1].text).toBe(
+      `GitHub works again: pushing is safe, and the chase carries on. Work that wasn’t pushed: ${one}. Whoever picks one up, read its Not pushed comment first.`,
+    );
+  });
+
+  it('gives the all-clear when the owner treats GitHub as working, and the playbook again for the next outage', async () => {
+    const lines = () =>
+      inStore((s) => s.pelotonPosts('chase:storm').filter((p) => p.agent === 'board' && p.kind !== 'open'));
+    // The last outage's handover was written a minute ago.
+    await inStore((s) => {
+      for (const [uuid, map] of s.tasks) {
+        const keys = Object.keys(map).filter((k) => k.startsWith('annotation_'));
+        for (const key of keys) {
+          map[`annotation_${Number(key.slice(11)) - 60}`] = map[key];
+          delete map[key];
+        }
+        if (keys.length) s.saveTasks([uuid]);
+      }
+    });
+    status.answer = summary({ components: { Actions: 'major_outage' } });
+    await check();
+    expect((await lines()).map((p) => p.kind)).toEqual(['outage', 'clear', 'outage']);
+    await withPage((s) => s.githubStatusOverride({ on: true }));
+    const posts = await lines();
+    expect(posts.map((p) => p.kind)).toEqual(['outage', 'clear', 'outage', 'clear']);
+    // The earlier outage's handover isn't this one's.
+    expect(posts[3].text).toBe('GitHub works again: pushing is safe, and the chase carries on.');
+    status.answer = summary();
+    await check();
+    expect(await lines()).toHaveLength(4);
+  });
 });

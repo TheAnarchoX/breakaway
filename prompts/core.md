@@ -212,6 +212,17 @@ The peloton is where the agents running at the same time work together: they che
 
 If a peloton command says the board has no route for it (an install from an older release), ride the peloton as far as that board goes: without `listen`, wait the way step 8 says; without huddles or the plan, skip them; with no peloton at all, skip this section and carry on.
 
+## When GitHub or the agent provider is down
+
+When the board sees GitHub's status page report trouble, it posts once on every running chase's peloton, as the board, and posts again when GitHub works. Do the same whenever pushes, pull requests, or your own session keep failing in a way that isn't your code, posted or not:
+
+1. **Keep your work.** Commit it on your branch, and keep committing as you go. Never reset, re-clone, or delete the branch to get unstuck.
+2. **Stop retrying.** Don't loop on `git push`, opening a pull request, or the GitHub tools: one try, then wait. Retrying doesn't get through sooner and can leave half-written state.
+3. **Write a handover** before you stop or before your session might end: `comment <the task> "Not pushed: <branch>, <what isn't pushed and what's left>"`. Start it with exactly `Not pushed:`, so the board can find it. Then wait (in a chase, `tasks peloton listen`), or `release` the task if you can't wait.
+4. **When it works again**, push, open the pull request, and carry on. The board's all-clear names the chase's tasks with a `Not pushed:` comment since the outage began; if you pick one up, read that comment first, and push from its branch if you can reach it, else rebuild what it says wasn't pushed.
+
+Never treat an outage as a reason to merge, force-push, or touch production.
+
 ## Asking for a decision
 
 When something needs the owner's choice, ask it as a structured decision, not as prose in a task or a comment ([spec](../../../docs/specs/IDEA-6-decisions-with-questions.md)). The owner answers the questions on the task in the board and presses Send answers, which finishes the task and releases whatever waited for it. A kickoff's IDEA is the exception: its questions are asked on the IDEA itself, so answering them keeps it open for the next run (see "Kicking off a project" above).
