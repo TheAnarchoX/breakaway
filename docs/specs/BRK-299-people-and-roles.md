@@ -22,7 +22,7 @@ This spec decides who can be in an install, how they sign in, what each role may
 - **The person who runs the board decides,** and now that can be "the people you trust": maintainers merge, deploy, and approve in the repositories the owner gives them. Agents still never merge, deploy, or approve on their own word, whoever started them. The press-only rule, where only a signed-in browser can do these things and never a bearer token, stays exactly as it is.
 - **One claim per task, and pull requests close tasks.** Unchanged. A person who claims a task by hand holds it like an agent does.
 - **Taskwarrior stays a first-class way in,** for the owner. Sync replicates the whole task set under one client ID and sync key, so it stays the owner's (point 2).
-- **The owner's direction (8 Oct, on this task):** the owner is, and stays, the account behind the board's token. It's not a login the token unlocks, and nothing anyone else does changes who the owner is. There's no email anywhere, not even optional. People join through an invite link shared by hand. A person who loses their passkey or token is Reset by someone who manages people, and the owner recovers with the token. No self-service reset.
+- **The owner's direction (8 Oct, on this task):** the owner is, and stays, the account behind the board's token. It's not a separate login the token opens, and nothing anyone else does changes who the owner is. There's no email anywhere, not even optional. People join through an invite link shared by hand. A person who loses their passkey or token is Reset by someone who manages people, and the owner recovers with the token. No self-service reset.
 
 ## Words
 
@@ -36,7 +36,7 @@ The board's words (ID-5 owns them; DOC-46 adds these to the brand guide):
 | **the owner** | The person behind the board's token. In the board's own words it's still "you" when the owner is the reader, and "the owner" only where someone else reads it ("Only the owner can connect a provider.") | admin, superuser, root |
 | **passkey** | How people sign in on the web | password (there are none), WebAuthn (fine in code) |
 | **personal token** | A person's own token for their CLI and MCP | API key, PAT |
-| **Reset** | Revoke someone's passkeys, tokens, and sessions, and make them a new invite | recover, unlock |
+| **Reset** | Revoke someone's passkeys, tokens, and sessions, and make them a new invite | recover |
 
 "admin" in the owner's 8 Oct note means whoever manages people. In this spec that's the owner, and a maintainer for the people inside their own repositories (point 3).
 
