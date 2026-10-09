@@ -6,7 +6,7 @@
  *   /github/*     GitHub App webhooks and the end of its setup (docs/specs/CLD-24-github.md)
  *   /mcp          the board as an MCP server, for agents' MCP clients (token only; docs/specs/IDEA-24-mcp-server.md)
  *   /oauth/*, /.well-known/oauth-*  the sign-in MCP apps use for /mcp, approved by the owner on the board (BRK-157)
- *   /login        exchanges the token for a cookie; /logout clears it
+ *   /login        exchanges the token for a cookie; /logout clears it (and ends a person's session)
  *   everything else: the web app's static files (./public)
  *
  * Logs hold no task content: only what failed and why.
@@ -24,6 +24,7 @@ import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
 import { RUNNER_HEADER } from './infra-runner.js';
 import { plansDates } from './store-features.js';
+import { endPersonSession, peopleOwnerApi, peoplePublic, personApi, personOf } from './people.js';
 
 export { TaskStore } from './store.js';
 
@@ -86,7 +87,10 @@ export default {
       return withHeaders(await githubWebhook(request, env));
     if (url.pathname === '/github/connected' && request.method === 'GET') return githubConnected(url, env);
     if (url.pathname === '/login' && request.method === 'POST') return login(request, env);
-    if (url.pathname === '/logout' && request.method === 'POST') return logout(request);
+    if (url.pathname === '/logout' && request.method === 'POST') {
+      if (sameOrigin(request)) await endPersonSession(request, store(env));
+      return logout(request);
+    }
     return env.ASSETS.fetch(request);
   },
 
@@ -354,8 +358,17 @@ async function handleImages(request, env, url, method, via) {
 let cliNotedAt = 0;
 
 async function handleApi(request, env, url, ctx) {
+  // Signing in with a passkey, and joining by invite, need no credential: they're how a person gets one (BRK-300).
+  const open = await peoplePublic(request, env, url, store(env));
+  if (open) return open;
   const via = await authenticate(request, env);
-  if (!via) return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
+  if (!via) {
+    // Not the owner. A person's credential goes to their own routes and nowhere else, so it never reaches a gate
+    // below, the owner's cookie-only ones included (docs/specs/BRK-299-people-and-roles.md, point 9).
+    const person = await personOf(request, store(env));
+    if (person) return personApi(request, env, url, person, store(env));
+    return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
+  }
   // A call with the token is the CLI (or a script with it), never the web board's cookie: Set up the board's CLI step (BRK-143).
   if (via === 'token' && Date.now() - cliNotedAt > 60_000) {
     cliNotedAt = Date.now();
@@ -390,6 +403,8 @@ async function handleApi(request, env, url, ctx) {
     const { name, url: home, docs } = install(env);
     return json(200, { ok: true, via, install: { name, url: home ?? url.origin, docs } });
   }
+  const people = await peopleOwnerApi(parts, method, body, via, s);
+  if (people) return people;
   if (parts[0] === 'health' && method === 'GET') {
     const result = await s.health();
     // Which install this is, so the owner's commands that write its secrets refuse another's config (BRK-95):
