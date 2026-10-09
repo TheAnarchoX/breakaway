@@ -493,8 +493,12 @@ export const infraShortLivedMethods = {
    */
   shortLivedAskApi(ref, body = {}) {
     return this.run(async () => {
-      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner asks from the board; an agent tags its task +environment', 403);
+      this.allowOn(
+        body,
+        'short-lived.ask',
+        () => this.repoOfRef(ref),
+        'only the owner asks from the board; an agent tags its task +environment',
+      );
       const uuid = this.resolve(ref);
       const row = await this.askShortLived(uuid, { by: 'owner' });
       return { status: 201, body: { shortLived: this.shortLivedOut(row) } };

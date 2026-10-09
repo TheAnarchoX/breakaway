@@ -235,6 +235,12 @@ DOC-46 makes these edits, in the pull request that ships the last of the build:
 
 - The new tables (`people`, `grants`, `invites`, `passkeys`, `person_tokens`, `sessions`, `approval_rules`) start empty. `CREATE TABLE IF NOT EXISTS` and the store's `PRAGMA` upgrades add the new columns (`agent_runs.for_person`, `infra_audit.person`, the connection's `person`).
 - **Refused by default until roles are enforced.** The owner can cut a pre-release from `main` between any two of the build's pull requests, so each one must be safe on its own. Until BRK-301 and BRK-323 have both merged, a person's session or personal token is refused everything except signing in and out and managing their own passkeys, tokens, and sessions. A person's cookie never passes the owner's cookie-only gates. BRK-300 ships this way; BRK-301 and BRK-323 open up what each role may do. (The chase captain's call.)
+  - **What BRK-301 opens, and what still waits.** A person's writes go through the routes, each gated by role. Every read is still refused until BRK-323, and a write's answer is cut to `{ ok, id, wid }` and the error text, so nothing from another repository shows. Some writes the role allows still wait:
+    - a start, which runs on the starter's own Claude, waits for BRK-302;
+    - a press that writes the infrastructure audit (approve, reject, envelopes, freeze, policy, break-glass, environments, plans) waits for BRK-303, because the audit is append-only and can't name a person yet;
+    - a press that agents or the inbox would read as the owner's (answering a decision, messages, quotes, peloton posts and the chase's plan, applying a ping) also waits for BRK-303.
+
+    Each of these refusals says what it waits for. (The chase captain's calls, on BRK-301.)
 - With no people, every check resolves to the owner, as now: the board's token and the owner's cookie pass everything they pass today. Every existing owner test keeps passing unchanged (the chase's rule).
 - The two install-wide rows that tighten (agent settings, closing a horizon) need the owner. The owner's CLI and cookie are the owner, so nothing visible changes.
 - The web board shows **People** in Settings with an empty state: "Just you. Invite someone to work on a repository with you." The sign-in page is unchanged until someone has a passkey.

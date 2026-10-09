@@ -25,7 +25,6 @@ import {
 const DAY_MS = 86_400_000;
 
 /** The owner: a request with no `by`, or `owner`. */
-const isOwner = (by) => by === undefined || by === null || by === '' || by === 'owner';
 
 const READ_ONLY =
   'This is a signal from Architect. Read only: diagnose, note what you find on the task, and propose any change by pull request; never change infrastructure or production yourself. The one change this run may ask for is a scale or restart, with `npx breakaway infra act <environment> <resource> scale <n>|restart` and BREAKAWAY_ACT_KEY set to the Act key in the run’s payload (a secret: never write it anywhere else): it applies only inside the envelope the owner approved, and otherwise waits for the owner.';
@@ -76,9 +75,10 @@ export const infraRunbooksMethods = {
    * @param {Record<string, unknown>} input
    */
   setRunbook(slug, input) {
-    if (!isOwner(input.by))
-      throw new AgentError('only the owner adds, changes, or turns on a routine’s signal trigger', 403);
+    const words = 'only the owner adds, changes, or turns on a routine’s signal trigger';
+    if (this.actorIn(input).agent) this.allow(input, 'runbook.trigger', null, words);
     const routine = this.routineRow(slug);
+    this.allow(input, 'runbook.trigger', this.routineRepo(routine.repo), words);
     const t = signalTrigger(input, this.runbookOf(routine.slug) ?? undefined);
     this.sql.exec(
       'INSERT OR REPLACE INTO infra_runbooks (slug, environments, resource_kinds, kinds, level, enabled, start, edited_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -96,9 +96,11 @@ export const infraRunbooksMethods = {
   },
 
   /** Removes a routine's signal trigger. The owner's only. */
-  removeRunbook(slug, by) {
-    if (!isOwner(by)) throw new AgentError('only the owner removes a routine’s signal trigger', 403);
+  removeRunbook(slug, input) {
+    const words = 'only the owner removes a routine’s signal trigger';
+    if (this.actorIn(input).agent) this.allow(input, 'runbook.trigger', null, words);
     const routine = this.routineRow(slug);
+    this.allow(input, 'runbook.trigger', this.routineRepo(routine.repo), words);
     const gone = this.sql.exec('DELETE FROM infra_runbooks WHERE slug = ? RETURNING slug', routine.slug).toArray();
     if (!gone.length) throw new AgentError(`“${routine.name}” has no signal trigger`, 404);
     this.sql.exec('DELETE FROM infra_runbook_seen WHERE slug = ?', routine.slug);
@@ -217,7 +219,7 @@ export const infraRunbooksMethods = {
 
   /** DELETE /api/infra/runbooks/<slug>: the owner removes one, from the signed-in web board. */
   runbookRemoveApi(slug, body) {
-    return this.run(async () => ({ status: 200, body: this.removeRunbook(slug, body?.by) }));
+    return this.run(async () => ({ status: 200, body: this.removeRunbook(slug, body ?? {}) }));
   },
 };
 

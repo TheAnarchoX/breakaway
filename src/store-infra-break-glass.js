@@ -215,9 +215,13 @@ export const infraBreakGlassMethods = {
    */
   breakGlassMarkApi(ref, body = {}) {
     return this.run(async () => {
-      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner marks drift as break-glass; agents read it', 403);
       const repo = body.repo ? String(body.repo).trim().toLowerCase() : null;
+      this.allowOn(
+        body,
+        'drift.break-glass',
+        () => this.environmentRow(ref, repo).repo,
+        'only the owner marks drift as break-glass; agents read it',
+      );
       const marked = await this.markBreakGlass(ref, { repo, note: body.note });
       return { status: marked.already ? 200 : 201, body: marked };
     });

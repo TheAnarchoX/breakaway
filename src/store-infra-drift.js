@@ -416,9 +416,13 @@ export const infraDriftMethods = {
    */
   driftCheckApi(ref, body = {}) {
     return this.run(async () => {
-      if (body.by !== undefined && body.by !== null && body.by !== '' && body.by !== 'owner')
-        throw new AgentError('only the owner or the board compares an environment; agents read drift', 403);
       const repo = body.repo ? String(body.repo).trim().toLowerCase() : null;
+      this.allowOn(
+        body,
+        'inventory.refresh',
+        () => this.environmentRow(ref, repo).repo,
+        'only the owner or the board compares an environment; agents read drift',
+      );
       return { status: 200, body: { drift: await this.checkInfraDrift(ref, { repo }) } };
     });
   },

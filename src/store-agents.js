@@ -14,6 +14,7 @@ import { holdsTask, runState } from './run-state.js';
 import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
 import { repoSlugOf, routineCaps } from './repos.js';
+import { OWNER, OWN_CLAUDE } from './permissions.js';
 import { specPrompt } from './spec-prompt.js';
 import { REFINE_FEATURE_TITLE, featurePrompt } from './feature-prompt.js';
 import { normalPath } from './specs.js';
@@ -346,6 +347,10 @@ export const agentsMethods = {
     // How Claude's refusal held the routine after this run failed, and until when (WEB-41): Retrying or Paused.
     if (!columns.includes('hold')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN hold TEXT');
     if (!columns.includes('hold_until')) this.sql.exec('ALTER TABLE agent_runs ADD COLUMN hold_until INTEGER');
+    // Who the run is for (BRK-301): the person who started it, or whose routine it is; `owner` for the owner's starts,
+    // autostart, and the board's own. Runs from before were all the owner's.
+    if (!columns.includes('for_person'))
+      this.sql.exec("ALTER TABLE agent_runs ADD COLUMN for_person TEXT NOT NULL DEFAULT 'owner'");
     // Fix agents started on each pull request since it was last green, and when a third became Needs you (BRK-145).
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS pr_fixes (
@@ -1511,9 +1516,21 @@ export const agentsMethods = {
    */
   async startAgent(
     uuid,
-    { trigger = 'manual', note = null, kind = 'build', pr = null, routine = null, force = false, warn = false } = {},
+    {
+      trigger = 'manual',
+      note = null,
+      kind = 'build',
+      pr = null,
+      routine = null,
+      force = false,
+      warn = false,
+      forPerson = OWNER,
+    } = {},
   ) {
     await this.ready();
+    // A person's agents run on their own Claude routine (BRK-302): until a person can connect one, only the owner's
+    // starts run, on the repository's routine, as before.
+    if (forPerson !== OWNER) throw new AgentError(OWN_CLAUDE, 403);
     if (kind === 'routine' && !routine) throw new AgentError('a routine run needs its routine', 400);
     if (kind === 'general' && !this.tasks.get(uuid)?.tag_general)
       throw new AgentError('that task isn’t a general agent’s', 400);
@@ -1594,7 +1611,7 @@ export const agentsMethods = {
     );
     const runId = this.sql
       .exec(
-        "INSERT INTO agent_runs (task, agent, trigger, kind, status, note, started, repo, forced) VALUES (?, ?, ?, ?, 'starting', ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO agent_runs (task, agent, trigger, kind, status, note, started, repo, forced, for_person) VALUES (?, ?, ?, ?, 'starting', ?, ?, ?, ?, ?) RETURNING id",
         uuid,
         agent,
         trigger,
@@ -1603,6 +1620,7 @@ export const agentsMethods = {
         Date.now(),
         repo.slug,
         force ? 1 : 0,
+        forPerson,
       )
       .one().id;
 
@@ -2165,11 +2183,12 @@ export const agentsMethods = {
    * routines' daily cap to its defaults, and brings every cap above its ceilings down to them, so `max` and
    * `hourly` in the same request are checked against the new plan. Only the owner picks the plan (`by`).
    */
-  async updateAgentSettings({ plan, max, hourly, autostart, alerts, perArea, by }) {
+  async updateAgentSettings({ plan, max, hourly, autostart, alerts, perArea, by, actor }) {
     await this.ready();
+    // The settings are install-wide, so the owner's (BRK-301); an agent on the owner's token never picks the plan.
+    if (!this.ownerActs({ actor })) this.allow({ actor, by }, 'agent.settings');
     if (plan !== undefined) {
-      if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-        throw new AgentError('only the owner picks the Claude plan', 403);
+      this.allow({ actor, by }, 'agent.settings', null, 'only the owner picks the Claude plan');
       if (!isPlan(plan)) throw new AgentError(`the plan is one of ${Object.keys(PLANS).join(', ')}`, 400);
       this.writable();
       this.applyPlan(plan);

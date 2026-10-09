@@ -269,8 +269,9 @@ export const infraTokensMethods = {
    */
   infraTokensMakeApi(name, { repo: slug } = {}, body = {}) {
     return this.run(async () => {
-      this.ownerOnlyRoutineKeep(body?.by, 'makes a GitHub environment');
-      const repo = this.repoBySlug(String(slug || this.defaultRepoSlug()).toLowerCase());
+      const target = String(slug || this.defaultRepoSlug()).toLowerCase();
+      this.ownerOnlyRoutineKeep(body, 'makes a GitHub environment', 'github-environment.make', target);
+      const repo = this.repoBySlug(target);
       if (!repo) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
       const github = String(name ?? '').toLowerCase();
       const group = this.tokenEnvironments(repo.slug).find((g) => g.github === github);

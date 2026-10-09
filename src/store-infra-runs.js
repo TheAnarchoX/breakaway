@@ -97,9 +97,6 @@ const staleRunner = (error, row, env) =>
     ? `; render ${RUNNER_WORKFLOW} again with npx breakaway infra init --update and merge it`
     : '';
 
-/** Whether `by` is the owner's: the signed-in board sends none, or `owner`. */
-const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
-
 /** @param {string} message @param {number} [status] */
 const refuse = (message, status = 409) => {
   throw new RunRefused(message, status);
@@ -878,7 +875,12 @@ export const infraRunsMethods = {
   /** POST /api/infra/plans/<id>/start-again: the owner's, from the signed-in board only (BRK-308). */
   runStartAgainApi(ref, body = {}) {
     return this.run(async () => {
-      if (!owners(body.by)) throw new AgentError('only the owner starts a plan’s run again, from the board', 403);
+      this.allowOn(
+        body,
+        'plan.start-again',
+        () => this.planRow(ref).repo,
+        'only the owner starts a plan’s run again, from the board',
+      );
       return { status: 200, body: { run: await this.startInfraRunAgain(ref) } };
     });
   },

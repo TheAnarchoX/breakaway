@@ -98,6 +98,7 @@ import { infraCurrencyMethods } from './store-infra-currency.js';
 import { infraShortLivedMethods } from './store-infra-short-lived.js';
 import { infraTokensMethods } from './store-infra-tokens.js';
 import { peopleMethods } from './store-people.js';
+import { permissionsMethods } from './store-permissions.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -951,7 +952,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   submitDecision(ref, body) {
     return this.run(async () => {
       const uuid = this.resolve(ref);
-      ownerOnly(body?.by, body?.carryOn ? 'answer a decision and start the next run' : 'answer a decision');
+      this.allowDecision(body, uuid, body?.carryOn ? 'answer a decision and start the next run' : 'answer a decision');
       const task = this.detail(uuid);
       if (!task.decision) throw new InputError(`${label(task)} has no decision to answer`);
       const kickoff = isKickoffIdea(task);
@@ -976,7 +977,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const repo = body?.carryOn ? this.repoOfTask(this.tasks.get(uuid)) : null;
       if (repo) await this.checkRoutineReady(repo.slug);
       const answered = this.change(uuid, {
-        decisionAnswers: { by: 'owner', at: new Date().toISOString(), answers },
+        // Who answered: the owner, or the maintainer who did (BRK-301).
+        decisionAnswers: { by: this.actorIn(body).person, at: new Date().toISOString(), answers },
         removeTags: ['decide'],
         ...(keepOpen ? {} : { status: 'completed' }),
         // A routine maker's task was made to start by itself; once answered it waits for carry on or a Start.
@@ -1012,15 +1014,17 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   reopenDecision(ref, body) {
     return this.run(() => {
       const uuid = this.resolve(ref);
-      ownerOnly(body?.by, 'reopen a decision');
+      this.allowDecision(body, uuid, 'reopen a decision');
       const task = this.detail(uuid);
+      const who = this.actorIn(body).person;
+      const reopened = `Decision reopened by ${who === 'owner' ? 'the owner' : who}.`;
       if (!task.decision || !task.decisionAnswers)
         throw new Conflict(`${label(task)} has no submitted decision`, { task });
       if ((isKickoffIdea(task) || isRoutineMaker(task)) && task.status === 'pending') {
         if (task.tags.includes('decide')) throw new Conflict(`${label(task)}'s questions are open already`, { task });
         if (task.claim) throw new Conflict(`${label(task)} is claimed by ${task.claim}`, { task });
         return ok({
-          task: this.change(uuid, { addTags: ['decide'], annotate: 'Decision reopened by the owner.', by: 'board' }),
+          task: this.change(uuid, { addTags: ['decide'], annotate: reopened, by: 'board' }),
         });
       }
       if (task.status !== 'completed')
@@ -1029,11 +1033,21 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         task: this.change(uuid, {
           status: 'pending',
           addTags: ['decide'],
-          annotate: 'Decision reopened by the owner.',
+          annotate: reopened,
           by: 'board',
         }),
       });
     });
+  }
+
+  /**
+   * Answering and reopening a decision is a maintainer's in the task's repository, and a kickoff's the owner's
+   * (docs/specs/BRK-299-people-and-roles.md, point 3); an agent never answers one.
+   */
+  allowDecision(body, uuid, what) {
+    const map = this.tasks.get(uuid);
+    const action = isKickoffIdea(map) ? 'kickoff' : 'decision.answer';
+    this.allow(body, action, repoSlugOf(map, this.defaultRepoSlug()), ownerWords(what));
   }
 
   /**
@@ -1269,7 +1283,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     }
     if ('status' in input) {
       if (own.kind !== 'chase' || input.status !== 'deleted') refuse(`doesn't finish, delete, or reopen ${name}`);
-      const other = Object.keys(input).filter((k) => k !== 'status' && k !== 'by');
+      const other = Object.keys(input).filter((k) => k !== 'status' && k !== 'by' && k !== 'actor');
       if (other.length) refuse(`deletes ${name} on its own, without changing ${other.join(', ')}`);
       // Entry is in seconds: a task added in the second the chase started counts as after it.
       const added = Number(map.entry) >= Math.floor(Number(own.chaseStarted) / 1000);
@@ -1280,7 +1294,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const tags = [...arrayOf(input.addTags ?? []), ...arrayOf(input.removeTags ?? [])].map(String);
     if (tags.some((t) => t.startsWith('horizon-'))) refuse("doesn't change a horizon-* tag: that's the owner's choice");
     if ('project' in input && input.project in SHARED_AREAS) refuse(`doesn't move ${name} into ${input.project}`);
-    const allowed = new Set(['by', ...CROSS_TASK_FIELDS.flatMap(([keys]) => keys)]);
+    // `actor` is who the Worker says is behind the request (BRK-301), never a field to change.
+    const allowed = new Set(['by', 'actor', ...CROSS_TASK_FIELDS.flatMap(([keys]) => keys)]);
     const other = Object.keys(input).filter((k) => !allowed.has(k));
     if (other.length)
       refuse(
@@ -1682,6 +1697,7 @@ Object.assign(
   infraShortLivedMethods,
   infraTokensMethods,
   peopleMethods,
+  permissionsMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
@@ -1697,7 +1713,7 @@ const apiActions = {
   /** New agent: a task from a prompt, a decision's answers, a spec, or the next version, and an agent on it (the owner's). */
   agentsGeneralApi(body) {
     return this.run(async () => {
-      ownerOnly(body?.by, 'start a general agent');
+      this.allow(body, 'agent.general', repoOf(this, body?.repo), ownerWords('start a general agent'));
       const result = await this.startGeneral({
         prompt: body?.prompt,
         repo: body?.repo ?? null,
@@ -1714,9 +1730,9 @@ const apiActions = {
       return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });
   },
-  agentsStartApi(ref, note, mode, { force = false, anyway = false, by } = {}) {
+  agentsStartApi(ref, note, mode, { force = false, anyway = false, by, actor } = {}) {
     return this.run(async () => {
-      if (force) ownerOnly(by, 'force start an agent');
+      if (force) this.allow({ actor, by }, 'agent.force', this.repoOfRef(ref), ownerWords('force start an agent'));
       if (mode && !['build', 'refine', 'routine', 'general'].includes(mode))
         throw new AgentError('mode is build, refine, routine, or general', 400);
       const uuid = this.resolve(ref);
@@ -1781,7 +1797,7 @@ const apiActions = {
    */
   routinesAgentApi(body) {
     return this.run(async () => {
-      ownerOnly(body?.by, 'start an agent that makes routines');
+      this.allow(body, 'agent.general', repoOf(this, body?.repo), ownerWords('start an agent that makes routines'));
       const result = await this.startGeneral({
         prompt: body?.prompt,
         repo: body?.repo ?? null,
@@ -1800,7 +1816,7 @@ const apiActions = {
   routinesRunApi(slug, body) {
     return this.run(async () => {
       // Run now is the owner's: a routine maker's first run comes from its triggers (BRK-220 section 5).
-      this.ownerOnlyRoutines(body?.by, 'runs a routine');
+      this.allow(body, 'routine.write', repoOf(this, this.routineRow(slug).repo), 'only the owner runs a routine');
       return ok(
         await this.runRoutine(slug, { note: body?.note ? String(body.note) : null, force: Boolean(body?.force) }),
       );
@@ -1810,7 +1826,7 @@ const apiActions = {
     return this.run(async () => ok(await this.createTrigger(slug, body ?? {}), 201));
   },
   routinesTriggerRevokeApi(slug, id, body) {
-    return this.run(() => ok(this.revokeTrigger(slug, id, body?.by)));
+    return this.run(() => ok(this.revokeTrigger(slug, id, body ?? {})));
   },
   /** The public /fire endpoint: no owner token, a trigger's secret instead. Errors carry their status. */
   routinesFire(slug, secret, raw, source) {
@@ -1826,19 +1842,24 @@ const apiActions = {
   },
   routinesSettingsApi(body) {
     return this.run(() => {
-      this.ownerOnlyRoutines(body?.by, 'pauses routines or sets their daily cap');
+      this.allow(body, 'routine.settings', null, 'only the owner pauses routines or sets their daily cap');
       return ok({ settings: this.updateRoutineSettings(body ?? {}) });
     });
   },
-  fixAlertApi(number, note, repo = null, { force = false, by } = {}) {
+  fixAlertApi(number, note, repo = null, { force = false, by, actor } = {}) {
     return this.run(async () => {
-      if (force) ownerOnly(by, 'force start an agent');
+      if (force) this.allow({ actor, by }, 'agent.force', repoOf(this, repo), ownerWords('force start an agent'));
       return ok(await this.fixAlert(number, { note, repo, force: Boolean(force) }));
     });
   },
-  reviewPullApi(number, note, repo = null, { force = false, by } = {}) {
+  reviewPullApi(number, note, repo = null, { force = false, by, actor } = {}) {
     return this.run(async () => {
-      ownerOnly(by, force ? 'force start an agent' : 'start an agent that reviews a pull request');
+      this.allow(
+        { actor, by },
+        force ? 'agent.force' : 'agent.general',
+        repoOf(this, repo),
+        ownerWords(force ? 'force start an agent' : 'start an agent that reviews a pull request'),
+      );
       return ok(await this.reviewPull(number, { note, repo, force: Boolean(force) }));
     });
   },
@@ -1895,7 +1916,7 @@ const apiActions = {
   },
   fixPrApi(number, body) {
     return this.run(async () => {
-      if (body.force) ownerOnly(body.by, 'force start an agent');
+      if (body.force) this.allow(body, 'agent.force', repoOf(this, body.repo), ownerWords('force start an agent'));
       return ok(
         await this.fixPr(number, {
           problem: body.problem ? String(body.problem) : null,
@@ -2060,10 +2081,16 @@ function commentAuthor(by) {
   return agentName(name);
 }
 
-/** Deciding is the owner's: no `by`, or `owner`, is them; an agent's name isn't. */
-function ownerOnly(by, what) {
-  if (by !== undefined && by !== null && by !== '' && by !== 'owner')
-    throw new Forbidden(`only the owner can ${what}; agents ask a question and read the answer`);
+/** What an agent has always been told when it tries what only a person does (src/permissions.js decides who). */
+function ownerWords(what) {
+  return `only the owner can ${what}; agents ask a question and read the answer`;
+}
+
+/** The repository a body names, or the default one. */
+function repoOf(store, value) {
+  return value === undefined || value === null || value === ''
+    ? store.defaultRepoSlug()
+    : String(value).trim().toLowerCase();
 }
 
 function agentName(agent) {
