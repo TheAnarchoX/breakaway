@@ -43,8 +43,8 @@ function TurnOn({ onClose, onDone }) {
         <h2 id="turnon-title">Turn on updates</h2>
         <p>
           This board can install a new release itself, when you press Update. It needs a Cloudflare API token that can
-          upload and deploy this one Worker: create one with <strong>Workers Scripts: edit</strong> on your account and
-          paste it here.
+          upload and deploy this one Worker: create an account API token with <strong>Workers Editor</strong> on this
+          board’s Worker (or the legacy Workers Scripts Edit) and paste it here.
         </p>
         <p class="muted small">
           The token is kept as a secret on this board’s Worker, never shown again, and only ever sent to Cloudflare.
@@ -61,7 +61,7 @@ function TurnOn({ onClose, onDone }) {
             aria-describedby="turnon-token-hint"
           />
           <span class="field-hint" id="turnon-token-hint">
-            Create it under My profile, API tokens, on Cloudflare.
+            Create it under Manage account, Account API tokens, on Cloudflare: set its Workers to this board’s Worker.
           </span>
         </label>
         <label class="field">

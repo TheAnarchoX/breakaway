@@ -24,7 +24,8 @@ const CHECK_EVERY_MS = 5_000;
 const STALE_MS = 15 * 60_000; // an update that has shown no progress this long no longer blocks another
 const ACCOUNT = /^[0-9a-f]{32}$/u;
 
-const REFUSED = 'Cloudflare refused the token. Make a new one with Workers Scripts: edit and paste it here.';
+const REFUSED =
+  'Cloudflare refused the token. Make a new one with Workers Editor on this board’s Worker (or the legacy Workers Scripts Edit) and paste it here.';
 /** Bindings whose values the API never returns: the version keeps them. */
 const KEPT = ['secret_text', 'secret_key'];
 
@@ -104,7 +105,7 @@ export const selfUpdateMethods = {
       if (!this.selfUpdateAllowed())
         throw new AgentError('This install has a repository, which updates it. Self-update is off for it.', 409);
       if (typeof token !== 'string' || token.trim().length < 20 || token.length > 200)
-        throw new AgentError('Paste the Cloudflare API token (Workers Scripts: edit).', 400);
+        throw new AgentError('Paste the Cloudflare API token (Workers Editor on this board’s Worker).', 400);
       if (typeof accountId !== 'string' || !ACCOUNT.test(accountId.trim().toLowerCase()))
         throw new AgentError('The account ID is 32 characters of letters and digits: copy it from Cloudflare.', 400);
       const cf = new Cloudflare({

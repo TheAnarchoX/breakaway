@@ -1,8 +1,10 @@
 /**
  * The slice of Cloudflare's API a Worker uses to update itself (BRK-53, docs/specs/IDEA-20-self-updating-installs.md,
  * section 3): read its own settings and deployments, upload a Worker version (modules and web app), deploy a version,
- * and keep a secret. The token is the install's own, with Workers Scripts: edit on this one account; it is only ever
- * sent to api.cloudflare.com. Every call goes through the injected `fetchImpl`, so tests mock Cloudflare.
+ * and keep a secret. The token is the install's own, with Cloudflare's Workers Editor role on this one Worker (or the
+ * legacy Workers Scripts Edit, which is Editor on every Worker in the account; BRK-244,
+ * https://developers.cloudflare.com/workers/authorization/workers/); it is only ever sent to api.cloudflare.com.
+ * Every call goes through the injected `fetchImpl`, so tests mock Cloudflare.
  */
 
 const API = 'https://api.cloudflare.com/client/v4';

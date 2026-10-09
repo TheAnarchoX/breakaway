@@ -209,7 +209,7 @@ A board made with the Deploy to Cloudflare button has no install repository, so 
 
 **Turn it on, once.** On Connections, the Version row says **Updates from the board are off**. Press **Turn on updates…** and paste two things:
 
-- A Cloudflare API token with **Workers Scripts: edit** on your account, and nothing else. Make it under My profile, API tokens.
+- A Cloudflare account API token with **Workers Editor** on this board's Worker, and nothing else. Make it under Manage account, Account API tokens: pick Specified Workers and choose the board's Worker. (A token with the legacy **Workers Scripts Edit** still works, but it can edit every Worker on the account.)
 - Your account's ID, the 32 characters on the right of its Workers page.
 
 The board checks that the token reaches its own Worker, then keeps it as a secret on that Worker (`TASKS_UPDATE_TOKEN`). It never shows it again and sends it only to Cloudflare. A token that can edit this Worker can also change its code, so give it no more scope than that. A board with an install repository can't turn this on: its repository updates it.

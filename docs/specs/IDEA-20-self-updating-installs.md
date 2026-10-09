@@ -30,7 +30,7 @@ A deploy by the install's own Worker can't lean on "the workflow ran in my priva
 
 ### 2. The owner turns it on, once
 
-Self-update is off until the owner turns it on in Connections, on an install that has no `installRepository`. It needs a Cloudflare API token with the narrowest scope that can upload and deploy this one Worker (Workers Scripts: edit, on this account), which the owner creates and pastes into Connections. The token is stored as a Worker secret that only this install holds, is never shown again, and is never sent anywhere but Cloudflare's API.
+Self-update is off until the owner turns it on in Connections, on an install that has no `installRepository`. It needs a Cloudflare API token with the narrowest scope that can upload and deploy this one Worker (Cloudflare's Workers Editor role on this install's Worker, or the legacy Workers Scripts Edit, which is Editor on every Worker in the account; BRK-244), which the owner creates and pastes into Connections. The token is stored as a Worker secret that only this install holds, is never shown again, and is never sent anywhere but Cloudflare's API.
 
 - **Why the install holds a token that can deploy itself:** the install has to be able to change its own code. The choice of where the token lives is [question 1](#questions-for-the-owner).
 - **Turning it off** removes the token's use from the Worker and tells the owner to delete the token on Cloudflare, since breakaway can't.
@@ -61,7 +61,7 @@ The install also compares what Cloudflare reports for itself (its migrations, ro
 | State | What the person sees |
 | --- | --- |
 | Not turned on | The Version row says what's running and what's available, and **Turn on updates** explains the token it needs. |
-| Token missing or refused | "Cloudflare refused the token. Make a new one with Workers Scripts: edit and paste it here." |
+| Token missing or refused | "Cloudflare refused the token. Make a new one with Workers Editor on this board’s Worker (or the legacy Workers Scripts Edit) and paste it here." |
 | No newer release | "Up to date." |
 | Feed unreachable | "Can't read the update feed. The board keeps running as it is; try again later." |
 | Signature or checksum fails | "This release didn't pass its signature check, so it wasn't installed. Nothing changed." |
