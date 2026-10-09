@@ -491,7 +491,7 @@ async function routeApi(request, env, url, ctx, via, person) {
     const { name, url: home, docs } = install(env);
     return json(200, { ok: true, via, install: { name, url: home ?? url.origin, docs } });
   }
-  const people = await peopleOwnerApi(parts, method, body, actor, person ? store(env) : s);
+  const people = await peopleOwnerApi(parts, method, body, actor, person ? store(env) : s, env, request);
   if (people) return people;
   if (parts[0] === 'health' && method === 'GET') {
     const result = await s.health();
