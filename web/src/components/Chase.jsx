@@ -25,9 +25,9 @@ const closedToday = (chase) => !chase.on && chase.endedAt && Date.now() - Date.p
 
 /** What the chase is doing, in one line under its heading. */
 function stateLine(chase) {
-  // GitHub's status page reports trouble (BRK-217): the chase starts nothing until it's working again.
+  // GitHub's status page (BRK-217) or Claude's (BRK-315) reports trouble: the chase starts nothing until it's over.
   if (chase.on && chase.held)
-    return `On hold: ${chase.held}. It starts agents again once GitHub is working. Started ${ago(chase.startedAt)}.`;
+    return `On hold: ${chase.held}. It starts agents again by itself once that’s over. Started ${ago(chase.startedAt)}.`;
   if (chase.on) return `${chase.summary ?? 'Working it out'}. Started ${ago(chase.startedAt)}.`;
   if (chase.state === 'stopped')
     return `Stopped ${ago(chase.endedAt)}. Agents it started finish their tasks and open their pull requests.`;

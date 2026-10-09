@@ -54,6 +54,7 @@ import { infraRunbooksMethods } from './store-infra-runbooks.js';
 import { infraEventsMethods } from './store-infra-events.js';
 import { infraIncidentsMethods } from './store-infra-incidents.js';
 import { githubStatusMethods } from './store-github-status.js';
+import { claudeStatusMethods } from './store-claude-status.js';
 import { selfUpdateMethods } from './store-selfupdate.js';
 import { updatesMethods } from './store-updates.js';
 import { wizardMethods } from './store-wizard.js';
@@ -1523,6 +1524,7 @@ Object.assign(
   infraEventsMethods,
   infraIncidentsMethods,
   githubStatusMethods,
+  claudeStatusMethods,
   updatesMethods,
   selfUpdateMethods,
   wizardMethods,
