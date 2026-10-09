@@ -34,7 +34,7 @@ Nothing in the [decision log](../decisions.md) is touched. The board holds no pe
 - **Comment text is capped** (10,000 characters, like a note today).
 
 ### Existing tasks and notes
-Nothing is deleted or reordered. A one-time, repeatable backfill in the board's store (like [`backfill-shipped.js`](../../src/backfill-shipped.js)):
+Nothing is deleted or reordered. A one-time, repeatable backfill in the board's store (like `backfill-shipped.js`, since retired by BRK-98):
 1. If a task has no `brief` and its first annotation was written within a minute of the task's creation, that text is copied into `brief`. That first note *is* what the task was created with. `brief_by` is left empty (shown as "unknown").
 2. All annotations stay as comments, in order, with no author (shown as "earlier note"). A comment identical to the description is hidden in the thread, since it's the same text.
 3. A task with no such note gets no brief and shows "No description yet".

@@ -39,7 +39,6 @@ import { syncPace } from './github-pace.js';
 import { install } from './install.js';
 import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
-import { BACKFILL_SHIPPED } from './backfill-shipped.js';
 import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
 import { pullAccess } from './github-access.js';
 import { buildFlow, compareFacts, NEXT_STEPS, packageOf, pipelineOf, stableOf } from './release.js';
@@ -727,7 +726,6 @@ export const githubMethods = {
     repo,
   ) {
     const slug = repo.slug;
-    const isDefault = slug === this.defaultRepoSlug();
     // What merging deploys here: null unknown, [] nothing (no pipeline), else the files decide.
     const deployRules = patterns !== undefined ? patterns : this.knownDeployPatterns(repo);
     const initialized = Boolean(this.ghMeta('gh_initialized', slug));
@@ -957,7 +955,6 @@ export const githubMethods = {
         deploySignals = this.deploySignals(changed, slug);
         deployChanges = changed;
       }
-      if (isDefault) this.applyBackfill();
       if (releases)
         this.setGhMeta(
           'gh_releases',
@@ -1096,30 +1093,6 @@ export const githubMethods = {
       );
     }
     return shipped;
-  },
-
-  /** Marks the tasks of merged pull requests from before recorded deploys as shipped (backfill-shipped.js). Never replaces a real deploy. */
-  applyBackfill() {
-    for (const [number, deploy] of Object.entries(BACKFILL_SHIPPED)) {
-      const row = this.sql
-        .exec('SELECT data FROM gh_pulls WHERE repo = ? AND number = ?', this.defaultRepoSlug(), Number(number))
-        .toArray()[0];
-      const pr = row && JSON.parse(row.data);
-      if (pr?.state !== 'merged') continue;
-      for (const uuid of this.closingTasks(pr)) {
-        const wid = this.tasks.get(uuid)?.wid;
-        if (wid)
-          this.sql.exec(
-            'INSERT OR IGNORE INTO gh_ships (wid, env, version, sha, at, deploy, merge_sha) VALUES (?, ?, ?, ?, ?, 0, ?)',
-            wid,
-            deploy.env,
-            deploy.version,
-            deploy.sha,
-            deploy.at,
-            pr.mergeSha ?? null,
-          );
-      }
-    }
   },
 
   /** Keeps each repository's latest rows; one repository's activity never pushes out another's. */
