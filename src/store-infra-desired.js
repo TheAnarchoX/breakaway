@@ -77,6 +77,8 @@ export const infraDesiredMethods = {
     await this.readInfraPolicy(client, repo, sha, Array.isArray(list) ? list : []);
     await this.readInfraScaling(client, repo, sha, Array.isArray(list) ? list : []);
     await this.readShortLivedTemplate(client, repo, sha, Array.isArray(list) ? list : []);
+    // So is the list of risky paths (BRK-280).
+    await this.readRiskyPaths(client, repo, sha, Array.isArray(list) ? list : []);
     const files = (Array.isArray(list) ? list : [])
       .filter((e) => e?.type === 'file' && environmentOfFile(e.name))
       .sort((a, b) => a.name.localeCompare(b.name))

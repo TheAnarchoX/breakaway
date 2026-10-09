@@ -191,6 +191,68 @@ export function reviewRequest(ref, verdict, note, { by, pr } = {}) {
 }
 
 /**
+ * `risk-review <task> --file <findings.json> [--pr <n>]`: a risky-path reviewer's answer (BRK-280). The file is
+ * `{ "summary": "…", "findings": [{ "severity": "blocking"|"note", "text": "…", "path"?: "…", "line"?: n }] }`.
+ * Without --file it reads the task's reviews.
+ * @param {string | undefined} ref
+ * @param {string | null} text the file's contents, or null without --file
+ * @param {{ by?: string, pr?: unknown }} [who]
+ */
+export function riskReviewRequest(ref, text, { by, pr } = {}) {
+  if (!ref) return { error: 'say which task: npx breakaway risk-review <task> --file <findings.json>' };
+  if (text === null) return { request: ['GET', `tasks/${encodeURIComponent(ref)}/risk-review`] };
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    return { error: `the findings file isn’t JSON: ${error.message}` };
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data))
+    return { error: 'the findings file is { "summary": "…", "findings": [ … ] }' };
+  const n = pr === undefined ? null : String(pr).replace(/^#/u, '');
+  if (n !== null && !/^[1-9]\d{0,8}$/u.test(n)) return { error: '--pr is a pull request number' };
+  return {
+    request: [
+      'POST',
+      `tasks/${encodeURIComponent(ref)}/risk-review`,
+      {
+        summary: data.summary,
+        findings: data.findings ?? [],
+        ...(by ? { by } : {}),
+        ...(n ? { pr: Number(n) } : {}),
+      },
+    ],
+  };
+}
+
+/**
+ * `risk-answer <task> <finding> <answer> [--pr <n>]`: the author's answer to one finding of a risky-path review.
+ * @param {string | undefined} ref
+ * @param {string | undefined} finding
+ * @param {string} text
+ * @param {{ by?: string, pr?: unknown }} [who]
+ */
+export function riskAnswerRequest(ref, finding, text, { by, pr } = {}) {
+  if (!ref || !finding)
+    return {
+      error: 'say which finding: npx breakaway risk-answer <task> <finding> "<what you changed, or why it’s safe>"',
+    };
+  const f = String(finding).replace(/^#/u, '');
+  if (!/^[1-9]\d{0,2}$/u.test(f)) return { error: 'the finding is its number in the review, like 2' };
+  const answer = String(text ?? '').trim();
+  if (!answer) return { error: 'say how you answered it: what you changed, or why it’s safe' };
+  const n = pr === undefined ? null : String(pr).replace(/^#/u, '');
+  if (n !== null && !/^[1-9]\d{0,8}$/u.test(n)) return { error: '--pr is a pull request number' };
+  return {
+    request: [
+      'POST',
+      `tasks/${encodeURIComponent(ref)}/risk-answer`,
+      { finding: Number(f), text: answer, ...(by ? { by } : {}), ...(n ? { pr: Number(n) } : {}) },
+    ],
+  };
+}
+
+/**
  * Force start on a request that starts an agent (BRK-107): `force`, and who is asking, so the board can refuse an
  * agent's name (only the owner forces a start). Nothing when it isn't forced.
  * @param {unknown} force

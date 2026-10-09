@@ -202,6 +202,7 @@ const TRIGGER_TEXT = {
   manual: 'by hand, from the board',
   review: 'by “Safe to merge?” on a Dependabot pull request, from the board',
   'pr-review': 'by “Review with an agent” on a pull request, from the board',
+  'risk-review': 'by the board, because a pull request touches what the repository lists as risky',
   next: 'as one of the next few ready tasks, from the board',
   auto: 'by itself, because the task became ready and is marked Start when ready',
   pr: 'to fix a pull request, from the board',
@@ -241,6 +242,7 @@ export function firePayload(
   actKey = null,
   runIt = null,
   captain = null,
+  risky = null,
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
@@ -254,6 +256,10 @@ export function firePayload(
     ...(kind === 'review' ? ['Mode: review', `Pull request: #${task.pr}`] : []),
     ...(kind === 'fix-pr' ? ['Mode: fix-pr', `Pull request: #${pr}`] : []),
     ...(kind === 'pr-review' ? ['Mode: pr-review', `Pull request: #${pr}`] : []),
+    // A risky-path reviewer (BRK-280): a separate session on the pull request, and what it touches.
+    ...(kind === 'risk-review'
+      ? ['Mode: risk-review', `Pull request: #${pr}`, ...(risky ? [`Risky paths: ${risky}`] : [])]
+      : []),
     ...(kind === 'routine' ? ['Mode: routine', `Routine: ${routine}`] : []),
     ...(kind === 'general' ? ['Mode: general'] : []),
     // Run it's answer (BRK-305): whether the plan drafts the first environments' desired state, or leaves it to Run it.
@@ -1389,15 +1395,58 @@ export const agentsMethods = {
   startsThisHour(slug = null) {
     const since = Date.now() - 3_600_000;
     const counted = "started > ? AND status IN ('started', 'starting', 'failed')";
-    if (!slug) return this.sql.exec(`SELECT COUNT(*) AS n FROM agent_runs WHERE ${counted}`, since).one().n;
-    return this.sql
-      .exec(
-        `SELECT COUNT(*) AS n FROM agent_runs WHERE ${counted} AND COALESCE(repo, ?) = ?`,
-        since,
-        this.defaultRepoSlug(),
-        slug,
-      )
-      .one().n;
+    // Risky-path reviewers (BRK-280) are kept apart, since they never hold a claim, but spend the same starts.
+    const reviewers = this.riskStartsThisHour(slug);
+    if (!slug) return this.sql.exec(`SELECT COUNT(*) AS n FROM agent_runs WHERE ${counted}`, since).one().n + reviewers;
+    return (
+      this.sql
+        .exec(
+          `SELECT COUNT(*) AS n FROM agent_runs WHERE ${counted} AND COALESCE(repo, ?) = ?`,
+          since,
+          this.defaultRepoSlug(),
+          slug,
+        )
+        .one().n + reviewers
+    );
+  },
+
+  /**
+   * Why the board can't start another agent in repository `slug` right now, as the AgentError a start throws, or
+   * null: Claude's 429, the board's agents at once and starts an hour, Claude's limit for the account, and the
+   * repository's caps. `force` skips the board's own limits. Risky-path reviewers (BRK-280) hold no claim, so
+   * runningAgents doesn't show them: they're counted here.
+   */
+  agentRoomBlocker(slug, views, { force = false } = {}) {
+    const extra = this.riskReviewersRunning();
+    // Claude said when to try again after its 429 (BRK-144): no start fires before then, forced or not.
+    const hold = this.routineHold(slug);
+    if (hold?.kind === 'limit')
+      return new AgentError(
+        `Claude’s hourly limit for starting sessions is reached (try again after ${Math.max(1, Math.round((hold.until - Date.now()) / 1000))} seconds, at ${clock(hold.until)})`,
+        429,
+      );
+    const { max, hourly } = this.agentSettings();
+    const running = this.runningAgents(views);
+    if (!force && running.length + extra >= max)
+      return new AgentError(`${running.length + extra} agents are already running (the limit is ${max})`, 409, {
+        forceable: true,
+      });
+    if (!force && this.startsThisHour() >= hourly)
+      return new AgentError(`${hourly} agents were started in the last hour, the most the board starts`, 429, {
+        forceable: true,
+      });
+    // Claude's own limit for the whole account (100 an hour) holds for a forced start too.
+    if (this.startsThisHour() >= CLAUDE_LIMITS.accountHourly)
+      return new AgentError(
+        `${this.startsThisHour()} agents were started in the last hour, Claude’s limit for the account`,
+        429,
+      );
+    const capped = this.repoCapBlocker(slug, running, { force });
+    if (capped) {
+      const claude = /Claude’s limit/u.test(capped);
+      return new AgentError(capped, /last hour/u.test(capped) ? 429 : 409, { forceable: !claude });
+    }
+    return null;
   },
 
   /**
@@ -1447,34 +1496,9 @@ export const agentsMethods = {
       throw new AgentError(
         `${task?.wid ?? 'This task'} can’t ${kind === 'refine' ? 'be refined' : onPr ? 'take an agent on its pull request' : 'start an agent'}: ${blocker}`,
       );
-    // Claude said when to try again after its 429 (BRK-144): no start fires before then, forced or not.
     const hold = this.routineHold(repo.slug);
-    if (hold?.kind === 'limit')
-      throw new AgentError(
-        `Claude’s hourly limit for starting sessions is reached (try again after ${Math.max(1, Math.round((hold.until - Date.now()) / 1000))} seconds, at ${clock(hold.until)})`,
-        429,
-      );
-    const { max, hourly } = this.agentSettings();
-    const running = this.runningAgents(views);
-    if (!force && running.length >= max)
-      throw new AgentError(`${running.length} agents are already running (the limit is ${max})`, 409, {
-        forceable: true,
-      });
-    if (!force && this.startsThisHour() >= hourly)
-      throw new AgentError(`${hourly} agents were started in the last hour, the most the board starts`, 429, {
-        forceable: true,
-      });
-    // Claude's own limit for the whole account (100 an hour) holds for a forced start too.
-    if (this.startsThisHour() >= CLAUDE_LIMITS.accountHourly)
-      throw new AgentError(
-        `${this.startsThisHour()} agents were started in the last hour, Claude’s limit for the account`,
-        429,
-      );
-    const capped = this.repoCapBlocker(repo.slug, running, { force });
-    if (capped) {
-      const claude = /Claude’s limit/u.test(capped);
-      throw new AgentError(capped, /last hour/u.test(capped) ? 429 : 409, { forceable: !claude });
-    }
+    const room = this.agentRoomBlocker(repo.slug, views, { force });
+    if (room) throw room;
 
     // A build is `claude-<id>`, a refinement `claude-refine-<id>`, a fix `claude-<id>-fix`, a Dependabot check
     // `claude-<id>-check`, and a review of a pull request `claude-<id>-review`.
@@ -1569,6 +1593,27 @@ export const agentsMethods = {
       );
       if (held) await this.holdRoutine(repo.slug, error, credentials);
       if (this.tasks.get(uuid)?.claim === agent) this.change(uuid, { claim: null, start: false }, new Date(), 'agents');
+      throw error instanceof AgentError ? error : new AgentError(error.message, 502);
+    }
+  },
+
+  /**
+   * Fires the routine for a risky-path reviewer (BRK-280), which holds no claim and so has no agent_runs row: the
+   * caller checked the room and keeps the run. A refusal from Claude holds the routine as any start's does.
+   */
+  async fireRiskReviewer(credentials, repo, task, agent, { pr, risky }) {
+    const hold = this.routineHold(repo.slug);
+    try {
+      const session = await fireRoutine(
+        credentials,
+        firePayload(task, agent, 'risk-review', null, 'risk-review', pr, null, 0, repo, null, null, null, null, risky),
+        repo.slug === this.defaultRepoSlug() ? null : repo.slug,
+      );
+      if (hold) this.setMeta(`routine_hold:${repo.slug}`, null);
+      return session;
+    } catch (error) {
+      const held = error instanceof AgentError ? error.hold : null;
+      if (held) await this.holdRoutine(repo.slug, error, credentials);
       throw error instanceof AgentError ? error : new AgentError(error.message, 502);
     }
   },
