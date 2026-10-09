@@ -103,6 +103,64 @@ function ParallelField({ feature, chase, id, onChange }) {
 }
 
 /**
+ * A running chase at its review cap (BRK-276), as a pill beside Chasing on the roadmap: how many of its pull requests
+ * wait for you.
+ * @param {{ chase?: Record<string, any> | null }} props
+ */
+export function ReviewPill({ chase }) {
+  if (!chase?.on || !chase.review?.full) return null;
+  return (
+    <span class="fr-pill" title="The chase starts nothing new until you merge or close one">
+      {chase.review.waiting} to review
+    </span>
+  );
+}
+
+/** The most of the chase's pull requests the owner can let wait (src/store-chase.js). */
+const REVIEW_CAP_MAX = 50;
+
+/**
+ * How many of the chase's pull requests may wait for the owner before it starts nothing new but fixes (BRK-276):
+ * open, checks finished, and nothing for an agent to fix. While it runs, how many wait now.
+ * @param {Record<string, any>} props
+ */
+function ReviewCapField({ feature, chase, id, onChange }) {
+  const [value, setValue] = useState(String(chase.reviewCap));
+  useEffect(() => setValue(String(chase.reviewCap)), [chase.reviewCap]);
+  const set = (v) => {
+    const n = Number(v);
+    setValue(String(v));
+    if (Number.isInteger(n) && n >= 1 && n <= REVIEW_CAP_MAX && n !== chase.reviewCap)
+      actions
+        .chase(feature, { reviewCap: n }, `Up to ${plural(n, 'pull request')} waiting for you.`)
+        .then(() => onChange?.());
+  };
+  const review = chase.on ? chase.review : null;
+  return (
+    <div class="field ch-parallel">
+      <label class="field-label" for={`${id}-review`}>
+        Pull requests waiting for you
+      </label>
+      <input
+        class="input input-sm launch-count"
+        type="number"
+        id={`${id}-review`}
+        min="1"
+        max={REVIEW_CAP_MAX}
+        step="1"
+        value={value}
+        onChange={(e) => set(e.currentTarget.value)}
+      />
+      <span class="field-hint">
+        {review?.full
+          ? `${plural(review.waiting, 'pull request')} ${review.waiting === 1 ? 'waits' : 'wait'} for you, so the chase starts nothing new until you merge or close one. It still fixes its pull requests that conflict or fail.`
+          : `At this many, the chase starts nothing new until you merge or close one. It still fixes its pull requests that conflict or fail.${review ? ` ${review.waiting} ${review.waiting === 1 ? 'waits' : 'wait'} now.` : ''}`}
+      </span>
+    </div>
+  );
+}
+
+/**
  * Start a road captain (BRK-137, BRK-275): the board's, which keeps this chase's plan and runs its peloton, with what
  * the owner writes as an optional note. It always starts now, past the board's limits. In a dialog, `titleId` names
  * its heading.
@@ -271,7 +329,7 @@ function Controls({ feature, chase, open, captain, onChange }) {
   const [preview, setPreview] = useState(null);
   const sized = (chase.tasks?.length ?? 0) > CAPTAIN_OVER;
   const [withCaptain, setWithCaptain] = useState(chase.state === 'off' ? sized : Boolean(chase.captain?.on));
-  useEffect(() => setPreview(null), [chase.on, chase.parallel]);
+  useEffect(() => setPreview(null), [chase.on, chase.parallel, chase.reviewCap]);
   const run = async (body, message) => {
     setBusy(true);
     await actions.chase(feature, body, message);
@@ -490,6 +548,7 @@ export function ChasePanel({ feature, chase, open = true, compact = false, capta
       <Controls feature={feature} chase={chase} open={open} captain={captain} onChange={onChange} />
       {!compact && <Captain feature={feature} chase={chase} onChange={onChange} />}
       <ParallelField feature={feature} chase={chase} id={id} onChange={onChange} />
+      <ReviewCapField feature={feature} chase={chase} id={id} onChange={onChange} />
       {chase.on && (
         <>
           {!compact && <Running chase={chase} />}

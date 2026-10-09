@@ -511,7 +511,11 @@ export const featuresMethods = {
       shipped: row.state === 'shipped' || (done && progress.shipped === progress.total),
       needsYou: ordered.filter((x) => x.state === 'needs-you').map(brief),
       // The chase's record (IDEA-28 section 3); the feature's own page adds who starts next and why the rest waits.
-      chase: this.chaseState(row),
+      // A running chase also says how many of its pull requests wait for the owner (BRK-276), for the timeline's bar.
+      chase: this.chaseState(
+        row,
+        row.chase === 'on' ? this.chaseReview(row, this.chaseMembers(row, membership.views)) : null,
+      ),
       conflicts: conflicts.filter((c) => c.features.includes(row.slug)),
       ...(full ? { tasks: ordered.map(brief) } : {}),
     };
