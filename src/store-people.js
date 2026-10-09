@@ -10,7 +10,7 @@
  * `src/permissions.js`), and what they see is their grants' (BRK-323, `src/reads.js`).
  */
 import { PasskeyError, toBase64url, verifyAssertion, verifyRegistration } from './webauthn.js';
-import { refusal } from './permissions.js';
+import { OWNER, refusal } from './permissions.js';
 
 /** What a grant may give, per repository (point 3). `*` is every repository, including ones added later. */
 export const ROLES = ['maintainer', 'member', 'viewer'];
@@ -492,8 +492,14 @@ export const peopleMethods = {
     const { row, failure } = await this.inviteByCode(code);
     if (failure) return failure;
     const person = row.person ? this.personRow(row.person) : null;
+    const inviter =
+      row.invited_by === OWNER
+        ? null
+        : this.sql.exec('SELECT name FROM people WHERE handle = ?', row.invited_by).toArray()[0];
     return ok({
       invitedBy: row.invited_by,
+      // Who to show: the owner as "<name> (owner)" once they've named themselves (BRK-328), a maintainer by name.
+      inviter: row.invited_by === OWNER ? this.ownerLabel() : (inviter?.name ?? row.invited_by),
       grants: JSON.parse(row.grants),
       expires: iso(row.expires),
       person: person ? { handle: person.handle, name: person.name } : null,
@@ -600,6 +606,8 @@ export const peopleMethods = {
     const id = body?.credential?.id;
     const passkey =
       typeof id === 'string' ? this.sql.exec('SELECT * FROM passkeys WHERE id = ?', id).toArray()[0] : null;
+    // The owner's own passkey (BRK-328): it signs the owner in as the token does, and the Worker makes the token's cookie.
+    if (passkey?.handle === OWNER) return this.ownerSignin(body, rp, passkey, taken);
     const person = passkey ? this.personRow(passkey.handle) : null;
     if (!passkey || !person) return fail(401, 'this passkey isn’t on this board: ask whoever invited you to Reset you');
     const userHandle = body.credential.response?.userHandle;
@@ -676,6 +684,8 @@ export const peopleMethods = {
     if (!person) return fail(401, 'sign in again');
     return ok({
       person: { handle: person.handle, name: person.name, created: iso(person.created) },
+      // The board's owner, as people see them: the handle stays `owner`, and the name is theirs to set (BRK-328).
+      owner: this.ownerView(),
       grants: this.personGrants(person.handle),
       passkeys: this.sql
         .exec('SELECT id, name, created, used FROM passkeys WHERE handle = ? ORDER BY created', handle)

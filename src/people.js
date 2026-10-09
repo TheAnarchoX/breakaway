@@ -5,7 +5,8 @@
  *   POST /api/signin/options, /api/signin          a passkey sign-in: its challenge, then its answer (public)
  *   GET  /api/join/:code              who invited you, with what role (public: the code is the credential)
  *   POST /api/join/:code/options, /api/join/:code  your name, handle, and first passkey; uses the invite up
- *   /api/me, /api/me/*                a person's own name, passkeys, personal tokens, and sessions
+ *   /api/me, /api/me/*                a person's own name, passkeys, personal tokens, and sessions; the owner's own
+ *                                     name and passkeys (BRK-328)
  *   /api/people, /api/people/*        the owner's: people, invites, grants, Reset, and remove
  *
  * The owner is the board's token, and its cookie, exactly as before (src/auth.js). A person's credential is
@@ -14,7 +15,7 @@
  * through the Worker's routes, each behind a gate that asks src/permissions.js with their role; since BRK-323, their
  * reads do too, filtered to the repositories they have a grant in (src/reads.js).
  */
-import { COOKIE, sameOrigin } from './auth.js';
+import { COOKIE, ownerSessionCookie, sameOrigin } from './auth.js';
 import { install } from './install.js';
 import { OWNER } from './permissions.js';
 import { SESSION_DAYS, TOKEN_PREFIX, hashOf } from './store-people.js';
@@ -138,9 +139,18 @@ async function readJson(request) {
   }
 }
 
-/** A sign-in that worked: the person, and the cookie that makes it last (never the session's secret in the body). */
-function signedIn(result) {
+/**
+ * A sign-in that worked: the person, and the cookie that makes it last (never the session's secret in the body). The
+ * owner's passkey (BRK-328) gets the owner's own cookie, the token's, so it's the owner's session like /login's.
+ */
+async function signedIn(result, env) {
   if (result.status >= 300) return send(result);
+  if (result.body.owner) {
+    const cookie = await ownerSessionCookie(env);
+    if (!cookie)
+      return json(503, { error: 'the board has no token to sign you in with: set it with npx breakaway init-secrets' });
+    return json(200, { ok: true, ...result.body }, { 'Set-Cookie': cookie });
+  }
   const { session, maxAge, ...body } = result.body;
   return json(result.status, { ok: true, ...body }, cookieHeader(session, maxAge));
 }
@@ -163,10 +173,10 @@ export async function peoplePublic(request, env, url, store) {
   if (isSignin)
     return parts.length === 2
       ? send(await store.peopleSigninOptions(rp))
-      : signedIn(await store.peopleSignin(body, rp, deviceOf(request)));
+      : signedIn(await store.peopleSignin(body, rp, deviceOf(request)), env);
   return parts.length === 3
     ? send(await store.peopleJoinOptions(parts[1], body, rp))
-    : signedIn(await store.peopleJoin(parts[1], body, rp, deviceOf(request)));
+    : signedIn(await store.peopleJoin(parts[1], body, rp, deviceOf(request)), env);
 }
 
 /**
@@ -232,7 +242,8 @@ export async function personApi(request, env, url, person, store) {
  * press-only): the owner's for anyone, and a maintainer's for members and viewers of the repositories they maintain,
  * which the store checks. `actor` is the request's (src/permissions.js). Null for other paths.
  */
-export async function peopleOwnerApi(parts, method, body, actor, store) {
+export async function peopleOwnerApi(parts, method, body, actor, store, env, request) {
+  if (parts[0] === 'me' && actor.person === OWNER) return ownerMe(parts, method, body, actor, store, env, request);
   if (parts[0] !== 'people') return null;
   if (method === 'GET') {
     if (parts.length !== 1) return json(404, { error: 'no such route' });
@@ -251,6 +262,32 @@ export async function peopleOwnerApi(parts, method, body, actor, store) {
   } else if (parts.length === 3 && parts[2] === 'reset' && method === 'POST') {
     return send(await store.peopleReset(parts[1], by));
   }
+  return json(404, { error: 'no such route' });
+}
+
+/**
+ * /api/me for the owner (BRK-328): their display name and their own passkeys. Reading takes the token or the cookie;
+ * a change is the owner's press, on the signed-in board. The owner has no personal tokens or sessions here: the token
+ * is theirs, and rotate-token signs every owner session out.
+ */
+async function ownerMe(parts, method, body, actor, store, env, request) {
+  const [, what, id] = parts;
+  if (parts.length === 1 && method === 'GET') return send(await store.ownerMe());
+  if (method !== 'GET' && !actor.press)
+    return json(403, { error: 'only the signed-in web board can change your name or passkeys' });
+  if (parts.length === 1 && method === 'PATCH') return send(await store.ownerRename(body));
+  if (what === 'passkeys') {
+    if (parts.length === 3 && id === 'options' && method === 'POST')
+      return send(await store.ownerPasskeyOptions(relyingParty(env, request)));
+    if (parts.length === 2 && method === 'POST')
+      return send(await store.ownerPasskeyAdd(body, relyingParty(env, request)));
+    if (parts.length === 3 && method === 'PATCH') return send(await store.ownerPasskeyRename(id, body));
+    if (parts.length === 3 && method === 'DELETE') return send(await store.ownerPasskeyRemove(id));
+  }
+  if (what === 'tokens' || what === 'sessions')
+    return json(404, {
+      error: 'the owner signs in with the board’s token: rotate-token replaces it and signs you out everywhere',
+    });
   return json(404, { error: 'no such route' });
 }
 

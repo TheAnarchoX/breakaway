@@ -69,6 +69,19 @@ export async function authenticate(request, env) {
   return (await sameSecret(signature ?? '', await sign(token, expiry))) ? 'cookie' : null;
 }
 
+/**
+ * The owner's cookie, made from the token as /login makes it: `Set-Cookie`'s value, or null when the install has no
+ * token to sign with. A passkey of the owner's (BRK-328) signs in with this same cookie, so it is the owner's session
+ * in every way, and rotating the token still ends it.
+ */
+export async function ownerSessionCookie(env) {
+  const token = await apiToken(env);
+  if (!token) return null;
+  const expiry = String(Date.now() + SESSION_DAYS * 86_400_000);
+  const value = `${expiry}.${await sign(token, expiry)}`;
+  return `${COOKIE}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}`;
+}
+
 /** Where the board may go after signing in, besides itself: the consent page of a sign-in from MCP apps (BRK-157). */
 const NEXT = /^#\/authorize\/[\w-]{20,64}$/u;
 
@@ -82,12 +95,7 @@ export async function login(request, env) {
   const token = await apiToken(env);
   if (!given || !token || !(await sameSecret(given, token)))
     return redirect(back === '/' ? '/?signin=failed' : `/?signin=failed${next}`);
-  const expiry = String(Date.now() + SESSION_DAYS * 86_400_000);
-  const value = `${expiry}.${await sign(token, expiry)}`;
-  return redirect(
-    back,
-    `${COOKIE}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${SESSION_DAYS * 86400}`,
-  );
+  return redirect(back, await ownerSessionCookie(env));
 }
 
 export function logout(request) {
