@@ -62,7 +62,13 @@ const IMAGE_TYPES = {
   ico: 'image/x-icon',
   bmp: 'image/bmp',
 };
-const MAX_FILES = 15; // merged pull requests whose files are read per sync
+/**
+ * Pull requests whose files are read per repository per sync (BRK-316): each read is up to FILE_PAGES calls, and a
+ * Worker's subrequests are counted (10,000 per invocation on Workers Paid by default:
+ * https://developers.cloudflare.com/workers/platform/limits/#subrequests), so this caps them as it capped merged
+ * pull requests' reads before.
+ */
+const MAX_FILES = 15;
 const FILE_PAGES = 5;
 const DEBOUNCE_MS = 5000;
 /** A busy repository's sync this close to due goes with the alarm that's running now (BRK-272). */
@@ -511,19 +517,20 @@ export const githubMethods = {
       .slice(0, MAX_DETAILS);
     const details = await this.fetchDetails(client, needDetails);
     const deploys = await this.fetchDeploys(client, deployments ?? [], repo.slug);
-    // Also the merged pull requests that aged out of the latest 50 before their files were read,
-    // where the repository's deploy paths are known (the legacy install's are built in; see deployPatterns).
     const patterns = await this.deployPatterns(client, repo);
+    // The files each pull request touches (BRK-316), for footprints and for which Workers a merge changes:
+    // open ones whenever their head moves, merged ones once, whether or not the repository has a pipeline,
+    // and merged ones that aged out of the latest 50 before they were read. Open ones go first.
+    const stale = (pr, head) => !pr?.files || pr.filesHead !== head;
     const fresh = new Set(pulls.map((p) => p.number));
-    const unread = !patterns?.length
-      ? []
-      : [
-          ...pulls.filter((p) => prState(p) === 'merged' && !stored.get(p.number)?.workers),
-          ...[...stored]
-            .filter(([number, pr]) => !fresh.has(number) && pr.state === 'merged' && !pr.workers)
-            .map(([number]) => ({ number })),
-        ];
-    const workers = await this.fetchWorkers(client, unread.slice(0, MAX_FILES), patterns);
+    const unread = [
+      ...pulls.filter((p) => p.state === 'open' && stale(stored.get(p.number), p.head?.sha ?? null)),
+      ...pulls.filter((p) => prState(p) === 'merged' && stale(stored.get(p.number), p.head?.sha ?? null)),
+      ...[...stored]
+        .filter(([number, pr]) => !fresh.has(number) && pr.state === 'merged' && stale(pr, pr.headSha ?? null))
+        .map(([number, pr]) => ({ number, head: { sha: pr.headSha ?? null } })),
+    ];
+    const files = await this.fetchFiles(client, unread.slice(0, MAX_FILES));
     return {
       pulls,
       runs: runs.workflow_runs ?? [],
@@ -534,7 +541,7 @@ export const githubMethods = {
       deploys,
       releases,
       tags,
-      workers,
+      files,
       patterns,
     };
   },
@@ -580,27 +587,27 @@ export const githubMethods = {
   },
 
   /**
-   * Which Workers each merged pull request changed (`[]`: docs, skills, or CI only, so no deploy
-   * will ever carry it). Read once, from the pull request's files; left unknown if GitHub won't say.
+   * The files each pull request changes, renamed files' old names included, at the head they were read at
+   * (`partial` when there are more than FILE_PAGES pages of them). Left out when GitHub won't say.
    */
-  async fetchWorkers(client, pulls, patterns) {
-    const workers = new Map();
+  async fetchFiles(client, pulls) {
+    const files = new Map();
     await Promise.all(
       pulls.map(async (p) => {
         try {
-          const files = [];
+          const list = [];
           for (let page = 1; page <= FILE_PAGES; page += 1) {
             const batch = await client.get(`/pulls/${p.number}/files?per_page=100&page=${page}`);
-            files.push(...batch.map((f) => f.filename), ...batch.map((f) => f.previous_filename).filter(Boolean));
+            for (const f of batch) list.push(f.filename, ...(f.previous_filename ? [f.previous_filename] : []));
             if (batch.length < 100) break;
           }
-          workers.set(p.number, files.length >= FILE_PAGES * 100 ? allWorkers(patterns) : workersFor(files, patterns));
+          files.set(p.number, { list, head: p.head?.sha ?? null, partial: list.length >= FILE_PAGES * 100 });
         } catch (error) {
           if (!(error instanceof GitHubError)) throw error;
         }
       }),
     );
-    return workers;
+    return files;
   },
 
   /**
@@ -722,12 +729,33 @@ export const githubMethods = {
 
   /** Stores what was fetched, records events, and moves linked tasks. Synchronous: the deploy flow's signals and finished deploys come back to record. */
   applyGitHub(
-    { pulls, runs, commits, alerts, details, stored, deploys, releases, tags, workers = new Map(), patterns },
+    { pulls, runs, commits, alerts, details, stored, deploys, releases, tags, files = new Map(), patterns },
     repo,
   ) {
     const slug = repo.slug;
     // What merging deploys here: null unknown, [] nothing (no pipeline), else the files decide.
     const deployRules = patterns !== undefined ? patterns : this.knownDeployPatterns(repo);
+    // A pull request's file list (BRK-316): what was read now, else what was kept. A list too long to read whole
+    // could change every Worker.
+    const fileFields = (number, prev) => {
+      const read = files.get(number);
+      if (read) return { files: read.list, filesHead: read.head, ...(read.partial ? { filesPartial: true } : {}) };
+      if (!prev?.files) return {};
+      return {
+        files: prev.files,
+        filesHead: prev.filesHead ?? null,
+        ...(prev.filesPartial ? { filesPartial: true } : {}),
+      };
+    };
+    // Which Workers a merged pull request changed: without a pipeline nothing deploys; with one whose deploy
+    // paths aren't known, it's unknown; else its files decide, once they're read, and what was decided stays.
+    const workersOf = (number, kept, prev) => {
+      if (deployRules === null) return null;
+      if (!deployRules.length) return [];
+      if (prev?.workers) return prev.workers;
+      if (!kept.files) return null;
+      return kept.filesPartial ? allWorkers(deployRules) : workersFor(kept.files, deployRules);
+    };
     const initialized = Boolean(this.ghMeta('gh_initialized', slug));
     const branch = repo.defaultBranch || 'main';
     const prefixes = [...this.prefixOwners().keys()];
@@ -750,6 +778,7 @@ export const githubMethods = {
         const { closes, mentions, elsewhere } = this.linksOf(p, slug);
         const detail = details.get(p.number);
         const images = screenshotsIn(p.body);
+        const kept = fileFields(p.number, prev);
         const pr = {
           repo: slug,
           number: p.number,
@@ -770,13 +799,8 @@ export const githubMethods = {
           mergeableState: detail ? detail.mergeableState : (prev?.mergeableState ?? null),
           mergeSha: p.merge_commit_sha ?? null,
           autoMerge: state === 'open' && p.auto_merge ? { method: p.auto_merge.merge_method ?? null } : null, // the list carries it
-          // Without a pipeline nothing deploys; with one whose deploy paths aren't known, it's unknown.
-          workers:
-            state !== 'merged' || deployRules === null
-              ? null
-              : deployRules.length
-                ? (workers.get(p.number) ?? prev?.workers ?? null)
-                : [],
+          workers: state === 'merged' ? workersOf(p.number, kept, prev) : null,
+          ...kept,
           closes,
           mentions,
           ...(Object.keys(elsewhere).length ? { elsewhere } : {}),
@@ -821,12 +845,13 @@ export const githubMethods = {
 
       // Older merged pull requests aren't in the latest 50: only their files were read.
       const listed = new Set(pulls.map((p) => p.number));
-      for (const [number, list] of workers) {
+      for (const number of files.keys()) {
         if (listed.has(number) || !stored.get(number)) continue;
-        const { updated, ...pr } = stored.get(number);
+        const { updated, ...prev } = stored.get(number);
+        const kept = fileFields(number, prev);
         this.sql.exec(
           'UPDATE gh_pulls SET data = ? WHERE repo = ? AND number = ?',
-          JSON.stringify({ ...pr, workers: list }),
+          JSON.stringify({ ...prev, ...kept, workers: workersOf(number, kept, prev) }),
           slug,
           number,
         );
@@ -1330,7 +1355,9 @@ export const githubMethods = {
       if (map.wid && /^\d+$/u.test(map.pr ?? '') && repoSlugOf(map, fallback) === repo.slug)
         byPrField.set(Number(map.pr), [...(byPrField.get(Number(map.pr)) ?? []), map.wid]);
     }
-    const withTasks = (pr) => {
+    // Each pull request's file list stays in the store, for footprints (BRK-316): the view doesn't need it.
+    /** @param {any} row */
+    const withTasks = ({ files, filesHead, filesPartial, ...pr }) => {
       const closes = [...new Set([...pr.closes, ...(byPrField.get(pr.number) ?? [])])];
       const mentions = pr.mentions.filter((w) => !closes.includes(w));
       return {

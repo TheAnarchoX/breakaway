@@ -1197,6 +1197,118 @@ describe('GitHub on the board', () => {
     expect(shipState(task)).toBe('nodeploy');
   });
 
+  it('keeps the files each pull request touches, reading an open one again when its head moves (BRK-316)', async () => {
+    const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
+    const stored = (number) =>
+      runInDurableObject(stub(), (store) => {
+        const row = store.sql
+          .exec("SELECT data FROM gh_pulls WHERE repo = 'widgets' AND number = ?", number)
+          .toArray()[0];
+        const { files, filesHead, filesPartial, workers } = JSON.parse(row.data);
+        return { files, filesHead, filesPartial, workers };
+      });
+    // Pull requests from the tests above, aged out of the list, may be read too: only these count here.
+    const reads = () => gh.calls.filter((c) => /\/pulls\/30\d\/files$/u.test(c));
+    gh.pulls = [
+      pr(300, { sha: 'head-a', updated: '2026-09-30T10:00:00Z' }),
+      pr(301, { state: 'closed', merged: true, updated: '2026-09-30T10:01:00Z' }),
+      pr(302, { state: 'closed', updated: '2026-09-30T10:02:00Z' }), // closed without merging: nothing to keep
+    ];
+    gh.files[300] = ['src/store-chase.js'];
+    gh.fileDetails[301] = [
+      { filename: 'src/footprint.js', previous_filename: 'src/similar.js', status: 'renamed' },
+      { filename: 'README.md', status: 'modified' },
+    ];
+    gh.calls.length = 0;
+    await api('github/sync', { method: 'POST' });
+    expect(reads()).toEqual(expect.arrayContaining([`${REPO}/pulls/300/files`, `${REPO}/pulls/301/files`]));
+    expect(reads()).not.toContain(`${REPO}/pulls/302/files`);
+    expect(await stored(300)).toEqual({
+      files: ['src/store-chase.js'],
+      filesHead: 'head-a',
+      filesPartial: undefined,
+      workers: null,
+    });
+    // A renamed file keeps its old name, and the Workers still come from the same files.
+    expect(await stored(301)).toEqual({
+      files: ['src/footprint.js', 'src/similar.js', 'README.md'],
+      filesHead: 'sha301',
+      filesPartial: undefined,
+      workers: ['widgets'],
+    });
+    expect((await stored(302)).files).toBeUndefined();
+
+    // Nothing moved: nothing is read again.
+    gh.calls.length = 0;
+    await api('github/sync', { method: 'POST' });
+    expect(reads()).toEqual([]);
+
+    // A push moves the open one's head: its files are read again, and the merged one's aren't.
+    gh.pulls[0] = pr(300, { sha: 'head-b', updated: '2026-09-30T11:00:00Z' });
+    gh.files[300] = ['src/store-chase.js', 'test/chase.test.js'];
+    gh.calls.length = 0;
+    await api('github/sync', { method: 'POST' });
+    expect(reads()).toContain(`${REPO}/pulls/300/files`);
+    expect(reads()).not.toContain(`${REPO}/pulls/301/files`);
+    expect(await stored(300)).toMatchObject({
+      files: ['src/store-chase.js', 'test/chase.test.js'],
+      filesHead: 'head-b',
+    });
+
+    // When GitHub won't list them, the last list stays, marked with the head it was read at, and is tried again.
+    gh.pulls[0] = pr(300, { sha: 'head-c', updated: '2026-09-30T12:00:00Z' });
+    gh.files[300] = null;
+    await api('github/sync', { method: 'POST' });
+    expect(await stored(300)).toMatchObject({
+      files: ['src/store-chase.js', 'test/chase.test.js'],
+      filesHead: 'head-b',
+    });
+    gh.files[300] = ['src/store-chase.js'];
+    gh.calls.length = 0;
+    await api('github/sync', { method: 'POST' });
+    expect(reads()).toContain(`${REPO}/pulls/300/files`);
+    expect(await stored(300)).toMatchObject({ files: ['src/store-chase.js'], filesHead: 'head-c' });
+
+    // The GitHub view doesn't carry them: they're for footprints, not for every pull request on the page.
+    const view = await body(await api('github'));
+    expect(view.open.find((p) => p.number === 300)).toBeTruthy();
+    expect(view.open.find((p) => p.number === 300)).not.toHaveProperty('files');
+
+    gh.pulls[0] = pr(300, { sha: 'head-c', state: 'closed', updated: '2026-09-30T13:00:00Z' }); // for the tests below
+    await api('github/sync', { method: 'POST' });
+  });
+
+  it('keeps merged pull requests’ files in a repository without a pipeline, at most a set number each sync (BRK-316)', async () => {
+    const stub = () => env.STORE.get(env.STORE.idFromName('widgets'));
+    expect((await api('repos/widgets', { method: 'PATCH', body: { pipeline: null } })).status).toBe(200);
+    const merged = Array.from({ length: 18 }, (_, i) =>
+      pr(310 + i, { state: 'closed', merged: true, updated: `2026-09-30T13:${String(i).padStart(2, '0')}:00Z` }),
+    );
+    gh.pulls = merged;
+    for (const p of merged) gh.files[p.number] = [`docs/${p.number}.md`];
+    gh.calls.length = 0;
+    await api('github/sync', { method: 'POST' });
+    const first = gh.calls.filter((c) => c.endsWith('/files'));
+    expect(first).toHaveLength(15); // a sync's subrequests are counted: the rest wait for the next one
+    gh.calls.length = 0;
+    await api('github/sync', { method: 'POST' });
+    // Listed ones go before those from the tests above that aged out of the list.
+    const second = gh.calls.filter((c) => /\/pulls\/(31\d|32[0-7])\/files$/u.test(c));
+    expect(second).toHaveLength(3);
+    expect(new Set([...first, ...second]).size).toBe(18);
+    const rows = await runInDurableObject(stub(), (store) =>
+      store.sql
+        .exec("SELECT data FROM gh_pulls WHERE repo = 'widgets' AND number >= 310 AND number < 328")
+        .toArray()
+        .map((r) => JSON.parse(r.data)),
+    );
+    expect(rows).toHaveLength(18);
+    for (const row of rows) {
+      expect(row.files).toEqual([`docs/${row.number}.md`]);
+      expect(row.workers).toEqual([]); // no pipeline: nothing it merges deploys
+    }
+  });
+
   it('shows the routine prompt as it is on main, with the commit that last changed it', async () => {
     gh.prompt =
       'You are a widgets agent.\n\n## Messages from the owner\n\nIt’s the owner’s guidance for the task you hold.\n';
