@@ -22,9 +22,10 @@ export const sentence = (text) => {
 
 /**
  * @param {string} path
- * @param {{ method?: string, body?: any }} [options]
+ * @param {{ method?: string, body?: any, open?: boolean }} [options] `open` is for the routes that sign you in: their
+ *   401 says why (a passkey that isn't on the board), rather than meaning this browser was signed out
  */
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, open = false } = {}) {
   let res;
   try {
     res = await fetch(`/api/${path}`, {
@@ -36,7 +37,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   } catch {
     throw new ApiError('Couldn’t reach the board. Check your connection and try again.', 0);
   }
-  if (res.status === 401) {
+  if (res.status === 401 && !open) {
     onSignedOut();
     throw new ApiError('Sign in again to keep going.', 401);
   }
@@ -48,6 +49,12 @@ export async function api(path, { method = 'GET', body } = {}) {
       data,
     );
   return data;
+}
+
+/** Opens the board at `hash` once a sign-in set its cookie: a full load, even when only the hash would change. */
+export function reopen(hash = '') {
+  history.replaceState(null, '', `/${hash}`);
+  location.reload();
 }
 
 export const enc = encodeURIComponent;

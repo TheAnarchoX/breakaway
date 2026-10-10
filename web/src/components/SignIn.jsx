@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { KeyRound } from 'lucide-preact';
 import { Logo } from './Logo.jsx';
-import { api } from '../lib/api.js';
+import { api, reopen } from '../lib/api.js';
 import { passkeysWork, usePasskey } from '../lib/passkey.js';
 
 /**
@@ -25,10 +25,10 @@ export function SignIn({ next = null }) {
     setBusy(true);
     setError(null);
     try {
-      const { challengeId, publicKey } = await api('signin/options', { method: 'POST', body: {} });
+      const { challengeId, publicKey } = await api('signin/options', { method: 'POST', body: {}, open: true });
       const credential = await usePasskey(publicKey);
-      await api('signin', { method: 'POST', body: { challengeId, credential } });
-      location.replace(`/${next ?? ''}`);
+      await api('signin', { method: 'POST', body: { challengeId, credential }, open: true });
+      reopen(next ?? '');
     } catch (e) {
       setError(e.message);
       setBusy(false);

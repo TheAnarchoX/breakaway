@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import { KeyRound } from 'lucide-preact';
 import { Logo } from './Logo.jsx';
-import { api } from '../lib/api.js';
+import { api, reopen } from '../lib/api.js';
 import { passkeysWork, makePasskey } from '../lib/passkey.js';
 import { repoWords, roleLabel } from '../lib/people.js';
+
+/** The inviter at the start of a sentence: "the owner" becomes "The owner". */
+const opening = (text) => String(text).charAt(0).toUpperCase() + String(text).slice(1);
 
 /** A handle from a display name, as a first guess: lowercase letters, digits, and dashes, starting with a letter. */
 const handleFrom = (name) =>
@@ -31,7 +34,7 @@ export function Join({ code }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(/** @type {string | null} */ (null));
   useEffect(() => {
-    api(`join/${code}`)
+    api(`join/${code}`, { open: true })
       .then(setInfo)
       .catch((e) => setProblem(e.message));
   }, [code]);
@@ -42,10 +45,10 @@ export function Join({ code }) {
     setError(null);
     try {
       const body = info.person ? {} : { name: name.trim(), handle: handle.trim() };
-      const { challengeId, publicKey } = await api(`join/${code}/options`, { method: 'POST', body });
+      const { challengeId, publicKey } = await api(`join/${code}/options`, { method: 'POST', body, open: true });
       const credential = await makePasskey(publicKey);
-      await api(`join/${code}`, { method: 'POST', body: { challengeId, credential } });
-      location.replace('/');
+      await api(`join/${code}`, { method: 'POST', body: { challengeId, credential }, open: true });
+      reopen();
     } catch (err) {
       setError(err.message);
       setBusy(false);
@@ -81,8 +84,8 @@ export function Join({ code }) {
             </p>
             <p>
               {info.person
-                ? `${info.inviter} reset your way in. Make a new passkey on this device to sign in again.`
-                : `${info.inviter} invited you to work on this board.`}
+                ? `${opening(info.inviter)} reset your way in. Make a new passkey on this device to sign in again.`
+                : `${opening(info.inviter)} invited you to work on this board.`}
             </p>
             <ul class="join-grants">
               {grants.map((g) => (
