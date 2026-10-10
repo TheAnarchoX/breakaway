@@ -396,6 +396,8 @@ export const peopleMethods = {
     const reach = this.personReach(by, person);
     if (reach) return fail(403, reach);
     this.revokeAccess(person.handle);
+    // Their own Claude routines go too (BRK-302): nothing starts on them again.
+    this.dropPersonClaude(person.handle);
     this.sql.exec('DELETE FROM grants WHERE handle = ?', person.handle);
     // Their name stays on what they did; their profile was for their agents, and goes with them (BRK-329).
     this.sql.exec(
@@ -764,14 +766,14 @@ export const peopleMethods = {
   },
 
   /**
-   * The run payload's `For:` line for the person a run is for: their name, work, and notes, or null when they've set
-   * no profile (or are no longer on the board).
+   * The run payload's `For:` line for the person a run is for: their name, work, and notes, and `claude`, whose Claude
+   * the run is on (BRK-302), or null when there's none of these (or they're no longer on the board).
    */
-  forLineOf(handle) {
+  forLineOf(handle, claude = null) {
     const profile = this.profileOf(handle);
     if (!profile) return null;
     const name = handle === OWNER ? (this.ownerName() ?? 'the owner') : this.personRow(handle).name;
-    return forLine(name, profile);
+    return forLine(name, profile, claude);
   },
 
   /** GET /api/me/profile, for a person or the owner: their profile, and the kinds of work to pick from. */

@@ -206,6 +206,9 @@ export async function personApi(request, env, url, person, store) {
   if (parts.length === 2 && parts[1] === 'profile' && method === 'GET')
     return send(await store.profileMe(person.handle));
   if (parts.length === 2 && parts[1] === 'avatar' && method === 'GET') return send(await store.avatarMe(person.handle));
+  // Their own Claude (BRK-302): the plan, caps, and routines they connected, never a routine's URL or token.
+  if (parts[1] === 'claude' && parts.length === 2 && method === 'GET')
+    return send(await store.personClaudeApi(person.handle));
   if (!cookie)
     return json(403, {
       error: 'a personal token only reads your settings: change them on the web board, signed in with your passkey',
@@ -220,6 +223,12 @@ export async function personApi(request, env, url, person, store) {
     return send(await store.profileSet(person.handle, body));
   if (parts.length === 2 && what === 'avatar' && method === 'POST')
     return send(await store.avatarShuffle(person.handle));
+  if (what === 'claude' && parts.length === 2 && method === 'PATCH')
+    return send(await store.personClaudeSetApi(person.handle, body));
+  if (what === 'routines' && parts.length === 3) {
+    if (method === 'PUT') return send(await store.personRoutineConnectApi(person.handle, id, body));
+    if (method === 'DELETE') return send(await store.personRoutineForgetApi(person.handle, id));
+  }
   if (what === 'tokens') {
     if (parts.length === 2 && method === 'POST') return send(await store.personTokenCreate(person.handle, body));
     if (parts.length === 3 && method === 'DELETE') return send(await store.personTokenRevoke(person.handle, id));
@@ -252,6 +261,12 @@ export async function personApi(request, env, url, person, store) {
 export async function peopleOwnerApi(parts, method, body, actor, store, env, request) {
   if (parts[0] === 'me' && actor.person === OWNER) return ownerMe(parts, method, body, actor, store, env, request);
   if (parts[0] !== 'people') return null;
+  // A person's Claude (BRK-302): the owner reads it and sets the limits on it, with the token or the cookie.
+  if (parts.length === 3 && parts[2] === 'claude') {
+    if (method === 'GET') return send(await store.personClaudeOwnerApi(parts[1], { actor }));
+    if (method === 'PATCH') return send(await store.personLimitsApi(parts[1], body));
+    return json(405, { error: 'use GET or PATCH' });
+  }
   if (method === 'GET') {
     if (parts.length !== 1) return json(404, { error: 'no such route' });
     // A person sees the people they share a repository with (BRK-323); the owner, everyone.

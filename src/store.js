@@ -103,7 +103,8 @@ import { infraTokensMethods } from './store-infra-tokens.js';
 import { peopleMethods } from './store-people.js';
 import { ownerMethods } from './store-owner.js';
 import { permissionsMethods } from './store-permissions.js';
-import { OWNER, ROLE_RANK, roleIn } from './permissions.js';
+import { personClaudeMethods } from './store-person-claude.js';
+import { OTHER_STARTS, OWNER, ROLE_RANK, roleIn } from './permissions.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -201,6 +202,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraScaling();
     this.initInfraShortLived();
     this.initPeople();
+    this.initPersonClaude();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -299,6 +301,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     // Routines kept on the board are sealed with a key from the sync key (BRK-133): sealed again here, written below.
     const routines = await this.resealedRoutines(keyBase64.trim());
     const providerTokens = await this.resealedProviderTokens(keyBase64.trim());
+    // People's own routines (BRK-302) are sealed the same way.
+    const personRoutines = await this.resealedPersonRoutines(keyBase64.trim());
     let count = 0;
     try {
       this.atomically(() => {
@@ -317,6 +321,13 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           this.sql.exec('UPDATE snapshot SET data = ? WHERE id = 1', seal(newKey, snap.version_id, plain));
         }
         for (const r of routines) this.sql.exec('UPDATE kept_routines SET sealed = ? WHERE slug = ?', r.sealed, r.slug);
+        for (const r of personRoutines)
+          this.sql.exec(
+            'UPDATE person_routines SET sealed = ? WHERE handle = ? AND repo = ?',
+            r.sealed,
+            r.handle,
+            r.repo,
+          );
         for (const t of providerTokens)
           this.sql.exec('UPDATE infra_connections SET sealed = ? WHERE provider = ?', t.sealed, t.provider);
         this.setMeta('client_id', clientId.toLowerCase());
@@ -1851,6 +1862,7 @@ Object.assign(
   peopleMethods,
   ownerMethods,
   permissionsMethods,
+  personClaudeMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------
@@ -1860,8 +1872,9 @@ const apiActions = {
   backfillStructureApi() {
     return this.run(() => ok(this.backfillStructure()));
   },
-  agentsApi() {
-    return this.run(async () => this.agentsOverview());
+  /** The Agents view: who's behind the request decides whose Claude it shows (BRK-302). */
+  agentsApi(input = {}) {
+    return this.run(async () => this.agentsOverview(input));
   },
   /** New agent: a task from a prompt, a decision's answers, a spec, or the next version, and an agent on it (the owner's). */
   agentsGeneralApi(body) {
@@ -1889,10 +1902,17 @@ const apiActions = {
       if (mode && !['build', 'refine', 'routine', 'general'].includes(mode))
         throw new AgentError('mode is build, refine, routine, or general', 400);
       const uuid = this.resolve(ref);
+      // Who the agent is for (BRK-302): the person who pressed, or the person an agent asking for it works for.
+      const forPerson = this.startsFor({ actor, by });
       // A general agent's task waiting for room starts as a general agent, whatever button asked, and a routine
       // maker's in the routines mode (startAgent).
-      if (this.tasks.get(uuid)?.tag_general && (!mode || mode === 'build' || mode === 'general'))
-        return ok(await this.startAgent(uuid, { trigger: 'general', kind: 'general', force: Boolean(force) }));
+      if (this.tasks.get(uuid)?.tag_general && (!mode || mode === 'build' || mode === 'general')) {
+        // TODO(BRK-334): a person's general agents run on their own Claude too.
+        if (forPerson !== OWNER) throw new AgentError(OTHER_STARTS, 403);
+        return ok(
+          await this.startAgent(uuid, { trigger: 'general', kind: 'general', force: Boolean(force), forPerson }),
+        );
+      }
       // A run a trigger made and left waiting for the owner's Start: it starts as a routine run of its own routine.
       // So does a plain Start on one, since a build's payload would send the agent off to do the wrong thing.
       const routine =
@@ -1909,6 +1929,7 @@ const apiActions = {
           force: Boolean(force),
           // The owner's Start warns about a footprint's overlap; pressing again (`anyway`) starts it.
           warn: !anyway,
+          forPerson,
         }),
       );
     });
@@ -2003,7 +2024,9 @@ const apiActions = {
   fixAlertApi(number, note, repo = null, { force = false, by, actor } = {}) {
     return this.run(async () => {
       if (force) this.allow({ actor, by }, 'agent.force', repoOf(this, repo), ownerWords('force start an agent'));
-      return ok(await this.fixAlert(number, { note, repo, force: Boolean(force) }));
+      return ok(
+        await this.fixAlert(number, { note, repo, force: Boolean(force), forPerson: this.startsFor({ actor, by }) }),
+      );
     });
   },
   reviewPullApi(number, note, repo = null, { force = false, by, actor } = {}) {
@@ -2077,6 +2100,7 @@ const apiActions = {
           note: body.note ? String(body.note) : null,
           repo: body.repo ?? null,
           force: Boolean(body.force),
+          forPerson: this.startsFor(body),
         }),
       );
     });
