@@ -451,7 +451,13 @@ describe('a viewer of acme/widgets reads every GET route (BRK-323)', () => {
     const res = await call('/api/tasks', {
       method: 'POST',
       cookie: member.cookie,
-      body: { description: unique('Waits on a gadget'), project: 'product', depends: [w.gadget.uuid], force: true },
+      // Its words never say gadgets, whatever the random suffix: leaks() checks the answer for that word.
+      body: {
+        description: unique('Waits on another repository’s task '),
+        project: 'product',
+        depends: [w.gadget.uuid],
+        force: true,
+      },
     });
     expect(res.status).toBe(201);
     const text = await res.text();
