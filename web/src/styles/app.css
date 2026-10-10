@@ -6250,16 +6250,6 @@ fieldset.field {
 .menu-button {
   position: relative;
 }
-.menu-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--warn);
-  box-shadow: 0 0 0 2px var(--bg);
-}
 .settings-connections {
   display: inline-flex;
   align-items: center;
@@ -8816,42 +8806,121 @@ a.pl-mention {
 .st-repo-name a {
   font-weight: 650;
 }
-#settings-repos:focus {
-  outline: none;
-}
-/* Settings across the width (WEB-127): Connections' width, the server and its actions beside the heading, each
- * card's heading on one line, fields side by side, and the board's smaller groups in columns. */
+/* Settings across the width (WEB-127), in sections (WEB-141): a side menu on the left and the open section beside it;
+ * on a phone the menu is a row across the top that scrolls sideways. Each card's heading sits on one line, fields
+ * side by side, and the board's smaller groups in columns. */
 .repo-settings.settings-view {
   max-width: 1440px;
 }
-.st-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px 20px;
-}
-.st-top .view-intro {
-  margin: 0;
-}
-.st-status {
+.st-layout {
   display: grid;
-  justify-items: end;
-  gap: 4px;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px 28px;
+}
+.st-pane {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.st-menu {
+  position: sticky;
+  top: 16px;
+}
+.st-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.st-menu a {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--radius-s);
+  color: var(--muted);
+  text-decoration: none;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.st-menu a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.st-menu a[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.st-menu a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.st-menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+  font-size: 14.5px;
+}
+.st-menu-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.st-menu-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+@media (max-width: 760px) {
+  .st-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .st-menu {
+    position: static;
+    margin: 0 -16px;
+    padding: 0 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .st-menu ul {
+    display: flex;
+    gap: 4px;
+    width: max-content;
+  }
+  .st-menu a {
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+  .st-menu-hint {
+    display: none;
+  }
+  .st-menu a[aria-current="page"]::before {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 2px;
+    width: auto;
+    height: 3px;
+  }
 }
 .st-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 4px;
-}
-.st-actions form {
-  margin: 0;
 }
 .st-server {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   align-items: center;
   gap: 4px 14px;
   margin: 0;
@@ -8859,21 +8928,6 @@ a.pl-mention {
 }
 .st-server-state.is-bad {
   color: var(--danger);
-}
-.st-status .field-error {
-  margin: 0;
-  text-align: right;
-}
-@media (max-width: 640px) {
-  .st-status,
-  .st-actions,
-  .st-server {
-    justify-items: start;
-    justify-content: flex-start;
-  }
-  .st-status .field-error {
-    text-align: left;
-  }
 }
 .st-head {
   display: flex;
@@ -13229,35 +13283,123 @@ button.infra-plan-row {
   gap: 4px;
 }
 
-/* Who's signed in, at the end of the top bar: their mark (WEB-134 makes it their avatar) and, when there's room,
- * their name. */
-.signed-in {
+/* Who's signed in, at the end of the top bar (WEB-124), and the account menu under them (WEB-141): their avatar and,
+ * when there's room, their name. */
+.account-button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 4px 8px 4px 4px;
+  min-height: 40px;
+  padding: 4px 6px 4px 4px;
+  border: 0;
   border-radius: var(--radius-s);
+  background: none;
   color: var(--text);
-  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
 }
-.signed-in:hover {
+.account-button:hover,
+.account-button[aria-expanded="true"],
+.account-button.is-current {
   background: var(--surface-2);
 }
-.signed-in-name {
+.account-mark {
+  position: relative;
+  display: inline-flex;
+}
+.account-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.account-name {
   max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
 }
+.account-chevron {
+  color: var(--muted);
+  flex: none;
+}
 @media (max-width: 1023.98px) {
-  .signed-in {
-    padding-right: 4px;
-  }
-  .signed-in-name {
+  .account-name,
+  .account-chevron {
     display: none;
   }
+}
+.account-panel {
+  display: grid;
+  gap: 4px;
+  width: min(280px, calc(100vw - 24px));
+}
+.account-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.account-who {
+  display: grid;
+  min-width: 0;
+}
+.account-who strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text);
+  font: 600 14px / 1.2 var(--font-body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.account-item svg {
+  color: var(--muted);
+  flex: none;
+}
+.account-item:hover,
+.account-item:focus-visible {
+  background: var(--surface-2);
+}
+.account-item[aria-current="page"] {
+  background: var(--surface-2);
+}
+.account-item .kbd,
+.account-item .side-badge {
+  margin-left: auto;
+}
+.account-foot {
+  margin: 4px 0 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
 }
 
 /* You, in Settings: lists of passkeys, tokens, and sessions, and the profile's kinds of work. */

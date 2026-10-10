@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks';
 import { CodeBlock } from '../lib/highlight.jsx';
-import { CircleArrowUp, FolderPlus, Keyboard, LogOut, Plug, RefreshCw } from 'lucide-preact';
+import { CircleArrowUp, FolderPlus, Plug, RefreshCw } from 'lucide-preact';
 import { plural } from '../lib/model.js';
 import {
   agents,
@@ -10,7 +10,6 @@ import {
   health,
   healthFailed,
   healthShut,
-  helpOpen,
   loadAgents,
   loadHealth,
   loadRepos,
@@ -24,7 +23,9 @@ import {
   repoSettingsHref,
   repos,
   routines,
-  settingsAt,
+  SETTINGS_SECTIONS,
+  settingsHref,
+  settingsSection,
   theme,
   toast,
 } from '../lib/store.js';
@@ -40,10 +41,11 @@ import { PeopleSettings } from '../components/PeopleSettings.jsx';
 import { isOwner, may } from '../lib/people.js';
 
 /**
- * Settings (docs/specs/IDEA-29-settings.md, section 3; WEB-32): this browser's, the board's, and the list of
- * repositories, each linking to its own page (WEB-30). The board's groups are the same components the Agents and
- * Routines views render, saving through the same routes, so a change in one place shows in the other. New
- * board-level settings go in The board.
+ * Settings (docs/specs/IDEA-29-settings.md, section 3; WEB-32): yours, this browser's, the people on the board, the
+ * board's, the list of repositories, each linking to its own page (WEB-30), and the server. Each is a section with
+ * its own page, picked from a side menu (WEB-141), so you see one at a time. The board's groups are the same
+ * components the Agents and Routines views render, saving through the same routes, so a change in one place shows in
+ * the other. New board-level settings go in The board.
  */
 
 const ON_OFF = [
@@ -189,7 +191,9 @@ function ThisBrowser() {
           <CodeBlock code={CODE_SAMPLE} lang="js" class="md-code st-code-sample" />
         </div>
       </div>
-      <p class="meta">Keep branches up to date and Merge when green are on each repository’s page, below.</p>
+      <p class="meta">
+        Keep branches up to date and Merge when green are on each repository’s page, under Repositories.
+      </p>
     </section>
   );
 }
@@ -296,7 +300,7 @@ function TheBoard() {
 function Repositories() {
   const { loaded, list, removed = [] } = repos.value;
   return (
-    <section class="rs-section" id="settings-repos" aria-labelledby="st-repos" tabIndex={-1}>
+    <section class="rs-section" aria-labelledby="st-repos">
       <div class="st-head">
         <h2 id="st-repos">Repositories</h2>
         {loaded && list.length > 0 && (
@@ -363,48 +367,35 @@ function Repositories() {
 }
 
 /**
- * The server's health, the way to Connections, Refresh, Shortcuts, and Sign out, as the dialog's foot had them, and
- * What's new when the board's files have notes for the release it runs (WEB-80). They sit beside the page's heading
- * (WEB-127), the actions on one row and the server on a line under them.
+ * The server (WEB-141): its health, the way to Connections, Refresh, and What's new when the board's files have notes
+ * for the release it runs (WEB-80). Shortcuts and Sign out are in the account menu.
  */
-function Status() {
+function Server() {
   const h = health.value;
   const n = connectionsAttention.value;
   return (
-    <div class="st-status">
-      <div class="st-actions">
-        {whatsNew.value && (
-          <button type="button" class="btn btn-quiet btn-sm" onClick={openWhatsNew}>
-            <CircleArrowUp size={16} aria-hidden="true" />
-            See what’s new
+    <section class="rs-section" aria-labelledby="st-server">
+      <div class="st-head">
+        <h2 id="st-server">Server</h2>
+        <p class="muted small">Whether the board reaches its server, and what it holds.</p>
+        <div class="st-actions st-head-action">
+          {whatsNew.value && (
+            <button type="button" class="btn btn-quiet btn-sm" onClick={openWhatsNew}>
+              <CircleArrowUp size={16} aria-hidden="true" />
+              See what’s new
+            </button>
+          )}
+          <button
+            type="button"
+            class="btn btn-outline btn-sm"
+            onClick={() =>
+              Promise.all([loadTasks(), loadHealth(), loadRepos()]).then(() => toast('Board refreshed.', 'success'))
+            }
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Refresh
           </button>
-        )}
-        <button
-          type="button"
-          class="btn btn-quiet btn-sm"
-          onClick={() =>
-            Promise.all([loadTasks(), loadHealth(), loadRepos()]).then(() => toast('Board refreshed.', 'success'))
-          }
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-          Refresh
-        </button>
-        <button
-          type="button"
-          class="btn btn-quiet btn-sm"
-          onClick={() => {
-            helpOpen.value = true;
-          }}
-        >
-          <Keyboard size={16} aria-hidden="true" />
-          Shortcuts
-        </button>
-        <form method="post" action="/logout">
-          <button type="submit" class="btn btn-quiet btn-sm">
-            <LogOut size={16} aria-hidden="true" />
-            Sign out
-          </button>
-        </form>
+        </div>
       </div>
       {!healthShut.value && (
         <p class="st-server">
@@ -429,7 +420,61 @@ function Status() {
       {h?.secretsStoreInSync === false && (
         <p class="field-error">The Secrets Store is behind the server’s sync credentials. See docs/tasks.md.</p>
       )}
-    </div>
+    </section>
+  );
+}
+
+/** What each section's link says under its name in the side menu. */
+const SECTION_HINTS = {
+  you: 'Name, avatar, passkeys',
+  browser: 'Theme, notifications, merging',
+  people: 'Who’s on the board, invites',
+  board: 'Agents, routines, currency',
+  repos: 'Each repository’s settings',
+  server: 'Health and connections',
+};
+
+const SECTIONS = {
+  you: YouSettings,
+  browser: ThisBrowser,
+  people: PeopleSettings,
+  board: TheBoard,
+  repos: Repositories,
+  server: Server,
+};
+
+/**
+ * The side menu (WEB-141): a link per section, the open one marked. On a computer it sits on the left; on a phone
+ * it's a row across the top that scrolls sideways.
+ */
+function SectionMenu() {
+  const at = settingsSection.value;
+  const n = connectionsAttention.value;
+  return (
+    <nav class="st-menu" aria-label="Settings">
+      <ul>
+        {SETTINGS_SECTIONS.map((x) => (
+          <li key={x.id}>
+            <a href={settingsHref(x.id)} aria-current={x.id === at ? 'page' : undefined}>
+              <span class="st-menu-label">
+                {x.label}
+                {x.id === 'server' && n > 0 && (
+                  <span
+                    class="st-menu-dot"
+                    title={`${n === 1 ? '1 connection needs' : `${n} connections need`} attention`}
+                  >
+                    <span class="visually-hidden">
+                      , {n === 1 ? '1 connection needs' : `${n} connections need`} attention
+                    </span>
+                  </span>
+                )}
+              </span>
+              <span class="st-menu-hint">{SECTION_HINTS[x.id]}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 
@@ -439,28 +484,25 @@ export function SettingsView() {
     loadAgents();
     loadRoutines();
   }, []);
-  // Repository settings under All repositories opens here, at the list.
+  const at = settingsSection.value;
+  // A new section starts at the top, as a new page would, with its link in view in the phone's row.
   useEffect(() => {
-    if (!settingsAt.value || (settingsAt.value === 'repos' && !repos.value.loaded)) return;
-    const el = document.getElementById(`settings-${settingsAt.value}`);
-    settingsAt.value = null;
-    el?.scrollIntoView({ block: 'start' });
-    el?.focus({ preventScroll: true });
-  }, [settingsAt.value, repos.value.loaded]);
+    window.scrollTo({ top: 0 });
+    document.querySelector('.st-menu [aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [at]);
+  const Section = SECTIONS[at] ?? YouSettings;
   return (
     <div class="repo-settings settings-view">
-      <div class="st-top">
-        <div class="view-intro">
-          <h1>Settings</h1>
-          <p class="muted">Yours, this browser’s, the board’s, and each repository’s.</p>
-        </div>
-        <Status />
+      <div class="view-intro">
+        <h1>Settings</h1>
+        <p class="muted">Yours, this browser’s, the board’s, and each repository’s.</p>
       </div>
-      <YouSettings />
-      <ThisBrowser />
-      <PeopleSettings />
-      <TheBoard />
-      <Repositories />
+      <div class="st-layout">
+        <SectionMenu />
+        <div class="st-pane">
+          <Section />
+        </div>
+      </div>
     </div>
   );
 }
