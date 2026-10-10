@@ -8,6 +8,7 @@ import { repoFacts, scopeGitHub } from './github-scope.js';
 import { sidebarDefault } from './layout.js';
 import { setRepoBase } from './links.js';
 import { readSpecParam, specParam } from './specs.js';
+import { isOwner, loadWhoami, whoami } from './people.js';
 
 // ---- preferences (this browser only) -------------------------------------------------------
 
@@ -27,13 +28,17 @@ function savePref(name, value) {
   }
 }
 
+/** The name claims made here carry: the owner's choice, kept in this browser; a person's is always their handle. */
 export const me = signal(pref('claimName', 'owner'));
 export const theme = signal(pref('theme', 'system'));
 export const lanes = signal(pref('lanes', 'horizon'));
 /** Where a task opens by default: 'sidebar' (beside the view) or 'modal'. */
 export const openIn = signal(pref('openIn', 'sidebar') === 'modal' ? 'modal' : 'sidebar');
 effect(() => savePref('openIn', openIn.value));
-effect(() => savePref('claimName', me.value));
+effect(() => {
+  // A person's handle is theirs, not this browser's choice: the owner's own stays as they set it.
+  if (isOwner.value) savePref('claimName', me.value);
+});
 effect(() => savePref('theme', theme.value));
 effect(() => savePref('lanes', lanes.value));
 /** The colors highlighted code wears (WEB-86): breakaway's own, or a well-known editor palette, in either theme. */
@@ -333,9 +338,13 @@ export async function checkSession() {
     const res = await fetch('/api/session', { credentials: 'same-origin' });
     session.value = res.status === 200 ? 'in' : 'out';
     if (res.status === 200) {
-      const found = (await res.json().catch(() => null))?.install;
+      const body = await res.json().catch(() => null);
+      const found = body?.install;
       if (typeof found?.name === 'string' && found.name) installName.value = found.name;
       installDocs.value = typeof found?.docs === 'string' && found.docs.startsWith('https://') ? found.docs : null;
+      // Who's signed in (WEB-124): a person's claims carry their handle, whatever this browser had.
+      await loadWhoami(body);
+      if (whoami.value && !whoami.value.owner) me.value = whoami.value.handle;
     }
   } catch {
     session.value = 'offline';
@@ -356,12 +365,21 @@ export async function loadTasks() {
   }
 }
 
+/**
+ * Whether the server answered but keeps its health to the owner and the `*` grant (BRK-323): a person's board is
+ * connected all the same (WEB-124).
+ */
+export const healthShut = signal(false);
+
 export async function loadHealth() {
   try {
     health.value = await api('health');
     healthFailed.value = false;
-  } catch {
-    healthFailed.value = true;
+    healthShut.value = false;
+  } catch (error) {
+    const shut = error?.status === 403 || error?.status === 404;
+    healthShut.value = shut;
+    healthFailed.value = !shut;
   }
 }
 
@@ -900,6 +918,8 @@ export const planRef = signal(/** @type {string | null} */ (null));
 export const policyFor = signal(/** @type {string | null} */ (null));
 /** The sign-in from MCP apps the consent page shows, from #/authorize/<request> (BRK-157), or null. */
 export const authorizeId = signal(/** @type {string | null} */ (null));
+/** An invite's code from #/join/<code> (WEB-124): the join page stands alone, signed in or not. */
+export const joinCode = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
 export const addRepoAt = signal(null);
 /** Where the Settings page scrolls to once it opens (`'repos'` for its list of repositories), or null for the top. */
@@ -936,6 +956,7 @@ function parseHash() {
     policyFor.value = path === 'infrastructure/policy' ? (/^[a-z][a-z0-9-]{0,31}$/u.test(of) ? of : '') : null;
     planRef.value = environment && /^plan-\d{1,15}$/u.test(p.get('plan') ?? '') ? p.get('plan') : null;
     authorizeId.value = /^authorize\/([\w-]{20,64})$/u.exec(path)?.[1] ?? null;
+    joinCode.value = /^join\/([\w-]{20,64})$/u.exec(path)?.[1] ?? null;
     view.value = settings
       ? settings[1]
         ? 'repo-settings'
@@ -1000,6 +1021,7 @@ export function hashFor({
 } = {}) {
   // The consent page stands alone: nothing else in the hash, so the URL stays the one the sign-in came to.
   if (authorizeId.value) return `#/authorize/${authorizeId.value}`;
+  if (joinCode.value) return `#/join/${joinCode.value}`;
   const p = new URLSearchParams();
   if (repoScope.value) p.set('repo', repoScope.value);
   if (v === 'routines' && routine) p.set('routine', routine);

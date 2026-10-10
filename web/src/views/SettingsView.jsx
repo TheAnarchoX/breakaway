@@ -9,6 +9,7 @@ import {
   hashFor,
   health,
   healthFailed,
+  healthShut,
   helpOpen,
   loadAgents,
   loadHealth,
@@ -34,6 +35,9 @@ import { CurrencySettings } from '../components/CurrencySettings.jsx';
 import { openWhatsNew, whatsNew } from '../components/WhatsNew.jsx';
 import { Segmented } from '../components/ui.jsx';
 import { Pick as PickRepo } from './AddRepoView.jsx';
+import { YouSettings } from '../components/YouSettings.jsx';
+import { PeopleSettings } from '../components/PeopleSettings.jsx';
+import { isOwner, may, whoCan } from '../lib/people.js';
 
 /**
  * Settings (docs/specs/IDEA-29-settings.md, section 3; WEB-32): this browser's, the board's, and the list of
@@ -62,6 +66,15 @@ const NOTIFICATION_HINTS = {
 /** Web Push for pings: off until turned on here, and only for this browser. */
 function NotificationSettings() {
   const state = notifications.value;
+  // Push is the owner's for now: a person's own notifications wait for BRK-340.
+  const theirs = whoCan('push', null, { what: 'turn on notifications on this board' });
+  if (theirs)
+    return (
+      <div class="field">
+        <span class="field-label">Notifications</span>
+        <span class="field-hint">{theirs}</span>
+      </div>
+    );
   const unavailable = state === 'nokey' || state === 'unsupported';
   return (
     <div class="field">
@@ -99,18 +112,20 @@ function ThisBrowser() {
         <p class="muted small">Only for this browser: they’re kept here, not on the board.</p>
       </div>
       <div class="st-fields">
-        <label class="field">
-          <span class="field-label">Claim as</span>
-          <input
-            class="input input-sm"
-            value={me.value}
-            onChange={(e) => {
-              me.value = e.currentTarget.value.trim() || 'owner';
-            }}
-            spellcheck={false}
-          />
-          <span class="field-hint">Your name on claims you make here. Agents use their own.</span>
-        </label>
+        {isOwner.value && (
+          <label class="field">
+            <span class="field-label">Claim as</span>
+            <input
+              class="input input-sm"
+              value={me.value}
+              onChange={(e) => {
+                me.value = e.currentTarget.value.trim() || 'owner';
+              }}
+              spellcheck={false}
+            />
+            <span class="field-hint">Your name on claims you make here. Agents use their own.</span>
+          </label>
+        )}
         <div class="field">
           <span class="field-label">Theme</span>
           <Segmented
@@ -252,6 +267,17 @@ function BoardRoutines() {
 }
 
 function TheBoard() {
+  if (!isOwner.value)
+    return (
+      <section class="rs-section" aria-labelledby="st-board">
+        <div class="st-head">
+          <h2 id="st-board">The board</h2>
+        </div>
+        <p class="meta">
+          Only the owner changes the board’s own settings: its agents’ limits, routines, currency, and updates.
+        </p>
+      </section>
+    );
   return (
     <section class="rs-section" aria-labelledby="st-board">
       <div class="st-head">
@@ -284,10 +310,12 @@ function Repositories() {
         {loaded && list.length > 0 && (
           <>
             <p class="muted small">Each has its own settings: its name, areas, agents, deploys, and pull requests.</p>
-            <button type="button" class="btn btn-outline btn-sm st-head-action" onClick={() => openAddRepo(null)}>
-              <FolderPlus size={16} aria-hidden="true" />
-              Add a repository
-            </button>
+            {may('repo.add') && (
+              <button type="button" class="btn btn-outline btn-sm st-head-action" onClick={() => openAddRepo(null)}>
+                <FolderPlus size={16} aria-hidden="true" />
+                Add a repository
+              </button>
+            )}
           </>
         )}
       </div>
@@ -295,6 +323,8 @@ function Repositories() {
         <p class="muted" aria-busy="true">
           Loading…
         </p>
+      ) : !list.length && !isOwner.value ? (
+        <p class="muted small">You have no repository on this board yet. Ask the owner to give you a role in one.</p>
       ) : !list.length ? (
         <>
           <p class="muted small">
@@ -384,21 +414,23 @@ function Status() {
           </button>
         </form>
       </div>
-      <p class="st-server">
-        <span class={`st-server-state ${h && !h.ok ? 'is-bad' : ''}`}>
-          <strong>Server</strong>{' '}
-          {h ? (h.ok ? 'healthy' : `can’t read its history: ${h.replicaError}`) : !healthFailed.value && 'checking…'}
-        </span>
-        {h && (
-          <span class="muted">
-            {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
+      {!healthShut.value && (
+        <p class="st-server">
+          <span class={`st-server-state ${h && !h.ok ? 'is-bad' : ''}`}>
+            <strong>Server</strong>{' '}
+            {h ? (h.ok ? 'healthy' : `can’t read its history: ${h.replicaError}`) : !healthFailed.value && 'checking…'}
           </span>
-        )}
-        <a class={`settings-connections ${n ? 'is-bad' : ''}`} href={link('connections')}>
-          <Plug size={15} aria-hidden="true" />
-          {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
-        </a>
-      </p>
+          {h && (
+            <span class="muted">
+              {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
+            </span>
+          )}
+          <a class={`settings-connections ${n ? 'is-bad' : ''}`} href={link('connections')}>
+            <Plug size={15} aria-hidden="true" />
+            {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
+          </a>
+        </p>
+      )}
       {healthFailed.value && (
         <p class="field-error">Can’t reach the board right now. It tries again every 30 seconds.</p>
       )}
@@ -417,9 +449,9 @@ export function SettingsView() {
   }, []);
   // Repository settings under All repositories opens here, at the list.
   useEffect(() => {
-    if (settingsAt.value !== 'repos' || !repos.value.loaded) return;
+    if (!settingsAt.value || (settingsAt.value === 'repos' && !repos.value.loaded)) return;
+    const el = document.getElementById(`settings-${settingsAt.value}`);
     settingsAt.value = null;
-    const el = document.getElementById('settings-repos');
     el?.scrollIntoView({ block: 'start' });
     el?.focus({ preventScroll: true });
   }, [settingsAt.value, repos.value.loaded]);
@@ -428,11 +460,13 @@ export function SettingsView() {
       <div class="st-top">
         <div class="view-intro">
           <h1>Settings</h1>
-          <p class="muted">This browser’s, the board’s, and each repository’s.</p>
+          <p class="muted">Yours, this browser’s, the board’s, and each repository’s.</p>
         </div>
         <Status />
       </div>
+      <YouSettings />
       <ThisBrowser />
+      <PeopleSettings />
       <TheBoard />
       <Repositories />
     </div>
