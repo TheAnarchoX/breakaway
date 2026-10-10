@@ -374,14 +374,32 @@ describe('bringing your own Claude', () => {
   });
 
   it('starts a person’s Start next for them, never for the owner (BRK-334)', async () => {
-    const res = await json(
-      await call('/api/agents/next', { method: 'POST', cookie: ben.cookie, body: { repo: 'widgets', count: 1 } }),
-    );
-    expect(res.status).toBe(200);
-    const runs = await inStore((store) =>
-      store.sql.exec("SELECT for_person FROM agent_runs WHERE trigger = 'next'").toArray(),
-    );
-    for (const run of runs) expect(run.for_person).toBe(ben.handle);
+    // ben brings his own Claude for this one, and something is ready to start.
+    const connected = await call('/api/me/routines/widgets', {
+      method: 'PUT',
+      cookie: ben.cookie,
+      body: { url: fireOf(ben.handle), token: 'sk-ant-oat01-ben-made-up-token', plan: 'max20' },
+    });
+    expect(connected.status).toBe(201);
+    try {
+      // The agents earlier tests started stand down, so an area isn't taken.
+      for (const uuid of tasks) await owner(`/api/tasks/${uuid}/release`, { method: 'POST', body: { force: true } });
+      await task('Tidy the widget list');
+      claude.fires.length = 0;
+      const res = await json(
+        await call('/api/agents/next', { method: 'POST', cookie: ben.cookie, body: { repo: 'widgets', count: 1 } }),
+      );
+      expect(res.status).toBe(200);
+      expect(res.started).toHaveLength(1);
+      expect(claude.fires.map((f) => f.url)).toEqual([fireOf(ben.handle)]);
+      const runs = await inStore((store) =>
+        store.sql.exec("SELECT for_person, routine_of FROM agent_runs WHERE trigger = 'next'").toArray(),
+      );
+      expect(runs.length).toBeGreaterThan(0);
+      for (const run of runs) expect(run).toEqual({ for_person: ben.handle, routine_of: ben.handle });
+    } finally {
+      await call('/api/me/routines/widgets', { method: 'DELETE', cookie: ben.cookie, body: {} });
+    }
   });
 
   it('forgets a person’s routines when they’re removed, and seals them again on a rotation', async () => {
