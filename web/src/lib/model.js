@@ -28,15 +28,16 @@ export const PRIORITIES = [
 ];
 export const PRIORITY_LABEL = Object.fromEntries(PRIORITIES.map((p) => [p.id, p.label]));
 
-export const ROLES = [
-  { id: 'agent', label: 'Agent', hint: 'An agent or contributor can do it in the repository' },
-  { id: 'owner', label: 'Owner', hint: 'Needs the owner: production, dashboards, accounts, sign-offs' },
-  { id: 'decide', label: 'Decision', hint: 'Needs an owner decision before work starts' },
+/** Who does a task (BRK-330): one of these, and on a person's task, who it's for (its assignee). */
+export const WHO = [
+  { id: 'agent', label: 'Agent', hint: 'An agent builds it in the repository' },
+  { id: 'person', label: 'Person', hint: 'A person does it: production, dashboards, accounts, sign-offs' },
+  { id: 'decision', label: 'Decision', hint: 'The owner decides before work starts' },
 ];
 
 /** The board's columns, in order. Every open task is in exactly one. */
 export const STATES = [
-  { id: 'decide', label: 'Needs a decision', hint: 'Tagged decide: the owner decides before anyone starts.' },
+  { id: 'decision', label: 'Needs a decision', hint: 'A decision: the owner decides before anyone starts.' },
   { id: 'ready', label: 'Ready', hint: 'Nothing blocks it and nobody has claimed it.' },
   { id: 'active', label: 'In progress', hint: 'Claimed by an agent or the owner.' },
   { id: 'review', label: 'In review', hint: 'A pull request that closes it is open.' },
@@ -68,7 +69,7 @@ export function stateOf(t) {
   if (openPr(t)) return 'review';
   if (t.claim || t.active) return 'active';
   if (t.blocked || t.waiting) return 'blocked';
-  if (t.tags.includes('decide')) return 'decide';
+  if (t.who === 'decision') return 'decision';
   return 'ready';
 }
 

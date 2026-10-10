@@ -22,7 +22,7 @@ const task = (over) => ({
   project: 'cloud',
   status: 'pending',
   horizon: 'now',
-  tags: ['agent'],
+  who: 'agent',
   claim: null,
   entry: NOW - 10 * D,
   end: null,
@@ -124,7 +124,7 @@ describe('dashboard numbers', () => {
       // Open now.
       task({ wid: 'CLD-5', claim: 'claude-b', ready: true }),
       task({ wid: 'CLD-6', blocked: true, ready: false, horizon: 'next' }),
-      task({ wid: 'IDEA-7', project: 'ideas', tags: ['decide'], horizon: 'later' }),
+      task({ wid: 'IDEA-7', project: 'ideas', who: 'decision', horizon: 'later' }),
       task({ wid: 'CLD-8', status: 'deleted', end: NOW - H }),
     ];
     const s = computeStats({ ...empty, now: NOW, days: 7, tz: 'UTC', tasks });
@@ -138,7 +138,7 @@ describe('dashboard numbers', () => {
       ['ops', 1],
       ['ideas', 0],
     ]);
-    expect(s.open).toMatchObject({ open: 3, ready: 0, blocked: 1, claimed: 1, decide: 1, ideas: 1 });
+    expect(s.open).toMatchObject({ open: 3, ready: 0, blocked: 1, claimed: 1, decision: 1, ideas: 1 });
     expect(s.open.horizons.now).toEqual({ open: 1, done: 4 });
     expect(s.leadTime.count).toBe(3);
     expect(s.leadTime.median).toBe(D);
@@ -300,7 +300,7 @@ describe('dashboard numbers', () => {
   it('serves the numbers, and keeps GitHub and agent history after the tables let it go', async () => {
     await api('tasks', {
       method: 'POST',
-      body: [{ description: 'Count the finished work', project: 'cloud', tags: ['agent'] }],
+      body: [{ description: 'Count the finished work', project: 'cloud', who: 'agent' }],
     });
     const [{ wid }] = (await body(await api('tasks'))).tasks.filter((t) => t.description === 'Count the finished work');
     await api(`tasks/${wid}/done`, { method: 'POST', body: {} });
@@ -378,7 +378,7 @@ describe('dashboard numbers', () => {
     });
     expect(made.status).toBe(201);
     const create = (description, extra) =>
-      api('tasks', { method: 'POST', body: [{ description, tags: ['agent'], ...extra }] });
+      api('tasks', { method: 'POST', body: [{ description, who: 'agent', ...extra }] });
     await create('Scratch one', { project: 'product', repo: 'scratch' });
     await create('Scratch two', { project: 'product', repo: 'scratch' });
     await create('Home one', { project: 'cloud' });

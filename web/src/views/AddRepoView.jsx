@@ -369,7 +369,7 @@ function stepContent(id, d) {
         commands: [
           { text: `cd ../${slug}` },
           {
-            text: 'npx breakaway add "Add a README" --project <area> --tag agent --horizon now --brief "A short README.md." --done-when "README.md is on the default branch."',
+            text: 'npx breakaway add "Add a README" --project <area> --who agent --horizon now --brief "A short README.md." --done-when "README.md is on the default branch."',
           },
           { text: 'npx breakaway claim <ID>' },
           { text: 'npx breakaway release <ID>' },

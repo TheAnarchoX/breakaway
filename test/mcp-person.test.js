@@ -142,7 +142,7 @@ beforeAll(async () => {
   const task = async (body) => {
     const res = await owner('/api/tasks', {
       method: 'POST',
-      body: { force: true, project: 'product', tags: ['agent'], horizon: 'now', ...body },
+      body: { force: true, project: 'product', who: 'agent', horizon: 'now', ...body },
     });
     expect(res.status).toBe(201);
     return (await res.json()).tasks[0];

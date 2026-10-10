@@ -8,7 +8,7 @@
   --sidebar-w: 236px; /* SIDEBAR_WIDTH in lib/layout.js */
   --rail-w: 68px;
   --panel-w: 460px;
-  --state-decide: var(--text);
+  --state-decision: var(--text);
   --state-ready: var(--success);
   --state-active: var(--accent);
   --state-blocked: var(--warn);
@@ -1152,9 +1152,6 @@ a code {
 .tag::before {
   content: "+";
 }
-.tag-decide {
-  color: var(--text);
-}
 
 .claim {
   display: inline-flex;
@@ -1211,10 +1208,10 @@ a code {
   flex: none;
   background: var(--muted);
 }
-.state-decide .state-dot,
-.dot-decide {
+.state-decision .state-dot,
+.dot-decision {
   background: transparent;
-  box-shadow: inset 0 0 0 2px var(--state-decide);
+  box-shadow: inset 0 0 0 2px var(--state-decision);
 }
 .state-ready .state-dot,
 .dot-ready {
@@ -7303,7 +7300,7 @@ fieldset.field {
   background: var(--state-ready);
 }
 .fr-seg-needs-you {
-  background: var(--state-decide);
+  background: var(--state-decision);
 }
 .fr-seg-waiting {
   background: var(--state-blocked);
@@ -7494,7 +7491,7 @@ fieldset.field {
 }
 .fr-state-needs-you .state-dot {
   background: transparent;
-  box-shadow: inset 0 0 0 2px var(--state-decide);
+  box-shadow: inset 0 0 0 2px var(--state-decision);
 }
 .fr-state-waiting .state-dot {
   background: var(--state-blocked);
@@ -7551,8 +7548,8 @@ fieldset.field {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--state-decide);
-  box-shadow: inset 0 0 0 1px var(--state-decide);
+  color: var(--state-decision);
+  box-shadow: inset 0 0 0 1px var(--state-decision);
 }
 .fo-ask.is-merge {
   color: var(--accent);

@@ -91,8 +91,8 @@ describe('a chase fixes its own pull requests', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Ops one', project: 'ops', tags: ['agent', 'fast'], horizon: 'now' },
-          { description: 'Ops two', project: 'ops', tags: ['agent', 'fast'], horizon: 'now' },
+          { description: 'Ops one', project: 'ops', who: 'agent', tags: ['fast'], horizon: 'now' },
+          { description: 'Ops two', project: 'ops', who: 'agent', tags: ['fast'], horizon: 'now' },
         ],
       }),
     );
@@ -179,7 +179,10 @@ describe('a chase fixes its own pull requests', () => {
     expect((await feature('fast')).chase.state).toBe('done');
 
     // A task added to the feature after the end doesn't start: an ended chase only fixes.
-    await api('tasks', { method: 'POST', body: { description: 'Ops three', project: 'ops', tags: ['agent', 'fast'] } });
+    await api('tasks', {
+      method: 'POST',
+      body: { description: 'Ops three', project: 'ops', who: 'agent', tags: ['fast'] },
+    });
     await pull(41, 'OPS-1', { head: 'ccc', problem: 'conflicts' });
     await tick();
     await later(11);

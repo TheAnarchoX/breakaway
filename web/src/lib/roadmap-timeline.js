@@ -16,9 +16,8 @@ export const FIT_PX = { min: 2, max: 60 };
 
 const time = (iso) => (iso ? Date.parse(iso) : Number.NaN);
 
-/** A step for the owner, not an agent: a decision to make or a +owner task. */
-export const ownerStep = (t) =>
-  t.tags.includes('owner') || t.tags.includes('decide') || Boolean(t.decision && !t.decisionAnswers);
+/** A step for a person, not an agent: a decision to make or a person's task. */
+export const ownerStep = (t) => t.who === 'person' || t.who === 'decision' || Boolean(t.decision && !t.decisionAnswers);
 /** Its pull request is open: merging it is the owner's. */
 export const inReview = (t) => Boolean(t.github?.some((p) => p.closes && p.state === 'open'));
 
@@ -100,7 +99,7 @@ export function history(tasks, now, windowDays = WINDOW_DAYS) {
  * When each feature is likely done, and when at best (WEB-102). Features queue in each area in the order given
  * (the roadmap's: release, then title), since agents in an area work through them about one release at a time.
  * A feature's agent work ends when the last of its areas gets through its open tasks, and never sooner than its
- * longest chain of open tasks allows; its steps for the owner (decisions, +owner tasks, pull requests to merge)
+ * longest chain of open tasks allows; its steps for the owner (decisions, people's tasks, pull requests to merge)
  * come after, at the owner's pace. The optimistic end takes each area's best week and the owner's steps as done
  * at once. Done features end when their last task did.
  * @param {any[]} features the roadmap's features, in its order
@@ -237,7 +236,7 @@ export function explain(p, past, now) {
   if (p.chain > 1) lines.push(`Its longest chain is ${p.chain} tasks, each waiting for the one before.`);
   if (p.ownerSteps)
     lines.push(
-      `${p.ownerSteps === 1 ? '1 step is' : `${p.ownerSteps} steps are`} yours (a decision, a +owner task, or a merge), at ${
+      `${p.ownerSteps === 1 ? '1 step is' : `${p.ownerSteps} steps are`} yours (a decision, a person’s task, or a merge), at ${
         past.owner ? `your pace, ${perDay(past.owner)}` : 'one a day, until you’ve finished some'
       }.`,
     );

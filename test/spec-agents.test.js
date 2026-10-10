@@ -64,9 +64,9 @@ describe('refine a spec with an agent (BRK-120)', () => {
 
   it('writes the prompt from the spec and its tasks, sets the task’s spec, and starts a general agent', async () => {
     const [open, done, claimed] = await add([
-      { description: 'Sort by age', project: 'ops', tags: ['agent', 'inbox'], spec: 'docs/specs/OPS-70-sort.md' },
+      { description: 'Sort by age', project: 'ops', who: 'agent', tags: ['inbox'], spec: 'docs/specs/OPS-70-sort.md' },
       { description: 'Show the age', project: 'ops', spec: './docs/specs/OPS-70-sort.md' },
-      { description: 'Sort on the phone', project: 'ops', tags: ['agent'], spec: 'docs/specs/OPS-70-sort.md' },
+      { description: 'Sort on the phone', project: 'ops', who: 'agent', spec: 'docs/specs/OPS-70-sort.md' },
       { description: 'Unrelated', project: 'ops', spec: 'docs/specs/OPS-71-age.md' },
     ]);
     await api(`tasks/${done.wid}/done`, { method: 'POST' });
@@ -82,7 +82,8 @@ describe('refine a spec with an agent (BRK-120)', () => {
       spec: 'docs/specs/OPS-70-sort.md',
       description: 'Refine the spec: OPS-70 · Sort the inbox',
     });
-    expect(t.tags).toEqual(['agent', 'general']);
+    expect(t.tags).toEqual(['general']);
+    expect(t.who).toBe('agent');
     expect(t.brief).toMatch(
       /^The owner wants the spec docs\/specs\/OPS-70-sort\.md \(OPS-70 · Sort the inbox\) changed\./u,
     );

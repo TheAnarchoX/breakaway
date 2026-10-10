@@ -272,7 +272,7 @@ describe('a pull request that touches a risky path gets a separate reviewer', ()
         body: ['Rotate tokens', 'Docs', 'Draft work', 'Fork work'].map((description) => ({
           description,
           project: 'product',
-          tags: ['agent'],
+          who: 'agent',
           horizon: 'now',
         })),
       }),

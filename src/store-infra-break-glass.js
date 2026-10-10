@@ -143,7 +143,8 @@ export const infraBreakGlassMethods = {
         project: this.boardArea(env.repo),
         repo: env.repo,
         horizon: 'now',
-        tags: ['agent', 'break-glass'],
+        who: 'agent',
+        tags: ['break-glass'],
         by: 'board',
       },
     ]);

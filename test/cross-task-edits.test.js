@@ -13,7 +13,7 @@ const edit = (ref, changes) => api(`tasks/${ref}`, { method: 'PATCH', body: chan
 
 /** A general agent holding its task, as the board starts one: tagged general, claimed by claude-<short>. */
 async function generalAgent() {
-  const own = await make({ description: 'Tidy the ops tasks', project: undefined, tags: ['agent', 'general'] });
+  const own = await make({ description: 'Tidy the ops tasks', project: undefined, who: 'agent', tags: ['general'] });
   const name = `claude-${own.uuid.slice(0, 8)}`;
   expect((await api(`tasks/${own.uuid}/claim`, { method: 'POST', body: { agent: name } })).status).toBe(200);
   return { own, name };
@@ -22,7 +22,7 @@ async function generalAgent() {
 describe('cross-task edits by a general agent', () => {
   it('changes each allowed field of an unclaimed open task, and the board notes it', async () => {
     const { own, name } = await generalAgent();
-    const target = await make({ brief: 'Owner wrote this.', by: 'owner', tags: ['agent'] });
+    const target = await make({ brief: 'Owner wrote this.', by: 'owner', who: 'agent' });
     const blocker = await make({ description: 'Blocker' });
     const res = await body(
       await edit(target.wid, {
@@ -31,7 +31,6 @@ describe('cross-task edits by a general agent', () => {
         project: 'debt',
         horizon: 'next',
         addTags: ['docs'],
-        removeTags: ['agent'],
         addDepends: [blocker.wid],
         by: name,
       }),

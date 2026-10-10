@@ -560,12 +560,12 @@ export const agentsMethods = {
     let text = String(prompt ?? '').trim();
     let title = null;
     let from = null;
-    let tags = ['agent', 'general'];
+    let tags = ['general'];
     let specPath = null;
     const given = (value) => value !== null && value !== undefined && value !== '';
     if (maker && [decision, next, spec, chase, feature].some(given))
       throw new AgentError('a routine maker starts from the owner’s prompt only', 400);
-    if (maker) tags = ['agent', 'general', ROUTINE_MAKER_TAG];
+    if (maker) tags = ['general', ROUTINE_MAKER_TAG];
     if ([decision, next, spec, chase, feature].filter(given).length > 1)
       throw new AgentError(
         'start one from a decision, from a spec, from a feature, for the next version, or for a chase: only one of them',
@@ -613,7 +613,7 @@ export const agentsMethods = {
       const choice = offer.choices.find((c) => c.next === next);
       if (given(version) && String(version) !== choice.version)
         throw new AgentError(`${slug}’s next ${next} is ${choice.version} now, not ${version}: look again`, 409);
-      tags = ['agent', 'general', 'version'];
+      tags = ['general', 'version'];
       source = {
         repo: slug,
         open: offer.preparing ? [offer.preparing.uuid, this.tasks.get(offer.preparing.uuid)] : undefined,
@@ -656,6 +656,7 @@ export const agentsMethods = {
                 description: map.description ?? '',
                 status: map.status,
                 claimed: Boolean(map.claim),
+                who: map.who ?? null,
                 tags: tagsOf(map),
               })),
             n,
@@ -676,7 +677,7 @@ export const agentsMethods = {
       const open = members.find(
         (t) => t.status === 'pending' && t.tags.includes('general') && t.description.startsWith(REFINE_FEATURE_TITLE),
       );
-      tags = ['agent', 'general', row.slug];
+      tags = ['general', row.slug];
       source = {
         repo: slug,
         open: open ? [open.uuid, this.tasks.get(open.uuid)] : undefined,
@@ -743,6 +744,7 @@ export const agentsMethods = {
       {
         description: title ?? (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
         horizon: 'now',
+        who: 'agent',
         tags,
         autostart: 'yes',
         brief: text,
@@ -824,7 +826,7 @@ export const agentsMethods = {
   /** Refine from the answers' prompt for answered decision `uuid` (its detail `d`), with the owner's `note` under it. */
   refineFrom(uuid, d, note) {
     const waiting = this.views((t) => t.status === 'pending' && dependsOf(this.tasks.get(t.uuid)).includes(uuid)).map(
-      (t) => ({ ref: t.wid ?? t.short, description: t.description, tags: t.tags, spec: t.spec }),
+      (t) => ({ ref: t.wid ?? t.short, description: t.description, who: t.who, tags: t.tags, spec: t.spec }),
     );
     return refinePrompt(
       {
@@ -915,7 +917,8 @@ export const agentsMethods = {
         ...(repo ? { repo } : {}),
         horizon: 'now',
         priority: ['critical', 'high'].includes(severity) ? 'H' : 'M',
-        tags: ['agent', 'security'],
+        who: 'agent',
+        tags: ['security'],
         alert: alert.url,
         ...(autostart ? { autostart: 'yes' } : {}),
         brief,
@@ -965,7 +968,7 @@ export const agentsMethods = {
           project: this.boardArea(slug),
           repo: slug,
           horizon: 'now',
-          tags: ['agent'],
+          who: 'agent',
           pr: String(pr.number),
           by: 'board',
           brief: [`Dependabot pull request #${pr.number}: ${pr.title}`, pr.url].join('\n'),
@@ -1205,7 +1208,7 @@ export const agentsMethods = {
           project: this.boardArea(slug),
           repo: slug,
           horizon: 'now',
-          tags: ['agent'],
+          who: 'agent',
           pr: String(pr.number),
           by: 'board',
           brief: `Started from the board's pull request page. ${pr.url}\n${what}`,
@@ -1319,8 +1322,10 @@ export const agentsMethods = {
   /** Why a task can't start an agent right now, or null if it can. */
   agentBlocker(t, { inReview = false } = {}) {
     if (t?.status !== 'pending') return 'it isn’t open';
-    if (t.tags.includes('decide')) return 'it waits on a decision (+decide)';
-    if (!t.tags.includes('agent')) return 'it isn’t tagged +agent';
+    if (t.who === 'decision') return 'it waits on a decision';
+    if (t.who === 'person')
+      return `it’s a person’s task (${t.assignee === 'owner' ? 'the owner’s' : (t.assignee ?? 'anyone’s')})`;
+    if (t.who !== 'agent') return 'nobody said an agent does it: set who to agent';
     if (!inReview && t.github?.some((p) => p.closes && p.state === 'open')) return 'it’s already in review';
     if (t.claim) return `${t.claim} has it`;
     if (t.blocked) {
@@ -1331,7 +1336,7 @@ export const agentsMethods = {
     return null;
   },
 
-  /** Why a task can't be refined right now, or null. Unlike a build, +decide, +owner, and untagged tasks are fine. */
+  /** Why a task can't be refined right now, or null. Unlike a build, a decision's, a person's, or nobody's task is fine. */
   refineBlocker(t) {
     if (t?.status !== 'pending') return 'it isn’t open';
     if (t.github?.some((p) => p.closes && p.state === 'open'))

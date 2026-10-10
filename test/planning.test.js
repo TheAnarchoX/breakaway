@@ -39,7 +39,7 @@ async function undo(id) {
 
 /** A general agent holding its task, as the board starts one. */
 async function generalAgent() {
-  const own = await make({ description: 'Plan the roadmap', project: undefined, tags: ['agent', 'general'] });
+  const own = await make({ description: 'Plan the roadmap', project: undefined, who: 'agent', tags: ['general'] });
   const name = `claude-${own.uuid.slice(0, 8)}`;
   expect((await api(`tasks/${own.uuid}/claim`, { method: 'POST', body: { agent: name } })).status).toBe(200);
   return { own, name };

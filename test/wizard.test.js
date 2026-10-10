@@ -141,7 +141,7 @@ describe('the wizard, the pure parts', () => {
       /Wait/,
     );
     expect(startFix('3 agents are already running (the limit is 3)').fix).toMatch(/Settings/);
-    expect(startFix('X-1 can’t start an agent: it isn’t tagged +agent').fix).toMatch(/\+agent/);
+    expect(startFix('X-1 can’t start an agent: it’s a person’s task (the owner’s)').fix).toMatch(/who: agent/);
     expect(startFix('Claude couldn’t start the session (404: Not Found)')).toMatchObject({ step: 'connect' });
     expect(startFix('couldn’t reach Claude to start the session; try again').fix).toMatch(/try again/i);
     // BRK-144's wordings.
@@ -370,7 +370,7 @@ describe('the wizard, on the board', () => {
           .status,
       ).toBe(201);
       const made = await s.create([
-        { description: 'Add a README', project: 'product', repo: 'breakaway', tags: ['agent'], horizon: 'now' },
+        { description: 'Add a README', project: 'product', repo: 'breakaway', who: 'agent', horizon: 'now' },
       ]);
       const task = made.body.tasks[0];
       const routineRow = async () =>

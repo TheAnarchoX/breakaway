@@ -44,7 +44,8 @@ describe('general agents', () => {
       autostart: true,
       claim: `claude-${t.short}`,
     });
-    expect(t.tags).toEqual(['agent', 'general']);
+    expect(t.tags).toEqual(['general']);
+    expect(t.who).toBe('agent');
     expect(res.run).toMatchObject({ agent: `claude-${t.short}`, trigger: 'general', forced: false });
     const payload = fires.at(-1);
     expect(payload).toContain(`Task: ${t.uuid}`);
@@ -112,7 +113,7 @@ describe('general agents', () => {
   it('queues ahead of other auto-start tasks, whatever the switch says, and starts on the next tick', async () => {
     await api('tasks', {
       method: 'POST',
-      body: [{ description: 'Ordinary auto-start', project: 'ops', tags: ['agent'], horizon: 'now', autostart: 'yes' }],
+      body: [{ description: 'Ordinary auto-start', project: 'ops', who: 'agent', horizon: 'now', autostart: 'yes' }],
     });
     await settings({ autostart: false, max: 1 });
     const running = (await overview()).running.length;
@@ -231,7 +232,8 @@ describe('refine from the answers (BRK-110)', () => {
             {
               description: 'Build the edits',
               project: 'ops',
-              tags: ['agent', 'cross-edits', 'v1_3-0'],
+              who: 'agent',
+              tags: ['cross-edits', 'v1_3-0'],
               depends: [d.wid],
               force: true,
             },
@@ -256,7 +258,8 @@ describe('refine from the answers (BRK-110)', () => {
     expect(res.status).toBe(201);
     const t = res.task;
     expect(t).toMatchObject({ wid: null, project: null, horizon: 'now', autostart: true, repo: d.repo });
-    expect(t.tags).toEqual(['agent', 'general']);
+    expect(t.tags).toEqual(['general']);
+    expect(t.who).toBe('agent');
     expect(t.description).toBe(`Refine from the answers to ${d.wid}: Choose how edits land`);
     expect(t.related).toEqual([d.uuid]);
     expect(t.brief).toContain('1. How do cross-task edits land?\n   Answer: Directly, each change noted');
