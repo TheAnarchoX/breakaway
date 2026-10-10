@@ -72,7 +72,7 @@ import { IncidentSection } from './Incidents.jsx';
 import { RunEventLine } from './InfraEvents.jsx';
 import { ShortLivedSection } from './ShortLived.jsx';
 import { FootprintSection } from './Footprint.jsx';
-import { WhoField, taskLock } from './Who.jsx';
+import { WhoField, decidesLock, taskLock } from './Who.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
 
@@ -142,6 +142,8 @@ function Actions({ task: t }) {
   const lock = taskLock(t);
   // Taking someone else's claim is a maintainer's (task.plan).
   const theirs = t.claim && !mine ? taskLock(t, 'task.plan', `release ${t.claim}’s claim`) : null;
+  // Finishing a decision, or opening it again, is answering it (BRK-347): a member keeps Claim and sees who can.
+  const decides = lock ? null : decidesLock(t, state === 'done' ? 'open a decision again' : 'finish a decision');
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Delete ${ref(t)}?`,
@@ -154,7 +156,13 @@ function Actions({ task: t }) {
   return (
     <div class="panel-actions">
       {lock ? null : state === 'done' ? (
-        <button type="button" class="btn btn-outline btn-sm" onClick={() => actions.reopen(t)}>
+        <button
+          type="button"
+          class="btn btn-outline btn-sm"
+          disabled={Boolean(decides)}
+          title={decides ?? undefined}
+          onClick={() => actions.reopen(t)}
+        >
           <RotateCcw size={16} aria-hidden="true" />
           Open again
         </button>
@@ -184,7 +192,13 @@ function Actions({ task: t }) {
               Release {t.claim}’s claim
             </button>
           )}
-          <button type="button" class="btn btn-accent btn-sm" onClick={() => actions.done(t)}>
+          <button
+            type="button"
+            class="btn btn-accent btn-sm"
+            disabled={Boolean(decides)}
+            title={decides ?? undefined}
+            onClick={() => actions.done(t)}
+          >
             <CircleCheck size={16} aria-hidden="true" />
             Mark done
           </button>
