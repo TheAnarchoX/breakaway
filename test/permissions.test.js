@@ -544,14 +544,14 @@ function routes(w) {
 
 /**
  * Whether `route` is about something in a repository `who` can't read (BRK-337): then it isn't there, as a read of it
- * isn't. Not a release's pull or a planning change's undo, which aren't one thing in one repository, nor an
- * invitation, whose repository the person names; and a token's press is refused as a press first.
+ * isn't, or, for a release's pull, it's refused in words that name no repository (BRK-339). Not an invitation, whose
+ * repository the person names; and a token's press is refused as a press first.
  */
 const unseen = (route, who, action, press) =>
   route.repo !== null &&
   roleOf(who, route.repo) === null &&
   !(SPEC[action][1] && !press) &&
-  !/^\/api\/(releases|planning|people)\//u.test(route.path);
+  !/^\/api\/people\//u.test(route.path);
 
 /**
  * What a person's request to `route` must answer: a 404 when it's about something they can't see, a refusal by press
@@ -571,7 +571,9 @@ async function check(route, who, credential) {
   expect(body.error, where).not.toBe(NOT_YET);
   if (unseen(route, who, action, press)) {
     // One that names no repository is the default's, which they can't read either: they're asked to name one.
-    if (res.status === 403) expect(body.error, where).toMatch(/: ask about one repository/u);
+    // A release's pull spans repositories: it's refused whole, in words that name none (BRK-339).
+    if (route.path.startsWith('/api/releases/')) expect(body.error, where).toMatch(/doesn’t see them all/u);
+    else if (res.status === 403) expect(body.error, where).toMatch(/: ask about one repository/u);
     else expect(res.status, `${where}: ${body.error}`).toBe(404);
     expect(body.error, where).not.toMatch(/has no role in/u);
     return;
@@ -762,6 +764,117 @@ describe('a person’s writes (BRK-301)', () => {
     const owners = await owner(`/api/tasks/${world.gadget.uuid}/comments`, { method: 'POST', body: { text: 'x' } });
     expect(owners.status).toBeLessThan(300);
   }, 60_000);
+
+  it('keeps a person’s write that spans repositories from naming one they can’t see (BRK-339)', async () => {
+    const { member, maintainer, viewer, everywhere } = world.people;
+    // A feature aimed at a release, with a task in widgets and one in gadgets: pulling it moves both.
+    const slug = unique('perm-span');
+    const release = '7.7.7';
+    expect((await owner('/api/features', { method: 'POST', body: { slug, release } })).status).toBe(201);
+    for (const repo of ['widgets', 'gadgets']) {
+      const res = await owner('/api/tasks', {
+        method: 'POST',
+        body: { description: unique(`Spans ${repo}`), project: 'product', repo, tags: [slug], force: true },
+      });
+      expect(res.status).toBe(201);
+    }
+    const planning = await inStore((store) => {
+      const edit = (kind, target) =>
+        store.sql
+          .exec(
+            "INSERT INTO planning_edits (at, agent, kind, target, fields) VALUES (?, 'claude-x-1', ?, ?, '{}') RETURNING id",
+            Date.now(),
+            kind,
+            target,
+          )
+          .one().id;
+      return { gadget: edit('task', world.gadget.uuid), feature: edit('feature', slug) };
+    });
+    const spans = /^only someone who sees every repository .+ doesn’t see them all: ask the owner$/u;
+    const writes = [
+      [member, 'POST', `/api/releases/${release}/pull`, { dryRun: true }],
+      [member, 'PATCH', `/api/features/${slug}`, { title: 'Spans both' }],
+      [member, 'POST', `/api/features/${slug}/captain`, {}],
+      [maintainer, 'DELETE', `/api/features/${slug}`, {}],
+      [maintainer, 'POST', `/api/features/${slug}/chase`, { dryRun: true }],
+      [maintainer, 'POST', `/api/planning/${planning.feature}/undo`, {}],
+      // A viewer is refused it whole too, before their role: the role's words would name gadgets.
+      [viewer, 'PATCH', `/api/features/${slug}`, { title: 'Spans both' }],
+    ];
+    for (const [who, method, path, body] of writes) {
+      const res = await call(path, { method, cookie: who.cookie, body });
+      const { error } = await res.json();
+      expect(res.status, `${method} ${path} as ${who.handle}: ${error}`).toBe(403);
+      expect(error, path).toMatch(spans);
+      expect(error, path).not.toContain('gadgets');
+    }
+    // With a token, the same words, where a token may write at all.
+    const token = await call(`/api/releases/${release}/pull`, {
+      method: 'POST',
+      token: member.token,
+      body: { dryRun: true },
+    });
+    expect(token.status).toBe(403);
+    expect((await token.json()).error).toMatch(spans);
+    // Undoing a change to a task they can't see isn't there, in the words of a change that never was.
+    const missing = await call('/api/planning/999999/undo', { method: 'POST', cookie: maintainer.cookie });
+    const hidden = await call(`/api/planning/${planning.gadget}/undo`, { method: 'POST', cookie: maintainer.cookie });
+    expect([missing.status, hidden.status]).toEqual([404, 404]);
+    expect((await hidden.json()).error).toBe(`there’s no change ${planning.gadget} to undo`);
+    expect((await missing.json()).error).toBe('there’s no change 999999 to undo');
+    // Someone who sees every repository is asked only their role, and the owner's answers are as before.
+    const theirs = await call(`/api/features/${slug}`, {
+      method: 'PATCH',
+      cookie: everywhere.cookie,
+      body: { title: 'Spans both' },
+    });
+    expect(theirs.status).toBeLessThan(300);
+    const pulled = await owner(`/api/releases/${release}/pull`, { method: 'POST', body: { dryRun: true } });
+    expect(pulled.status).not.toBe(403);
+    const owners = await owner(`/api/features/${slug}`, { method: 'PATCH', body: { title: 'The owner’s' } });
+    expect(owners.status).toBeLessThan(300);
+    expect((await owner(`/api/features/${slug}`, { method: 'DELETE', body: {} })).status).toBeLessThan(300);
+  }, 60_000);
+
+  it('answers an environment or a routine they can’t see in the words of one that isn’t there (BRK-339)', async () => {
+    const env = unique('perm-gad');
+    const routine = unique('perm-gad');
+    await inStore((store) => {
+      const now = Date.now();
+      store.sql.exec(
+        "INSERT INTO infra_environments (repo, name, kind, created, edited) VALUES ('gadgets', ?, 'staging', ?, ?)",
+        env,
+        now,
+        now,
+      );
+    });
+    const made = await owner('/api/routines', {
+      method: 'POST',
+      body: { slug: routine, name: 'Gadgets', prompt: 'Tidy up', repo: 'gadgets', enabled: false },
+    });
+    expect(made.status).toBe(201);
+    const actor = { person: world.people.member.handle };
+    const gate = (target) => inStore((store) => store.readGateApi(actor, { target }));
+    for (const [hidden, missing] of [
+      [{ environment: env }, { environment: `${env}x` }],
+      [{ environment: ` ${env.toUpperCase()} ` }, { environment: ` ${env.toUpperCase()}X ` }],
+      [
+        { environment: env, repo: 'Gadgets' },
+        { environment: `${env}x`, repo: 'Gadgets' },
+      ],
+      [{ routine }, { routine: `${routine}x` }],
+    ]) {
+      const [seen, none] = [await gate(hidden), await gate(missing)];
+      expect([seen.status, none.status]).toEqual([404, 404]);
+      // The same words, but for the name they asked about.
+      const key = 'routine' in hidden ? 'routine' : 'environment';
+      const asked = (target) => String(target[key]).trim();
+      expect(seen.body.error.replace(asked(hidden), '?')).toBe(none.body.error.replace(asked(missing), '?'));
+      // Only the repository they named themselves, if any.
+      if (!hidden.repo) expect(seen.body.error).not.toContain('gadgets');
+    }
+    await owner(`/api/routines/${routine}`, { method: 'DELETE' });
+  });
 
   it('lets a maintainer manage members and viewers of their repositories, and nobody else', async () => {
     const max = world.people.maintainer;
