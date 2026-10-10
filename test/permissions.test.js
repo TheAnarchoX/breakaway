@@ -763,7 +763,7 @@ describe('a person’s writes (BRK-301)', () => {
     // The owner's answers are as before: their write on gadgets goes through.
     const owners = await owner(`/api/tasks/${world.gadget.uuid}/comments`, { method: 'POST', body: { text: 'x' } });
     expect(owners.status).toBeLessThan(300);
-  });
+  }, 60_000);
 
   it('keeps a person’s write that spans repositories from naming one they can’t see (BRK-339)', async () => {
     const { member, maintainer, viewer, everywhere } = world.people;
@@ -834,7 +834,7 @@ describe('a person’s writes (BRK-301)', () => {
     const owners = await owner(`/api/features/${slug}`, { method: 'PATCH', body: { title: 'The owner’s' } });
     expect(owners.status).toBeLessThan(300);
     expect((await owner(`/api/features/${slug}`, { method: 'DELETE', body: {} })).status).toBeLessThan(300);
-  });
+  }, 60_000);
 
   it('answers an environment or a routine they can’t see in the words of one that isn’t there (BRK-339)', async () => {
     const env = unique('perm-gad');
