@@ -82,9 +82,9 @@ describe('fix with an agent on a pull request', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Add a widget', project: 'product', tags: ['agent'], horizon: 'now' },
-          { description: 'Other work', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Held by a person', project: 'brand', tags: ['agent'], horizon: 'now' },
+          { description: 'Add a widget', project: 'product', who: 'agent', horizon: 'now' },
+          { description: 'Other work', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Held by a person', project: 'brand', who: 'agent', horizon: 'now' },
         ],
       }),
     );
@@ -160,7 +160,7 @@ describe('fix with an agent on a pull request', () => {
     expect(res.status).toBe(200);
     expect(res.task).toMatchObject({
       project: 'debt',
-      tags: ['agent'],
+      who: 'agent',
       pr: '2',
       description: 'Fix pull request #2: Bump sharp',
       claim: `claude-${res.task.wid.toLowerCase()}-fix`,

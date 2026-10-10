@@ -69,7 +69,8 @@ describe('kickoffs, the pure parts', () => {
       project: 'ideas',
       repo: 'plant-diary',
       horizon: 'next',
-      tags: ['agent', 'idea', 'kickoff-project'],
+      who: 'agent',
+      tags: ['idea', 'kickoff-project'],
     });
   });
 
@@ -323,7 +324,8 @@ describe('kickoffs on the board (IDEA-26)', () => {
       project: 'ideas',
       repo: 'plant-diary',
       horizon: 'next',
-      tags: ['agent', 'idea', 'kickoff-project'],
+      who: 'agent',
+      tags: ['idea', 'kickoff-project'],
       autostart: false,
       claim: null,
     });

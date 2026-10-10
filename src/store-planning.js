@@ -1,7 +1,7 @@
 /**
  * TaskStore's record of agents' planning (BRK-274): every change an agent makes to the plan that isn't its own work
  * (a feature's release, title, or brief; a release pulled into now or next; another task's description, done when,
- * area, horizon, priority, tags, or dependencies) is kept here with the agent's name and the values before and after.
+ * area, horizon, priority, tags, who does it, or dependencies) is kept here with the agent's name and the values before and after.
  * Activity and the feature's page show each one, and the owner undoes one with a single press. Undoing puts back what
  * the agent changed, and refuses when someone has changed the same field since, so it never overwrites newer work.
  */
@@ -15,6 +15,8 @@ const TASK_FIELDS = [
   ['project', 'project', 'area'],
   ['horizon', 'horizon', 'horizon'],
   ['priority', 'priority', 'priority'],
+  ['who', 'who', 'who does it'],
+  ['assignee', 'assignee', 'assignee'],
 ];
 /** A feature's fields an agent may change: the rest (dates, shipped) stay the owner's. */
 const FEATURE_FIELDS = ['title', 'brief', 'release'];

@@ -144,7 +144,7 @@ export function startFix(message) {
     return fix('Wait for a running agent to finish, or raise the board’s limits in Settings, then try again.');
   if (/can’t start an agent/u.test(m))
     return fix(
-      'Do what it says on the task, or start one an agent can take: open, tagged +agent, and waiting for nothing.',
+      'Do what it says on the task, or start one an agent can take: open, an agent’s to do (who: agent), and waiting for nothing.',
     );
   if (/couldn’t reach Claude/u.test(m)) return fix('Try again in a minute.');
   if (/\((?:403|404)\b/u.test(m))

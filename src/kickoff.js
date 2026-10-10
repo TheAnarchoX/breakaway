@@ -175,7 +175,8 @@ export function kickoffIdea(kickoff) {
     project: 'ideas',
     repo: kickoff.slug,
     horizon: 'next',
-    tags: ['agent', 'idea', KICKOFF_TAG],
+    who: 'agent',
+    tags: ['idea', KICKOFF_TAG],
   };
 }
 

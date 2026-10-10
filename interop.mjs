@@ -167,6 +167,8 @@ function comparable(tasks) {
       project: t.project ?? null,
       wid: t.wid ?? null,
       claim: t.claim ?? null,
+      who: t.who ?? null,
+      assignee: t.assignee ?? null,
       tags: [...(t.tags ?? [])].sort(),
       depends: [...(t.depends ?? [])].sort(),
       annotations: (t.annotations ?? []).map((a) => a.description ?? a.text).sort(),
@@ -219,7 +221,7 @@ try {
         description: 'Restored from an export',
         status: 'completed',
         project: 'debt',
-        tags: ['agent'],
+        who: 'agent',
         entry: '2026-09-01T10:00:00.000Z',
         end: '2026-09-02T10:00:00.000Z',
         annotations: [{ entry: '2026-09-01T11:00:00.000Z', text: 'restored comment' }],
@@ -243,6 +245,7 @@ try {
     const done = a.exportAll().find((t) => t.uuid === restored[0]);
     assert.equal(done.wid, 'DEBT-7');
     assert.equal(done.status, 'completed');
+    assert.equal(done.who, 'agent');
     assert.equal(done.annotations[0].description, 'restored comment');
     const waiting = a.exportAll().find((t) => t.uuid === restored[1]);
     assert.equal(waiting.wid, 'DEBT-9');
@@ -256,23 +259,36 @@ try {
   });
 
   step('Taskwarrior → server');
-  a.task('add', 'From replica A', 'project:ops', '+agent', 'horizon:now', 'priority:H');
-  a.task('add', 'Loose end', '+owner');
+  a.task('add', 'From replica A', 'project:ops', 'who:agent', 'horizon:now', 'priority:H');
+  a.task('add', 'Loose end', 'who:person', 'assignee:owner');
+  // An older habit (BRK-330): the tag who replaced still means who does it, and the board takes the tag off.
+  a.task('add', 'Old habit', '+decide', '+docs');
   a.sync();
   await check('the API sees tasks added in Taskwarrior, with a work ID for known projects', async () => {
     const tasks = await apiTasks();
     const fromA = tasks.find((t) => t.description === 'From replica A');
     assert.equal(fromA.wid, 'OPS-1');
-    assert.deepEqual(fromA.tags, ['agent']);
+    assert.equal(fromA.who, 'agent');
+    assert.deepEqual(fromA.tags, []);
     assert.equal(fromA.horizon, 'now');
-    assert.equal(tasks.find((t) => t.description === 'Loose end').wid, null);
+    const loose = tasks.find((t) => t.description === 'Loose end');
+    assert.equal(loose.wid, null);
+    assert.deepEqual([loose.who, loose.assignee], ['person', 'owner']);
+    const old = tasks.find((t) => t.description === 'Old habit');
+    assert.deepEqual([old.who, old.tags], ['decision', ['docs']]);
+  });
+  a.sync();
+  await check('Taskwarrior gets who back for the old tag, and loses the tag', () => {
+    const old = a.byDescription('Old habit');
+    assert.equal(old.who, 'decision');
+    assert.deepEqual(old.tags, ['docs']);
   });
 
   step('server → Taskwarrior');
   await api('POST', 'tasks', {
     description: 'From the API',
     project: 'ops',
-    tags: ['agent'],
+    who: 'agent',
     depends: ['OPS-1'],
     note: 'made over HTTP',
   });
@@ -288,6 +304,7 @@ try {
     assert.equal(fromApi.wid, 'OPS-2');
     assert.deepEqual(fromApi.depends, [fromA.uuid]);
     assert.equal(fromApi.brief, 'made over HTTP');
+    assert.equal(fromApi.who, 'agent');
     assert.equal(fromApi.annotations[0].description, 'a comment over HTTP');
     assert.match(a.task('+BLOCKED', 'uuids'), new RegExp(fromApi.uuid, 'u'));
   });

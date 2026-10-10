@@ -20,7 +20,7 @@ const upload = (ref, bytes, { name = 'shot.png', alt = '', type = 'image/png', t
 async function newTask(description) {
   const res = await api('tasks', {
     method: 'POST',
-    body: { description, project: 'cloud', horizon: 'now', tags: ['agent'] },
+    body: { description, project: 'cloud', horizon: 'now', who: 'agent' },
   });
   return (await res.json()).tasks[0].wid;
 }

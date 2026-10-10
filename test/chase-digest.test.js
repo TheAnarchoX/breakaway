@@ -59,11 +59,11 @@ describe('what a digest says', () => {
 
   it('puts what waits for the owner in order: priority, then what it frees, then merges first', () => {
     const order = ownerOrder([
-      { wid: 'A', kind: 'owner', priority: null, unblocks: 5 },
-      { wid: 'B', kind: 'decide', priority: 'M', unblocks: 0 },
+      { wid: 'A', kind: 'person', priority: null, unblocks: 5 },
+      { wid: 'B', kind: 'decision', priority: 'M', unblocks: 0 },
       { wid: 'C', kind: 'merge', priority: 'M', unblocks: 0 },
-      { wid: 'D', kind: 'owner', priority: 'H', unblocks: 0 },
-      { wid: 'E', kind: 'decide', priority: 'M', unblocks: 2 },
+      { wid: 'D', kind: 'person', priority: 'H', unblocks: 0 },
+      { wid: 'E', kind: 'decision', priority: 'M', unblocks: 2 },
     ]);
     expect(order.map((x) => x.wid)).toEqual(['D', 'E', 'C', 'B', 'A']);
   });
@@ -105,7 +105,7 @@ describe('what a digest says', () => {
           mergedAt: '2026-10-09T10:20:00Z',
         },
       ],
-      needsYou: [{ uuid: 'u', wid: 'OPS-3', description: 'Three', kind: 'decide', why: 'it waits on your decision' }],
+      needsYou: [{ uuid: 'u', wid: 'OPS-3', description: 'Three', kind: 'decision', why: 'it waits on your decision' }],
     });
     expect(busy.merged.map((m) => m.wid)).toEqual(['OPS-1', 'OPS-2']);
     expect(busy.merged[0].screenshots).toEqual([]);
@@ -145,10 +145,25 @@ describe('a chase’s digest (BRK-277)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Build the thing', project: 'ops', tags: ['agent', 'dig'], horizon: 'now' },
-          { description: 'Turn on the key', project: 'ops', tags: ['owner', 'dig'], horizon: 'now', priority: 'M' },
-          { description: 'Pick a name', project: 'ops', tags: ['decide', 'dig'], horizon: 'now', priority: 'H' },
-          { description: 'Build on it', project: 'ops', tags: ['agent', 'dig'], horizon: 'now', depends: ['OPS-1'] },
+          { description: 'Build the thing', project: 'ops', who: 'agent', tags: ['dig'], horizon: 'now' },
+          {
+            description: 'Turn on the key',
+            project: 'ops',
+            who: 'person',
+            assignee: 'owner',
+            tags: ['dig'],
+            horizon: 'now',
+            priority: 'M',
+          },
+          { description: 'Pick a name', project: 'ops', who: 'decision', tags: ['dig'], horizon: 'now', priority: 'H' },
+          {
+            description: 'Build on it',
+            project: 'ops',
+            who: 'agent',
+            tags: ['dig'],
+            horizon: 'now',
+            depends: ['OPS-1'],
+          },
         ],
       }),
     );
@@ -243,8 +258,8 @@ describe('a chase’s digest (BRK-277)', () => {
     ]);
     // The decision is H, the step M: the decision first.
     expect(d.waiting.map((x) => [x.wid, x.kind])).toEqual([
-      ['OPS-3', 'decide'],
-      ['OPS-2', 'owner'],
+      ['OPS-3', 'decision'],
+      ['OPS-2', 'person'],
     ]);
     expect(d.stuck).toEqual([]);
     expect(d.summary).toMatch(/running/u);

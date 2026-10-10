@@ -22,7 +22,7 @@ import {
   HORIZONS,
   PICKS_AREA,
   PRIORITIES,
-  ROLES,
+  WHO,
   ago,
   dateInput,
   day,
@@ -217,10 +217,34 @@ function Actions({ task: t }) {
   );
 }
 
+/**
+ * Who does it (BRK-330): an agent, a person, or a decision; pressing the one that's on clears it.
+ * @param {Record<string, any>} props
+ */
+function Who({ task: t }) {
+  return (
+    <div class="segmented segmented-sm" role="group" aria-label="Who does it">
+      {WHO.map((w) => {
+        const on = t.who === w.id;
+        return (
+          <button
+            key={w.id}
+            type="button"
+            aria-pressed={on}
+            title={w.hint}
+            onClick={() => actions.update(t, { who: on ? null : w.id }, null)}
+          >
+            {w.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function Tags({ task: t }) {
   const [draft, setDraft] = useState('');
-  const others = t.tags.filter((x) => !ROLES.some((r) => r.id === x));
   const add = (e) => {
     e.preventDefault();
     const tag = draft.trim().replace(/^\+/u, '');
@@ -234,23 +258,7 @@ function Tags({ task: t }) {
   };
   return (
     <div class="tags-editor">
-      <div class="segmented segmented-sm" role="group" aria-label="Who can move it">
-        {ROLES.map((r) => {
-          const on = t.tags.includes(r.id);
-          return (
-            <button
-              key={r.id}
-              type="button"
-              aria-pressed={on}
-              title={r.hint}
-              onClick={() => actions.update(t, on ? { removeTags: [r.id] } : { addTags: [r.id] }, null)}
-            >
-              {r.label}
-            </button>
-          );
-        })}
-      </div>
-      {others.map((tag) => (
+      {t.tags.map((tag) => (
         <span key={tag} class="chip">
           +{tag}
           <button
@@ -722,6 +730,9 @@ function Details({ task: t }) {
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Who does it">
+        <Who task={t} />
       </Field>
       <Field label="Tags">
         <Tags task={t} />

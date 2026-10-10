@@ -8,13 +8,19 @@ describe('activity', () => {
     await api('tasks', {
       method: 'POST',
       body: [
-        { description: 'Publish security.txt', project: 'ops', tags: ['agent'], note: 'With an expiry date.' },
-        { description: 'Check it after the deploy', project: 'ops', tags: ['owner'], depends: ['OPS-1'] },
+        { description: 'Publish security.txt', project: 'ops', who: 'agent', note: 'With an expiry date.' },
+        {
+          description: 'Check it after the deploy',
+          project: 'ops',
+          who: 'person',
+          assignee: 'owner',
+          depends: ['OPS-1'],
+        },
       ],
     });
     await api('tasks/OPS-1/claim', { method: 'POST', body: { agent: 'claude-a' } });
     await api('tasks/OPS-1/annotate', { method: 'POST', body: { text: 'Served at /.well-known/security.txt' } });
-    await api('tasks/OPS-2', { method: 'PATCH', body: { horizon: 'now', priority: 'H', addTags: ['decide'] } });
+    await api('tasks/OPS-2', { method: 'PATCH', body: { horizon: 'now', priority: 'H', who: 'decision' } });
     await api('tasks/OPS-1/release', { method: 'POST', body: { agent: 'claude-a' } });
     await api('tasks/OPS-1/done', { method: 'POST', body: {} });
     await api('tasks/OPS-2', { method: 'PATCH', body: { status: 'completed' } });
@@ -35,7 +41,7 @@ describe('activity', () => {
       'OPS-2 api done',
       'OPS-1 api done',
       'OPS-1 api released',
-      'OPS-2 api changed:horizon+priority+tags', // gitleaks:allow (an activity line, not a key)
+      'OPS-2 api changed:horizon+priority+who does it+assignee', // gitleaks:allow (an activity line, not a key)
       'OPS-1 api note:owner',
       'OPS-1 api claimed:claude-a',
       'OPS-2 api created',

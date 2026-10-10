@@ -374,17 +374,18 @@ export const chaseMethods = {
           `it waits for ${t.blockedBy.map((u) => label(byUuid.get(u) ?? { short: u.slice(0, 8) })).join(', ')}`,
         );
       else if (t.waiting) add('waiting', `it waits until ${t.wait?.slice(0, 10)}`, { until: true });
-      else if (t.tags.includes('decide') || (t.decision && !t.decisionAnswers)) {
+      else if (t.who === 'decision' || (t.decision && !t.decisionAnswers)) {
         const why = 'it waits on your decision';
         add('needs-you', why);
-        needsYou.push({ ...item, kind: 'decide', why });
-      } else if (!t.tags.includes('agent')) {
-        const owner = t.tags.includes('owner');
-        const why = owner
-          ? `it’s a step for you (+owner)${t.doneWhen ? `: done when ${t.doneWhen}` : ''}`
-          : 'it isn’t tagged +agent, so it’s yours to do or to tag';
+        needsYou.push({ ...item, kind: 'decision', why });
+      } else if (t.who !== 'agent') {
+        const person = t.who === 'person';
+        const whose = !t.assignee || t.assignee === 'owner' ? 'you' : t.assignee;
+        const why = person
+          ? `it’s a step for ${whose}${t.doneWhen ? `: done when ${t.doneWhen}` : ''}`
+          : 'nobody said who does it, so it’s yours to do or to give to an agent';
         add('needs-you', why);
-        needsYou.push({ ...item, kind: owner ? 'owner' : 'untagged', why });
+        needsYou.push({ ...item, kind: person ? 'person' : 'nobody', why });
       } else {
         const refused = this.chaseRefusals(t, row.chase_started, running);
         if (refused.count >= STUCK_AFTER) {
@@ -915,7 +916,8 @@ export const chaseMethods = {
         {
           description: made.title,
           horizon: 'now',
-          tags: ['agent', 'captain', row.slug],
+          who: 'agent',
+          tags: ['captain', row.slug],
           brief: made.brief,
           ...(made.repo === this.defaultRepoSlug() ? {} : { repo: made.repo }),
           by: 'board',
@@ -1087,9 +1089,9 @@ export const chaseMethods = {
   /** The stall ping (section 3.6): a `blocked` ping on the task that frees the most, as the board, which pushes. */
   async chasePing(row, item) {
     const what = {
-      decide: 'waits on your decision',
-      owner: 'is a step for you (+owner)',
-      untagged: 'isn’t tagged +agent: do it or tag it',
+      decision: 'waits on your decision',
+      person: 'is a step for you',
+      nobody: 'has nobody to do it: do it, or say an agent does',
       merge: `has pull request #${item.pr} open: merging is yours`,
       connect: `is in ${item.repo}, whose agent routine isn’t connected: connect it`,
       stuck: 'was refused twice: look at its last comment',
