@@ -36,7 +36,7 @@ import {
 import { copy } from '../lib/clipboard.js';
 import { RefineDialog, refineReason, setAutostart, startState } from './Agents.jsx';
 import { RefineFromAnswersDialog, refineFromAnswers } from './RefineFromAnswers.jsx';
-import { taskLock } from './Who.jsx';
+import { decidesLock, taskLock } from './Who.jsx';
 
 /*
  * The task menu (WEB-24): act on a task where it is, without opening it. Any element with `data-task-menu="<uuid>"`
@@ -296,9 +296,10 @@ function itemsFor(t, { selection, refine, refineAnswers }) {
         icon: icon(Archive),
         run: () => actions.update(t, { horizon: 'archive' }, 'Archived.'),
       });
-    // Finishing a decision, or opening one again, is answering it (decision.answer, WEB-140): decidesLock's rule.
-    const decides =
-      t.who !== 'decision' || may('decision.answer', done ? 'open a decision again' : 'finish a decision');
+    // Finishing a decision, or opening one again, is answering it (decidesLock, WEB-140).
+    const decidesWhat = done ? 'open a decision again' : 'finish a decision';
+    const decides = !decidesLock(t, decidesWhat);
+    if (!decides) left.push({ action: 'decision.answer', what: decidesWhat });
     if (decides && done)
       work.push({ id: 'reopen', label: 'Open again', icon: icon(RotateCcw), run: () => actions.reopen(t) });
     else if (decides)
