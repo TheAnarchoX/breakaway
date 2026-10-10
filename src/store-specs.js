@@ -223,9 +223,9 @@ export const specsMethods = {
    * while that pull request is open, it answers with that one.
    * @param {string | null} slug
    * @param {string} rawPath
-   * @param {{ status?: unknown }} body
+   * @param {{ status?: unknown, actor?: any }} body `actor` is who pressed (BRK-303)
    */
-  async specStatusApi(slug, rawPath, { status } = {}) {
+  async specStatusApi(slug, rawPath, { status, actor = null } = {}) {
     const setup = await this.specsSetup(slug);
     if (setup.error) return setup.error;
     const { repo, dir, credentials } = setup;
@@ -247,7 +247,7 @@ export const specsMethods = {
       };
     this.specMarking.add(key);
     try {
-      return await this.markSpec(credentials, repo, path, to);
+      return await this.markSpec(credentials, repo, path, to, actor);
     } catch (error) {
       if (!(error instanceof GitHubError)) throw error;
       return {
@@ -264,7 +264,7 @@ export const specsMethods = {
     }
   },
 
-  async markSpec(credentials, repo, path, to) {
+  async markSpec(credentials, repo, path, to, actor = null) {
     const client = this.githubClient(credentials, repo);
     const base = repo.defaultBranch;
     const name = path.slice(path.lastIndexOf('/') + 1);
@@ -315,7 +315,9 @@ export const specsMethods = {
     }
     const today = Date.now();
     let detail;
-    if (to === 'approved') detail = `${specDate(today)}, by the owner`;
+    // Who approved it (BRK-303): the owner, or the maintainer who pressed, by handle.
+    const who = this.actorIn({ actor }).person;
+    if (to === 'approved') detail = `${specDate(today)}, by ${who === 'owner' ? 'the owner' : who}`;
     else {
       const pulls = [];
       for (const t of this.specTasks(repo).get(path) ?? [])

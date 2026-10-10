@@ -185,7 +185,7 @@ describe('bringing your own Claude', () => {
     // The owner's routine, with its own token: the start says it's for ana, on the lent routine.
     expect(claude.fires[0].url).toBe(OWNER_FIRE);
     expect(claude.fires[0].text).toContain(
-      `For: ${ana.handle}, on the repository’s routine, which the owner lends them`,
+      `For: ${ana.handle} · on the repository’s routine, which the owner lends them`,
     );
 
     const second = await task('Count the widgets');
@@ -251,7 +251,7 @@ describe('bringing your own Claude', () => {
     expect(claude.fires).toHaveLength(1);
     expect(claude.fires[0].url).toBe(fireOf(ana.handle));
     expect(claude.fires[0].auth).toBe('Bearer sk-ant-oat01-ana-made-up-token');
-    expect(claude.fires[0].text).toContain(`For: ${ana.handle}, on their own Claude routine`);
+    expect(claude.fires[0].text).toContain(`For: ${ana.handle} · on their own Claude routine`);
     // The agent's run is for ana, so it acts with at most ana's rights.
     const runFor = await inStore((store) => store.runForPerson(res.run.agent));
     expect(runFor).toBe(ana.handle);
@@ -353,7 +353,7 @@ describe('bringing your own Claude', () => {
     expect(res.status).toBe(200);
     expect(res.run).toMatchObject({ forPerson: 'owner', routineOf: 'owner' });
     expect(claude.fires[0].url).toBe(OWNER_FIRE);
-    expect(claude.fires[0].text).not.toMatch(/^For: /mu);
+    expect(claude.fires[0].text).not.toMatch(/Claude routine|lends them/u);
   });
 
   it('refuses a person’s other starts with the task they wait for', async () => {

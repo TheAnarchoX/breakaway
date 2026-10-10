@@ -440,6 +440,8 @@ function ApprovalRule({ env }) {
   useEffect(() => {
     api(where)
       .then((r) => {
+        // While you're the only person on the board, there's no second approver to pick (BRK-303).
+        if (r.shown === false) return setRule(null);
         const key = `${r.rule.role}:${r.rule.people}`;
         setRule(key);
         setPicked(key);
