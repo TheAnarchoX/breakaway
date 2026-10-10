@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CLI_PACKAGE } from './init.js';
 import {
@@ -30,9 +31,30 @@ import {
   removedRepoByHand,
   routineMakerRequest,
   routineWrite,
+  needsOwner,
   unknownSubcommand,
 } from './cli.js';
 import { TEXT_KINDS } from './peloton.js';
+
+describe('list --owner (BRK-343)', () => {
+  const tasks = [
+    { id: 'decision', who: 'decision', assignee: null },
+    { id: 'owner’s', who: 'person', assignee: 'owner' },
+    { id: 'anyone’s', who: 'person', assignee: null },
+    { id: 'mia’s', who: 'person', assignee: 'mia' },
+    { id: 'agent’s', who: 'agent', assignee: null },
+    { id: 'nobody’s', who: null, assignee: null },
+  ];
+
+  it('lists what the taskrc’s owner report shows: decisions, and people’s tasks for the owner or anyone', () => {
+    expect(tasks.filter(needsOwner).map((t) => t.id)).toEqual(['decision', 'owner’s', 'anyone’s']);
+    // interop.mjs runs the same tasks through real Taskwarrior's report; this pins the filter it reads.
+    const rc = readFileSync(new URL('../../taskrc', import.meta.url), 'utf8');
+    expect(rc).toContain(
+      "report.owner.filter=status:pending ( who:'decision' or ( who:person and ( assignee:owner or assignee.none: ) ) )\n",
+    );
+  });
+});
 
 describe('unknown subcommands (CLD-193)', () => {
   it('fails on one a command doesn’t have, naming the ones it has', () => {

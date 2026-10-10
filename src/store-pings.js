@@ -339,10 +339,13 @@ export const pingsMethods = {
         throw error;
       }
 
-      // An assignee holds a role in the task's repository (BRK-330): checked against the board as it is now.
+      // A new task goes in the pinged task's repository, with that repository's prefix for the area.
+      const addRepo = this.repoOfTask(this.tasks.get(uuid));
+      // An assignee holds a role in the repository of the task it's on (BRK-330): a new task's is where it's made,
+      // a modified task's its own. Checked against the board as it is now.
       for (const c of changes.filter((x) => x.assignee)) {
-        const target = c.type === 'add' ? uuid : resolveRef(c.task, this.tasks);
-        const slug = this.repoOfTask(this.tasks.get(target))?.slug ?? this.defaultRepoSlug();
+        const repo = c.type === 'add' ? addRepo : this.repoOfTask(this.tasks.get(resolveRef(c.task, this.tasks)));
+        const slug = repo?.slug ?? this.defaultRepoSlug();
         try {
           this.checkAssignee(c.assignee, slug);
         } catch (error) {
@@ -363,9 +366,7 @@ export const pingsMethods = {
       };
       for (const c of changes.filter((x) => x.type === 'add')) {
         const made = crypto.randomUUID();
-        // In the pinged task's repository, with that repository's prefix for the area.
-        const repo = this.repoOfTask(this.tasks.get(uuid));
-        const wid = nextWid(prefixFor(repo, c.project), working);
+        const wid = nextWid(prefixFor(addRepo, c.project), working);
         working.set(
           made,
           withChanges(
@@ -374,7 +375,7 @@ export const pingsMethods = {
               description: c.title,
               project: c.project,
               wid,
-              repo: repo ? this.storedRepo(repo.slug) : null,
+              repo: addRepo ? this.storedRepo(addRepo.slug) : null,
               horizon: c.horizon,
               ...(c.priority ? { priority: c.priority } : {}),
               brief: c.brief,
