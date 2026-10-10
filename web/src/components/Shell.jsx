@@ -65,6 +65,7 @@ import {
   newTask,
   pings,
   setFilter,
+  settingsAt,
   sidebar,
   tasks,
   toggleSidebar,
@@ -75,6 +76,7 @@ import { useMedia } from '../lib/media.js';
 import { Title } from '../lib/richtext.jsx';
 import { Dialog, Kbd, Popover, RepoChip, Segmented } from './ui.jsx';
 import { Logo } from './Logo.jsx';
+import { whoami } from '../lib/people.js';
 
 const VIEW_ICONS = {
   board: Kanban,
@@ -409,6 +411,35 @@ export function Sidebar({ drawer = false }) {
   );
 }
 
+/**
+ * Who's signed in (WEB-124): a person, or the owner once they've named themselves, so an install where nobody is
+ * invited looks as it always did. It opens You in Settings.
+ */
+function SignedIn() {
+  const w = whoami.value;
+  if (!w || (w.owner && !w.name)) return null;
+  const name = w.owner ? w.name : w.label;
+  return (
+    <a
+      class="signed-in"
+      href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
+      onClick={() => {
+        settingsAt.value = 'you';
+      }}
+      title={w.owner ? `${name} (owner): your settings` : `${name} (${w.handle}): your settings`}
+    >
+      <span class="signed-in-mark" aria-hidden="true">
+        {String(name).trim().charAt(0).toUpperCase()}
+      </span>
+      <span class="signed-in-name">
+        {name}
+        {w.owner && <span class="meta"> · owner</span>}
+      </span>
+      <span class="visually-hidden">: your settings</span>
+    </a>
+  );
+}
+
 /** The sidebar as a drawer, on a phone. */
 export function MenuDrawer() {
   return (
@@ -690,6 +721,7 @@ export function TopBar({ phone = false }) {
           <span class="new-label">New task</span>
         </button>
         <Notifications />
+        <SignedIn />
       </div>
     </header>
   );

@@ -13,6 +13,7 @@ import {
 } from 'lucide-preact';
 import { ago, canAgentReview, isDependabot, plural, pressedWords } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
+import { whoCan } from '../lib/people.js';
 import {
   actions,
   agents,
@@ -28,6 +29,7 @@ import {
   openPull,
   pullRef,
   pullSetting,
+  repoName,
   repos,
   skipKey,
   skipMergeWhenGreen,
@@ -516,8 +518,11 @@ function PrActions({ page, reload }) {
     setBusy(false);
   };
   // A button that can't work says why (from the last Connections check), instead of failing when pressed.
-  const write = page.access?.write ?? { ok: true, reason: null };
-  const autoMerge = page.access?.autoMerge ?? { ok: true, reason: null };
+  // A role that can't press these says who can (WEB-124): the Worker would refuse it anyway.
+  const slug = page.repo ?? repos.value.default;
+  const role = whoCan('pull.write', slug, { what: 'merge or update its pull requests', name: repoName(slug) });
+  const write = role ? { ok: false, reason: role } : (page.access?.write ?? { ok: true, reason: null });
+  const autoMerge = role ? { ok: false, reason: role } : (page.access?.autoMerge ?? { ok: true, reason: null });
   const why = !write.ok ? write.reason : !autoMerge.ok ? autoMerge.reason : null;
   const whyId = `pr-why-${page.repo}-${page.number}`;
   if (page.draft) {
