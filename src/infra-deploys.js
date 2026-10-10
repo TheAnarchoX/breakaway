@@ -44,8 +44,8 @@ const LANDED = new Set(['success', 'inactive']);
  * What a finished Deployment was, and what it records, or null while it's still running.
  *
  * - A Deploy (the workflow, on a merge to staging) is by the executor, kind `apply`, and no plan: nobody pressed it.
- * - A Promote (a deploy to production, only ever started by the owner's press) and a Roll back are by the owner, and
- *   recorded as plans too.
+ * - A Promote (a deploy to production, only ever started by a press on the board) and a Roll back are a press's
+ *   (`owner` here; the store names the maintainer who pressed, BRK-303), and recorded as plans too.
  * - A deploy whose health check failed and went back by itself is an automatic rollback: kind `rollback`, by the
  *   executor.
  * @param {DeployRow} deploy

@@ -7,6 +7,9 @@
  * environment without one has the default, one maintainer (the owner always counts), which is exactly what the board
  * did before. Tightening a rule is a maintainer's press; loosening it is the owner's, like a policy that loosens. Every
  * change and every approval is in the audit trail, with who pressed.
+ *
+ * While the owner is the only person on the board, there's nobody to be a second approver: the rule is neither shown
+ * nor enforced, and a rule of two left from when there were people acts as one (the owner's call, 9 Oct).
  */
 import { AgentError } from './store-agents.js';
 import { DEFAULT_RULE, approvalState, approveRefusal, checkRule, loosens, ruleWords } from './infra-approval-rules.js';
@@ -37,10 +40,22 @@ export const infraApprovalRulesMethods = {
    * @returns {import('./infra-approval-rules.js').ApprovalRule}
    */
   approvalRuleOf(environmentId) {
+    const rule = this.approvalRuleKept(environmentId);
+    // With nobody invited, the owner approves alone: a rule of two acts as one.
+    return this.hasPeople() ? rule : { ...rule, people: 1 };
+  },
+
+  /** An environment's rule as it's kept, whoever is on the board: the one set for it, or the default. */
+  approvalRuleKept(environmentId) {
     const row = this.sql
       .exec('SELECT role, people FROM infra_approval_rules WHERE environment = ?', Number(environmentId))
       .toArray()[0];
     return row ? checkRule(row) : { ...DEFAULT_RULE };
+  },
+
+  /** Whether anyone besides the owner is on the board: a person who hasn't been removed. */
+  hasPeople() {
+    return this.sql.exec('SELECT 1 FROM people WHERE removed IS NULL LIMIT 1').toArray().length > 0;
   },
 
   /**
@@ -90,6 +105,8 @@ export const infraApprovalRulesMethods = {
    * @param {{ environment: number, repo: string, proposer?: string | null }} on
    */
   approvalView(kind, n, { environment, repo, proposer = null }) {
+    // Nothing to show while the owner is the only person: they approve, as they always have.
+    if (!this.hasPeople()) return null;
     const rule = this.approvalRuleOf(environment);
     return {
       ...approvalState(rule, {
@@ -176,7 +193,8 @@ export const infraApprovalRulesMethods = {
       const rule = this.approvalRuleOf(env.id);
       return {
         status: 200,
-        body: { rule, words: ruleWords(rule), approvers: this.approversOf(env.repo, rule) },
+        // `shown` is false while the owner is the only person: the board shows no rule to pick then.
+        body: { rule, words: ruleWords(rule), approvers: this.approversOf(env.repo, rule), shown: this.hasPeople() },
       };
     });
   },
@@ -196,7 +214,7 @@ export const infraApprovalRulesMethods = {
       );
       const env = this.environmentRow(ref, repo);
       if (!env) throw new AgentError(`no environment ${String(ref).slice(0, 40)}`, 404);
-      const was = this.approvalRuleOf(env.id);
+      const was = this.approvalRuleKept(env.id);
       const rule = checkRule(body);
       if (loosens(was, rule)) this.allow(body, 'policy.loosen', env.repo);
       if (was.role === rule.role && was.people === rule.people)
