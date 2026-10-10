@@ -12,6 +12,9 @@
 import { PasskeyError, toBase64url, verifyAssertion, verifyRegistration } from './webauthn.js';
 import { OWNER, refusal } from './permissions.js';
 import { WORKS, forLine, profileChange } from './profile.js';
+import { unseal } from './crypto.js';
+import { decodeSegment } from './ops.js';
+import { repoSlugOf } from './repos.js';
 
 /** What a grant may give, per repository (point 3). `*` is every repository, including ones added later. */
 export const ROLES = ['maintainer', 'member', 'viewer'];
@@ -116,7 +119,9 @@ export const peopleMethods = {
       .toArray()
       .map((c) => c.name);
     // Their avatar's seed (WEB-134, docs/specs/ID-9-avatars.md): null until they press Shuffle, and their handle is it.
-    for (const column of ['work', 'work_other', 'agent_notes', 'avatar'])
+    // The repositories a removed person held a grant in (WEB-138), as JSON: null for everyone else, and for someone
+    // removed before it was kept, until removedPersonRepos() works it out.
+    for (const column of ['work', 'work_other', 'agent_notes', 'avatar', 'removed_repos'])
       if (!columns.includes(column)) this.sql.exec(`ALTER TABLE people ADD COLUMN ${column} TEXT`);
   },
 
@@ -245,6 +250,13 @@ export const peopleMethods = {
         const { passkeys: _p, tokens: _t, sessions: _s, ...rest } = view;
         return rest;
       });
+    // Removed people whose work they can see draw as people (WEB-138): their handle, already on that work, and their
+    // seed, never their name or grants.
+    const removed = this.sql
+      .exec('SELECT handle, avatar, removed_repos FROM people WHERE removed IS NOT NULL ORDER BY created')
+      .toArray()
+      .filter((p) => this.removedPersonRepos(p).some((repository) => repository === EVERY_REPO || readable(repository)))
+      .map((p) => ({ handle: p.handle, avatar: p.avatar ?? p.handle }));
     const invites = this.sql
       .exec(
         'SELECT * FROM invites WHERE invited_by = ? AND created > ? ORDER BY created DESC',
@@ -252,7 +264,39 @@ export const peopleMethods = {
         Date.now() - MAX_INVITE_DAYS * DAY,
       )
       .toArray();
-    return ok({ people, invites: invites.map((i) => this.inviteView(i)) });
+    return ok({ people, removed, invites: invites.map((i) => this.inviteView(i)) });
+  },
+
+  /**
+   * The repositories a removed person (a people row) held a grant in, kept when they were removed (WEB-138). Someone
+   * removed before that has none kept: the repositories of the tasks their writes touched (BRK-303's versions) stand
+   * in, worked out once and kept.
+   * @param {{ handle: string, removed_repos: string | null }} p
+   * @returns {string[]}
+   */
+  removedPersonRepos(p) {
+    if (p.removed_repos != null) return JSON.parse(p.removed_repos);
+    if (!this.key || !this.tasks) return [];
+    const fallback = this.defaultRepoSlug();
+    const repos = new Set();
+    const rows = this.sql
+      .exec('SELECT parent_version_id, segment FROM versions WHERE person = ? OR for_person = ?', p.handle, p.handle)
+      .toArray();
+    for (const row of rows) {
+      let ops;
+      try {
+        ops = decodeSegment(unseal(this.key, row.parent_version_id, new Uint8Array(row.segment)));
+      } catch {
+        continue;
+      }
+      for (const op of ops) {
+        const map = this.tasks.get(op.uuid);
+        if (map) repos.add(repoSlugOf(map, fallback));
+      }
+    }
+    const kept = [...repos];
+    this.sql.exec('UPDATE people SET removed_repos = ? WHERE handle = ?', JSON.stringify(kept), p.handle);
+    return kept;
   },
 
   // ---- Managing people: the owner's, and a maintainer's within their repositories ---------------
@@ -398,11 +442,14 @@ export const peopleMethods = {
     this.revokeAccess(person.handle);
     // Their own Claude routines go too (BRK-302): nothing starts on them again.
     this.dropPersonClaude(person.handle);
+    // Where they had a grant is kept, so whoever sees their work there still draws them as a person (WEB-138).
+    const repos = this.personGrants(person.handle).map((g) => g.repository);
     this.sql.exec('DELETE FROM grants WHERE handle = ?', person.handle);
     // Their name stays on what they did; their profile was for their agents, and goes with them (BRK-329).
     this.sql.exec(
-      'UPDATE people SET removed = ?, work = NULL, work_other = NULL, agent_notes = NULL WHERE handle = ?',
+      'UPDATE people SET removed = ?, removed_repos = ?, work = NULL, work_other = NULL, agent_notes = NULL WHERE handle = ?',
       Date.now(),
+      JSON.stringify(repos),
       person.handle,
     );
     return ok({ removed: person.handle });
