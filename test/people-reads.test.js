@@ -347,7 +347,6 @@ function reads() {
     hidden(`/api/peloton/chase:${w.gadOnly}`),
     ok('/api/peloton/listen?agent=claude-gad-1'),
     ok('/api/peloton/open?agent=claude-gad-1'),
-    install('/api/push'),
     ok('/api/agents'),
     ok('/api/agents/prompt'),
     hidden('/api/agents/prompt?repo=gadgets'),
@@ -378,8 +377,8 @@ describe('a viewer of acme/widgets reads every GET route (BRK-323)', () => {
   it('covers every first segment the API routes on', () => {
     const segments = [...new Set([...workerSource.matchAll(/parts\[0\] === '([\w-]+)'/gu)].map((m) => m[1]))];
     const read = new Set(reads().map((r) => r.path.split(/[/?]/u)[2]));
-    // Writes only, or the person's own (src/people.js).
-    const writes = ['next', 'backfill', 'releases', 'planning', 'horizons', 'admin', 'import', 'session'];
+    // Writes only, or the person's own (src/people.js, and their notifications: BRK-340).
+    const writes = ['next', 'backfill', 'releases', 'planning', 'horizons', 'admin', 'import', 'session', 'push'];
     expect(segments.filter((s) => !read.has(s) && !writes.includes(s))).toEqual([]);
   });
 
