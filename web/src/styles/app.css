@@ -979,6 +979,22 @@ a code {
 .task-menu button[aria-checked="true"] svg {
   color: var(--accent);
 }
+/* Who can do what the menu left out (WEB-139): read, not pressed. */
+.task-menu-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 280px;
+  margin: 6px 0 0;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+.task-menu-note svg {
+  flex: none;
+  margin-top: 1px;
+}
 .task-menu-sep {
   height: 1px;
   border: 0;

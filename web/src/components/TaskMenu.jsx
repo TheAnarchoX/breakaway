@@ -8,6 +8,7 @@ import {
   Hand,
   Hash,
   Link2,
+  Lock,
   MessageSquare,
   PanelRight,
   Play,
@@ -19,6 +20,7 @@ import {
   Undo2,
 } from 'lucide-preact';
 import { HORIZONS, canAgentReview, openPr, ref, stateOf } from '../lib/model.js';
+import { ACTIONS } from '../../../src/permissions.js';
 import {
   actions,
   agents,
@@ -34,6 +36,7 @@ import {
 import { copy } from '../lib/clipboard.js';
 import { RefineDialog, refineReason, setAutostart, startState } from './Agents.jsx';
 import { RefineFromAnswersDialog, refineFromAnswers } from './RefineFromAnswers.jsx';
+import { decidesLock, taskLock } from './Who.jsx';
 
 /*
  * The task menu (WEB-24): act on a task where it is, without opening it. Any element with `data-task-menu="<uuid>"`
@@ -179,37 +182,54 @@ function useTriggers() {
  * @typedef {{ id: string, label: string, icon: any, run: () => void, checked?: boolean }} Item
  */
 
+/** Joins actions in words: "a", "a or b", "a, b, or c". */
+const either = (words) =>
+  words.length < 3 ? words.join(' or ') : `${words.slice(0, -1).join(', ')}, or ${words[words.length - 1]}`;
+
 /**
- * The menu's items, in groups, each only when it applies, by the task panel's rules and in its words.
+ * The menu's items, in groups, each only when it applies and the signed-in person may use it, by the task panel's
+ * rules and in its words (WEB-139). What applies but their role can't use is left out, and `note` says who can: for
+ * someone who can't change the task (a viewer), the task panel's lock line (WEB-137); for a member, the maintainer's
+ * items it left out, in one sentence.
  * @param {any} t
  * @param {{ selection: string, refine: () => void, refineAnswers: () => void }} context
- * @returns {Item[][]}
+ * @returns {{ groups: Item[][], note: string | null }}
  */
 function itemsFor(t, { selection, refine, refineAnswers }) {
   const open = t.status === 'pending';
   const done = stateOf(t) === 'done';
   const { blocker, canAuto, canStart, queued } = startState(t);
   const icon = (Icon) => <Icon size={16} aria-hidden="true" />;
+  // Add, change, claim, or comment (task.write): without it, the menu only opens and copies.
+  const lock = taskLock(t);
+  /** @type {{ action: string, what: string }[]} */
+  const left = [];
+  /** Whether they may do `action` here; when not, `what` is noted as left out. */
+  const may = (action, what) => {
+    if (!taskLock(t, action)) return true;
+    left.push({ action, what });
+    return false;
+  };
 
   const first = [];
   if (selection) first.push({ id: 'copy', label: 'Copy', icon: icon(Copy), run: () => copy(selection, 'Text') });
   first.push({ id: 'open', label: 'Open', icon: icon(PanelRight), run: () => openTask(t) });
 
   const agent = [];
-  if (queued?.forceable)
+  if (queued?.forceable && may('agent.force', 'force start an agent'))
     agent.push({ id: 'force', label: 'Force start', icon: icon(Play), run: () => actions.startAgent(t, '') });
-  else if (canStart)
+  else if (canStart && may('agent.start', 'start an agent'))
     agent.push({ id: 'start', label: 'Start an agent', icon: icon(Bot), run: () => actions.startAgent(t, '') });
   // Review with an agent (WEB-23), on a task whose pull request can merge as it stands.
   const pr = open && agents.value.data?.connected ? openPr(t) : null;
-  if (pr && canAgentReview(pr))
+  if (pr && canAgentReview(pr) && may('agent.general', 'review a pull request with an agent'))
     agent.push({
       id: 'review',
       label: `Review #${pr.number} with an agent`,
       icon: icon(ScanSearch),
       run: () => actions.reviewPull(pr),
     });
-  if (open && !refineReason(t))
+  if (open && !refineReason(t) && may('agent.start', 'refine a task with an agent'))
     agent.push({ id: 'refine', label: 'Refine with an agent…', icon: icon(Sparkles), run: refine });
   // Refine from the answers (WEB-22), on a decided decision: start one, or open the one already refining.
   const answers = refineFromAnswers(t);
@@ -220,9 +240,9 @@ function itemsFor(t, { selection, refine, refineAnswers }) {
       icon: icon(Sparkles),
       run: () => openTask(answers.open),
     });
-  else if (answers)
+  else if (answers && may('agent.general', 'refine from the answers'))
     agent.push({ id: 'refine-answers', label: 'Refine from the answers…', icon: icon(Sparkles), run: refineAnswers });
-  if (canAuto && !t.claim)
+  if (canAuto && !t.claim && may('task.plan', 'set a task to start by itself'))
     agent.push({
       id: 'autostart',
       label: `Start by itself when ready${blocker && !t.autostart ? ` (${blocker})` : ''}`,
@@ -232,43 +252,59 @@ function itemsFor(t, { selection, refine, refineAnswers }) {
     });
 
   const work = [];
-  if (!done) {
-    if (!t.claim && !t.blocked)
-      work.push({ id: 'claim', label: `Claim as ${me.value}`, icon: icon(Hand), run: () => actions.claim(t) });
-    else if (t.claim === me.value)
-      work.push({ id: 'release', label: 'Release', icon: icon(Undo2), run: () => actions.release(t) });
-    else if (t.claim)
-      work.push({ id: 'release', label: `Release ${t.claim}’s claim`, icon: icon(Undo2), run: () => releaseOther(t) });
-  }
-  work.push({
-    id: 'comment',
-    label: 'Add a comment…',
-    icon: icon(MessageSquare),
-    run: () => {
-      focusComment.value = t.uuid;
-      openTask(t);
-    },
-  });
-  if (open)
-    for (const h of HORIZONS)
-      if (h.id !== 'archive' && h.id !== t.horizon)
+  // Claim, Release, comment, move, archive, done, and open again are the task's own writes (task.write): a viewer
+  // gets none of them, and the lock line says who can.
+  if (!lock) {
+    if (!done) {
+      if (!t.claim && !t.blocked)
+        work.push({ id: 'claim', label: `Claim as ${me.value}`, icon: icon(Hand), run: () => actions.claim(t) });
+      else if (t.claim === me.value)
+        work.push({ id: 'release', label: 'Release', icon: icon(Undo2), run: () => actions.release(t) });
+      // Taking someone else's claim is a maintainer's (task.plan).
+      else if (t.claim && may('task.plan', `release ${t.claim}’s claim`))
         work.push({
-          id: `move-${h.id}`,
-          label: `Move to ${h.label.toLowerCase()}`,
-          icon: icon(ArrowRight),
-          run: () => actions.update(t, { horizon: h.id }, `Moved to ${h.label.toLowerCase()}.`),
+          id: 'release',
+          label: `Release ${t.claim}’s claim`,
+          icon: icon(Undo2),
+          run: () => releaseOther(t),
         });
-  // Archive a finished task (WEB-44) on the board and the list. Not on the dependency graph: its finished tasks
-  // drop off by themselves once nothing still waits for them.
-  if (done && t.horizon !== 'archive' && (view.value === 'board' || view.value === 'list'))
+    }
     work.push({
-      id: 'archive',
-      label: 'Archive',
-      icon: icon(Archive),
-      run: () => actions.update(t, { horizon: 'archive' }, 'Archived.'),
+      id: 'comment',
+      label: 'Add a comment…',
+      icon: icon(MessageSquare),
+      run: () => {
+        focusComment.value = t.uuid;
+        openTask(t);
+      },
     });
-  if (done) work.push({ id: 'reopen', label: 'Open again', icon: icon(RotateCcw), run: () => actions.reopen(t) });
-  else work.push({ id: 'done', label: 'Mark done', icon: icon(CircleCheck), run: () => actions.done(t) });
+    if (open)
+      for (const h of HORIZONS)
+        if (h.id !== 'archive' && h.id !== t.horizon)
+          work.push({
+            id: `move-${h.id}`,
+            label: `Move to ${h.label.toLowerCase()}`,
+            icon: icon(ArrowRight),
+            run: () => actions.update(t, { horizon: h.id }, `Moved to ${h.label.toLowerCase()}.`),
+          });
+    // Archive a finished task (WEB-44) on the board and the list. Not on the dependency graph: its finished tasks
+    // drop off by themselves once nothing still waits for them.
+    if (done && t.horizon !== 'archive' && (view.value === 'board' || view.value === 'list'))
+      work.push({
+        id: 'archive',
+        label: 'Archive',
+        icon: icon(Archive),
+        run: () => actions.update(t, { horizon: 'archive' }, 'Archived.'),
+      });
+    // Finishing a decision, or opening one again, is answering it (decidesLock, WEB-140).
+    const decidesWhat = done ? 'open a decision again' : 'finish a decision';
+    const decides = !decidesLock(t, decidesWhat);
+    if (!decides) left.push({ action: 'decision.answer', what: decidesWhat });
+    if (decides && done)
+      work.push({ id: 'reopen', label: 'Open again', icon: icon(RotateCcw), run: () => actions.reopen(t) });
+    else if (decides)
+      work.push({ id: 'done', label: 'Mark done', icon: icon(CircleCheck), run: () => actions.done(t) });
+  }
 
   const copies = [];
   if (t.wid) copies.push({ id: 'wid', label: 'Copy work ID', icon: icon(Hash), run: () => copy(t.wid, 'Work ID') });
@@ -279,7 +315,15 @@ function itemsFor(t, { selection, refine, refineAnswers }) {
     run: () => copy(`${location.origin}/${hashFor({ task: ref(t), view: 'board' })}`, 'Link'),
   });
 
-  return [first, agent, work, copies].filter((group) => group.length);
+  // One line says who can. A viewer's is the panel's lock line. A member's names what was left out: the menu's
+  // maintainer items share a role, so one sentence holds them; any with another role keep their own rule's words.
+  let note = lock;
+  if (!note && left.length) {
+    const role = ACTIONS[left[0].action]?.role;
+    const words = left.filter((l) => ACTIONS[l.action]?.role === role).map((l) => l.what);
+    note = taskLock(t, left[0].action, either([...new Set(words)]));
+  }
+  return { groups: [first, agent, work, copies].filter((group) => group.length), note };
 }
 
 /** @param {Record<string, any>} props */
@@ -290,7 +334,7 @@ function Menu({ menu, task: t, onRefine, onRefineAnswers }) {
     taskMenu.value = null;
     if (refocus && menu.from?.isConnected) menu.from.focus({ preventScroll: true });
   };
-  const groups = itemsFor(t, {
+  const { groups, note } = itemsFor(t, {
     selection: menu.selection,
     refine: () => onRefine(t.uuid),
     refineAnswers: () => onRefineAnswers(t.uuid),
@@ -364,6 +408,7 @@ function Menu({ menu, task: t, onRefine, onRefineAnswers }) {
       class="task-menu menu"
       role="menu"
       aria-label={`${ref(t)} actions`}
+      aria-describedby={note ? `task-menu-note-${t.uuid}` : undefined}
       style={{ left: `${place.left}px`, top: `${place.top}px`, visibility: place.ready ? 'visible' : 'hidden' }}
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
@@ -402,6 +447,12 @@ function Menu({ menu, task: t, onRefine, onRefineAnswers }) {
           );
         }),
       ])}
+      {note && (
+        <p id={`task-menu-note-${t.uuid}`} class="task-menu-note">
+          <Lock size={16} aria-hidden="true" />
+          {note}
+        </p>
+      )}
     </div>
   );
 }
