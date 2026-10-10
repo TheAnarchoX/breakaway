@@ -8,7 +8,7 @@ import { repoFacts, scopeGitHub } from './github-scope.js';
 import { sidebarDefault } from './layout.js';
 import { setRepoBase } from './links.js';
 import { readSpecParam, specParam } from './specs.js';
-import { isOwner, loadWhoami, whoami } from './people.js';
+import { isOwner, loadWhoami, myHandle, personName, whoami } from './people.js';
 
 // ---- preferences (this browser only) -------------------------------------------------------
 
@@ -879,7 +879,11 @@ export const VIEWS = [
 const PAGE_IDS = ['add-repo', 'settings', 'repo-settings', 'kickoff'];
 const VIEW_IDS = [...VIEWS.map((v) => v.id), ...PAGE_IDS];
 
-export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], who: [], claim: 'any', done: 'recent' };
+/**
+ * The board's filters. `who` holds agent, person, decision, or none (nobody's said yet); `assignee` is any, me, nobody
+ * (a person's task any member may do), or a person's handle (WEB-133).
+ */
+export const EMPTY_FILTERS = { q: '', areas: [], horizons: [], who: [], assignee: 'any', claim: 'any', done: 'recent' };
 export const view = signal('board');
 export const selected = signal(null);
 export const taskView = signal(null); // 'sidebar' or 'modal' when the URL says how to open the task, else null
@@ -994,6 +998,7 @@ function parseHash() {
       areas: csv(p.get('area')),
       horizons: csv(p.get('horizon')),
       who: csv(p.get('who')),
+      assignee: p.get('for') ?? 'any',
       claim: p.get('claim') ?? 'any',
       done: p.get('done') ?? 'recent',
     };
@@ -1041,6 +1046,7 @@ export function hashFor({
   if (f.areas.length) p.set('area', f.areas.join(','));
   if (f.horizons.length) p.set('horizon', f.horizons.join(','));
   if (f.who.length) p.set('who', f.who.join(','));
+  if (f.assignee !== 'any') p.set('for', f.assignee);
   if (f.claim !== 'any') p.set('claim', f.claim);
   if (f.done !== 'recent') p.set('done', f.done);
   if (v === 'list') {
@@ -1169,6 +1175,7 @@ export const activeFilters = computed(() => {
     f.areas.length +
     f.horizons.length +
     f.who.length +
+    (f.assignee !== 'any' ? 1 : 0) +
     (f.claim !== 'any' ? 1 : 0) +
     (f.done !== 'recent' ? 1 : 0)
   );
@@ -1182,6 +1189,7 @@ function haystack(t) {
     t.claim,
     t.who,
     t.assignee,
+    t.assignee ? personName(t.assignee) : null,
     areaLabel(t.project),
     t.project,
     multiRepo.value ? t.repo : null,
@@ -1215,7 +1223,13 @@ export const visible = computed(() => {
     if (t.horizon === 'archive' && !f.horizons.includes('archive')) return false;
     if (f.areas.length && !f.areas.includes(t.project)) return false;
     if (f.horizons.length && !f.horizons.includes(t.horizon)) return false;
-    if (f.who.length && !f.who.includes(t.who)) return false;
+    if (f.who.length && !f.who.includes(t.who ?? 'none')) return false;
+    if (f.assignee !== 'any') {
+      // A person's task: for you, for nobody in particular, or for one person.
+      if (t.who !== 'person') return false;
+      const wanted = f.assignee === 'me' ? myHandle.value : f.assignee === 'nobody' ? null : f.assignee;
+      if ((t.assignee ?? null) !== wanted) return false;
+    }
     if (f.claim === 'unclaimed' && t.claim) return false;
     if (f.claim === 'claimed' && !t.claim) return false;
     if (f.claim === 'mine' && t.claim !== me.value) return false;

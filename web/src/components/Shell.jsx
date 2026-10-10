@@ -77,7 +77,8 @@ import { useMedia } from '../lib/media.js';
 import { Title } from '../lib/richtext.jsx';
 import { Dialog, Kbd, Popover, RepoChip, Segmented } from './ui.jsx';
 import { Logo } from './Logo.jsx';
-import { whoami } from '../lib/people.js';
+import { ensurePeople, myHandle, people, personLabel, whoami } from '../lib/people.js';
+import { OWNER } from '../../../src/permissions.js';
 
 const VIEW_ICONS = {
   board: Kanban,
@@ -757,6 +758,44 @@ function AreaPicker() {
   );
 }
 
+/** Who does it, with the tasks nobody has said who does yet (WEB-133). */
+const WHO_FILTER = [
+  ...WHO,
+  { id: 'none', label: 'Nobody yet', hint: 'Nobody has said who does it, so nothing starts on it' },
+];
+
+/**
+ * Whose person's task it is (WEB-133): yours, any member's, or one person's. The people come from who you share a
+ * repository with, and a handle in the address that isn't among them still shows.
+ */
+function AssigneeFilter() {
+  useEffect(ensurePeople, []);
+  const value = filters.value.assignee;
+  const handles = new Set(
+    (people.value.data?.people ?? []).filter((p) => !p.removed && p.handle !== myHandle.value).map((p) => p.handle),
+  );
+  if (myHandle.value !== OWNER) handles.add(OWNER);
+  if (!['any', 'me', 'nobody'].includes(value)) handles.add(value);
+  return (
+    <label class="inline-select">
+      <span>For</span>
+      <select class="select select-sm" value={value} onChange={(e) => setFilter({ assignee: e.currentTarget.value })}>
+        <option value="any">Anyone or nobody</option>
+        <option value="me">You</option>
+        <option value="nobody">Any member</option>
+        {[...handles]
+          .map((h) => ({ h, label: personLabel(h) }))
+          .sort((a, b) => (a.h === OWNER ? -1 : b.h === OWNER ? 1 : a.label.localeCompare(b.label)))
+          .map(({ h, label }) => (
+            <option key={h} value={h}>
+              {label}
+            </option>
+          ))}
+      </select>
+    </label>
+  );
+}
+
 function Filters() {
   const f = filters.value;
   return (
@@ -769,7 +808,14 @@ function Filters() {
         value={f.horizons}
         onChange={(v) => setFilter({ horizons: v })}
       />
-      <Segmented label="Who does it" multiple options={WHO} value={f.who} onChange={(v) => setFilter({ who: v })} />
+      <Segmented
+        label="Who does it"
+        multiple
+        options={WHO_FILTER}
+        value={f.who}
+        onChange={(v) => setFilter({ who: v })}
+      />
+      <AssigneeFilter />
       <label class="inline-select">
         <span>Claimed</span>
         <select class="select select-sm" value={f.claim} onChange={(e) => setFilter({ claim: e.currentTarget.value })}>
