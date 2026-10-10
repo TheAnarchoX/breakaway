@@ -39,17 +39,11 @@ describe('the kickoff mode, the pure parts (BRK-134)', () => {
   });
 
   it('sends Mode: kickoff, and says the carry-on started it', () => {
-    const text = firePayload(
-      { wid: 'IDEA-7', description: 'A diary for my plants' },
-      'claude-idea-7',
-      'kickoff',
-      null,
-      'kickoff',
-      null,
-      null,
-      2,
-      { slug: 'plant-diary', github: 'acme/plant-diary' },
-    );
+    const text = firePayload({ wid: 'IDEA-7', description: 'A diary for my plants' }, 'claude-idea-7', 'kickoff', {
+      kind: 'kickoff',
+      attachments: 2,
+      repo: { slug: 'plant-diary', github: 'acme/plant-diary' },
+    });
     expect(text.split('\n')).toEqual([
       'Task: IDEA-7',
       'Title: A diary for my plants',
@@ -64,20 +58,11 @@ describe('the kickoff mode, the pure parts (BRK-134)', () => {
 
   it('carries Run it’s answer after Mode: kickoff, so the plan can include the first infrastructure (BRK-305)', () => {
     const lines = (runIt, kind = 'kickoff') =>
-      firePayload(
-        { wid: 'IDEA-7', description: 'A diary for my plants' },
-        'claude-idea-7',
-        'kickoff',
-        null,
+      firePayload({ wid: 'IDEA-7', description: 'A diary for my plants' }, 'claude-idea-7', 'kickoff', {
         kind,
-        null,
-        null,
-        0,
-        { slug: 'plant-diary', github: 'acme/plant-diary' },
-        null,
-        null,
+        repo: { slug: 'plant-diary', github: 'acme/plant-diary' },
         runIt,
-      ).split('\n');
+      }).split('\n');
     expect(lines('agent').slice(-2)).toEqual(['Mode: kickoff', 'Run it: agent']);
     expect(lines('now')).toContain('Run it: now');
     expect(lines('not-needed')).toContain('Run it: not-needed');
