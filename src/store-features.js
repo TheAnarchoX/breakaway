@@ -305,21 +305,27 @@ export const featuresMethods = {
     let idea = null;
     if (shape) {
       const written = featureIdea({ slug, ...f });
-      const res = await this.create([
-        {
-          description: written.title,
-          project: 'ideas',
-          horizon: 'now',
-          who: 'agent',
-          tags: ['idea', `horizon-${shape.horizon}`, slug],
-          autostart: 'yes',
-          brief: written.brief,
-          ...(shape.repo ? { repo: shape.repo } : {}),
-          by: 'owner',
-        },
-      ]);
+      // The person who asked for the shaping (BRK-334): the idea names them, and its agent starts on their Claude.
+      const shaper = this.startsFor(input);
+      const res = await this.create(
+        [
+          {
+            description: written.title,
+            project: 'ideas',
+            horizon: 'now',
+            who: 'agent',
+            tags: ['idea', `horizon-${shape.horizon}`, slug],
+            autostart: 'yes',
+            brief: written.brief,
+            ...(shape.repo ? { repo: shape.repo } : {}),
+            by: shaper,
+          },
+        ],
+        { actor: shaper === OWNER ? null : { person: shaper } },
+      );
       if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t make the idea', res.status);
       idea = res.body.tasks[0];
+      this.queueFor(idea.uuid, shaper);
     }
     const now = Date.now();
     this.sql.exec(

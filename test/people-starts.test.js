@@ -454,6 +454,27 @@ describe('a person’s other starts run on their own Claude (BRK-334)', () => {
     }
   });
 
+  it('names the person on an idea they ask an agent to shape, and starts its agent on their routine', async () => {
+    const slug = unique('people-shape');
+    const res = await json(
+      await call('/api/features', {
+        method: 'POST',
+        cookie: cleo.cookie,
+        body: { slug, brief: 'Widgets sorted by size.', shape: { repo: 'widgets', horizon: 'next' } },
+      }),
+    );
+    expect(res.status).toBe(201);
+    made.push(res.idea.uuid);
+    expect(await addedBy(res.idea.uuid)).toBe(cleo.handle);
+    expect(await inStore((store) => store.queuedFor(res.idea.uuid))).toBe(cleo.handle);
+    fires.length = 0;
+    await inStore((store) => store.autostartTick());
+    const [run] = await runsOf(res.idea.uuid);
+    expect(run).toMatchObject({ for_person: cleo.handle, routine_of: cleo.handle });
+    expect(fires[0].url).toBe(fireOf(cleo.handle));
+    await free(res.idea.uuid);
+  });
+
   it('keeps the owner’s starts on the repository’s routine, saying nothing about who started them', async () => {
     fires.length = 0;
     const res = await json(
