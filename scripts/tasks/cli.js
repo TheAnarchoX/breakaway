@@ -32,6 +32,14 @@ export const SUBCOMMANDS = {
   infra: ['init', 'runner', 'check', 'adopt', 'act', ...INFRA_READS],
 };
 
+/**
+ * Whether a task needs the owner (`list --owner`), as the owner report in the shared taskrc reads it: an open
+ * decision, or a person's task that is the owner's or anyone's (BRK-330). A task assigned to another person is theirs.
+ * @param {{ who?: string | null, assignee?: string | null }} t
+ */
+export const needsOwner = (t) =>
+  t.who === 'decision' || (t.who === 'person' && (!t.assignee || t.assignee === 'owner'));
+
 /** Commands that take nothing after their name, so a word there is a mistake (an old copy's missing subcommand, say). */
 export const NO_ARGUMENTS = new Set([
   'list',
