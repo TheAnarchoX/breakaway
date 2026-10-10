@@ -37,7 +37,7 @@ import {
   repoScope,
   repoSettingsHref,
   repos,
-  settingsAt,
+  settingsHref,
 } from '../lib/store.js';
 import { ProviderAlerts } from '../components/ProviderAlerts.jsx';
 import { ProviderConnect } from '../components/ProviderConnect.jsx';
@@ -539,14 +539,7 @@ function Setup({ setup }) {
               {s.id === 'passkey' && !s.done && (
                 <>
                   {' · '}
-                  <a
-                    href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
-                    onClick={() => {
-                      settingsAt.value = 'you';
-                    }}
-                  >
-                    Add one in Settings
-                  </a>
+                  <a href={settingsHref('you')}>Add one in Settings</a>
                 </>
               )}
               {s.id === 'first' && setup.repo && !s.done && (

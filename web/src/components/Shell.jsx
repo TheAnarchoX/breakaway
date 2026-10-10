@@ -5,10 +5,14 @@ import {
   BookOpen,
   Bot,
   Cable,
+  ChevronDown,
   ChevronsUpDown,
+  CircleArrowUp,
   FolderGit2,
   FolderPlus,
   Inbox,
+  Keyboard,
+  LogOut,
   Rocket,
   GitPullRequest,
   Kanban,
@@ -66,7 +70,7 @@ import {
   newTask,
   pings,
   setFilter,
-  settingsAt,
+  settingsHref,
   sidebar,
   tasks,
   toggleSidebar,
@@ -77,6 +81,7 @@ import { useMedia } from '../lib/media.js';
 import { Title } from '../lib/richtext.jsx';
 import { Dialog, Kbd, Popover, RepoChip, Segmented } from './ui.jsx';
 import { Logo } from './Logo.jsx';
+import { openWhatsNew, whatsNew } from './WhatsNew.jsx';
 import { ensurePeople, myHandle, people, personLabel, whoami } from '../lib/people.js';
 import { OWNER } from '../../../src/permissions.js';
 import { Avatar } from '../lib/avatar.jsx';
@@ -99,39 +104,11 @@ const VIEW_ICONS = {
 /** breakaway's docs, on its site: the sidebar links them on every install. */
 const DOCS_URL = 'https://leavethepack.dev/docs/';
 
-/** How many connections need attention, on the Connections item and the Settings gear (CLD-121). */
-function AttentionBadge() {
-  const n = connectionsAttention.value;
-  if (!n) return null;
-  return (
-    <span class="side-badge side-badge-attention">
-      <span class="visually-hidden">, </span>
-      {n}
-      <span class="visually-hidden"> {n === 1 ? 'connection needs' : 'connections need'} attention</span>
-    </span>
-  );
-}
-
 /**
- * A count on a view's item: what's open in the inbox, pull requests ready to merge, agents working, connections
- * needing attention.
+ * A count on a view's item: pull requests ready to merge, and agents working.
  * @param {Record<string, any>} props
  */
 function NavBadge({ id }) {
-  if (id === 'connections') return <AttentionBadge />;
-  if (id === 'inbox') {
-    // The bell's count: the switcher's pings, and the notes about connections and ended chases.
-    const n = openPingsHere.value;
-    if (!n) return null;
-    const split = countByRepo(scopedPings.value.map((p) => p.repo));
-    return (
-      <span class="side-badge" title={split ?? undefined}>
-        <span class="visually-hidden">, </span>
-        {n}
-        <span class="visually-hidden"> open{split ? `: ${split}` : ''}</span>
-      </span>
-    );
-  }
   if (id === 'github') {
     // The switcher's repository, or every one under All, split by repository.
     const ready = (githubView.value?.open ?? []).filter((p) => p.verdict === 'ready');
@@ -344,7 +321,7 @@ export function Sidebar({ drawer = false }) {
         </div>
       )}
       <nav class="side-nav" aria-label="Views">
-        {VIEWS.map((v) => {
+        {VIEWS.filter((v) => v.sidebar !== false).map((v) => {
           const Icon = VIEW_ICONS[v.id];
           return (
             <a
@@ -366,35 +343,6 @@ export function Sidebar({ drawer = false }) {
       </nav>
       <div class="sidebar-foot">
         <ServerStatus />
-        <a
-          class="side-item"
-          href={DOCS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={tip('Docs')}
-          onClick={close}
-        >
-          <span class="side-icon">
-            <BookOpen size={20} aria-hidden="true" />
-          </span>
-          <span class="side-label">
-            Docs
-            <span class="visually-hidden"> (opens in a new tab)</span>
-          </span>
-        </a>
-        <a
-          class="side-item"
-          href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
-          aria-current={['settings', 'repo-settings'].includes(view.value) ? 'page' : undefined}
-          title={tip('Settings')}
-          onClick={close}
-        >
-          <span class="side-icon">
-            <Settings size={20} aria-hidden="true" />
-          </span>
-          <span class="side-label">Settings</span>
-          <AttentionBadge />
-        </a>
         {!drawer && (
           <button
             type="button"
@@ -417,29 +365,137 @@ export function Sidebar({ drawer = false }) {
 }
 
 /**
- * Who's signed in (WEB-124): a person, or the owner once they've named themselves, so an install where nobody is
- * invited looks as it always did. It opens You in Settings.
+ * Who's signed in (WEB-124), and the account menu under them (WEB-141): Settings, Connections, MCP, the docs, the
+ * shortcuts, What's new, and Sign out, which the sidebar used to hold. An owner who hasn't named themselves shows as Owner.
  */
-function SignedIn() {
+function AccountMenu() {
   const w = whoami.value;
-  if (!w || (w.owner && !w.name)) return null;
-  const name = w.owner ? w.name : w.label;
+  const owner = !w || w.owner;
+  const name = owner ? w?.name || 'Owner' : w.label;
+  const handle = owner ? OWNER : w.handle;
+  const n = connectionsAttention.value;
+  const attention = n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : '';
   return (
-    <a
-      class="signed-in"
-      href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
-      onClick={() => {
-        settingsAt.value = 'you';
-      }}
-      title={w.owner ? `${name} (owner): your settings` : `${name} (${w.handle}): your settings`}
+    <Popover
+      className="account"
+      align="end"
+      buttonClass={`account-button ${['settings', 'repo-settings', 'connections', 'mcp'].includes(view.value) ? 'is-current' : ''}`}
+      icon={
+        <span class="account-mark">
+          <Avatar name={handle} size={32} />
+          {n > 0 && <span class="account-dot" aria-hidden="true" />}
+        </span>
+      }
+      label={
+        <>
+          <span class="account-name" aria-hidden="true">
+            {name}
+          </span>
+          <span class="visually-hidden">
+            Your account: {name}
+            {owner ? ', owner' : ''}
+            {attention ? `, ${attention}` : ''}
+          </span>
+          <ChevronDown size={16} class="account-chevron" aria-hidden="true" />
+        </>
+      }
     >
-      <Avatar name={w.owner ? 'owner' : w.handle} size={32} />
-      <span class="signed-in-name">
-        {name}
-        {w.owner && <span class="meta"> · owner</span>}
-      </span>
-      <span class="visually-hidden">: your settings</span>
-    </a>
+      {(close) => (
+        <nav class="account-panel" aria-label="Your account">
+          <div class="account-head">
+            <Avatar name={handle} size={40} />
+            <span class="account-who">
+              <strong>{name}</strong>
+              <span class="meta">{owner ? 'You run this board' : w.handle}</span>
+            </span>
+          </div>
+          <ul class="account-list">
+            <li>
+              <a
+                class="account-item"
+                href={settingsHref('you')}
+                aria-current={['settings', 'repo-settings'].includes(view.value) ? 'page' : undefined}
+                onClick={close}
+              >
+                <Settings size={18} aria-hidden="true" />
+                Settings
+              </a>
+            </li>
+            <li>
+              <a
+                class="account-item"
+                href={hashFor({ view: 'connections', task: null, pr: null, ping: null })}
+                aria-current={view.value === 'connections' ? 'page' : undefined}
+                onClick={close}
+              >
+                <Plug size={18} aria-hidden="true" />
+                Connections
+                {n > 0 && (
+                  <span class="side-badge side-badge-attention">
+                    <span class="visually-hidden">, </span>
+                    {n}
+                    <span class="visually-hidden"> {n === 1 ? 'needs' : 'need'} attention</span>
+                  </span>
+                )}
+              </a>
+            </li>
+            <li>
+              <a
+                class="account-item"
+                href={hashFor({ view: 'mcp', task: null, pr: null, ping: null })}
+                aria-current={view.value === 'mcp' ? 'page' : undefined}
+                onClick={close}
+              >
+                <Cable size={18} aria-hidden="true" />
+                MCP
+              </a>
+            </li>
+            <li>
+              <a class="account-item" href={DOCS_URL} target="_blank" rel="noopener noreferrer" onClick={close}>
+                <BookOpen size={18} aria-hidden="true" />
+                Docs
+                <span class="visually-hidden"> (opens in a new tab)</span>
+              </a>
+            </li>
+            <li>
+              <button
+                type="button"
+                class="account-item"
+                onClick={() => {
+                  close();
+                  helpOpen.value = true;
+                }}
+              >
+                <Keyboard size={18} aria-hidden="true" />
+                Keyboard shortcuts
+                <Kbd>?</Kbd>
+              </button>
+            </li>
+            {whatsNew.value && (
+              <li>
+                <button
+                  type="button"
+                  class="account-item"
+                  onClick={() => {
+                    close();
+                    openWhatsNew();
+                  }}
+                >
+                  <CircleArrowUp size={18} aria-hidden="true" />
+                  See what’s new
+                </button>
+              </li>
+            )}
+          </ul>
+          <form method="post" action="/logout" class="account-foot">
+            <button type="submit" class="account-item">
+              <LogOut size={18} aria-hidden="true" />
+              Sign out
+            </button>
+          </form>
+        </nav>
+      )}
+    </Popover>
   );
 }
 
@@ -678,18 +734,13 @@ export function TopBar({ phone = false }) {
           <button
             type="button"
             class="btn btn-quiet btn-icon menu-button"
-            aria-label={
-              connectionsAttention.value
-                ? `Open the menu (${connectionsAttention.value === 1 ? '1 connection needs' : `${connectionsAttention.value} connections need`} attention)`
-                : 'Open the menu'
-            }
+            aria-label="Open the menu"
             aria-haspopup="dialog"
             onClick={() => {
               menuOpen.value = true;
             }}
           >
             <Menu size={22} aria-hidden="true" />
-            {connectionsAttention.value > 0 && <span class="menu-dot" aria-hidden="true" />}
           </button>
           <Brand />
         </>
@@ -724,7 +775,7 @@ export function TopBar({ phone = false }) {
           <span class="new-label">New task</span>
         </button>
         <Notifications />
-        <SignedIn />
+        <AccountMenu />
       </div>
     </header>
   );

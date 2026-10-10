@@ -11,7 +11,7 @@ Add the board to your home screen (Safari: Share, Add to Home Screen; Chrome: th
 
 ## The frame
 
-The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server and opens **Settings**. On a phone the sidebar is a drawer. The top bar keeps search, **New agent** (once an agent routine is connected), **New task**, and the bell.
+The views are in a sidebar on the left. It collapses to a rail of icons (its **Collapse** button, or `[`); the browser remembers it. Agents and GitHub carry counts there: agents working, with a dot while one is live, and pull requests ready to merge. The bottom says whether the board reaches its server. On a phone the sidebar is a drawer. The top bar keeps search, **New agent** (once an agent routine is connected), **New task**, the bell, which opens the inbox, and your avatar, which opens the account menu: **Settings**, **Connections**, **MCP**, **Docs**, **Keyboard shortcuts**, and **Sign out**. A dot on your avatar means a connection needs attention.
 
 ## The views
 
@@ -34,7 +34,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 
 ## Settings
 
-**Settings** at the bottom of the sidebar opens the Settings page (`#/settings`). It’s a page, not a dialog, so it works on a phone and has a link. It has five sections.
+**Settings** in the account menu, under your avatar at the top right, opens the Settings page (`#/settings`). It’s a page, not a dialog, so it works on a phone and has a link. It shows one section at a time: pick one from the menu on the left, or on a phone from the tabs across the top. Each section has its own link.
 
 | Section | What’s in it | Where it’s kept |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **People** | Who works on the board with you and their role in each repository: **Invite**, open invites, **Reset**, and **Remove**. With nobody invited, it says it’s just you | The board |
 | **Repositories** | Each repository with its GitHub repository and areas, and a link to its page; **Add a repository**; and the ones taken off the board, collapsed. On a board with no repository yet, the wizard’s first step | The board |
 
-The server’s state, the link to Connections, **Refresh**, **Shortcuts**, and **Sign out** are at the foot of the page.
+**Server**, the last section, has the server’s state, the link to Connections, and **Refresh**. **Keyboard shortcuts** and **Sign out** are in the account menu.
 
 The Agents and Routines views keep their settings too. They’re the same controls, saved the same way, so a change in one place shows in the other. A routine’s own settings, like its schedule and triggers, stay on Routines.
 

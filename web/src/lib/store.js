@@ -858,24 +858,28 @@ export function confirmDialog(options) {
 // ---- the view, filters, and the URL -------------------------------------------------------
 
 /** The views in the sidebar's order. `key` is the letter after g that goes there: its first letter, or one close to it. */
+/**
+ * The views, each with its g-then-a-letter key. The sidebar lists the ones without `sidebar: false` (WEB-141): the
+ * bell opens the inbox, and MCP and Connections are in the account menu, so the sidebar has room for more views.
+ */
 export const VIEWS = [
   { id: 'board', label: 'Board', key: 'b' },
   { id: 'list', label: 'List', key: 'l' },
   { id: 'roadmap', label: 'Roadmap', key: 'm' },
   { id: 'graph', label: 'Dependencies', key: 'd' },
   { id: 'infrastructure', label: 'Infrastructure', key: 'n' },
-  { id: 'inbox', label: 'Inbox', key: 'i' },
+  { id: 'inbox', label: 'Inbox', key: 'i', sidebar: false },
   { id: 'activity', label: 'Activity', key: 't' },
   { id: 'github', label: 'GitHub', key: 'h' },
   { id: 'specs', label: 'Specs', key: 's' },
   { id: 'agents', label: 'Agents', key: 'a' },
   { id: 'routines', label: 'Routines', key: 'r' },
-  { id: 'mcp', label: 'MCP', key: 'p' },
-  { id: 'connections', label: 'Connections', key: 'c' },
+  { id: 'mcp', label: 'MCP', key: 'p', sidebar: false },
+  { id: 'connections', label: 'Connections', key: 'c', sidebar: false },
 ];
 /**
  * Pages that aren't in the nav: the Add a repository wizard (CLD-194), reached from Connections and the switcher,
- * Settings (WEB-32), at #/settings from the sidebar's foot, a repository's settings (WEB-30), at
+ * Settings (WEB-32), at #/settings from the account menu, a repository's settings (WEB-30), at
  * #/settings/<slug>, and Kickoff (WEB-35), at #/kickoff to start one and #/kickoff/<id> to carry one on.
  */
 const PAGE_IDS = ['add-repo', 'settings', 'repo-settings', 'kickoff'];
@@ -928,8 +932,20 @@ export const authorizeId = signal(/** @type {string | null} */ (null));
 export const joinCode = signal(/** @type {string | null} */ (null));
 /** The wizard's step to open and scroll to once it loads (`'deploys'`, from Kickoff's Put it online, WEB-36), or null. */
 export const addRepoAt = signal(null);
-/** Where the Settings page scrolls to once it opens (`'repos'` for its list of repositories), or null for the top. */
-export const settingsAt = signal(null);
+/**
+ * Settings' sections (WEB-141), in the order its side menu lists them: each is its own page at #/settings?section=<id>,
+ * and You opens when the link names none.
+ */
+export const SETTINGS_SECTIONS = [
+  { id: 'you', label: 'You' },
+  { id: 'browser', label: 'This browser' },
+  { id: 'people', label: 'People' },
+  { id: 'board', label: 'The board' },
+  { id: 'repos', label: 'Repositories' },
+  { id: 'server', label: 'Server' },
+];
+/** The Settings section open, from `?section=`: one of SETTINGS_SECTIONS' ids. */
+export const settingsSection = signal('you');
 
 const safeDecode = (text) => {
   try {
@@ -975,6 +991,8 @@ function parseHash() {
             ? path
             : 'board';
     settingsSlug.value = settings?.[1] ? safeDecode(settings[1]).toLowerCase() : null;
+    const section = p.get('section');
+    settingsSection.value = SETTINGS_SECTIONS.some((x) => x.id === section) ? section : 'you';
     selected.value = p.get('task');
     selectedRoutine.value = path === 'routines' ? p.get('routine') : null;
     selectedSpec.value = path === 'specs' ? readSpecParam(p.get('spec')) : null;
@@ -1020,6 +1038,7 @@ export function hashFor({
   digest = feature === selectedFeature.value ? selectedDigest.value : null,
   ping = focusPing.value,
   settings = settingsSlug.value,
+  section = v === 'settings' && view.value === 'settings' ? settingsSection.value : 'you',
   spec = selectedSpec.value,
   kickoff = kickoffId.value,
   environment = view.value === 'infrastructure' ? environmentId.value : null,
@@ -1036,6 +1055,7 @@ export function hashFor({
   if (v === 'roadmap' && feature && digest) p.set('digest', String(digest));
   if (v === 'specs' && spec) p.set('spec', specParam(spec.path, spec.slug, repos.peek().default));
   if (v === 'inbox' && ping) p.set('ping', ping);
+  if (v === 'settings' && section !== 'you') p.set('section', section);
   if (v === 'infrastructure' && environment && plan) p.set('plan', plan);
   if (v === 'infrastructure' && !environment && policy) p.set('of', policy);
   if (task) p.set('task', task);
@@ -1114,13 +1134,16 @@ export function openKickoff(id = null) {
   location.hash = hashFor({ view: 'kickoff', kickoff: id, task: null, pr: null, ping: null });
 }
 
-/** A link to a repository's settings page (WEB-30), or to Settings (WEB-32) with none. */
+/** A link to one section of Settings (WEB-141): You with none. */
+export const settingsHref = (section = 'you') =>
+  hashFor({ view: 'settings', section, settings: null, task: null, pr: null, ping: null });
+
+/** A link to a repository's settings page (WEB-30), or to Settings' Repositories (WEB-32) with none. */
 export const repoSettingsHref = (slug = null) =>
-  hashFor({ view: slug ? 'repo-settings' : 'settings', settings: slug, task: null, pr: null, ping: null });
+  slug ? hashFor({ view: 'repo-settings', settings: slug, task: null, pr: null, ping: null }) : settingsHref('repos');
 
 /** Opens a repository's settings page (WEB-30), or Settings at its list of repositories with none (WEB-32). */
 export function openRepoSettings(slug = null) {
-  if (!slug) settingsAt.value = 'repos';
   location.hash = repoSettingsHref(slug);
 }
 
