@@ -2144,7 +2144,7 @@ export const agentsMethods = {
     };
   },
 
-  async agentsOverview() {
+  async agentsOverview(input = {}) {
     await this.ready();
     const connected = await this.connectedRepos();
     const views = this.views();
@@ -2221,7 +2221,8 @@ export const agentsMethods = {
         limits: planLimits(this.claudePlan(), connected.size),
         repos,
         // Each person's agents and starts, on their own Claude and on lent routines, with their caps (BRK-302).
-        people: this.peopleClaudeOverview(live),
+        // The owner sees everyone's; a person, only their own (a plan and caps aren't a repository's to show).
+        people: this.peopleClaudeOverview(live, this.actorIn(input).person),
         running,
         queue: this.autostartQueue(views, connected),
         // The chases that are on, with their live line, Needs you, Stuck, and queue (IDEA-28 section 3.9).

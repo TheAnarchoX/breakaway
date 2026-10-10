@@ -1802,8 +1802,9 @@ const apiActions = {
   backfillStructureApi() {
     return this.run(() => ok(this.backfillStructure()));
   },
-  agentsApi() {
-    return this.run(async () => this.agentsOverview());
+  /** The Agents view: who's behind the request decides whose Claude it shows (BRK-302). */
+  agentsApi(input = {}) {
+    return this.run(async () => this.agentsOverview(input));
   },
   /** New agent: a task from a prompt, a decision's answers, a spec, or the next version, and an agent on it (the owner's). */
   agentsGeneralApi(body) {

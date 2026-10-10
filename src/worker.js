@@ -1383,7 +1383,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     return send(await (parts[2] === 'dismiss' ? s.pingDismiss(parts[1], body) : s.pingHandled(parts[1], body)));
   }
   if (parts[0] === 'agents') {
-    if (parts.length === 1 && method === 'GET') return send(await s.agentsApi());
+    if (parts.length === 1 && method === 'GET') return send(await s.agentsApi({ actor }));
     if (parts[1] === 'prompt' && parts.length === 2 && method === 'GET')
       return send(await s.routinePromptApi(url.searchParams.get('repo')));
     if (parts[1] === 'start' && method === 'POST') {

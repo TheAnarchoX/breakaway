@@ -328,6 +328,22 @@ describe('bringing your own Claude', () => {
     }
   });
 
+  it('shows a person only their own Claude in the Agents view, and lets only a member pick a plan', async () => {
+    const theirs = await json(await call('/api/agents', { cookie: ana.cookie }));
+    expect(theirs.status).toBe(200);
+    expect(theirs.people.map((p) => p.handle)).toEqual([ana.handle]);
+    const others = await json(await call('/api/agents', { cookie: ben.cookie }));
+    expect(others.people.map((p) => p.handle)).toEqual([ben.handle]);
+    const viewer = await person(session, unique('val'), [{ repository: 'widgets', role: 'viewer' }]);
+    const seen = await json(await call('/api/agents', { token: viewer.token }));
+    expect(seen.people.map((p) => p.handle)).toEqual([viewer.handle]);
+    const plan = await json(
+      await call('/api/me/claude', { method: 'PATCH', cookie: viewer.cookie, body: { plan: 'max20' } }),
+    );
+    expect(plan.status).toBe(403);
+    expect(plan.error).toBe('only a member of a repository can start agents, so only a member picks a Claude plan');
+  });
+
   it('holds a person’s routine apart when Claude refuses it, and never the owner’s', async () => {
     const t = await task('Widget icons');
     claude.fail[fireOf(ana.handle)] = { status: 429, headers: { 'Retry-After': '600' } };

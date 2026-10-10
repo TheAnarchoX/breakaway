@@ -204,11 +204,15 @@ export const personClaudeMethods = {
     return actor.for?.person ?? actor.person;
   },
 
-  /** Every person's plan, caps, and runs, for the Agents view (never a secret): nobody invited, nobody listed. */
-  peopleClaudeOverview(running) {
+  /**
+   * People's plans, caps, and runs, for the Agents view (never a secret): everyone's for the owner (`viewer`), only
+   * their own for a person. Nobody invited, nobody listed.
+   */
+  peopleClaudeOverview(running, viewer = OWNER) {
     return this.sql
       .exec('SELECT handle FROM people WHERE removed IS NULL ORDER BY handle')
       .toArray()
+      .filter(({ handle }) => viewer === OWNER || handle === viewer)
       .map(({ handle }) => {
         const caps = this.personCapsOf(handle);
         return {
@@ -279,6 +283,7 @@ export const personClaudeMethods = {
     return this.run(async () => {
       if (!this.personRow(handle)) throw new AgentError('sign in again', 401);
       const name = String(slug).toLowerCase();
+      this.writable();
       const had = this.sql
         .exec('DELETE FROM person_routines WHERE handle = ? AND repo = ? RETURNING repo', handle, name)
         .toArray().length;
@@ -307,9 +312,16 @@ export const personClaudeMethods = {
   personClaudeSetApi(handle, body) {
     return this.run(async () => {
       if (!this.personRow(handle)) throw new AgentError('sign in again', 401);
+      // A plan is for starting agents: only someone who may start them somewhere picks one.
+      const grants = this.personGrants(handle);
+      if (!this.repos().some((repo) => !refusal({ person: handle, grants }, 'agent.start', repo.slug)))
+        throw new AgentError(
+          'only a member of a repository can start agents, so only a member picks a Claude plan',
+          403,
+        );
+      this.writable();
       if (body?.plan !== undefined) {
         if (!isPlan(body.plan)) throw new AgentError(`the plan is one of ${planWords()}`, 400);
-        this.writable();
         this.setPersonPlan(handle, body.plan);
       }
       const picked = this.personClaudeRow(handle)?.plan || null;
