@@ -19,6 +19,7 @@ import {
   EARLIER,
   InputError,
   LEGACY_WHO_TAGS,
+  isLegacyTag,
   legacyWho,
   relatedOf,
   RefError,
@@ -1297,11 +1298,6 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * The edit rule for the description and done when (IDEA-5): the owner can edit anywhere; an agent only
-   * on a task it made (it wrote the description) or is refining (`*-refine-*`, claimed by it). Everyone
-   * else comments. A request with no `by` is the owner's (the web board and the CLI's owner).
-   */
-  /**
    * A person's task is assigned to the owner, or to a person who holds a role in its repository, member or above
    * (BRK-330): a viewer reads the board, so the work can't be theirs.
    * @param {string} handle
@@ -1318,6 +1314,11 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       );
   }
 
+  /**
+   * The edit rule for the description and done when (IDEA-5): the owner can edit anywhere; an agent only
+   * on a task it made (it wrote the description) or is refining (`*-refine-*`, claimed by it). Everyone
+   * else comments. A request with no `by` is the owner's (the web board and the CLI's owner).
+   */
   checkBriefEdit(uuid, changes) {
     if (!('brief' in changes) && !('done_when' in changes)) return;
     const by = changes.by ? String(changes.by) : 'owner';
@@ -1678,15 +1679,14 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * The best ready task nobody has claimed: one `who` does (default: an agent), with every tag in `tags` and none in
    * `without`, optionally one project, horizon, or repository. Claims it when `claim`. An older CLI asks with
    * `tags: ['agent']` and `without: ['decide']` (BRK-330): those name `who`, and BRK-331 decides when that goes.
+   * @param {{ agent?: string, who?: string, tags?: string[], without?: string[], project?: string, horizon?: string, repo?: string, claim?: boolean }} [options]
    */
-  /** @param {{ agent?: string, who?: string, tags?: string[], without?: string[], project?: string, horizon?: string, repo?: string, claim?: boolean }} [options] */
   next({ agent, who = 'agent', tags = [], without = [], project, horizon, repo, claim = false } = {}) {
     return this.run(() => {
-      const legacy = (/** @type {string} */ tag) => Object.hasOwn(LEGACY_WHO_TAGS, tag);
-      const asked = arrayOf(tags).filter(legacy);
+      const asked = arrayOf(tags).filter(isLegacyTag);
       const doer = asked.length ? LEGACY_WHO_TAGS[asked[0]].who : who;
-      const want = arrayOf(tags).filter((tag) => !legacy(tag));
-      const skip = arrayOf(without).filter((tag) => !legacy(tag));
+      const want = arrayOf(tags).filter((tag) => !isLegacyTag(tag));
+      const skip = arrayOf(without).filter((tag) => !isLegacyTag(tag));
       const candidates = this.views(
         (t) =>
           t.ready &&

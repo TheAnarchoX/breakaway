@@ -71,6 +71,14 @@ export function screenshotsIn(body) {
 const PRIORITY = { H: 0, M: 1, L: 2 };
 /** Among equals, what frees the most first: a merge frees its task, a decision its tasks, then steps. */
 const KINDS = ['merge', 'decision', 'person', 'connect', 'nobody'];
+/** The kinds a digest stored before BRK-330 names, as who does it names them now. */
+const OLD_KINDS = /** @type {Record<string, string>} */ ({ decide: 'decision', owner: 'person', untagged: 'nobody' });
+
+/**
+ * A waiting item's kind as the board names it now: a digest stored before BRK-330 says decide, owner, or untagged.
+ * @param {string} kind
+ */
+export const digestKind = (kind) => OLD_KINDS[kind] ?? kind;
 
 /**
  * What waits for the owner, in the order they'd best take it: the task's priority, then how much work it frees, then
@@ -82,7 +90,7 @@ const KINDS = ['merge', 'decision', 'person', 'connect', 'nobody'];
 export function ownerOrder(items) {
   const p = (x) => PRIORITY[/** @type {'H'|'M'|'L'} */ (x.priority)] ?? 3;
   const k = (x) => {
-    const i = KINDS.indexOf(x.kind);
+    const i = KINDS.indexOf(digestKind(x.kind));
     return i < 0 ? KINDS.length : i;
   };
   return [...items].sort((a, b) => p(a) - p(b) || (b.unblocks ?? 0) - (a.unblocks ?? 0) || k(a) - k(b));

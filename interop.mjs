@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { wranglerConfig } from './src/install.js';
+import { needsOwner } from './scripts/tasks/cli.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.INTEROP_PORT ?? 8799);
@@ -312,6 +313,21 @@ try {
     for (const report of ['board', 'agent', 'claimed', 'owner']) a.task(report);
     assert.match(a.task('claimed'), /interop-agent/u);
     assert.doesNotMatch(a.task('agent'), /From replica A/u); // claimed, so not offered
+  });
+  a.task('add', 'For anyone', 'who:person');
+  a.task('add', 'For mia', 'who:person', 'assignee:mia');
+  a.sync();
+  await check('the owner report shows what list --owner lists', async () => {
+    const tasks = await apiTasks();
+    assert.equal(tasks.find((t) => t.description === 'For mia').assignee, 'mia');
+    const listed = tasks.filter(needsOwner).map((t) => t.uuid);
+    const report = a.task('rc.report.owner.columns=uuid', 'rc.report.owner.labels=UUID', 'owner');
+    const shown = report
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => /^[0-9a-f-]{36}$/u.test(l));
+    assert.deepEqual(shown.sort(), listed.sort());
+    assert.ok(listed.length >= 3, 'the old decision, the loose end, and the task for anyone');
   });
 
   step('repositories');
