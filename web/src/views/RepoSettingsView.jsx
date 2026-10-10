@@ -997,8 +997,8 @@ function Lend({ data }) {
           <TriangleAlert size={16} aria-hidden="true" />
           <span>
             A lent agent came with the board’s token too ({ago(lend.tokenSeenAt)}): its environment adds it. Its run key
-            still held it to its person. Take BREAKAWAY_TOKEN out of that environment on claude.ai, then connect the
-            routine again.
+            held it to its person this time, but an agent that leaves the key out would act as you. Take BREAKAWAY_TOKEN
+            out of that environment on claude.ai, then connect the routine again.
           </span>
         </span>
       )}

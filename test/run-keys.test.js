@@ -215,6 +215,29 @@ describe('run keys', () => {
     expect((await json(await call('/api/session', { key: 'bkr_nope' }))).error).toMatch(/isn’t a run key/u);
   });
 
+  it('stay ended when the same agent name claims the task again', async () => {
+    const run = await lentStart('Count the widgets');
+    await release(run.task.uuid);
+    // Agent names are the task's own (claude-<id>): the owner's next claim, or start, can use the same one.
+    const again = await owner(`/api/tasks/${run.task.uuid}/claim`, { method: 'POST', body: { agent: run.agent } });
+    expect(again.status).toBe(200);
+    expect((await json(await owner(`/api/tasks/${run.task.uuid}`))).task.claim).toBe(run.agent);
+    const ended = await json(await call('/api/session', { key: run.key }));
+    expect(ended.status).toBe(401);
+    expect(ended.error).toMatch(/this run key has ended/u);
+  });
+
+  it('end when the task is finished or deleted, though its claim stays', async () => {
+    for (const status of ['completed', 'deleted']) {
+      const run = await lentStart(`Ship the widgets ${status}`);
+      expect((await call('/api/session', { key: run.key })).status).toBe(200);
+      // A merge, or a delete, finishes the task without clearing its claim.
+      await inStore((store) => store.change(run.task.uuid, { status }, new Date(), 'github'));
+      expect((await json(await owner(`/api/tasks/${run.task.uuid}`))).task).toMatchObject({ status, claim: run.agent });
+      expect((await call('/api/session', { key: run.key })).status).toBe(401);
+    }
+  });
+
   it('work on /mcp as the run’s agent, and end there too', async () => {
     const run = await lentStart('Polish the widgets');
     const rpc = (key, method, params = {}) =>
@@ -274,6 +297,9 @@ describe('run keys', () => {
     expect(redact(`Run key: ${key}`)).toBe('Run key: [redacted]');
     expect(redact(`npx breakaway run-key ${key}`)).toBe('npx breakaway run-key [redacted]');
     expect(redact(`BREAKAWAY_RUN_KEY=${key}`)).toBe('BREAKAWAY_RUN_KEY=[redacted]');
+    // Glued to a word, too.
+    expect(redact(`x${key}`)).toBe('x[redacted]');
+    expect(redact(`key_${key}`)).toBe('key_[redacted]');
   });
 
   it('come from their own header, or a bearer that is one', () => {

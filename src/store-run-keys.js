@@ -2,7 +2,8 @@
  * TaskStore's run keys (BRK-324, src/run-keys.js): the key a start on a repository's lent routine hands its agent, and
  * who a key is when a request carries one. The board keeps only each key's SHA-256, with the run's task, the agent it
  * started, and the person the run is for. A key is that person, with their rights and no more, while the agent it was
- * made for holds the task, for RUN_KEY_MS at most; a new start on the task replaces it, and removing the person ends it.
+ * made for holds the task's claim, for RUN_KEY_MS at most. Any change to the task's claim or status ends it (a release,
+ * a claim by anyone, even the same agent name again, a merge, a delete); so does a new start, or removing the person.
  */
 import { RUN_KEY, RUN_KEY_MS, makeRunKey, runKeyHash } from './run-keys.js';
 
@@ -62,8 +63,12 @@ export const runKeysMethods = {
     const row = this.sql.exec('SELECT * FROM run_keys WHERE hash = ?', await runKeyHash(key)).toArray()[0];
     if (!row) return { error: KEY_ENDED };
     const person = this.personRow(row.handle);
+    const task = this.tasks.get(row.task);
     const ended =
-      Date.now() - Number(row.created) > RUN_KEY_MS || !person || this.tasks.get(row.task)?.claim !== row.agent;
+      Date.now() - Number(row.created) > RUN_KEY_MS ||
+      !person ||
+      task?.status !== 'pending' ||
+      task?.claim !== row.agent;
     if (ended) {
       this.sql.exec('DELETE FROM run_keys WHERE task = ?', row.task);
       return { error: KEY_ENDED };
@@ -73,6 +78,15 @@ export const runKeysMethods = {
     return {
       person: { handle: person.handle, name: person.name, agent: row.agent, task: row.task, repo: row.repo },
     };
+  },
+
+  /**
+   * Ends the run keys of tasks `uuids`: their claim or status changed, so the run each key was made for is over, even
+   * when the same agent name claims the task again (the replica's applyOps calls it).
+   * @param {string[]} uuids
+   */
+  endRunKeysOf(uuids) {
+    for (const uuid of uuids) this.sql.exec('DELETE FROM run_keys WHERE task = ?', uuid);
   },
 
   /** Ends every run key person `handle`'s runs hold: they've left the board. */

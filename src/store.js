@@ -411,8 +411,20 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   /** Applies decrypted operations to the replica. */
   applyOps(ops) {
     const touched = new Set();
-    for (const op of ops) if (applyOp(this.tasks, op)) touched.add(op.uuid);
+    const ended = new Set();
+    for (const op of ops) {
+      // A run key ends with its run's claim (BRK-324): any change to a task's claim or status, or the task going,
+      // whichever path made it (the API, GitHub, a chase, or a Taskwarrior replica's sync).
+      if (
+        op.type === 'delete' ||
+        ((op.property === 'claim' || op.property === 'status') &&
+          (this.tasks.get(op.uuid)?.[op.property] ?? null) !== (op.value ?? null))
+      )
+        ended.add(op.uuid);
+      if (applyOp(this.tasks, op)) touched.add(op.uuid);
+    }
     this.saveTasks(touched);
+    if (ended.size) this.endRunKeysOf([...ended]);
   }
 
   /** Writes our own changes as a new version, sealed like any replica's. `source`: api or github. */
