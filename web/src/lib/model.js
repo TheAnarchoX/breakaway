@@ -221,17 +221,19 @@ export const shortVersion = (s) => (s?.version ?? s?.sha ?? '').slice(0, 8);
 
 /**
  * Who pressed what on a pull request, on its page (WEB-132): the latest board press the page's `pressed` names, as a
- * sentence. "you" for the owner, anyone else by handle (BRK-303); a press a pull request setting made says which.
+ * sentence, naming who pressed with `nameOf` (BRK-303: the page passes people.js's personName, so "you" is whoever
+ * reads it); a press a pull request setting made says which.
  * @param {{ kind: string, by: string, method: string | null, setting: boolean } | null} pressed
  * @param {string} [base] the branch the pull request goes into
+ * @param {(handle: string) => string} [nameOf] a person in a sentence: "you", "the owner", or their name
  */
-export function pressedWords(pressed, base = 'main') {
+export function pressedWords(pressed, base = 'main', nameOf = (h) => (h === 'owner' ? 'you' : h)) {
   if (!pressed) return null;
-  const who = pressed.by && pressed.by !== 'owner' ? pressed.by : 'you';
+  const who = nameOf(pressed.by);
   const whose = who === 'you' ? 'your' : `${who}’s`;
   const how = pressed.method === 'squash' ? 'squash' : 'merge commit';
   switch (pressed.kind) {
-    case 'pr_merged_by_owner':
+    case 'pr_merged_on_board':
       return pressed.setting
         ? `Merged on the board by ${whose} Merge when green setting (${how})`
         : `Merged on the board by ${who} (${how})`;

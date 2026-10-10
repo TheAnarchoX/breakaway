@@ -144,7 +144,7 @@ describe('a decision in the model', () => {
   it('shows a decision Taskwarrior mangled as no decision', () => {
     const v = view(
       'u',
-      { description: 'x', status: 'pending', decision: '{oops', decision_answers: '[[' },
+      { description: 'x', status: 'pending', decision_questions: '{oops', decision_answers: '[[' },
       new Map(),
       NOW,
     );
@@ -162,6 +162,7 @@ describe('a decision in the model', () => {
     expect(JSON.parse(map.decision_answers).answers).toEqual({ why: { value: 'x' } });
     map = withChanges(map, { decision: null }, NOW);
     expect(map).not.toHaveProperty('decision');
+    expect(map).not.toHaveProperty('decision_questions');
     expect(map).not.toHaveProperty('decision_answers');
   });
 });

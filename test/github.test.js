@@ -1430,10 +1430,10 @@ describe('Update branch, Merge, and Merge when green', () => {
     expect(gh.writes).toEqual([]);
 
     const ok = await body(await post('github/pulls/31/merge', { sha: 'abc1234', method: 'squash' }));
-    expect(ok).toMatchObject({ status: 200, ok: true, action: 'pr_merged_by_owner' });
+    expect(ok).toMatchObject({ status: 200, ok: true, action: 'pr_merged_on_board' });
     expect(gh.writes).toEqual([['PUT', `${REPO}/pulls/31/merge`, { sha: 'abc1234', merge_method: 'squash' }]]);
     const feed = await body(await api('activity'));
-    expect(JSON.stringify(feed)).toContain('pr_merged_by_owner');
+    expect(JSON.stringify(feed)).toContain('pr_merged_on_board');
   });
 
   it('refuses like GitHub does: not ready, draft, closed, missing permission, or GitHub says no', async () => {
@@ -1464,7 +1464,7 @@ describe('Update branch, Merge, and Merge when green', () => {
     const refused = await body(await post('github/pulls/32/merge', { sha: 'a1b2c3d', method: 'merge' }));
     expect(refused).toMatchObject({ status: 409, error: 'Required status check "Test and build" is expected.' });
     const feed = await body(await api('activity'));
-    expect(JSON.stringify(feed)).not.toContain('"pr_merged_by_owner","number":32');
+    expect(JSON.stringify(feed)).not.toContain('"pr_merged_on_board","number":32');
   });
 
   it('updates a behind branch with a merge commit, and leaves conflicts to an agent', async () => {
@@ -1540,14 +1540,51 @@ describe('Update branch, Merge, and Merge when green', () => {
   it('words each press the way Activity does, with you for the owner (WEB-132)', () => {
     const p = (kind, more = {}) => ({ kind, by: 'owner', method: null, setting: false, ...more });
     expect(pressedWords(null)).toBeNull();
-    expect(pressedWords(p('pr_merged_by_owner', { method: 'squash' }))).toBe('Merged on the board by you (squash)');
-    expect(pressedWords(p('pr_merged_by_owner', { method: 'merge', by: 'ben', setting: true }))).toBe(
+    expect(pressedWords(p('pr_merged_on_board', { method: 'squash' }))).toBe('Merged on the board by you (squash)');
+    expect(pressedWords(p('pr_merged_on_board', { method: 'merge', by: 'ben', setting: true }))).toBe(
       'Merged on the board by ben’s Merge when green setting (merge commit)',
     );
     expect(pressedWords(p('pr_published', { by: 'ana' }))).toBe('Published for review on the board by ana');
     expect(pressedWords(p('pr_branch_updated'), 'develop')).toBe('Updated with develop on the board by you');
     expect(pressedWords(p('pr_auto_merge_off'))).toBe('Merge when green turned off on the board by you');
     expect(pressedWords(p('pr_opened'))).toBeNull();
+    // A person reads the owner's press as the owner's, and their own as theirs (BRK-331).
+    const ana = (h) => (h === 'ana' ? 'you' : h === 'owner' ? 'the owner' : h);
+    expect(pressedWords(p('pr_published'), 'main', ana)).toBe('Published for review on the board by the owner');
+    expect(pressedWords(p('pr_auto_merge_on', { by: 'ana', setting: true }), 'main', ana)).toBe(
+      'Set to merge when green on the board by your Merge when green setting (merge commit)',
+    );
+  });
+
+  it('names the owner on presses from before people, and Merge’s event for the board, once (BRK-331)', async () => {
+    const stub = env.STORE.get(env.STORE.idFromName('widgets'));
+    const kinds = await runInDurableObject(stub, async (store) => {
+      await store.ready();
+      const add = (data) =>
+        store.sql.exec(
+          "INSERT INTO gh_events (at, data, repo) VALUES (?, ?, 'widgets')",
+          Date.now(),
+          JSON.stringify(data),
+        );
+      add({ kind: 'pr_merged_by_owner', number: 77, method: 'squash' });
+      add({ kind: 'promote_started', sha7: 'abc1234', tasks: [] });
+      add({ kind: 'pr_published', number: 78, by: 'ana' });
+      add({ kind: 'pr_merged', number: 79 });
+      store.setMeta('gh_events_by', null);
+      store.initGitHub();
+      store.initGitHub(); // once: a second start changes nothing
+      return store.sql
+        .exec("SELECT data FROM gh_events WHERE repo = 'widgets' ORDER BY id DESC LIMIT 4")
+        .toArray()
+        .map((r) => JSON.parse(String(r.data)))
+        .reverse();
+    });
+    expect(kinds).toEqual([
+      { kind: 'pr_merged_on_board', number: 77, method: 'squash', by: 'owner' },
+      { kind: 'promote_started', sha7: 'abc1234', tasks: [], by: 'owner' },
+      { kind: 'pr_published', number: 78, by: 'ana' },
+      { kind: 'pr_merged', number: 79 },
+    ]);
   });
 
   it('keeps each open pull request’s auto-merge from the sync, and marks what the owner’s settings did', async () => {

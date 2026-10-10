@@ -37,7 +37,6 @@ import { screenshotsIn } from './chase-digest.js';
 import { budgetAfterSync, countsOf } from './github-budget.js';
 import { syncPace } from './github-pace.js';
 import { install } from './install.js';
-import { OWNER } from './permissions.js';
 import { NO_REPO, promptPathOf, repoSlugOf, slugOfGithub } from './repos.js';
 import { promptPlaceholders } from './wizard.js';
 import { allWorkers, compileDeployPaths, workersFor } from './deploy-paths.js';
@@ -47,7 +46,19 @@ import { candidate, productionSha } from './promote.js';
 import { checkInputs, dispatchOf, validRef } from './workflows.js';
 
 /** The board's presses on a pull request (WEB-132): Publish, Update branch, Merge, and Merge when green on and off. */
-const PRESSES = ['pr_published', 'pr_branch_updated', 'pr_merged_by_owner', 'pr_auto_merge_on', 'pr_auto_merge_off'];
+const PRESSES = ['pr_published', 'pr_branch_updated', 'pr_merged_on_board', 'pr_auto_merge_on', 'pr_auto_merge_off'];
+/**
+ * Every event a press writes, with who pressed (BRK-303). Before it, only the owner could press, and the events named
+ * nobody; initGitHub names the owner on those once, so every reader takes `by` as it is (BRK-331).
+ */
+const PRESSED = [
+  ...PRESSES,
+  'promote_started',
+  'rollback_started',
+  'release_started',
+  'prerelease_started',
+  'workflow_started',
+];
 const KEEP = { closedPrs: 100, runs: 200, commits: 100, events: 300, deploys: 100 };
 const MAX_COMPARES = 10;
 const MAX_DETAILS = 20;
@@ -143,6 +154,22 @@ export const githubMethods = {
       ) {
         this.sql.exec(`ALTER TABLE ${table} ADD COLUMN repo TEXT NOT NULL DEFAULT '${first}'`);
       }
+    }
+    // Presses from before BRK-303 were the owner's, and Merge's event was named for the owner: both move forward once.
+    if (!this.meta('gh_events_by')) {
+      this.ctx.storage.transactionSync(() => {
+        this.sql.exec(
+          `UPDATE gh_events SET data = json_set(data, '$.kind', 'pr_merged_on_board')
+           WHERE json_extract(data, '$.kind') = 'pr_merged_by_owner'`,
+        );
+        this.sql.exec(
+          `UPDATE gh_events SET data = json_set(data, '$.by', 'owner')
+           WHERE json_extract(data, '$.kind') IN (${PRESSED.map(() => '?').join(', ')})
+             AND (json_extract(data, '$.by') IS NULL OR json_extract(data, '$.by') = '')`,
+          ...PRESSED,
+        );
+        this.setMeta('gh_events_by', 1);
+      });
     }
     this.ghCache = {}; // slug → { installationId, token, expires }
   },
@@ -1679,9 +1706,7 @@ export const githubMethods = {
     const data = JSON.parse(String(row.data));
     return {
       kind: data.kind,
-      // Before BRK-303 only the owner could press, so an event without `by` is theirs. BRK-331 removes this once
-      // those events have aged out.
-      by: data.by ?? OWNER,
+      by: data.by,
       at: new Date(Number(row.at)).toISOString(),
       method: data.method ?? null,
       setting: data.setting === true,
@@ -1847,7 +1872,7 @@ export const githubMethods = {
           };
         }
         await client.send('PUT', `/pulls/${number}/merge`, { sha, merge_method: method });
-        kind = 'pr_merged_by_owner';
+        kind = 'pr_merged_on_board';
       } else {
         const mutation =
           enable === false
@@ -1972,7 +1997,7 @@ export const githubMethods = {
    * when the next version is already set, by a later pre-release or an open +version task. The workflow checks the
    * tags again.
    */
-  async packageRelease(repo, credentials, version, next = null, by = null) {
+  async packageRelease(repo, credentials, version, next, by) {
     const pkg = packageOf(repo);
     if (!pkg)
       return {
@@ -2051,7 +2076,7 @@ export const githubMethods = {
    * pre-releases by hand (BRK-273), and refused while one builds, when the latest pre-release already has everything
    * on the branch, or while CI on its latest commit isn't green: the workflow checks those again and would stop.
    */
-  async buildPrerelease(repo, credentials, by = null) {
+  async buildPrerelease(repo, credentials, by) {
     const pkg = packageOf(repo);
     const build = this.githubRepoView(repo, true).releaseBuild;
     if (!pkg || !build)
@@ -2081,7 +2106,7 @@ export const githubMethods = {
   },
 
   /** Starts `workflow` on `ref` with `inputs` through the GitHub App, and records `event` in Activity once it has. */
-  async dispatchRelease(repo, credentials, { workflow, ref, inputs, event, by = null }) {
+  async dispatchRelease(repo, credentials, { workflow, ref, inputs, event, by }) {
     const client = this.githubClient(credentials, repo);
     try {
       await client.send('POST', `/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, { ref, inputs });
@@ -2104,7 +2129,7 @@ export const githubMethods = {
       'INSERT INTO gh_events (at, data, repo) VALUES (?, ?, ?)',
       Date.now(),
       // Who pressed (BRK-303): the owner, or a maintainer by handle.
-      JSON.stringify(by ? { ...event, by } : event),
+      JSON.stringify({ ...event, by }),
       repo.slug,
     );
     await this.githubWebhook('workflow_run', null, { slug: repo.slug }); // sync 5 seconds from now

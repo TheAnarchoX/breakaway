@@ -54,7 +54,9 @@ const ASSIGNEE = /^[a-z][a-z0-9-]{0,31}$/u;
 /**
  * The tags `who` replaced (BRK-330), and what each one means now. A task carried them before the migration, and an
  * older CLI copied into another repository, a Taskwarrior replica, or an older prompt still sends them: withChanges
- * and legacyWho map them onto the field, so none is ever stored. BRK-331 decides when this mapping goes.
+ * and legacyWho map them onto the field, so none is ever stored. Kept by BRK-331 because released CLIs still send
+ * them: up to 2.0.2-main.2 (the stable 2.0.1 among them); the first release after it sends --who. BRK-349 (waits until
+ * 10 Nov 2026) removes the mapping once every repository's copy is past them.
  */
 export const LEGACY_WHO_TAGS = {
   decide: { who: 'decision' },
@@ -83,6 +85,7 @@ export function whoFromTags(tags) {
  * Taskwarrior reads a word that names an attribute as that attribute's value, so while the questions' UDA was called
  * `decision`, `task add … who:decision` stored no who. What the migration and a replica's version go through: a
  * replica with an older shared taskrc may still send `decision`. A map without it comes back as it is (the same object).
+ * Kept until every repository's copied taskrc is past BRK-346; BRK-349 removes it.
  * @param {Record<string, string>} map
  */
 export function legacyQuestions(map) {
@@ -413,6 +416,8 @@ export function withChanges(before, changes, now = new Date()) {
     if (changes.decision === null || changes.decision === '') {
       delete map.decision_questions;
       delete map.decision_answers;
+      // Questions an older replica still keeps under `decision` (BRK-346) go too, or legacyQuestions brings them back.
+      delete map.decision;
     } else {
       let input = changes.decision;
       if (typeof input === 'string') {

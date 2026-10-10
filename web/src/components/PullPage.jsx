@@ -14,7 +14,7 @@ import {
 } from 'lucide-preact';
 import { ago, canAgentReview, isDependabot, plural, pressedWords } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
-import { whoCan } from '../lib/people.js';
+import { personName, whoCan } from '../lib/people.js';
 import {
   actions,
   agents,
@@ -1233,7 +1233,7 @@ export function PullPage() {
   }
   const v = VERDICT[page.verdict];
   // Who pressed Merge, Publish, Update branch, or Merge when green on the board, last (WEB-132).
-  const pressed = pressedWords(page.pressed, page.base ?? 'main');
+  const pressed = pressedWords(page.pressed, page.base ?? 'main', personName);
   return (
     <div class="github-view pr-page">
       {back}

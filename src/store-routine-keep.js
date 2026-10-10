@@ -84,7 +84,7 @@ export const routineKeepMethods = {
    * Whether the request's person may do `what`: connections and secrets are the owner's (BRK-301), and a GitHub
    * environment a maintainer's of `repo`. An agent never does.
    */
-  ownerOnlyRoutineKeep(body, what, action = 'repo.routine', repo = null) {
+  allowAction(body, what, action = 'repo.routine', repo = null) {
     this.allow(body, action, repo, `only the owner ${what}`);
   },
 
@@ -95,7 +95,7 @@ export const routineKeepMethods = {
    */
   repoRoutineConnectApi(slug, body) {
     return this.run(async () => {
-      this.ownerOnlyRoutineKeep(body, 'connects a routine');
+      this.allowAction(body, 'connects a routine');
       const repo = this.repoBySlug(String(slug).toLowerCase());
       if (!repo) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
       const checked = checkRoutine(body ?? {});
@@ -118,7 +118,7 @@ export const routineKeepMethods = {
   /** DELETE /api/repos/<slug>/routine (the signed-in owner): forgets the routine kept on the board. */
   repoRoutineForgetApi(slug, body) {
     return this.run(async () => {
-      this.ownerOnlyRoutineKeep(body, 'forgets a routine');
+      this.allowAction(body, 'forgets a routine');
       const name = String(slug).toLowerCase();
       const repo = this.repoBySlug(name);
       if (!repo) throw new AgentError(`no repository "${name.slice(0, 40)}"`, 404);

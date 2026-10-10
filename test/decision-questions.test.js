@@ -32,6 +32,14 @@ describe('a decision’s questions, in the model', () => {
     expect(withChanges(old, { brief: 'why' }, NOW)).toMatchObject({ decision_questions: old.decision });
     expect(withChanges(old, { brief: 'why' }, NOW).decision).toBeUndefined();
   });
+
+  it('clears an older map’s questions for good: the old key doesn’t bring them back', () => {
+    const old = { description: 'x', who: 'decision', decision: JSON.stringify(QUESTIONS) };
+    const cleared = withChanges(old, { decision: null }, NOW);
+    expect(cleared.decision).toBeUndefined();
+    expect(cleared.decision_questions).toBeUndefined();
+    expect(view('u', cleared, new Map([['u', cleared]]), NOW).decision).toBeNull();
+  });
 });
 
 describe('a decision’s questions, on the board', () => {

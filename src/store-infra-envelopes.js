@@ -40,9 +40,6 @@ const sha256 = async (text) =>
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-/** Whether `by` is the owner's: none, or `owner`. Anything else is an agent's name, and is refused. */
-const owners = (by) => by === undefined || by === null || by === '' || by === 'owner';
-
 /** What the audit trail calls an environment's envelope. */
 const envelopeRef = (env) => `envelope-${env.id}`;
 
@@ -547,7 +544,7 @@ export const infraEnvelopesMethods = {
    */
   envelopeActApi(ref, body = {}) {
     return this.run(async () => {
-      if (owners(body.by))
+      if (!this.actorIn(body).agent)
         throw new AgentError(
           'an act is a runbook’s agent’s: name yourself as by. The owner approves plans instead',
           403,

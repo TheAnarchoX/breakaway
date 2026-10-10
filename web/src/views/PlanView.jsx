@@ -17,6 +17,7 @@ import {
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
 import { Named } from '../lib/avatar.jsx';
+import { personName } from '../lib/people.js';
 import { api, enc } from '../lib/api.js';
 import { auditActor, auditSummary, auditWords } from '../lib/infra-audit.js';
 import { githubRun, runWords } from '../lib/env-stream.js';
@@ -426,9 +427,6 @@ function Steps({ run, audit, names, envId }) {
     </section>
   );
 }
-
-/** A person as the board names them (BRK-303): "you" for the owner, anyone else by handle. */
-const personName = (p) => (p === 'owner' ? 'you' : p);
 
 /** A list of people in words, each with their avatar before their name: "ana", "ana and ben", "ana, ben, and you". */
 const listNamed = (people) =>

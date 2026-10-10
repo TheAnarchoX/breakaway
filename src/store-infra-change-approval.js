@@ -471,7 +471,7 @@ export const infraChangeApprovalMethods = {
       'INSERT INTO gh_events (at, data, repo) VALUES (?, ?, ?)',
       Date.now(),
       JSON.stringify({
-        kind: 'pr_merged_by_owner',
+        kind: 'pr_merged_on_board',
         number: Number(row.pull),
         title: `Change ${row.name}`,
         url: row.pull_url ?? null,

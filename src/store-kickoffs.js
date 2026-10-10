@@ -66,7 +66,7 @@ export const kickoffsMethods = {
   },
 
   /** Kickoffs are the owner's alone (BRK-301), whatever a person's grants. */
-  ownerOnlyKickoffs(body) {
+  allowKickoffs(body) {
     this.allow(body, 'kickoff', null, 'only the owner kicks off, changes, or stops a project');
   },
 
@@ -316,7 +316,7 @@ export const kickoffsMethods = {
   kickoffsCreateApi(body) {
     return this.run(() => {
       if (!body || typeof body !== 'object') throw new InputError('a kickoff is an object, with its pitch');
-      this.ownerOnlyKickoffs(body);
+      this.allowKickoffs(body);
       const fields = this.kickoffFields(body);
       const view = {
         ...fields,
@@ -348,7 +348,7 @@ export const kickoffsMethods = {
   kickoffsModifyApi(id, body) {
     return this.run(() => {
       if (!body || typeof body !== 'object') throw new InputError('send the fields to change');
-      this.ownerOnlyKickoffs(body);
+      this.allowKickoffs(body);
       const current = this.kickoffRow(id);
       const repo = this.kickoffRepo(current);
       if (repo)
@@ -378,7 +378,7 @@ export const kickoffsMethods = {
    */
   kickoffsDeleteApi(id, body) {
     return this.run(() => {
-      this.ownerOnlyKickoffs(body);
+      this.allowKickoffs(body);
       const row = this.kickoffRow(id);
       const repo = this.kickoffRepo(row);
       this.ctx.storage.transactionSync(() => {
@@ -395,7 +395,7 @@ export const kickoffsMethods = {
    */
   kickoffsRegisterApi(id, body) {
     return this.run(async () => {
-      this.ownerOnlyKickoffs(body);
+      this.allowKickoffs(body);
       const row = this.kickoffRow(id);
       if (!row.github)
         throw new InputError('say where it is on GitHub first: its owner/name, once you’ve pressed Create there');
@@ -420,7 +420,7 @@ export const kickoffsMethods = {
   kickoffsRunItApi(id, body) {
     return this.run(async () => {
       if (!body || typeof body !== 'object') throw new InputError('send the choice: not-needed, now, or agent');
-      this.ownerOnlyKickoffs(body);
+      this.allowKickoffs(body);
       const row = this.kickoffRow(id);
       if (!this.kickoffRepo(row))
         throw new AgentError(`add ${row.name} to the board first: how it runs is set up in its repository`, 409);

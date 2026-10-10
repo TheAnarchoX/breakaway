@@ -65,6 +65,7 @@ import {
 } from '../lib/store.js';
 import { Inline, Title } from '../lib/richtext.jsx';
 import { Avatar, Named } from '../lib/avatar.jsx';
+import { myHandle, personLabel } from '../lib/people.js';
 
 const ICONS = {
   created: CirclePlus,
@@ -86,7 +87,7 @@ const ICONS = {
   pr_closed: GitPullRequestClosed,
   pr_published: GitPullRequest,
   pr_branch_updated: GitPullRequest,
-  pr_merged_by_owner: GitMerge,
+  pr_merged_on_board: GitMerge,
   pr_auto_merge_on: GitMerge,
   pr_auto_merge_off: GitPullRequestClosed,
   promote_started: Rocket,
@@ -152,20 +153,20 @@ function list(words) {
   return `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
 }
 
-/** Who pressed, from a change's `by` (BRK-303): "You" for the owner, anyone else by handle. */
-const you = (change) => (change.by && change.by !== 'owner' ? change.by : 'You');
+/** Who pressed, from a change's `by` (BRK-303): "You" for whoever reads it, "The owner", or a person by name. */
+const you = (change) => personLabel(change.by);
 
 /**
- * Who wrote a version (BRK-303): nothing for your own, a person by handle, an agent by name and who it's for.
+ * Who wrote a version (BRK-303): nothing for your own, a person by name, an agent by name and who it's for.
  * @param {{ person: string, agent: string | null, for: string | null } | undefined} who
  */
 function whoWords(who) {
   if (!who) return null;
   if (who.agent) {
-    const behind = who.for ?? (who.person !== 'owner' ? who.person : null);
-    return behind ? `${who.agent} for ${behind}` : null;
+    const behind = who.for ?? (who.person !== myHandle.value ? who.person : null);
+    return behind ? `${who.agent} for ${personLabel(behind)}` : null;
   }
-  return who.person === 'owner' ? null : who.person;
+  return who.person === myHandle.value ? null : personLabel(who.person);
 }
 
 /** The names the event's "By" line shows (whoWords), so a change doesn't draw the same avatar again. */
@@ -177,14 +178,14 @@ function namedBy(who) {
 /** The same words as whoWords, each name with its avatar: an agent, and who it's for. */
 function WhoNamed({ who }) {
   if (who.agent) {
-    const behind = who.for ?? (who.person !== 'owner' ? who.person : null);
+    const behind = who.for ?? (who.person !== myHandle.value ? who.person : null);
     return (
       <>
-        <Named name={who.agent} size={16} /> for <Named name={behind} size={16} />
+        <Named name={who.agent} size={16} /> for <Named name={behind} label={personLabel(behind)} size={16} />
       </>
     );
   }
-  return <Named name={who.person} size={16} />;
+  return <Named name={who.person} label={personLabel(who.person)} size={16} />;
 }
 
 function describe(change) {
@@ -260,7 +261,7 @@ function describe(change) {
       return change.setting
         ? `Keep branches up to date updated #${change.number} with main`
         : `${you(change)} updated #${change.number} with main`;
-    case 'pr_merged_by_owner':
+    case 'pr_merged_on_board':
       return `${change.setting ? 'Merge when green (your setting) merged' : `${you(change)} merged`} #${change.number} (${change.method === 'squash' ? 'squash' : 'merge commit'})`;
     case 'pr_auto_merge_on':
       return `${change.setting ? 'Merge when green (your setting) set' : `${you(change)} set`} #${change.number} to merge when green (${change.method === 'squash' ? 'squash' : 'merge commit'})`;
@@ -825,7 +826,7 @@ function Stream() {
                       return (
                         <li key={i} class={`change change-${c.kind}`}>
                           <Icon size={15} aria-hidden="true" />
-                          {c.by && c.by !== 'owner' && !namedBy(e.who).includes(c.by) && (
+                          {c.by && c.by !== myHandle.value && !namedBy(e.who).includes(c.by) && (
                             <Avatar name={c.by} size={16} />
                           )}
                           <span>
