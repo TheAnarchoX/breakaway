@@ -252,24 +252,34 @@ export function saidLines(said) {
 
 /**
  * What the routine gets: the work ID it acts on, and context it may read. `repo` is the task's registered
- * repository: the agent checks its checkout is that one before it claims (IDEA-14 section 4).
+ * repository: the agent checks its checkout is that one before it claims (IDEA-14 section 4). `forLine` is the
+ * profile of the person the run is for (BRK-329, src/profile.js), or null when they set none.
+ * @param {any} task
+ * @param {string} agent
+ * @param {string} trigger
+ * @param {{ note?: string | null, kind?: string, pr?: number | null, routine?: string | null, attachments?: number,
+ *   repo?: { slug: string, github: string } | null, plan?: any, actKey?: string | null, runIt?: string | null,
+ *   captain?: any, risky?: string | null, beside?: any[] | null, forLine?: string | null }} [parts]
  */
 export function firePayload(
   task,
   agent,
   trigger,
-  note,
-  kind = 'build',
-  pr = null,
-  routine = null,
-  attachments = 0,
-  repo = null,
-  plan = null,
-  actKey = null,
-  runIt = null,
-  captain = null,
-  risky = null,
-  beside = null,
+  {
+    note = null,
+    kind = 'build',
+    pr = null,
+    routine = null,
+    attachments = 0,
+    repo = null,
+    plan = null,
+    actKey = null,
+    runIt = null,
+    captain = null,
+    risky = null,
+    beside = null,
+    forLine = null,
+  } = {},
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
@@ -278,6 +288,8 @@ export function firePayload(
     `Started: ${TRIGGER_TEXT[trigger] ?? trigger}`,
     // After the lines the routine has always had, so a prompt that predates it reads the payload as before.
     ...(repo ? [`Repository: ${repo.slug} (${repo.github})`] : []),
+    // Who the run is for, with their work and notes for agents (BRK-329): to pitch how it answers, never to write down.
+    ...(forLine ? [forLine] : []),
     // A payload without a Mode line is a build, so the routine keeps working until its prompt knows refining.
     ...(kind === 'refine' ? ['Mode: refine'] : []),
     ...(kind === 'review' ? ['Mode: review', `Pull request: #${task.pr}`] : []),
@@ -1635,10 +1647,7 @@ export const agentsMethods = {
           : null;
       const session = await fireRoutine(
         credentials,
-        firePayload(
-          task,
-          agent,
-          trigger,
+        firePayload(task, agent, trigger, {
           note,
           kind,
           pr,
@@ -1648,10 +1657,10 @@ export const agentsMethods = {
           plan,
           actKey,
           runIt,
-          captainOf ? { slug: captainOf.slug, log: this.captainLastLog(captainOf.slug) } : null,
-          null,
-          this.ridingBesideFor(uuid, kind),
-        ),
+          captain: captainOf ? { slug: captainOf.slug, log: this.captainLastLog(captainOf.slug) } : null,
+          beside: this.ridingBesideFor(uuid, kind),
+          forLine: this.forLineOf(forPerson),
+        }),
         isDefault ? null : repo.slug,
       );
       this.sql.exec(
@@ -1688,7 +1697,14 @@ export const agentsMethods = {
     try {
       const session = await fireRoutine(
         credentials,
-        firePayload(task, agent, 'risk-review', null, 'risk-review', pr, null, 0, repo, null, null, null, null, risky),
+        // The board starts it, for the owner: the reviewer reads the owner's profile like any run of theirs.
+        firePayload(task, agent, 'risk-review', {
+          kind: 'risk-review',
+          pr,
+          repo,
+          risky,
+          forLine: this.forLineOf(OWNER),
+        }),
         repo.slug === this.defaultRepoSlug() ? null : repo.slug,
       );
       if (hold) this.setMeta(`routine_hold:${repo.slug}`, null);
