@@ -7,7 +7,7 @@ import { looksLikeSecret } from '../src/ping.js';
 const make = async (description, extra = {}) => {
   const res = await api('tasks', {
     method: 'POST',
-    body: { description, project: 'cloud', horizon: 'now', tags: ['agent'], ...extra },
+    body: { description, project: 'cloud', horizon: 'now', who: 'agent', ...extra },
   });
   return (await res.json()).tasks[0].wid;
 };
@@ -24,7 +24,8 @@ const newTask = (ref, extra = {}) => ({
   title: `Follow-up ${ref}`,
   project: 'cloud',
   horizon: 'now',
-  tags: ['owner'],
+  who: 'person',
+  assignee: 'owner',
   brief: 'What and why.',
   done_when: 'It is done.',
   ...extra,
@@ -177,12 +178,19 @@ describe('proposals', () => {
   it('refuses autostart, horizon tags, unknown fields and types, missing pieces, and too much', async () => {
     const wid = await held('Strict');
     await refused([newTask('n1', { autostart: 'yes' })], /can't set autostart/, wid);
-    await refused([newTask('n1', { tags: ['agent', 'horizon-now'] })], /horizon tags are the owner's/, wid);
+    await refused([newTask('n1', { who: 'agent', tags: ['horizon-now'] })], /horizon tags are the owner's/, wid);
     await refused([newTask('n1', { colour: 'red' })], /unknown field "colour"/, wid);
     await refused([{ type: 'explode' }], /type is one of/, wid);
     await refused([newTask('n1', { done_when: '' })], /done_when is needed/, wid);
     await refused([newTask('n1', { project: 'nope' })], /project is one of/, wid);
-    await refused([newTask('n1', { tags: ['later'] })], /agent, owner, or decide/, wid);
+    await refused(
+      [newTask('n1', { who: undefined, assignee: undefined, tags: ['later'] })],
+      /who is agent, person, or decision/,
+      wid,
+    );
+    await refused([newTask('n1', { who: 'nobody' })], /who is agent, person, or decision/, wid);
+    await refused([newTask('n1', { who: 'agent' })], /only a person's task has an assignee/, wid);
+    await refused([newTask('n1', { assignee: 'Not A Handle' })], /assignee is a person's handle, or owner/, wid);
     await refused([newTask('n1', { brief: 'Use ghp_abcdefghijklmnopqrstuvwxyz0123456789' })], /token or key/, wid);
     await refused([], /no changes/, wid);
     await refused(
@@ -218,7 +226,7 @@ describe('proposals', () => {
       kind: 'stale',
       message: 'Does not reproduce any more.',
       proposal: [
-        { type: 'modify', task: other, horizon: 'next', removeTags: ['agent'], addTags: ['owner'] },
+        { type: 'modify', task: other, horizon: 'next', who: 'person', assignee: 'owner' },
         { type: 'done', task: wid, note: 'Behaves as expected' },
         { type: 'release', task: wid },
       ],
@@ -271,14 +279,14 @@ describe('applying, dismissing, and handling a ping', () => {
   });
 
   it('applies every change in one step, wires the new tasks, comments on the task, and logs it', async () => {
-    const other = await make('Gets edited', { tags: ['agent'] });
+    const other = await make('Gets edited', { who: 'agent' });
     const wid = await held('Needs a follow-up', `claude-own-${agents++}`);
     const { id } = await proposed(
       [
         newTask('n1'),
         newTask('n2', { depends: ['n1'] }),
         { type: 'depend', task: wid, add: ['n2'] },
-        { type: 'modify', task: other, horizon: 'next', addTags: ['owner'] },
+        { type: 'modify', task: other, horizon: 'next', who: 'person', assignee: 'owner' },
       ],
       wid,
     );
@@ -294,7 +302,7 @@ describe('applying, dismissing, and handling a ping', () => {
       by: 'board',
       text: `Applied: added ${first}, ${second}; ${wid} now waits for ${second}; edited ${other}.`,
     });
-    expect(await task(other)).toMatchObject({ horizon: 'next', tags: expect.arrayContaining(['agent', 'owner']) });
+    expect(await task(other)).toMatchObject({ horizon: 'next', who: 'person', assignee: 'owner' });
     const { events } = await (await api('activity?limit=5')).json();
     expect(events[0].source).toBe('api');
     expect(
@@ -363,7 +371,7 @@ describe('applying, dismissing, and handling a ping', () => {
       { chosen: [0, 0] },
       { chosen: 'all' },
       { edits: [] },
-      { edits: { 0: { tags: ['later'] } } },
+      { edits: { 0: { who: 'nobody' } } },
       { chosen: [1] },
     ]) {
       expect([400, 409]).toContain((await owner(`pings/${id}/apply`, body)).status);

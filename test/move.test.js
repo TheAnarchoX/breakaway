@@ -44,7 +44,7 @@ describe('what the default branch suggests', () => {
     const task = moveTask(repo, null);
     expect(task.brief).toMatch(/\.agents\/skills\/pipeline\/SKILL\.md/u);
     expect(task.brief).toMatch(/acme\/widgets/u);
-    expect(task.done_when).toMatch(/\+owner task that depends on this one/u);
+    expect(task.done_when).toMatch(/person’s task \(who: person, assignee: owner\) that depends on this one/u);
   });
 
   it('works out the card’s stage from the task and its pull requests', () => {
@@ -183,7 +183,7 @@ describe('Move to breakaway’s deploy flow', () => {
       description: 'Move widgets to breakaway’s deploy flow',
       repo: 'widgets',
       horizon: 'now',
-      tags: ['agent'],
+      who: 'agent',
       autostart: false,
       briefBy: 'board',
       claim: `claude-${moved.task.wid.toLowerCase()}`,

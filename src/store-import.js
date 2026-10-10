@@ -57,6 +57,9 @@ export function importedMap(task, repo, now) {
     wait: text(task.wait),
     status: task.status,
     end: epochOf(task.end, `${label}'s end`),
+    // Who does it (BRK-330); an export from before it says so with tags, which withChanges maps.
+    who: text(task.who),
+    assignee: text(task.assignee),
     addTags: list(task.tags),
     addDepends: list(task.depends).map((d) => d.toLowerCase()),
     addRelated: list(task.related).map((r) => r.toLowerCase()),
@@ -64,7 +67,7 @@ export function importedMap(task, repo, now) {
   // withChanges sets every key it's given, so a field the export doesn't have is left out, not set to "undefined".
   const map = withChanges(null, Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)), now);
   map.entry = epochOf(task.entry, `${label}'s entry`) ?? map.entry;
-  // The decision as it was asked and answered: setting it through withChanges would tag it +decide again.
+  // The decision as it was asked and answered: setting it through withChanges would make it a decision again.
   if (Array.isArray(task.decision)) map.decision = JSON.stringify(task.decision);
   if (task.decisionAnswers && typeof task.decisionAnswers === 'object')
     map.decision_answers = JSON.stringify(task.decisionAnswers);

@@ -151,8 +151,8 @@ describe('a run’s state on the board (WEB-41)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'One', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Two', project: 'debt', tags: ['agent'], horizon: 'now' },
+          { description: 'One', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Two', project: 'debt', who: 'agent', horizon: 'now' },
         ],
       }),
     );

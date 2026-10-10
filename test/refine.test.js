@@ -34,11 +34,11 @@ describe('refining a task with an agent', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Vague product idea', project: 'product', tags: ['agent'], horizon: 'later' },
-          { description: 'Which host?', project: 'ops', tags: ['owner', 'decide'], horizon: 'now' },
-          { description: 'Owner chore', project: 'ops', tags: ['owner'], horizon: 'now' },
-          { description: 'Done already', project: 'debt', tags: ['agent'], horizon: 'now' },
-          { description: 'Claimed one', project: 'debt', tags: ['agent'], horizon: 'now' },
+          { description: 'Vague product idea', project: 'product', who: 'agent', horizon: 'later' },
+          { description: 'Which host?', project: 'ops', who: 'decision', horizon: 'now' },
+          { description: 'Owner chore', project: 'ops', who: 'person', assignee: 'owner', horizon: 'now' },
+          { description: 'Done already', project: 'debt', who: 'agent', horizon: 'now' },
+          { description: 'Claimed one', project: 'debt', who: 'agent', horizon: 'now' },
         ],
       }),
     );
@@ -63,7 +63,7 @@ describe('refining a task with an agent', () => {
     expect(fires).toHaveLength(0);
   });
 
-  it('refines a +decide task and one that isn’t tagged +agent, which a build refuses', async () => {
+  it('refines a decision and a person’s task, which a build refuses', async () => {
     expect((await body(await build('OPS-1'))).status).toBe(409);
     const res = await body(await refine('OPS-1', 'Lay out the options.'));
     expect(res.status).toBe(200);
@@ -84,7 +84,7 @@ describe('refining a task with an agent', () => {
     const made = await body(
       await api('tasks', {
         method: 'POST',
-        body: { description: 'Has pictures', project: 'ops', tags: ['owner'], horizon: 'now' },
+        body: { description: 'Has pictures', project: 'ops', who: 'person', assignee: 'owner', horizon: 'now' },
       }),
     );
     const wid = made.tasks[0].wid;
@@ -117,7 +117,7 @@ describe('refining a task with an agent', () => {
   it('is the lock: no build or second refine while a refine run holds the task', async () => {
     await api('tasks', {
       method: 'POST',
-      body: { description: 'Buildable', project: 'brand', tags: ['agent'], horizon: 'now' },
+      body: { description: 'Buildable', project: 'brand', who: 'agent', horizon: 'now' },
     });
     expect((await body(await refine('BRD-1', 'Tighten it.'))).status).toBe(200);
     expect((await body(await build('BRD-1'))).error).toMatch(/claude-refine-brd-1 has it/);
@@ -127,7 +127,7 @@ describe('refining a task with an agent', () => {
   it('gives the task back when Claude won’t start the session, and a build can start after', async () => {
     await api('tasks', {
       method: 'POST',
-      body: { description: 'Refine me', project: 'compliance', tags: ['agent'], horizon: 'now' },
+      body: { description: 'Refine me', project: 'compliance', who: 'agent', horizon: 'now' },
     });
     failWith = 429;
     const res = await body(await refine('CMP-1', 'Try.'));
@@ -148,7 +148,7 @@ describe('refining a task with an agent', () => {
     // Once the refinement lets go, the build's pull request goes in the field as usual.
     await api('tasks', {
       method: 'POST',
-      body: { description: 'Refine then build', project: 'debt', tags: ['agent'], horizon: 'now' },
+      body: { description: 'Refine then build', project: 'debt', who: 'agent', horizon: 'now' },
     });
     expect((await body(await refine('DEBT-3', 'Sharpen it.'))).status).toBe(200);
     await api('tasks/DEBT-3/release', { method: 'POST', body: { agent: 'claude-refine-debt-3' } });

@@ -16,10 +16,10 @@ describe('a feature page’s overview (WEB-118)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Lay the track', project: 'ops', tags: ['agent', 'relay'], horizon: 'now' },
-          { description: 'Paint the lines', project: 'ops', tags: ['agent', 'relay'], horizon: 'now' },
-          { description: 'Open the gates', project: 'ops', tags: ['agent', 'relay'], horizon: 'now' },
-          { description: 'Elsewhere', project: 'ops', tags: ['agent'], horizon: 'now' },
+          { description: 'Lay the track', project: 'ops', who: 'agent', tags: ['relay'], horizon: 'now' },
+          { description: 'Paint the lines', project: 'ops', who: 'agent', tags: ['relay'], horizon: 'now' },
+          { description: 'Open the gates', project: 'ops', who: 'agent', tags: ['relay'], horizon: 'now' },
+          { description: 'Elsewhere', project: 'ops', who: 'agent', horizon: 'now' },
         ],
       }),
     );

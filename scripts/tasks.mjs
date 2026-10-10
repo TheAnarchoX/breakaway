@@ -241,10 +241,11 @@ const HELP = `npx breakaway <command> [options]
 
 Reading                (list, next, claim, and add work in this checkout's repository; see Repositories below)
   list                   open tasks, best first (the default command)
-    --ready --blocked --active --mine --owner   narrow it down
+    --ready --blocked --active --mine   narrow it down
+    --who agent|person|decision --assignee <handle|owner>   who does it (--owner: decisions and people's tasks)
     --project <p> --tag <t> --horizon <h> --status pending|completed|deleted|all
   show <ref>             one task: description, done when, related, comments, dependencies, and what it blocks
-  next                   the best ready task for an agent (+agent, not +decide, unclaimed)
+  next                   the best ready task for an agent (who: agent, unclaimed)
     --claim              …and claim it in the same step
     --project <p> --horizon <h> --tag <t>
   activity               recent changes, newest first  [--limit <n>]
@@ -320,11 +321,13 @@ Working
   done <ref>             finish it  [--note <text>] [--pr <url>]
   add <description>      new task; gets the next work ID for its project
     --project <p> --tag <t>… --priority H|M|L --horizon now|next|later
+    --who agent|person|decision   who does it: an agent builds it, a person does it, or the owner decides first
+    --assignee <handle|owner>   on a person's task, who it's for (without one, any member of the repository)
     --repo <slug>        the repository it belongs to (default: the checkout's; its areas decide the prefix)
     --depends <ref,…> --related <ref,…> --spec <path> --due <date> --wait <date>
     --brief <text> | --brief-file <path>   the description (--note is the same)
     --done-when <text>   what has to be true to call it done
-    --decision <file.json>   questions for the owner to answer on the board (adds +decide); see decision --template
+    --decision <file.json>   questions for the owner to answer on the board (makes it a decision); see decision --template
     --force              add it even though it resembles open tasks the board named (--related links them instead)
   decision <ref> --template   print an example decision file to edit (nothing here answers a decision: the owner does, on the board)
   ping <ref> <message>   tell the owner you need them, in the inbox and as a push (you must hold the task; only when they must act)
@@ -374,6 +377,7 @@ Working
     --done-when <text>   change what has to be true to call it done
     --decision <file.json>   set the decision's questions (answers to questions that still exist are kept)
     --related <ref> --unrelated <ref>   add or remove a "see also" link (repeatable; it doesn't block)
+    --who agent|person|decision --assignee <handle|owner>   who does it (--assignee "" removes it)
     --tag <t> --untag <t> --depends <ref> --undepends <ref>   (repeatable)
     --autostart yes|no   start a cloud agent by itself when the task is ready
 
@@ -862,6 +866,7 @@ function line(t) {
     t.description,
   ];
   const extra = [];
+  if (t.who) extra.push(t.who === 'person' ? `person: ${t.assignee ?? 'anyone'}` : t.who);
   if (t.tags.length) extra.push(t.tags.map((x) => `+${x}`).join(' '));
   if (t.claim) extra.push(`claimed by ${t.claim} ${age(t.start)}`);
   // A person's answer leaves out a blocker in a repository they can't read, but keeps the block (BRK-338).
@@ -869,6 +874,15 @@ function line(t) {
   if (t.waiting) extra.push(`waiting until ${t.wait.slice(0, 10)}`);
   if (t.status !== 'pending') extra.push(`${t.status}${t.end ? ` ${t.end.slice(0, 10)}` : ''}`);
   return `${bits.join('  ')}${extra.length ? `  (${extra.join('; ')})` : ''}`;
+}
+
+/** Who does a task (BRK-330), in words: an agent, a person (its assignee, or any member), or a decision. */
+function whoWords(t) {
+  if (t.who === 'person')
+    return `a person: ${!t.assignee ? 'any member' : t.assignee === 'owner' ? 'the owner' : t.assignee}`;
+  if (t.who === 'agent') return 'an agent';
+  if (t.who === 'decision') return 'a decision first';
+  return 'nobody yet';
 }
 
 function detail(t) {
@@ -883,6 +897,7 @@ function detail(t) {
   row('Project', t.project);
   row('Horizon', t.horizon);
   row('Priority', t.priority);
+  row('Who', whoWords(t));
   row('Tags', t.tags.map((x) => `+${x}`).join(' '));
   row('Claimed by', t.claim && `${t.claim} (${age(t.start)} ago)`);
   row('Spec', t.spec);
@@ -1040,6 +1055,8 @@ function changesFrom(o) {
   for (const key of ['description', 'project', 'priority', 'horizon', 'spec', 'pr', 'due', 'wait', 'status'])
     if (key in o) c[key] = o[key];
   if (c.priority) c.priority = c.priority.toUpperCase();
+  if (o.who !== undefined) c.who = String(o.who).toLowerCase();
+  if (o.assignee !== undefined) c.assignee = o.assignee === true ? null : String(o.assignee).toLowerCase() || null;
   if (o.tag) c.addTags = o.tag;
   if (o.untag) c.removeTags = o.untag;
   Object.assign(
@@ -1103,7 +1120,9 @@ const commands = {
         (!opts.blocked || t.blocked) &&
         (!opts.active || t.claim || t.active) &&
         (!opts.mine || t.claim === me) &&
-        (!opts.owner || t.tags.includes('owner') || t.tags.includes('decide')) &&
+        (!opts.owner || t.who === 'decision' || t.who === 'person') &&
+        (!opts.who || t.who === String(opts.who).toLowerCase()) &&
+        (!opts.assignee || t.assignee === String(opts.assignee).toLowerCase()) &&
         (!opts.project || t.project === opts.project) &&
         // The archive is hidden from open work only: --status completed or all lists it too (CLD-193).
         (opts.horizon
@@ -1796,7 +1815,8 @@ const commands = {
     const body = { agent: agent(), claim: Boolean(opts.claim), project: opts.project, horizon: opts.horizon };
     const repo = await scopedRepo();
     if (repo) body.repo = repo;
-    if (opts.tag) body.tags = ['agent', ...opts.tag];
+    body.who = 'agent';
+    if (opts.tag) body.tags = opts.tag;
     const { task } = await call('POST', 'next', body);
     if (task && opts.claim) {
       markSession(task);

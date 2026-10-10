@@ -89,7 +89,8 @@ describe('a chase waits for its owner at its review cap', () => {
         body: ['One', 'Two', 'Three'].map((n) => ({
           description: `Ops ${n.toLowerCase()}`,
           project: 'ops',
-          tags: ['agent', 'cap'],
+          who: 'agent',
+          tags: ['cap'],
           horizon: 'now',
         })),
       }),
@@ -120,7 +121,7 @@ describe('a chase waits for its owner at its review cap', () => {
     await pull(42, 'OPS-2');
     await api('tasks', {
       method: 'POST',
-      body: [{ description: 'Ops four', project: 'ops', tags: ['agent', 'cap'], horizon: 'now' }],
+      body: [{ description: 'Ops four', project: 'ops', who: 'agent', tags: ['cap'], horizon: 'now' }],
     });
     const before = builds().length;
     await tick();

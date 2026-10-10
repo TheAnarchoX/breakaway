@@ -14,7 +14,7 @@ Claim the best ready task in this checkout's repository, then read it. The `task
    - Nothing ready: say so in a line ("Nothing ready in this repository.") and stop.
    - `409`: another agent claimed it first. Run the same command once more; if it fails again, say so and stop. Never `--force`.
    - No board configured, or this checkout's repository isn't on the board: say what the CLI said, and that the board's address and token go in the plugin's settings (`/plugin`, then breakaway) or `npx breakaway setup` connects this machine, and the board's owner adds a repository with `repos add`.
-3. **Read it:** `npx --yes breakaway@2 show <ID>` with the work ID it claimed. Tell the person, in a few lines: the work ID and title, what it waits for and holds up, its done when, and its spec if it has one. If it's tagged `+decide`, say it needs the owner's decision first, release it with `npx --yes breakaway@2 release <ID> --as <name>`, and stop.
+3. **Read it:** `npx --yes breakaway@2 show <ID>` with the work ID it claimed. Tell the person, in a few lines: the work ID and title, what it waits for and holds up, its done when, and its spec if it has one. If it's a decision (`Who: a decision first`), say it needs the owner's decision first, release it with `npx --yes breakaway@2 release <ID> --as <name>`, and stop.
 4. **Before any change**, read the repository's `AGENTS.md` and check in on the peloton: `npx --yes breakaway@2 peloton checkin "<what you'll change>" --as <name>`.
 
 Don't change any file in this command: claiming and reading is the whole of it. The work follows, and `/breakaway:hand-over` finishes it.

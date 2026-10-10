@@ -38,12 +38,12 @@ describe('force start', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'One', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Two', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Three', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Four', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Five', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Owner only', project: 'ops', tags: ['owner'], horizon: 'now' },
+          { description: 'One', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Two', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Three', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Four', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Five', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Owner only', project: 'ops', who: 'person', assignee: 'owner', horizon: 'now' },
         ],
       }),
     );
@@ -84,8 +84,8 @@ describe('force start', () => {
     await api('tasks', {
       method: 'POST',
       body: [
-        { description: 'Docs', project: 'product', repo: 'breakaway', tags: ['agent'], horizon: 'now' },
-        { description: 'Landing', project: 'product', repo: 'breakaway', tags: ['agent'], horizon: 'now' },
+        { description: 'Docs', project: 'product', repo: 'breakaway', who: 'agent', horizon: 'now' },
+        { description: 'Landing', project: 'product', repo: 'breakaway', who: 'agent', horizon: 'now' },
       ],
     });
     await settings({ max: 6 });
@@ -147,7 +147,7 @@ describe('force start', () => {
     expect(claimed.status).toBe(409);
     expect(claimed.forceable).toBeUndefined();
     const owner = await body(await start('OPS-6', { force: true }));
-    expect(owner.error).toMatch(/isn’t tagged \+agent/);
+    expect(owner.error).toMatch(/it’s a person’s task \(the owner’s\)/);
     expect(owner.forceable).toBeUndefined();
   });
 

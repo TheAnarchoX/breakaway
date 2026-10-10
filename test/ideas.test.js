@@ -13,7 +13,8 @@ const idea = (text, extra = {}) =>
       description: text.split('\n')[0],
       project: 'ideas',
       horizon: 'now',
-      tags: ['agent', 'idea', 'horizon-auto'],
+      who: 'agent',
+      tags: ['idea', 'horizon-auto'],
       note: text,
       ...extra,
     },
@@ -40,7 +41,8 @@ describe('ideas', () => {
     expect(first.tasks[0]).toMatchObject({
       wid: 'IDEA-1',
       project: 'ideas',
-      tags: ['agent', 'horizon-auto', 'idea'],
+      who: 'agent',
+      tags: ['horizon-auto', 'idea'],
       autostart: false,
     });
     expect(first.tasks[0].brief).toMatch(/join from a phone/);
