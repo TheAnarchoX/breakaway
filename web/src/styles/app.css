@@ -4858,6 +4858,48 @@ fieldset.field {
   width: 100%;
   justify-content: center;
 }
+/* A kickoff's plan (WEB-135): a banner back to the kickoff, which flashes when the plan merges on this page. */
+.pr-kickoff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  scroll-margin-top: 16px;
+}
+.pr-kickoff > svg {
+  flex: none;
+  color: var(--accent);
+}
+.pr-kickoff p {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 14px;
+}
+.pr-kickoff.is-merged {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--line));
+  background: var(--success-bg);
+}
+.pr-kickoff.is-merged > svg {
+  color: var(--success);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="reduce"]) .pr-kickoff.is-flash {
+    animation: kickoff-flash 900ms var(--ease) 3;
+  }
+}
+/* Three times, under one a second: never more than three flashes a second. */
+@keyframes kickoff-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 70%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--success) 0%, transparent);
+  }
+}
 /* The board's change (WEB-105): its Approve and Reject read like the page's other actions. */
 .pr-change {
   display: grid;
