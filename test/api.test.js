@@ -182,12 +182,8 @@ describe('task API', () => {
     const uuid = crypto.randomUUID();
     const parent = await latestVersion();
     expect(
-      (
-        await pushOps(
-          parent,
-          twCreate(uuid, { description: 'Added in Taskwarrior', project: 'ops', tag_agent: 'x', tags: 'agent' }),
-        )
-      ).status,
+      (await pushOps(parent, twCreate(uuid, { description: 'Added in Taskwarrior', project: 'ops', who: 'agent' })))
+        .status,
     ).toBe(200);
     expect((await body(await api(`tasks/${uuid}`))).task.wid).toBe('OPS-3');
     const noProject = crypto.randomUUID();

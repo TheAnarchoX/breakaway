@@ -17,8 +17,7 @@ export const FIT_PX = { min: 2, max: 60 };
 const time = (iso) => (iso ? Date.parse(iso) : Number.NaN);
 
 /** A step for a person, not an agent: a decision to make or a person's task. */
-export const ownerStep = (t) =>
-  t.who === 'person' || t.who === 'decision' || Boolean(t.decision && !t.decisionAnswers);
+export const ownerStep = (t) => t.who === 'person' || t.who === 'decision' || Boolean(t.decision && !t.decisionAnswers);
 /** Its pull request is open: merging it is the owner's. */
 export const inReview = (t) => Boolean(t.github?.some((p) => p.closes && p.state === 'open'));
 

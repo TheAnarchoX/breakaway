@@ -177,7 +177,12 @@ describe('chase', () => {
     expect(res.started).toEqual([]);
     expect(res.chase).toMatchObject({ state: 'on', on: true, stalledPingAt: expect.any(String) });
     expect(res.chase.needsYou).toEqual([
-      expect.objectContaining({ wid: 'MOD-1', kind: 'person', unblocks: 1, why: expect.stringMatching(/step for you/) }),
+      expect.objectContaining({
+        wid: 'MOD-1',
+        kind: 'person',
+        unblocks: 1,
+        why: expect.stringMatching(/step for you/),
+      }),
     ]);
     let { pings: open } = await pings();
     expect(open).toEqual([

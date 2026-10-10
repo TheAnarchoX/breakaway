@@ -37,7 +37,7 @@ export const WHO = [
 
 /** The board's columns, in order. Every open task is in exactly one. */
 export const STATES = [
-  { id: 'decide', label: 'Needs a decision', hint: 'A decision: the owner decides before anyone starts.' },
+  { id: 'decision', label: 'Needs a decision', hint: 'A decision: the owner decides before anyone starts.' },
   { id: 'ready', label: 'Ready', hint: 'Nothing blocks it and nobody has claimed it.' },
   { id: 'active', label: 'In progress', hint: 'Claimed by an agent or the owner.' },
   { id: 'review', label: 'In review', hint: 'A pull request that closes it is open.' },
@@ -69,7 +69,7 @@ export function stateOf(t) {
   if (openPr(t)) return 'review';
   if (t.claim || t.active) return 'active';
   if (t.blocked || t.waiting) return 'blocked';
-  if (t.who === 'decision') return 'decide';
+  if (t.who === 'decision') return 'decision';
   return 'ready';
 }
 

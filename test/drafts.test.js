@@ -28,8 +28,8 @@ const radio = (name, value, checked = false) => ({ tagName: 'INPUT', type: 'radi
 const taskForm = () => [
   text('description'),
   select('project', 'web', ['web', 'docs']),
-  box('tags', 'agent', true),
-  box('tags', 'owner'),
+  radio('who', 'agent', true),
+  radio('who', 'person'),
   radio('horizon', 'now'),
   radio('horizon', 'auto', true),
   area('brief'),
@@ -64,6 +64,7 @@ describe('fillDraft', () => {
     const before = taskForm();
     before[0].value = 'Sort the inbox';
     before[1].value = 'docs';
+    before[2].checked = false;
     before[3].checked = true;
     before[4].checked = true;
     before[5].checked = false;
@@ -72,7 +73,7 @@ describe('fillDraft', () => {
     const after = taskForm();
     fillDraft(after, fields);
     expect(draftOf(after).fields).toEqual(fields);
-    expect(after[2].checked && after[3].checked).toBe(true);
+    expect(!after[2].checked && after[3].checked && after[4].checked).toBe(true);
   });
 
   it('leaves a select alone when the saved choice is gone, and fields the draft does not name', () => {

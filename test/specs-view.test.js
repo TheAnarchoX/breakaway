@@ -121,7 +121,7 @@ describe('the agent on a spec', () => {
     expect(refiningSpec([t({})], 'gadgets', path, 'widgets')).toBeNull();
     expect(refiningSpec([t({ repo: 'gadgets' })], 'gadgets', path, 'widgets')).not.toBeNull();
     expect(refiningSpec([t({ spec: 'docs/specs/OPS-4-y.md' })], 'widgets', path, 'widgets')).toBeNull();
-    expect(refiningSpec([t({ who: 'agent' })], 'widgets', path, 'widgets')).toBeNull();
+    expect(refiningSpec([t({ tags: [] })], 'widgets', path, 'widgets')).toBeNull();
     expect(refiningSpec(null, 'widgets', path, 'widgets')).toBeNull();
   });
 });

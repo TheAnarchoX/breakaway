@@ -870,7 +870,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
             },
             now,
           );
-          if (changes.assignee) this.checkAssignee(after.assignee, repo);
+          if (after.assignee) this.checkAssignee(after.assignee, repo);
           working.set(uuid, after);
           ops.push(...diffOps(uuid, null, after, timestamp));
           created.push(uuid);
@@ -977,7 +977,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           this.checkAgentDelete(uuid, changes);
         }
         this.checkPrField(uuid, changes);
-        if (changes.assignee) this.checkAssignee(String(changes.assignee).trim().toLowerCase(), repo);
+        if (changes.assignee && !changes.decision)
+          this.checkAssignee(String(changes.assignee).trim().toLowerCase(), repo);
         if (input.addTags) changes.addTags = arrayOf(input.addTags);
         if (input.removeTags) changes.removeTags = arrayOf(input.removeTags);
         if (input.addDepends) changes.addDepends = this.depRefs(arrayOf(input.addDepends));

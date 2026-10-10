@@ -63,7 +63,7 @@ describe('refining a task with an agent', () => {
     expect(fires).toHaveLength(0);
   });
 
-  it('refines a +decide task and one that isn’t tagged +agent, which a build refuses', async () => {
+  it('refines a decision and a person’s task, which a build refuses', async () => {
     expect((await body(await build('OPS-1'))).status).toBe(409);
     const res = await body(await refine('OPS-1', 'Lay out the options.'));
     expect(res.status).toBe(200);

@@ -138,7 +138,7 @@ describe('dashboard numbers', () => {
       ['ops', 1],
       ['ideas', 0],
     ]);
-    expect(s.open).toMatchObject({ open: 3, ready: 0, blocked: 1, claimed: 1, decide: 1, ideas: 1 });
+    expect(s.open).toMatchObject({ open: 3, ready: 0, blocked: 1, claimed: 1, decision: 1, ideas: 1 });
     expect(s.open.horizons.now).toEqual({ open: 1, done: 4 });
     expect(s.leadTime.count).toBe(3);
     expect(s.leadTime.median).toBe(D);

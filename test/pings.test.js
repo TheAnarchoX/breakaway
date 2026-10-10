@@ -183,7 +183,11 @@ describe('proposals', () => {
     await refused([{ type: 'explode' }], /type is one of/, wid);
     await refused([newTask('n1', { done_when: '' })], /done_when is needed/, wid);
     await refused([newTask('n1', { project: 'nope' })], /project is one of/, wid);
-    await refused([newTask('n1', { who: undefined, assignee: undefined, tags: ['later'] })], /who is agent, person, or decision/, wid);
+    await refused(
+      [newTask('n1', { who: undefined, assignee: undefined, tags: ['later'] })],
+      /who is agent, person, or decision/,
+      wid,
+    );
     await refused([newTask('n1', { who: 'nobody' })], /who is agent, person, or decision/, wid);
     await refused([newTask('n1', { who: 'agent' })], /only a person's task has an assignee/, wid);
     await refused([newTask('n1', { assignee: 'Not A Handle' })], /assignee is a person's handle, or owner/, wid);

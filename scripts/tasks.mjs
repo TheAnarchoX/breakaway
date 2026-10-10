@@ -877,7 +877,8 @@ function line(t) {
 
 /** Who does a task (BRK-330), in words: an agent, a person (its assignee, or any member), or a decision. */
 function whoWords(t) {
-  if (t.who === 'person') return `a person: ${!t.assignee ? 'any member' : t.assignee === 'owner' ? 'the owner' : t.assignee}`;
+  if (t.who === 'person')
+    return `a person: ${!t.assignee ? 'any member' : t.assignee === 'owner' ? 'the owner' : t.assignee}`;
   if (t.who === 'agent') return 'an agent';
   if (t.who === 'decision') return 'a decision first';
   return 'nobody yet';

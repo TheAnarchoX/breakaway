@@ -1158,6 +1158,8 @@ function haystack(t) {
     t.short,
     t.description,
     t.claim,
+    t.who,
+    t.assignee,
     areaLabel(t.project),
     t.project,
     multiRepo.value ? t.repo : null,

@@ -41,13 +41,22 @@ describe('who does it, in the model', () => {
   it('makes a task with questions a decision', () => {
     const asked = withChanges(
       null,
-      { description: 'Pick one', who: 'person', assignee: 'owner', decision: [{ id: 'a', type: 'yesno', prompt: 'Ok?' }] },
+      {
+        description: 'Pick one',
+        who: 'person',
+        assignee: 'owner',
+        decision: [{ id: 'a', type: 'yesno', prompt: 'Ok?' }],
+      },
       NOW,
     );
     expect(asked.who).toBe('decision');
     expect(asked.assignee).toBeUndefined();
     // The core told agents to add a decision with --tag owner until BRK-330.
-    const old = withChanges(null, { description: 'Pick', addTags: ['owner'], decision: [{ id: 'a', type: 'yesno', prompt: 'Ok?' }] }, NOW);
+    const old = withChanges(
+      null,
+      { description: 'Pick', addTags: ['owner'], decision: [{ id: 'a', type: 'yesno', prompt: 'Ok?' }] },
+      NOW,
+    );
     expect(old).toMatchObject({ who: 'decision' });
     expect(old.assignee).toBeUndefined();
   });
@@ -100,7 +109,7 @@ describe('who does it, on the board', () => {
       await store.ready();
       store.loadTasks();
       const stamp = NOW.toISOString();
-      const raw = (uuid, tag) => ({
+      const raw = (tag) => ({
         description: `Old ${tag}`,
         status: 'pending',
         entry: '1790596800',
@@ -110,9 +119,9 @@ describe('who does it, on the board', () => {
       });
       // Written before BRK-330, straight into history, as an older board did.
       store.commit([
-        ...diffOps(uuids.a, null, raw(uuids.a, 'agent'), stamp),
-        ...diffOps(uuids.o, null, raw(uuids.o, 'owner'), stamp),
-        ...diffOps(uuids.d, null, raw(uuids.d, 'decide'), stamp),
+        ...diffOps(uuids.a, null, raw('agent'), stamp),
+        ...diffOps(uuids.o, null, raw('owner'), stamp),
+        ...diffOps(uuids.d, null, raw('decide'), stamp),
       ]);
       store.setMeta('who_migrated', null);
       return store.latest();
@@ -196,8 +205,7 @@ describe('who does it, on the board', () => {
       person('nil', null);
       return store.defaultRepoSlug();
     });
-    const assign = async (assignee) =>
-      body(await add({ description: `For ${assignee}`, who: 'person', assignee }));
+    const assign = async (assignee) => body(await add({ description: `For ${assignee}`, who: 'person', assignee }));
     expect((await assign('owner')).status).toBe(201);
     expect((await assign('mia')).tasks[0]).toMatchObject({ who: 'person', assignee: 'mia' });
     expect((await assign('max')).status).toBe(201);

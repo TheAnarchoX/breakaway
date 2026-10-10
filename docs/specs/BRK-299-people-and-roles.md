@@ -37,6 +37,8 @@ The board's words (ID-5 owns them; DOC-46 adds these to the brand guide):
 | **passkey** | How people sign in on the web | password (there are none), WebAuthn (fine in code) |
 | **personal token** | A person's own token for their CLI and MCP | API key, PAT |
 | **Reset** | Revoke someone's passkeys, tokens, and sessions, and make them a new invite | recover |
+| **who does it** | Whether an agent, a person, or a decision moves a task (section 11) | role (that's what a person may do), owner task, tagged agent |
+| **assignee** | The person a person's task is for: the owner, or someone with a role in its repository | owner (for anyone else's task) |
 
 "admin" in the owner's 8 Oct note means whoever manages people. In this spec that's the owner, and a maintainer for the people inside their own repositories (point 3).
 
@@ -253,6 +255,23 @@ DOC-46 makes these edits, in the pull request that ships the last of the build:
 ### 10. Groups whose work isn't code
 
 Campaigns, research, and organising need more than this: an area with no repository (tasks, specs, decisions, and agents that research and draft, with their output somewhere other than a pull request), roles on that area, and an agent mode that works without a checkout. That's IDEA-66's ground, not this feature's. This spec leaves room for it: a grant names a repository today, and could name a board-only area later with the same four roles. When it's shaped, IDEA-66 should decide: what "merge" becomes for a document; where an agent's output lives; whether a board-only area gets a peloton and chases; and what such groups must never get (tracking, third-party services they didn't connect).
+
+### 11. Who does it (BRK-330)
+
+**Problem.** Three tags said who moves a task: `+agent` (an agent builds it), `+owner` (the owner does it), and `+decide` (the owner decides first). With people on the board, "the owner" is no longer the only person who does work, the tags combine in ways that mean nothing (`+agent +owner`), and every reader re-derived what they meant.
+
+**Chosen (the owner, 9 Oct).** One field and an assignee, replacing the three tags everywhere, with no legacy left behind:
+
+- **`who`**: `agent`, `person`, or `decision`. Only an agent's task starts an agent (a start, Start when ready, `next`, a chase). A decision's questions make it a decision, whatever else the same change says; answered and finished, it stays one. A kickoff's IDEA and a routine maker's task, which ask on themselves and stay open, go back to `agent` when answered and become a decision again when reopened. A task may have no `who` ("nobody yet"): a chase shows it as Needs you, and nothing starts on it.
+- **`assignee`**: on a person's task only, who it's for: `owner`, or the handle of a person who holds member or maintainer in the task's repository (a viewer reads the board, so the work can't be theirs). The board checks the role when it's set, on add, modify, and a ping's proposal when the owner applies it. Without one, the task is open to any member of its repository. Changing `who` away from `person` drops it.
+- **Both are plain task properties**, so Taskwarrior keeps them as UDAs (`uda.who.values=agent,person,decision`, `uda.assignee`), the activity feed names them ("who does it", "assignee"), an agent's cross-task edit may change them (and the owner can undo it), and an idea keeps the owner's.
+- **Migration.** The first request after the update moves every stored task off the tags in one version, so Taskwarrior replicas lose them on their next sync: `+decide` → `who: decision`; `+agent` → `who: agent`; `+owner` → `who: person`, `assignee: owner`. When a task carried several, the board's old reading decides: a decision held every start, and `+agent` let agents start a task whatever else it carried, so decision, then agent, then person. Questions and answers stay as they were.
+- **Input mapping, until BRK-331.** The CLI and the core copied into other repositories, older prompts, ping proposals already stored, and Taskwarrior habits (`task add +owner`) still say who with a tag. The Worker maps them onto the field (`LEGACY_WHO_TAGS` and `legacyWho` in `src/model.js`): on add and modify, on `next` (`tags: ['agent']`, `without: ['decide']`), on a proposal, and in a follow-up version after each replica's sync. None is ever stored. Activity still reads the `+decide` tag in versions written before the migration, since history doesn't change. BRK-331, the sweep, decides when the mapping goes, once no copied CLI sends the tags: the CLI released with BRK-330 is the first that doesn't, and BRK-331 records its version.
+- **Who reads it:** the starters (`agentBlocker`, Start when ready, the chase's Needs you, `next`), decisions (submit, reopen), pings (`who` and `assignee` on `add` and `modify`), Stats, the feature's standing, the MCP server (`who` and `assignee` on `add_task`, `modify_task`, and `list_tasks`, and a "Who does it" line), the CLI (`--who` and `--assignee` on `add`, `modify`, and `list`, `list --owner` for decisions and people's tasks, and a Who line on `show`), Taskwarrior's reports (`task agent` is `who:agent`; `task owner` is decisions, the owner's tasks, and anyone's), and the web's filter, New task, and the task panel's control.
+
+**Out of scope here.** The web's full treatment (an assignee picker, the assignee on cards, filtering by assignee, a person's own view of their tasks) is WEB-133. Removing the input mapping and its test is BRK-331. The public site's pages are DOC-46.
+
+**Open questions.** None for the owner: the precedence above keeps what the board did with each task.
 
 ## Privacy
 

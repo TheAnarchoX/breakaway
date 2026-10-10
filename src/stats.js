@@ -153,7 +153,7 @@ export function computeStats({ now, days, tz, tasks, prs, runs, deploys, ships, 
   const leadBefore = [];
   const finishedWids = new Set();
   const horizons = { now: { open: 0, done: 0 }, next: { open: 0, done: 0 }, later: { open: 0, done: 0 } };
-  const flow = { open: 0, ready: 0, blocked: 0, claimed: 0, decide: 0, ideas: 0 };
+  const flow = { open: 0, ready: 0, blocked: 0, claimed: 0, decision: 0, ideas: 0 };
   for (const t of tasks) {
     if (t.status === 'deleted') continue;
     const added = count('added', t.entry);
@@ -174,7 +174,7 @@ export function computeStats({ now, days, tz, tasks, prs, runs, deploys, ships, 
       if (t.ready && !t.claim && t.who !== 'decision') flow.ready += 1;
       if (t.blocked) flow.blocked += 1;
       if (t.claim) flow.claimed += 1;
-      if (t.who === 'decision') flow.decide += 1;
+      if (t.who === 'decision') flow.decision += 1;
       if (t.project === 'ideas') flow.ideas += 1;
       if (t.horizon in horizons) horizons[t.horizon].open += 1;
     }

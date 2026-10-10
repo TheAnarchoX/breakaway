@@ -47,8 +47,8 @@ function task({ tags = [], project = 'web', done, start, depends = [], ...rest }
   };
 }
 /** `count` agent tasks in `area`, finished over the window. */
-const finished = (count, area = 'web', tags = []) =>
-  Array.from({ length: count }, (_, i) => task({ project: area, done: 1 + (i % 27), tags }));
+const finished = (count, area = 'web', who = 'agent') =>
+  Array.from({ length: count }, (_, i) => task({ project: area, done: 1 + (i % 27), who }));
 
 describe('membership', () => {
   it('puts a task in the first of its feature tags alphabetically', () => {
@@ -63,7 +63,7 @@ describe('membership', () => {
 
 describe('history', () => {
   it('counts each area’s agent tasks a day over the window, and the owner’s steps apart', () => {
-    const past = history([...finished(28, 'web'), ...finished(14, 'board'), ...finished(7, 'web', ['owner'])], NOW);
+    const past = history([...finished(28, 'web'), ...finished(14, 'board'), ...finished(7, 'web', 'person')], NOW);
     expect(past.areas.get('web').avg).toBeCloseTo(1);
     expect(past.areas.get('board').avg).toBeCloseTo(0.5);
     expect(past.overall.avg).toBeCloseTo(1.5);

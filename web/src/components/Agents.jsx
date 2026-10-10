@@ -51,7 +51,8 @@ export const TRIGGER_LABEL = {
 export function agentBlocker(t) {
   if (t.status !== 'pending') return 'it isn’t open';
   if (t.who === 'decision') return 'it waits on a decision';
-  if (t.who === 'person') return `it’s a person’s task (${t.assignee === 'owner' ? 'the owner’s' : (t.assignee ?? 'anyone’s')})`;
+  if (t.who === 'person')
+    return `it’s a person’s task (${t.assignee === 'owner' ? 'the owner’s' : (t.assignee ?? 'anyone’s')})`;
   if (t.who !== 'agent') return 'nobody said an agent does it: set who to agent';
   if (openPr(t)) return 'it’s already in review';
   if (t.claim) return `${t.claim} has it`;
