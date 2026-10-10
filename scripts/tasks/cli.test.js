@@ -51,8 +51,14 @@ describe('list --owner (BRK-343)', () => {
     // interop.mjs runs the same tasks through real Taskwarrior's report; this pins the filter it reads.
     const rc = readFileSync(new URL('../../taskrc', import.meta.url), 'utf8');
     expect(rc).toContain(
-      "report.owner.filter=status:pending ( who:'decision' or ( who:person and ( assignee:owner or assignee.none: ) ) )\n",
+      'report.owner.filter=status:pending ( who:decision or ( who:person and ( assignee:owner or assignee.none: ) ) )\n',
     );
+  });
+
+  it('declares no attribute named decision, so Taskwarrior reads who:decision as the word (BRK-346)', () => {
+    const rc = readFileSync(new URL('../../taskrc', import.meta.url), 'utf8');
+    expect(rc).not.toMatch(/^uda\.decision\./mu);
+    expect(rc).toMatch(/^uda\.decision_questions\.type=string$/mu);
   });
 });
 

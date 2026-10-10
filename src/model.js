@@ -79,6 +79,20 @@ export function whoFromTags(tags) {
 }
 
 /**
+ * A task's map with its questions moved from `decision`, where they were kept before BRK-346, to `decision_questions`.
+ * Taskwarrior reads a word that names an attribute as that attribute's value, so while the questions' UDA was called
+ * `decision`, `task add … who:decision` stored no who. What the migration and a replica's version go through: a
+ * replica with an older shared taskrc may still send `decision`. A map without it comes back as it is (the same object).
+ * @param {Record<string, string>} map
+ */
+export function legacyQuestions(map) {
+  if (!('decision' in map)) return map;
+  const { decision, ...after } = map;
+  if (!after.decision_questions && decision) after.decision_questions = decision;
+  return after;
+}
+
+/**
  * A task's map with the tags `who` replaced (BRK-330) turned into `who` and `assignee`: what the migration and a
  * Taskwarrior replica's version go through. A map without them comes back as it is (the same object).
  * @param {Record<string, string>} map
@@ -251,7 +265,7 @@ export function view(uuid, map, all, now = new Date()) {
     autostart: map.autostart === 'yes',
     session: map.session ?? null,
     alert: map.alert ?? null,
-    decision: map.decision ? parseJson(map.decision, isList) : null,
+    decision: map.decision_questions ? parseJson(map.decision_questions, isList) : null,
     decisionAnswers: map.decision_answers ? parseJson(map.decision_answers, isRecord) : null,
     entry: iso(map.entry),
     modified: iso(map.modified),
@@ -397,7 +411,7 @@ export function withChanges(before, changes, now = new Date()) {
   if ('entry' in changes && changes.entry) map.entry = String(changes.entry);
   if ('decision' in changes) {
     if (changes.decision === null || changes.decision === '') {
-      delete map.decision;
+      delete map.decision_questions;
       delete map.decision_answers;
     } else {
       let input = changes.decision;
@@ -409,7 +423,7 @@ export function withChanges(before, changes, now = new Date()) {
         }
       }
       const questions = validateQuestions(input);
-      map.decision = JSON.stringify(questions);
+      map.decision_questions = JSON.stringify(questions);
       const old = map.decision_answers ? parseJson(map.decision_answers, isRecord) : null;
       if (old) {
         const { answers } = keepAnswers(questions, old.answers);
@@ -433,7 +447,7 @@ export function withChanges(before, changes, now = new Date()) {
         delete map.assignee;
       }
   }
-  const mapped = legacyWho(map);
+  const mapped = legacyQuestions(legacyWho(map));
   if (mapped !== map) {
     for (const key of Object.keys(map)) if (!(key in mapped)) delete map[key];
     Object.assign(map, mapped);

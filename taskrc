@@ -47,15 +47,16 @@ uda.done_when.label=Done when
 
 # A decision for the owner (docs/specs/IDEA-6-decisions-with-questions.md): the questions, and the
 # owner's answers once submitted, both JSON. Attach and answer them through the board, not by hand.
-uda.decision.type=string
-uda.decision.label=Decision
+# The questions were `decision` before BRK-346: Taskwarrior reads a word that names an attribute as
+# that attribute's value, so who:decision stored nothing. The board moves an old `decision` forward.
+uda.decision_questions.type=string
+uda.decision_questions.label=Decision
 uda.decision_answers.type=string
 uda.decision_answers.label=Answers
 
 # Who does it (BRK-330): an agent builds it, a person does it, or the owner decides first. A person's task
 # names who it's for in `assignee` (a person's handle, or owner); without one, any member of its repository
-# does it. Set them with who:agent, who:person assignee:owner, and so on. Taskwarrior reads a bare who:decision
-# as the task's own decision attribute, so make a decision with +decide, which the board turns into who.
+# does it. Set them with who:agent, who:decision, who:person assignee:owner, and so on.
 uda.who.type=string
 uda.who.label=Who
 uda.who.values=agent,person,decision,
@@ -88,11 +89,10 @@ report.claimed.labels=ID,Work,Claimed by,For,Area,Description
 report.claimed.filter=status:pending claim.any:
 report.claimed.sort=start+
 
-# 'decision' is quoted: bare, Taskwarrior reads it as the task's own decision attribute, not the word.
 report.owner.description=Needs the owner: the owner's work, work for anyone, and open decisions
 report.owner.columns=id,wid,priority,horizon,project,who,assignee,tags,description.count
 report.owner.labels=ID,Work,P,Horizon,Area,Who,For,Tags,Description
-report.owner.filter=status:pending ( who:'decision' or ( who:person and ( assignee:owner or assignee.none: ) ) )
+report.owner.filter=status:pending ( who:decision or ( who:person and ( assignee:owner or assignee.none: ) ) )
 report.owner.sort=urgency-
 
 # Repositories (IDEA-14): one report and one context each, for every repository the board tracks. This file
