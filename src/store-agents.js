@@ -543,10 +543,14 @@ export const agentsMethods = {
     return credentials;
   },
 
-  /** The repositories person `handle` can start agents in: their own routine there, or the owner lends one (BRK-334). */
+  /**
+   * The repositories person `handle` can start agents in: where they're a member or more now (BRK-348), with their
+   * own routine there, or one the owner lends (BRK-334).
+   */
   async personStartable(handle) {
     const startable = new Set();
     for (const repo of this.repos()) {
+      if (this.personRoleRefusal(handle, repo.slug)) continue;
       const own = await this.personRoutine(handle, repo.slug);
       if ((own && !('broken' in own)) || this.routineLent(repo.slug)) startable.add(repo.slug);
     }
@@ -579,6 +583,45 @@ export const agentsMethods = {
   /** Who the start waiting on task `uuid` is for: the person queueFor recorded, or the owner. */
   queuedFor(uuid) {
     return this.meta(`start_for:${uuid}`) || OWNER;
+  },
+
+  /**
+   * Takes a person's start waiting on task `uuid` out of the queue (BRK-348): it no longer starts by itself, says
+   * why on the task, and never falls to the owner's routine. Anyone who may start it can still press Start.
+   */
+  dropQueuedStart(uuid, why) {
+    this.setMeta(`start_for:${uuid}`, null);
+    const map = this.tasks.get(uuid);
+    if (map?.autostart !== 'yes' || map.status !== 'pending') return;
+    this.change(
+      uuid,
+      { autostart: null, annotate: `The start waiting for room was dropped: ${why}.`, by: 'board' },
+      new Date(),
+      'agents',
+    );
+  },
+
+  /**
+   * The starts people left waiting for room, before the auto-starter takes the queue (BRK-348): one whose task
+   * finished, went, was claimed, or stopped waiting is forgotten; one for a person who can't start in its repository
+   * now (removed, a role taken away, no routine there and none lent) drops out rather than refused every tick.
+   * @returns {boolean} whether a person's start still waits
+   */
+  sweepQueuedStarts() {
+    let waiting = false;
+    for (const { key, value } of this.sql.exec("SELECT key, value FROM meta WHERE key LIKE 'start_for:%'").toArray()) {
+      const uuid = key.slice('start_for:'.length);
+      const map = this.tasks.get(uuid);
+      if (map?.status !== 'pending' || map.autostart !== 'yes' || map.claim) {
+        this.setMeta(key, null);
+        continue;
+      }
+      const repo = this.repoOfTask(map);
+      const why = repo ? this.personStartWhy(value, repo.slug) : null;
+      if (why) this.dropQueuedStart(uuid, why);
+      else waiting = true;
+    }
+    return waiting;
   },
 
   /**
@@ -1997,7 +2040,7 @@ export const agentsMethods = {
       if (!reason && connected && !connected.has(t.repo) && forPerson === OWNER)
         reason = `${t.repo}’s agent routine isn’t connected`;
       // A routine Claude refused waits (BRK-144), so it doesn't fire every tick.
-      const hold = !reason && connected ? this.routineHold(t.repo, forPerson === OWNER ? null : forPerson) : null;
+      const hold = !reason && connected ? this.startHold(t.repo, forPerson) : null;
       if (hold) reason = this.holdReason(t.repo, hold);
       // A security fix, a general agent, and a kickoff's run don't wait for files or for their area.
       const hit = reason ? null : this.collision(t, beside, { book });
@@ -2046,12 +2089,14 @@ export const agentsMethods = {
     await this.ready();
     // With the switch off the queue still holds general agents: the owner started them by hand.
     const connected = await this.connectedRepos();
-    if (!connected.size) return [];
+    // A person's start that waited for room runs on their routine (BRK-334), whether or not the owner has one.
+    const people = this.sweepQueuedStarts();
+    if (!connected.size && !people) return [];
     const started = [];
     for (const item of this.autostartQueue(this.views(), connected).filter((q) => q.ready)) {
       const { forPerson } = item;
       // An earlier start this tick may have been refused, holding its routine.
-      if (this.routineHold(item.repo, forPerson === OWNER ? null : forPerson)) continue;
+      if (this.startHold(item.repo, forPerson)) continue;
       try {
         await this.startAgent(item.uuid, {
           ...(item.maker

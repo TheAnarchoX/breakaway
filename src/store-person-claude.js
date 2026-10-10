@@ -142,8 +142,10 @@ export const personClaudeMethods = {
    */
   async routineForStart(slug, forPerson) {
     if (forPerson === OWNER) return { credentials: await this.checkRoutineReady(slug), routineOf: OWNER, lent: false };
-    if (!this.personRow(forPerson))
-      throw new AgentError(`${forPerson} isn’t on the board any more, so nothing starts for them`, 403);
+    // Asked again on every start, not only at the press (BRK-348): a chase's ticks and captain, and a start that
+    // waited for room, run later, and a person removed or demoted since starts nothing more.
+    const role = this.personRoleRefusal(forPerson, slug);
+    if (role) throw new AgentError(role, 403);
     const own = await this.personRoutine(forPerson, slug);
     if (own && 'broken' in own)
       throw new AgentError(
@@ -156,6 +158,39 @@ export const personClaudeMethods = {
     }
     if (!this.routineLent(slug)) throw new AgentError(noRoutineWords(slug), 403);
     return { credentials: await this.checkRoutineReady(slug), routineOf: OWNER, lent: true };
+  },
+
+  /**
+   * Why person `handle` may not start agents in repository `slug` now, or null (BRK-348): they're off the board, or
+   * they aren't a member or more there any more.
+   * @returns {string | null}
+   */
+  personRoleRefusal(handle, slug) {
+    if (!this.personRow(handle)) return `${handle} isn’t on the board any more, so nothing starts for them`;
+    const role = refusal({ person: handle, grants: this.personGrants(handle) }, 'agent.start', slug);
+    return role ? `${role.message}, so nothing starts there for them` : null;
+  },
+
+  /**
+   * Why person `handle` can't start agents in repository `slug` now, or null, without opening their routine: their
+   * role there, then a routine of their own or one the owner lends. A broken routine of their own is the start's to
+   * say.
+   * @returns {string | null}
+   */
+  personStartWhy(handle, slug) {
+    return (
+      this.personRoleRefusal(handle, slug) ??
+      (this.personRoutineRepos(handle).includes(slug) || this.routineLent(slug) ? null : noRoutineWords(slug))
+    );
+  },
+
+  /**
+   * What holds the routine a start in repository `slug` for `forPerson` would fire (BRK-144, BRK-302): the person's
+   * own routine there is held apart; the owner's starts, and a person's on a lent routine, wait on the repository's.
+   */
+  startHold(slug, forPerson = OWNER) {
+    const own = forPerson !== OWNER && this.personRoutineRepos(forPerson).includes(slug);
+    return this.routineHold(slug, own ? forPerson : null);
   },
 
   /** What a person may know about their own Claude: never a routine's URL or token. */
@@ -416,11 +451,22 @@ export const personClaudeMethods = {
 
   // ---- Removal and rotation --------------------------------------------------------------------
 
-  /** Forgets a removed person's routines and holds; their plan and limits go with them. */
+  /**
+   * Forgets a removed person's routines and holds; their plan and limits go with them. What they started that runs
+   * later goes too (BRK-348): their chases stop, as Stop would stop them, and their starts waiting for room drop out.
+   */
   dropPersonClaude(handle) {
     for (const repo of this.personRoutineRepos(handle)) this.setMeta(personHoldKey(repo, handle), null);
     this.sql.exec('DELETE FROM person_routines WHERE handle = ?', handle);
     this.sql.exec('DELETE FROM person_claude WHERE handle = ?', handle);
+    for (const row of this.sql.exec('SELECT * FROM features WHERE chase_by = ?', handle).toArray()) {
+      if (row.chase === 'on' || row.chase === 'done') this.chaseStopFor(row, `${handle} left the board`);
+      this.sql.exec('UPDATE features SET chase_by = NULL WHERE slug = ?', row.slug);
+    }
+    for (const { key } of this.sql
+      .exec("SELECT key FROM meta WHERE key LIKE 'start_for:%' AND value = ?", handle)
+      .toArray())
+      this.dropQueuedStart(key.slice('start_for:'.length), `${handle} left the board`);
   },
 
   /**
