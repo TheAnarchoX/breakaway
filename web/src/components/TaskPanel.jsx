@@ -22,7 +22,6 @@ import {
   HORIZONS,
   PICKS_AREA,
   PRIORITIES,
-  WHO,
   ago,
   dateInput,
   day,
@@ -72,6 +71,7 @@ import { IncidentSection } from './Incidents.jsx';
 import { RunEventLine } from './InfraEvents.jsx';
 import { ShortLivedSection } from './ShortLived.jsx';
 import { FootprintSection } from './Footprint.jsx';
+import { WhoField } from './Who.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
 
@@ -214,31 +214,6 @@ function Actions({ task: t }) {
           </div>
         )}
       </Popover>
-    </div>
-  );
-}
-
-/**
- * Who does it (BRK-330): an agent, a person, or a decision; pressing the one that's on clears it.
- * @param {Record<string, any>} props
- */
-function Who({ task: t }) {
-  return (
-    <div class="segmented segmented-sm" role="group" aria-label="Who does it">
-      {WHO.map((w) => {
-        const on = t.who === w.id;
-        return (
-          <button
-            key={w.id}
-            type="button"
-            aria-pressed={on}
-            title={w.hint}
-            onClick={() => actions.update(t, { who: on ? null : w.id }, null)}
-          >
-            {w.label}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -738,7 +713,7 @@ function Details({ task: t }) {
         </select>
       </Field>
       <Field label="Who does it">
-        <Who task={t} />
+        <WhoField task={t} />
       </Field>
       <Field label="Tags">
         <Tags task={t} />

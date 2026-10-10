@@ -20,6 +20,7 @@ import { isImage, MAX_IMAGES, prepareImage } from '../lib/images.js';
 import { Dialog, Dictate } from './ui.jsx';
 import { ImagePicker, Thumbnails, attachFiles, pastedImages } from './Attachments.jsx';
 import { similarTasks } from '../../../src/similar.js';
+import { assignable, ensurePeople } from '../lib/people.js';
 
 /** Areas whose tasks are never compared with a new one: an idea is the owner's words, and runs are alike on purpose. */
 const NOT_COMPARED = ['ideas', 'routines'];
@@ -50,6 +51,9 @@ function Form({ defaults }) {
     ).map((s) => s.task);
   const wanted = defaults.project ?? (f.areas.length === 1 ? f.areas[0] : 'product');
   const initialArea = areas.some((a) => a.id === wanted) ? wanted : areas[0]?.id;
+  // Who does it, and on a person's task who it's for (WEB-133): the assignees are the task's repository's.
+  const [who, setWho] = useState(() => (WHO.some((w) => w.id === draft.saved?.who) ? draft.saved.who : 'agent'));
+  useEffect(ensurePeople, []);
   const initialHorizon = defaults.horizon ?? (f.horizons.length === 1 ? f.horizons[0] : 'next');
 
   const submit = async (e) => {
@@ -74,6 +78,7 @@ function Form({ defaults }) {
         horizon: data.get('horizon') || undefined,
         priority: data.get('priority') || undefined,
         who: data.get('who') || undefined,
+        assignee: (data.get('who') === 'person' && data.get('assignee')) || undefined,
         depends: String(data.get('depends'))
           .split(/[\s,]+/u)
           .filter(Boolean),
@@ -175,12 +180,32 @@ function Form({ defaults }) {
         <div class="check-inline">
           {WHO.map((w) => (
             <label key={w.id} class="check-row" title={w.hint}>
-              <input type="radio" name="who" value={w.id} defaultChecked={w.id === 'agent'} />
+              <input
+                type="radio"
+                name="who"
+                value={w.id}
+                checked={who === w.id}
+                onChange={(e) => e.currentTarget.checked && setWho(w.id)}
+              />
               {w.label}
             </label>
           ))}
         </div>
       </fieldset>
+      {who === 'person' && (
+        <label class="field">
+          <span class="field-label">For</span>
+          <select key={repo} name="assignee" class="select">
+            <option value="">Any member</option>
+            {assignable(repo).map((o) => (
+              <option key={o.handle} value={o.handle}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <span class="field-hint">Someone who can work in the repository, or leave it for any member to pick up.</span>
+        </label>
+      )}
       <label class="field">
         <span class="field-label">Waits for</span>
         <input

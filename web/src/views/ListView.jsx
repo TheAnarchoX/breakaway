@@ -6,6 +6,7 @@ import {
   PICKS_AREA,
   PRIORITY_LABEL,
   STATES,
+  WHO,
   ago,
   compareWid,
   picksArea,
@@ -16,12 +17,23 @@ import {
 import { areaLabel, areaList, byUuid, current, hashFor, listGroup, listSort, navOrder, visible } from '../lib/store.js';
 import { useMedia } from '../lib/media.js';
 import { ClaimChip, RepoChip, RoleTags, Segmented, StateBadge, widClass } from '../components/ui.jsx';
+import { WhoChip } from '../components/Who.jsx';
+import { personLabel } from '../lib/people.js';
 import { EmptyBoard } from '../components/EmptyBoard.jsx';
 import { Title } from '../lib/richtext.jsx';
+import { Named } from '../lib/avatar.jsx';
 
 const STATE_ORDER = Object.fromEntries(STATES.map((s, i) => [s.id, i]));
 const H_ORDER = { now: 0, next: 1, later: 2 };
 const P_ORDER = { H: 0, M: 1, L: 2 };
+const W_ORDER = { agent: 0, person: 1, decision: 2 };
+/** Who does a task, as the list's column says it: an agent, a decision, a person's assignee, or any member. */
+const whoLabel = (t) =>
+  t.who === 'person'
+    ? t.assignee
+      ? personLabel(t.assignee)
+      : 'Any member'
+    : (WHO.find((w) => w.id === t.who)?.label ?? null);
 const text = (a, b) => String(a ?? '￿').localeCompare(String(b ?? '￿'));
 
 const SORTS = {
@@ -32,6 +44,10 @@ const SORTS = {
   area: { label: 'Area', cmp: (a, b) => text(areaLabel(a.project), areaLabel(b.project)) || rank(a, b) },
   horizon: { label: 'Horizon', cmp: (a, b) => (H_ORDER[a.horizon] ?? 4) - (H_ORDER[b.horizon] ?? 4) || rank(a, b) },
   priority: { label: 'Priority', cmp: (a, b) => (P_ORDER[a.priority] ?? 3) - (P_ORDER[b.priority] ?? 3) || rank(a, b) },
+  who: {
+    label: 'Who does it',
+    cmp: (a, b) => (W_ORDER[a.who] ?? 3) - (W_ORDER[b.who] ?? 3) || text(a.assignee, b.assignee) || rank(a, b),
+  },
   claim: { label: 'Claimed by', cmp: (a, b) => text(a.claim, b.claim) || rank(a, b) },
   modified: { label: 'Updated', cmp: (a, b) => String(b.modified).localeCompare(String(a.modified)) },
 };
@@ -41,6 +57,7 @@ const GROUPS = [
   { id: 'state', label: 'State' },
   { id: 'area', label: 'Area' },
   { id: 'horizon', label: 'Horizon' },
+  { id: 'who', label: 'Who' },
 ];
 
 function groupsOf(list, by) {
@@ -50,8 +67,17 @@ function groupsOf(list, by) {
       ? STATES.map((s) => ({ id: s.id, label: s.label }))
       : by === 'area'
         ? [...areaList.value.map((a) => ({ id: a.id, label: a.label })), { id: null, label: 'No area' }]
-        : [...HORIZONS.map((h) => ({ id: h.id, label: h.label })), { id: null, label: 'No horizon' }];
-  const key = (t) => (by === 'state' ? stateOf(t) : by === 'area' ? (t.project ?? null) : (t.horizon ?? null));
+        : by === 'who'
+          ? [...WHO.map((w) => ({ id: w.id, label: w.label })), { id: null, label: 'Nobody yet' }]
+          : [...HORIZONS.map((h) => ({ id: h.id, label: h.label })), { id: null, label: 'No horizon' }];
+  const key = (t) =>
+    by === 'state'
+      ? stateOf(t)
+      : by === 'area'
+        ? (t.project ?? null)
+        : by === 'who'
+          ? (t.who ?? null)
+          : (t.horizon ?? null);
   return defs.map((d) => ({ ...d, tasks: list.filter((t) => key(t) === d.id) })).filter((g) => g.tasks.length);
 }
 
@@ -153,6 +179,7 @@ export function ListView() {
                       {th('area', 'Area')}
                       {th('horizon', 'Horizon')}
                       {th('priority', 'Priority')}
+                      {th('who', 'Who does it')}
                       {th('claim', 'Claimed by')}
                       <th scope="col">Dependencies</th>
                       {th('modified', 'Updated')}
@@ -185,6 +212,13 @@ export function ListView() {
                         </td>
                         <td>{HORIZON_LABEL[t.horizon] ?? '—'}</td>
                         <td>{PRIORITY_LABEL[t.priority] ?? '—'}</td>
+                        <td>
+                          {t.who === 'person' && t.assignee ? (
+                            <Named name={t.assignee} label={whoLabel(t)} size={20} />
+                          ) : (
+                            (whoLabel(t) ?? <span class="muted">Nobody yet</span>)
+                          )}
+                        </td>
                         <td>{t.claim ? <ClaimChip task={t} /> : '—'}</td>
                         <td class="col-deps">
                           <Deps task={t} />
@@ -225,6 +259,7 @@ export function ListView() {
                         {t.project && <span class="meta">{areaLabel(t.project)}</span>}
                         {picksArea(t) && <span class="meta">{PICKS_AREA}</span>}
                         {t.horizon && <span class="meta">{HORIZON_LABEL[t.horizon]}</span>}
+                        <WhoChip task={t} />
                         <RoleTags tags={t.tags} />
                         <ClaimChip task={t} />
                         <Deps task={t} />

@@ -4,7 +4,7 @@
 import { computed, signal } from '@preact/signals';
 import { agent, person, tokenColors } from '../../../brand/avatar.js';
 import { api } from './api.js';
-import { loadPeople, people, whoami } from './people.js';
+import { ensurePeople, people, whoami } from './people.js';
 
 /** The signed-in person's seed and the owner's, from GET /api/me/avatar. Null until it answers. */
 export const ownSeeds = signal(/** @type {null | { avatar: string, owner: string }} */ (null));
@@ -28,7 +28,7 @@ export async function loadAvatars() {
   } catch {
     // Without them, everyone draws from their handle: the same as before anyone shuffled.
   }
-  if (!people.value.loaded) await loadPeople();
+  ensurePeople();
 }
 
 /** Shuffle: a new random seed for the signed-in person, kept until they shuffle again. */
