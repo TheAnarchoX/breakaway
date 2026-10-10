@@ -3,7 +3,7 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import workerSource from '../src/worker.js?raw';
-import { NOT_YET } from '../src/people.js';
+import { NOT_FOR_PEOPLE } from '../src/people.js';
 import { makeAuthenticator } from './authenticator.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
@@ -555,7 +555,7 @@ describe('deny by default: writes by role since BRK-301, and reads by grant sinc
             // (src/permissions.js). What a read shows is test/people-reads.test.js's.
             const read = method === 'GET' || segment === 'next';
             if (!read && res.status < 400) passed.push(`${method} /api/${segment}${tail} ${res.status}`);
-            if (body.error === NOT_YET) passed.push(`${method} /api/${segment}${tail} never asked`);
+            if (body.error === NOT_FOR_PEOPLE) passed.push(`${method} /api/${segment}${tail} never asked`);
             // GitHub isn't reachable here, which a read of it (specs) passes on as a 502, for the owner too.
             if (res.status >= 500 && !(read && res.status === 502))
               passed.push(`${method} /api/${segment}${tail} ${res.status}`);

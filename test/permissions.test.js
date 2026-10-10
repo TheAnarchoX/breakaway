@@ -4,7 +4,7 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ACTIONS, ROLE_RANK, agentOf, can, refusal, roleIn } from '../src/permissions.js';
-import { NOT_YET } from '../src/people.js';
+import { NOT_FOR_PEOPLE } from '../src/people.js';
 import { makeAuthenticator } from './authenticator.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
@@ -568,7 +568,7 @@ async function check(route, who, credential) {
   const role = roleOf(who, route.repo);
   const allowed = allowedBySpec(action, role, press);
   expect(res.status, where).not.toBe(500);
-  expect(body.error, where).not.toBe(NOT_YET);
+  expect(body.error, where).not.toBe(NOT_FOR_PEOPLE);
   if (unseen(route, who, action, press)) {
     // One that names no repository is the default's, which they can't read either: they're asked to name one.
     // A release's pull spans repositories: it's refused whole, in words that name none (BRK-339).

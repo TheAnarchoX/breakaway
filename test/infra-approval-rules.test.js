@@ -333,6 +333,49 @@ describe('while the owner is the only person on the board (the owner’s call, 9
     ).json();
     expect(back).toMatchObject({ shown: true, rule: { people: 2 } });
   });
+
+  it('does the same for a change from the console: the owner who proposed it approves it alone', async () => {
+    const name = await environment('widgets');
+    expect((await setRule(name, { cookie: world.session }, { people: 2 })).status).toBe(200);
+    // A change the owner proposed, as the board counts its approval (src/store-infra-change-approval.js).
+    const n = 90_000 + Math.floor(Math.random() * 10_000);
+    const count = () =>
+      inStore((store) => {
+        const environmentId = store.sql.exec('SELECT id FROM infra_environments WHERE name = ?', name).one().id;
+        const on = { environment: environmentId, repo: 'widgets', proposer: 'owner', what: `change ${n}` };
+        const view = store.approvalView('change', n, on);
+        try {
+          return { view, counted: store.countApproval('change', n, on, {}) };
+        } catch (error) {
+          return { view, refused: { status: error.status, message: error.message } };
+        }
+      });
+    // With people, the rule of two holds: the owner proposed it, so two others approve it.
+    const withPeople = await count();
+    expect(withPeople.view).toMatchObject({ needs: 2, words: 'two different maintainers' });
+    expect(withPeople.refused).toMatchObject({ status: 403, message: expect.stringMatching(/you proposed change/u) });
+    const removed = await inStore((store) =>
+      store.sql
+        .exec('UPDATE people SET removed = ? WHERE removed IS NULL RETURNING handle', Date.now())
+        .toArray()
+        .map((r) => r.handle),
+    );
+    try {
+      const alone = await count();
+      expect(alone.view).toBeNull();
+      expect(alone.counted).toMatchObject({
+        done: true,
+        person: 'owner',
+        alone: false,
+        words: 'approved by the owner',
+      });
+    } finally {
+      await inStore((store) => {
+        for (const handle of removed) store.sql.exec('UPDATE people SET removed = NULL WHERE handle = ?', handle);
+        store.sql.exec("DELETE FROM infra_approvals WHERE kind = 'change' AND n = ?", n);
+      });
+    }
+  });
 });
 
 describe('words that name who pressed, not the owner (BRK-303)', () => {

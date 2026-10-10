@@ -27,8 +27,11 @@ const TOKEN = /^bkp_[\w-]{40,64}$/u;
 const json = (status, body, headers = {}) => Response.json(body, { status, headers });
 const send = (result, headers) => json(result.status, result.body, headers);
 
-/** What a person's request gets from a route that never asked whether they may: refused, rather than let through. */
-export const NOT_YET = 'this isn’t open to people on this board yet: ask the owner';
+/**
+ * What a person's request gets from a route with no gate for people: refused for good, rather than let through. It's
+ * the owner's alone, so the words send them to the owner.
+ */
+export const NOT_FOR_PEOPLE = 'only the owner does this on this board: ask the owner to do it';
 
 /**
  * The store, for a person's request: a call goes through only once a gate has let the request through (BRK-301).
@@ -42,7 +45,7 @@ export function guardStore(stub, isGated) {
     {
       get(_, name) {
         return (/** @type {any[]} */ ...args) =>
-          isGated() ? stub[name](...args) : Promise.resolve({ status: 403, body: { error: NOT_YET } });
+          isGated() ? stub[name](...args) : Promise.resolve({ status: 403, body: { error: NOT_FOR_PEOPLE } });
       },
     },
   );
@@ -201,7 +204,7 @@ export async function personApi(request, env, url, person, store) {
     // A session that's used lasts: the browser's cookie is renewed with it.
     return cookie ? json(200, body, cookieHeader(readCookie(request), SESSION_DAYS * 86400)) : json(200, body);
   }
-  if (parts[0] !== 'me') return json(403, { error: NOT_YET });
+  if (parts[0] !== 'me') return json(403, { error: NOT_FOR_PEOPLE });
   if (parts.length === 1 && method === 'GET') return send(await store.personMe(person.handle, person.session ?? null));
   if (parts.length === 2 && parts[1] === 'profile' && method === 'GET')
     return send(await store.profileMe(person.handle));
