@@ -16,6 +16,7 @@ import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-
 import { repoSlugOf, routineCaps } from './repos.js';
 import { OWNER } from './permissions.js';
 import { personHoldKey } from './person-claude.js';
+import { noRoutineWords } from './store-person-claude.js';
 import { specPrompt } from './spec-prompt.js';
 import { REFINE_FEATURE_TITLE, featurePrompt } from './feature-prompt.js';
 import { normalPath } from './specs.js';
@@ -238,6 +239,20 @@ const TRIGGER_TEXT = {
 };
 
 /**
+ * The payload's `Started:` words: what started the run, and, when a person did rather than the owner (BRK-334), who.
+ * `starter` is the person's name, or null for the owner's starts and the board's: those read as they always have.
+ * @param {string} trigger
+ * @param {string | null} [starter]
+ */
+export function startedWords(trigger, starter = null) {
+  const words = TRIGGER_TEXT[trigger] ?? trigger;
+  if (!starter) return words;
+  if (words.includes('the owner’s')) return words.replace('the owner’s', `${starter}’s`);
+  if (words.includes('from the owner')) return words.replace('from the owner', `from ${starter}`);
+  return `${words}, started by ${starter}`;
+}
+
+/**
  * The owner's words quoted on a task (BRK-284), as the payload and an agent's prompt show them: each quote, then where
  * it came from and who put it there.
  * @param {{ text: string, from: string, by: string, at: string | null }[]} said
@@ -254,13 +269,14 @@ export function saidLines(said) {
 /**
  * What the routine gets: the work ID it acts on, and context it may read. `repo` is the task's registered
  * repository: the agent checks its checkout is that one before it claims (IDEA-14 section 4). `forLine` is the
- * profile of the person the run is for (BRK-329, src/profile.js), or null when they set none.
+ * profile of the person the run is for (BRK-329, src/profile.js), or null when they set none. `starter` is the name of
+ * the person who started it, when that isn't the owner (BRK-334): the `Started:` line says so.
  * @param {any} task
  * @param {string} agent
  * @param {string} trigger
  * @param {{ note?: string | null, kind?: string, pr?: number | null, routine?: string | null, attachments?: number,
  *   repo?: { slug: string, github: string } | null, plan?: any, actKey?: string | null, runIt?: string | null,
- *   captain?: any, risky?: string | null, beside?: any[] | null, forLine?: string | null }} [parts]
+ *   captain?: any, risky?: string | null, beside?: any[] | null, forLine?: string | null, starter?: string | null }} [parts]
  */
 export function firePayload(
   task,
@@ -280,13 +296,14 @@ export function firePayload(
     risky = null,
     beside = null,
     forLine = null,
+    starter = null,
   } = {},
 ) {
   return [
     `Task: ${task.wid ?? task.uuid}`,
     `Title: ${task.description}`,
     `Agent name: ${agent}`,
-    `Started: ${TRIGGER_TEXT[trigger] ?? trigger}`,
+    `Started: ${startedWords(trigger, starter)}`,
     // After the lines the routine has always had, so a prompt that predates it reads the payload as before.
     ...(repo ? [`Repository: ${repo.slug} (${repo.github})`] : []),
     // Who the run is for, with their work and notes for agents (BRK-329): to pitch how it answers, never to write down.
@@ -526,6 +543,44 @@ export const agentsMethods = {
     return credentials;
   },
 
+  /** The repositories person `handle` can start agents in: their own routine there, or the owner lends one (BRK-334). */
+  async personStartable(handle) {
+    const startable = new Set();
+    for (const repo of this.repos()) {
+      const own = await this.personRoutine(handle, repo.slug);
+      if ((own && !('broken' in own)) || this.routineLent(repo.slug)) startable.add(repo.slug);
+    }
+    return startable;
+  },
+
+  /**
+   * The name a start's `Started:` line gives the person who started it (BRK-334): null for the owner's starts and the
+   * board's, which read as they always have.
+   * @param {string} forPerson
+   * @returns {string | null}
+   */
+  starterName(forPerson) {
+    if (!forPerson || forPerson === OWNER) return null;
+    return this.personRow(forPerson)?.name || forPerson;
+  },
+
+  /**
+   * Who a start that waits for room is for (BRK-334): a person's general agent, routine maker, or carry on that the
+   * board's limits queued starts on their routine when the auto-starter takes it, not the owner's. `OWNER` forgets it.
+   * @param {string} uuid
+   * @param {string} forPerson
+   */
+  queueFor(uuid, forPerson) {
+    const key = `start_for:${uuid}`;
+    if (forPerson && forPerson !== OWNER) this.setMeta(key, forPerson);
+    else if (this.meta(key)) this.setMeta(key, null);
+  },
+
+  /** Who the start waiting on task `uuid` is for: the person queueFor recorded, or the owner. */
+  queuedFor(uuid) {
+    return this.meta(`start_for:${uuid}`) || OWNER;
+  },
+
   /**
    * A general agent (docs/specs/IDEA-30-new-agent.md): the owner's prompt becomes a task in repository `repo`
    * with no area, and so no work ID until its agent picks one, and an agent starts on it. With no room it
@@ -554,6 +609,9 @@ export const agentsMethods = {
    * With `maker` (BRK-220 section 2, Make with an agent on the Routines view), the agent is a routine maker: the
    * owner's prompt says what the routines should do, the task is tagged +routine-maker, and its agent starts in
    * `Mode: routines`, which lets it write routines in that repository while it holds the task (store-routines.js).
+   *
+   * `forPerson` is who presses (BRK-334): a person's agent starts on their own routine, or the lent one, within their
+   * caps, the task names them, and one that waits for room still starts on theirs.
    */
   async startGeneral({
     prompt,
@@ -568,6 +626,7 @@ export const agentsMethods = {
     chase = null,
     feature = null,
     maker = false,
+    forPerson = OWNER,
   } = {}) {
     await this.ready();
     let text = String(prompt ?? '').trim();
@@ -717,7 +776,7 @@ export const agentsMethods = {
         const written = source.write(null);
         let refusal = null;
         try {
-          await this.checkRoutineReady(source.repo);
+          await this.routineForStart(source.repo, forPerson);
         } catch (error) {
           if (!(error instanceof AgentError)) throw error;
           refusal = error.message;
@@ -752,21 +811,25 @@ export const agentsMethods = {
       );
     if (!text) throw new AgentError('write what the agent should do first', 400);
     const slug = this.generalRepo(repo);
-    await this.checkRoutineReady(slug);
-    const res = await this.create([
-      {
-        description: title ?? (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
-        horizon: 'now',
-        who: 'agent',
-        tags,
-        autostart: 'yes',
-        brief: text,
-        ...(from ? { related: [from] } : {}),
-        ...(specPath ? { spec: specPath } : {}),
-        ...(slug === this.defaultRepoSlug() ? {} : { repo: slug }),
-        by: 'owner',
-      },
-    ]);
+    await this.routineForStart(slug, forPerson);
+    const res = await this.create(
+      [
+        {
+          description: title ?? (text.split('\n').find((line) => line.trim()) ?? text).trim().slice(0, 200),
+          horizon: 'now',
+          who: 'agent',
+          tags,
+          autostart: 'yes',
+          brief: text,
+          ...(from ? { related: [from] } : {}),
+          ...(specPath ? { spec: specPath } : {}),
+          ...(slug === this.defaultRepoSlug() ? {} : { repo: slug }),
+          // The person who pressed, by handle (BRK-334), as their own writes are named.
+          by: forPerson,
+        },
+      ],
+      { actor: forPerson === OWNER ? null : { person: forPerson } },
+    );
     if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t make a task for the agent', res.status);
     const uuid = res.body.tasks[0].uuid;
     try {
@@ -775,6 +838,7 @@ export const agentsMethods = {
           trigger: maker ? 'routines' : 'general',
           kind: maker ? 'routines' : 'general',
           force,
+          forPerson,
         })),
         waiting: null,
       };
@@ -785,6 +849,7 @@ export const agentsMethods = {
         this.change(uuid, { status: 'deleted' }, new Date(), 'agents');
         throw error;
       }
+      this.queueFor(uuid, forPerson);
       this.scheduleAgentsCheck();
       return { task: this.detail(uuid), run: null, waiting: error.message, forceable: error.forceable };
     }
@@ -962,7 +1027,7 @@ export const agentsMethods = {
    * merging finishes it) and an agent in review mode, which tests the update and answers as a note and
    * a PR comment. The owner still merges.
    */
-  async reviewPull(number, { note = null, repo = null, force = false } = {}) {
+  async reviewPull(number, { note = null, repo = null, force = false, forPerson = OWNER } = {}) {
     await this.ready();
     const slug = this.checkRepoSlug(repo);
     const row = this.sql
@@ -972,7 +1037,7 @@ export const agentsMethods = {
     // The pull request's repository decides its task's, and which routine starts the agent.
     const pr = { ...JSON.parse(row.data), repo: slug };
     if (pr.state !== 'open') throw new AgentError(`#${pr.number} isn’t open`, 409);
-    if (!/^dependabot(\[bot\])?$/iu.test(pr.author ?? '')) return this.reviewWithAgent(pr, { note, force });
+    if (!/^dependabot(\[bot\])?$/iu.test(pr.author ?? '')) return this.reviewWithAgent(pr, { note, force, forPerson });
     let uuid = this.closingTasks(pr).find((u) => this.tasks.get(u)?.status === 'pending');
     if (!uuid) {
       const res = await this.create([
@@ -997,7 +1062,10 @@ export const agentsMethods = {
     const map = this.tasks.get(uuid);
     const busy = this.claimBlocker({ ...map, uuid });
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
-    return { ...(await this.startAgent(uuid, { trigger: 'review', note, kind: 'review', force })), already: null };
+    return {
+      ...(await this.startAgent(uuid, { trigger: 'review', note, kind: 'review', force, forPerson })),
+      already: null,
+    };
   },
 
   /**
@@ -1006,7 +1074,7 @@ export const agentsMethods = {
    * refused with the button that fits it (`path`). The agent reviews and answers with `review <ID>`; it never
    * pushes or merges.
    */
-  async reviewWithAgent(stored, { note = null, force = false } = {}) {
+  async reviewWithAgent(stored, { note = null, force = false, forPerson = OWNER } = {}) {
     const pr = { ...stored, ...(await this.livePull(stored.repo, stored.number)) };
     const n = `#${pr.number}`;
     const base = pr.base ?? this.repoBySlug(pr.repo)?.defaultBranch ?? 'main';
@@ -1038,7 +1106,14 @@ export const agentsMethods = {
     const busy = this.claimBlocker({ ...map, uuid });
     if (busy) return { task: this.detail(uuid), run: null, already: busy };
     return {
-      ...(await this.startAgent(uuid, { trigger: 'pr-review', note, kind: 'pr-review', pr: pr.number, force })),
+      ...(await this.startAgent(uuid, {
+        trigger: 'pr-review',
+        note,
+        kind: 'pr-review',
+        pr: pr.number,
+        force,
+        forPerson,
+      })),
       already: null,
     };
   },
@@ -1717,6 +1792,7 @@ export const agentsMethods = {
           captain: captainOf ? { slug: captainOf.slug, log: this.captainLastLog(captainOf.slug) } : null,
           beside: this.ridingBesideFor(uuid, kind),
           forLine: this.forLineOf(forPerson, forPerson === OWNER ? null : runsOn(lent)),
+          starter: this.starterName(forPerson),
         }),
         isDefault ? null : repo.slug,
       );
@@ -1727,6 +1803,8 @@ export const agentsMethods = {
         runId,
       );
       if (this.tasks.get(uuid)?.claim === agent) this.change(uuid, { session: session.url }, new Date(), 'agents');
+      // A start that waited for room has started (BRK-334): nobody's waiting on it any more.
+      this.queueFor(uuid, OWNER);
       // Claude took it, so whatever held the routine is over.
       if (hold) this.setMeta(holder ? personHoldKey(repo.slug, holder) : `routine_hold:${repo.slug}`, null);
       return { run: this.agentRun(runId), task: this.detail(uuid) };
@@ -1802,11 +1880,16 @@ export const agentsMethods = {
    * running or picked this round, or, when a footprint is unknown, one per area of a repository; at most Agents per
    * area in one area; horizon `now` first, only where the repository's routine is connected, within the shared
    * slots and budget and each repository's caps. Starts them unless `dryRun`.
+   *
+   * `forPerson` is who presses (BRK-334): a person's Start next picks in the one repository their role was checked in
+   * (`repo`, else the default), where they have their own routine or the owner lends one, and starts each on it within
+   * their caps.
    */
-  async startNext({ count = 3, horizon = null, repo = null, dryRun = false } = {}) {
+  async startNext({ count = 3, horizon = null, repo = null, dryRun = false, forPerson = OWNER } = {}) {
     await this.ready();
-    const connected = await this.connectedRepos();
-    const only = repo ? this.checkRepoSlug(repo) : null;
+    const person = forPerson !== OWNER;
+    const connected = person ? await this.personStartable(forPerson) : await this.connectedRepos();
+    const only = repo ? this.checkRepoSlug(repo) : person ? this.defaultRepoSlug() : null;
     const views = this.views();
     const { max, hourly, perArea } = this.agentSettings();
     const running = this.runningAgents(views);
@@ -1833,7 +1916,11 @@ export const agentsMethods = {
       if (!repoRoom.has(t.repo)) repoRoom.set(t.repo, this.repoRoom(t.repo, running));
       const hit = connected.has(t.repo) ? this.collision(t, beside, { book }) : null;
       const inArea = this.inAreaBeside(t, beside);
-      if (!connected.has(t.repo)) skipped.push({ ...brief, reason: `${t.repo}’s agent routine isn’t connected` });
+      if (!connected.has(t.repo))
+        skipped.push({
+          ...brief,
+          reason: person ? noRoutineWords(t.repo) : `${t.repo}’s agent routine isn’t connected`,
+        });
       else if (hit?.why === 'files')
         skipped.push({ ...brief, reason: hit.reason, footprint: { task: hit.task, agent: hit.agent, path: hit.path } });
       else if (hit)
@@ -1863,7 +1950,7 @@ export const agentsMethods = {
     const started = [];
     for (const t of picked) {
       try {
-        const { run } = await this.startAgent(t.uuid, { trigger: 'next' });
+        const { run } = await this.startAgent(t.uuid, { trigger: 'next', forPerson });
         started.push({ ...t, url: run.url });
       } catch (error) {
         skipped.unshift({ ...t, reason: error.message });
@@ -1905,9 +1992,12 @@ export const agentsMethods = {
         reason = 'auto-start is off';
         forceable = true;
       }
-      if (!reason && connected && !connected.has(t.repo)) reason = `${t.repo}’s agent routine isn’t connected`;
+      // A person's start that waited for room (BRK-334) runs on their routine, which the start itself checks.
+      const forPerson = this.queuedFor(t.uuid);
+      if (!reason && connected && !connected.has(t.repo) && forPerson === OWNER)
+        reason = `${t.repo}’s agent routine isn’t connected`;
       // A routine Claude refused waits (BRK-144), so it doesn't fire every tick.
-      const hold = !reason && connected ? this.routineHold(t.repo) : null;
+      const hold = !reason && connected ? this.routineHold(t.repo, forPerson === OWNER ? null : forPerson) : null;
       if (hold) reason = this.holdReason(t.repo, hold);
       // A security fix, a general agent, and a kickoff's run don't wait for files or for their area.
       const hit = reason ? null : this.collision(t, beside, { book });
@@ -1941,6 +2031,7 @@ export const agentsMethods = {
         general,
         maker: isRoutineMaker(t),
         kickoff,
+        forPerson,
         reason: reason ?? 'starting now',
         ready: !reason,
         forceable: Boolean(reason) && forceable,
@@ -1958,19 +2049,20 @@ export const agentsMethods = {
     if (!connected.size) return [];
     const started = [];
     for (const item of this.autostartQueue(this.views(), connected).filter((q) => q.ready)) {
+      const { forPerson } = item;
       // An earlier start this tick may have been refused, holding its routine.
-      if (this.routineHold(item.repo)) continue;
+      if (this.routineHold(item.repo, forPerson === OWNER ? null : forPerson)) continue;
       try {
-        await this.startAgent(
-          item.uuid,
-          item.maker
+        await this.startAgent(item.uuid, {
+          ...(item.maker
             ? { trigger: 'routines', kind: 'routines' }
             : item.general
               ? { trigger: 'general', kind: 'general' }
               : item.kickoff
                 ? { trigger: 'kickoff', kind: 'kickoff' }
-                : { trigger: 'auto' },
-        );
+                : { trigger: 'auto' }),
+          forPerson,
+        });
         started.push(item.wid ?? item.uuid);
       } catch {
         // It stays in the queue; the next tick tries again, unless Claude's refusal holds the routine.

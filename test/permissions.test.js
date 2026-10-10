@@ -3,7 +3,7 @@
 // Fixtures are made-up people (ana, ben, …) and repositories (acme/widgets, acme/gadgets).
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ACTIONS, OTHER_STARTS, PERSON_STARTS, ROLE_RANK, agentOf, can, refusal, roleIn } from '../src/permissions.js';
+import { ACTIONS, ROLE_RANK, agentOf, can, refusal, roleIn } from '../src/permissions.js';
 import { NOT_YET } from '../src/people.js';
 import { makeAuthenticator } from './authenticator.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -105,7 +105,7 @@ const AGENTS_MAY = new Set([
   'task.plan',
   'feature.edit',
 ]);
-/** Starts an agent, so it runs on the starter's own Claude (BRK-302; the starts past PERSON_STARTS wait for BRK-334). */
+/** Starts an agent, so it runs on the starter's own Claude (BRK-302, BRK-334). */
 const STARTS = new Set([
   'environment.describe',
   'decision.carry-on',
@@ -557,8 +557,8 @@ const unseen = (route, who, action, press) =>
 
 /**
  * What a person's request to `route` must answer: a 404 when it's about something they can't see, a refusal by press
- * or role when the spec refuses it, the wait for BRK-302 when the spec allows it but it starts an agent, and otherwise
- * anything but a refusal by role (it may still fail on its own terms: no GitHub here, a missing field).
+ * or role when the spec refuses it, the person's own Claude when the spec allows it and it starts an agent, and
+ * otherwise anything but a refusal by role (it may still fail on its own terms: no GitHub here, a missing field).
  */
 async function check(route, who, credential) {
   const press = Boolean(credential.cookie);
@@ -586,12 +586,8 @@ async function check(route, who, credential) {
     else expect(body.error, where).toMatch(ROLE_REFUSAL);
     return;
   }
-  if (STARTS.has(action) && !PERSON_STARTS.has(action)) {
-    expect(res.status, where).toBe(403);
-    expect(body.error, where).toBe(OTHER_STARTS);
-    return;
-  }
-  // A start a person may make runs on their own Claude (BRK-302): nobody here has connected one, and nothing is lent.
+  // Every start a person may make runs on their own Claude (BRK-302, BRK-334): nobody here has connected one, and
+  // nothing is lent, so a start that gets as far as Claude says so.
   if (STARTS.has(action) && res.status === 403) expect(body.error, where).toMatch(/no Claude routine for widgets/u);
   if (res.status === 403) expect(body.error, where).not.toMatch(ROLE_REFUSAL);
 }

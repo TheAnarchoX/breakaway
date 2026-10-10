@@ -178,8 +178,10 @@ export const pipelineMethods = {
           body: { error: `${repo.name} is already moving (${move.task.wid}): ${what}.`, move },
         };
       }
-      // Nothing is made for a routine that can't start: the refusal says what to connect.
-      await this.checkRoutineReady(repo.slug);
+      // Nothing is made for a routine that can't start: the refusal says what to connect. The agent is the presser's
+      // (BRK-334): on their own routine, or the lent one.
+      const forPerson = this.startsFor(body);
+      await this.routineForStart(repo.slug, forPerson);
       let uuid = move.stage === 'stopped' ? move.task.uuid : null;
       const retried = Boolean(uuid);
       if (!uuid) {
@@ -199,7 +201,7 @@ export const pipelineMethods = {
         this.setGhMeta(MOVE, repo.slug, uuid);
       }
       try {
-        const started = await this.startAgent(uuid, { trigger: 'move' });
+        const started = await this.startAgent(uuid, { trigger: 'move', forPerson });
         return { status: retried ? 200 : 201, body: { ...started, move: this.moveOf(repo) } };
       } catch (error) {
         // The task stays, and the card shows why with Try again.
