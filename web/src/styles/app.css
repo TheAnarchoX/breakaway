@@ -1153,6 +1153,26 @@ a code {
   content: "+";
 }
 
+/* Who a person's task is for, on cards and rows (WEB-133). */
+.who-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.who-chip.who-none {
+  color: var(--muted);
+  font-style: italic;
+}
+.who-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .claim {
   display: inline-flex;
   align-items: center;

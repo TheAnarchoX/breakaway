@@ -3,7 +3,7 @@
 // role checks are src/permissions.js's, the same table every gate on the Worker asks, so a control the board shows as
 // not yours is one the Worker would refuse.
 import { computed, signal } from '@preact/signals';
-import { ACTIONS, OWNER, refusal, roleIn } from '../../../src/permissions.js';
+import { ACTIONS, OWNER, ROLE_RANK, refusal, roleIn } from '../../../src/permissions.js';
 import { api } from './api.js';
 
 /**
@@ -46,6 +46,14 @@ export async function loadMine() {
   } catch (error) {
     mine.value = { ...mine.value, loaded: true, error: error.message };
   }
+}
+
+/** Loads who's on the board once, for the views that name people (an assignee, the filter); Settings reloads it. */
+let asked = false;
+export function ensurePeople() {
+  if (asked || people.value.loaded) return;
+  asked = true;
+  loadPeople();
 }
 
 export async function loadPeople() {
@@ -118,3 +126,61 @@ export function ago(iso) {
 
 /** The link an invite's code makes, to copy and share by hand. Shown once: the board keeps only its hash. */
 export const inviteLink = (code) => `${location.origin}/#/join/${code}`;
+
+// ---- Who does it (WEB-133, docs/specs/BRK-299-people-and-roles.md, section 11) ----------------------------------
+
+/** The signed-in person's handle, as a task's assignee names them: `owner` for the owner. */
+export const myHandle = computed(() => (isOwner.value ? OWNER : whoami.value.handle));
+
+/** The people on the board by handle, removed ones too (their handle stays on what they did). */
+const byHandle = computed(() => new Map((people.value.data?.people ?? []).map((p) => [p.handle, p])));
+
+/**
+ * A person as the board names them in a sentence: "you", "the owner", their name, or their handle while the people
+ * list hasn't loaded (or they share no repository with you).
+ * @param {string} handle
+ */
+export function personName(handle) {
+  if (handle === myHandle.value) return 'you';
+  if (handle === OWNER) return 'the owner';
+  return byHandle.value.get(handle)?.name ?? handle;
+}
+
+/** The same, at the start of a sentence or as a label: "You", "The owner", or their name. */
+export const personLabel = (handle) => {
+  const name = personName(handle);
+  return handle === myHandle.value || handle === OWNER ? `${name.charAt(0).toUpperCase()}${name.slice(1)}` : name;
+};
+
+/**
+ * Who a person's task in `repository` can be assigned to, the way the Worker checks it (src/store.js,
+ * checkAssignee): the owner, and everyone holding member or maintainer there (a viewer reads the board, so the work
+ * can't be theirs). You first, then the owner, then the rest by name. A handle that's assigned already stays in the
+ * list, so the picker shows it even after their role changed.
+ * @param {string} repository the task's repository's slug
+ * @param {string | null} [keep] the task's assignee now
+ * @returns {{ handle: string, label: string }[]}
+ */
+export function assignable(repository, keep = null) {
+  const can = (p) => !p.removed && (ROLE_RANK[roleIn(p.grants, repository)] ?? 0) >= ROLE_RANK.member;
+  const handles = new Set([myHandle.value, OWNER]);
+  for (const p of [...byHandle.value.values()].filter(can).sort((a, b) => a.name.localeCompare(b.name)))
+    handles.add(p.handle);
+  if (keep) handles.add(keep);
+  // A person who can't take the work (a viewer) never sees themselves offered.
+  const mine = isOwner.value ? ROLE_RANK.maintainer : (ROLE_RANK[roleIn(whoami.value?.grants, repository)] ?? 0);
+  if (mine < ROLE_RANK.member && keep !== myHandle.value) handles.delete(myHandle.value);
+  return [...handles].map((handle) => ({ handle, label: personLabel(handle) }));
+}
+
+/**
+ * Whether the next step of an open task is the signed-in person's: a decision they may answer, or a person's task
+ * assigned to them, or to nobody in a repository where they may do the work.
+ * @param {{ who?: string | null, assignee?: string | null, decision?: any, decisionAnswers?: any }} t
+ * @param {string} repository the task's repository's slug
+ */
+export function forMe(t, repository) {
+  if (t.who === 'decision' || (t.decision && !t.decisionAnswers)) return may('decision.answer', repository);
+  if (t.who !== 'person') return false;
+  return t.assignee ? t.assignee === myHandle.value : may('task.write', repository);
+}
