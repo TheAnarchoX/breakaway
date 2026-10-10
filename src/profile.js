@@ -86,14 +86,16 @@ export function workWords(profile) {
 }
 
 /**
- * The run payload's line for the person a run is for: `For: Ana · Design · new to Git`. Null when they have no
- * profile, so a run for someone who set none carries no line.
+ * The run payload's line for the person a run is for: `For: Ana · Design · new to Git`, then whose Claude it runs on
+ * when it isn't the owner's start (BRK-302): `For: Ana · on their own Claude routine`. Null when there's nothing to
+ * say, so a run for someone who set no profile, on the repository's routine, carries no line.
  * @param {string} name who the run is for, as the board names them
  * @param {Profile | null} profile
+ * @param {string | null} [claude] whose Claude it runs on
  */
-export function forLine(name, profile) {
+export function forLine(name, profile, claude = null) {
   const work = workWords(profile);
   const notes = profile?.notes ?? null;
-  if (!work && !notes) return null;
-  return `For: ${[name, work, notes].filter(Boolean).join(' · ')}`;
+  if (!work && !notes && !claude) return null;
+  return `For: ${[name, work, notes, claude].filter(Boolean).join(' · ')}`;
 }

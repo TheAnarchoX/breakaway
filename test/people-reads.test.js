@@ -451,7 +451,13 @@ describe('a viewer of acme/widgets reads every GET route (BRK-323)', () => {
     const res = await call('/api/tasks', {
       method: 'POST',
       cookie: member.cookie,
-      body: { description: unique('Waits on a gadget'), project: 'product', depends: [w.gadget.uuid], force: true },
+      // Its words never say gadgets, whatever the random suffix: leaks() checks the answer for that word.
+      body: {
+        description: unique('Waits on another repository’s task '),
+        project: 'product',
+        depends: [w.gadget.uuid],
+        force: true,
+      },
     });
     expect(res.status).toBe(201);
     const text = await res.text();
@@ -459,6 +465,49 @@ describe('a viewer of acme/widgets reads every GET route (BRK-323)', () => {
     const made = JSON.parse(text).tasks[0];
     expect(made).toMatchObject({ repo: 'widgets', depends: [] });
     expect(made.wid).toMatch(/^PRD-\d+$/u);
+  });
+
+  // BRK-338: the board keeps the real block, and every answer says the same thing about it without naming it. Shown
+  // as ready, the task would be refused anyway the moment anyone claimed or started it (the spec's point 3 says why).
+  it('shows a task whose only blocker they can’t see as blocked, in every answer alike, without naming the blocker', async () => {
+    const member = await person(w.session, unique('max'), [{ repository: 'widgets', role: 'member' }]);
+    const blocked = { blocked: true, ready: false, depends: [], blockedBy: [] };
+    const made = await call('/api/tasks', {
+      method: 'POST',
+      cookie: member.cookie,
+      body: {
+        description: `${unique('Blocked task ')} waits`,
+        project: 'product',
+        depends: [w.gadget.uuid],
+        force: true,
+      },
+    });
+    const wrote = (await made.json()).tasks[0];
+    expect(wrote).toMatchObject(blocked);
+    const read = (await (await call(`/api/tasks/${wrote.uuid}`, { cookie: member.cookie })).json()).task;
+    expect(read).toMatchObject({ ...blocked, dependsOn: [] });
+    const listed = (await (await call('/api/tasks', { cookie: member.cookie })).json()).tasks;
+    expect(listed.find((t) => t.uuid === wrote.uuid)).toMatchObject(blocked);
+    const edited = await call(`/api/tasks/${wrote.uuid}`, {
+      method: 'PATCH',
+      cookie: member.cookie,
+      body: { priority: 'L' },
+    });
+    expect((await edited.json()).task).toMatchObject(blocked);
+    // Claiming it is refused for the block, in words that don't name what holds it.
+    const claim = await call(`/api/tasks/${wrote.uuid}/claim`, {
+      method: 'POST',
+      cookie: member.cookie,
+      body: { agent: 'claude-max-1' },
+    });
+    expect(claim.status).toBe(409);
+    const refused = await claim.text();
+    expect(leaks(refused)).toEqual([]);
+    expect(JSON.parse(refused).error).toContain('blocked by a task you can’t see');
+    expect(JSON.parse(refused).task).toMatchObject(blocked);
+    // The owner sees the real link.
+    const real = (await (await owner(`/api/tasks/${wrote.uuid}`)).json()).task;
+    expect(real).toMatchObject({ blocked: true, ready: false, depends: [w.gadget.uuid], blockedBy: [w.gadget.uuid] });
   });
 
   it('shows a person the people they share a repository with, and not the rest', async () => {
@@ -491,6 +540,9 @@ describe('MCP (BRK-323, BRK-327)', () => {
     const text = await res.text();
     expect(text).toContain(w.widget.uuid);
     expect(leaks(text)).toEqual([]);
+    // The widget task waits only on the gadget: blocked, never "blocked by 0" (BRK-338).
+    expect(text).toContain('blocked by a task you can’t see');
+    expect(text).not.toContain('blocked by 0');
   });
 });
 

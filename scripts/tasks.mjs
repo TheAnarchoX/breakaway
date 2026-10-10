@@ -869,7 +869,8 @@ function line(t) {
   if (t.who) extra.push(t.who === 'person' ? `person: ${t.assignee ?? 'anyone'}` : t.who);
   if (t.tags.length) extra.push(t.tags.map((x) => `+${x}`).join(' '));
   if (t.claim) extra.push(`claimed by ${t.claim} ${age(t.start)}`);
-  if (t.blocked) extra.push(`blocked by ${t.blockedBy.length}`);
+  // A person's answer leaves out a blocker in a repository they can't read, but keeps the block (BRK-338).
+  if (t.blocked) extra.push(`blocked by ${t.blockedBy.length || 'a task you can’t see'}`);
   if (t.waiting) extra.push(`waiting until ${t.wait.slice(0, 10)}`);
   if (t.status !== 'pending') extra.push(`${t.status}${t.end ? ` ${t.end.slice(0, 10)}` : ''}`);
   return `${bits.join('  ')}${extra.length ? `  (${extra.join('; ')})` : ''}`;
