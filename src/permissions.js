@@ -159,15 +159,15 @@ export const ACTIONS = {
   'repo.move': { role: 'maintainer', press: true, starts: true, what: 'move a repository to the deploy flow' },
   kickoff: { role: 'owner', press: true, what: 'kick off, change, or stop a project' },
 
-  // Connections, the install, sign-ins, and notifications.
+  // Connections, the install, and sign-ins.
   'connections.check': { role: 'member', press: true, what: 'run Check now' },
   'connections.owner': { role: 'owner', press: true, what: 'override GitHub’s status or dismiss a connection note' },
   'github.setup': { role: 'owner', what: 'set up the GitHub App' },
   'install.update': { role: 'owner', press: true, what: 'update or roll back the Worker' },
   'install.admin': { role: 'owner', what: 'import, rebuild, or backfill the board' },
-  // MCP sign-ins and notifications stay the owner's until a person has their own (BRK-323, WEB-124).
+  // MCP sign-ins stay the owner's until a person has their own (BRK-323, WEB-124). Notifications aren't an action:
+  // each person turns on their own, like their other settings (BRK-340).
   oauth: { role: 'owner', press: true, what: 'approve or revoke a sign-in' },
-  push: { role: 'owner', press: true, what: 'change notifications' },
 
   // People (point 3, "Managing people"): the store checks which people and roles, on top.
   'people.manage': { role: 'maintainer', press: true, what: 'invite people or change who’s on the board' },

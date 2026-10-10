@@ -20,6 +20,7 @@ import { planMessage } from './push.js';
 import { redact } from './redact.js';
 import { install } from './install.js';
 import { personWords } from './store-permissions.js';
+import { OWNER } from './permissions.js';
 
 /** The most a rejection's reason keeps, in the audit trail. */
 export const REASON_MAX = 300;
@@ -162,11 +163,25 @@ export const infraApprovalsMethods = {
     return this.approveInfraPlan(plan.id, { by: 'board', summary: `approved by ${rule}` });
   },
 
-  /** Sends a waiting plan's push to every subscribed browser. Never throws: the plan and its audit entry are the record. */
+  /**
+   * Who a waiting plan's push goes to (BRK-340): the owner, as always, and everyone else its environment's approval
+   * rule lets approve it now (BRK-303), never its proposer under the two-person rule.
+   * @param {{ id: string }} plan
+   * @returns {string[]}
+   */
+  planPushPeople(plan) {
+    const view = this.planApprovalView(this.planRow(plan.id));
+    return [...new Set([OWNER, ...(view?.mayApprove ?? [])])];
+  },
+
+  /**
+   * Sends a waiting plan's push to the browsers of everyone who may approve it. Never throws: the plan and its audit
+   * entry are the record.
+   */
   async pushInfraPlan(plan, why) {
     try {
       const reason = why ?? plan.policy?.reasons?.[0] ?? `${plan.changes} change${plan.changes === 1 ? '' : 's'}`;
-      await this.pushToOwner(planMessage({ ...plan, reason }, install(this.env).name));
+      await this.pushTo(this.planPushPeople(plan), planMessage({ ...plan, reason }, install(this.env).name));
     } catch {
       /* push is a convenience */
     }
