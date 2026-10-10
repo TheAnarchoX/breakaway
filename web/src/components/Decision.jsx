@@ -371,7 +371,8 @@ function Decide({ task: t }) {
   useEffect(() => {
     if (open) area.current?.focus();
   }, [open]);
-  // Deciding finishes the task, a task write (WEB-137).
+  // Deciding finishes the task, a task write today (WEB-137). Stopgap: BRK-347 makes finishing a decision need
+  // decision.answer, like its answers; this lock follows it then.
   const lock = taskLock(t, 'task.write', 'decide it');
   const submit = async (e) => {
     e?.preventDefault();
