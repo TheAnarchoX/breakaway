@@ -14,7 +14,7 @@
  * owner's /mcp never comes through here.
  */
 import { NOT_YET } from './people.js';
-import { isHidden, lostTarget, scrub } from './reads.js';
+import { isHidden, lostTarget, scrub, writeReads } from './reads.js';
 
 /**
  * @typedef {import('./reads.js').Read} Read
@@ -157,12 +157,15 @@ export function personStore(store, person, agent) {
           if ('board' in call) return store[name](...args);
           if ('write' in call) {
             // A write on something they can't read isn't there, as a read of it isn't: the role's refusal would name
-            // the repository it's in.
-            const seen = await hiddenFor({ target: call.target });
-            if (seen.refused) return seen.refused;
+            // the repository it's in. Its reads are the API gate's (BRK-337), so both answer alike.
+            for (const read of writeReads(call.target)) {
+              const seen = await hiddenFor(read);
+              if (seen.refused) return seen.refused;
+            }
             const permit = await store.permitApi(actor, call.write, { ...call.target, by: agent, agent });
             if (permit.status !== 200) return permit;
-            return filtered(await store[name](...call.args), seen.hidden, null);
+            const shown = hidden ?? (await hiddenFor(null)).hidden;
+            return filtered(await store[name](...call.args), shown, null);
           }
           const seen = await hiddenFor(call.read);
           if (seen.refused) return seen.refused;

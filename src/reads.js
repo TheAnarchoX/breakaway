@@ -174,11 +174,25 @@ export function readOf(parts, q) {
  */
 export function writeReads(target) {
   /** @type {(repo: any) => ByRepo} */
-  const byRepo = (repo) => ({ repo: repo === undefined || repo === null || repo === '' ? null : String(repo), absent: 'default' });
+  const byRepo = (repo) => ({
+    repo: repo === undefined || repo === null || repo === '' ? null : String(repo),
+    absent: 'default',
+  });
   if (target.install || 'release' in target || 'planning' in target) return [];
   if (Array.isArray(target.tasks)) return target.tasks.map((task) => ({ target: { task } }));
   if (Array.isArray(target.repos)) return (target.repos.length ? target.repos : [null]).map(byRepo);
-  const things = ['task', 'plan', 'change', 'policyChange', 'environment', 'ping', 'attachment', 'feature', 'routine', 'peloton'];
+  const things = [
+    'task',
+    'plan',
+    'change',
+    'policyChange',
+    'environment',
+    'ping',
+    'attachment',
+    'feature',
+    'routine',
+    'peloton',
+  ];
   if (things.some((key) => key in target)) return [{ target }];
   return [byRepo(target.repo)];
 }
