@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { HORIZONS, PRIORITIES, ROLES, ref, stateOf } from '../lib/model.js';
+import { HORIZONS, PRIORITIES, WHO, ref, stateOf } from '../lib/model.js';
 import {
   actions,
   areasOfRepo,
@@ -73,7 +73,7 @@ function Form({ defaults }) {
         repo: multiRepo.value ? repo : undefined,
         horizon: data.get('horizon') || undefined,
         priority: data.get('priority') || undefined,
-        tags: data.getAll('tags'),
+        who: data.get('who') || undefined,
         depends: String(data.get('depends'))
           .split(/[\s,]+/u)
           .filter(Boolean),
@@ -171,12 +171,12 @@ function Form({ defaults }) {
         </label>
       </div>
       <fieldset class="field">
-        <legend class="field-label">Who can move it</legend>
+        <legend class="field-label">Who does it</legend>
         <div class="check-inline">
-          {ROLES.map((r) => (
-            <label key={r.id} class="check-row" title={r.hint}>
-              <input type="checkbox" name="tags" value={r.id} defaultChecked={r.id === 'agent'} />
-              {r.label}
+          {WHO.map((w) => (
+            <label key={w.id} class="check-row" title={w.hint}>
+              <input type="radio" name="who" value={w.id} defaultChecked={w.id === 'agent'} />
+              {w.label}
             </label>
           ))}
         </div>
@@ -476,7 +476,8 @@ function IdeaForm() {
       project: 'ideas',
       repo: multiRepo.value ? repo : undefined,
       horizon: 'now',
-      tags: ['agent', 'idea', `horizon-${data.get('horizon')}`],
+      who: 'agent',
+      tags: ['idea', `horizon-${data.get('horizon')}`],
       autostart: data.get('autostart') ? 'yes' : undefined,
       brief: idea,
     });

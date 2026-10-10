@@ -129,7 +129,7 @@ export const infraAdoptMethods = {
 
   /**
    * POST /api/infra/environments/<id>/describe: the owner's Have an agent open the pull request. Adds `Describe <env> as
-   * code` in the environment's repository (+agent +general, never autostart: the press starts it) and starts its
+   * code` in the environment's repository (an agent's, +general, never autostart: the press starts it) and starts its
    * agent through the same start as Start on a task. With one already open it returns that one (`already`). Refuses,
    * adding nothing, while the environment has a file or is observe only, has no draft yet, or its repository's agent
    * routine isn't connected. A start the board's limits refuse leaves the task waiting for the owner's Start
@@ -154,7 +154,8 @@ export const infraAdoptMethods = {
         {
           description: describeTitle(env.name),
           horizon: 'now',
-          tags: ['agent', 'general'],
+          who: 'agent',
+          tags: ['general'],
           brief: describeBrief({ name: env.name, repo: env.repo }),
           ...(env.repo === this.defaultRepoSlug() ? {} : { repo: env.repo }),
           by: 'owner',

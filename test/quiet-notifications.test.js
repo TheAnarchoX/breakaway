@@ -134,9 +134,16 @@ describe('quieter notifications (BRK-219)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'First part', project: 'ops', tags: ['agent', 'calm'], horizon: 'now' },
-          { description: 'Second part', project: 'ops', tags: ['agent', 'calm'], horizon: 'now', depends: ['OPS-1'] },
-          { description: 'Quiet one', project: 'debt', tags: ['agent'], horizon: 'now' },
+          { description: 'First part', project: 'ops', who: 'agent', tags: ['calm'], horizon: 'now' },
+          {
+            description: 'Second part',
+            project: 'ops',
+            who: 'agent',
+            tags: ['calm'],
+            horizon: 'now',
+            depends: ['OPS-1'],
+          },
+          { description: 'Quiet one', project: 'debt', who: 'agent', horizon: 'now' },
         ],
       }),
     );

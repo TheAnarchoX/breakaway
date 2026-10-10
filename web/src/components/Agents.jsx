@@ -50,8 +50,10 @@ export const TRIGGER_LABEL = {
 /** The same rules the server uses, to decide which controls to show. */
 export function agentBlocker(t) {
   if (t.status !== 'pending') return 'it isn’t open';
-  if (t.tags.includes('decide')) return 'it waits on a decision (+decide)';
-  if (!t.tags.includes('agent')) return 'it isn’t tagged +agent';
+  if (t.who === 'decision') return 'it waits on a decision';
+  if (t.who === 'person')
+    return `it’s a person’s task (${t.assignee === 'owner' ? 'the owner’s' : (t.assignee ?? 'anyone’s')})`;
+  if (t.who !== 'agent') return 'nobody said an agent does it: set who to agent';
   if (openPr(t)) return 'it’s already in review';
   if (t.claim) return `${t.claim} has it`;
   if (t.blocked) return 'it waits for another task';
@@ -59,7 +61,7 @@ export function agentBlocker(t) {
   return null;
 }
 
-/** Why a task can't be refined: unlike a build, +decide, +owner, and untagged tasks are fine. Mirrors the server. */
+/** Why a task can't be refined: unlike a build, a decision's, a person's, or nobody's task is fine. Mirrors the server. */
 export function refineBlocker(t) {
   if (t.status !== 'pending') return 'it isn’t open';
   if (openPr(t)) return 'it’s in review: ask for changes on its pull request instead';
@@ -732,7 +734,7 @@ export const setAutostart = (t, on) =>
  */
 export function startState(t) {
   const blocker = agentBlocker(t);
-  const canAuto = t.status === 'pending' && t.tags.includes('agent') && !t.tags.includes('decide');
+  const canAuto = t.status === 'pending' && t.who === 'agent';
   const canStart = canAuto && !blocker && Boolean(agents.value.data?.connected);
   // Start when ready, and held back by the board's room (a general agent waits here until there's a slot).
   const queued =

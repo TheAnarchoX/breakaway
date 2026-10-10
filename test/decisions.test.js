@@ -135,7 +135,7 @@ describe('a decision in the model', () => {
   it('stores questions as JSON, tags the task, and shows them parsed', () => {
     const map = withChanges(null, { description: 'Pick', decision: QUESTIONS }, NOW);
     expect(JSON.parse(map.decision)).toHaveLength(7);
-    expect(map.tag_decide).toBe('x');
+    expect(map.who).toBe('decision');
     const v = view('u', map, new Map([['u', map]]), NOW);
     expect(v.decision).toHaveLength(7);
     expect(v.decisionAnswers).toBeNull();
@@ -178,9 +178,9 @@ describe('a decision through the API', () => {
     ).tasks[0];
   const submit = (task, body) => api(`tasks/${task.wid}/decision/answers`, { method: 'POST', body });
 
-  it('creates a decision task with +decide, and rejects a bad one', async () => {
+  it('creates a decision task, who: decision, and rejects a bad one', async () => {
     const task = await make();
-    expect(task.tags).toContain('decide');
+    expect(task.who).toBe('decision');
     expect(task.decision.map((q) => q.id)).toEqual(QUESTIONS.map((q) => q.id));
     const res = await api('tasks', { method: 'POST', body: { description: 'Bad', project: 'ops', decision: [] } });
     expect(res.status).toBe(400);
@@ -191,10 +191,10 @@ describe('a decision through the API', () => {
       await json(await api('tasks', { method: 'POST', body: [{ description: 'Plain', project: 'ops' }] }))
     ).tasks;
     const res = await json(await api(`tasks/${task.wid}`, { method: 'PATCH', body: { decision: QUESTIONS } }));
-    expect(res.task.tags).toContain('decide');
+    expect(res.task.who).toBe('decision');
   });
 
-  it('submits atomically: stores answers, drops +decide, finishes, comments, and unblocks', async () => {
+  it('submits atomically: stores answers, finishes, comments, and unblocks', async () => {
     const task = await make();
     const [waiting] = (
       await json(
@@ -208,7 +208,8 @@ describe('a decision through the API', () => {
       status: 'completed',
       decisionAnswers: { by: 'owner', answers: { keeper: { value: 'a' } } },
     });
-    expect(res.task.tags).not.toContain('decide');
+    // Finished, it stays the decision it was.
+    expect(res.task.who).toBe('decision');
     const last = res.task.comments.at(-1);
     expect(last.by).toBe('board');
     expect(last.text).toMatch(/^Decided by the owner: /u);
@@ -222,7 +223,7 @@ describe('a decision through the API', () => {
     expect(res.status).toBe(400);
     const now = (await json(await api(`tasks/${task.wid}`))).task;
     expect(now).toMatchObject({ status: 'pending', decisionAnswers: null });
-    expect(now.tags).toContain('decide');
+    expect(now.who).toBe('decision');
   });
 
   it("is the owner's: an agent name is refused", async () => {
@@ -246,7 +247,7 @@ describe('a decision through the API', () => {
     );
   });
 
-  it('reopens: pending with +decide, answers kept, dependents blocked again, then answers again', async () => {
+  it('reopens: pending as a decision, answers kept, dependents blocked again, then answers again', async () => {
     const task = await make();
     const [waiting] = (
       await json(
@@ -260,7 +261,7 @@ describe('a decision through the API', () => {
     const res = await json(await api(`tasks/${task.wid}/decision/answers`, { method: 'DELETE' }));
     expect(res.status).toBe(200);
     expect(res.task).toMatchObject({ status: 'pending', decisionAnswers: { answers: { go: { value: 'yes' } } } });
-    expect(res.task.tags).toContain('decide');
+    expect(res.task.who).toBe('decision');
     expect((await json(await api(`tasks/${waiting.wid}`))).task.blocked).toBe(true);
     expect((await api(`tasks/${task.wid}/decision/answers`, { method: 'DELETE' })).status).toBe(409);
     const second = await json(await submit(task, { answers: { ...ANSWERS, go: { value: 'no' } } }));

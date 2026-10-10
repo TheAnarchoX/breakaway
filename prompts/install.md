@@ -175,7 +175,7 @@ The install is done when one real task is closed by its merged pull request.
 1. **Propose one.** Read the repository's README and its open issues (`gh issue list --repo <owner/name> --limit 20`), and propose one small, useful task: a title, a sentence on why, and a done when they can check in a few minutes. After a yes, add it from a checkout of the repository (`gh repo clone <owner/name>` next to this folder, if there's none):
 
    ```sh
-   npx breakaway add "<title>" --project <area> --tag agent --horizon now --brief "<what and why>" --done-when "<what they can check>"
+   npx breakaway add "<title>" --project <area> --who agent --horizon now --brief "<what and why>" --done-when "<what they can check>"
    ```
 
 2. **With routines:** they open **Set up the board** on Connections; its last step opens the **Add a repository** wizard's agent step, where they press **Start an agent on <ID>** (if it names another task, they press **Start an agent** on <ID>'s own page instead). The step ticks as it goes: started, live output, pull request. If the start fails, the step says why and the fix, and **Try again**. The **Agent routine** row reads **Verified by <ID>** once the agent claims the task.

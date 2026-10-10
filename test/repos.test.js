@@ -308,7 +308,7 @@ describe('repositories on the board', () => {
       ref: 'n1',
       title: 'Follow-up in breakaway',
       horizon: 'next',
-      tags: ['agent'],
+      who: 'agent',
       brief: 'Why.',
       done_when: 'Done.',
     };
@@ -369,7 +369,7 @@ describe('repositories on the board', () => {
         description: 'Breakaway agent work',
         project: 'product',
         repo: 'breakaway',
-        tags: ['agent'],
+        who: 'agent',
         priority: 'H',
       })
     ).tasks[0];

@@ -205,7 +205,8 @@ describe('break-glass in the store (BRK-187)', () => {
 
     const task = (await body(await api(`tasks/${res.breakGlass.task}`))).task;
     expect(task).toMatchObject({ status: 'pending', horizon: 'now' });
-    expect(task.tags).toEqual(expect.arrayContaining(['agent', 'break-glass']));
+    expect(task.tags).toEqual(expect.arrayContaining(['break-glass']));
+    expect(task.who).toBe('agent');
     expect(task.brief).toContain(`.github/breakaway-infra/${ENV}.json`);
     expect(task.brief).toContain('In database `main` (`db-main`), set size: "large" (the file says "small")');
     expect(task.doneWhen).toContain(`.github/breakaway-infra/${ENV}.json says what runs`);

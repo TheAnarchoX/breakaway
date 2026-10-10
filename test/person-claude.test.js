@@ -111,7 +111,7 @@ const tasks = [];
 async function task(description) {
   const res = await owner('/api/tasks', {
     method: 'POST',
-    body: { description, project: 'product', tags: ['agent'], horizon: 'now', force: true },
+    body: { description, project: 'product', who: 'agent', horizon: 'now', force: true },
   });
   expect(res.status).toBe(201);
   const made = (await res.json()).tasks[0];

@@ -18,6 +18,8 @@ import { applyOp, decodeSegment, encodeSegment, encodeSnapshot } from './ops.js'
 import {
   EARLIER,
   InputError,
+  LEGACY_WHO_TAGS,
+  legacyWho,
   relatedOf,
   RefError,
   diffOps,
@@ -102,7 +104,7 @@ import { peopleMethods } from './store-people.js';
 import { ownerMethods } from './store-owner.js';
 import { permissionsMethods } from './store-permissions.js';
 import { personClaudeMethods } from './store-person-claude.js';
-import { OTHER_STARTS, OWNER } from './permissions.js';
+import { OTHER_STARTS, OWNER, ROLE_RANK, roleIn } from './permissions.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -481,6 +483,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       }
     });
     this.assignMissingWids();
+    this.migrateWho();
     this.maybeSnapshot();
     this.scheduleAgentsCheck();
     return { status: 'ok', versionId, urgency: this.urgency() };
@@ -532,6 +535,26 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       ops.push(...diffOps(uuid, map, after, now.toISOString()));
     }
     this.commit(ops);
+  }
+
+  /**
+   * Who does it (BRK-330): every task that carries a tag `who` replaced (+agent, +owner, +decide) gets `who` and
+   * `assignee` instead, in one follow-up version, so Taskwarrior replicas lose the tags too. Run once as the
+   * migration, and after each replica's version, which may still add one (an older habit, `task add +owner`).
+   */
+  migrateWho(source = 'api') {
+    if (this.meta('replica_error')) return 0;
+    const stamp = new Date().toISOString();
+    const ops = [];
+    let moved = 0;
+    for (const [uuid, before] of this.tasks) {
+      const after = legacyWho(before);
+      if (after === before) continue;
+      ops.push(...diffOps(uuid, before, after, stamp));
+      moved += 1;
+    }
+    this.commit(ops, source);
+    return moved;
   }
 
   /** Rebuilds the tasks table from every version, after fixing the sync key. */
@@ -657,6 +680,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     if (!this.meta('structure_backfilled') && !this.meta('replica_error')) {
       this.backfillStructure();
       this.setMeta('structure_backfilled', new Date().toISOString());
+    }
+    if (!this.meta('who_migrated') && !this.meta('replica_error')) {
+      this.migrateWho('migration');
+      this.setMeta('who_migrated', new Date().toISOString());
     }
     try {
       return await action();
@@ -822,6 +849,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
             'autostart',
             'alert',
             'decision',
+            'who',
+            'assignee',
           ]);
           // The task's repository (the default when none is given) decides which areas, and so prefixes, it may have.
           const repo = this.checkRepoSlug(rest.repo);
@@ -852,6 +881,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
             },
             now,
           );
+          if (after.assignee) this.checkAssignee(after.assignee, repo);
           working.set(uuid, after);
           ops.push(...diffOps(uuid, null, after, timestamp));
           created.push(uuid);
@@ -919,6 +949,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           'annotate',
           'autostart',
           'decision',
+          'who',
+          'assignee',
         ]);
         const repo = this.repoOfTask(this.tasks.get(uuid))?.slug ?? this.tasks.get(uuid).repo;
         if ('repo' in input && this.checkRepoSlug(input.repo) !== repo)
@@ -956,6 +988,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           this.checkAgentDelete(uuid, changes);
         }
         this.checkPrField(uuid, changes);
+        if (changes.assignee && !changes.decision)
+          this.checkAssignee(String(changes.assignee).trim().toLowerCase(), repo);
         if (input.addTags) changes.addTags = arrayOf(input.addTags);
         if (input.removeTags) changes.removeTags = arrayOf(input.removeTags);
         if (input.addDepends) changes.addDepends = this.depRefs(arrayOf(input.addDepends));
@@ -1007,7 +1041,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
 
   /**
    * Submits a decision (IDEA-6): the owner's answers are checked against the questions, then in one
-   * version stored, +decide removed, the task finished, and a plain summary added as a comment. Only
+   * version stored, the task finished, and a plain summary added as a comment. Only
    * the owner submits: a request with no `by`, or `owner`, is theirs; an agent's name is refused.
    *
    * A kickoff's IDEA asks its decision on itself (BRK-134), so answering it keeps the IDEA open: its plan's pull
@@ -1035,7 +1069,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       if (task.status === 'completed' && task.decisionAnswers)
         throw new Conflict(`${label(task)} is already decided; reopen it to change an answer`, { task });
       if (task.status !== 'pending') throw new Conflict(`${label(task)} is ${task.status}`, { task });
-      if (keepOpen && !task.tags.includes('decide'))
+      if (keepOpen && task.who !== 'decision')
         throw new Conflict(`${label(task)}'s questions are already answered; reopen them to change an answer`, {
           task,
         });
@@ -1049,7 +1083,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         this.change(uuid, {
           // Who answered: the owner, or the maintainer who did (BRK-301).
           decisionAnswers: { by: this.actorIn(body).person, at: new Date().toISOString(), answers },
-          removeTags: ['decide'],
+          // Answered and kept open, the task is its agent's again; finished, it stays the decision it was.
+          ...(keepOpen ? { who: 'agent' } : {}),
           ...(keepOpen ? {} : { status: 'completed' }),
           // A routine maker's task was made to start by itself; once answered it waits for carry on or a Start.
           ...(maker ? { autostart: null } : {}),
@@ -1078,8 +1113,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * Reopens a submitted decision: pending with +decide again, answers kept and editable. Owner only. A kickoff's
-   * IDEA and a routine maker's task stay open when they're answered, so reopening one only puts +decide back, while
+   * Reopens a submitted decision: pending and a decision again, answers kept and editable. Owner only. A kickoff's
+   * IDEA and a routine maker's task stay open when they're answered, so reopening one only makes it a decision again, while
    * no agent holds it.
    */
   reopenDecision(ref, body) {
@@ -1093,10 +1128,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         if (!task.decision || !task.decisionAnswers)
           throw new Conflict(`${label(task)} has no submitted decision`, { task });
         if ((isKickoffIdea(task) || isRoutineMaker(task)) && task.status === 'pending') {
-          if (task.tags.includes('decide')) throw new Conflict(`${label(task)}'s questions are open already`, { task });
+          if (task.who === 'decision') throw new Conflict(`${label(task)}'s questions are open already`, { task });
           if (task.claim) throw new Conflict(`${label(task)} is claimed by ${task.claim}`, { task });
           return ok({
-            task: this.change(uuid, { addTags: ['decide'], annotate: reopened, by: 'board' }),
+            task: this.change(uuid, { who: 'decision', annotate: reopened, by: 'board' }),
           });
         }
         if (task.status !== 'completed')
@@ -1104,7 +1139,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         return ok({
           task: this.change(uuid, {
             status: 'pending',
-            addTags: ['decide'],
+            who: 'decision',
             annotate: reopened,
             by: 'board',
           }),
@@ -1171,7 +1206,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           throw new Conflict(`${label(task)} is claimed by ${task.claim}, not ${name ?? 'you'}`, { task });
         // A general agent that stops with no pull request has finished: its changes, if any, are on the board. A routine
         // maker that stops with its questions open hasn't: the owner's answers start it again (BRK-220 section 3).
-        const asking = isRoutineMaker(task) && task.tags.includes('decide');
+        const asking = isRoutineMaker(task) && task.who === 'decision';
         // The posts to the agent it leaves unanswered (BRK-281): release lists them, and the peloton's sweep notes them.
         const open = task.claim ? this.openPosts(task.claim, uuid) : [];
         if (task.tags.includes('general') && task.status === 'pending' && !task.pr && !asking)
@@ -1263,6 +1298,23 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
    * on a task it made (it wrote the description) or is refining (`*-refine-*`, claimed by it). Everyone
    * else comments. A request with no `by` is the owner's (the web board and the CLI's owner).
    */
+  /**
+   * A person's task is assigned to the owner, or to a person who holds a role in its repository, member or above
+   * (BRK-330): a viewer reads the board, so the work can't be theirs.
+   * @param {string} handle
+   * @param {string} repo the task's repository
+   */
+  checkAssignee(handle, repo) {
+    if (handle === OWNER) return;
+    if (!this.personRow(handle))
+      throw new InputError(`nobody on the board has the handle ${handle}: assign the owner or a person you invited`);
+    const role = roleIn(this.personGrants(handle), repo);
+    if (!role || ROLE_RANK[role] < ROLE_RANK.member)
+      throw new InputError(
+        `${handle} ${role ? `is a ${role}` : 'has no role'} in ${repo}: a person's task goes to a member or a maintainer there, or the owner`,
+      );
+  }
+
   checkBriefEdit(uuid, changes) {
     if (!('brief' in changes) && !('done_when' in changes)) return;
     const by = changes.by ? String(changes.by) : 'owner';
@@ -1324,7 +1376,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
 
   /**
    * The cross-task rule (IDEA-30 section 2, BRK-104 decision 1, BRK-274): a general agent may change the description,
-   * done when, area, horizon, priority, tags, and dependencies of an unclaimed, open task in its own repository. An
+   * done when, area, horizon, priority, tags, who does it (BRK-330), and dependencies of an unclaimed, open task in its
+   * own repository. An
    * idea, which every repository shares, it plans by its horizon, priority, feature tags, and dependencies only, and
    * never starts, finishes, or deletes. Never a horizon-* tag, autostart, a decision, or a routine run, and nothing
    * else: that goes to the owner as a ping proposal. The board notes each change on the edited task and keeps it for
@@ -1356,10 +1409,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       refuse(`changes only tasks in its own repository, and ${name} is ${repoSlugOf(map, fallback)}'s`);
     if (idea) {
       if ('status' in input) refuse(`doesn't start, finish, or delete ${name}, an idea`);
-      const ideaFields = ['brief', 'done_when', 'project'].filter((k) => k in input);
+      const ideaFields = ['brief', 'done_when', 'project', 'who', 'assignee'].filter((k) => k in input);
       if (ideaFields.length)
         refuse(
-          `plans an idea by its horizon, priority, feature tags, and dependencies; ${name}'s description, done when, and area are the owner's`,
+          `plans an idea by its horizon, priority, feature tags, and dependencies; ${name}'s description, done when, area, and who does it are the owner's`,
         );
       const features = new Set(this.featureRows().map((r) => r.slug));
       const other = [...arrayOf(input.addTags ?? []), ...arrayOf(input.removeTags ?? [])]
@@ -1385,7 +1438,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const other = Object.keys(input).filter((k) => !allowed.has(k));
     if (other.length)
       refuse(
-        `changes only the description, done when, area, horizon, priority, tags, and dependencies of another task, not ${other.join(', ')}`,
+        `changes only the description, done when, area, horizon, priority, tags, who does it, and dependencies of another task, not ${other.join(', ')}`,
       );
     if (!CROSS_TASK_FIELDS.some(([keys]) => keys.some((k) => k in input))) refuse(`has nothing to change on ${name}`);
   }
@@ -1619,18 +1672,23 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * The best ready task nobody has claimed: with every tag in `tags` (default: agent), none in
-   * `without` (default: decide), optionally one project, horizon, or repository. Claims it when `claim`.
+   * The best ready task nobody has claimed: one `who` does (default: an agent), with every tag in `tags` and none in
+   * `without`, optionally one project, horizon, or repository. Claims it when `claim`. An older CLI asks with
+   * `tags: ['agent']` and `without: ['decide']` (BRK-330): those name `who`, and BRK-331 decides when that goes.
    */
-  /** @param {{ agent?: string, tags?: string[], without?: string[], project?: string, horizon?: string, repo?: string, claim?: boolean }} [options] */
-  next({ agent, tags = ['agent'], without = ['decide'], project, horizon, repo, claim = false } = {}) {
+  /** @param {{ agent?: string, who?: string, tags?: string[], without?: string[], project?: string, horizon?: string, repo?: string, claim?: boolean }} [options] */
+  next({ agent, who = 'agent', tags = [], without = [], project, horizon, repo, claim = false } = {}) {
     return this.run(() => {
-      const want = arrayOf(tags);
-      const skip = arrayOf(without);
+      const legacy = (/** @type {string} */ tag) => Object.hasOwn(LEGACY_WHO_TAGS, tag);
+      const asked = arrayOf(tags).filter(legacy);
+      const doer = asked.length ? LEGACY_WHO_TAGS[asked[0]].who : who;
+      const want = arrayOf(tags).filter((tag) => !legacy(tag));
+      const skip = arrayOf(without).filter((tag) => !legacy(tag));
       const candidates = this.views(
         (t) =>
           t.ready &&
           !t.claim &&
+          t.who === doer &&
           want.every((tag) => t.tags.includes(tag)) &&
           !skip.some((tag) => t.tags.includes(tag)) &&
           (!project || t.project === project) &&
@@ -1651,6 +1709,8 @@ const FIELDS = [
   ['horizon', 'horizon'],
   ['priority', 'priority'],
   ['tags', 'tags'],
+  ['who', 'who does it'],
+  ['assignee', 'assignee'],
   ['depends', 'dependencies'],
   ['spec', 'spec'],
   ['pr', 'pull request'],
@@ -1659,6 +1719,9 @@ const FIELDS = [
   ['scheduled', 'scheduled'],
   ['related', 'related'],
 ];
+
+/** The tag a version written before BRK-330 marked a decision with: history keeps it, so Activity still reads it. */
+const LEGACY_DECISION_TAG = `tag_${Object.keys(LEGACY_WHO_TAGS).find((tag) => LEGACY_WHO_TAGS[tag].who === 'decision')}`;
 
 /** One task's operations in one version → what happened, for people. */
 function summarise(ops) {
@@ -1679,24 +1742,31 @@ function summarise(ops) {
   }
   const changes = [];
   if (created) changes.push({ kind: 'created' });
+  // Whether the version made the task a decision (true) or stopped it being one (false): its `who`, or in a version
+  // written before BRK-330, the tag that meant it.
+  const decisionOp = ops.find(
+    (o) => o.type === 'update' && (o.property === 'who' || o.property === LEGACY_DECISION_TAG),
+  );
+  const asks = decisionOp
+    ? decisionOp.property === 'who'
+      ? decisionOp.value === 'decision'
+      : Boolean(decisionOp.value)
+    : null;
+  const reopenNote = [...set].some(
+    ([key, value]) => key.startsWith('annotation_') && /^Decision reopened/u.test(String(value)),
+  );
   if (set.has('status') && !created) {
     const status = set.get('status');
-    const tagged = ops.some((o) => o.type === 'update' && o.property === 'tag_decide' && o.value);
     const answered = set.get('decision_answers');
     if (status === 'completed' && answered) changes.push({ kind: 'decision-answered' });
-    else if (status === 'pending' && tagged && set.has('decision_answers') === false)
+    else if (status === 'pending' && (asks || reopenNote) && set.has('decision_answers') === false)
       changes.push({ kind: 'decision-reopened' });
     else changes.push({ kind: status === 'completed' ? 'done' : status === 'deleted' ? 'deleted' : 'reopened' });
   }
-  // A kickoff's IDEA stays open when its decision is answered or reopened (BRK-134): only +decide moves.
-  const decideOp = ops.find((o) => o.type === 'update' && o.property === 'tag_decide');
-  if (decideOp && !set.has('status') && !created) {
-    if (!decideOp.value && set.get('decision_answers')) changes.push({ kind: 'decision-answered' });
-    else if (
-      decideOp.value &&
-      [...set].some(([key, value]) => key.startsWith('annotation_') && /^Decision reopened/u.test(String(value)))
-    )
-      changes.push({ kind: 'decision-reopened' });
+  // A kickoff's IDEA stays open when its decision is answered or reopened (BRK-134): only who does it moves.
+  if (decisionOp && !set.has('status') && !created) {
+    if (asks === false && set.get('decision_answers')) changes.push({ kind: 'decision-answered' });
+    else if (asks && reopenNote) changes.push({ kind: 'decision-reopened' });
   }
   if (set.has('claim'))
     changes.push(set.get('claim') ? { kind: 'claimed', by: set.get('claim') } : { kind: 'released' });
@@ -2159,6 +2229,7 @@ const CROSS_TASK_FIELDS = [
   [['horizon'], 'horizon'],
   [['priority'], 'priority'],
   [['addTags', 'removeTags'], 'tags'],
+  [['who', 'assignee'], 'who does it'],
   [['addDepends', 'removeDepends'], 'dependencies'],
 ];
 class Conflict extends Error {

@@ -47,7 +47,7 @@ describe('task API', () => {
           {
             description: 'Publish security.txt',
             project: 'ops',
-            tags: ['agent'],
+            who: 'agent',
             horizon: 'now',
             priority: 'H',
             note: 'Contact: hello@',
@@ -73,9 +73,7 @@ describe('task API', () => {
     );
     expect(props).toMatchObject({
       description: 'Check it on the site',
-      tag_agent: 'x',
-      tag_owner: 'x',
-      tags: 'agent,owner',
+      who: 'agent',
       wid: 'OPS-2',
       horizon: 'now',
       status: 'pending',
@@ -108,7 +106,7 @@ describe('task API', () => {
   });
 
   it('settles two claims sent at the same moment: exactly one wins', async () => {
-    await api('tasks', { method: 'POST', body: { description: 'Race me', project: 'debt', tags: ['agent'] } });
+    await api('tasks', { method: 'POST', body: { description: 'Race me', project: 'debt', who: 'agent' } });
     const results = await Promise.all(
       ['a', 'b', 'c', 'd'].map((n) => api('tasks/DEBT-1/claim', { method: 'POST', body: { agent: `agent-${n}` } })),
     );
@@ -157,8 +155,8 @@ describe('task API', () => {
       await api('tasks/OPS-2', {
         method: 'PATCH',
         body: {
-          addTags: ['decide'],
-          removeTags: ['owner'],
+          who: 'decision',
+          addTags: ['docs'],
           priority: 'M',
           spec: 'docs/specs/OPS-2-check.md',
           due: '2026-10-10',
@@ -166,7 +164,9 @@ describe('task API', () => {
       }),
     );
     expect(res.task).toMatchObject({
-      tags: ['agent', 'decide'],
+      who: 'decision',
+      assignee: null,
+      tags: ['docs'],
       priority: 'M',
       spec: 'docs/specs/OPS-2-check.md',
       due: '2026-10-10T00:00:00.000Z',
@@ -182,12 +182,8 @@ describe('task API', () => {
     const uuid = crypto.randomUUID();
     const parent = await latestVersion();
     expect(
-      (
-        await pushOps(
-          parent,
-          twCreate(uuid, { description: 'Added in Taskwarrior', project: 'ops', tag_agent: 'x', tags: 'agent' }),
-        )
-      ).status,
+      (await pushOps(parent, twCreate(uuid, { description: 'Added in Taskwarrior', project: 'ops', who: 'agent' })))
+        .status,
     ).toBe(200);
     expect((await body(await api(`tasks/${uuid}`))).task.wid).toBe('OPS-3');
     const noProject = crypto.randomUUID();

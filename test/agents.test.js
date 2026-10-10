@@ -52,13 +52,19 @@ describe('cloud agents', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Publish security.txt', project: 'ops', tags: ['agent'], horizon: 'now', priority: 'H' },
-          { description: 'Status page', project: 'ops', tags: ['agent', 'owner'], horizon: 'now', depends: ['OPS-1'] },
-          { description: 'Decide word rules', project: 'moderation', tags: ['owner', 'decide'], horizon: 'now' },
-          { description: 'Split rooms', project: 'product', tags: ['agent'], horizon: 'now' },
-          { description: 'Route table', project: 'debt', tags: ['agent'], horizon: 'now' },
-          { description: 'Lint and format', project: 'debt', tags: ['agent'], horizon: 'next' },
-          { description: 'Owner only', project: 'ops', tags: ['owner'], horizon: 'now' },
+          { description: 'Publish security.txt', project: 'ops', who: 'agent', horizon: 'now', priority: 'H' },
+          {
+            description: 'Status page',
+            project: 'ops',
+            who: 'agent',
+            horizon: 'now',
+            depends: ['OPS-1'],
+          },
+          { description: 'Decide word rules', project: 'moderation', who: 'decision', horizon: 'now' },
+          { description: 'Split rooms', project: 'product', who: 'agent', horizon: 'now' },
+          { description: 'Route table', project: 'debt', who: 'agent', horizon: 'now' },
+          { description: 'Lint and format', project: 'debt', who: 'agent', horizon: 'next' },
+          { description: 'Owner only', project: 'ops', who: 'person', assignee: 'owner', horizon: 'now' },
         ],
       }),
     );
@@ -68,7 +74,7 @@ describe('cloud agents', () => {
   it('refuses to start agents on tasks that can’t take one, and says why', async () => {
     expect((await body(await start('OPS-2'))).error).toMatch(/waits for OPS-1/);
     expect((await body(await start('MOD-1'))).error).toMatch(/waits on a decision/);
-    expect((await body(await start('OPS-3'))).error).toMatch(/isn’t tagged \+agent/);
+    expect((await body(await start('OPS-3'))).error).toMatch(/it’s a person’s task \(the owner’s\)/);
     expect(routine.fires).toHaveLength(0);
   });
 
@@ -172,7 +178,7 @@ describe('cloud agents', () => {
   it('holds a ready Start-when-ready task in the queue while its area is busy or auto-start is off', async () => {
     await api('tasks', {
       method: 'POST',
-      body: { description: 'Another ops job', project: 'ops', tags: ['agent'], horizon: 'now', autostart: 'yes' },
+      body: { description: 'Another ops job', project: 'ops', who: 'agent', horizon: 'now', autostart: 'yes' },
     });
     let queue = (await body(await api('agents'))).queue;
     expect(queue.find((q) => q.wid === 'OPS-4')).toMatchObject({
@@ -280,7 +286,7 @@ describe('cloud agents across repositories', () => {
             description: 'Breakaway landing page',
             project: 'product',
             repo: 'breakaway',
-            tags: ['agent'],
+            who: 'agent',
             horizon: 'now',
             priority: 'H',
           },
@@ -288,7 +294,7 @@ describe('cloud agents across repositories', () => {
             description: 'Breakaway health check',
             project: 'ops',
             repo: 'breakaway',
-            tags: ['agent'],
+            who: 'agent',
             horizon: 'now',
             priority: 'H',
           },
@@ -296,7 +302,7 @@ describe('cloud agents across repositories', () => {
             description: 'Breakaway docs',
             project: 'product',
             repo: 'breakaway',
-            tags: ['agent'],
+            who: 'agent',
             horizon: 'now',
             priority: 'H',
           },
@@ -304,7 +310,7 @@ describe('cloud agents across repositories', () => {
             description: 'Scratch work',
             project: 'product',
             repo: 'scratch',
-            tags: ['agent'],
+            who: 'agent',
             horizon: 'now',
             priority: 'H',
           },

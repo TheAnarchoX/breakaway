@@ -70,7 +70,7 @@ export function screenshotsIn(body) {
 
 const PRIORITY = { H: 0, M: 1, L: 2 };
 /** Among equals, what frees the most first: a merge frees its task, a decision its tasks, then steps. */
-const KINDS = ['merge', 'decide', 'owner', 'connect', 'untagged'];
+const KINDS = ['merge', 'decision', 'person', 'connect', 'nobody'];
 
 /**
  * What waits for the owner, in the order they'd best take it: the task's priority, then how much work it frees, then

@@ -59,7 +59,8 @@ describe('security alerts to agents', () => {
       project: 'debt',
       priority: 'H',
       horizon: 'now',
-      tags: ['agent', 'security'],
+      who: 'agent',
+      tags: ['security'],
       alert: 'https://github.com/acme/widgets/security/dependabot/1',
       claim: `claude-${res.task.wid.toLowerCase()}`,
     });

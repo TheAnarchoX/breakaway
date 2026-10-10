@@ -133,13 +133,13 @@ describe('the MCP endpoint (BRK-154)', () => {
           {
             description: 'Write the runbook',
             project: 'ops',
-            tags: ['agent'],
+            who: 'agent',
             horizon: 'now',
             brief: 'The on-call steps.',
             done_when: 'It’s in docs/.',
           },
-          { description: 'Tidy the logs', project: 'ops', tags: ['agent'], horizon: 'next' },
-          { description: 'A gadget’s task', repo: 'gadgets', project: 'gear', tags: ['agent'], horizon: 'now' },
+          { description: 'Tidy the logs', project: 'ops', who: 'agent', horizon: 'next' },
+          { description: 'A gadget’s task', repo: 'gadgets', project: 'gear', who: 'agent', horizon: 'now' },
         ],
       }),
     );
@@ -361,7 +361,7 @@ describe('the MCP endpoint (BRK-154)', () => {
       for (const [name, args] of [
         ['list_tasks', { ready: 'yes' }],
         ['list_tasks', { nope: true }],
-        ['list_tasks', { tag: ['agent', 3] }],
+        ['list_tasks', { tag: ['speed', 3] }],
         ['list_tasks', { horizon: 'someday' }],
         ['pull_request', { number: 0 }],
         ['pull_request', { number: 1.5 }],
@@ -563,8 +563,8 @@ describe('the MCP endpoint (BRK-154)', () => {
         await api('tasks', {
           method: 'POST',
           body: [
-            { description: 'Fix the pager', project: 'ops', tags: ['agent'], horizon: 'now' },
-            { description: 'Rotate the keys', project: 'ops', tags: ['agent'], horizon: 'now' },
+            { description: 'Fix the pager', project: 'ops', who: 'agent', horizon: 'now' },
+            { description: 'Rotate the keys', project: 'ops', who: 'agent', horizon: 'now' },
           ],
         }),
       );
@@ -572,7 +572,7 @@ describe('the MCP endpoint (BRK-154)', () => {
       const later = await json(
         await api('tasks', {
           method: 'POST',
-          body: { description: 'Audit the keys', project: 'ops', tags: ['agent'], depends: [keys.wid] },
+          body: { description: 'Audit the keys', project: 'ops', who: 'agent', depends: [keys.wid] },
         }),
       );
       [waits] = later.tasks;
@@ -700,7 +700,7 @@ describe('the MCP endpoint (BRK-154)', () => {
           title: 'Document the pager',
           project: 'ops',
           horizon: 'next',
-          tags: ['agent'],
+          who: 'agent',
           depends: [fix.wid],
           brief: 'Nobody knows how it rotates.',
           done_when: 'docs/pager.md says how.',
@@ -717,7 +717,7 @@ describe('the MCP endpoint (BRK-154)', () => {
         doneWhen: 'docs/pager.md says how.',
       });
       expect(task.wid).toMatch(/^OPS-\d+$/u);
-      expect(task.tags).toContain('agent');
+      expect(task.who).toBe('agent');
       expect(task.dependsOn.map((d) => d.wid)).toEqual([fix.wid]);
       expect(text(added)).toBe(`Added ${task.wid}: Document the pager`);
 
@@ -726,7 +726,8 @@ describe('the MCP endpoint (BRK-154)', () => {
         {
           title: 'Pick the pager’s vendor',
           project: 'ops',
-          tags: ['owner'],
+          who: 'person',
+          assignee: 'owner',
           decision: [{ id: 'vendor', type: 'open', prompt: 'Which vendor?' }],
         },
         as(WRITER),

@@ -92,9 +92,9 @@ describe('the MCP resources and prompts (BRK-156)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Write the runbook', project: 'ops', tags: ['agent'], horizon: 'now', brief: 'Steps.' },
-          { description: 'Tidy the logs', project: 'ops', tags: ['agent'], horizon: 'next' },
-          { description: 'A gadget’s task', repo: 'gadgets', project: 'gear', tags: ['agent'], horizon: 'now' },
+          { description: 'Write the runbook', project: 'ops', who: 'agent', horizon: 'now', brief: 'Steps.' },
+          { description: 'Tidy the logs', project: 'ops', who: 'agent', horizon: 'next' },
+          { description: 'A gadget’s task', repo: 'gadgets', project: 'gear', who: 'agent', horizon: 'now' },
           { description: 'A QR code for room links', project: 'ideas', tags: ['idea'], horizon: 'now' },
         ],
       }),

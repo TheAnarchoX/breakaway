@@ -339,6 +339,18 @@ export const pingsMethods = {
         throw error;
       }
 
+      // An assignee holds a role in the task's repository (BRK-330): checked against the board as it is now.
+      for (const c of changes.filter((x) => x.assignee)) {
+        const target = c.type === 'add' ? uuid : resolveRef(c.task, this.tasks);
+        const slug = this.repoOfTask(this.tasks.get(target))?.slug ?? this.defaultRepoSlug();
+        try {
+          this.checkAssignee(c.assignee, slug);
+        } catch (error) {
+          if (error instanceof InputError) throw new AgentError(`nothing was applied: ${error.message}`, 409);
+          throw error;
+        }
+      }
+
       const now = new Date();
       const working = new Map([...this.tasks].map(([u, map]) => [u, { ...map }]));
       const created = new Map();
@@ -368,6 +380,8 @@ export const pingsMethods = {
               brief: c.brief,
               done_when: c.done_when,
               by: who,
+              ...(c.who ? { who: c.who } : {}),
+              ...(c.assignee ? { assignee: c.assignee } : {}),
               addTags: c.tags,
             },
             now,
@@ -392,6 +406,8 @@ export const pingsMethods = {
           const target = at(c.task);
           edit(target, {
             ...(c.horizon ? { horizon: c.horizon } : {}),
+            ...(c.who ? { who: c.who } : {}),
+            ...(c.assignee ? { assignee: c.assignee } : {}),
             ...(c.addTags ? { addTags: c.addTags } : {}),
             ...(c.removeTags ? { removeTags: c.removeTags } : {}),
             ...(c.brief ? { brief: c.brief, by: who } : {}),
