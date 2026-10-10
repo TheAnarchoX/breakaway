@@ -123,11 +123,13 @@ export const permissionsMethods = {
 
   /**
    * The repositories an action on `target` touches, as slugs, for the Worker's gate on a person's request. Null in
-   * the list is an install-wide action. Unknown targets answer 404 by throwing, as their own routes would.
+   * the list is an install-wide action. Unknown targets answer 404 by throwing, as their own routes would. `among`, for
+   * a person, is the repositories they see: an environment's name is looked up only there (BRK-341).
    * @param {Record<string, any>} target
+   * @param {((slug: string) => boolean) | null} [among]
    * @returns {(string | null)[]}
    */
-  targetRepos(target) {
+  targetRepos(target, among = null) {
     const fallback = this.defaultRepoSlug();
     const slug = (value) =>
       value === undefined || value === null || value === '' ? fallback : String(value).trim().toLowerCase();
@@ -145,7 +147,7 @@ export const permissionsMethods = {
     if ('environment' in target) {
       const repo = target.repo ? slug(target.repo) : null;
       // A missing one is environmentRow's 404, in notThere()'s words.
-      return [this.environmentRow(target.environment, repo).repo];
+      return [this.environmentRow(target.environment, repo, among).repo];
     }
     if ('ping' in target) {
       const row = this.sql.exec('SELECT task FROM pings WHERE id = ?', Number(target.ping) || 0).toArray()[0];
@@ -210,8 +212,8 @@ export const permissionsMethods = {
           this.isPersonHandle(name.trim())
         )
           throw new AgentError(`${name.trim()} is a person on this board, not an agent: write as yourself`, 403);
-      const repos = this.targetRepos(target ?? {});
       const person = actor?.person && actor.person !== OWNER;
+      const repos = this.targetRepos(target ?? {}, person ? this.seenFrom(actor) : null);
       if (person) this.seesWhereItActs(actor, action, target ?? {}, repos);
       for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
       return { status: 200, body: { ok: true, repos } };
@@ -230,8 +232,7 @@ export const permissionsMethods = {
    * @param {(string | null)[]} repos what targetRepos answered for `target`
    */
   seesWhereItActs(actor, action, target, repos) {
-    const { readable } = this.hiddenFrom(actor);
-    const seen = (/** @type {string | null} */ slug) => readable(slug) && Boolean(this.repoBySlug(slug));
+    const seen = this.seenFrom(actor);
     const unseen = repos.filter((slug) => slug !== null && !seen(slug));
     if (!unseen.length) return;
     if ('planning' in target && !repos.some((slug) => slug !== null && seen(slug)))
@@ -285,6 +286,16 @@ export const permissionsMethods = {
   },
 
   /**
+   * The repositories `actor` (a person) sees, as a test of a slug: one they may read that's registered.
+   * @param {{ person: string }} actor
+   * @returns {(slug: string | null) => boolean}
+   */
+  seenFrom(actor) {
+    const { readable } = this.hiddenFrom(actor);
+    return (slug) => readable(slug) && Boolean(this.repoBySlug(slug));
+  },
+
+  /**
    * Which task views `reader` (a person) sees, as a filter for a read that counts them (a feature's progress, a
    * chase's queue), or null for the owner and the board, who see them all.
    * @param {{ person: string } | null} reader
@@ -292,8 +303,8 @@ export const permissionsMethods = {
    */
   seenBy(reader) {
     if (!reader || reader.person === OWNER) return null;
-    const { readable } = this.hiddenFrom(reader);
-    return (view) => readable(view.repo) && Boolean(this.repoBySlug(view.repo));
+    const seen = this.seenFrom(reader);
+    return (view) => seen(view.repo);
   },
 
   /**
@@ -307,6 +318,7 @@ export const permissionsMethods = {
   readGateApi(actor, read) {
     return this.run(() => {
       const { repos, tasks, readable } = this.hiddenFrom(actor);
+      /** @type {{ status: number, body: { hidden: { repos: string[], tasks: string[] }, repo?: string | null } }} */
       const answer = { status: 200, body: { hidden: { repos, tasks } } };
       if (!read || 'list' in read || 'single' in read) return answer;
       const everywhere = () => {
@@ -327,13 +339,18 @@ export const permissionsMethods = {
         return answer;
       }
       const target = read.target;
-      const touched = this.targetRepos(target);
+      // An environment's name is looked up only where they see (BRK-341): the name another repository shares with
+      // theirs is theirs, and the one only another has isn't there.
+      const touched = this.targetRepos(target, this.ownerActs({ actor }) ? null : this.seenFrom(actor));
       // A feature or a chase's peloton spans repositories: a person reads the parts in theirs.
       // A feature spans repositories: a person reads the parts in theirs. A chase's room and a digest are free text
       // about all of it, so they're only for someone who sees every one.
       const spans = 'feature' in target && !target.whole;
       const ok = spans ? touched.some(readable) : touched.every(readable);
       if (!ok) throw new AgentError(notThere(target), 404);
+      // The repository a name with no ?repo= found, for the Worker to name on the route, which looks it up again.
+      if ('environment' in target && !target.repo && !/^\d{1,9}$/u.test(String(target.environment).trim()))
+        answer.body.repo = touched[0];
       return answer;
     });
   },
