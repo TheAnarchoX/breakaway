@@ -3,7 +3,7 @@
 // Fixtures are made-up people (ana, ben, …) and repositories (acme/widgets, acme/gadgets).
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ACTIONS, OWN_CLAUDE, ROLE_RANK, agentOf, can, refusal, roleIn } from '../src/permissions.js';
+import { ACTIONS, OTHER_STARTS, PERSON_STARTS, ROLE_RANK, agentOf, can, refusal, roleIn } from '../src/permissions.js';
 import { NOT_YET } from '../src/people.js';
 import { makeAuthenticator } from './authenticator.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
@@ -105,7 +105,7 @@ const AGENTS_MAY = new Set([
   'task.plan',
   'feature.edit',
 ]);
-/** Starts an agent, so it runs on the starter's own Claude (BRK-302): a person's waits until then. */
+/** Starts an agent, so it runs on the starter's own Claude (BRK-302; the starts past PERSON_STARTS wait for BRK-334). */
 const STARTS = new Set([
   'environment.describe',
   'decision.carry-on',
@@ -584,11 +584,13 @@ async function check(route, who, credential) {
     else expect(body.error, where).toMatch(ROLE_REFUSAL);
     return;
   }
-  if (STARTS.has(action)) {
+  if (STARTS.has(action) && !PERSON_STARTS.has(action)) {
     expect(res.status, where).toBe(403);
-    expect(body.error, where).toBe(OWN_CLAUDE);
+    expect(body.error, where).toBe(OTHER_STARTS);
     return;
   }
+  // A start a person may make runs on their own Claude (BRK-302): nobody here has connected one, and nothing is lent.
+  if (STARTS.has(action) && res.status === 403) expect(body.error, where).toMatch(/no Claude routine for widgets/u);
   if (res.status === 403) expect(body.error, where).not.toMatch(ROLE_REFUSAL);
 }
 
@@ -833,7 +835,7 @@ describe('a person’s writes (BRK-301)', () => {
 });
 
 describe('the owner, with nobody invited, as before', () => {
-  it('records every run as the owner’s, and refuses a start for anyone else until BRK-302', async () => {
+  it('records every run as the owner’s, and starts nothing for a person with no routine of their own', async () => {
     const runs = await inStore((store) =>
       store.sql
         .exec('SELECT DISTINCT for_person AS p FROM agent_runs')
@@ -843,7 +845,7 @@ describe('the owner, with nobody invited, as before', () => {
     expect(runs.every((p) => p === 'owner')).toBe(true);
     await expect(
       inStore((store) => store.startAgent(world.widget.uuid, { forPerson: world.people.member.handle })),
-    ).rejects.toThrow(OWN_CLAUDE);
+    ).rejects.toThrow('you have no Claude routine for widgets');
   });
 
   it('never lets an agent on the owner’s token past the agent ceiling, in the store either', async () => {
