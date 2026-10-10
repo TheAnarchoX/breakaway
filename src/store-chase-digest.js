@@ -14,6 +14,7 @@ import {
   buildDigest,
   digestCounts,
   digestHeadline,
+  digestKind,
   digestMessage,
   digestQuiet,
 } from './chase-digest.js';
@@ -170,7 +171,10 @@ export const chaseDigestMethods = {
 
   /** A digest as its page shows it, with its id and when it was written. */
   digestView(r) {
-    return { id: r.id, at: iso(r.at), kind: r.kind, pushed: Boolean(r.pushed), ...JSON.parse(r.data) };
+    const d = JSON.parse(r.data);
+    // One stored before BRK-330 names its waiting kinds by the tags who replaced.
+    const waiting = d.waiting?.map((x) => ({ ...x, kind: digestKind(x.kind) }));
+    return { id: r.id, at: iso(r.at), kind: r.kind, pushed: Boolean(r.pushed), ...d, ...(waiting ? { waiting } : {}) };
   },
 
   /** The chase's digests on its feature: the push setting and the latest digests, newest first, without their content. */
