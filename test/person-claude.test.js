@@ -175,6 +175,8 @@ describe('bringing your own Claude', () => {
       await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: session, body: {} }),
     );
     expect(lent).toMatchObject({ status: 200, repo: 'widgets', lent: true });
+    // The repository's page reads whether it's lent, to show the owner's switch (WEB-136).
+    expect(await json(await owner('/api/repos/widgets'))).toMatchObject({ status: 200, routineLent: true });
 
     const first = await task('Sort the widgets');
     claude.fires.length = 0;
