@@ -190,9 +190,9 @@ describe('telling the riders who touches what (IDEA-55 section 4)', () => {
     expect(riders.forAda.map((r) => r.task)).toEqual([c]);
 
     const task = { wid: b, uuid: 'u', description: 'Restyle the widget list' };
-    const text = firePayload(task, BEA, 'manual', null, 'build', null, null, 0, null, null, null, null, null, null, [
-      { task: 'OPS-12', agent: 'claude-ops-12', patterns: ['src/store-chase.js', 'test/chase.test.js'] },
-    ]);
+    const text = firePayload(task, BEA, 'manual', {
+      beside: [{ task: 'OPS-12', agent: 'claude-ops-12', patterns: ['src/store-chase.js', 'test/chase.test.js'] }],
+    });
     expect(text).toContain(
       'Riding beside you: OPS-12 (claude-ops-12) is changing src/store-chase.js, test/chase.test.js',
     );
