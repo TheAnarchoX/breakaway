@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Hand,
   Link2,
+  Lock,
   Maximize2,
   PanelRight,
   RotateCcw,
@@ -70,7 +71,7 @@ import { IncidentSection } from './Incidents.jsx';
 import { RunEventLine } from './InfraEvents.jsx';
 import { ShortLivedSection } from './ShortLived.jsx';
 import { FootprintSection } from './Footprint.jsx';
-import { WhoField } from './Who.jsx';
+import { WhoField, taskLock } from './Who.jsx';
 
 const TAG = /^[A-Za-z][\w-]*$/u;
 
@@ -78,7 +79,16 @@ const TAG = /^[A-Za-z][\w-]*$/u;
  * A text field that saves when you leave it or press Enter, and goes back on Escape.
  * @param {Record<string, any>} props
  */
-function InlineText({ value, onSave, label, placeholder, type = 'text', multiline = false, className = '' }) {
+function InlineText({
+  value,
+  onSave,
+  label,
+  placeholder,
+  type = 'text',
+  multiline = false,
+  className = '',
+  lock = null,
+}) {
   const [draft, setDraft] = useState(value ?? '');
   const ref = useRef(null);
   useEffect(() => setDraft(value ?? ''), [value]);
@@ -93,6 +103,9 @@ function InlineText({ value, onSave, label, placeholder, type = 'text', multilin
     value: draft,
     placeholder,
     'aria-label': label,
+    // Someone who can't change the task reads it, and can still select and copy it (WEB-137).
+    readOnly: Boolean(lock),
+    title: lock ?? undefined,
     onInput: (e) => setDraft(e.currentTarget.value),
     onBlur: save,
     onKeyDown: (e) => {
@@ -124,6 +137,10 @@ function Field({ label, children, id }) {
 function Actions({ task: t }) {
   const state = stateOf(t);
   const mine = t.claim === me.value;
+  // A viewer gets no Claim, Release, Mark done, Open again, or Delete: the panel's lock line says who can (WEB-137).
+  const lock = taskLock(t);
+  // Taking someone else's claim is a maintainer's (task.plan).
+  const theirs = t.claim && !mine ? taskLock(t, 'task.plan', `release ${t.claim}’s claim`) : null;
   const remove = async () => {
     const ok = await confirmDialog({
       title: `Delete ${ref(t)}?`,
@@ -135,7 +152,7 @@ function Actions({ task: t }) {
   };
   return (
     <div class="panel-actions">
-      {state === 'done' ? (
+      {lock ? null : state === 'done' ? (
         <button type="button" class="btn btn-outline btn-sm" onClick={() => actions.reopen(t)}>
           <RotateCcw size={16} aria-hidden="true" />
           Open again
@@ -155,7 +172,13 @@ function Actions({ task: t }) {
             </button>
           )}
           {t.claim && !mine && (
-            <button type="button" class="btn btn-outline btn-sm" onClick={() => releaseOther(t)}>
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              disabled={Boolean(theirs)}
+              title={theirs ?? undefined}
+              onClick={() => releaseOther(t)}
+            >
               <Undo2 size={16} aria-hidden="true" />
               Release {t.claim}’s claim
             </button>
@@ -199,17 +222,19 @@ function Actions({ task: t }) {
               <Copy size={16} aria-hidden="true" />
               Copy UUID
             </button>
-            <button
-              type="button"
-              class="menu-danger"
-              onClick={() => {
-                close();
-                remove();
-              }}
-            >
-              <Trash2 size={16} aria-hidden="true" />
-              Delete task
-            </button>
+            {!lock && (
+              <button
+                type="button"
+                class="menu-danger"
+                onClick={() => {
+                  close();
+                  remove();
+                }}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                Delete task
+              </button>
+            )}
           </div>
         )}
       </Popover>
@@ -220,6 +245,9 @@ function Actions({ task: t }) {
 /** @param {Record<string, any>} props */
 function Tags({ task: t }) {
   const [draft, setDraft] = useState('');
+  const lock = taskLock(t);
+  // A horizon-* tag is the owner's plan: only a maintainer changes one (task.plan).
+  const plans = !taskLock(t, 'task.plan');
   const add = (e) => {
     e.preventDefault();
     const tag = draft.trim().replace(/^\+/u, '');
@@ -231,29 +259,34 @@ function Tags({ task: t }) {
     setDraft('');
     actions.update(t, { addTags: [tag] }, `Tagged +${tag}.`);
   };
+  if (lock && !t.tags.length) return <span class="muted small">None</span>;
   return (
     <div class="tags-editor">
       {t.tags.map((tag) => (
         <span key={tag} class="chip">
           +{tag}
-          <button
-            type="button"
-            aria-label={`Remove tag ${tag}`}
-            onClick={() => actions.update(t, { removeTags: [tag] }, null)}
-          >
-            <X size={14} aria-hidden="true" />
-          </button>
+          {!lock && (plans || !tag.startsWith('horizon-')) && (
+            <button
+              type="button"
+              aria-label={`Remove tag ${tag}`}
+              onClick={() => actions.update(t, { removeTags: [tag] }, null)}
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          )}
         </span>
       ))}
-      <form class="chip-add" onSubmit={add}>
-        <input
-          class="input input-sm"
-          value={draft}
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          placeholder="Add a tag"
-          aria-label="Add a tag"
-        />
-      </form>
+      {!lock && (
+        <form class="chip-add" onSubmit={add}>
+          <input
+            class="input input-sm"
+            value={draft}
+            onInput={(e) => setDraft(e.currentTarget.value)}
+            placeholder="Add a tag"
+            aria-label="Add a tag"
+          />
+        </form>
+      )}
     </div>
   );
 }
@@ -297,6 +330,7 @@ function TaskLink({ uuid, onRemove, removeLabel = 'Stop waiting for' }) {
 /** @param {Record<string, any>} props */
 function Dependencies({ task: t }) {
   const [draft, setDraft] = useState('');
+  const lock = taskLock(t);
   const listId = `dep-options-${t.uuid}`;
   const options = tasks.value.filter((o) => o.uuid !== t.uuid && o.status === 'pending' && !t.depends.includes(o.uuid));
   const add = (e) => {
@@ -312,32 +346,34 @@ function Dependencies({ task: t }) {
       {t.depends.length ? (
         <ul class="dep-list">
           {t.depends.map((u) => (
-            <TaskLink key={u} uuid={u} onRemove={() => actions.update(t, { removeDepends: [u] }, null)} />
+            <TaskLink key={u} uuid={u} onRemove={lock ? null : () => actions.update(t, { removeDepends: [u] }, null)} />
           ))}
         </ul>
       ) : (
         <p class="muted small">Nothing. It can start any time.</p>
       )}
-      <form class="dep-add" onSubmit={add}>
-        <input
-          class="input input-sm"
-          list={listId}
-          value={draft}
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          placeholder="Add a task it waits for, like OPS-12"
-          aria-label="Add a task it waits for"
-        />
-        <datalist id={listId}>
-          {options.map((o) => (
-            <option key={o.uuid} value={ref(o)}>
-              {o.description}
-            </option>
-          ))}
-        </datalist>
-        <button type="submit" class="btn btn-outline btn-sm">
-          Add
-        </button>
-      </form>
+      {!lock && (
+        <form class="dep-add" onSubmit={add}>
+          <input
+            class="input input-sm"
+            list={listId}
+            value={draft}
+            onInput={(e) => setDraft(e.currentTarget.value)}
+            placeholder="Add a task it waits for, like OPS-12"
+            aria-label="Add a task it waits for"
+          />
+          <datalist id={listId}>
+            {options.map((o) => (
+              <option key={o.uuid} value={ref(o)}>
+                {o.description}
+              </option>
+            ))}
+          </datalist>
+          <button type="submit" class="btn btn-outline btn-sm">
+            Add
+          </button>
+        </form>
+      )}
       {t.blocking.length > 0 && (
         <>
           <h3>Holds up</h3>
@@ -385,7 +421,7 @@ function Brief({ task: t, field, label, empty, by, rows = 6, preview = false }) 
     <section class="panel-section" aria-labelledby={`${id}-h`}>
       <div class="section-head">
         <h3 id={`${id}-h`}>{label}</h3>
-        {!editing && (
+        {!editing && !taskLock(t) && (
           <button type="button" ref={edit} class="btn btn-quiet btn-sm" onClick={() => setEditing(true)}>
             {value ? 'Edit' : 'Add'}
             <span class="visually-hidden"> {label.toLowerCase()}</span>
@@ -459,6 +495,7 @@ function Brief({ task: t, field, label, empty, by, rows = 6, preview = false }) 
 /** @param {Record<string, any>} props */
 function Related({ task: t }) {
   const [draft, setDraft] = useState('');
+  const lock = taskLock(t);
   const listId = `rel-options-${t.uuid}`;
   const back = tasks.value.filter((o) => o.related?.includes(t.uuid) && !t.related.includes(o.uuid)).map((o) => o.uuid);
   const options = tasks.value.filter((o) => o.uuid !== t.uuid && !t.related.includes(o.uuid) && o.status !== 'deleted');
@@ -478,7 +515,7 @@ function Related({ task: t }) {
             <TaskLink
               key={u}
               uuid={u}
-              onRemove={() => actions.update(t, { removeRelated: [u] }, null)}
+              onRemove={lock ? null : () => actions.update(t, { removeRelated: [u] }, null)}
               removeLabel="Stop linking"
             />
           ))}
@@ -489,26 +526,28 @@ function Related({ task: t }) {
       ) : (
         <p class="muted small">Nothing linked. Related tasks don’t block each other.</p>
       )}
-      <form class="dep-add" onSubmit={add}>
-        <input
-          class="input input-sm"
-          list={listId}
-          value={draft}
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          placeholder="Link a task, like OPS-12"
-          aria-label="Link a related task"
-        />
-        <datalist id={listId}>
-          {options.map((o) => (
-            <option key={o.uuid} value={ref(o)}>
-              {o.description}
-            </option>
-          ))}
-        </datalist>
-        <button type="submit" class="btn btn-outline btn-sm">
-          Link
-        </button>
-      </form>
+      {!lock && (
+        <form class="dep-add" onSubmit={add}>
+          <input
+            class="input input-sm"
+            list={listId}
+            value={draft}
+            onInput={(e) => setDraft(e.currentTarget.value)}
+            placeholder="Link a task, like OPS-12"
+            aria-label="Link a related task"
+          />
+          <datalist id={listId}>
+            {options.map((o) => (
+              <option key={o.uuid} value={ref(o)}>
+                {o.description}
+              </option>
+            ))}
+          </datalist>
+          <button type="submit" class="btn btn-outline btn-sm">
+            Link
+          </button>
+        </form>
+      )}
     </section>
   );
 }
@@ -545,6 +584,7 @@ function saidSource(q) {
 function OwnerSaid({ task: t }) {
   const said = t.ownerSaid ?? [];
   if (!said.length) return null;
+  const unquote = !taskLock(t, 'task.unquote');
   return (
     <section class="panel-section" aria-labelledby={`said-${t.uuid}`}>
       <h3 id={`said-${t.uuid}`}>You said</h3>
@@ -557,9 +597,11 @@ function OwnerSaid({ task: t }) {
             </blockquote>
             <span class="meta said-meta">
               <span>{saidSource(q)}</span>
-              <button type="button" class="btn btn-quiet btn-sm" onClick={() => actions.unquote(t, q)}>
-                Remove<span class="visually-hidden"> this quote</span>
-              </button>
+              {unquote && (
+                <button type="button" class="btn btn-quiet btn-sm" onClick={() => actions.unquote(t, q)}>
+                  Remove<span class="visually-hidden"> this quote</span>
+                </button>
+              )}
             </span>
           </li>
         ))}
@@ -574,6 +616,8 @@ function Comments({ task: t }) {
   const [hideBoard, setHideBoard] = useState(false);
   const area = useRef(null);
   useAutosize(area, draft);
+  const lock = taskLock(t, 'task.write', 'comment on it');
+  const quote = !taskLock(t, 'task.quote');
   const board = t.comments.filter((c) => c.by === 'board').length;
   const shown = hideBoard ? t.comments.filter((c) => c.by !== 'board') : t.comments;
   const submit = async (e) => {
@@ -608,7 +652,8 @@ function Comments({ task: t }) {
                 </time>
               </span>
               <RichText text={c.text} />
-              {c.by === 'owner' &&
+              {quote &&
+                c.by === 'owner' &&
                 t.status === 'pending' &&
                 !(t.ownerSaid ?? []).some((q) => q.text === c.text.trim()) && (
                   <button type="button" class="btn btn-quiet btn-sm note-keep" onClick={() => actions.quote(t, c.text)}>
@@ -621,38 +666,55 @@ function Comments({ task: t }) {
       ) : (
         <p class="muted small">No comments yet.</p>
       )}
-      <form class="note-add" onSubmit={submit}>
-        <label class="visually-hidden" for={`comment-${t.uuid}`}>
-          Add a comment
-        </label>
-        <Dictate>
-          <textarea
-            id={`comment-${t.uuid}`}
-            ref={area}
-            class="textarea"
-            rows={2}
-            value={draft}
-            placeholder="What happened, what you found, what’s next"
-            onInput={(e) => setDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
-            }}
-          />
-        </Dictate>
-        <div class="note-actions">
-          <span class="meta">Ctrl + Enter adds it</span>
-          <button type="submit" class="btn btn-outline btn-sm" disabled={!draft.trim()}>
-            Add comment
-          </button>
-        </div>
-      </form>
+      {lock ? (
+        <p class="meta">{lock}</p>
+      ) : (
+        <form class="note-add" onSubmit={submit}>
+          <label class="visually-hidden" for={`comment-${t.uuid}`}>
+            Add a comment
+          </label>
+          <Dictate>
+            <textarea
+              id={`comment-${t.uuid}`}
+              ref={area}
+              class="textarea"
+              rows={2}
+              value={draft}
+              placeholder="What happened, what you found, what’s next"
+              onInput={(e) => setDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(e);
+              }}
+            />
+          </Dictate>
+          <div class="note-actions">
+            <span class="meta">Ctrl + Enter adds it</span>
+            <button type="submit" class="btn btn-outline btn-sm" disabled={!draft.trim()}>
+              Add comment
+            </button>
+          </div>
+        </form>
+      )}
     </section>
   );
+}
+
+/**
+ * A task's field: its control for someone who may change the task, else what it holds, as text (WEB-137). `text`
+ * false shows nothing, where a link beside it already says it.
+ * @param {Record<string, any>} props
+ */
+function Value({ lock, text, children }) {
+  if (!lock) return children;
+  if (text === false) return null;
+  return text ? <span>{text}</span> : <span class="muted">None</span>;
 }
 
 /** @param {Record<string, any>} props */
 function Details({ task: t }) {
   const save = (changes, message = null) => actions.update(t, changes, message);
+  // Someone who can't change the task reads each field as text (WEB-137).
+  const lock = taskLock(t);
   return (
     <dl class="facts">
       {multiRepo.value && (
@@ -661,50 +723,56 @@ function Details({ task: t }) {
         </Field>
       )}
       <Field label="Area" id={`area-${t.uuid}`}>
-        <select
-          class="select select-sm"
-          aria-labelledby={`area-${t.uuid}`}
-          value={t.project ?? ''}
-          onChange={(e) => save({ project: e.currentTarget.value || null })}
-        >
-          <option value="">None</option>
-          {areasOfRepo(t.repo).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </select>
+        <Value lock={lock} text={areasOfRepo(t.repo).find((a) => a.id === t.project)?.label ?? t.project}>
+          <select
+            class="select select-sm"
+            aria-labelledby={`area-${t.uuid}`}
+            value={t.project ?? ''}
+            onChange={(e) => save({ project: e.currentTarget.value || null })}
+          >
+            <option value="">None</option>
+            {areasOfRepo(t.repo).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+        </Value>
         {picksArea(t) && <span class="meta area-pending">{PICKS_AREA}, and its work ID comes with it.</span>}
       </Field>
       <Field label="Horizon" id={`horizon-${t.uuid}`}>
-        <select
-          class="select select-sm"
-          aria-labelledby={`horizon-${t.uuid}`}
-          value={t.horizon ?? ''}
-          onChange={(e) => save({ horizon: e.currentTarget.value || null })}
-        >
-          <option value="">None</option>
-          {HORIZONS.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.label}
-            </option>
-          ))}
-        </select>
+        <Value lock={lock} text={HORIZONS.find((h) => h.id === t.horizon)?.label}>
+          <select
+            class="select select-sm"
+            aria-labelledby={`horizon-${t.uuid}`}
+            value={t.horizon ?? ''}
+            onChange={(e) => save({ horizon: e.currentTarget.value || null })}
+          >
+            <option value="">None</option>
+            {HORIZONS.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </Value>
       </Field>
       <Field label="Priority" id={`priority-${t.uuid}`}>
-        <select
-          class="select select-sm"
-          aria-labelledby={`priority-${t.uuid}`}
-          value={t.priority ?? ''}
-          onChange={(e) => save({ priority: e.currentTarget.value || null })}
-        >
-          <option value="">None</option>
-          {PRIORITIES.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <Value lock={lock} text={PRIORITIES.find((p) => p.id === t.priority)?.label}>
+          <select
+            class="select select-sm"
+            aria-labelledby={`priority-${t.uuid}`}
+            value={t.priority ?? ''}
+            onChange={(e) => save({ priority: e.currentTarget.value || null })}
+          >
+            <option value="">None</option>
+            {PRIORITIES.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </Value>
       </Field>
       <Field label="Who does it">
         <WhoField task={t} />
@@ -713,31 +781,37 @@ function Details({ task: t }) {
         <Tags task={t} />
       </Field>
       <Field label="Due" id={`due-${t.uuid}`}>
-        <input
-          type="date"
-          class="input input-sm"
-          aria-labelledby={`due-${t.uuid}`}
-          value={dateInput(t.due)}
-          onChange={(e) => save({ due: e.currentTarget.value || null })}
-        />
+        <Value lock={lock} text={t.due && day(t.due)}>
+          <input
+            type="date"
+            class="input input-sm"
+            aria-labelledby={`due-${t.uuid}`}
+            value={dateInput(t.due)}
+            onChange={(e) => save({ due: e.currentTarget.value || null })}
+          />
+        </Value>
       </Field>
       <Field label="Wait until" id={`wait-${t.uuid}`}>
-        <input
-          type="date"
-          class="input input-sm"
-          aria-labelledby={`wait-${t.uuid}`}
-          value={dateInput(t.wait)}
-          onChange={(e) => save({ wait: e.currentTarget.value || null })}
-        />
+        <Value lock={lock} text={t.wait && day(t.wait)}>
+          <input
+            type="date"
+            class="input input-sm"
+            aria-labelledby={`wait-${t.uuid}`}
+            value={dateInput(t.wait)}
+            onChange={(e) => save({ wait: e.currentTarget.value || null })}
+          />
+        </Value>
       </Field>
       <Field label="Spec">
         <div class="with-link">
-          <InlineText
-            value={t.spec}
-            label="Spec path"
-            placeholder="docs/specs/…"
-            onSave={(v) => save({ spec: v || null }, 'Spec saved.')}
-          />
+          <Value lock={lock} text={t.spec}>
+            <InlineText
+              value={t.spec}
+              label="Spec path"
+              placeholder="docs/specs/…"
+              onSave={(v) => save({ spec: v || null }, 'Spec saved.')}
+            />
+          </Value>
           {specHere(t) && (
             <a class="btn btn-quiet btn-icon btn-sm" href={specHere(t)} aria-label="Read the spec on the board">
               <ScrollText size={16} aria-hidden="true" />
@@ -758,12 +832,14 @@ function Details({ task: t }) {
       </Field>
       <Field label="Pull request">
         <div class="with-link">
-          <InlineText
-            value={t.pr}
-            label="Pull request number or link"
-            placeholder="Number or link"
-            onSave={(v) => save({ pr: v || null }, 'Pull request saved.')}
-          />
+          <Value lock={lock} text={prUrl(t.pr) ? false : t.pr}>
+            <InlineText
+              value={t.pr}
+              label="Pull request number or link"
+              placeholder="Number or link"
+              onSave={(v) => save({ pr: v || null }, 'Pull request saved.')}
+            />
+          </Value>
           {prUrl(t.pr) && (
             <a class="btn btn-quiet btn-sm" href={prUrl(t.pr)} target="_blank" rel="noopener noreferrer">
               {prLabel(t.pr)}
@@ -853,6 +929,22 @@ function PullRequests({ task: t }) {
   );
 }
 
+/**
+ * For someone who can read a task but not change it (a viewer of its repository): who can, once, above its actions
+ * (WEB-137). Nothing for anyone who may.
+ * @param {Record<string, any>} props
+ */
+function LockLine({ task: t }) {
+  const lock = taskLock(t);
+  if (!lock) return null;
+  return (
+    <p class="claim-line">
+      <Lock size={16} aria-hidden="true" />
+      {lock}
+    </p>
+  );
+}
+
 /** @param {Record<string, any>} props */
 function ModeButton({ modal }) {
   return modal ? (
@@ -915,6 +1007,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
           value={t.description}
           label="Title"
           className="title-input"
+          lock={taskLock(t)}
           onSave={(v) =>
             v ? actions.update(t, { description: v }, 'Title saved.') : toast('A task needs a title.', 'error')
           }
@@ -933,6 +1026,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
           Blocked until what it waits for is done.
         </p>
       )}
+      <LockLine task={t} />
       <div class="panel-actions-row">
         <Actions task={t} />
         <ModeButton modal={false} />
@@ -1015,6 +1109,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
                 value={t.description}
                 label="Title"
                 className="title-input"
+                lock={taskLock(t)}
                 onSave={(v) =>
                   v ? actions.update(t, { description: v }, 'Title saved.') : toast('A task needs a title.', 'error')
                 }
@@ -1033,6 +1128,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
                 Blocked until what it waits for is done.
               </p>
             )}
+            <LockLine task={t} />
             <Actions task={t} />
           </div>
           <div class="modal-agents">

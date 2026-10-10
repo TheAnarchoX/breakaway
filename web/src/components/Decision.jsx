@@ -15,6 +15,7 @@ import {
 import { RichText, Title } from '../lib/richtext.jsx';
 import { useAutosize, Dictate } from './ui.jsx';
 import { RefineFromAnswers } from './RefineFromAnswers.jsx';
+import { taskLock } from './Who.jsx';
 
 /** @param {Record<string, any>} props */
 function Comment({ id, value, onInput }) {
@@ -227,7 +228,7 @@ function Question({ q, index, uuid, d, set }) {
  * The submitted answers, read-only, with a way to change them.
  * @param {Record<string, any>} props
  */
-function Answered({ task: t }) {
+function Answered({ task: t, lock }) {
   const { answers, at } = t.decisionAnswers;
   return (
     <>
@@ -247,12 +248,15 @@ function Answered({ task: t }) {
           <CircleCheck size={14} aria-hidden="true" /> Decided{' '}
           {at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''}
         </span>
-        <button type="button" class="btn btn-outline btn-sm" onClick={() => actions.reopenDecision(t)}>
-          <RotateCcw size={16} aria-hidden="true" />
-          Change my answers
-        </button>
+        {!lock && (
+          <button type="button" class="btn btn-outline btn-sm" onClick={() => actions.reopenDecision(t)}>
+            <RotateCcw size={16} aria-hidden="true" />
+            Change my answers
+          </button>
+        )}
       </div>
-      <RefineFromAnswers task={t} />
+      {lock && <p class="meta">{lock}</p>}
+      {!taskLock(t, 'agent.general') && <RefineFromAnswers task={t} />}
     </>
   );
 }
@@ -336,6 +340,26 @@ function Form({ task: t }) {
 }
 
 /**
+ * The questions, for someone who can't answer them: what's asked, and who can answer (WEB-137).
+ * @param {Record<string, any>} props
+ */
+function Asked({ task: t, lock }) {
+  return (
+    <>
+      <dl class="decision-answers">
+        {t.decision.map((q) => (
+          <div key={q.id}>
+            <dt>{q.prompt}</dt>
+            <dd class="muted">Not answered yet.</dd>
+          </div>
+        ))}
+      </dl>
+      <p class="meta">{lock}</p>
+    </>
+  );
+}
+
+/**
  * A decision without questions: one note that resolves it.
  * @param {Record<string, any>} props
  */
@@ -347,6 +371,8 @@ function Decide({ task: t }) {
   useEffect(() => {
     if (open) area.current?.focus();
   }, [open]);
+  // Deciding finishes the task, a task write (WEB-137).
+  const lock = taskLock(t, 'task.write', 'decide it');
   const submit = async (e) => {
     e?.preventDefault();
     if (!text.trim()) return;
@@ -355,6 +381,7 @@ function Decide({ task: t }) {
       setOpen(false);
     }
   };
+  if (lock) return <p class="meta">{lock}</p>;
   if (!open) {
     return (
       <div class="note-actions">
@@ -420,10 +447,22 @@ export function DecisionSection({ task: t }) {
   const pending = t.status === 'pending';
   if (!structured && !(pending && t.who === 'decision')) return null;
   if (structured && !answered && !pending) return null;
+  // Answering, and reopening the answers, is a maintainer's (decision.answer); a viewer or a member reads them.
+  const lock = structured ? taskLock(t, 'decision.answer') : taskLock(t);
   return (
     <section class="panel-section decision" aria-labelledby={`decision-${t.uuid}`}>
-      <h3 id={`decision-${t.uuid}`}>{answered ? 'Decision' : 'Needs your decision'}</h3>
-      {answered ? <Answered task={t} /> : structured ? <Form task={t} /> : <Decide task={t} />}
+      <h3 id={`decision-${t.uuid}`}>{answered ? 'Decision' : lock ? 'Needs a decision' : 'Needs your decision'}</h3>
+      {answered ? (
+        <Answered task={t} lock={lock} />
+      ) : structured ? (
+        lock ? (
+          <Asked task={t} lock={lock} />
+        ) : (
+          <Form task={t} />
+        )
+      ) : (
+        <Decide task={t} />
+      )}
     </section>
   );
 }
