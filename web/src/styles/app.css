@@ -13414,3 +13414,71 @@ button.infra-plan-row {
 .invite-days .input {
   width: 6em;
 }
+
+/* Your Claude, in Settings under You, and a person's Claude on People (WEB-136) */
+.claude-you {
+  display: grid;
+  gap: 14px;
+}
+.claude-routines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.claude-routine {
+  display: grid;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  min-width: 0;
+}
+.claude-routine-head {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) auto;
+  align-items: center;
+  gap: 6px 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.claude-routine-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.rs-state.is-bad svg {
+  color: var(--danger);
+}
+.claude-connect {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.claude-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.claude-steps .wiz-actions {
+  margin-top: 8px;
+}
+.claude-facts {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 4px;
+}
+@media (max-width: 759.98px) {
+  .claude-routine-head {
+    grid-template-columns: 1fr;
+  }
+  .claude-routine-actions {
+    justify-content: flex-start;
+  }
+}
