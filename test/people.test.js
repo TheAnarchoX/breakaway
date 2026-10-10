@@ -383,7 +383,7 @@ describe('personal tokens', () => {
     await ownerStillSignsIn();
   });
 
-  it('don’t open /mcp yet', async () => {
+  it('open /mcp, where the browser’s session doesn’t (BRK-327)', async () => {
     const owner = await ownerCookie();
     const { cookie } = await join((await invite(owner)).code, { handle: unique('ana') });
     const { token } = await (await call('/api/me/tokens', { method: 'POST', cookie, body: { name: 'mcp' } })).json();
@@ -394,8 +394,8 @@ describe('personal tokens', () => {
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
       });
     const res = await rpc({ Authorization: `Bearer ${token}` });
-    expect(res.status).toBe(403);
-    expect(JSON.stringify(await res.json())).toMatch(/personal tokens/u);
+    expect(res.status).toBe(200);
+    expect((await res.json()).result.tools.length).toBeGreaterThan(0);
     expect((await rpc({ Cookie: cookie })).status).toBe(401);
   });
 });

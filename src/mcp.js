@@ -10,10 +10,12 @@
  * Each tool calls the same TaskStore method its CLI command's API route does, so the store's own guards stand behind
  * it. The tools that write (BRK-155) always write as the agent the X-Breakaway-Agent header names, never as the owner,
  * and have no force, no autostart, no done, and no horizon-* tag. The resources and prompts (section 4) are in
- * src/mcp-resources.js, and Architect's read-only tools (BRK-202) in src/mcp-infra.js.
+ * src/mcp-resources.js, and Architect's read-only tools (BRK-202) in src/mcp-infra.js. A person's own token gets the
+ * same tools, its reads filtered by their grants and its writes gated by their role (BRK-327, src/mcp-person.js).
  */
 import { authenticate } from './auth.js';
-import { hasPersonalToken } from './people.js';
+import { hasPersonalToken, personOf } from './people.js';
+import { personStore } from './mcp-person.js';
 import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
 import { footprintLines } from './footprint-text.js';
@@ -77,15 +79,16 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   // The bearer token only, never the web board's cookie: the browser has the web board (section 2). A connection
   // from MCP apps has its own token, for its one repository and agent name (section 8).
   let pinned = null;
-  // A person's own token opens /mcp once roles are enforced (BRK-301); until then it's refused, by name (BRK-300).
-  if (hasPersonalToken(request))
-    return rpcError(
-      403,
-      null,
-      INVALID_REQUEST,
-      'personal tokens don’t open /mcp on this board yet: roles come in a later update',
-    );
-  if ((await authenticate(request, env)) !== 'token') {
+  // A person's own token (BRK-327): their reads by grant and their writes by role, as the API's (src/mcp-person.js).
+  let person = null;
+  if (hasPersonalToken(request)) {
+    person = await personOf(request, store);
+    if (!person)
+      return Response.json(
+        { error: 'this personal token was revoked or isn’t right: make a new one in your settings on the board' },
+        { status: 401 },
+      );
+  } else if ((await authenticate(request, env)) !== 'token') {
     const found = await connectionOf(request, store);
     if (!found?.connection) {
       const challenge = `Bearer ${found?.invalid ? 'error="invalid_token", ' : ''}resource_metadata="${metadataUrl(url.origin)}"`;
@@ -128,7 +131,7 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   const era = eraOf(request, method, params);
   if (era.error) return rpcError(era.status ?? 400, id, era.error.code, era.error.message, era.error.data);
 
-  const ctx = callContext(request, store, waitUntil, pinned);
+  const ctx = callContext(request, store, waitUntil, pinned, person);
   const answer = (result) =>
     rpcResult(id, era.modern ? { resultType: 'complete', ...result, _meta: serverMeta(env) } : result);
   const failed = (status, code, text, data) => rpcError(era.modern ? status : 200, id, code, text, data);
@@ -284,8 +287,9 @@ function rpcError(status, id, code, message, data) {
  * @param {any} store
  * @param {(promise: Promise<any>) => void} [waitUntil]
  * @param {{ agent: string, repo: string } | null} [pinned]
+ * @param {{ handle: string } | null} [person] the person behind a personal token (BRK-327)
  */
-function callContext(request, store, waitUntil = (_promise) => {}, pinned = null) {
+function callContext(request, store, waitUntil = (_promise) => {}, pinned = null, person = null) {
   const header = (name) => (request.headers.get(name) ?? '').trim();
   // The plugin sends its agent_name as a static X-Breakaway-Agent, empty when it isn't set, and its headersHelper sends
   // claude-<branch> as X-Breakaway-Agent-Default for that case (CLI-16). An option Claude Code didn't fill is no name.
@@ -294,12 +298,13 @@ function callContext(request, store, waitUntil = (_promise) => {}, pinned = null
   const repo = pinned ? pinned.repo : header('X-Breakaway-Repo').toLowerCase();
   let registry;
   const ctx = {
-    store,
+    // A person's calls go through the same gates as their API requests; the owner's reach the store as before.
+    store: person ? personStore(store, person, agent) : store,
     agent,
     repo,
     waitUntil,
     async registry() {
-      registry ??= (await store.reposApi()).body;
+      registry ??= (await ctx.store.reposApi()).body;
       return registry;
     },
     /** The repository the call works in, or the reason it can't name one. */
