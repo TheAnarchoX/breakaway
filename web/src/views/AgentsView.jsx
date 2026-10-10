@@ -28,6 +28,7 @@ import { HeldReason, HitRates } from '../components/Footprint.jsx';
 import { PelotonPanel } from '../components/Peloton.jsx';
 import { Title } from '../lib/richtext.jsx';
 import STUB from '../../../prompts/stub.md?raw';
+import { Named } from '../lib/avatar.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 
@@ -665,7 +666,8 @@ export function AgentsView() {
                       <RunStatus state={r.state} run={r} repo={r.repo} compact />
                       <span class="agent-card-meta">
                         <span class="meta">
-                          {r.agent} · {TRIGGER_LABEL[r.trigger] ?? r.trigger} {ago(r.startedAt)}
+                          <Named name={r.agent} size={16} /> · {TRIGGER_LABEL[r.trigger] ?? r.trigger}{' '}
+                          {ago(r.startedAt)}
                         </span>
                         {r.forced && <ForcedMark />}
                         <ChasePill uuid={r.uuid} />

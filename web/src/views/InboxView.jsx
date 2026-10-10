@@ -16,6 +16,7 @@ import {
   toast,
 } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
+import { Named } from '../lib/avatar.jsx';
 import { Dialog, RepoChip, Dictate } from '../components/ui.jsx';
 import { IncidentWhere, stepNote } from '../components/Incidents.jsx';
 import { countsWords, digestHref } from '../components/ChaseDigest.jsx';
@@ -398,7 +399,7 @@ function PingCard({ ping, focused, onApply, incident = null }) {
             <Title text={ping.taskTitle} />
           </a>
           <span class="meta">
-            {ping.by}, <time dateTime={ping.at}>{ago(ping.at)}</time>
+            <Named name={ping.by} size={20} />, <time dateTime={ping.at}>{ago(ping.at)}</time>
           </span>
         </header>
         <p class="ping-message">{ping.message}</p>
