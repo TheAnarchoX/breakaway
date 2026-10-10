@@ -11,15 +11,18 @@ import { AgentError } from './store-agents.js';
 import { OWNER } from './permissions.js';
 import { repoSlugOf } from './repos.js';
 import { featureIdea } from './feature-prompt.js';
-import { InputError, diffOps, rank, withChanges } from './model.js';
+import { InputError, LEGACY_WHO_TAGS, diffOps, rank, withChanges } from './model.js';
 
 /** A feature's slug is a tag: lowercase letters, digits, hyphens, and underscores, starting with a letter. */
 const SLUG = /^[a-z][a-z0-9_-]{0,39}$/u;
 const RELEASE = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/u;
 /** A release tag on a task, like `v1_2-0` (Taskwarrior tags can't hold dots). */
 const RELEASE_TAG = /^v(\d{1,4})_(\d{1,4})-(\d{1,4})$/u;
-/** Tags the board and its agents use for something else: never a feature, never suggested. */
-const BOARD_TAGS = new Set(['agent', 'owner', 'decide', 'idea', 'general', 'routine', 'security']);
+/**
+ * Tags the board and its agents use for something else: never a feature, never suggested. The tags `who` replaced
+ * (BRK-330) stay out too: one given as a tag becomes who does it, so a feature can't have that name.
+ */
+const BOARD_TAGS = new Set([...Object.keys(LEGACY_WHO_TAGS), 'idea', 'general', 'routine', 'security']);
 const STATES = ['open', 'shipped'];
 /** The horizons the owner may give an idea's tasks: `auto` lets its agent choose. */
 const IDEA_HORIZONS = ['auto', 'now', 'next', 'later'];
@@ -107,9 +110,13 @@ function standing(t, names) {
   if (t.claim) return { state: 'running', why: `${t.claim} has it` };
   if (t.blocked) return { state: 'waiting', why: `it waits for ${t.blockedBy.map((u) => names.get(u)).join(', ')}` };
   if (t.waiting) return { state: 'waiting', why: `it waits until ${t.wait?.slice(0, 10)}` };
-  if (t.tags.includes('decide') || (t.decision && !t.decisionAnswers))
+  if (t.who === 'decision' || (t.decision && !t.decisionAnswers))
     return { state: 'needs-you', why: 'it waits on your decision' };
-  if (t.tags.includes('owner')) return { state: 'needs-you', why: 'it’s a step for you (+owner)' };
+  if (t.who === 'person')
+    return {
+      state: 'needs-you',
+      why: !t.assignee || t.assignee === 'owner' ? 'it’s a step for you' : `it’s a step for ${t.assignee}`,
+    };
   return { state: 'ready', why: null };
 }
 
@@ -303,7 +310,8 @@ export const featuresMethods = {
           description: written.title,
           project: 'ideas',
           horizon: 'now',
-          tags: ['agent', 'idea', `horizon-${shape.horizon}`, slug],
+          who: 'agent',
+          tags: ['idea', `horizon-${shape.horizon}`, slug],
           autostart: 'yes',
           brief: written.brief,
           ...(shape.repo ? { repo: shape.repo } : {}),

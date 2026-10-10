@@ -268,7 +268,7 @@ describe('the board watching GitHub’s status page', () => {
     const res = await body(
       await api('tasks', {
         method: 'POST',
-        body: [{ description: 'Ops one', project: 'ops', tags: ['agent', 'calm'], horizon: 'now' }],
+        body: [{ description: 'Ops one', project: 'ops', who: 'agent', tags: ['calm'], horizon: 'now' }],
       }),
     );
     expect(res.tasks.map((t) => t.wid)).toEqual(['OPS-1']);
@@ -289,8 +289,8 @@ describe('the board watching GitHub’s status page', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Ride one', project: 'ops', tags: ['agent', 'storm'], horizon: 'now' },
-          { description: 'Ride two', project: 'ops', tags: ['agent', 'storm'], horizon: 'now' },
+          { description: 'Ride one', project: 'ops', who: 'agent', tags: ['storm'], horizon: 'now' },
+          { description: 'Ride two', project: 'ops', who: 'agent', tags: ['storm'], horizon: 'now' },
         ],
       }),
     );

@@ -14,7 +14,7 @@ const make = async (fields = {}) =>
     await body(
       await api('tasks', {
         method: 'POST',
-        body: [{ description: `Chase task ${made++}`, project: 'ops', tags: ['agent'], ...fields }],
+        body: [{ description: `Chase task ${made++}`, project: 'ops', who: 'agent', ...fields }],
       }),
     )
   ).tasks[0];
@@ -28,7 +28,7 @@ const chase = async (slug, on) => {
 /** A feature with a chase on, and an agent holding one of its tasks. */
 async function chaseAgent(slug) {
   expect((await api('features', { method: 'POST', body: { slug } })).status).toBe(201);
-  const own = await make({ tags: ['agent', slug] });
+  const own = await make({ who: 'agent', tags: [slug] });
   const name = `claude-${own.wid.toLowerCase()}`;
   expect((await api(`tasks/${own.wid}/claim`, { method: 'POST', body: { agent: name } })).status).toBe(200);
   await chase(slug, true);
@@ -45,7 +45,7 @@ describe('chase agents and the chase’s tasks', () => {
 
   it('changes each allowed field of an unclaimed open task of the chase, and the board notes it', async () => {
     const { own, name } = await chaseAgent('alpha');
-    const target = await make({ tags: ['agent', 'alpha'], brief: 'Owner wrote this.', by: 'owner' });
+    const target = await make({ who: 'agent', tags: ['alpha'], brief: 'Owner wrote this.', by: 'owner' });
     const blocker = await make();
     const res = await body(
       await edit(target.wid, {
@@ -54,7 +54,7 @@ describe('chase agents and the chase’s tasks', () => {
         project: 'debt',
         horizon: 'next',
         addTags: ['docs'],
-        removeTags: ['agent'],
+        who: 'person',
         addDepends: [blocker.wid],
         by: name,
       }),
@@ -66,11 +66,13 @@ describe('chase agents and the chase’s tasks', () => {
       project: 'debt',
       horizon: 'next',
       tags: ['alpha', 'docs'],
+      who: 'person',
+      assignee: null,
     });
     expect(res.task.dependsOn.map((d) => d.wid)).toEqual([blocker.wid]);
     expect(res.task.comments.at(-1)).toMatchObject({
       by: 'board',
-      text: `Changed by ${own.wid}: description, done when, area, horizon, tags, dependencies.`,
+      text: `Changed by ${own.wid}: description, done when, area, horizon, tags, who does it, dependencies.`,
     });
     // The owner still wrote it: rewriting it in the chase doesn't make it the agent's.
     expect(res.task.briefBy).toBe('owner');
@@ -81,7 +83,7 @@ describe('chase agents and the chase’s tasks', () => {
 
   it('deletes a task an agent added after the chase started, and notes it', async () => {
     const { own, name } = await chaseAgent('beta');
-    const added = await make({ tags: ['agent', 'beta'], brief: 'Split from mine.', by: 'claude-someone' });
+    const added = await make({ who: 'agent', tags: ['beta'], brief: 'Split from mine.', by: 'claude-someone' });
     const res = await body(await edit(added.wid, { status: 'deleted', by: name }));
     expect(res.status).toBe(200);
     expect(res.task.status).toBe('deleted');
@@ -90,9 +92,9 @@ describe('chase agents and the chase’s tasks', () => {
 
   it('refuses to delete what the owner wrote, what was there before the chase, or a delete with other changes', async () => {
     const { name } = await chaseAgent('gamma');
-    const owners = await make({ tags: ['agent', 'gamma'], brief: 'Owner wrote this.', by: 'owner' });
-    const unwritten = await make({ tags: ['agent', 'gamma'] });
-    const mixed = await make({ tags: ['agent', 'gamma'], brief: 'An agent wrote this.', by: 'claude-someone' });
+    const owners = await make({ who: 'agent', tags: ['gamma'], brief: 'Owner wrote this.', by: 'owner' });
+    const unwritten = await make({ who: 'agent', tags: ['gamma'] });
+    const mixed = await make({ who: 'agent', tags: ['gamma'], brief: 'An agent wrote this.', by: 'claude-someone' });
     for (const [wid, changes, why] of [
       [owners.wid, { status: 'deleted' }, /agent added after the chase started/],
       [unwritten.wid, { status: 'deleted' }, /agent added after the chase started/],
@@ -116,7 +118,7 @@ describe('chase agents and the chase’s tasks', () => {
 
   it('refuses a claimed task, an idea’s description, a horizon-* tag, autostart, a decision, and any other field', async () => {
     const { name } = await chaseAgent('delta');
-    const claimed = await make({ tags: ['agent', 'delta'], brief: 'Mine.', by: 'claude-other' });
+    const claimed = await make({ who: 'agent', tags: ['delta'], brief: 'Mine.', by: 'claude-other' });
     await api(`tasks/${claimed.wid}/claim`, { method: 'POST', body: { agent: 'claude-other' } });
     for (const changes of [{ horizon: 'next' }, { status: 'deleted' }]) {
       const res = await body(await edit(claimed.wid, { ...changes, by: name }));
@@ -128,7 +130,7 @@ describe('chase agents and the chase’s tasks', () => {
     expect(ideaRes.status).toBe(403);
     expect(ideaRes.error).toMatch(/a chase agent .*idea/);
 
-    const target = await make({ tags: ['agent', 'delta', 'horizon-auto'] });
+    const target = await make({ who: 'agent', tags: ['delta', 'horizon-auto'] });
     for (const changes of [
       { addTags: ['horizon-now'] },
       { autostart: 'yes' },
@@ -152,7 +154,12 @@ describe('chase agents and the chase’s tasks', () => {
     expect(deleting.error).toMatch(/ping/);
 
     // An agent with no task in the chase can't change or delete the chase's tasks.
-    const inChase = await make({ tags: ['agent', 'epsilon'], brief: 'An agent wrote this.', by: 'claude-someone' });
+    const inChase = await make({
+      who: 'agent',
+      tags: ['epsilon'],
+      brief: 'An agent wrote this.',
+      by: 'claude-someone',
+    });
     expect((await edit(inChase.wid, { brief: 'New.', by: 'claude-bystander' })).status).toBe(403);
     expect((await edit(inChase.wid, { status: 'deleted', by: 'claude-bystander' })).status).toBe(403);
 
@@ -161,7 +168,7 @@ describe('chase agents and the chase’s tasks', () => {
       body: { slug: 'gadgets', github: 'acme/gadgets', areas: ['product:GDG'] },
     });
     expect(registered.status).toBe(201);
-    const there = await make({ repo: 'gadgets', project: 'product', tags: ['agent', 'epsilon'] });
+    const there = await make({ repo: 'gadgets', project: 'product', who: 'agent', tags: ['epsilon'] });
     const res = await body(await edit(there.wid, { horizon: 'next', by: name }));
     expect(res.status).toBe(403);
     expect(res.error).toMatch(/own repository.*gadgets/);
@@ -210,7 +217,7 @@ describe('a chase agent through MCP', () => {
 
   it('changes an unclaimed task of its chase through modify_task, and an agent outside the chase is still refused', async () => {
     const { own, name } = await chaseAgent('zeta');
-    const target = await make({ tags: ['agent', 'zeta'], brief: 'Owner wrote this.', by: 'owner' });
+    const target = await make({ who: 'agent', tags: ['zeta'], brief: 'Owner wrote this.', by: 'owner' });
     const changed = await modify(name, {
       task: target.wid,
       brief: 'Sharper.',

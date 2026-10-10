@@ -13,11 +13,11 @@ describe('the roadmap’s repositories', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Widget part', project: 'ops', tags: ['agent', 'only-widgets'] },
-          { description: 'Gadget part', project: 'product', repo: 'gadgets', tags: ['agent', 'both'] },
-          { description: 'Widget half', project: 'ops', tags: ['agent', 'both'] },
-          { description: 'Loose gadget fix', project: 'product', repo: 'gadgets', tags: ['agent', 'v1_2-0'] },
-          { description: 'A gadget tag', project: 'product', repo: 'gadgets', tags: ['agent', 'gadget-idea'] },
+          { description: 'Widget part', project: 'ops', who: 'agent', tags: ['only-widgets'] },
+          { description: 'Gadget part', project: 'product', repo: 'gadgets', who: 'agent', tags: ['both'] },
+          { description: 'Widget half', project: 'ops', who: 'agent', tags: ['both'] },
+          { description: 'Loose gadget fix', project: 'product', repo: 'gadgets', who: 'agent', tags: ['v1_2-0'] },
+          { description: 'A gadget tag', project: 'product', repo: 'gadgets', who: 'agent', tags: ['gadget-idea'] },
         ],
       }),
     );

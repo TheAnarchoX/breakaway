@@ -287,8 +287,8 @@ describe('the For: line in a run’s payload', () => {
     const made = await api('tasks', {
       method: 'POST',
       body: [
-        { description: 'Write the changelog', project: 'ops', tags: ['agent'], horizon: 'now' },
-        { description: 'Tidy the docs', project: 'ops', tags: ['agent'], horizon: 'now' },
+        { description: 'Write the changelog', project: 'ops', who: 'agent', horizon: 'now' },
+        { description: 'Tidy the docs', project: 'ops', who: 'agent', horizon: 'now' },
       ],
     });
     const [first, second] = (await made.json()).tasks.map((t) => t.wid);

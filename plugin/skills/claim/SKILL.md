@@ -16,7 +16,7 @@ Claim `$ARGUMENTS` on the board that tracks this checkout's repository, then rea
    - `409`: someone else holds it, or it's blocked. Say who or what, and stop. Never take another agent's claim.
    - It belongs to another repository: say so. That work is done in a checkout of its own repository; never cross it with `--repo`.
    - No board configured, or this checkout's repository isn't on the board: say what the CLI said, and that the board's address and token go in the plugin's settings (`/plugin`, then breakaway) or `npx breakaway setup` connects this machine, and the board's owner adds a repository with `repos add`.
-5. **Read it:** `npx --yes breakaway@2 show $ARGUMENTS`. Tell the person, in a few lines: the title, what it waits for and holds up, its done when, and its spec if it has one. If it's tagged `+decide`, say it needs the owner's decision first, release it with `npx --yes breakaway@2 release $ARGUMENTS --as <name>`, and stop.
+5. **Read it:** `npx --yes breakaway@2 show $ARGUMENTS`. Tell the person, in a few lines: the title, what it waits for and holds up, its done when, and its spec if it has one. If it's a decision (`Who: a decision first`), say it needs the owner's decision first, release it with `npx --yes breakaway@2 release $ARGUMENTS --as <name>`, and stop.
 6. **Before any change**, read the repository's `AGENTS.md` and check in on the peloton: `npx --yes breakaway@2 peloton checkin "<what you'll change>" --as <name>`.
 
 Don't change any file in this command: claiming and reading is the whole of it. The work follows, and `/breakaway:hand-over` finishes it.

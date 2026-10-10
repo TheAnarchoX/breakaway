@@ -57,7 +57,7 @@ export function moveTask(repo, shape) {
       `If the skill isn’t in this checkout, comment that the board’s files need npx breakaway repos init --update, release the task, and stop. If the repository deploys somewhere the flow doesn’t (Pages, Vercel, a server), comment why, release the task, and open no pull request: the board shows that comment on the GitHub page.`,
     ].join('\n\n'),
     done_when:
-      'One pull request holds .github/breakaway-pipeline.json, the files pipeline init renders from it, and a table saying where each old workflow, job, and step went (the config, a rendered workflow, kept as it is, or dropped and why). No check workflow is edited or removed, and nothing deploys or publishes twice after the merge. The owner’s checklist is a +owner task that depends on this one, and the pull request’s After merging repeats it.',
+      'One pull request holds .github/breakaway-pipeline.json, the files pipeline init renders from it, and a table saying where each old workflow, job, and step went (the config, a rendered workflow, kept as it is, or dropped and why). No check workflow is edited or removed, and nothing deploys or publishes twice after the merge. The owner’s checklist is a person’s task (who: person, assignee: owner) that depends on this one, and the pull request’s After merging repeats it.',
   };
 }
 

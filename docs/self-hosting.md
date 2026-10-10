@@ -168,7 +168,7 @@ Taskwarrior is optional. If you use it, run `npx breakaway setup`: it writes Tas
 
 The board is set up when one real task is closed by its merged pull request.
 
-1. **Add one.** Pick something small and useful from the repository, with a done when you can check in a few minutes, and add it from a checkout of the repository: `npx breakaway add "<title>" --project <area> --tag agent --horizon now --brief "<what and why>" --done-when "<what you can check>"`.
+1. **Add one.** Pick something small and useful from the repository, with a done when you can check in a few minutes, and add it from a checkout of the repository: `npx breakaway add "<title>" --project <area> --who agent --horizon now --brief "<what and why>" --done-when "<what you can check>"`.
 2. **With a routine:** the last step of **Set up the board** opens the **Add a repository** wizard's agent step. Press **Start an agent on <ID>**, or **Start an agent** on the task's own page. The step ticks as it goes: started, live output, pull request. If the start fails, the step says why and the fix, with **Try again**. Once the agent claims the task, **Agent routine** reads **Verified by <ID>**.
 3. **Without one:** open Claude Code in the checkout and say "Work on <ID> from the board". The board's files tell it how to claim, report, and open the pull request.
 4. **Review and merge.** The pull request's title starts with the work ID and its description says `Closes <ID>.`. Check it against the done when, and merge it on GitHub or on the board's pull request page. Merging is yours; the agent never merges.

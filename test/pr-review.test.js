@@ -78,7 +78,7 @@ describe('review with an agent on a mergeable pull request (BRK-111)', () => {
     const res = await body(
       await api('tasks', {
         method: 'POST',
-        body: titles.map((description) => ({ description, project: 'product', tags: ['agent'], horizon: 'now' })),
+        body: titles.map((description) => ({ description, project: 'product', who: 'agent', horizon: 'now' })),
       }),
     );
     expect(res.tasks.map((t) => t.wid)).toEqual(titles.map((_, i) => `PRD-${i + 1}`));

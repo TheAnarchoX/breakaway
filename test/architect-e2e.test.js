@@ -654,7 +654,8 @@ describe('Architect’s whole loop (BRK-228)', () => {
     expect(marked).toMatchObject({ status: 201, already: false, breakGlass: { note, changes: 1 } });
     expect((await plan(drift.id)).state).toBe('rejected');
     const task = (await body(await api(`tasks/${marked.breakGlass.task}`))).task;
-    expect(task.tags).toEqual(expect.arrayContaining(['agent', 'break-glass']));
+    expect(task.tags).toEqual(expect.arrayContaining(['break-glass']));
+    expect(task.who).toBe('agent');
     expect(task.brief).toContain(PATHS.staging);
     const [entry] = await audit(envs.staging, '&kind=break-glass');
     expect(entry).toMatchObject({

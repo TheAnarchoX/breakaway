@@ -125,7 +125,7 @@ describe("breakaway's agent files (CLD-137)", () => {
       'changesets, semantic-release, release-please',
       'ask the owner with a decision',
       // The owner's part.
-      '+owner',
+      '--who person --assignee owner',
       'CLOUDFLARE_API_TOKEN',
       'the GitHub environment `npm`',
       'trusted publisher',
