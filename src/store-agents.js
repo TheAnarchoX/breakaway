@@ -543,10 +543,14 @@ export const agentsMethods = {
     return credentials;
   },
 
-  /** The repositories person `handle` can start agents in: their own routine there, or the owner lends one (BRK-334). */
+  /**
+   * The repositories person `handle` can start agents in now (BRK-334): where their role lets them, with their own
+   * routine there or one the owner lends.
+   */
   async personStartable(handle) {
     const startable = new Set();
     for (const repo of this.repos()) {
+      if (this.personStartRefusal(handle, repo.slug)) continue;
       const own = await this.personRoutine(handle, repo.slug);
       if ((own && !('broken' in own)) || this.routineLent(repo.slug)) startable.add(repo.slug);
     }
@@ -574,6 +578,14 @@ export const agentsMethods = {
     const key = `start_for:${uuid}`;
     if (forPerson && forPerson !== OWNER) this.setMeta(key, forPerson);
     else if (this.meta(key)) this.setMeta(key, null);
+  },
+
+  /** Forgets who waiting starts were for once their task no longer waits: finished, deleted, or not Start when ready. */
+  forgetFinishedQueues() {
+    for (const { key } of this.sql.exec("SELECT key FROM meta WHERE key LIKE 'start_for:%'").toArray()) {
+      const map = this.tasks.get(key.slice('start_for:'.length));
+      if (map?.status !== 'pending' || map.autostart !== 'yes') this.setMeta(key, null);
+    }
   },
 
   /** Who the start waiting on task `uuid` is for: the person queueFor recorded, or the owner. */
@@ -1994,6 +2006,12 @@ export const agentsMethods = {
       }
       // A person's start that waited for room (BRK-334) runs on their routine, which the start itself checks.
       const forPerson = this.queuedFor(t.uuid);
+      if (!reason && forPerson !== OWNER) {
+        // Their role now, not when they pressed: it waits for a Start by someone who may.
+        const theirs = this.personStartRefusal(forPerson, t.repo);
+        if (theirs)
+          reason = `it was started for ${forPerson}, who can’t start it now (${theirs}): press Start to run it yourself`;
+      }
       if (!reason && connected && !connected.has(t.repo) && forPerson === OWNER)
         reason = `${t.repo}’s agent routine isn’t connected`;
       // A routine Claude refused waits (BRK-144), so it doesn't fire every tick.
@@ -2045,8 +2063,11 @@ export const agentsMethods = {
   async autostartTick() {
     await this.ready();
     // With the switch off the queue still holds general agents: the owner started them by hand.
+    this.forgetFinishedQueues();
     const connected = await this.connectedRepos();
-    if (!connected.size) return [];
+    // A person's start that waited for room runs on their routine, connected or not (BRK-334).
+    if (!connected.size && !this.sql.exec("SELECT 1 FROM meta WHERE key LIKE 'start_for:%' LIMIT 1").toArray().length)
+      return [];
     const started = [];
     for (const item of this.autostartQueue(this.views(), connected).filter((q) => q.ready)) {
       const { forPerson } = item;

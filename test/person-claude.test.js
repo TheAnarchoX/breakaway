@@ -376,9 +376,12 @@ describe('bringing your own Claude', () => {
       await call('/api/agents/next', { method: 'POST', cookie: ben.cookie, body: { repo: 'widgets', count: 1 } }),
     );
     expect(res.status).toBe(200);
+    // Nothing here refuses it for being Start next: whatever started, started for ben.
+    expect(res.skipped.map((s) => s.reason).join('\n')).not.toMatch(/BRK-334/u);
     const runs = await inStore((store) =>
       store.sql.exec("SELECT for_person FROM agent_runs WHERE trigger = 'next'").toArray(),
     );
+    expect(runs).toHaveLength(res.started.length);
     for (const run of runs) expect(run.for_person).toBe(ben.handle);
   });
 

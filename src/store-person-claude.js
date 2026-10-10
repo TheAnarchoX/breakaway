@@ -135,6 +135,16 @@ export const personClaudeMethods = {
   },
 
   /**
+   * Why person `handle` may not start agents in repository `slug` now, or null: off the board, or without a member's
+   * role or more there (BRK-334). Starts that run after the press check it again.
+   * @returns {string | null}
+   */
+  personStartRefusal(handle, slug) {
+    if (!this.personRow(handle)) return `${handle} isn’t on the board any more, so nothing starts for them`;
+    return refusal({ person: handle, grants: this.personGrants(handle) }, 'agent.start', slug)?.message ?? null;
+  },
+
+  /**
    * The routine a start in repository `slug` fires for person `forPerson`: the owner's starts and the board's go to the
    * repository's routine, as always; a person's to their own, else the repository's when the owner lends it. Throws
    * the AgentError a start answers when there's none.
@@ -144,6 +154,9 @@ export const personClaudeMethods = {
     if (forPerson === OWNER) return { credentials: await this.checkRoutineReady(slug), routineOf: OWNER, lent: false };
     if (!this.personRow(forPerson))
       throw new AgentError(`${forPerson} isn’t on the board any more, so nothing starts for them`, 403);
+    // Their role now, not when they pressed (BRK-334): a chase's ticks and a start that waited for room come here later.
+    const role = this.personStartRefusal(forPerson, slug);
+    if (role) throw new AgentError(role, 403);
     const own = await this.personRoutine(forPerson, slug);
     if (own && 'broken' in own)
       throw new AgentError(
@@ -419,6 +432,8 @@ export const personClaudeMethods = {
   /** Forgets a removed person's routines and holds; their plan and limits go with them. */
   dropPersonClaude(handle) {
     for (const repo of this.personRoutineRepos(handle)) this.setMeta(personHoldKey(repo, handle), null);
+    // Their starts that waited for room go with them (BRK-334); a chase they started stops on its next tick.
+    this.sql.exec("DELETE FROM meta WHERE key LIKE 'start_for:%' AND value = ?", handle);
     this.sql.exec('DELETE FROM person_routines WHERE handle = ?', handle);
     this.sql.exec('DELETE FROM person_claude WHERE handle = ?', handle);
   },

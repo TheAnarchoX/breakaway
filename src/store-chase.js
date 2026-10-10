@@ -19,7 +19,7 @@ import { AgentError } from './store-agents.js';
 import { noRoutineWords } from './store-person-claude.js';
 import { NO_FILES } from './store-collision.js';
 import { InputError, rank } from './model.js';
-import { OWNER } from './permissions.js';
+import { OWNER, refusal } from './permissions.js';
 import { looksLikeSecret } from './ping.js';
 
 const DEFAULT_PARALLEL = 3;
@@ -646,20 +646,7 @@ export const chaseMethods = {
       // Pressing Chase starts what's ready now; the alarm and the cron take it from there.
       started = await this.chaseTick({ only: row.slug });
     } else if (on === false && row.chase === 'on') {
-      // Stopping starts nothing new; running agents finish and open their pull requests (section 3.7).
-      this.sql.exec("UPDATE features SET chase = 'stopped', chase_ended = ? WHERE slug = ?", Date.now(), row.slug);
-      this.chaseEvent(row.slug, 'chase_stopped', row.title);
-      // Its last digest (BRK-277), written before the captain stands down.
-      await this.chaseDigestWrite(this.featureRow(row.slug), this.chaseQueue(row, this.views(), connected), {
-        kind: 'final',
-        ended: 'The chase stopped.',
-      });
-      this.captainStandDown(row, 'The chase stopped: its road captain stands down.');
-      this.pelotonLine(
-        row.slug,
-        'close',
-        `The chase on ${row.title} stopped. This peloton takes no new posts and goes in a day.`,
-      );
+      await this.stopChase(row, connected);
     } else if (
       row.chase === 'on' &&
       captain !== undefined &&
@@ -681,6 +668,44 @@ export const chaseMethods = {
     const fresh = this.featureRow(row.slug);
     const plan = this.chaseQueue(fresh, this.views(), connected);
     return { dryRun: false, chase: this.chaseView(fresh, plan), started };
+  },
+
+  /**
+   * Stops a chase: it starts nothing new, and running agents finish and open their pull requests (section 3.7). `why`,
+   * when the board stopped it rather than a press, says so in Activity and on the peloton.
+   * @param {any} row
+   * @param {Set<string>} connected
+   * @param {string | null} [why]
+   */
+  async stopChase(row, connected, why = null) {
+    this.sql.exec("UPDATE features SET chase = 'stopped', chase_ended = ? WHERE slug = ?", Date.now(), row.slug);
+    this.chaseEvent(row.slug, 'chase_stopped', why ? `${row.title}: ${why}` : row.title);
+    // Its last digest (BRK-277), written before the captain stands down.
+    await this.chaseDigestWrite(this.featureRow(row.slug), this.chaseQueue(row, this.views(), connected), {
+      kind: 'final',
+      ended: why ? `The board stopped the chase: ${why}.` : 'The chase stopped.',
+    });
+    this.captainStandDown(row, 'The chase stopped: its road captain stands down.');
+    this.pelotonLine(
+      row.slug,
+      'close',
+      `The chase on ${row.title} stopped${why ? ` (${why})` : ''}. This peloton takes no new posts and goes in a day.`,
+    );
+  },
+
+  /**
+   * Why the person who started chase `row` may not run it now (BRK-334), or null: off the board, or without a
+   * maintainer's role in one of its repositories. The owner's chases always may.
+   */
+  chaseStarterRefusal(row) {
+    if (!row.chase_by) return null;
+    if (!this.personRow(row.chase_by)) return `${row.chase_by} isn’t on the board any more`;
+    const grants = this.personGrants(row.chase_by);
+    for (const repo of this.targetRepos({ feature: row.slug })) {
+      const no = refusal({ person: row.chase_by, grants }, 'chase', repo);
+      if (no) return `${row.chase_by} started it and can’t chase it now (${no.message})`;
+    }
+    return null;
   },
 
   /**
@@ -707,6 +732,12 @@ export const chaseMethods = {
     const connected = await this.connectedRepos();
     const started = [];
     for (const row of rows) {
+      // A chase runs for whoever started it, only while they still may (BRK-334): else the board stops it.
+      const lost = row.chase === 'on' ? this.chaseStarterRefusal(row) : null;
+      if (lost) {
+        await this.stopChase(row, connected, lost);
+        continue;
+      }
       const on = row.chase === 'on';
       // A person's chase starts where they have a routine of their own, or the owner lends one (BRK-334).
       const plan = this.chaseQueue(
@@ -727,8 +758,8 @@ export const chaseMethods = {
       let startedHere = 0;
       for (const t of plan.start) {
         if (!on && !t.fix) continue;
-        // A start refused earlier this tick may hold the routine (BRK-144).
-        if (this.routineHold(t.repo)) continue;
+        // A start refused earlier this tick may hold the routine (BRK-144): a person's own, for their chase.
+        if (this.routineHold(t.repo) || (row.chase_by && this.routineHold(t.repo, row.chase_by))) continue;
         try {
           if (t.fix) await this.chaseFix(row, t);
           else await this.startAgent(t.uuid, { trigger: 'chase', forPerson: chaseFor(row) });

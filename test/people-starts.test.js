@@ -112,6 +112,31 @@ async function task(description, extra = {}) {
   return t;
 }
 
+/** Fills the board's agents at once with made-up running agents, so the next start waits for room: their tasks. */
+async function fillBoard() {
+  const { max } = (await (await owner('/api/agents/settings', { method: 'PATCH', body: {} })).json()).settings;
+  const fillers = [];
+  for (let i = 0; i < max; i += 1) {
+    const t = await task(unique('Filler widget '));
+    fillers.push(t.uuid);
+    const agent = `claude-filler-${i}-${t.short}`;
+    await inStore((store) => {
+      store.change(t.uuid, { claim: agent, start: true }, new Date(), 'agents');
+      store.sql.exec(
+        "INSERT INTO agent_runs (task, agent, trigger, kind, status, started, repo) VALUES (?, ?, 'manual', 'build', 'started', ?, 'widgets')",
+        t.uuid,
+        agent,
+        Date.now(),
+      );
+    });
+  }
+  return fillers;
+}
+
+/** Sets person `who`'s grants, as the owner's press on People does. */
+const grant = (who, grants) =>
+  call(`/api/people/${who.handle}`, { method: 'PATCH', cookie: session, body: { grants } });
+
 /** Who added task `uuid`, from Activity (BRK-303): the person behind the version that made it. */
 const addedBy = async (uuid) => {
   const { events } = await (await owner('/api/activity?limit=200')).json();
@@ -409,24 +434,7 @@ describe('a person’s other starts run on their own Claude (BRK-334)', () => {
   });
 
   it('starts a person’s general agent that waited for room on their routine, not the owner’s', async () => {
-    const settings = await json(await owner('/api/agents/settings', { method: 'PATCH', body: {} }));
-    const { max } = settings.settings;
-    // Fill the board, so the press waits for room.
-    const fillers = [];
-    for (let i = 0; i < max; i += 1) {
-      const t = await task(unique('Filler widget '));
-      fillers.push(t.uuid);
-      const agent = `claude-filler-${i}-${t.short}`;
-      await inStore((store) => {
-        store.change(t.uuid, { claim: agent, start: true }, new Date(), 'agents');
-        store.sql.exec(
-          "INSERT INTO agent_runs (task, agent, trigger, kind, status, started, repo) VALUES (?, ?, 'manual', 'build', 'started', ?, 'widgets')",
-          t.uuid,
-          agent,
-          Date.now(),
-        );
-      });
-    }
+    const fillers = await fillBoard();
     try {
       const res = await json(
         await call('/api/agents/general', {
@@ -473,6 +481,72 @@ describe('a person’s other starts run on their own Claude (BRK-334)', () => {
     expect(run).toMatchObject({ for_person: cleo.handle, routine_of: cleo.handle });
     expect(fires[0].url).toBe(fireOf(cleo.handle));
     await free(res.idea.uuid);
+  });
+
+  it('stops a chase whose starter can’t chase any more, and starts nothing more for them', async () => {
+    const eve = await person(session, unique('eve'), [{ repository: 'widgets', role: 'maintainer' }]);
+    const connected = await call('/api/me/routines/widgets', {
+      method: 'PUT',
+      cookie: eve.cookie,
+      body: { url: fireOf(eve.handle), token: 'sk-ant-oat01-eve-made-up-token', plan: 'max20' },
+    });
+    expect(connected.status).toBe(201);
+    const slug = unique('people-lowered');
+    expect((await owner('/api/features', { method: 'POST', body: { slug } })).status).toBe(201);
+    const first = await task(unique('Lowered widget '), { tags: [slug] });
+    const res = await json(
+      await call(`/api/features/${slug}/chase`, { method: 'POST', cookie: eve.cookie, body: { on: true } }),
+    );
+    expect(res.status).toBe(200);
+    expect((await runsOf(first.uuid))[0]).toMatchObject({ trigger: 'chase', for_person: eve.handle });
+    await free(first.uuid);
+    // The owner lowers eve to a viewer: her chase's next tick starts nothing, and the board stops it.
+    expect((await grant(eve, [{ repository: 'widgets', role: 'viewer' }])).status).toBe(200);
+    const second = await task(unique('Lowered widget '), { tags: [slug] });
+    fires.length = 0;
+    await inStore((store) => store.chaseTick({ only: slug }));
+    expect(await runsOf(second.uuid)).toEqual([]);
+    expect(fires).toHaveLength(0);
+    expect(await inStore((store) => store.featureRow(slug).chase)).toBe('stopped');
+    const event = await inStore(
+      (store) =>
+        store.sql
+          .exec("SELECT detail FROM chase_events WHERE slug = ? AND kind = 'chase_stopped' ORDER BY id DESC", slug)
+          .toArray()[0],
+    );
+    expect(JSON.stringify(event)).toContain(`${eve.handle} started it and can’t chase it now`);
+    // Nor does a start that waited for room run for her, and her waiting starts go when she's removed.
+    expect((await grant(eve, [{ repository: 'widgets', role: 'maintainer' }])).status).toBe(200);
+    const fillers = await fillBoard();
+    try {
+      const queued = await json(
+        await call('/api/agents/general', {
+          method: 'POST',
+          cookie: eve.cookie,
+          body: { prompt: 'Polish the widget icons', repo: 'widgets' },
+        }),
+      );
+      expect(queued.status).toBe(202);
+      made.push(queued.task.uuid);
+      expect((await grant(eve, [{ repository: 'widgets', role: 'viewer' }])).status).toBe(200);
+      for (const uuid of fillers) await free(uuid);
+      fires.length = 0;
+      const started = await inStore((store) => store.autostartTick());
+      expect(started).not.toContain(queued.task.uuid);
+      expect(await runsOf(queued.task.uuid)).toEqual([]);
+      const waiting = await inStore((store) =>
+        store.autostartQueue(store.views()).find((q) => q.uuid === queued.task.uuid),
+      );
+      expect(waiting.ready).toBe(false);
+      expect(waiting.reason).toMatch(new RegExp(`^it was started for ${eve.handle}, who can’t start it now`, 'u'));
+      expect((await call(`/api/people/${eve.handle}`, { method: 'DELETE', cookie: session, body: {} })).status).toBe(
+        200,
+      );
+      expect(await inStore((store) => store.meta(`start_for:${queued.task.uuid}`))).toBeNull();
+    } finally {
+      for (const uuid of fillers) await free(uuid);
+    }
+    await free(second.uuid);
   });
 
   it('keeps the owner’s starts on the repository’s routine, saying nothing about who started them', async () => {
