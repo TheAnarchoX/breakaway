@@ -5,8 +5,8 @@
  *   POST /api/signin/options, /api/signin          a passkey sign-in: its challenge, then its answer (public)
  *   GET  /api/join/:code              who invited you, with what role (public: the code is the credential)
  *   POST /api/join/:code/options, /api/join/:code  your name, handle, and first passkey; uses the invite up
- *   /api/me, /api/me/*                a person's own name, profile, passkeys, personal tokens, and sessions; the
- *                                     owner's own name, profile, and passkeys (BRK-328, BRK-329)
+ *   /api/me, /api/me/*                a person's own name, profile, avatar, passkeys, personal tokens, and sessions;
+ *                                     the owner's own name, profile, avatar, and passkeys (BRK-328, BRK-329, WEB-134)
  *   /api/people, /api/people/*        the owner's: people, invites, grants, Reset, and remove
  *
  * The owner is the board's token, and its cookie, exactly as before (src/auth.js). A person's credential is
@@ -205,6 +205,7 @@ export async function personApi(request, env, url, person, store) {
   if (parts.length === 1 && method === 'GET') return send(await store.personMe(person.handle, person.session ?? null));
   if (parts.length === 2 && parts[1] === 'profile' && method === 'GET')
     return send(await store.profileMe(person.handle));
+  if (parts.length === 2 && parts[1] === 'avatar' && method === 'GET') return send(await store.avatarMe(person.handle));
   // Their own Claude (BRK-302): the plan, caps, and routines they connected, never a routine's URL or token.
   if (parts[1] === 'claude' && parts.length === 2 && method === 'GET')
     return send(await store.personClaudeApi(person.handle));
@@ -220,6 +221,8 @@ export async function personApi(request, env, url, person, store) {
   if (parts.length === 1 && method === 'PATCH') return send(await store.personRename(person.handle, body));
   if (parts.length === 2 && what === 'profile' && method === 'PATCH')
     return send(await store.profileSet(person.handle, body));
+  if (parts.length === 2 && what === 'avatar' && method === 'POST')
+    return send(await store.avatarShuffle(person.handle));
   if (what === 'claude' && parts.length === 2 && method === 'PATCH')
     return send(await store.personClaudeSetApi(person.handle, body));
   if (what === 'routines' && parts.length === 3) {
@@ -293,10 +296,12 @@ async function ownerMe(parts, method, body, actor, store, env, request) {
   const [, what, id] = parts;
   if (parts.length === 1 && method === 'GET') return send(await store.ownerMe());
   if (parts.length === 2 && what === 'profile' && method === 'GET') return send(await store.profileMe(OWNER));
+  if (parts.length === 2 && what === 'avatar' && method === 'GET') return send(await store.avatarMe(OWNER));
   if (method !== 'GET' && !actor.press)
-    return json(403, { error: 'only the signed-in web board can change your name, profile, or passkeys' });
+    return json(403, { error: 'only the signed-in web board can change your name, profile, avatar, or passkeys' });
   if (parts.length === 1 && method === 'PATCH') return send(await store.ownerRename(body));
   if (parts.length === 2 && what === 'profile' && method === 'PATCH') return send(await store.profileSet(OWNER, body));
+  if (parts.length === 2 && what === 'avatar' && method === 'POST') return send(await store.avatarShuffle(OWNER));
   if (what === 'passkeys') {
     if (parts.length === 3 && id === 'options' && method === 'POST')
       return send(await store.ownerPasskeyOptions(relyingParty(env, request)));

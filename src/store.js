@@ -105,7 +105,7 @@ import { peopleMethods } from './store-people.js';
 import { ownerMethods } from './store-owner.js';
 import { permissionsMethods } from './store-permissions.js';
 import { personClaudeMethods } from './store-person-claude.js';
-import { OTHER_STARTS, OWNER, ROLE_RANK, roleIn } from './permissions.js';
+import { OWNER, ROLE_RANK, roleIn } from './permissions.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
 const SNAPSHOT_EVERY = 50;
@@ -1080,7 +1080,9 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       const answers = validateAnswers(task.decision, body?.answers);
       // The next run's own checks, before anything is answered: a routine that isn't connected refuses the press.
       const repo = body?.carryOn ? this.repoOfTask(this.tasks.get(uuid)) : null;
-      if (repo) await this.checkRoutineReady(repo.slug);
+      // The next run is the presser's (BRK-334): on their own routine, or the lent one.
+      const forPerson = this.startsFor(body);
+      if (repo) await this.routineForStart(repo.slug, forPerson);
       const answered = this.as(body, () =>
         this.change(uuid, {
           // Who answered: the owner, or the maintainer who did (BRK-301).
@@ -1097,10 +1099,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       );
       if (!body?.carryOn) return ok({ task: answered });
       try {
-        const started = await this.startAgent(
-          uuid,
-          maker ? { trigger: 'routines-carry-on', kind: 'routines' } : { trigger: 'kickoff', kind: 'kickoff' },
-        );
+        const started = await this.startAgent(uuid, {
+          ...(maker ? { trigger: 'routines-carry-on', kind: 'routines' } : { trigger: 'kickoff', kind: 'kickoff' }),
+          forPerson,
+        });
         return ok({ ...started, waiting: null });
       } catch (error) {
         // Over the board's limits, or Claude's hourly one: the run waits for room and starts on its own.
@@ -1108,6 +1110,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
         if (!(error instanceof AgentError)) throw error;
         if (!queued) return ok({ task: this.detail(uuid), run: null, waiting: null, refusal: error.message });
         const task = this.change(uuid, { autostart: 'yes' }, new Date(), 'agents');
+        this.queueFor(uuid, forPerson);
         this.scheduleAgentsCheck();
         return ok({ task, run: null, waiting: error.message, forceable: Boolean(error.forceable) }, 202);
       }
@@ -1894,6 +1897,8 @@ const apiActions = {
         dryRun: Boolean(body?.dryRun),
         chase: body?.chase ?? null,
         feature: body?.feature ?? null,
+        // Who presses (BRK-334): a person's general agent runs on their own Claude.
+        forPerson: this.startsFor(body),
       });
       return ok(result, result.run ? 201 : result.already || result.dryRun ? 200 : 202);
     });
@@ -1909,8 +1914,6 @@ const apiActions = {
       // A general agent's task waiting for room starts as a general agent, whatever button asked, and a routine
       // maker's in the routines mode (startAgent).
       if (this.tasks.get(uuid)?.tag_general && (!mode || mode === 'build' || mode === 'general')) {
-        // TODO(BRK-334): a person's general agents run on their own Claude too.
-        if (forPerson !== OWNER) throw new AgentError(OTHER_STARTS, 403);
         return ok(
           await this.startAgent(uuid, { trigger: 'general', kind: 'general', force: Boolean(force), forPerson }),
         );
@@ -1980,6 +1983,7 @@ const apiActions = {
         repo: body?.repo ?? null,
         force: Boolean(body?.force),
         maker: true,
+        forPerson: this.startsFor(body),
       });
       return ok(result, result.run ? 201 : 202);
     });
@@ -2039,7 +2043,9 @@ const apiActions = {
         repoOf(this, repo),
         ownerWords(force ? 'force start an agent' : 'start an agent that reviews a pull request'),
       );
-      return ok(await this.reviewPull(number, { note, repo, force: Boolean(force) }));
+      return ok(
+        await this.reviewPull(number, { note, repo, force: Boolean(force), forPerson: this.startsFor({ actor, by }) }),
+      );
     });
   },
   /** `review <ID> --verdict …`: an agent's answer on the pull request that closes its task (BRK-111). */
@@ -2108,7 +2114,7 @@ const apiActions = {
     });
   },
   agentsNextApi(body) {
-    return this.run(async () => ok(await this.startNext(body)));
+    return this.run(async () => ok(await this.startNext({ ...body, forPerson: this.startsFor(body) })));
   },
   agentsSettingsApi(body) {
     return this.run(async () => ok({ settings: await this.updateAgentSettings(body) }));

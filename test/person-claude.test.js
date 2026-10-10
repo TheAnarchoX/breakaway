@@ -6,7 +6,6 @@ import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LENT_CAPS, checkLimit, lentCaps, personCaps, personCeilings } from '../src/person-claude.js';
 import { PLANS } from '../src/plans.js';
-import { OTHER_STARTS } from '../src/permissions.js';
 import { makeAuthenticator } from './authenticator.js';
 import { ORIGIN, TEST_API_TOKEN } from './constants.js';
 
@@ -374,12 +373,15 @@ describe('bringing your own Claude', () => {
     expect(claude.fires[0].text).not.toMatch(/Claude routine|lends them/u);
   });
 
-  it('refuses a person’s other starts with the task they wait for', async () => {
+  it('starts a person’s Start next for them, never for the owner (BRK-334)', async () => {
     const res = await json(
       await call('/api/agents/next', { method: 'POST', cookie: ben.cookie, body: { repo: 'widgets', count: 1 } }),
     );
-    expect(res.status).toBe(403);
-    expect(res.error).toBe(OTHER_STARTS);
+    expect(res.status).toBe(200);
+    const runs = await inStore((store) =>
+      store.sql.exec("SELECT for_person FROM agent_runs WHERE trigger = 'next'").toArray(),
+    );
+    for (const run of runs) expect(run.for_person).toBe(ben.handle);
   });
 
   it('forgets a person’s routines when they’re removed, and seals them again on a rotation', async () => {
