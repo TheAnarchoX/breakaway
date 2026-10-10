@@ -70,6 +70,22 @@ export const infraEnvelopesMethods = {
         task TEXT PRIMARY KEY, agent TEXT NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL
       );
     `);
+    // Who set it (BRK-303): the owner, or a maintainer's handle. Envelopes from before were the owner's.
+    const have = new Set(
+      this.sql
+        .exec('PRAGMA table_info(infra_envelopes)')
+        .toArray()
+        .map((c) => c.name),
+    );
+    if (!have.has('person')) this.sql.exec('ALTER TABLE infra_envelopes ADD COLUMN person TEXT');
+  },
+
+  /** Who set an environment's envelope (BRK-303): the owner, or a maintainer's handle; the owner for older ones. */
+  envelopeSetter(environmentId) {
+    return (
+      this.sql.exec('SELECT person FROM infra_envelopes WHERE environment = ?', environmentId).toArray()[0]?.person ??
+      'owner'
+    );
   },
 
   /**
@@ -236,13 +252,15 @@ export const infraEnvelopesMethods = {
     this.ctx.storage.transactionSync(() => {
       const had = this.sql.exec('SELECT 1 FROM infra_envelopes WHERE environment = ?', env.id).toArray().length > 0;
       this.sql.exec(
-        `INSERT INTO infra_envelopes (environment, repo, envelope, created, edited) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (environment) DO UPDATE SET envelope = excluded.envelope, edited = excluded.edited`,
+        `INSERT INTO infra_envelopes (environment, repo, envelope, created, edited, person) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (environment) DO UPDATE SET envelope = excluded.envelope, edited = excluded.edited,
+           person = excluded.person`,
         env.id,
         env.repo,
         JSON.stringify(kept),
         now,
         now,
+        pressed.person,
       );
       this.appendInfraAudit({
         kind: 'envelope',
@@ -448,7 +466,7 @@ export const infraEnvelopesMethods = {
         this.moveInfraPlan(plan.id, 'waiting', { by: 'envelope', summary: `inside its envelope: ${verdict.why}` });
         plan = await this.approveInfraPlan(plan.id, {
           by: 'envelope',
-          summary: `approved by its envelope, set by the owner: ${verdict.why}`,
+          summary: `approved by its envelope, set by ${personWords(this.envelopeSetter(env.id))}: ${verdict.why}`,
         });
       } else {
         const production = env.kind === 'production' ? ' in production' : '';

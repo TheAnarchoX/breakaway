@@ -458,7 +458,11 @@ export const infraShortLivedMethods = {
         );
         return 1;
       case 'removed':
-        this.shortLivedGone(row, env, env ? `its removal plan-${row.remove_plan} was applied` : 'removed by the owner');
+        this.shortLivedGone(
+          row,
+          env,
+          env ? `its removal plan-${row.remove_plan} was applied` : 'its environment was removed',
+        );
         return 0;
       case 'keep':
         // The owner rejected the removal, or it failed: the environment stays for another grace period.
