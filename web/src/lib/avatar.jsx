@@ -10,12 +10,14 @@ import { ensurePeople, people, whoami } from './people.js';
 export const ownSeeds = signal(/** @type {null | { avatar: string, owner: string }} */ (null));
 
 /**
- * Who draws as a person, and from which seed: the owner, and everyone in the people list. A person's handle is their
+ * Who draws as a person, and from which seed: the owner, everyone in the people list, and, in a person's list, the
+ * removed people whose work they see (WEB-138; the owner's list has them among its people). A person's handle is their
  * seed until they shuffle. Everyone else (an agent, the board, a routine) draws as an agent, from its name.
  */
 export const seeds = computed(() => {
   const map = new Map([['owner', ownSeeds.value?.owner ?? 'owner']]);
-  for (const p of people.value.data?.people ?? []) map.set(p.handle, p.avatar ?? p.handle);
+  const data = people.value.data;
+  for (const p of [...(data?.people ?? []), ...(data?.removed ?? [])]) map.set(p.handle, p.avatar ?? p.handle);
   const w = whoami.value;
   if (w && !w.owner && ownSeeds.value) map.set(w.handle, ownSeeds.value.avatar);
   return map;
