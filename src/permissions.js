@@ -34,7 +34,7 @@ export const ROLE_RANK = { viewer: 1, member: 2, maintainer: 3 };
 /**
  * Every gated action (the spec's table in point 3), by what it needs: `role`, a `press` (a signed-in browser),
  * whether a named agent may do it (`agents`), and whether it starts an agent (`starts`, so it runs on the starter's
- * Claude: BRK-302, and BRK-334 for the starts other than PERSON_STARTS). Every write names the person behind it (BRK-303). `what` finishes "only … can …" in a refusal.
+ * Claude: BRK-302 and BRK-334). Every write names the person behind it (BRK-303). `what` finishes "only … can …" in a refusal.
  * @type {Record<string, Rule>}
  */
 export const ACTIONS = {
@@ -248,17 +248,6 @@ export function refusal(actor, action, repository = null) {
 export function can(actor, action, repository = null) {
   return refusal(actor, action, repository) === null;
 }
-
-/**
- * The words a person sees for a start that doesn't run on their own Claude yet (BRK-302 opened Start, fixing a pull
- * request, and fixing an alert). TODO(BRK-334): a chase, Start next, general, review, and routine-making agents, carry
- * on, describe, and move run on the starter's Claude too, and this goes.
- */
-export const OTHER_STARTS =
-  'agents you start run on your own Claude routine, and this kind of start doesn’t yet (BRK-334): ask the owner to start it';
-
-/** The starts a person makes on their own Claude, or on a routine the owner lends them (BRK-302). */
-export const PERSON_STARTS = new Set(['agent.start', 'agent.force']);
 
 /** The owner, behind the board's token (`press: false`) or its cookie (`press: true`). */
 export const ownerActor = (press) => ({ person: OWNER, grants: [], press });
