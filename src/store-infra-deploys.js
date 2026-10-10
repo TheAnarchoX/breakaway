@@ -33,6 +33,13 @@ const SHOWN = 30;
  * @typedef {{ id: number, name: string, kind: string, production: boolean, pipeline: string | null }} DeployEnvironment
  */
 
+/**
+ * How long before a Deployment a press on the board may have started it: the workflow starts within seconds, and an
+ * hour leaves room for a queue. Unverified: GitHub doesn't promise how soon a workflow run starts; an hour is a guess
+ * that keeps an older press from naming someone for a Deployment started on GitHub.
+ */
+const PRESS_BEFORE_MS = 3_600_000;
+
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraDeploysMethods = {
   initInfraDeploys() {
@@ -165,7 +172,9 @@ export const infraDeploysMethods = {
    */
   /**
    * Who pressed the Promote or Roll back a Deployment came from (BRK-303): the board's newest such press in the
-   * repository up to a minute after the Deployment was made (a Promote's by its commit too), by handle, or the owner.
+   * repository from an hour before the Deployment was made to a minute after (a Promote's by its commit too), by
+   * handle, or the owner. A Deployment no press on the board started in that time (one started on GitHub) is the
+   * owner's, as before.
    * @param {string} slug
    * @param {import('./infra-deploys.js').DeployRow} deploy
    * @param {'promote' | 'rollback' | 'deploy'} action
@@ -175,9 +184,10 @@ export const infraDeploysMethods = {
     const made = Date.parse(deploy.created);
     const rows = this.sql
       .exec(
-        'SELECT data FROM gh_events WHERE repo = ? AND at <= ? ORDER BY id DESC LIMIT 200',
+        'SELECT data FROM gh_events WHERE repo = ? AND at >= ? AND at <= ? ORDER BY id DESC LIMIT 200',
         slug,
-        Number.isFinite(made) ? made + 60_000 : Date.now(),
+        (Number.isFinite(made) ? made : Date.now()) - PRESS_BEFORE_MS,
+        (Number.isFinite(made) ? made : Date.now()) + 60_000,
       )
       .toArray();
     for (const row of rows) {
