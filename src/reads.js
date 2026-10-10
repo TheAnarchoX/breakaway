@@ -168,7 +168,8 @@ export function readOf(parts, q) {
  * for the store's read gate to answer first: a write on something in a repository they can't read is a 404 with the
  * read's words, as if it weren't there, never the role's refusal, which names the repository. A write with no
  * repository is the default's, as `?repo=` is. The install's own writes, and a release's pull and a planning change's
- * undo, which aren't one thing in one repository, have none: their refusal is the role's.
+ * undo, which aren't one thing in one repository, have none: the store's permitApi refuses those in words that name no
+ * repository the person can't see (BRK-339).
  * @param {Record<string, any>} target
  * @returns {Read[]}
  */
