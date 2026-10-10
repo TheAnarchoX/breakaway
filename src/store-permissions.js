@@ -119,9 +119,8 @@ export const permissionsMethods = {
     if ('policyChange' in target) return [this.policyChangeRow(target.policyChange).repo];
     if ('environment' in target) {
       const repo = target.repo ? slug(target.repo) : null;
-      const row = this.environmentRow(target.environment, repo);
-      if (!row) throw new AgentError(`no environment ${String(target.environment).slice(0, 40)}`, 404);
-      return [row.repo];
+      // A missing one is environmentRow's 404, in notThere()'s words.
+      return [this.environmentRow(target.environment, repo).repo];
     }
     if ('ping' in target) {
       const row = this.sql.exec('SELECT task FROM pings WHERE id = ?', Number(target.ping) || 0).toArray()[0];
@@ -187,11 +186,42 @@ export const permissionsMethods = {
         )
           throw new AgentError(`${name.trim()} is a person on this board, not an agent: write as yourself`, 403);
       const repos = this.targetRepos(target ?? {});
-      for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
       const person = actor?.person && actor.person !== OWNER;
+      if (person) this.seesWhereItActs(actor, action, target ?? {}, repos);
+      for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
       if (ACTIONS[action]?.starts && person) throw new AgentError(OWN_CLAUDE, 403);
       return { status: 200, body: { ok: true, repos } };
     });
+  },
+
+  /**
+   * Refuses a person's write that acts in a repository they can't see, before their role is asked, since the role's
+   * refusal names the repository (BRK-339). A write on one thing is the read gate's 404 already (BRK-337); this is for
+   * those that span repositories. Undoing a change to a task they can't see isn't there, as the change isn't; a
+   * release's pull, a feature's or a chase's write, or the undo of a change to a feature, which they see a part of, is
+   * refused whole, in words that name no repository: acting on only the part they see would leave the rest behind.
+   * @param {{ person: string }} actor
+   * @param {string} action
+   * @param {Record<string, any>} target
+   * @param {(string | null)[]} repos what targetRepos answered for `target`
+   */
+  seesWhereItActs(actor, action, target, repos) {
+    const { readable } = this.hiddenFrom(actor);
+    const seen = (/** @type {string | null} */ slug) => readable(slug) && Boolean(this.repoBySlug(slug));
+    const unseen = repos.filter((slug) => slug !== null && !seen(slug));
+    if (!unseen.length) return;
+    if ('planning' in target && !repos.some((slug) => slug !== null && seen(slug)))
+      throw new AgentError(`there’s no change ${String(target.planning).slice(0, 20)} to undo`, 404);
+    const whose =
+      'release' in target
+        ? `whose tasks pulling ${String(target.release ?? '').slice(0, 40)} in moves`
+        : 'feature' in target
+          ? `with tasks in feature "${String(target.feature ?? '').slice(0, 40)}"`
+          : 'it touches';
+    throw new AgentError(
+      `only someone who sees every repository ${whose} can ${ACTIONS[action]?.what ?? action}, and ${actor.person} doesn’t see them all: ask the owner`,
+      403,
+    );
   },
 
   /**
@@ -320,12 +350,15 @@ function notThere(target) {
   if ('task' in target) return `no task "${text(target.task)}"`;
   if ('attachment' in target) return 'no such image';
   if ('ping' in target) return 'no such ping';
-  if ('routine' in target) return `there's no routine "${text(target.routine)}"`;
+  // The words of the lookups a missing one fails in, so a hidden one reads the same (routineRow, environmentRow).
+  if ('routine' in target) return `there's no routine "${target.routine}"`;
   if ('policyChange' in target) return `no policy change ${text(target.policyChange, 20)}`;
   if ('plan' in target) return `no plan ${text(target.plan)}`;
   if ('change' in target) return `no change ${text(target.change, 20)}`;
   if ('environment' in target)
-    return `no environment ${text(target.environment).trim().toLowerCase()}${target.repo ? ` in ${target.repo}` : ''}`;
+    return `no environment ${String(target.environment ?? '')
+      .trim()
+      .slice(0, 40)}${target.repo ? ` in ${String(target.repo).trim().toLowerCase()}` : ''}`;
   if ('feature' in target) return `there’s no feature "${text(target.feature)}"`;
   if ('peloton' in target)
     return `there’s no peloton "${text(target.peloton)}": it’s a repository’s slug, or chase:<feature>`;
