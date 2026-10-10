@@ -1369,13 +1369,19 @@ export const actions = {
       () => api(`${path(t)}/decision/answers`, { method: 'DELETE', body: {} }),
       `${ref(t)} is open again, with your answers kept.`,
     ),
-  /** A decision with no questions: the note becomes a comment and the task is done, in one change. */
+  /**
+   * A decision with no questions: the note becomes a comment and the task is done, in one change. It names who
+   * decided, as Send answers does (BRK-347): a maintainer by their handle.
+   */
   decide: (t, text) =>
     change(
       () =>
         api(path(t), {
           method: 'PATCH',
-          body: { annotate: `Decided by the owner: ${text}`, status: 'completed' },
+          body: {
+            annotate: `Decided by ${isOwner.value ? 'the owner' : myHandle.value}: ${text}`,
+            status: 'completed',
+          },
         }),
       `${ref(t)} is decided.`,
     ),

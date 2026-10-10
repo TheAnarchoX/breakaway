@@ -10,7 +10,7 @@
 import { ACTIONS, OWNER, agentOf, refusal } from './permissions.js';
 import { AgentError } from './store-agents.js';
 import { repoSlugOf } from './repos.js';
-import { resolveRef } from './model.js';
+import { resolveRef, withChanges } from './model.js';
 import { can, roleIn } from './permissions.js';
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
@@ -84,6 +84,31 @@ export const permissionsMethods = {
     if (actor.agent) this.allow(input, action, null, words);
     if (actor.person === OWNER) return;
     this.allow(input, action, repoOf(), words);
+  },
+
+  /**
+   * Finishing a decision is answering it (BRK-347): a person's change that completes a who: decision task, opens a
+   * decided one again, or moves who away from decision needs what Send answers and Change my answers need
+   * (allowDecision), so Decide… and a PATCH can't do what answering refuses them. The owner's calls, an agent's on the
+   * owner's token among them, are as before.
+   * @param {any} input what the call was given: `{ actor?, by? }`
+   * @param {string} uuid the task
+   * @param {Record<string, any>} changes what the call changes, as `withChanges` takes it
+   */
+  allowDeciding(input, uuid, changes) {
+    if (this.ownerActs(input)) return;
+    const before = this.tasks.get(uuid);
+    if (before?.who !== 'decision') return;
+    let after;
+    try {
+      after = withChanges(before, changes);
+    } catch {
+      return; // The change itself refuses it, in its own words.
+    }
+    const finishes = before.status !== 'completed' && after.status === 'completed';
+    const reopens = before.status === 'completed' && after.status === 'pending';
+    if (finishes || reopens || after.who !== 'decision')
+      this.allowDecision(input, uuid, reopens ? 'reopen a decision' : 'answer a decision');
   },
 
   /** A task's repository by its reference (a 404 or 400 as resolving it would). */
