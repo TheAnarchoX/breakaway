@@ -11,6 +11,7 @@
  */
 import { PasskeyError, toBase64url, verifyAssertion, verifyRegistration } from './webauthn.js';
 import { OWNER, refusal } from './permissions.js';
+import { WORKS, forLine, profileChange } from './profile.js';
 
 /** What a grant may give, per repository (point 3). `*` is every repository, including ones added later. */
 export const ROLES = ['maintainer', 'member', 'viewer'];
@@ -108,6 +109,14 @@ export const peopleMethods = {
         id TEXT PRIMARY KEY, challenge TEXT NOT NULL, purpose TEXT NOT NULL, subject TEXT, data TEXT, created INTEGER NOT NULL
       );
     `);
+    // A person's profile (BRK-329): their work, their own words for Other, and their notes for agents. People from
+    // before have none.
+    const columns = this.sql
+      .exec('PRAGMA table_info(people)')
+      .toArray()
+      .map((c) => c.name);
+    for (const column of ['work', 'work_other', 'agent_notes'])
+      if (!columns.includes(column)) this.sql.exec(`ALTER TABLE people ADD COLUMN ${column} TEXT`);
   },
 
   // ---- Reading -------------------------------------------------------------------------------
@@ -386,7 +395,12 @@ export const peopleMethods = {
     if (reach) return fail(403, reach);
     this.revokeAccess(person.handle);
     this.sql.exec('DELETE FROM grants WHERE handle = ?', person.handle);
-    this.sql.exec('UPDATE people SET removed = ? WHERE handle = ?', Date.now(), person.handle);
+    // Their name stays on what they did; their profile was for their agents, and goes with them (BRK-329).
+    this.sql.exec(
+      'UPDATE people SET removed = ?, work = NULL, work_other = NULL, agent_notes = NULL WHERE handle = ?',
+      Date.now(),
+      person.handle,
+    );
     return ok({ removed: person.handle });
   },
 
@@ -733,6 +747,61 @@ export const peopleMethods = {
     if (!this.personRow(handle)) return fail(401, 'sign in again');
     this.sql.exec('UPDATE people SET name = ? WHERE handle = ?', named.name, handle);
     return this.personMe(handle);
+  },
+
+  // ---- Profiles (BRK-329): what someone does, and a line for the agents they start --------------
+
+  /**
+   * A profile: a person's from their row, the owner's from the board's settings. Null for nobody the board knows.
+   * @returns {import('./profile.js').Profile | null}
+   */
+  profileOf(handle) {
+    if (handle === OWNER) return this.ownerProfile();
+    const p = this.personRow(handle);
+    return p ? { work: p.work ?? null, other: p.work_other ?? null, notes: p.agent_notes ?? null } : null;
+  },
+
+  /**
+   * The run payload's `For:` line for the person a run is for: their name, work, and notes, or null when they've set
+   * no profile (or are no longer on the board).
+   */
+  forLineOf(handle) {
+    const profile = this.profileOf(handle);
+    if (!profile) return null;
+    const name = handle === OWNER ? (this.ownerName() ?? 'the owner') : this.personRow(handle).name;
+    return forLine(name, profile);
+  },
+
+  /** GET /api/me/profile, for a person or the owner: their profile, and the kinds of work to pick from. */
+  profileMe(handle) {
+    const profile = this.profileOf(handle);
+    if (!profile) return fail(401, 'sign in again');
+    return ok({ profile, works: WORKS });
+  },
+
+  /**
+   * PATCH /api/me/profile: `{ work?, other?, notes? }` (src/profile.js says what each takes). Only the person, or the
+   * owner, sets their own: the route passes the caller's handle, never one from the request.
+   */
+  profileSet(handle, body) {
+    const current = this.profileOf(handle);
+    if (!current) return fail(401, 'sign in again');
+    // `actor` is the Worker's, added to the owner's requests (src/worker.js): who's asking, never part of the profile.
+    const given = body && typeof body === 'object' && !Array.isArray(body) ? { ...body } : body;
+    if (given && typeof given === 'object') delete given.actor;
+    const changed = profileChange(given, current);
+    if ('error' in changed) return fail(400, changed.error);
+    const { work, other, notes } = changed.profile;
+    if (handle === OWNER) this.ownerProfileSet(changed.profile);
+    else
+      this.sql.exec(
+        'UPDATE people SET work = ?, work_other = ?, agent_notes = ? WHERE handle = ?',
+        work,
+        other,
+        notes,
+        handle,
+      );
+    return this.profileMe(handle);
   },
 
   /** POST /api/me/tokens: `{ name }` → the token, shown this once. */

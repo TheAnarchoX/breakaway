@@ -33,6 +33,13 @@ const SHOWN = 30;
  * @typedef {{ id: number, name: string, kind: string, production: boolean, pipeline: string | null }} DeployEnvironment
  */
 
+/**
+ * How long before a Deployment a press on the board may have started it: the workflow starts within seconds, and an
+ * hour leaves room for a queue. Unverified: GitHub doesn't promise how soon a workflow run starts; an hour is a guess
+ * that keeps an older press from naming someone for a Deployment started on GitHub.
+ */
+const PRESS_BEFORE_MS = 3_600_000;
+
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const infraDeploysMethods = {
   initInfraDeploys() {
@@ -163,13 +170,50 @@ export const infraDeploysMethods = {
    * @param {Array<{ deploy: import('./infra-deploys.js').DeployRow }>} changes
    * @param {string} slug
    */
+  /**
+   * Who pressed the Promote or Roll back a Deployment came from (BRK-303): the board's newest such press in the
+   * repository from an hour before the Deployment was made to a minute after (a Promote's by its commit too), by
+   * handle, or the owner. A Deployment no press on the board started in that time (one started on GitHub) is the
+   * owner's, as before.
+   * @param {string} slug
+   * @param {import('./infra-deploys.js').DeployRow} deploy
+   * @param {'promote' | 'rollback' | 'deploy'} action
+   */
+  deployPresser(slug, deploy, action) {
+    const kind = action === 'rollback' ? 'rollback_started' : 'promote_started';
+    const made = Date.parse(deploy.created);
+    const rows = this.sql
+      .exec(
+        'SELECT data FROM gh_events WHERE repo = ? AND at >= ? AND at <= ? ORDER BY id DESC LIMIT 200',
+        slug,
+        (Number.isFinite(made) ? made : Date.now()) - PRESS_BEFORE_MS,
+        (Number.isFinite(made) ? made : Date.now()) + 60_000,
+      )
+      .toArray();
+    for (const row of rows) {
+      let data;
+      try {
+        data = JSON.parse(row.data);
+      } catch {
+        continue;
+      }
+      if (data?.kind !== kind) continue;
+      if (kind === 'promote_started' && data.sha7 && !String(deploy.sha ?? '').startsWith(data.sha7)) continue;
+      return typeof data.by === 'string' && data.by ? data.by : 'owner';
+    }
+    return 'owner';
+  },
+
   recordDeploys(changes, slug) {
     const errors = [];
     for (const { deploy } of changes) {
       if (this.sql.exec('SELECT 1 FROM infra_deploys WHERE deploy = ?', deploy.id).toArray().length) continue;
       const env = this.environmentForDeploy(slug, deploy.env);
-      const record = env && deployRecord(deploy, env.pipeline);
-      if (!record) continue;
+      const found = env && deployRecord(deploy, env.pipeline);
+      if (!found) continue;
+      // A Promote or a Roll back is a press: the person who pressed it, from the board's own record (BRK-303).
+      const presser = found.by === 'owner' ? this.deployPresser(slug, deploy, found.action) : 'owner';
+      const record = presser === 'owner' ? found : { ...found, by: 'person' };
       try {
         this.ctx.storage.transactionSync(() => {
           const plan = record.plan ? this.recordDeployPlan(slug, env, deploy, record) : null;
@@ -180,6 +224,7 @@ export const infraDeploysMethods = {
             environmentId: env.id,
             plan,
             by: record.by,
+            ...(record.by === 'person' ? { person: presser } : {}),
             outcome: record.outcome,
             summary: deploySummary(deploy, record.action),
           });

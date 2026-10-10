@@ -451,9 +451,9 @@ describe('a viewer of acme/widgets reads every GET route (BRK-323)', () => {
     const res = await call('/api/tasks', {
       method: 'POST',
       cookie: member.cookie,
-      // Not 'a gadget': a random suffix starting with s would spell 'gadgets', which leaks() looks for.
+      // Its words never say gadgets, whatever the random suffix: leaks() checks the answer for that word.
       body: {
-        description: unique('Waits on a hidden task '),
+        description: unique('Waits on another repository’s task '),
         project: 'product',
         depends: [w.gadget.uuid],
         force: true,
@@ -480,19 +480,23 @@ describe('a viewer of acme/widgets reads every GET route (BRK-323)', () => {
   });
 });
 
-describe('MCP (BRK-323)', () => {
-  it('still refuses a personal token, so a person reads nothing there', async () => {
+describe('MCP (BRK-323, BRK-327)', () => {
+  it('opens to a personal token, and lists tasks only in the person’s repositories (test/mcp-person.test.js has the rest)', async () => {
     const res = await SELF.fetch(`${ORIGIN}/mcp`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${w.viewer.token}`,
         'Content-Type': 'application/json',
         Accept: 'application/json, text/event-stream',
+        'X-Breakaway-Agent': 'claude-vic-1',
+        'X-Breakaway-Repo': 'widgets',
       },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_tasks' } }),
     });
-    expect(res.status).toBe(403);
-    expect(leaks(await res.text())).toEqual([]);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain(w.widget.uuid);
+    expect(leaks(text)).toEqual([]);
   });
 });
 

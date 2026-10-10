@@ -643,9 +643,9 @@ describe('a person’s writes (BRK-301)', () => {
     const res = await call('/api/tasks', {
       method: 'POST',
       cookie: who.cookie,
-      // Not 'a gadget': a random suffix starting with s would spell 'gadgets', which the answer must not contain.
+      // Its words never say gadgets, whatever the random suffix: the answer is checked for that word.
       body: {
-        description: unique('Waits on a hidden task '),
+        description: unique('Waits on another repository’s task '),
         project: 'product',
         depends: [world.gadget.uuid],
         force: true,

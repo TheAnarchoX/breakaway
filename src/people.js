@@ -5,8 +5,8 @@
  *   POST /api/signin/options, /api/signin          a passkey sign-in: its challenge, then its answer (public)
  *   GET  /api/join/:code              who invited you, with what role (public: the code is the credential)
  *   POST /api/join/:code/options, /api/join/:code  your name, handle, and first passkey; uses the invite up
- *   /api/me, /api/me/*                a person's own name, passkeys, personal tokens, and sessions; the owner's own
- *                                     name and passkeys (BRK-328)
+ *   /api/me, /api/me/*                a person's own name, profile, passkeys, personal tokens, and sessions; the
+ *                                     owner's own name, profile, and passkeys (BRK-328, BRK-329)
  *   /api/people, /api/people/*        the owner's: people, invites, grants, Reset, and remove
  *
  * The owner is the board's token, and its cookie, exactly as before (src/auth.js). A person's credential is
@@ -99,7 +99,7 @@ function sessionCookie(request) {
   return match ? { id: match[1], secret: match[2] } : null;
 }
 
-/** Whether a request carries a personal token, good or not: /mcp refuses those by name. */
+/** Whether a request carries a personal token, good or not: /mcp then asks whose it is (BRK-327). */
 export function hasPersonalToken(request) {
   return (request.headers.get('Authorization') ?? '').startsWith(`Bearer ${TOKEN_PREFIX}`);
 }
@@ -203,6 +203,8 @@ export async function personApi(request, env, url, person, store) {
   }
   if (parts[0] !== 'me') return json(403, { error: NOT_YET });
   if (parts.length === 1 && method === 'GET') return send(await store.personMe(person.handle, person.session ?? null));
+  if (parts.length === 2 && parts[1] === 'profile' && method === 'GET')
+    return send(await store.profileMe(person.handle));
   if (!cookie)
     return json(403, {
       error: 'a personal token only reads your settings: change them on the web board, signed in with your passkey',
@@ -213,6 +215,8 @@ export async function personApi(request, env, url, person, store) {
   const rp = relyingParty(env, request);
   const [, what, id] = parts;
   if (parts.length === 1 && method === 'PATCH') return send(await store.personRename(person.handle, body));
+  if (parts.length === 2 && what === 'profile' && method === 'PATCH')
+    return send(await store.profileSet(person.handle, body));
   if (what === 'tokens') {
     if (parts.length === 2 && method === 'POST') return send(await store.personTokenCreate(person.handle, body));
     if (parts.length === 3 && method === 'DELETE') return send(await store.personTokenRevoke(person.handle, id));
@@ -266,16 +270,18 @@ export async function peopleOwnerApi(parts, method, body, actor, store, env, req
 }
 
 /**
- * /api/me for the owner (BRK-328): their display name and their own passkeys. Reading takes the token or the cookie;
- * a change is the owner's press, on the signed-in board. The owner has no personal tokens or sessions here: the token
- * is theirs, and rotate-token signs every owner session out.
+ * /api/me for the owner (BRK-328): their display name, their profile (BRK-329), and their own passkeys. Reading takes
+ * the token or the cookie; a change is the owner's press, on the signed-in board. The owner has no personal tokens or
+ * sessions here: the token is theirs, and rotate-token signs every owner session out.
  */
 async function ownerMe(parts, method, body, actor, store, env, request) {
   const [, what, id] = parts;
   if (parts.length === 1 && method === 'GET') return send(await store.ownerMe());
+  if (parts.length === 2 && what === 'profile' && method === 'GET') return send(await store.profileMe(OWNER));
   if (method !== 'GET' && !actor.press)
-    return json(403, { error: 'only the signed-in web board can change your name or passkeys' });
+    return json(403, { error: 'only the signed-in web board can change your name, profile, or passkeys' });
   if (parts.length === 1 && method === 'PATCH') return send(await store.ownerRename(body));
+  if (parts.length === 2 && what === 'profile' && method === 'PATCH') return send(await store.profileSet(OWNER, body));
   if (what === 'passkeys') {
     if (parts.length === 3 && id === 'options' && method === 'POST')
       return send(await store.ownerPasskeyOptions(relyingParty(env, request)));

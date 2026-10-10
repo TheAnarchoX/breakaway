@@ -157,6 +157,59 @@ describe('code colors (WEB-86)', () => {
   }
 });
 
+describe('avatar tints (ID-9)', () => {
+  const TINTS = Array.from({ length: 8 }, (_, i) => `--avatar-${i + 1}`);
+  /** The hue of a color in degrees, 0–360, from HSL. */
+  const hue = (value) => {
+    const [r, g, b] = rgba(value);
+    const [max, min] = [Math.max(r, g, b), Math.min(r, g, b)];
+    if (max === min) return 0;
+    const d = max - min;
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+  };
+  const apart = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+
+  it('has eight, each set in both themes and the same from the system setting and the switch', () => {
+    for (const name of TINTS) {
+      expect(BASE[name], name).toMatch(/^#[0-9a-f]{6}$/u);
+      expect(SWITCH_LIGHT[name], name).toMatch(/^#[0-9a-f]{6}$/u);
+      expect(SYSTEM_LIGHT[name], name).toBe(SWITCH_LIGHT[name]);
+    }
+    expect(Object.keys(BASE).filter((name) => name.startsWith('--avatar-'))).toEqual(TINTS);
+  });
+
+  for (const [theme, tokens] of Object.entries(THEMES)) {
+    describe(`in ${theme}`, () => {
+      it('pass 3:1 on every background and surface, so the chip and the cuts through it hold', () => {
+        for (const tint of TINTS)
+          for (const ground of GROUNDS)
+            expect(contrast(tokens[tint], tokens[ground]), `${tint} on ${ground}`).toBeGreaterThanOrEqual(3);
+      });
+
+      it('are never red: each hue stays 25° from breakaway red, the accent, and danger', () => {
+        for (const tint of TINTS)
+          for (const red of ['--red', '--accent', '--danger'])
+            expect(apart(hue(tokens[tint]), hue(tokens[red])), `${tint} from ${red}`).toBeGreaterThanOrEqual(25);
+      });
+
+      it('stay apart from each other: each hue at least 20° from the next', () => {
+        const hues = TINTS.map((tint) => hue(tokens[tint]));
+        for (const [i, a] of hues.entries())
+          for (const b of hues.slice(i + 1)) expect(apart(a, b), `${a} and ${b}`).toBeGreaterThanOrEqual(20);
+      });
+    });
+  }
+
+  it('are only for avatars: the board reads them nowhere but the avatar', () => {
+    // Until WEB-134 draws avatars, nothing in the board reads them; after, only its avatar component does.
+    const readers = Object.entries({ 'base.css': BASE_CSS, 'app.css': APP_CSS, ...SCRIPTS })
+      .filter(([, source]) => /--avatar-\d/u.test(source))
+      .map(([file]) => file);
+    expect(readers.filter((file) => !/avatar/iu.test(file))).toEqual([]);
+  });
+});
+
 describe('the brand guide', () => {
   /** The guide's table rows that start with a token in backticks: `--name` and the cells after it. */
   const rows = [...GUIDE.matchAll(/^\| `(--[\w-]+)` \|(.*)\|\s*$/gmu)].map(([, name, cells]) => [
