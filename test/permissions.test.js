@@ -545,9 +545,20 @@ function routes(w) {
 }
 
 /**
- * What a person's request to `route` must answer: a refusal by press or role when the spec refuses it, the wait for
- * BRK-302 when the spec allows it but it starts an agent, and otherwise anything but
- * a refusal by role (it may still fail on its own terms: no GitHub here, a missing field).
+ * Whether `route` is about something in a repository `who` can't read (BRK-337): then it isn't there, as a read of it
+ * isn't. Not a release's pull or a planning change's undo, which aren't one thing in one repository, nor an
+ * invitation, whose repository the person names; and a token's press is refused as a press first.
+ */
+const unseen = (route, who, action, press) =>
+  route.repo !== null &&
+  roleOf(who, route.repo) === null &&
+  !(SPEC[action][1] && !press) &&
+  !/^\/api\/(releases|planning|people)\//u.test(route.path);
+
+/**
+ * What a person's request to `route` must answer: a 404 when it's about something they can't see, a refusal by press
+ * or role when the spec refuses it, the wait for BRK-302 when the spec allows it but it starts an agent, and otherwise
+ * anything but a refusal by role (it may still fail on its own terms: no GitHub here, a missing field).
  */
 async function check(route, who, credential) {
   const press = Boolean(credential.cookie);
@@ -560,6 +571,13 @@ async function check(route, who, credential) {
   const allowed = allowedBySpec(action, role, press);
   expect(res.status, where).not.toBe(500);
   expect(body.error, where).not.toBe(NOT_YET);
+  if (unseen(route, who, action, press)) {
+    // One that names no repository is the default's, which they can't read either: they're asked to name one.
+    if (res.status === 403) expect(body.error, where).toMatch(/: ask about one repository/u);
+    else expect(res.status, `${where}: ${body.error}`).toBe(404);
+    expect(body.error, where).not.toMatch(/has no role in/u);
+    return;
+  }
   if (!allowed) {
     expect(res.status, `${where}: ${body.error}`).toBe(403);
     if (SPEC[action][1] && !press) expect(body.error, where).toMatch(/signed-in web board/u);
@@ -698,22 +716,54 @@ describe('a person’s writes (BRK-301)', () => {
     expect((await claimed.json()).error).toMatch(/is a person on this board, not an agent/u);
   });
 
-  it('keeps a member to their own repository', async () => {
-    const who = world.people.member;
-    const res = await call('/api/tasks', {
+  it('keeps a member to their own repository: a write on another isn’t there, as a read of it isn’t (BRK-337)', async () => {
+    for (const who of [world.people.member, world.people.viewer]) {
+      const res = await call('/api/tasks', {
+        method: 'POST',
+        cookie: who.cookie,
+        body: { description: unique('In gadgets'), project: 'product', repo: 'gadgets', force: true },
+      });
+      expect(res.status, who.handle).toBe(404);
+      expect((await res.json()).error).toBe('no repository "gadgets"');
+      // A task, and a peloton, in a repository they can't read: the read's 404 and its words, never the repository's.
+      const read = await call(`/api/tasks/${world.gadget.uuid}`, { cookie: who.cookie });
+      expect(read.status).toBe(404);
+      const words = (await read.json()).error;
+      for (const [method, path, body] of [
+        ['POST', `/api/tasks/${world.gadget.uuid}/comments`, { text: 'x' }],
+        ['PATCH', `/api/tasks/${world.gadget.uuid}`, { priority: 'L' }],
+        ['POST', `/api/tasks/${world.gadget.uuid}/claim`, { agent: 'claude-perm-9' }],
+      ]) {
+        const write = await call(path, { method, cookie: who.cookie, body });
+        expect(write.status, `${method} ${path} as ${who.handle}`).toBe(404);
+        const { error } = await write.json();
+        expect(error).toBe(words);
+        expect(error).not.toContain('gadgets');
+      }
+      const room = await call('/api/peloton/gadgets', { cookie: who.cookie });
+      const post = await call('/api/peloton/gadgets', { method: 'POST', cookie: who.cookie, body: { text: 'hi' } });
+      expect([room.status, post.status]).toEqual([404, 404]);
+      expect((await post.json()).error).toBe((await room.json()).error);
+      // With a token too: a task's write isn't a press, so it isn't there either.
+      const token = await call(`/api/tasks/${world.gadget.uuid}/comments`, {
+        method: 'POST',
+        token: who.token,
+        body: { text: 'x' },
+      });
+      expect(token.status).toBe(404);
+    }
+    // What they can see but their role can't do is still the role's refusal.
+    const seen = await call(`/api/tasks/${world.widget.uuid}/comments`, {
       method: 'POST',
-      cookie: who.cookie,
-      body: { description: unique('In gadgets'), project: 'product', repo: 'gadgets', force: true },
-    });
-    expect(res.status).toBe(403);
-    expect((await res.json()).error).toMatch(/^only a member in gadgets can .+ has no role in gadgets$/u);
-    const comment = await call(`/api/tasks/${world.gadget.uuid}/comments`, {
-      method: 'POST',
-      cookie: who.cookie,
+      cookie: world.people.viewer.cookie,
       body: { text: 'x' },
     });
-    expect(comment.status).toBe(403);
-  });
+    expect(seen.status).toBe(403);
+    expect((await seen.json()).error).toMatch(/^only a member in widgets can .+ is a viewer in widgets$/u);
+    // The owner's answers are as before: their write on gadgets goes through.
+    const owners = await owner(`/api/tasks/${world.gadget.uuid}/comments`, { method: 'POST', body: { text: 'x' } });
+    expect(owners.status).toBeLessThan(300);
+  }, 60_000);
 
   it('lets a maintainer manage members and viewers of their repositories, and nobody else', async () => {
     const max = world.people.maintainer;

@@ -26,7 +26,7 @@ import { RUNNER_HEADER } from './infra-runner.js';
 import { plansDates } from './store-features.js';
 import { endPersonSession, guardStore, peopleOwnerApi, peoplePublic, personApi, personOf } from './people.js';
 import { ACTIONS, agentOf, ownerActor } from './permissions.js';
-import { isHidden, lostTarget, readOf, scrub } from './reads.js';
+import { isHidden, lostTarget, readOf, scrub, writeReads } from './reads.js';
 
 export { TaskStore } from './store.js';
 
@@ -462,7 +462,8 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
    * Whether the request may do `action` on `target` (a repository, a task, a plan, …: src/store-permissions.js says
    * which). The press comes first, in the words the route has always used; the owner may do everything else here
    * (the store's own checks refuse an agent's `by`, as before); a person's role is the store's to check, with their
-   * grants. Answers the refusal, or null to go on. A person's gate gives back the repositories it checked.
+   * grants. Answers the refusal, or null to go on. A person's gate gives back the repositories it checked. A person's
+   * write on something they can't read is a 404 with the read's words, before their role is asked (BRK-337).
    * @param {string} action
    * @param {Record<string, any>} [target]
    * @param {string} [words]
@@ -471,6 +472,10 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     const rule = ACTIONS[action];
     if (rule.press && !press) return json(403, { error: words ?? `only the signed-in web board can ${rule.what}` });
     if (person) {
+      for (const read of writeReads(target)) {
+        const seen = await store(env).readGateApi({ person: person.handle }, read);
+        if (seen.status !== 200) return json(seen.status, seen.body);
+      }
       const permit = await store(env).permitApi(actor, action, { ...target, by, agent });
       if (permit.status !== 200) return json(permit.status, permit.body);
       gated = true;

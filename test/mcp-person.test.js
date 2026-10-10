@@ -333,7 +333,10 @@ describe('a personal token on /mcp (BRK-327)', () => {
       // As if it weren't there: the role's refusal would name its repository.
       expect(result.text, name).toBe(`no task "${w.gadget.wid}"`);
     }
-    expect((await tool('add_task', { title: 'x', project: 'product' }, { ...as, repo: 'gadgets' })).error).toBe(true);
+    // A task added there: the words a read of that repository gets, as the API answers (BRK-337).
+    const elsewhere = await tool('add_task', { title: 'x', project: 'product' }, { ...as, repo: 'gadgets' });
+    expect(elsewhere.error).toBe(true);
+    expect(elsewhere.text).toMatch(/^no repository "gadgets"/u);
     const gadget = await (await owner(`/api/tasks/${w.gadget.uuid}`)).json();
     expect(gadget.task.claim ?? null).toBe(null);
     expect(gadget.task.comments.map((c) => c.text)).toEqual([`${SECRET} comment`]);

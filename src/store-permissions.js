@@ -319,6 +319,9 @@ function notThere(target) {
   const text = (value, max = 40) => String(value ?? '').slice(0, max);
   if ('task' in target) return `no task "${text(target.task)}"`;
   if ('attachment' in target) return 'no such image';
+  if ('ping' in target) return 'no such ping';
+  if ('routine' in target) return `there's no routine "${text(target.routine)}"`;
+  if ('policyChange' in target) return `no policy change ${text(target.policyChange, 20)}`;
   if ('plan' in target) return `no plan ${text(target.plan)}`;
   if ('change' in target) return `no change ${text(target.change, 20)}`;
   if ('environment' in target)
