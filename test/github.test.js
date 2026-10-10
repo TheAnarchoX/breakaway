@@ -1878,10 +1878,16 @@ describe('GitHub per repository (CLD-124)', () => {
         at: Number(store.meta('gh_fast_at')),
         alarm: await store.ctx.storage.getAlarm(),
         last: Number(store.ghMeta('gh_last_sync', 'widgets')),
+        // The sync's own Date.now() calls stamp the last sync and the budget's at, sometimes a millisecond apart.
+        tried: Math.max(
+          Number(store.ghMeta('gh_last_sync', 'widgets')),
+          Date.parse(store.githubBudget('widgets')?.at ?? '') || 0,
+        ),
       }));
       expect(planned.busy).toEqual(['widgets']);
       expect(planned.pace).toBe(60_000);
-      expect(planned.at).toBe(planned.last + 60_000);
+      expect(planned.tried - planned.last).toBeLessThan(1_000);
+      expect(planned.at).toBe(planned.tried + 60_000);
       expect(planned.alarm).toBeLessThanOrEqual(planned.at);
       // A sync that fails counts as a try: the next waits the same minute, never retrying at once.
       const failed = await runInDurableObject(stub(), (store) => {
