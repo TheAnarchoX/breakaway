@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   ArrowLeft,
   ArrowRight,
@@ -10,6 +10,7 @@ import {
   ListTodo,
   LoaderCircle,
   MessageSquare,
+  Rocket,
 } from 'lucide-preact';
 import { ago, canAgentReview, isDependabot, plural, pressedWords } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
@@ -1010,31 +1011,46 @@ function useKickoff(page) {
   return kickoff;
 }
 
-/** The way back to the kickoff: alongside Merge while it's open, and the next thing to do once it's merged. */
-function BackToKickoff({ kickoff, page }) {
+/**
+ * The way back to the kickoff, as a banner at the top of its plan's page (WEB-135): Back to its kickoff while it's open,
+ * and Start building once it's merged. `flash` is set when this page saw the plan merge, so the banner draws the eye
+ * to the next step.
+ * @param {{ kickoff: any, page: any, flash: boolean }} props
+ */
+function BackToKickoff({ kickoff, page, flash }) {
   const merged = page.state === 'merged';
   const href = hashFor({ view: 'kickoff', kickoff: kickoff.id, task: null, pr: null, ping: null });
+  const box = useRef(/** @type {HTMLElement | null} */ (null));
+  // On a narrow screen Merge sits below the banner: bring it back into view once the plan is in.
+  useEffect(() => {
+    if (flash) box.current?.scrollIntoView({ block: 'nearest' });
+  }, [flash]);
   return (
-    <div class="pr-actions pr-kickoff">
-      <p class="meta">
+    <section
+      ref={box}
+      class={`pr-kickoff ${merged ? 'is-merged' : ''} ${flash ? 'is-flash' : ''}`}
+      aria-label={`${kickoff.name}’s kickoff`}
+    >
+      <Rocket size={18} aria-hidden="true" />
+      <p role="status">
         {merged
-          ? `${kickoff.name}’s plan is in. Its first tasks are waiting on its kickoff page.`
-          : `This is ${kickoff.name}’s plan. Once it’s merged, you start building from its kickoff page.`}
+          ? `${kickoff.name}’s plan is merged. Its first tasks are waiting: start building from its kickoff.`
+          : `This is ${kickoff.name}’s plan, from its kickoff. Read it and merge it here, then carry on there.`}
       </p>
       <a class={`btn ${merged ? 'btn-primary' : 'btn-outline'} btn-sm`} href={href}>
         {merged ? (
           <>
-            Back to {kickoff.name}: start building
+            Start building
             <ArrowRight size={16} aria-hidden="true" />
           </>
         ) : (
           <>
             <ArrowLeft size={16} aria-hidden="true" />
-            Back to {kickoff.name}’s kickoff
+            Back to the kickoff
           </>
         )}
       </a>
-    </div>
+    </section>
   );
 }
 
@@ -1142,6 +1158,16 @@ export function PullPage() {
 
   const { page, error, loading } = state;
   const kickoff = useKickoff(page);
+  // The pull request this page saw open and then merged (WEB-135), so its kickoff banner flashes once.
+  const [mergedHere, setMergedHere] = useState(/** @type {string | null} */ (null));
+  const last = useRef(/** @type {{ key: string, state: string } | null} */ (null));
+  useEffect(() => {
+    const key = page ? `${page.repo}#${page.number}` : null;
+    if (key && last.current?.key === key && last.current.state === 'open' && page.state === 'merged') {
+      setMergedHere(key);
+    }
+    last.current = key ? { key, state: page.state } : null;
+  }, [page]);
   const boardChange = useBoardChange(page, tick);
   // While an agent is on its task or its checks run, look again each minute, so the page follows them (BRK-272) and
   // Fix with an agent comes back after.
@@ -1206,6 +1232,9 @@ export function PullPage() {
   return (
     <div class="github-view pr-page">
       {back}
+      {kickoff && page.state !== 'closed' && (
+        <BackToKickoff kickoff={kickoff} page={page} flash={mergedHere === `${page.repo}#${page.number}`} />
+      )}
       <div class="pr-top">
         <header class="pr-head">
           <h1>
@@ -1306,7 +1335,6 @@ export function PullPage() {
             <PrActions page={page} reload={() => setTick((n) => n + 1)} />
           )}
           <AgentActions page={page} reload={() => setTick((n) => n + 1)} />
-          {kickoff && page.state !== 'closed' && <BackToKickoff kickoff={kickoff} page={page} />}
         </section>
       </div>
 
