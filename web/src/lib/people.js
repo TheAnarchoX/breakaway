@@ -66,7 +66,9 @@ export const ROLES = [
 /** The signed-in person as the permissions module takes them: a press, since this is the signed-in web board. */
 const actor = () => {
   const w = whoami.value;
-  return w && !w.owner ? { person: w.handle, grants: w.grants, press: true } : { person: OWNER, grants: [], press: true };
+  return w && !w.owner
+    ? { person: w.handle, grants: w.grants, press: true }
+    : { person: OWNER, grants: [], press: true };
 };
 
 /** The signed-in person's role in a repository (null with none), or 'owner'. */

@@ -180,7 +180,8 @@ function Profile() {
       </p>
     );
   const p = state.profile;
-  const changed = work !== p.work || (work === 'other' && other.trim() !== (p.other ?? '')) || notes.trim() !== (p.notes ?? '');
+  const changed =
+    work !== p.work || (work === 'other' && other.trim() !== (p.other ?? '')) || notes.trim() !== (p.notes ?? '');
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);

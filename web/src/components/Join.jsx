@@ -76,7 +76,9 @@ export function Join({ code }) {
           </p>
         ) : (
           <>
-            <p class="display signin-tagline">{info.person ? `Welcome back, ${info.person.name}.` : 'Join the board.'}</p>
+            <p class="display signin-tagline">
+              {info.person ? `Welcome back, ${info.person.name}.` : 'Join the board.'}
+            </p>
             <p>
               {info.person
                 ? `${info.inviter} reset your way in. Make a new passkey on this device to sign in again.`
@@ -122,7 +124,7 @@ export function Join({ code }) {
                         value={handle}
                         required
                         maxLength={32}
-                        pattern="[a-z][a-z0-9-]{0,31}"
+                        pattern="[a-z][a-z0-9\-]{0,31}"
                         autocomplete="username"
                         spellcheck={false}
                         onInput={(e) => {

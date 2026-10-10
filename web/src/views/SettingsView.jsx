@@ -9,6 +9,7 @@ import {
   hashFor,
   health,
   healthFailed,
+  healthShut,
   helpOpen,
   loadAgents,
   loadHealth,
@@ -112,18 +113,18 @@ function ThisBrowser() {
       </div>
       <div class="st-fields">
         {isOwner.value && (
-        <label class="field">
-          <span class="field-label">Claim as</span>
-          <input
-            class="input input-sm"
-            value={me.value}
-            onChange={(e) => {
-              me.value = e.currentTarget.value.trim() || 'owner';
-            }}
-            spellcheck={false}
-          />
-          <span class="field-hint">Your name on claims you make here. Agents use their own.</span>
-        </label>
+          <label class="field">
+            <span class="field-label">Claim as</span>
+            <input
+              class="input input-sm"
+              value={me.value}
+              onChange={(e) => {
+                me.value = e.currentTarget.value.trim() || 'owner';
+              }}
+              spellcheck={false}
+            />
+            <span class="field-hint">Your name on claims you make here. Agents use their own.</span>
+          </label>
         )}
         <div class="field">
           <span class="field-label">Theme</span>
@@ -413,21 +414,23 @@ function Status() {
           </button>
         </form>
       </div>
-      <p class="st-server">
-        <span class={`st-server-state ${h && !h.ok ? 'is-bad' : ''}`}>
-          <strong>Server</strong>{' '}
-          {h ? (h.ok ? 'healthy' : `can’t read its history: ${h.replicaError}`) : !healthFailed.value && 'checking…'}
-        </span>
-        {h && (
-          <span class="muted">
-            {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
+      {!healthShut.value && (
+        <p class="st-server">
+          <span class={`st-server-state ${h && !h.ok ? 'is-bad' : ''}`}>
+            <strong>Server</strong>{' '}
+            {h ? (h.ok ? 'healthy' : `can’t read its history: ${h.replicaError}`) : !healthFailed.value && 'checking…'}
           </span>
-        )}
-        <a class={`settings-connections ${n ? 'is-bad' : ''}`} href={link('connections')}>
-          <Plug size={15} aria-hidden="true" />
-          {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
-        </a>
-      </p>
+          {h && (
+            <span class="muted">
+              {plural(h.tasks.pending, 'open task')} of {h.tasks.total}, {plural(h.versions, 'version')}
+            </span>
+          )}
+          <a class={`settings-connections ${n ? 'is-bad' : ''}`} href={link('connections')}>
+            <Plug size={15} aria-hidden="true" />
+            {n ? `${n === 1 ? '1 connection needs' : `${n} connections need`} attention` : 'Connections'}
+          </a>
+        </p>
+      )}
       {healthFailed.value && (
         <p class="field-error">Can’t reach the board right now. It tries again every 30 seconds.</p>
       )}

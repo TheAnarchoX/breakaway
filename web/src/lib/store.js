@@ -365,12 +365,21 @@ export async function loadTasks() {
   }
 }
 
+/**
+ * Whether the server answered but keeps its health to the owner and the `*` grant (BRK-323): a person's board is
+ * connected all the same (WEB-124).
+ */
+export const healthShut = signal(false);
+
 export async function loadHealth() {
   try {
     health.value = await api('health');
     healthFailed.value = false;
-  } catch {
-    healthFailed.value = true;
+    healthShut.value = false;
+  } catch (error) {
+    const shut = error?.status === 403 || error?.status === 404;
+    healthShut.value = shut;
+    healthFailed.value = !shut;
   }
 }
 

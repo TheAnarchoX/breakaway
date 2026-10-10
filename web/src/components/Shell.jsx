@@ -55,6 +55,7 @@ import {
   hashFor,
   health,
   healthFailed,
+  healthShut,
   helpOpen,
   lanes,
   installName,
@@ -171,11 +172,13 @@ function ServerStatus() {
   const h = health.value;
   const [tone, label] = healthFailed.value
     ? ['bad', 'Can’t reach the board']
-    : !h
-      ? ['', 'Connecting…']
-      : h.ok
-        ? ['ok', 'Connected']
-        : ['bad', 'The board needs attention'];
+    : healthShut.value
+      ? ['ok', 'Connected']
+      : !h
+        ? ['', 'Connecting…']
+        : h.ok
+          ? ['ok', 'Connected']
+          : ['bad', 'The board needs attention'];
   return (
     <p class={`side-status ${tone === 'bad' ? 'is-bad' : ''}`} title={label}>
       <span class="side-icon" aria-hidden="true">

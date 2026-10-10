@@ -2,17 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Link2, Plus, Trash2, UserPlus } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { copy } from '../lib/clipboard.js';
-import {
-  ROLES,
-  ago,
-  inviteLink,
-  isOwner,
-  loadPeople,
-  people,
-  repoWords,
-  roleLabel,
-  whoami,
-} from '../lib/people.js';
+import { ROLES, ago, inviteLink, isOwner, loadPeople, people, repoWords, roleLabel, whoami } from '../lib/people.js';
 import { confirmDialog, repoName, repos, toast } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
 
@@ -31,7 +21,10 @@ function maintained() {
 }
 
 /** Whether the signed-in person may invite anyone at all. */
-const canInvite = () => isOwner.value || maintained().length > 0 || whoami.value?.grants.some((g) => g.repository === '*' && g.role === 'maintainer');
+const canInvite = () =>
+  isOwner.value ||
+  maintained().length > 0 ||
+  whoami.value?.grants.some((g) => g.repository === '*' && g.role === 'maintainer');
 
 /**
  * Why the signed-in person can't change `person`'s place on the board, or null when they can (the store's
@@ -41,7 +34,8 @@ function cannotChange(person) {
   if (isOwner.value) return null;
   const w = whoami.value;
   if (person.handle === w?.handle) return 'Ask someone else to change your own place on the board.';
-  if (person.grants.some((g) => g.role === 'maintainer')) return 'Only the owner changes, resets, or removes a maintainer.';
+  if (person.grants.some((g) => g.role === 'maintainer'))
+    return 'Only the owner changes, resets, or removes a maintainer.';
   if (person.grants.some((g) => g.repository === '*')) return 'Only the owner changes someone with every repository.';
   const mine = new Set(maintained());
   const every = w?.grants.some((g) => g.repository === '*' && g.role === 'maintainer');
@@ -129,9 +123,7 @@ export function PeopleSettings() {
           </button>
         )}
       </div>
-      {!inviter && (
-        <p class="meta">Only the owner or a maintainer can invite people.</p>
-      )}
+      {!inviter && <p class="meta">Only the owner or a maintainer can invite people.</p>}
       {error && !data ? (
         <p class="field-error" role="alert">
           {error}
@@ -308,7 +300,7 @@ function GrantRows({ rows, setRows }) {
       {spare && (
         <button
           type="button"
-          class="link-button"
+          class="link-button grant-add"
           onClick={() => setRows([...rows, { repository: spare, role: roles[roles.length - 2]?.id ?? 'viewer' }])}
         >
           <Plus size={14} aria-hidden="true" /> Add a repository

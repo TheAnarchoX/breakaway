@@ -37,6 +37,7 @@ import {
   repoScope,
   repoSettingsHref,
   repos,
+  settingsAt,
 } from '../lib/store.js';
 import { ProviderAlerts } from '../components/ProviderAlerts.jsx';
 import { ProviderConnect } from '../components/ProviderConnect.jsx';
@@ -534,6 +535,20 @@ function Setup({ setup }) {
               {s.name}
               <span class="visually-hidden">{s.done ? ', done' : ', to do'}</span>
               {/* The last step is the wizard's agent step: Start is there, and its checks tick to merged (WEB-40). */}
+              {/* The owner's own passkey (BRK-328), added under You in Settings (WEB-124). */}
+              {s.id === 'passkey' && !s.done && (
+                <>
+                  {' · '}
+                  <a
+                    href={hashFor({ view: 'settings', task: null, pr: null, ping: null })}
+                    onClick={() => {
+                      settingsAt.value = 'you';
+                    }}
+                  >
+                    Add one in Settings
+                  </a>
+                </>
+              )}
               {s.id === 'first' && setup.repo && !s.done && (
                 <>
                   {' · '}
