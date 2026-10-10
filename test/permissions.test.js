@@ -87,7 +87,6 @@ const SPEC = {
   'install.update': ['owner', true],
   'install.admin': ['owner', false],
   oauth: ['owner', true],
-  push: ['owner', true],
   'people.manage': ['maintainer', true],
 };
 
@@ -528,14 +527,13 @@ function routes(w) {
     r('POST', `/api/routines/${w.routine}/triggers`, 'routine.write', { label: 'hook' }),
     r('DELETE', `/api/routines/${w.routine}/triggers/999999`, 'routine.write'),
     r('POST', `/api/routines/${w.routine}/run`, 'routine.write'),
-    // The peloton, pings, sign-ins, notifications, and people
+    // The peloton, pings, sign-ins, and people
     r('POST', '/api/peloton/widgets', 'peloton.post', { text: 'hello' }, 'widgets', 'task.write'),
     r('PUT', '/api/peloton/chase:perm-feat/plan', 'peloton.plan', { text: 'the plan' }, 'widgets', 'task.write'),
     r('POST', `/api/pings/${w.ping}/apply`, 'ping.apply'),
     r('POST', `/api/pings/${w.ping}/dismiss`, 'ping.resolve'),
     r('POST', `/api/pings/${w.ping}/handled`, 'ping.resolve'),
     r('POST', '/api/oauth/requests/x/approve', 'oauth', {}, null),
-    r('POST', '/api/push/subscriptions', 'push', {}, null),
     r('POST', '/api/people/invites', 'people.manage', { grants: [{ repository: 'widgets', role: 'viewer' }] }),
     // Who approves an environment's plans (BRK-303): tightening is a maintainer's, loosening the owner's.
     r('PUT', `/api/infra/environments/${env}/approval?repo=widgets`, 'policy.tighten', { people: 2 }),

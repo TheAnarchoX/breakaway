@@ -42,11 +42,11 @@ export function readOf(parts, q) {
   const environment = (name) => ({ target: { environment: name, repo } });
 
   switch (a) {
-    // The install's own state, its connections, its updates, its notifications, and MCP sign-ins.
+    // The install's own state, its connections, its updates, and MCP sign-ins. A person's notifications are their own,
+    // and never reach here (BRK-340).
     case 'health':
     case 'connections':
     case 'self-update':
-    case 'push':
     case 'oauth':
     case 'kickoffs':
       return install;

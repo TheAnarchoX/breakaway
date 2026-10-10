@@ -83,7 +83,7 @@ export function pingMessage(ping, title = /** @type {string} */ (DEFAULTS.name))
 
 /**
  * What a waiting plan's notification says (BRK-182): the install's name, the environment and that the plan waits for
- * the owner, then one line of why. It opens the plan on its environment's page.
+ * the reader (the owner, or a person who may approve it: BRK-340), then one line of why. It opens the plan on its environment's page.
  * @param {{ id: string, repo: string, environment: { id: number, name: string }, reason: string }} plan
  */
 export function planMessage(plan, title = /** @type {string} */ (DEFAULTS.name)) {

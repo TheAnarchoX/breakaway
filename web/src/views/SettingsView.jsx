@@ -37,7 +37,7 @@ import { Segmented } from '../components/ui.jsx';
 import { Pick as PickRepo } from './AddRepoView.jsx';
 import { YouSettings } from '../components/YouSettings.jsx';
 import { PeopleSettings } from '../components/PeopleSettings.jsx';
-import { isOwner, may, whoCan } from '../lib/people.js';
+import { isOwner, may } from '../lib/people.js';
 
 /**
  * Settings (docs/specs/IDEA-29-settings.md, section 3; WEB-32): this browser's, the board's, and the list of
@@ -54,8 +54,8 @@ const ON_OFF = [
 const link = (v) => hashFor({ view: v, task: null, pr: null, ping: null });
 
 const NOTIFICATION_HINTS = {
-  off: 'A notification when an agent pings you and needs you.',
-  on: 'Agents’ pings that need you arrive here, even when the board is closed.',
+  off: 'A notification when an agent pings you or a plan waits for your approval.',
+  on: 'Pings and plans that need you arrive here, even when the board is closed.',
   busy: 'One moment…',
   nokey: 'Notifications need a key the owner hasn’t set up yet.',
   blocked: 'This browser is blocking notifications for the board. Allow them in its site settings, then turn this on.',
@@ -63,18 +63,10 @@ const NOTIFICATION_HINTS = {
     'This browser can’t show notifications from the board. On an iPhone, add the board to the Home Screen first.',
 };
 
-/** Web Push for pings: off until turned on here, and only for this browser. */
+/** Web Push for pings and waiting plans: off until turned on here, and only for this browser and its person. */
 function NotificationSettings() {
   const state = notifications.value;
-  // Push is the owner's for now: a person's own notifications wait for BRK-340.
-  const theirs = whoCan('push', null, { what: 'turn on notifications on this board' });
-  if (theirs)
-    return (
-      <div class="field">
-        <span class="field-label">Notifications</span>
-        <span class="field-hint">{theirs}</span>
-      </div>
-    );
+  // Each person's own, the owner's too (BRK-340): the board sends each the pings and plans meant for them.
   const unavailable = state === 'nokey' || state === 'unsupported';
   return (
     <div class="field">

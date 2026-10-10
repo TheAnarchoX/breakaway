@@ -388,7 +388,41 @@ async function handleApi(request, env, url, ctx) {
   if (!person) return json(401, { error: 'sign in first: send the token as "Authorization: Bearer <token>"' });
   const first = url.pathname.split('/')[2];
   if (first === 'session' || first === 'me') return personApi(request, env, url, person, store(env));
+  if (first === 'push') return pushRoute(request, url, person, store(env));
   return personRoute(request, env, url, ctx, person);
+}
+
+const PUSH_PRESS = 'only the signed-in web board can change notifications';
+
+/**
+ * /api/push for a person (BRK-340, docs/specs/BRK-299-people-and-roles.md, point 3): their own notifications, like
+ * their other settings. Whatever their role, they turn push on and off for their own browsers, from their signed-in
+ * session only, as the owner does from theirs; what reaches them is the store's to work out.
+ * @param {Request} request
+ * @param {URL} url
+ * @param {{ handle: string, via: string, session?: string | null }} person
+ * @param {any} s the store
+ */
+async function pushRoute(request, url, person, s) {
+  const parts = url.pathname.split('/').slice(2);
+  const method = request.method;
+  const send = (result) => json(result.status, result.body);
+  if (person.via !== 'person-cookie') return json(403, { error: PUSH_PRESS });
+  if (method !== 'GET' && !sameOrigin(request)) return json(403, { error: 'cross-origin request refused' });
+  if (parts.length === 1 && method === 'GET') return send(await s.pushConfigApi(person.handle));
+  if (parts.length !== 2 || parts[1] !== 'subscriptions' || !['POST', 'DELETE'].includes(method))
+    return json(404, { error: `no route for ${method} ${url.pathname}` });
+  let body;
+  try {
+    body = JSON.parse((await request.text()) || '{}');
+  } catch {
+    return json(400, { error: 'the body must be JSON' });
+  }
+  return send(
+    await (method === 'POST'
+      ? s.pushSubscribeApi(body, person.handle, person.session ?? null)
+      : s.pushUnsubscribeApi(body, person.handle)),
+  );
 }
 
 /**
@@ -1409,10 +1443,10 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
       return send(await (press ? s.pelotonOwnerPlanApi(parts[1], body) : s.pelotonPlanReviseApi(parts[1], body)));
     }
   }
-  // Notifications are the owner's: the signed-in browser only, never the bearer token agents hold.
+  // The owner's notifications: the signed-in browser only, never the bearer token agents hold. A person's own go
+  // through pushRoute before here (BRK-340). `body` carries `actor`, which the store ignores here.
   if (parts[0] === 'push' && parts.length <= 2) {
-    const no = await gate('push', { install: true }, 'only the signed-in web board can change notifications');
-    if (no) return no;
+    if (!press) return json(403, { error: PUSH_PRESS });
     if (parts.length === 1 && method === 'GET') return send(await s.pushConfigApi());
     if (parts[1] === 'subscriptions' && method === 'POST') return send(await s.pushSubscribeApi(body));
     if (parts[1] === 'subscriptions' && method === 'DELETE') return send(await s.pushUnsubscribeApi(body));

@@ -1,5 +1,6 @@
-// Notifications for pings: this browser's own switch, off until the owner turns it on
-// (docs/specs/IDEA-12-agent-pings.md). The service worker (/sw.js) shows them; the board stores the subscription.
+// Notifications for pings: this browser's own switch, off until whoever is signed in turns it on
+// (docs/specs/IDEA-12-agent-pings.md). The service worker (/sw.js) shows them; the board stores the subscription as
+// the owner's or the signed-in person's (BRK-340).
 import { signal } from '@preact/signals';
 import { api } from './api.js';
 import { toast } from './store.js';
@@ -19,7 +20,7 @@ async function registration() {
   return navigator.serviceWorker.register('/sw.js', { scope: '/' });
 }
 
-/** Registers the worker and reads this browser's state. Called once the owner is signed in. */
+/** Registers the worker and reads this browser's state. Called once the owner or a person is signed in. */
 export async function startNotifications() {
   if (!pushSupported()) {
     notifications.value = 'unsupported';
@@ -38,8 +39,10 @@ export async function startNotifications() {
     }
     const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
     if (sub && Notification.permission === 'granted') {
-      await saveSubscription(sub); // keeps the board's copy current, and restores it if the board dropped it
-      notifications.value = 'on';
+      // Keeps the board's copy current, and restores it if the board dropped it. A browser someone else signed in to
+      // stays theirs until the switch is pressed here (BRK-340).
+      const saved = await api('push/subscriptions', { method: 'POST', body: { ...sub.toJSON(), refresh: true } });
+      notifications.value = saved?.mine === false ? 'off' : 'on';
     } else {
       notifications.value = Notification.permission === 'denied' ? 'blocked' : 'off';
     }
