@@ -5,10 +5,23 @@ import { useEffect } from 'preact/hooks';
 import { UserRound } from 'lucide-preact';
 import { WHO } from '../lib/model.js';
 import { Avatar } from '../lib/avatar.jsx';
-import { actions, repos } from '../lib/store.js';
+import { actions, repoBySlug, repos } from '../lib/store.js';
 import { assignable, ensurePeople, may, personName, whoCan } from '../lib/people.js';
 
 const slugOf = (t) => t.repo || repos.value.default;
+
+/**
+ * Who can, when the signed-in person can't do `action` on task `t` (WEB-137): whoCan's sentence for the task's
+ * repository, by the name people read. Null when they may. Every control in the task panel that the Worker would
+ * refuse asks it, so a viewer reads the task and sees who can change it instead of a refusal after the press.
+ * @param {Record<string, any>} t the task
+ * @param {string} [action] an action in src/permissions.js: task.write, the gate on a task's own writes, by default
+ * @param {string} [what] the action in the control's own words
+ */
+export function taskLock(t, action = 'task.write', what = undefined) {
+  const slug = slugOf(t);
+  return may(action, slug) ? null : whoCan(action, slug, { what, name: repoBySlug.value.get(slug)?.name });
+}
 
 /**
  * Who a person's task is for, on a card or a row: "For you", "For Ana", or "Any member"; "Nobody yet" for an open task
@@ -45,7 +58,7 @@ export function WhoChip({ task: t }) {
 export function WhoField({ task: t }) {
   useEffect(ensurePeople, []);
   const slug = slugOf(t);
-  const no = may('task.write', slug) ? null : whoCan('task.write', slug, { what: 'change who does it' });
+  const no = taskLock(t, 'task.write', 'change who does it');
   const options = t.who === 'person' ? assignable(slug, t.assignee) : [];
   return (
     <div class="who-field">

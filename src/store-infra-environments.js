@@ -109,8 +109,15 @@ export const infraEnvironmentsMethods = {
     };
   },
 
-  /** An environment by its ID, or by its name (within `repo` when more than one repository has it). */
-  environmentRow(ref, repo) {
+  /**
+   * An environment by its ID, or by its name (within `repo` when more than one repository has it). `among`, for a
+   * person, keeps a name's lookup to the repositories they see (BRK-341): one there is that one, none is the 404 a
+   * missing one gets, and the 409 for a name several share lists only theirs.
+   * @param {any} ref
+   * @param {string | null} [repo]
+   * @param {((slug: string) => boolean) | null} [among]
+   */
+  environmentRow(ref, repo, among = null) {
     const value = String(ref ?? '').trim();
     if (/^\d{1,9}$/u.test(value)) {
       const row = this.sql.exec('SELECT * FROM infra_environments WHERE id = ?', Number(value)).toArray()[0];
@@ -123,7 +130,8 @@ export const infraEnvironmentsMethods = {
           repo ?? null,
           repo ?? null,
         )
-        .toArray();
+        .toArray()
+        .filter((/** @type {any} */ r) => !among || among(String(r.repo)));
       if (rows.length > 1)
         throw new AgentError(
           `${rows.map((r) => r.repo).join(' and ')} each have an environment called ${value}: say which with ?repo=`,

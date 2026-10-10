@@ -1005,6 +1005,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
           ];
         if (changes.addRelated?.includes(uuid)) throw new InputError("a task can't be related to itself");
         if (changes.addDepends?.includes(uuid)) throw new InputError("a task can't depend on itself");
+        this.allowDeciding(input, uuid, changes);
         const before = this.detail(uuid);
         const task = this.change(uuid, changes);
         // An agent's change to a task that isn't its own work is kept, for Activity and the owner's undo (BRK-274).
@@ -1234,6 +1235,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       this.as({ actor, by }, () => {
         const uuid = this.resolve(ref);
         if (this.tasks.get(uuid).status === 'completed') return ok({ task: this.detail(uuid) });
+        this.allowDeciding({ actor, by }, uuid, { status: 'completed' });
         return ok({
           task: this.change(uuid, { status: 'completed', ...(note ? { annotate: note, by: commentAuthor(by) } : {}) }),
         });
