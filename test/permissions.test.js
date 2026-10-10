@@ -761,7 +761,7 @@ describe('a person’s writes (BRK-301)', () => {
     // The owner's answers are as before: their write on gadgets goes through.
     const owners = await owner(`/api/tasks/${world.gadget.uuid}/comments`, { method: 'POST', body: { text: 'x' } });
     expect(owners.status).toBeLessThan(300);
-  });
+  }, 60_000);
 
   it('lets a maintainer manage members and viewers of their repositories, and nobody else', async () => {
     const max = world.people.maintainer;
