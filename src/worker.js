@@ -442,6 +442,10 @@ async function personRoute(request, env, url, ctx, person) {
   if (request.method === 'GET' && !read) return json(404, { error: `no route for GET ${url.pathname}` });
   const gate = await store(env).readGateApi({ person: person.handle }, read);
   if (gate.status !== 200) return json(gate.status, gate.body);
+  // An environment named with no ?repo= is the one in a repository they see (BRK-341): the route looks the name up
+  // again, so it's told which, or it would answer that two repositories have it, naming one they can't see.
+  if (read && gate.body.repo && !url.searchParams.get('repo')) url.searchParams.set('repo', gate.body.repo);
+  if (!read) request = await environmentWhereTheySee(request, env, url, parts, person);
   const res = await routeApi(request, env, url, ctx, person.via, person, read !== null);
   if (!(res.headers.get('Content-Type') ?? '').startsWith('application/json')) return res;
   let body;
@@ -460,6 +464,48 @@ async function personRoute(request, env, url, ctx, person) {
   if (res.status >= 400 && body && typeof body.error === 'string' && typeof shown?.error !== 'string')
     shown.error = 'that didn’t work';
   return json(res.status, shown);
+}
+
+/** Architect's writes that name an environment in their path, as /api/infra/<what>/<environment>[/…]. */
+const ENVIRONMENT_PATHS = new Set(['environments', 'envelopes', 'locks', 'drift', 'break-glass']);
+
+/**
+ * A person's write on an environment by its name, with no repository named, as the one in a repository they see
+ * (BRK-341): the request with `?repo=`, and the body's `repo`, set to it. Anything else, including a name they see
+ * nowhere, goes on as it came, for the gate to answer.
+ * @param {Request} request
+ * @param {any} env
+ * @param {URL} url changed in place
+ * @param {string[]} parts
+ * @param {{ handle: string }} person
+ * @returns {Promise<Request>}
+ */
+async function environmentWhereTheySee(request, env, url, parts, person) {
+  if (parts[0] !== 'infra' || url.searchParams.get('repo')) return request;
+  const inBody = parts[1] === 'plans' && parts.length === 2;
+  if (!inBody && !(ENVIRONMENT_PATHS.has(parts[1]) && parts.length >= 3)) return request;
+  let body = null;
+  try {
+    const raw = await request.clone().text();
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    return request;
+  }
+  const object = body && typeof body === 'object' && !Array.isArray(body) ? body : null;
+  const name = inBody ? object?.environment : parts[2];
+  if (typeof name !== 'string' || !name.trim() || object?.repo) return request;
+  const found = await store(env).readGateApi({ person: person.handle }, { target: { environment: name, repo: null } });
+  if (found.status !== 200 || !found.body.repo) return request;
+  url.searchParams.set('repo', found.body.repo);
+  if (!object) return request;
+  // The body grows, so its old length goes: the new request's is the new body's.
+  const headers = new Headers(request.headers);
+  headers.delete('Content-Length');
+  return new Request(url, {
+    method: request.method,
+    headers,
+    body: JSON.stringify({ ...object, repo: found.body.repo }),
+  });
 }
 
 /**
