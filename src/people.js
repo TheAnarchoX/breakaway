@@ -99,7 +99,7 @@ function sessionCookie(request) {
   return match ? { id: match[1], secret: match[2] } : null;
 }
 
-/** Whether a request carries a personal token, good or not: /mcp refuses those by name. */
+/** Whether a request carries a personal token, good or not: /mcp then asks whose it is (BRK-327). */
 export function hasPersonalToken(request) {
   return (request.headers.get('Authorization') ?? '').startsWith(`Bearer ${TOKEN_PREFIX}`);
 }
