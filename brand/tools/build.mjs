@@ -1,5 +1,6 @@
 // Builds breakaway's logo files and preview sheets in brand/ (BRD-27): the logo (the gap, which the
-// owner picked on BRD-32), the wordmark, the app icons, and sheets for the logo, the palette, and the type.
+// owner picked on BRD-32), the wordmark, the app icons, and sheets for the logo, the palette, the type, and the
+// avatars (ID-9, drawn by brand/avatar.js, the same code the board draws them with).
 //
 // The geometry lives here, the colors come from brand/tokens.css, and every word is drawn as
 // outlines (Archivo and Chivo Mono, shaped with HarfBuzz), so the files look the same everywhere,
@@ -10,6 +11,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import fontverter from 'fontverter';
 import * as hb from 'harfbuzzjs';
+import * as avatars from '../avatar.js';
 
 const require = createRequire(import.meta.url);
 const BRAND = new URL('../', import.meta.url);
@@ -457,8 +459,124 @@ function typeSheet() {
   return svg([0, 0, W, 1240], parts.join('\n'), { title: 'breakaway type: Archivo and Chivo Mono' });
 }
 
+// Made-up people and agents (never a real repository's), for the avatar sheet.
+const HANDLES = [
+  'owner',
+  'ada',
+  'bram',
+  'cleo',
+  'dev',
+  'eli',
+  'fenna',
+  'gus',
+  'hana',
+  'iker',
+  'juno',
+  'kofi',
+  'lior',
+  'mara',
+];
+const AGENTS = ['claude-brk-12', 'claude-web-4', 'codex-doc-7', 'claude-captain-widgets-1'];
+const TINT_NAMES = ['amber', 'lime', 'green', 'teal', 'blue', 'indigo', 'violet', 'pink'];
+
+/** An avatar at (x, y), its top left, in one theme's colors. */
+function avatarAt(avatar, x, y, theme) {
+  const colors = {
+    tint: avatar.tint === null ? 'none' : theme[`--avatar-${avatar.tint + 1}`],
+    ink: theme['--bg'],
+    edge: theme['--faint'],
+    glyph: theme['--muted'],
+  };
+  return avatars.svg(avatar, { colors }).replace('<svg ', `<svg x="${round(x)}" y="${round(y)}" `);
+}
+
+function avatarSheet() {
+  const H = 1720;
+  const half = W / 2;
+  const parts = [
+    `<rect width="${half}" height="${H}" fill="${CARBON_THEME['--bg']}"/>`,
+    `<rect x="${half}" width="${half}" height="${H}" fill="${CHALK_THEME['--bg']}"/>`,
+  ];
+  parts.push(line('Avatars', 'label', 15, PAD, 74, ACCENT).svg);
+  parts.push(line('One pattern each.', 'display', 50, PAD, 150, CHALK).svg);
+  parts.push(
+    line('People lean, in one tint. Agents stand upright, in the neutrals.', 'body', 22, half + PAD, 140, MUTED_LIGHT)
+      .svg,
+  );
+  for (const [x0, theme, title] of [
+    [0, CARBON_THEME, 'Carbon · dark, the default'],
+    [half, CHALK_THEME, 'Chalk · light'],
+  ]) {
+    const ink = theme['--text'];
+    const muted = theme['--muted'];
+    const left = x0 + PAD;
+    parts.push(line(title, 'label', 13, left, 214, muted).svg);
+    // The eight tints, with their contrast on the page.
+    for (let i = 0; i < avatars.TINTS; i++) {
+      const x = left + (i % 4) * 166;
+      const y = 244 + Math.floor(i / 4) * 72;
+      const name = `--avatar-${i + 1}`;
+      parts.push(`<rect x="${x}" y="${y}" width="36" height="36" rx="4" fill="${theme[name]}"/>`);
+      parts.push(line(name, 'mono', 13, x + 46, y + 14, ink).svg);
+      parts.push(
+        line(`${TINT_NAMES[i]} ${contrast(theme[name], theme['--bg']).toFixed(1)}:1`, 'mono', 12, x + 46, y + 32, muted)
+          .svg,
+      );
+    }
+    // Every size, for each made-up handle and agent.
+    const columns = [300, 352, 408, 470, 548];
+    const top = 480;
+    avatars.SIZES.forEach((size, k) => {
+      parts.push(line(`${size}`, 'mono', 13, left + columns[k] + size / 2, top, muted, { align: 'middle' }).svg);
+    });
+    parts.push(line('px', 'mono', 13, left + columns.at(-1) + 56, top, muted).svg);
+    const rows = [...HANDLES.map((h) => ['person', h]), ...AGENTS.map((a) => ['agent', a])];
+    rows.forEach(([kind, name], r) => {
+      const y = top + 30 + r * 52 + (kind === 'agent' ? 24 : 0);
+      parts.push(line(name, 'mono', 15, left, y + 26, kind === 'agent' ? muted : ink).svg);
+      avatars.SIZES.forEach((size, k) => {
+        const avatar = kind === 'agent' ? avatars.agent(name, size) : avatars.person(name, size);
+        parts.push(avatarAt(avatar, left + columns[k], y + 20 - size / 2, theme));
+      });
+    });
+    // In place: the claim chip, a list row, and Shuffle.
+    const at = top + 30 + rows.length * 52 + 60;
+    parts.push(line('In place', 'label', 13, left, at, muted).svg);
+    const chipY = at + 24;
+    parts.push(`<rect x="${left}" y="${chipY}" width="600" height="44" rx="8" fill="${theme['--surface']}"/>`);
+    const id = text('WEB-12', 'number', 15);
+    parts.push(
+      `<rect x="${left + 14}" y="${chipY + 10}" width="${round(id.width + 16)}" height="24" rx="4" fill="${RED}"/><path transform="translate(${left + 22} ${chipY + 27})" d="${id.d}" fill="${ON_RED}"/>`,
+    );
+    const chipX = left + id.width + 48;
+    parts.push(avatarAt(avatars.agent('claude-web-4', 20), chipX, chipY + 12, theme));
+    parts.push(line('claude-web-4', 'heading', 15, chipX + 28, chipY + 27, ink).svg);
+    parts.push(line('for ada', 'body', 15, chipX + 140, chipY + 27, muted).svg);
+    parts.push(avatarAt(avatars.person('ada', 20), chipX + 202, chipY + 12, theme));
+    parts.push(line('3h', 'mono', 13, left + 580, chipY + 27, muted, { align: 'end' }).svg);
+    const listY = chipY + 64;
+    ['ada', 'kofi', 'juno'].forEach((h, i) => {
+      const y = listY + i * 40;
+      parts.push(avatarAt(avatars.person(h, 24), left, y, theme));
+      parts.push(line(h, 'heading', 15, left + 36, y + 17, ink).svg);
+      parts.push(
+        line(['merged WEB-9', 'approved plan-11', 'claimed DOC-3'][i], 'body', 15, left + 110, y + 17, muted).svg,
+      );
+    });
+    const shuffleY = listY + 140;
+    parts.push(line('Shuffle · ada, then four new seeds', 'label', 13, left, shuffleY, muted).svg);
+    ['ada', 'k3v9q2', 'p0x7mm', 'zz81ab', 'r4t2wq'].forEach((seed, i) => {
+      parts.push(avatarAt(avatars.person(seed, 40), left + i * 60, shuffleY + 18, theme));
+    });
+  }
+  return svg([0, 0, W, H], parts.join('\n'), {
+    title: 'breakaway avatars: a leaning pattern in one tint for each person and an upright glyph for each agent',
+  });
+}
+
 write('previews/logo.svg', logoSheet());
 write('previews/palette.svg', paletteSheet());
 write('previews/type.svg', typeSheet());
+write('previews/avatars.svg', avatarSheet());
 
 console.log(written.map((path) => `brand/${path}`).join('\n'));
