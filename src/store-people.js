@@ -115,7 +115,8 @@ export const peopleMethods = {
       .exec('PRAGMA table_info(people)')
       .toArray()
       .map((c) => c.name);
-    for (const column of ['work', 'work_other', 'agent_notes'])
+    // Their avatar's seed (WEB-134, docs/specs/ID-9-avatars.md): null until they press Shuffle, and their handle is it.
+    for (const column of ['work', 'work_other', 'agent_notes', 'avatar'])
       if (!columns.includes(column)) this.sql.exec(`ALTER TABLE people ADD COLUMN ${column} TEXT`);
   },
 
@@ -183,6 +184,7 @@ export const peopleMethods = {
     return {
       handle: p.handle,
       name: p.name,
+      avatar: p.avatar ?? p.handle,
       grants: this.personGrants(p.handle),
       invitedBy: p.invited_by,
       created: iso(p.created),
@@ -802,6 +804,36 @@ export const peopleMethods = {
         handle,
       );
     return this.profileMe(handle);
+  },
+
+  // ---- Avatars (WEB-134, docs/specs/ID-9-avatars.md): the seed a person's pattern is drawn from ---------------
+
+  /** Someone's avatar seed: what they shuffled to, or their handle until they do. Null for nobody the board knows. */
+  avatarOf(handle) {
+    if (handle === OWNER) return this.ownerAvatar();
+    const p = this.personRow(handle);
+    return p ? (p.avatar ?? p.handle) : null;
+  },
+
+  /**
+   * GET /api/me/avatar, for a person or the owner: `{ avatar, owner }`, their seed and the owner's, whom everyone sees.
+   * Other people's seeds come with the people list (personView).
+   */
+  avatarMe(handle) {
+    const avatar = this.avatarOf(handle);
+    return avatar ? ok({ avatar, owner: this.ownerAvatar() }) : fail(401, 'sign in again');
+  },
+
+  /**
+   * POST /api/me/avatar: Shuffle. A new random seed, kept until they shuffle again. Only the person, or the owner,
+   * shuffles their own: the route passes the caller's handle, never one from the request.
+   */
+  avatarShuffle(handle) {
+    if (!this.avatarOf(handle)) return fail(401, 'sign in again');
+    const avatar = randomToken(9);
+    if (handle === OWNER) this.ownerAvatarSet(avatar);
+    else this.sql.exec('UPDATE people SET avatar = ? WHERE handle = ?', avatar, handle);
+    return this.avatarMe(handle);
   },
 
   /** POST /api/me/tokens: `{ name }` → the token, shown this once. */
