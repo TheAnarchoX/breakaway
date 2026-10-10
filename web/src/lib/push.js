@@ -39,8 +39,10 @@ export async function startNotifications() {
     }
     const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
     if (sub && Notification.permission === 'granted') {
-      await saveSubscription(sub); // keeps the board's copy current, and restores it if the board dropped it
-      notifications.value = 'on';
+      // Keeps the board's copy current, and restores it if the board dropped it. A browser someone else signed in to
+      // stays theirs until the switch is pressed here (BRK-340).
+      const saved = await api('push/subscriptions', { method: 'POST', body: { ...sub.toJSON(), refresh: true } });
+      notifications.value = saved?.mine === false ? 'off' : 'on';
     } else {
       notifications.value = Notification.permission === 'denied' ? 'blocked' : 'off';
     }

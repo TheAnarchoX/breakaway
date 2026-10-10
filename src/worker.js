@@ -400,7 +400,7 @@ const PUSH_PRESS = 'only the signed-in web board can change notifications';
  * session only, as the owner does from theirs; what reaches them is the store's to work out.
  * @param {Request} request
  * @param {URL} url
- * @param {{ handle: string, via: string }} person
+ * @param {{ handle: string, via: string, session?: string | null }} person
  * @param {any} s the store
  */
 async function pushRoute(request, url, person, s) {
@@ -419,7 +419,9 @@ async function pushRoute(request, url, person, s) {
     return json(400, { error: 'the body must be JSON' });
   }
   return send(
-    await (method === 'POST' ? s.pushSubscribeApi(body, person.handle) : s.pushUnsubscribeApi(body, person.handle)),
+    await (method === 'POST'
+      ? s.pushSubscribeApi(body, person.handle, person.session ?? null)
+      : s.pushUnsubscribeApi(body, person.handle)),
   );
 }
 
@@ -1396,7 +1398,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     }
   }
   // The owner's notifications: the signed-in browser only, never the bearer token agents hold. A person's own go
-  // through pushRoute before here (BRK-340).
+  // through pushRoute before here (BRK-340). `body` carries `actor`, which the store ignores here.
   if (parts[0] === 'push' && parts.length <= 2) {
     if (!press) return json(403, { error: PUSH_PRESS });
     if (parts.length === 1 && method === 'GET') return send(await s.pushConfigApi());

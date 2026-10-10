@@ -170,8 +170,13 @@ export const infraApprovalsMethods = {
    * @returns {string[]}
    */
   planPushPeople(plan) {
-    const view = this.planApprovalView(this.planRow(plan.id));
-    return [...new Set([OWNER, ...(view?.mayApprove ?? [])])];
+    try {
+      const view = this.planApprovalView(this.planRow(plan.id));
+      return [...new Set([OWNER, ...(view?.mayApprove ?? [])])];
+    } catch {
+      // The owner's push never depends on working out who else may approve.
+      return [OWNER];
+    }
   },
 
   /**

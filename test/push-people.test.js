@@ -230,4 +230,106 @@ describe('who a push goes to', () => {
     expect(people).not.toContain(member.handle);
     expect(people).not.toContain(other.handle);
   });
+
+  it('words a person’s ping push as their read of it: hidden work IDs and repositories taken out', async () => {
+    const owner = await ownerCookie();
+    const repo = await elsewhere();
+    const ana = await person(owner, 'ana', [{ repository: 'widgets', role: 'member' }]);
+    const made = await api('tasks', {
+      method: 'POST',
+      body: { description: 'Sort hidden gadget crates', repo, project: 'product', horizon: 'now', who: 'agent' },
+    });
+    const hidden = (await made.json()).tasks[0].wid;
+    const agent = unique('claude-ana-');
+    const wid = await heldFor(agent, ana.handle, 'Weigh the copper kettles');
+    const res = await api(`tasks/${wid}/pings`, {
+      method: 'POST',
+      body: { by: agent, kind: 'blocked', message: `Waits for ${hidden} first.` },
+    });
+    const { ping: made2 } = await res.json();
+    const seen = await storeRun(async (s) => {
+      let got = null;
+      const real = s.pushTo;
+      s.pushTo = async (people, message) => {
+        got = { people, owner: message('owner'), ana: message(ana.handle) };
+      };
+      try {
+        await s.pushPing(made2.id);
+      } finally {
+        s.pushTo = real;
+      }
+      return got;
+    });
+    expect(seen.people).toEqual(['owner', ana.handle]);
+    expect(seen.owner.body).toBe(`${wid} needs you: blocked\nWaits for ${hidden} first.`);
+    expect(seen.ana.body).toBe(`${wid} needs you: blocked\nWaits for a task you can’t see first.`);
+
+    const ref = await api(`tasks/${wid}/pings`, {
+      method: 'POST',
+      body: { by: agent, kind: 'question', message: 'See acme/pushgadgets#12 for why.' },
+    });
+    const { ping: third } = await ref.json();
+    const line = await storeRun(async (s) => {
+      let got = null;
+      const real = s.pushTo;
+      s.pushTo = async (_people, message) => {
+        got = message(ana.handle);
+      };
+      try {
+        await s.pushPing(third.id);
+      } finally {
+        s.pushTo = real;
+      }
+      return got;
+    });
+    expect(line.body).toBe(`${wid} needs you: question`);
+  });
+
+  it('ends a person’s browsers with the session that turned them on: sign out and Reset', async () => {
+    const owner = await ownerCookie();
+    const dee = await person(owner, 'dee', [{ repository: 'widgets', role: 'member' }]);
+    const sub = await browser(`https://push.example.com/people/${dee.handle}`);
+    await subscribe(dee.cookie, sub);
+    const count = () =>
+      storeRun((s) => {
+        s.pushPrune();
+        return s.sql.exec('SELECT COUNT(*) AS n FROM push_subscriptions WHERE person = ?', dee.handle).one().n;
+      });
+    expect(await count()).toBe(1);
+    await SELF.fetch(`${ORIGIN}/logout`, { method: 'POST', headers: { Origin: ORIGIN, Cookie: dee.cookie } });
+    expect(await count()).toBe(0);
+
+    const eve = await person(owner, 'eve', [{ repository: 'widgets', role: 'member' }]);
+    const other = await browser(`https://push.example.com/people/${eve.handle}`);
+    await subscribe(eve.cookie, other);
+    expect(await (await call(`/api/people/${eve.handle}/reset`, { method: 'POST', cookie: owner })).status).toBe(200);
+    expect(
+      await storeRun((s) => {
+        s.pushPrune();
+        return s.sql.exec('SELECT COUNT(*) AS n FROM push_subscriptions WHERE person = ?', eve.handle).one().n;
+      }),
+    ).toBe(0);
+  });
+
+  it('keeps a browser with whoever turned it on until someone presses the switch there', async () => {
+    const owner = await ownerCookie();
+    const fay = await person(owner, 'fay', [{ repository: 'widgets', role: 'member' }]);
+    const sub = await browser('https://push.example.com/people/shared-browser');
+    await subscribe(owner, sub);
+    const holder = () =>
+      storeRun(
+        (s) => s.sql.exec('SELECT person FROM push_subscriptions WHERE endpoint = ?', sub.endpoint).one().person,
+      );
+    // The page's own re-save when fay loads the board there leaves it the owner's.
+    const refresh = await call('/api/push/subscriptions', {
+      method: 'POST',
+      cookie: fay.cookie,
+      body: { endpoint: sub.endpoint, keys: sub.keys, refresh: true },
+    });
+    expect(await refresh.json()).toEqual({ ok: true, mine: false });
+    expect(await holder()).toBe('owner');
+    // Her press takes it.
+    expect(await (await subscribe(fay.cookie, sub)).json()).toEqual({ ok: true, mine: true });
+    expect(await holder()).toBe(fay.handle);
+  });
 });
