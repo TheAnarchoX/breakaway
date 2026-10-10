@@ -643,7 +643,13 @@ describe('a person’s writes (BRK-301)', () => {
     const res = await call('/api/tasks', {
       method: 'POST',
       cookie: who.cookie,
-      body: { description: unique('Waits on a gadget'), project: 'product', depends: [world.gadget.uuid], force: true },
+      // Not 'a gadget': a random suffix starting with s would spell 'gadgets', which the answer must not contain.
+      body: {
+        description: unique('Waits on a hidden task '),
+        project: 'product',
+        depends: [world.gadget.uuid],
+        force: true,
+      },
     });
     expect(res.status).toBe(201);
     const made = (await res.json()).tasks[0];
