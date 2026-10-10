@@ -4,6 +4,7 @@
 import { useEffect } from 'preact/hooks';
 import { UserRound } from 'lucide-preact';
 import { WHO } from '../lib/model.js';
+import { Avatar } from '../lib/avatar.jsx';
 import { actions, repoBySlug, repos } from '../lib/store.js';
 import { assignable, ensurePeople, may, personName, whoCan } from '../lib/people.js';
 
@@ -35,7 +36,7 @@ export function WhoChip({ task: t }) {
     const title = t.assignee ? `A person’s task, for ${personName(t.assignee)}` : 'A person’s task: any member does it';
     return (
       <span class="who-chip" title={title}>
-        <UserRound size={13} aria-hidden="true" />
+        {t.assignee ? <Avatar name={t.assignee} size={16} /> : <UserRound size={13} aria-hidden="true" />}
         {words}
       </span>
     );

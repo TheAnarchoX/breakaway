@@ -27,6 +27,7 @@ import { RichText } from '../lib/richtext.jsx';
 import { Dialog, useAutosize, Dictate } from './ui.jsx';
 import { ChaseLine } from './Feature.jsx';
 import { taskLock } from './Who.jsx';
+import { Named } from '../lib/avatar.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
 export const TRIGGER_LABEL = {
@@ -789,7 +790,7 @@ export function AgentSection({ task: t }) {
       </h3>
       {hasSession && (
         <p class="small agent-line">
-          <strong>{run.agent}</strong>
+          <Named name={run.agent} label={<strong>{run.agent}</strong>} size={20} />
           {run.trigger && `, ${TRIGGER_LABEL[run.trigger] ?? run.trigger}`}
           {run.startedAt && ` ${ago(run.startedAt)}`} {run.forced && <ForcedMark />}
         </p>

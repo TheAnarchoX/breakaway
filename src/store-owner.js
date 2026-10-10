@@ -61,6 +61,16 @@ export const ownerMethods = {
     this.setMeta('owner_agent_notes', notes);
   },
 
+  /** The owner's avatar seed (WEB-134): what they shuffled to, kept with the board's settings, or their handle. */
+  ownerAvatar() {
+    return this.meta('owner_avatar') ?? OWNER;
+  },
+
+  /** @param {string} seed a new one, from Shuffle (store-people.js, avatarShuffle) */
+  ownerAvatarSet(seed) {
+    this.setMeta('owner_avatar', seed);
+  },
+
   /** The owner as people-facing answers name them: the fixed handle, the display name, and the label. */
   ownerView() {
     return { handle: OWNER, name: this.ownerName(), label: this.ownerLabel() };

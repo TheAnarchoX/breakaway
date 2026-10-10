@@ -64,6 +64,7 @@ import {
   statsDays,
 } from '../lib/store.js';
 import { Inline, Title } from '../lib/richtext.jsx';
+import { Avatar, Named } from '../lib/avatar.jsx';
 
 const ICONS = {
   created: CirclePlus,
@@ -165,6 +166,25 @@ function whoWords(who) {
     return behind ? `${who.agent} for ${behind}` : null;
   }
   return who.person === 'owner' ? null : who.person;
+}
+
+/** The names the event's "By" line shows (whoWords), so a change doesn't draw the same avatar again. */
+function namedBy(who) {
+  if (!whoWords(who)) return [];
+  return who.agent ? [who.agent, who.for ?? who.person] : [who.person];
+}
+
+/** The same words as whoWords, each name with its avatar: an agent, and who it's for. */
+function WhoNamed({ who }) {
+  if (who.agent) {
+    const behind = who.for ?? (who.person !== 'owner' ? who.person : null);
+    return (
+      <>
+        <Named name={who.agent} size={16} /> for <Named name={behind} size={16} />
+      </>
+    );
+  }
+  return <Named name={who.person} size={16} />;
 }
 
 function describe(change) {
@@ -794,13 +814,20 @@ function Stream() {
                       </span>
                     </a>
                   ) : null}
-                  {whoWords(e.who) && <p class="event-who meta">By {whoWords(e.who)}</p>}
+                  {whoWords(e.who) && (
+                    <p class="event-who meta">
+                      By <WhoNamed who={e.who} />
+                    </p>
+                  )}
                   <ul class="event-changes">
                     {e.changes.map((c, i) => {
                       const Icon = ICONS[c.kind] ?? Pencil;
                       return (
                         <li key={i} class={`change change-${c.kind}`}>
                           <Icon size={15} aria-hidden="true" />
+                          {c.by && c.by !== 'owner' && !namedBy(e.who).includes(c.by) && (
+                            <Avatar name={c.by} size={16} />
+                          )}
                           <span>
                             {c.url ? (
                               <a href={c.url} target="_blank" rel="noopener noreferrer">

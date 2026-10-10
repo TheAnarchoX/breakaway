@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
+import { Named } from '../lib/avatar.jsx';
 import { ago, plural } from '../lib/model.js';
 import { hashFor, session } from '../lib/store.js';
 import { Dictate, RepoChip, Segmented, useAutosize } from './ui.jsx';
@@ -65,14 +66,14 @@ const POST_KINDS = [
 /** `@<agent name>` or `@captain`, as the board reads them (src/store-peloton.js). */
 const MENTION = /(?<![\w.@:/-])@([\w.:/-]{1,64})/gu;
 
-/** Who posted: you, an agent by its name, or the board's own line. */
+/** Who posted, with their avatar: you, an agent by its name, or the board's own line. */
 const Who = ({ agent }) =>
   agent === 'owner' ? (
-    <span class="pl-you">You</span>
+    <Named name={agent} label="You" class="pl-you" />
   ) : agent === 'board' ? (
-    <span class="pl-board">The board</span>
+    <Named name={agent} label="The board" class="pl-board" />
   ) : (
-    <span class="pl-agent">{agent}</span>
+    <Named name={agent} class="pl-agent" />
   );
 const whoText = (agent) => (agent === 'owner' ? 'you' : agent === 'board' ? 'the board' : agent);
 
@@ -170,7 +171,7 @@ function Roster({ roster, id }) {
       {roster.map((r) => (
         <li key={r.agent} class="pl-rider">
           <span class="pl-head">
-            <span class="pl-agent">{r.agent}</span>
+            <Who agent={r.agent} />
             <TaskLink task={r.task} />
             <RepoChip slug={r.repo} />
             <span class="meta">since {ago(r.since)}</span>
