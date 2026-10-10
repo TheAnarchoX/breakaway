@@ -457,7 +457,8 @@ function taskLine(t) {
   const extra = [];
   if (t.tags?.length) extra.push(t.tags.map((x) => `+${x}`).join(' '));
   if (t.claim) extra.push(`claimed by ${t.claim}`);
-  if (t.blocked) extra.push(`blocked by ${t.blockedBy?.length ?? 0}`);
+  // A person's answer leaves out a blocker in a repository they can't read, but keeps the block (BRK-338).
+  if (t.blocked) extra.push(`blocked by ${t.blockedBy?.length || 'a task you can’t see'}`);
   if (t.ready && !t.claim) extra.push('ready');
   return `${idOf(t).padEnd(8)}  ${(t.horizon ?? '-').padEnd(5)}  ${(t.project ?? '-').padEnd(8)}  ${t.description}${extra.length ? `  (${extra.join('; ')})` : ''}`;
 }
