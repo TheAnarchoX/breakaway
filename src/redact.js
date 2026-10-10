@@ -20,6 +20,9 @@ const PATTERNS = [
   // A runbook run's act key (BRK-252), on its own or on its payload's line.
   [/(\bAct key:\s*)\S+/gu, '$1[redacted]'],
   [/\bact_[0-9a-f]{64}\b/gu, '[redacted]'],
+  // A lent run's run key (BRK-324), the same way.
+  [/(\bRun key:\s*)\S+/gu, '$1[redacted]'],
+  [/bkr_[0-9a-f]{64}/gu, '[redacted]'],
   // Bearer tokens in headers.
   [/(\bBearer\s+)[\w.~+/=-]{16,}/giu, '$1[redacted]'],
   // Long base64 blobs with mixed case and digits (keys, secrets); hex SHAs and UUIDs don't match.

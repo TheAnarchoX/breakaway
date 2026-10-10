@@ -2,18 +2,30 @@
  * TaskStore's side of bringing your own Claude (BRK-302, docs/specs/BRK-299-people-and-roles.md, point 5): each
  * person's routine per repository, sealed like the routines kept on the board (src/routine-keep.js) and never given
  * back; the Claude plan they picked and the caps it gives them (src/person-claude.js); the owner's limits on a
- * person; and the repositories whose routine the owner lends to people with none of their own.
+ * person; and the routine the owner lends in a repository to people with none of their own there.
+ *
+ * A lent routine is a second routine of the owner's for the repository (BRK-324, the owner's BRK-345): its cloud
+ * environment adds no board token, so the run key each lent start hands its agent (src/store-run-keys.js) is the
+ * agent's only way in, and caps it to its person by credential. Lending is on exactly while one is connected.
  *
  * Nothing here changes an install with nobody invited: the owner's routines, plan, and caps are where they were.
  */
 import { AgentError } from './store-agents.js';
 import { OWNER, refusal } from './permissions.js';
 import { checkRoutine, openJson, sealJson, routineKey } from './routine-keep.js';
-import { checkLimit, lentCaps, personCaps, personCeilings, personHoldKey } from './person-claude.js';
+import { LENT_HOLDER, checkLimit, holdKeyOf, lentCaps, personCaps, personCeilings } from './person-claude.js';
 import { PLANS, isPlan, planChoices } from './plans.js';
 
 /** What a person's routine is sealed to: their handle and the repository, so it opens for nobody else's. */
 const boundOf = (handle, slug) => `person:${handle}:${slug}`;
+/** What a repository's lent routine is sealed to: the repository, apart from its own routine's. */
+const lentBoundOf = (slug) => `lent:${slug}`;
+/** Where an install from before BRK-324 noted a repository's routine as lent: Lend waits on a lent routine there. */
+const legacyLentKey = (slug) => `routine_lent:${slug}`;
+
+/** Why a repository lent before BRK-324 doesn't lend now. */
+export const LEND_WAITS =
+  'lending now runs on a routine of its own, whose environment doesn’t add the board’s token: connect one to lend again';
 
 /** The words a person sees when they start where they have no routine and none is lent. */
 export const noRoutineWords = (slug) =>
@@ -32,6 +44,10 @@ export const personClaudeMethods = {
       CREATE TABLE IF NOT EXISTS person_routines (
         handle TEXT NOT NULL, repo TEXT NOT NULL, sealed TEXT NOT NULL, created INTEGER NOT NULL,
         edited INTEGER NOT NULL, PRIMARY KEY (handle, repo)
+      );
+      CREATE TABLE IF NOT EXISTS lent_routines (
+        repo TEXT PRIMARY KEY, sealed TEXT NOT NULL, created INTEGER NOT NULL, edited INTEGER NOT NULL,
+        token_seen INTEGER
       );
     `);
   },
@@ -66,9 +82,50 @@ export const personClaudeMethods = {
     }
   },
 
-  /** Whether the owner lends repository `slug`'s routine to people with none of their own there. */
+  /**
+   * Whether the owner lends a routine in repository `slug` to people with none of their own there: a lent routine is
+   * connected (BRK-324). One that can't be opened still counts: a start says to connect it again.
+   */
   routineLent(slug) {
-    return this.meta(`routine_lent:${slug}`) === 'on';
+    return this.sql.exec('SELECT 1 FROM lent_routines WHERE repo = ?', String(slug)).toArray().length > 0;
+  },
+
+  /** Repository `slug`'s lent routine: its URL and token, `{ broken: true }`, or null. */
+  async lentRoutine(slug) {
+    const row = this.sql.exec('SELECT sealed FROM lent_routines WHERE repo = ?', String(slug)).toArray()[0];
+    if (!row) return null;
+    try {
+      const routine = await openJson(await this.keptRoutineKey(), lentBoundOf(slug), row.sealed, 'routine');
+      if (typeof routine?.url !== 'string' || typeof routine?.token !== 'string') return { broken: true };
+      return { url: routine.url, token: routine.token };
+    } catch {
+      return { broken: true };
+    }
+  },
+
+  /**
+   * What the repository's page may know about lending there (never a URL or token): whether it lends, whether its lent
+   * routine can be read, when it was connected, when a lent agent last came with the board's token too (its
+   * environment adds it, and the owner takes it out), and, for a repository lent before lending needed a routine of its
+   * own, why it doesn't lend now.
+   */
+  async lendState(slug) {
+    const row = this.sql
+      .exec('SELECT created, edited, token_seen FROM lent_routines WHERE repo = ?', String(slug))
+      .toArray()[0];
+    const routine = row ? await this.lentRoutine(slug) : null;
+    return {
+      lent: Boolean(row),
+      broken: Boolean(routine && 'broken' in routine),
+      connectedAt: iso(row?.edited ?? row?.created),
+      tokenSeenAt: iso(row?.token_seen),
+      waits: !row && this.meta(legacyLentKey(slug)) === 'on' ? LEND_WAITS : null,
+    };
+  },
+
+  /** A lent agent's request came with the board's token too: its routine's environment adds it (BRK-324). */
+  lentTokenSeen(slug) {
+    this.sql.exec('UPDATE lent_routines SET token_seen = ? WHERE repo = ?', Date.now(), String(slug));
   },
 
   /**
@@ -157,7 +214,15 @@ export const personClaudeMethods = {
       return { credentials: own, routineOf: forPerson, lent: false };
     }
     if (!this.routineLent(slug)) throw new AgentError(noRoutineWords(slug), 403);
-    return { credentials: await this.checkRoutineReady(slug), routineOf: OWNER, lent: true };
+    // A lent start fires the lent routine, never the repository's own: its agent's only credential is its run key.
+    const lent = await this.lentRoutine(slug);
+    if (!lent || 'broken' in lent)
+      throw new AgentError(
+        `the routine the owner lends in ${slug} can’t be read any more (the board’s sync key changed): the owner connects it again on the repository’s page`,
+      );
+    const unfilled = await this.promptBlocker(slug);
+    if (unfilled) throw new AgentError(unfilled, 409);
+    return { credentials: lent, routineOf: OWNER, lent: true };
   },
 
   /**
@@ -186,11 +251,16 @@ export const personClaudeMethods = {
 
   /**
    * What holds the routine a start in repository `slug` for `forPerson` would fire (BRK-144, BRK-302): the person's
-   * own routine there is held apart; the owner's starts, and a person's on a lent routine, wait on the repository's.
+   * own routine there, and the lent one (BRK-324), are each held apart; the owner's starts wait on the repository's.
    */
   startHold(slug, forPerson = OWNER) {
-    const own = forPerson !== OWNER && this.personRoutineRepos(forPerson).includes(slug);
-    return this.routineHold(slug, own ? forPerson : null);
+    return this.routineHold(slug, this.startHolder(slug, forPerson));
+  },
+
+  /** Whose hold a start in repository `slug` for `forPerson` waits on: null for the repository's own routine. */
+  startHolder(slug, forPerson = OWNER) {
+    if (forPerson === OWNER) return null;
+    return this.personRoutineRepos(forPerson).includes(slug) ? forPerson : LENT_HOLDER;
   },
 
   /** What a person may know about their own Claude: never a routine's URL or token. */
@@ -305,7 +375,7 @@ export const personClaudeMethods = {
       );
       if (body?.plan !== undefined || !this.personClaudeRow(handle)?.plan) this.setPersonPlan(handle, plan);
       // A routine connected again starts afresh: whatever Claude held the last one for was for other credentials.
-      this.setMeta(personHoldKey(repo.slug, handle), null);
+      this.setMeta(holdKeyOf(repo.slug, handle), null);
       return {
         status: replaced ? 200 : 201,
         body: { ok: true, ...(replaced ? { replaced: true } : {}), claude: await this.personClaudeView(handle) },
@@ -323,7 +393,7 @@ export const personClaudeMethods = {
         .exec('DELETE FROM person_routines WHERE handle = ? AND repo = ? RETURNING repo', handle, name)
         .toArray().length;
       if (!had) throw new AgentError(`you have no Claude routine for ${name.slice(0, 40)}`, 404);
-      this.setMeta(personHoldKey(name, handle), null);
+      this.setMeta(holdKeyOf(name, handle), null);
       return { status: 200, body: { ok: true, claude: await this.personClaudeView(handle) } };
     });
   },
@@ -434,18 +504,74 @@ export const personClaudeMethods = {
   },
 
   /**
-   * PUT or DELETE /api/repos/:slug/routine/lend: the owner lends repository `slug`'s routine to the people who may
-   * start agents there and have no routine of their own, or stops. Off by default: it spends the owner's plan, and
-   * its agents hold the board's token (BRK-299 point 5).
+   * PUT /api/repos/:slug/routine/lend, `{ url, token }`: the owner lends a routine in repository `slug` to the people
+   * who may start agents there and have no routine of their own (BRK-324): a second routine of theirs for the
+   * repository, whose cloud environment adds no board token, checked the way the repository's is, sealed, and never
+   * given back. Without a URL and token it answers how lending stands, and refuses while none is connected. Off by
+   * default: it spends the owner's plan. Only the owner (BRK-299 point 5).
    */
-  repoRoutineLendApi(slug, on, body) {
+  repoRoutineLendApi(slug, body) {
+    return this.run(async () => {
+      this.allow(body, 'repo.routine', null, 'only the owner lends a repository’s routine');
+      const repo = this.repoBySlug(String(slug).toLowerCase());
+      if (!repo) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
+      if (!body?.url && !body?.token) {
+        if (!this.routineLent(repo.slug))
+          throw new AgentError(
+            `connect a routine to lend in ${repo.slug} first: a second routine of yours for it, whose cloud environment doesn’t add the board’s token`,
+            409,
+          );
+        return { status: 200, body: { ok: true, repo: repo.slug, ...(await this.lendState(repo.slug)) } };
+      }
+      const checked = checkRoutine(body ?? {});
+      if ('error' in checked) throw new AgentError(`${checked.error}. Nothing was stored.`, 400);
+      // The repository's own routine runs where the board's token is: lending it would hand that token to the agents.
+      const own = await this.repoRoutine(repo.slug);
+      if (own && !('broken' in own) && own.url === checked.url)
+        throw new AgentError(
+          `that’s ${repo.slug}’s own routine, whose environment adds the board’s token: lend a second routine, in an environment without it. Nothing was stored.`,
+          400,
+        );
+      const sealed = await sealJson(await this.keptRoutineKey(), lentBoundOf(repo.slug), checked);
+      const now = Date.now();
+      const replaced = this.routineLent(repo.slug);
+      this.writable();
+      this.sql.exec(
+        'INSERT INTO lent_routines (repo, sealed, created, edited) VALUES (?, ?, ?, ?) ON CONFLICT (repo) DO UPDATE SET sealed = excluded.sealed, edited = excluded.edited, token_seen = NULL',
+        repo.slug,
+        sealed,
+        now,
+        now,
+      );
+      // Connected again starts afresh: whatever Claude held the last one for was for other credentials.
+      this.setMeta(holdKeyOf(repo.slug, LENT_HOLDER), null);
+      this.setMeta(legacyLentKey(repo.slug), null);
+      return {
+        status: replaced ? 200 : 201,
+        body: {
+          ok: true,
+          repo: repo.slug,
+          ...(replaced ? { replaced: true } : {}),
+          ...(await this.lendState(repo.slug)),
+        },
+      };
+    });
+  },
+
+  /**
+   * DELETE /api/repos/:slug/routine/lend: the owner stops lending in repository `slug`, and the board forgets the lent
+   * routine. Agents already running on it go on until their run ends; nothing new starts there.
+   */
+  repoRoutineUnlendApi(slug, body) {
     return this.run(async () => {
       this.allow(body, 'repo.routine', null, 'only the owner lends a repository’s routine');
       const repo = this.repoBySlug(String(slug).toLowerCase());
       if (!repo) throw new AgentError(`no repository "${String(slug).slice(0, 40)}"`, 404);
       this.writable();
-      this.setMeta(`routine_lent:${repo.slug}`, on ? 'on' : null);
-      return { status: 200, body: { ok: true, repo: repo.slug, lent: on } };
+      this.sql.exec('DELETE FROM lent_routines WHERE repo = ?', repo.slug);
+      this.setMeta(holdKeyOf(repo.slug, LENT_HOLDER), null);
+      this.setMeta(legacyLentKey(repo.slug), null);
+      return { status: 200, body: { ok: true, repo: repo.slug, ...(await this.lendState(repo.slug)) } };
     });
   },
 
@@ -456,7 +582,8 @@ export const personClaudeMethods = {
    * later goes too (BRK-348): their chases stop, as Stop would stop them, and their starts waiting for room drop out.
    */
   dropPersonClaude(handle) {
-    for (const repo of this.personRoutineRepos(handle)) this.setMeta(personHoldKey(repo, handle), null);
+    for (const repo of this.personRoutineRepos(handle)) this.setMeta(holdKeyOf(repo, handle), null);
+    this.dropRunKeys(handle);
     this.sql.exec('DELETE FROM person_routines WHERE handle = ?', handle);
     this.sql.exec('DELETE FROM person_claude WHERE handle = ?', handle);
     for (const row of this.sql.exec('SELECT * FROM features WHERE chase_by = ?', handle).toArray()) {
@@ -489,6 +616,26 @@ export const personClaudeMethods = {
         });
       } catch {
         // Can't be opened with the key in use either.
+      }
+    }
+    return out;
+  },
+
+  /** Lent routines sealed again under `newSyncKey`, as people's are (BRK-324). */
+  async resealedLentRoutines(newSyncKey) {
+    const rows = this.sql.exec('SELECT repo, sealed FROM lent_routines').toArray();
+    if (!rows.length) return [];
+    const [from, to] = await Promise.all([this.keptRoutineKey(), routineKey(newSyncKey)]);
+    const out = [];
+    for (const row of rows) {
+      const bound = lentBoundOf(row.repo);
+      try {
+        out.push({
+          repo: row.repo,
+          sealed: await sealJson(to, bound, await openJson(from, bound, row.sealed, 'routine')),
+        });
+      } catch {
+        // Can't be opened with the key in use either: a lent start says to connect it again.
       }
     }
     return out;

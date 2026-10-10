@@ -13,6 +13,7 @@ export const NAMES = Object.freeze({
   SECRET: 'BREAKAWAY_SECRET',
   SYNC_KEY: 'BREAKAWAY_SYNC_KEY',
   SESSION_LOG: 'BREAKAWAY_SESSION_LOG',
+  RUN_KEY: 'BREAKAWAY_RUN_KEY',
 });
 
 /**
@@ -25,6 +26,31 @@ export const PLUGIN_OPTIONS = Object.freeze({
   TOKEN: 'CLAUDE_PLUGIN_OPTION_TOKEN',
   AGENT: 'CLAUDE_PLUGIN_OPTION_AGENT_NAME',
 });
+
+/**
+ * A lent run's key (BRK-324), from the `Run key:` line of the run's payload: the RUN_KEY setting, which `run-key`
+ * saves in tasks.env so the hooks, which don't share the agent's shell, send it too. It travels in its own header,
+ * which a cloud session's proxy leaves alone (it replaces Authorization), and the board takes it over any token beside
+ * it.
+ */
+export const RUN_KEY_HEADER = 'X-Breakaway-Run-Key';
+/** A run key's shape, as the board makes them. */
+export const RUN_KEY = /^bkr_[0-9a-f]{64}$/u;
+
+/**
+ * The headers that say who a request to the board is: the token as Authorization when there is one, and a lent run's
+ * key in its own header when there is one (BRK-324).
+ * @param {string | null | undefined} token
+ * @param {string | null | undefined} [runKey]
+ * @returns {Record<string, string>}
+ */
+export function authHeaders(token, runKey = null) {
+  const key = String(runKey ?? '').trim();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(key ? { [RUN_KEY_HEADER]: key } : {}),
+  };
+}
 
 /**
  * A setting's value: from the environment first, then the env file, else `fallback`. The environment always wins,

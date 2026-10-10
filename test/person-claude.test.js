@@ -164,18 +164,39 @@ describe('bringing your own Claude', () => {
     expect(mine.claude.routines).toEqual([expect.objectContaining({ repo: 'widgets', connected: false, lent: false })]);
   });
 
-  it('lends the repository’s routine only on the owner’s press, at 1 at once and 5 an hour', async () => {
+  it('lends a second routine only on the owner’s press, at 1 at once and 5 an hour (BRK-324)', async () => {
+    const lent = { url: fireOf('lent'), token: 'sk-ant-oat01-lent-made-up' };
     for (const who of [ana, ben]) {
-      const res = await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: who.cookie, body: {} });
+      const res = await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: who.cookie, body: lent });
       expect(res.status).toBe(403);
     }
-    expect((await owner('/api/repos/widgets/routine/lend', { method: 'PUT', body: {} })).status).toBe(403);
-    const lent = await json(
+    expect((await owner('/api/repos/widgets/routine/lend', { method: 'PUT', body: lent })).status).toBe(403);
+    // Lending needs a routine of its own: never the repository's, whose environment holds the board's token.
+    const none = await json(
       await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: session, body: {} }),
     );
-    expect(lent).toMatchObject({ status: 200, repo: 'widgets', lent: true });
+    expect(none.status).toBe(409);
+    expect(none.error).toMatch(/connect a routine to lend in widgets first/u);
+    const own = await json(
+      await call('/api/repos/widgets/routine/lend', {
+        method: 'PUT',
+        cookie: session,
+        body: { url: OWNER_FIRE, token: 'sk-ant-oat01-same-made-up' },
+      }),
+    );
+    expect(own.status).toBe(400);
+    expect(own.error).toMatch(/that’s widgets’s own routine/u);
+    const made = await json(
+      await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: session, body: lent }),
+    );
+    expect(made).toMatchObject({ status: 201, repo: 'widgets', lent: true, broken: false, waits: null });
+    expect(JSON.stringify(made)).not.toContain(lent.token);
     // The repository's page reads whether it's lent, to show the owner's switch (WEB-136).
-    expect(await json(await owner('/api/repos/widgets'))).toMatchObject({ status: 200, routineLent: true });
+    expect(await json(await owner('/api/repos/widgets'))).toMatchObject({
+      status: 200,
+      routineLent: true,
+      lend: { lent: true },
+    });
 
     const first = await task('Sort the widgets');
     claude.fires.length = 0;
@@ -183,11 +204,13 @@ describe('bringing your own Claude', () => {
     expect(res.status).toBe(200);
     expect(res.run).toMatchObject({ forPerson: ana.handle, routineOf: 'owner' });
     expect(claude.fires).toHaveLength(1);
-    // The owner's routine, with its own token: the start says it's for ana, on the lent routine.
-    expect(claude.fires[0].url).toBe(OWNER_FIRE);
+    // The lent routine, with its own token, never the repository's: the start says it's for ana, with a run key.
+    expect(claude.fires[0].url).toBe(fireOf('lent'));
+    expect(claude.fires[0].auth).toBe(`Bearer ${lent.token}`);
     expect(claude.fires[0].text).toContain(
-      `For: ${ana.handle} · on the repository’s routine, which the owner lends them`,
+      `For: ${ana.handle} · on a routine the owner lends them, with a run key that holds it to their role`,
     );
+    expect(claude.fires[0].text).toMatch(/^Run key: bkr_[0-9a-f]{64}$/mu);
 
     const second = await task('Count the widgets');
     const refused = await json(await start(ana, second.uuid));
@@ -370,7 +393,7 @@ describe('bringing your own Claude', () => {
     expect(res.status).toBe(200);
     expect(res.run).toMatchObject({ forPerson: 'owner', routineOf: 'owner' });
     expect(claude.fires[0].url).toBe(OWNER_FIRE);
-    expect(claude.fires[0].text).not.toMatch(/Claude routine|lends them/u);
+    expect(claude.fires[0].text).not.toMatch(/Claude routine|lends them|Run key:/u);
   });
 
   it('starts a person’s Start next for them, never for the owner (BRK-334)', async () => {

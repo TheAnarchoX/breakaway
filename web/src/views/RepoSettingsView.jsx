@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
+  CircleAlert,
   CircleCheck,
   CircleSlash,
   Copy,
+  ExternalLink,
   FolderGit2,
   Package,
+  Plug,
   PowerOff,
   RotateCcw,
   Server,
@@ -18,9 +21,9 @@ import { DeployCard } from '../components/DeployCard.jsx';
 import { InfraSettings } from '../components/InfraSettings.jsx';
 import { KickoffSummary } from '../components/KickoffRunIt.jsx';
 import { WORKFLOWS, deployField, missingOf, pipelineForm, pipelineOf } from '../lib/pipeline-form.js';
-import { isOwner, loadPeople, people } from '../lib/people.js';
+import { ago, isOwner, loadPeople, people } from '../lib/people.js';
+import { stubFor } from '../components/YourClaude.jsx';
 import { LENT_CAPS } from '../../../src/person-claude.js';
-import { Segmented } from '../components/ui.jsx';
 import {
   agents,
   confirmDialog,
@@ -918,58 +921,219 @@ function Agents({ data, onSaved, readOnly }) {
 }
 
 /**
- * Lend the repository's routine (WEB-136, docs/specs/BRK-299-people-and-roles.md, point 5): the owner's switch that
- * lets people with no routine of their own here start agents on the repository's, within the lent caps. Off by default:
- * it spends the owner's plan, and its agents hold the board's token. It shows once someone is invited, since nobody
- * else starts agents before that.
+ * Lend a routine (WEB-136, BRK-324, docs/specs/BRK-299-people-and-roles.md, point 5): the owner's second routine for
+ * the repository, in a cloud environment without the board's token, which people with no routine of their own here
+ * start agents on, within the lent caps. Each of those agents gets a run key with its person's rights and nothing
+ * more, and the key is its only way in. Off by default: it spends the owner's plan. It shows once someone is invited,
+ * since nobody else starts agents before that, or while a repository lent before BRK-324 waits for its routine.
  * @param {Record<string, any>} props
  */
 function Lend({ data }) {
-  const [lent, setLent] = useState(Boolean(data.routineLent));
+  const [lend, setLend] = useState(/** @type {Record<string, any>} */ (data.lend ?? {}));
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!people.peek().loaded) loadPeople();
   }, []);
-  useEffect(() => setLent(Boolean(data.routineLent)), [data.routineLent]);
-  if (!people.value.data?.people?.some((p) => !p.removed) && !lent) return null;
+  useEffect(() => setLend(data.lend ?? {}), [data.lend]);
+  if (!people.value.data?.people?.some((p) => !p.removed) && !lend.lent && !lend.waits) return null;
   const repo = data.repo;
-  const change = async (on) => {
-    if (on === lent || busy) return;
-    if (on) {
-      const sure = await confirmDialog({
-        title: `Lend ${repo.name}’s routine?`,
-        body: `People who can start agents here and have no routine of their own start them on this one: on your Claude plan, with the board’s token, ${LENT_CAPS.max} at once and ${LENT_CAPS.hourly} an hour each unless you lower it on People.`,
-        confirmLabel: 'Lend it',
-      });
-      if (!sure) return;
-    }
+  const stop = async () => {
+    const sure = await confirmDialog({
+      title: `Stop lending in ${repo.name}?`,
+      body: 'The board forgets the lent routine. Agents running on it carry on until their run ends; nothing new starts on it. People with a routine of their own aren’t affected.',
+      confirmLabel: 'Stop lending',
+      tone: 'danger',
+    });
+    if (!sure) return;
     setBusy(true);
     try {
-      const res = await api(`repos/${enc(repo.slug)}/routine/lend`, { method: on ? 'PUT' : 'DELETE', body: {} });
-      setLent(res.lent);
-      toast(res.lent ? 'Lent.' : 'No longer lent.', 'success');
+      setLend(await api(`repos/${enc(repo.slug)}/routine/lend`, { method: 'DELETE', body: {} }));
+      toast('No longer lent.', 'success');
     } catch (err) {
       toast(err.message, 'error');
     }
     setBusy(false);
   };
+  const state = lend.broken ? (
+    <span class="rs-state is-bad">
+      <CircleAlert size={16} aria-hidden="true" />
+      <span>Can’t be read any more: the board’s key changed. Connect it again.</span>
+    </span>
+  ) : lend.lent ? (
+    <span class="rs-state is-ok">
+      <CircleCheck size={16} aria-hidden="true" />
+      <span>
+        Lent, connected {ago(lend.connectedAt) ?? 'today'}. People with no routine of their own start agents in{' '}
+        {repo.name} on it, {LENT_CAPS.max} at once and {LENT_CAPS.hourly} an hour each.
+      </span>
+    </span>
+  ) : (
+    <span class="rs-state">
+      <CircleSlash size={16} aria-hidden="true" />
+      <span>Not lent. People start agents in {repo.name} only on their own Claude routine.</span>
+    </span>
+  );
   return (
     <div class="field">
-      <span class="field-label">Lend the routine</span>
-      <Segmented
-        label="Lend the routine"
-        options={[
-          { id: 'off', label: 'Off' },
-          { id: 'on', label: 'Lend it' },
-        ]}
-        value={lent ? 'on' : 'off'}
-        onChange={(v) => change(v === 'on')}
-      />
+      <span class="field-label">Lend a routine</span>
+      {state}
       <span class="field-hint">
-        {lent
-          ? `People with no routine of their own start agents in ${repo.name} on this one, on your Claude plan and with the board’s token.`
-          : `People start agents in ${repo.name} only on their own Claude routine. Lending this one spends your plan, and its agents hold the board’s token.`}
+        A second routine of yours, on your Claude plan, in a cloud environment without the board’s token. Each agent on
+        it gets a run key with its person’s role and nothing more: the key is its only way in, and it ends with the
+        run’s claim.
       </span>
+      {lend.waits && !lend.lent && (
+        <span class="rs-state is-bad">
+          <TriangleAlert size={16} aria-hidden="true" />
+          <span>
+            You lent {repo.name}’s routine before. Lending now needs a routine of its own, so it’s off until you connect
+            one.
+          </span>
+        </span>
+      )}
+      {lend.tokenSeenAt && !lend.broken && (
+        <span class="rs-state is-bad" role="status">
+          <TriangleAlert size={16} aria-hidden="true" />
+          <span>
+            A lent agent came with the board’s token too ({ago(lend.tokenSeenAt)}): its environment adds it. Its run key
+            held it to its person this time, but an agent that leaves the key out would act as you. Take BREAKAWAY_TOKEN
+            out of that environment on claude.ai, then connect the routine again.
+          </span>
+        </span>
+      )}
+      {!open && (
+        <div class="claude-routine-actions">
+          <button type="button" class="btn btn-outline btn-sm" disabled={busy} onClick={() => setOpen(true)}>
+            <Plug size={16} aria-hidden="true" />
+            {lend.lent ? 'Replace' : 'Lend a routine'}
+          </button>
+          {lend.lent && (
+            <button type="button" class="btn btn-quiet btn-sm" disabled={busy} onClick={stop}>
+              Stop lending
+            </button>
+          )}
+        </div>
+      )}
+      {open && (
+        <LendConnect
+          repo={repo}
+          replace={Boolean(lend.lent)}
+          onClose={() => setOpen(false)}
+          onSaved={(next) => {
+            setLend(next);
+            setOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The steps for a lent routine on claude.ai, then its URL and token. */
+function LendConnect({ repo, replace, onClose, onSaved }) {
+  const [url, setUrl] = useState('');
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(/** @type {string | null} */ (null));
+  const id = `lend-${repo.slug}`;
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!replace) {
+      const sure = await confirmDialog({
+        title: `Lend a routine in ${repo.name}?`,
+        body: `People who can start agents here and have no routine of their own start them on it: on your Claude plan, ${LENT_CAPS.max} at once and ${LENT_CAPS.hourly} an hour each unless you lower it on People. Each agent can do only what its person’s role allows.`,
+        confirmLabel: 'Lend it',
+      });
+      if (!sure) return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api(`repos/${enc(repo.slug)}/routine/lend`, {
+        method: 'PUT',
+        body: { url: url.trim(), token: token.trim() },
+      });
+      toast(res.replaced ? 'Replaced.' : 'Lent.', 'success');
+      onSaved(res);
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="claude-connect">
+      <ol class="claude-steps">
+        <li>
+          On claude.ai, make a cloud environment that allows <code>{location.host}</code> and has{' '}
+          <strong>no BREAKAWAY_TOKEN</strong>, and no other credential for this board. Never use the environment of{' '}
+          {repo.name}’s own routine: it holds the board’s token.
+        </li>
+        <li>
+          Make a second routine for <strong>{repo.github}</strong> in that environment, with the stub as its
+          instructions and an API trigger.
+          <div class="wiz-actions">
+            <button type="button" class="btn btn-outline btn-sm" onClick={() => copy(stubFor(repo.slug), 'Stub')}>
+              <Copy size={16} aria-hidden="true" />
+              Copy stub
+            </button>
+            <a class="btn btn-outline btn-sm" href={ROUTINES_URL} target="_blank" rel="noopener noreferrer">
+              <ExternalLink size={16} aria-hidden="true" />
+              Open routines on claude.ai
+            </a>
+          </div>
+        </li>
+        <li>Paste the URL and token from its API trigger here.</li>
+      </ol>
+      <form class="setup-register" onSubmit={submit} aria-describedby={error ? `${id}-error` : undefined}>
+        <label class="field">
+          <span class="field-label">Routine URL</span>
+          <input
+            class="input"
+            type="url"
+            required
+            autoComplete="off"
+            spellcheck={false}
+            placeholder="https://api.anthropic.com/v1/claude_code/routines/trig_…/fire"
+            value={url}
+            onInput={(e) => setUrl(e.currentTarget.value)}
+            aria-describedby={`${id}-url-hint`}
+          />
+          <span class="field-hint" id={`${id}-url-hint`}>
+            The URL of the lent routine’s API trigger, not {repo.name}’s own routine’s.
+          </span>
+        </label>
+        <label class="field">
+          <span class="field-label">Token</span>
+          <input
+            class="input"
+            type="password"
+            required
+            autoComplete="off"
+            spellcheck={false}
+            placeholder="sk-ant-oat01-…"
+            value={token}
+            onInput={(e) => setToken(e.currentTarget.value)}
+            aria-describedby={`${id}-token-hint`}
+          />
+          <span class="field-hint" id={`${id}-token-hint`}>
+            Generate one in the same API trigger. The board keeps it encrypted and never shows it again.
+          </span>
+        </label>
+        {error && (
+          <p class="field-error" id={`${id}-error`} role="alert">
+            {error}
+          </p>
+        )}
+        <div class="routine-connect-actions">
+          <button type="submit" class="btn btn-primary btn-sm" disabled={busy} aria-busy={busy}>
+            {busy ? (replace ? 'Replacing…' : 'Lending…') : replace ? 'Replace' : 'Lend it'}
+          </button>
+          <button type="button" class="btn btn-quiet btn-sm" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
