@@ -20,6 +20,7 @@ import {
   InputError,
   LEGACY_WHO_TAGS,
   isLegacyTag,
+  legacyQuestions,
   legacyWho,
   relatedOf,
   RefError,
@@ -484,7 +485,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       }
     });
     this.assignMissingWids();
-    this.migrateWho();
+    this.migrateLegacy();
     this.maybeSnapshot();
     this.scheduleAgentsCheck();
     return { status: 'ok', versionId, urgency: this.urgency() };
@@ -539,17 +540,18 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * Who does it (BRK-330): every task that carries a tag `who` replaced (+agent, +owner, +decide) gets `who` and
-   * `assignee` instead, in one follow-up version, so Taskwarrior replicas lose the tags too. Run once as the
-   * migration, and after each replica's version, which may still add one (an older habit, `task add +owner`).
+   * Fields kept another way before, moved forward in one follow-up version, so Taskwarrior replicas move too: who does
+   * it (BRK-330), from the tags `who` replaced (+agent, +owner, +decide) to `who` and `assignee`; and a decision's
+   * questions (BRK-346), from `decision` to `decision_questions`. Run once as each migration, after a rebuild, and
+   * after each replica's version, which may still add one (an older habit, `task add +owner`, or an older taskrc).
    */
-  migrateWho(source = 'api') {
+  migrateLegacy(source = 'api') {
     if (this.meta('replica_error')) return 0;
     const stamp = new Date().toISOString();
     const ops = [];
     let moved = 0;
     for (const [uuid, before] of this.tasks) {
-      const after = legacyWho(before);
+      const after = legacyQuestions(legacyWho(before));
       if (after === before) continue;
       ops.push(...diffOps(uuid, before, after, stamp));
       moved += 1;
@@ -578,6 +580,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       this.saveTasks(tasks.keys());
       this.setMeta('replica_error', null);
     });
+    // History keeps the shapes from before each migration, so move what it brought back forward again.
+    this.migrateLegacy('migration');
     this.sql.exec('UPDATE snapshot SET versions_since = ? WHERE id = 1', SNAPSHOT_EVERY);
     this.maybeSnapshot();
     return ok({ versions: count, tasks: tasks.size });
@@ -682,9 +686,10 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
       this.backfillStructure();
       this.setMeta('structure_backfilled', new Date().toISOString());
     }
-    if (!this.meta('who_migrated') && !this.meta('replica_error')) {
-      this.migrateWho('migration');
-      this.setMeta('who_migrated', new Date().toISOString());
+    const unmigrated = ['who_migrated', 'questions_migrated'].filter((flag) => !this.meta(flag));
+    if (unmigrated.length && !this.meta('replica_error')) {
+      this.migrateLegacy('migration');
+      for (const flag of unmigrated) this.setMeta(flag, new Date().toISOString());
     }
     try {
       return await action();
