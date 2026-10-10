@@ -1,5 +1,5 @@
 import { env, runInDurableObject } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskStore } from '../src/store.js';
 import { api } from './helpers.js';
 
@@ -31,6 +31,25 @@ async function fresh(name, fn, { before = () => {}, vars = FRESH } = {}) {
     await fn(new TaskStore(state, vars));
   });
 }
+
+/**
+ * Nothing here reaches the network (BRK-344). Registering a repository asks GitHub for its default branch through
+ * the App, and a real call to api.github.com made these tests slow and, on a slow runner, time out. On a fresh
+ * install the App isn't on the repository yet, so GitHub answers 404 and the board keeps its own default; anything
+ * else these tests would call fails loudly instead of going out.
+ */
+let calls;
+beforeEach(() => {
+  calls = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calls.push(url);
+    if (url.startsWith('https://api.github.com/'))
+      return Response.json({ message: 'Not Found' }, { status: 404, statusText: 'Not Found' });
+    throw new Error(`first-run tests don’t reach the network: ${url}`);
+  });
+});
+afterEach(() => vi.restoreAllMocks());
 
 const byId = (report, id, repo) =>
   report.connections.find((c) => c.id === id && (repo === undefined || c.repo === repo));
@@ -164,6 +183,9 @@ describe('a fresh install', () => {
       expect(report.setup.steps.find((step) => step.id === 'install').name).toMatch(/someone\/breakaway/);
       expect(report.setup.steps.find((step) => step.id === 'routine').done).toBe(false);
     });
+    // Only GitHub was asked, and only the stand-in above answered.
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((url) => url.startsWith('https://api.github.com/'))).toBe(true);
   });
 
   it('marks the routine step done once the first repository’s routine is connected', async () => {
