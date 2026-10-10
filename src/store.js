@@ -1048,8 +1048,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
 
   /**
    * Submits a decision (IDEA-6): the owner's answers are checked against the questions, then in one
-   * version stored, the task finished, and a plain summary added as a comment. Only
-   * the owner submits: a request with no `by`, or `owner`, is theirs; an agent's name is refused.
+   * version stored, the task finished, and a plain summary added as a comment. Only a person submits, the owner or
+   * whoever allowDecision lets (BRK-301): an agent's name is refused.
    *
    * A kickoff's IDEA asks its decision on itself (BRK-134), so answering it keeps the IDEA open: its plan's pull
    * request closes it. A routine maker's task (BRK-220 section 3) asks on itself the same way and stays open too: its
@@ -1322,9 +1322,9 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   }
 
   /**
-   * The edit rule for the description and done when (IDEA-5): the owner can edit anywhere; an agent only
-   * on a task it made (it wrote the description) or is refining (`*-refine-*`, claimed by it). Everyone
-   * else comments. A request with no `by` is the owner's (the web board and the CLI's owner).
+   * The edit rule for the description and done when (IDEA-5): a person can edit anywhere their role lets them; an
+   * agent only on a task it made (it wrote the description) or is refining (`*-refine-*`, claimed by it). Everyone
+   * else comments. A `by` that isn't an agent's name (none, `owner`, or a person's handle) is the person's.
    */
   checkBriefEdit(uuid, changes) {
     if (!('brief' in changes) && !('done_when' in changes)) return;
@@ -1685,7 +1685,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
   /**
    * The best ready task nobody has claimed: one `who` does (default: an agent), with every tag in `tags` and none in
    * `without`, optionally one project, horizon, or repository. Claims it when `claim`. An older CLI asks with
-   * `tags: ['agent']` and `without: ['decide']` (BRK-330): those name `who`, and BRK-331 decides when that goes.
+   * `tags: ['agent']` and `without: ['decide']` (BRK-330): those name `who`. Released CLIs up to 2.0.2-main.2 still
+   * ask that way; BRK-349 removes it.
    * @param {{ agent?: string, who?: string, tags?: string[], without?: string[], project?: string, horizon?: string, repo?: string, claim?: boolean }} [options]
    */
   next({ agent, who = 'agent', tags = [], without = [], project, horizon, repo, claim = false } = {}) {

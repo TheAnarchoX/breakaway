@@ -21,6 +21,7 @@ import {
 } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { Named } from '../lib/avatar.jsx';
+import { myHandle, personLabel, personName } from '../lib/people.js';
 import { ago, plural } from '../lib/model.js';
 import { hashFor, session } from '../lib/store.js';
 import { Dictate, RepoChip, Segmented, useAutosize } from './ui.jsx';
@@ -66,16 +67,19 @@ const POST_KINDS = [
 /** `@<agent name>` or `@captain`, as the board reads them (src/store-peloton.js). */
 const MENTION = /(?<![\w.@:/-])@([\w.:/-]{1,64})/gu;
 
-/** Who posted, with their avatar: you, an agent by its name, or the board's own line. */
+/**
+ * Who posted, with their avatar: you, the owner, a person by name, an agent by its name, or the board's own line. A
+ * person's post carries their handle (BRK-303), so "you" is whoever reads it.
+ */
 const Who = ({ agent }) =>
-  agent === 'owner' ? (
+  agent === myHandle.value ? (
     <Named name={agent} label="You" class="pl-you" />
   ) : agent === 'board' ? (
     <Named name={agent} label="The board" class="pl-board" />
   ) : (
-    <Named name={agent} class="pl-agent" />
+    <Named name={agent} label={personLabel(agent)} class="pl-agent" />
   );
-const whoText = (agent) => (agent === 'owner' ? 'you' : agent === 'board' ? 'the board' : agent);
+const whoText = (agent) => (agent === 'board' ? 'the board' : personName(agent));
 
 /** Peloton `name`'s roster, posts, huddle, and plan, refreshed while the page is visible: `{ data, error, set }`. */
 function usePeloton(name) {
@@ -190,7 +194,7 @@ function Roster({ roster, id }) {
 /** One post: its kind, who and on which task, when, what it answers, and its text. Yours are marked as yours. */
 function Post({ post, byId, tasks, onReply }) {
   const to = post.replyTo ? byId.get(post.replyTo) : null;
-  const mine = post.agent === 'owner';
+  const mine = post.agent === myHandle.value;
   const cls = ['pl-post', post.kind === 'leave' ? 'is-leave' : '', mine ? 'is-mine' : '', onReply ? 'has-reply' : '']
     .filter(Boolean)
     .join(' ');

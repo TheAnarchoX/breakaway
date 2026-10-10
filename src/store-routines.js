@@ -27,9 +27,6 @@ const MAKER_MOST = 5; // routines one routine maker's task may make
 /** A webhook or alert trigger is a secret the board shows once: an agent never makes or revokes one. */
 const TRIGGERS_WHAT = 'adds or revokes a routine’s webhook and alert triggers: they’re secrets agents never handle';
 
-/** The owner: a request with no `by`, or `owner`. */
-const isOwner = (by) => by === undefined || by === null || by === '' || by === 'owner';
-
 const encoder = new TextEncoder();
 const hex = (bytes) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
 const sha256 = async (value) => hex(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
@@ -298,7 +295,7 @@ export const routinesMethods = {
    * Only a person does `what`, a maintainer of every repository in `repos` (BRK-301; null is install-wide, the
    * owner's); an agent's name is refused.
    */
-  ownerOnlyRoutines(input, what = 'creates or changes routines', repos = [null], action = 'routine.write') {
+  allowRoutines(input, what = 'creates or changes routines', repos = [null], action = 'routine.write') {
     for (const repo of repos) this.allow(input, action, repo, `only the owner ${what}`);
   },
 
@@ -308,13 +305,15 @@ export const routinesMethods = {
   },
 
   /**
-   * Who writes a routine (BRK-220 section 5): null for the owner, or the routine maker agent `by` is, with the task
-   * that lets it: open, claimed by that name, and tagged +routine-maker. Every other agent is refused.
+   * Who writes a routine (BRK-220 section 5): null for a person (the owner, or someone the role check lets), or the
+   * routine maker agent `input.by` names, with the task that lets it: open, claimed by that name, and tagged
+   * +routine-maker. Every other agent is refused.
+   * @param {any} input what the call was given: `{ actor?, by? }`
    * @returns {{ uuid: string, wid: string | null, agent: string, repo: string } | null}
    */
-  routineWriter(by) {
-    if (isOwner(by)) return null;
-    const agent = String(by);
+  routineWriter(input) {
+    const agent = this.actorIn(input).agent;
+    if (!agent) return null;
     const held = [...this.tasks].find(
       ([, map]) => map.claim === agent && map.status === 'pending' && isRoutineMaker(map),
     );
@@ -394,7 +393,7 @@ export const routinesMethods = {
   },
 
   createRoutine(input) {
-    const writer = this.routineWriter(input.by);
+    const writer = this.routineWriter(input);
     if (writer) this.ownerInfraEvents(input);
     const slug = String(input.slug ?? '').toLowerCase();
     if (!SLUG.test(slug))
@@ -415,7 +414,7 @@ export const routinesMethods = {
       repo: writer && writer.repo !== this.defaultRepoSlug() ? writer.repo : null,
     });
     // A person makes routines in the repositories they maintain (BRK-301).
-    if (!writer) this.ownerOnlyRoutines(input, 'creates or changes routines', [this.routineRepo(f.repo)]);
+    if (!writer) this.allowRoutines(input, 'creates or changes routines', [this.routineRepo(f.repo)]);
     const person = writer ? null : this.actorIn(input).person;
     if (writer) {
       this.checkMakerRepo(writer, f.repo);
@@ -455,7 +454,7 @@ export const routinesMethods = {
   },
 
   modifyRoutine(slug, input) {
-    const writer = this.routineWriter(input.by);
+    const writer = this.routineWriter(input);
     if (writer) this.ownerInfraEvents(input);
     const row = this.routineRow(slug);
     if (writer && row.made_by !== writer.uuid)
@@ -467,7 +466,7 @@ export const routinesMethods = {
     if (writer) this.checkMakerRepo(writer, f.repo);
     // A person changes routines in the repositories they maintain, where it was and where it goes (BRK-301).
     else
-      this.ownerOnlyRoutines(input, 'creates or changes routines', [
+      this.allowRoutines(input, 'creates or changes routines', [
         ...new Set([this.routineRepo(row.repo), this.routineRepo(f.repo)]),
       ]);
     // Turning it back on clears the reason it switched itself off.
@@ -656,9 +655,9 @@ export const routinesMethods = {
 
   /** Makes a trigger for a routine. The secret is returned once; only its SHA-256 is kept. Owner only. */
   async createTrigger(slug, input) {
-    if (this.actorIn(input).agent) this.ownerOnlyRoutines(input, TRIGGERS_WHAT);
+    if (this.actorIn(input).agent) this.allowRoutines(input, TRIGGERS_WHAT);
     const row = this.routineRow(slug);
-    this.ownerOnlyRoutines(input, TRIGGERS_WHAT, [this.routineRepo(row.repo)]);
+    this.allowRoutines(input, TRIGGERS_WHAT, [this.routineRepo(row.repo)]);
     const label = text(input.label ?? 'webhook', 'the label', 80) || 'webhook';
     const live = this.sql
       .exec('SELECT COUNT(*) AS n FROM routine_triggers WHERE slug = ? AND revoked IS NULL', row.slug)
@@ -682,9 +681,9 @@ export const routinesMethods = {
 
   /** Revokes one; a rotation is a new trigger and then a revoke. */
   revokeTrigger(slug, id, input) {
-    if (this.actorIn(input).agent) this.ownerOnlyRoutines(input, TRIGGERS_WHAT);
+    if (this.actorIn(input).agent) this.allowRoutines(input, TRIGGERS_WHAT);
     const row = this.routineRow(slug);
-    this.ownerOnlyRoutines(input, TRIGGERS_WHAT, [this.routineRepo(row.repo)]);
+    this.allowRoutines(input, TRIGGERS_WHAT, [this.routineRepo(row.repo)]);
     const found = this.sql
       .exec(
         'UPDATE routine_triggers SET revoked = ? WHERE id = ? AND slug = ? AND revoked IS NULL RETURNING id',

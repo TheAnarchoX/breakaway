@@ -1257,7 +1257,7 @@ export const connectionsMethods = {
    */
   infraConnectApi(id, body) {
     return this.run(async () => {
-      this.ownerOnlyRoutineKeep(body, 'connects a provider', 'provider.connect');
+      this.allowAction(body, 'connects a provider', 'provider.connect');
       const provider = this.tokenProvider(id);
       const token = String(body?.token ?? '').trim();
       if (!token) throw new AgentError(`paste ${provider.name}’s read-only token. Nothing was stored.`, 400);
@@ -1313,7 +1313,7 @@ export const connectionsMethods = {
   /** DELETE /api/infra/connections/<provider> (the signed-in owner): forgets a provider's read-only token. */
   infraForgetApi(id, body) {
     return this.run(async () => {
-      this.ownerOnlyRoutineKeep(body, 'forgets a provider’s token', 'provider.connect');
+      this.allowAction(body, 'forgets a provider’s token', 'provider.connect');
       const provider = this.tokenProvider(id);
       const had = this.sql
         .exec('DELETE FROM infra_connections WHERE provider = ? RETURNING provider', provider.id)

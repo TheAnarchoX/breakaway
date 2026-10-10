@@ -24,8 +24,6 @@ import {
 
 const DAY_MS = 86_400_000;
 
-/** The owner: a request with no `by`, or `owner`. */
-
 const READ_ONLY =
   'This is a signal from Architect. Read only: diagnose, note what you find on the task, and propose any change by pull request; never change infrastructure or production yourself. The one change this run may ask for is a scale or restart, with `npx breakaway infra act <environment> <resource> scale <n>|restart` and BREAKAWAY_ACT_KEY set to the Act key in the run’s payload (a secret: never write it anywhere else): it applies only inside the envelope the owner approved, and otherwise waits for the owner.';
 

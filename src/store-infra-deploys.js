@@ -199,7 +199,7 @@ export const infraDeploysMethods = {
       }
       if (data?.kind !== kind) continue;
       if (kind === 'promote_started' && data.sha7 && !String(deploy.sha ?? '').startsWith(data.sha7)) continue;
-      return typeof data.by === 'string' && data.by ? data.by : 'owner';
+      return data.by;
     }
     return 'owner';
   },

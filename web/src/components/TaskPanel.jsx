@@ -61,6 +61,7 @@ import {
 import { Popover, RepoChip, StateBadge, useAutosize, widClass, Dictate } from './ui.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
 import { Named } from '../lib/avatar.jsx';
+import { myHandle, personLabel, personName } from '../lib/people.js';
 import { copy } from '../lib/clipboard.js';
 import { inSpecsDir, specsDirOf } from '../lib/specs.js';
 import { PrRow } from './GitHub.jsx';
@@ -587,7 +588,11 @@ function saidSource(q) {
       comment: 'in a comment',
     }[kind] ?? kind;
   const pointer = rest.length ? ` (${rest.join(' ')})` : '';
-  const who = q.by === 'owner' ? 'You' : kind === 'board' ? q.by : `Quoted by ${q.by}`;
+  // Words someone wrote on the board are theirs: you, the owner, or a person by name; anyone else quoted them.
+  const who =
+    kind === 'board' || q.by === 'owner' || q.by === myHandle.value
+      ? personLabel(q.by)
+      : `Quoted by ${personName(q.by)}`;
   return `${who}, ${where}${pointer} · ${day(q.at)}`;
 }
 
