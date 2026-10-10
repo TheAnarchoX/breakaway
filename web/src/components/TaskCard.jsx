@@ -23,6 +23,7 @@ import { PrBadge } from './GitHub.jsx';
 import { AgentBadge } from './Agents.jsx';
 import { areaLabel, byUuid, current, hashFor } from '../lib/store.js';
 import { ClaimChip, RepoChip, RoleTags, widClass } from './ui.jsx';
+import { WhoChip } from './Who.jsx';
 import { Title } from '../lib/richtext.jsx';
 
 /**
@@ -67,6 +68,7 @@ export function TaskCard({ task: t, hide = [], compact = false }) {
           {!hide.includes('area') && t.project && <span class="meta">{areaLabel(t.project)}</span>}
           {!hide.includes('area') && picksArea(t) && <span class="meta">{PICKS_AREA}</span>}
           {!hide.includes('horizon') && t.horizon && <span class="meta">{HORIZON_LABEL[t.horizon]}</span>}
+          <WhoChip task={t} />
           <RoleTags tags={t.tags} />
         </span>
       )}
