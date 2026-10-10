@@ -96,7 +96,18 @@ The board's own words, the same everywhere, so people learn them once.
 | **the board** | Your breakaway install, and its board view | workspace, dashboard, instance |
 | **free for personal and noncommercial use** | The licence, PolyForm Noncommercial 1.0.0, from 2.0.0: free to use, change, and self-host for personal use and for noncommercial organizations ([below](#the-licence)) | open source, fair source, ethical source, free (on its own, where a business could read it as theirs), Apache 2.0 later |
 | **exception** | A free commercial licence the owner grants case by case, to worker co-ops and digital rights and privacy groups | commercial licence (on its own: there's no price), enterprise plan, paid tier, pricing |
-| **you** | The person who runs the board | user, admin, the owner (in the board's own words) |
+| **you** | The person who runs the board, or anyone signed in to it | user, admin, the owner (in the board's own words) |
+| **person**, **people** | Someone signed in to the board: you, or someone you invited | user, member (as a noun for everyone), account, seat |
+| **invite** | A one-time link you make and share by hand, which lets one person in with the role you picked | invitation code, sign-up link |
+| **role** | What a person may do in one repository: **maintainer**, **member**, or **viewer** | permission level, access tier, group |
+| **work** | What a person does, on their profile: Engineering, Design, Product, Writing, Operations, Research, Organising, or Other in their own words. Never a permission: that's their **role** | job, title, position, role (for this) |
+| **notes for agents** | A line on a person's profile that agents read to pitch how they answer | bio, instructions, system prompt |
+| **the owner** | The person behind the board's token. "You" when the owner reads it; "the owner" only where someone else does ("Only the owner can connect a provider.") | admin, superuser, root |
+| **passkey** | How people sign in on the web | password (there are none), WebAuthn (fine in code) |
+| **personal token** | A person's own token for their CLI and MCP | API key, PAT |
+| **Reset** | Revoke someone's passkeys, tokens, and sessions, and make them a new invite | recover |
+| **who does it** | Whether an agent, a person, or a decision moves a task | role (that's what a person may do), owner task, tagged agent |
+| **assignee** | The person a person's task is for: the owner, or someone with a role in its repository | owner (for anyone else's task) |
 
 ### Infrastructure words
 
@@ -160,15 +171,16 @@ Wherever breakaway describes itself, these are the claims, because they're what 
 
 - **One claim per task.** Claiming is atomic, so two agents never work on the same task.
 - **Pull requests close tasks.** A pull request that says `Closes BRK-12.` puts the task in review, and the task is done when it merges.
-- **Agents start from the board.** Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board's MCP server.
+- **Agents start from the board**, on your Claude, or each person's own. Start Claude Code cloud agents on tasks, cap how many run, and watch their output live on the task. Local Claude Code sessions work through the CLI or the board's MCP server.
 - **Agents ping you when they need you.** The rest waits on the board.
-- **You decide.** Agents claim, build, and open pull requests; you merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
+- **You, and the people you trust, decide.** Agents claim, build, and open pull requests. You and the maintainers you choose merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
+- **People and roles inside your own install.** You invite the people you work with by a link you share by hand; each signs in with a passkey and holds a role per repository: maintainer, member, or viewer. There's still no hosted version, sign-up, tenants, pricing, or ads, and you stay the owner: the board's token always signs you in.
 - **One board, several repositories**, each with its own areas, prompt, and agents.
 - **Four ways in, one set of data**: the web board (installable, phone included), a CLI, an MCP server, and Taskwarrior sync.
 - **It runs on Cloudflare**: Workers and a Durable Object.
 - **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect, except breakaway's release feed, to look for updates, Frankfurter's public exchange rates, only when you press Fetch today's rate, which sends only the currency pair, and the health URL you name for an environment, your own service, which your board GETs on each refresh.
 - **Agents propose infrastructure changes and never apply them.** Neither they nor the board hold write credentials: the repository's apply workflow applies a plan, started by the board.
-- **Nothing changes without your approval, or inside bounds you approved once**: an envelope, or a policy you loosened. Every plan waits for you until then.
+- **Nothing changes without approval from you or the maintainers you choose, or inside bounds approved once**: an envelope (on production, only yours), or a policy you loosened. Every plan waits for a person until then, and you can ask for two.
 - **The board only watches its own install.** The environment it runs on is observe only, and it never plans a change to it.
 - **Free for personal and noncommercial use, and the source is public.** Commercial use is by exception, granted free and case by case ([below](#the-licence)). Releases before 2.0.0 stay under FSL-1.1-Apache-2.0.
 

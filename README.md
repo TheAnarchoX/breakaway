@@ -168,6 +168,8 @@ Claude Code asks for your board’s address and its token, which it keeps in you
 
 **Agents ping you when they need you.** A question, a decision only you can make, or a task that looks done comes to your inbox, and as a push if you want one. The rest waits on the board.
 
+**Bring the people you trust.** Invite them by a link you share by hand. Each signs in with a passkey, holds a role in each repository (maintainer, member, or viewer), and starts agents on their own Claude. Every change names who made it, and a plan can wait for two people to approve. You stay the owner: the token always signs you in.
+
 **From a pitch to a deploy.** Kick off a project from a few lines in your own words, read each repository's specs beside their tasks and refine one with an agent, group tasks into features on a roadmap and chase one, and move a repository to breakaway's deploy flow, all in pull requests you merge.
 
 <table>
@@ -194,9 +196,9 @@ npx breakaway list --ready
 
 ## What it is, and isn't
 
-- **Self-hosted.** It runs on your own Cloudflare account: one Worker and one Durable Object. There's no hosted breakaway, and no accounts, teams, or pricing.
+- **Self-hosted.** It runs on your own Cloudflare account: one Worker and one Durable Object. There's no hosted breakaway, and no sign-up, hosted accounts, tenants, or pricing. People sign in to your install only by your invite.
 - **Your data stays yours.** No analytics, telemetry, or tracking, and no call to a service you didn't connect (GitHub, Claude, push, breakaway's release feed, to look for updates, npm's public registry for the packages your repositories publish there, Frankfurter's public exchange rates, only when you press Fetch today's rate in Settings, and the health URL you name for an environment, your own service, checked on each refresh).
-- **You decide.** Agents claim, build, and open pull requests. You merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
+- **You, and the people you trust, decide.** Agents claim, build, and open pull requests. You and the maintainers you choose merge, deploy, and start agents. Nothing merges or deploys on an agent's word.
 - **Taskwarrior is a first-class way in.** The sync protocol is Taskwarrior's.
 - **Free for personal and noncommercial use.** The source is public. Commercial use is by exception, granted case by case ([licensing](https://leavethepack.dev/licensing/)).
 
@@ -221,6 +223,7 @@ One Cloudflare Worker serves the API, the MCP server, the web app (Preact), and 
 | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) | A roadmap of features, a chase that starts agents on what's ready, and agents checking in with each other |
 | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) | Let an agent shape an idea, answer its questions in a form, and get a ping when only you can help |
 | [Routines](https://leavethepack.dev/docs/routines/) | Save an agent run and start it by hand, on a schedule, or on a GitHub event |
+| [People and roles](https://leavethepack.dev/docs/people/) | Invite the people you work with, give each a role per repository, let them start agents on their own Claude, and ask two people to approve |
 | [Get started with Architect](https://leavethepack.dev/docs/get-started-with-architect/) | From a read-only token to your first approved plan |
 | [Architect](https://leavethepack.dev/docs/architect/) | Environments, plans you approve, policy, envelopes, signals, incidents, cost, freeze, break-glass, patterns, and what agents may and may not do |
 | [Architect and the deploy flow](https://leavethepack.dev/docs/architect-deploy-flow/) | Deploy, Promote, and Roll back your app, and approve plans for what it runs on, on the same staging and production |

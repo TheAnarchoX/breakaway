@@ -2,7 +2,7 @@
 
 > Every view in the browser, what it shows, how to install it on a phone, and the keyboard shortcuts.
 
-Open the board’s address and paste the token once. Let your password manager keep it: the form has a username field with the install’s name. The browser stays signed in for 180 days; rotating the token signs every browser out.
+Open the board’s address and paste the token once. Let your password manager keep it: the form has a username field with the install’s name. Once you add a passkey under **Settings, You**, **Sign in with a passkey** works too. The browser stays signed in for 180 days; rotating the token signs every browser of yours out. People you invite sign in with their own passkey ([People and roles](https://leavethepack.dev/docs/people/)).
 
 ## On a phone
 
@@ -29,16 +29,18 @@ The views are in a sidebar on the left. It collapses to a rail of icons (its **C
 | **GitHub** | A dashboard of what’s live: open pull requests, Live now (with a deploy pipeline), Checks on main, Packages (with npm packages), and security alerts, with the longer lists in tabs under it. **Next version** prepares the next minor or major. Select a pull request to read, review, update, and merge it without leaving the board. See [GitHub](https://leavethepack.dev/docs/github/#the-github-view). |
 | **MCP** | How to connect any MCP client to the board: its address, a config with the board’s token, the apps you approved (with **Revoke**), and the Claude Code plugin. See [MCP clients](https://leavethepack.dev/docs/mcp/). |
 | **Connections** | What the board leans on, each **Working**, **Needs attention**, or **Not connected**, with the fix. Each repository’s card has its GitHub sync, with what’s left of the rate limits, and, with environments, the **Infrastructure tokens** checklist: the read token, each environment’s write token on GitHub, and the apply workflow. |
-| **Settings** | This browser’s settings, the board’s, and every repository, each with a page of its own. See [Settings](#settings). |
+| **Settings** | Yours, this browser’s, the people on the board, the board’s, and every repository, each with a page of its own. See [Settings](#settings). |
 
 ## Settings
 
-**Settings** at the bottom of the sidebar opens the Settings page (`#/settings`). It’s a page, not a dialog, so it works on a phone and has a link. It has three sections.
+**Settings** at the bottom of the sidebar opens the Settings page (`#/settings`). It’s a page, not a dialog, so it works on a phone and has a link. It has five sections.
 
 | Section | What’s in it | Where it’s kept |
 | --- | --- | --- |
+| **You** | Your name, profile, avatar, passkeys, personal tokens, where you’re signed in, your roles, and your Claude ([People and roles](https://leavethepack.dev/docs/people/)) | The board |
 | **This browser** | Claim as (the name on claims you make here, `owner` by default), theme, open tasks in (sidebar or modal), notifications, and the merge method that Merge starts with and Merge when green uses | This browser only |
 | **The board** | Agents: your Claude plan, agents at once, starts an hour, Agents per area, start by itself, and new security alerts. Routines: whether routines can run, and all routines a day. Updates: self-updates on or off, with a link to Connections for the rest. Currency: the currency Architect shows costs in, and the rate you set (**Fetch today’s rate** fills it in only when you press it) | The board, for everyone who uses it |
+| **People** | Who works on the board with you and their role in each repository: **Invite**, open invites, **Reset**, and **Remove**. With nobody invited, it says it’s just you | The board |
 | **Repositories** | Each repository with its GitHub repository and areas, and a link to its page; **Add a repository**; and the ones taken off the board, collapsed. On a board with no repository yet, the wizard’s first step | The board |
 
 The server’s state, the link to Connections, **Refresh**, **Shortcuts**, and **Sign out** are at the foot of the page.

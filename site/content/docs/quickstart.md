@@ -160,7 +160,7 @@ The board is set up when one real task is closed by its merged pull request.
 1. **Add one.** Pick something small and useful from the repository, with a done when you can check in a few minutes, and add it from a checkout of the repository:
 
    ```sh
-   npx breakaway add "Write the README’s install section" --project docs --tag agent --horizon now \
+   npx breakaway add "Write the README’s install section" --project docs --who agent --horizon now \
      --brief "Say how to install and run it." --done-when "A newcomer can run it from the README alone."
    ```
 

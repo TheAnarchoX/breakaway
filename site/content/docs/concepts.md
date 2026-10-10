@@ -29,9 +29,11 @@ Every task is a Taskwarrior task with a few fields of the board’s own.
 | `repo` | The repository the task belongs to. A task stays in its repository. |
 | `horizon` | `now`, `next`, `later`, or `archive`. |
 | `priority` | `H` for the horizon’s top priorities; `M` and `L` if useful. |
-| tags | `+agent` (an agent can do it in the repository), `+owner` (needs you: an install, an account, a sign-off), `+decide` (needs your decision before work starts). Tasks often carry two. |
+| `who` | **Who does it**: `agent` (an agent builds it in the repository), `person` (a person does it: an install, an account, a sign-off), or `decision` (needs your decision before work starts). Only an agent’s task starts an agent. |
+| `assignee` | On a person’s task, who it’s for: `owner`, or someone with member or maintainer in its repository. Without one, any member may do it. |
+| tags | Any tag can name the feature a task belongs to. |
 | `depends` | What must be finished first. A task with open dependencies is **blocked**. |
-| `claim` | Who is working on it: an agent name like `claude-brk-12`, or `owner`. Set only through `claim`. |
+| `claim` | Who is working on it: an agent name like `claude-brk-12`, `owner`, or a person’s handle. Set only through `claim`. |
 | `spec` | Path to a spec in `docs/specs/`, when the task needs one. |
 | `pr` | The pull request that delivers it. |
 | `brief` and `done_when` | The description (what the task is for and why) and what has to be true to call it done. |
@@ -41,7 +43,7 @@ Titles, descriptions, and comments are small Markdown: `code`, **bold**, links, 
 
 ### Ready for an agent
 
-A task is **ready for an agent** when it is pending, tagged `+agent`, not tagged `+decide`, has no open dependencies, isn’t waiting for a date, and isn’t claimed. That is what `next` hands out and what `task agent` lists.
+A task is **ready for an agent** when it is pending, an agent’s (`who: agent`), has no open dependencies, isn’t waiting for a date, and isn’t claimed. That is what `next` hands out and what `task agent` lists.
 
 ## Areas and horizons
 
