@@ -338,7 +338,7 @@ describe('while the owner is the only person on the board (the owner’s call, 9
 describe('words that name who pressed, not the owner (BRK-303)', () => {
   it('names who set an envelope, and who pressed the Promote a Deployment came from', async () => {
     const name = await environment('widgets');
-    const { setter, presser, owners } = await inStore((store) => {
+    const { setter, presser, owners, later } = await inStore((store) => {
       const id = store.sql.exec('SELECT id FROM infra_environments WHERE name = ?', name).one().id;
       store.sql.exec(
         "INSERT INTO infra_envelopes (environment, repo, envelope, created, edited, person) VALUES (?, 'widgets', '{}', 1, 1, 'ana')",
@@ -354,11 +354,25 @@ describe('words that name who pressed, not the owner (BRK-303)', () => {
         setter: store.envelopeSetter(id),
         presser: store.deployPresser('widgets', deploy, 'promote'),
         owners: store.deployPresser('widgets', { ...deploy, sha: '9999999' }, 'promote'),
+        // A Roll back made on GitHub a day after the board's last press isn't that press's.
+        later: (() => {
+          store.sql.exec(
+            "INSERT INTO gh_events (at, data, repo) VALUES (?, ?, 'widgets')",
+            Date.now() - 2 * 86_400_000,
+            JSON.stringify({ kind: 'rollback_started', by: 'ben' }),
+          );
+          return store.deployPresser(
+            'widgets',
+            { sha: 'x', created: new Date(Date.now() - 86_400_000).toISOString() },
+            'rollback',
+          );
+        })(),
       };
     });
     expect(setter).toBe('ana');
     expect(presser).toBe('ben');
     // A Deployment from a commit nobody promoted on the board is the owner's, as before.
     expect(owners).toBe('owner');
+    expect(later).toBe('owner');
   });
 });
