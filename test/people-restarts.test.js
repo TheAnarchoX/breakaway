@@ -224,6 +224,18 @@ describe('a person’s later starts check their role again (BRK-348)', () => {
     const captain = await inStore((store) => store.captainTask(slug));
     made.push(captain.uuid);
     const waiting = await queued(eve);
+    // A start in flight holds the claim: the sweep leaves its key, so a refused fire stays the person's.
+    await inStore((store) => {
+      store.change(waiting.uuid, { claim: 'claude-in-flight', start: true }, new Date(), 'agents');
+      store.sweepQueuedStarts();
+      expect(store.meta(`start_for:${waiting.uuid}`)).toBe(eve.handle);
+      store.change(waiting.uuid, { claim: null }, new Date(), 'agents');
+    });
+    // The object may have gone cold since: removal loads the tasks before it writes them.
+    await inStore((store) => {
+      store.tasks = null;
+      store.key = undefined;
+    });
     expect((await call(`/api/people/${eve.handle}`, { method: 'DELETE', cookie: session, body: {} })).status).toBe(200);
     const after = await inStore((store) => ({
       chase: store.featureRow(slug).chase,

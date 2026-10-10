@@ -603,7 +603,7 @@ export const agentsMethods = {
 
   /**
    * The starts people left waiting for room, before the auto-starter takes the queue (BRK-348): one whose task
-   * finished, went, was claimed, or stopped waiting is forgotten; one for a person who can't start in its repository
+   * finished, went, or stopped waiting is forgotten; one for a person who can't start in its repository
    * now (removed, a role taken away, no routine there and none lent) drops out rather than refused every tick.
    * @returns {boolean} whether a person's start still waits
    */
@@ -612,10 +612,12 @@ export const agentsMethods = {
     for (const { key, value } of this.sql.exec("SELECT key, value FROM meta WHERE key LIKE 'start_for:%'").toArray()) {
       const uuid = key.slice('start_for:'.length);
       const map = this.tasks.get(uuid);
-      if (map?.status !== 'pending' || map.autostart !== 'yes' || map.claim) {
+      if (map?.status !== 'pending' || map.autostart !== 'yes') {
         this.setMeta(key, null);
         continue;
       }
+      // A start in flight holds the claim: it clears the key once Claude takes it, and a refused one waits again.
+      if (map.claim) continue;
       const repo = this.repoOfTask(map);
       const why = repo ? this.personStartWhy(value, repo.slug) : null;
       if (why) this.dropQueuedStart(uuid, why);

@@ -390,7 +390,9 @@ export const peopleMethods = {
   },
 
   /** DELETE /api/people/:handle: their handle stays on what they did, and can't be given to anyone else. */
-  peopleRemove(handle, by = null) {
+  async peopleRemove(handle, by = null) {
+    // Removal stops the person's chases and queued starts (BRK-348), which writes tasks: they're loaded first.
+    await this.ready();
     const person = this.personRow(handle);
     if (!person) return fail(404, `no person “${handle}”`);
     const reach = this.personReach(by, person);
