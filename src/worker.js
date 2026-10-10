@@ -464,9 +464,12 @@ async function environmentWhereTheySee(request, env, url, parts, person) {
   if (found.status !== 200 || !found.body.repo) return request;
   url.searchParams.set('repo', found.body.repo);
   if (!object) return request;
+  // The body grows, so its old length goes: the new request's is the new body's.
+  const headers = new Headers(request.headers);
+  headers.delete('Content-Length');
   return new Request(url, {
     method: request.method,
-    headers: request.headers,
+    headers,
     body: JSON.stringify({ ...object, repo: found.body.repo }),
   });
 }
