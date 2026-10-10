@@ -6,6 +6,7 @@ import { copy } from '../lib/clipboard.js';
 import { PasskeyCancelled, makePasskey, passkeysWork } from '../lib/passkey.js';
 import { ago, loadMine, mine, repoWords, roleLabel, whoami } from '../lib/people.js';
 import { confirmDialog, repoName, toast } from '../lib/store.js';
+import { YourClaude } from './YourClaude.jsx';
 
 /**
  * Your avatar (WEB-134, docs/specs/ID-9-avatars.md): a pattern drawn from a seed, your handle until you shuffle.
@@ -107,7 +108,10 @@ export function YouSettings() {
                 <h3>Signed in</h3>
                 <Sessions data={data} />
               </div>
-              {/* A person's own Claude routine and its plan join here once BRK-302 has merged (WEB-136). */}
+              <div class="st-group">
+                <h3>Your Claude</h3>
+                <YourClaude />
+              </div>
             </>
           )}
         </>
