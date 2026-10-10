@@ -1,6 +1,6 @@
 {
   "name": "breakaway",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "The task board for you and your coding agents: a Cloudflare Worker, its web app, Taskwarrior sync, and the CLI (npx breakaway).",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
