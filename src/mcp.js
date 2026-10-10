@@ -14,7 +14,7 @@
  * same tools, its reads filtered by their grants and its writes gated by their role (BRK-327, src/mcp-person.js).
  */
 import { authenticate } from './auth.js';
-import { hasPersonalToken, personOf } from './people.js';
+import { RUN_KEY_POSTED, hasPersonalToken, personOf, personOfRunKey } from './people.js';
 import { personStore } from './mcp-person.js';
 import { connectionOf, metadataUrl } from './oauth.js';
 import { releaseOf } from './build.js';
@@ -82,7 +82,11 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
   let pinned = null;
   // A person's own token (BRK-327): their reads by grant and their writes by role, as the API's (src/mcp-person.js).
   let person = null;
-  if (hasPersonalToken(request)) {
+  // A run key (BRK-324) is its run's person and agent, whatever token the session's proxy added beside it.
+  const run = await personOfRunKey(request, env, store);
+  if (run && 'error' in run) return Response.json({ error: run.error }, { status: 401 });
+  if (run && 'person' in run) person = run.person;
+  else if (hasPersonalToken(request)) {
     person = await personOf(request, store);
     if (!person)
       return Response.json(
@@ -107,6 +111,8 @@ export async function handleMcp(request, env, store, { maxBody, waitUntil }) {
 
   const raw = await readBody(request, maxBody);
   if (raw === null) return rpcError(413, null, INVALID_REQUEST, `the request is over ${maxBody} bytes`);
+  // A run key never goes in what a tool writes down (BRK-324).
+  if (person?.key && raw.includes(person.key)) return rpcError(400, null, INVALID_REQUEST, RUN_KEY_POSTED);
   let message;
   try {
     message = JSON.parse(raw);
@@ -288,14 +294,22 @@ function rpcError(status, id, code, message, data) {
  * @param {any} store
  * @param {(promise: Promise<any>) => void} [waitUntil]
  * @param {{ agent: string, repo: string } | null} [pinned]
- * @param {{ handle: string } | null} [person] the person behind a personal token (BRK-327)
+ * @param {{ handle: string, agent?: string } | null} [person] the person behind a personal token (BRK-327), or a run
+ *   key with its run's agent (BRK-324)
  */
 function callContext(request, store, waitUntil = (_promise) => {}, pinned = null, person = null) {
   const header = (name) => (request.headers.get(name) ?? '').trim();
   // The plugin sends its agent_name as a static X-Breakaway-Agent, empty when it isn't set, and its headersHelper sends
   // claude-<branch> as X-Breakaway-Agent-Default for that case (CLI-16). An option Claude Code didn't fill is no name.
   const named = header('X-Breakaway-Agent');
-  const agent = pinned ? pinned.agent : named && !named.startsWith('${') ? named : header('X-Breakaway-Agent-Default');
+  // A run key's agent is the one the board started on the run, whatever the headers name (BRK-324).
+  const agent = person?.agent
+    ? person.agent
+    : pinned
+      ? pinned.agent
+      : named && !named.startsWith('${')
+        ? named
+        : header('X-Breakaway-Agent-Default');
   const repo = pinned ? pinned.repo : header('X-Breakaway-Repo').toLowerCase();
   let registry;
   const ctx = {

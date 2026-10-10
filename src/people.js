@@ -14,11 +14,16 @@
  * checks accept, so a person never passes a gate the owner's cookie passes. Since BRK-301, a person's writes go
  * through the Worker's routes, each behind a gate that asks src/permissions.js with their role; since BRK-323, their
  * reads do too, filtered to the repositories they have a grant in (src/reads.js).
+ *
+ * A run key (`bkr_…`, BRK-324, src/run-keys.js) is a person's credential too, for one run on a lent routine: the
+ * agent the board started is that person, with their rights and no more, and only that agent. It wins over the
+ * board's token on the same request, since a cloud session's proxy may have added that.
  */
-import { COOKIE, ownerSessionCookie, sameOrigin } from './auth.js';
+import { COOKIE, authenticate, ownerSessionCookie, sameOrigin } from './auth.js';
 import { install } from './install.js';
 import { OWNER } from './permissions.js';
 import { SESSION_DAYS, TOKEN_PREFIX, hashOf } from './store-people.js';
+import { runKeyOf } from './run-keys.js';
 
 const MAX_BODY = 64 * 1024;
 const SESSION = /^p([\w-]{16,64})\.([\w-]{40,64})$/u;
@@ -123,6 +128,26 @@ export async function personOf(request, store) {
   if (!cookie) return null;
   const found = await store.personOfSession(cookie.id, await hashOf(cookie.secret));
   return found ? { handle: found.handle, name: found.name, via: 'person-cookie', session: found.session } : null;
+}
+
+/** What a run's agent is told when it sends its own key in a request's body: it would be written down. */
+export const RUN_KEY_POSTED =
+  'that holds your run key: it never goes in a task, comment, post, or file. Nothing was changed; send it only in the X-Breakaway-Run-Key header';
+
+/**
+ * The person behind a request's run key (BRK-324): null when it carries none, `{ error }` when its key doesn't work,
+ * else `{ person }`, the run's person as `run-key`, with the run's agent. The request's own token, if the proxy added
+ * it, is noted for the owner and otherwise ignored.
+ * @returns {Promise<null | { error: string } | { person: { handle: string, name: string, via: 'run-key', agent: string, key: string } }>}
+ */
+export async function personOfRunKey(request, env, store) {
+  const key = runKeyOf(request);
+  if (!key) return null;
+  const tokenToo = (await authenticate(request, env)) === 'token';
+  const found = await store.personOfRunKey(key, { tokenToo });
+  if (!found?.person) return { error: found?.error ?? 'that run key doesn’t work' };
+  const { handle, name, agent } = found.person;
+  return { person: { handle, name, via: 'run-key', agent, key } };
 }
 
 function cookieHeader(value, maxAge) {

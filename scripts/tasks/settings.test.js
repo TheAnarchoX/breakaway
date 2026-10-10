@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RUN_KEY,
+  RUN_KEY_HEADER,
+  authHeaders,
   boardUrl,
   configDir,
   parseEnvFile,
@@ -103,5 +106,24 @@ describe('taskrcFixes (CLD-136)', () => {
     expect(fixes[0]).toContain('sync.server.url=https://b.example');
     expect(fixes[1]).toContain('include ~/.config/breakaway/taskrc');
     expect(taskrcFixes(null, where)).toHaveLength(1);
+  });
+});
+
+describe('a lent run’s key (BRK-324)', () => {
+  const key = `bkr_${'9e'.repeat(32)}`;
+
+  it('goes in its own header beside any token, since a cloud session’s proxy replaces Authorization', () => {
+    expect(RUN_KEY_HEADER).toBe('X-Breakaway-Run-Key');
+    expect(authHeaders('tok', key)).toEqual({ Authorization: 'Bearer tok', [RUN_KEY_HEADER]: key });
+    expect(authHeaders(undefined, key)).toEqual({ [RUN_KEY_HEADER]: key });
+    expect(authHeaders('tok')).toEqual({ Authorization: 'Bearer tok' });
+    expect(authHeaders(null, '  ')).toEqual({});
+  });
+
+  it('is a setting like the token: the environment, then tasks.env, where run-key saves it for the hooks', () => {
+    expect(settingFrom('RUN_KEY', { env: { BREAKAWAY_RUN_KEY: key } })).toEqual({ value: key, from: 'environment' });
+    expect(settingFrom('RUN_KEY', { file: { BREAKAWAY_RUN_KEY: key } })).toEqual({ value: key, from: 'tasks.env' });
+    expect(RUN_KEY.test(key)).toBe(true);
+    expect(RUN_KEY.test(`act_${'9e'.repeat(32)}`)).toBe(false);
   });
 });

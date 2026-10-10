@@ -15,7 +15,7 @@ import { AREA_NAMES, dependsOf, rank, relatedOf, tagsOf } from './model.js';
 import { nextChoices, nextVersionPrompt, NEXT_STEPS, versionBase } from './next-version.js';
 import { repoSlugOf, routineCaps } from './repos.js';
 import { OWNER } from './permissions.js';
-import { personHoldKey } from './person-claude.js';
+import { LENT_HOLDER, holdKeyOf } from './person-claude.js';
 import { noRoutineWords } from './store-person-claude.js';
 import { specPrompt } from './spec-prompt.js';
 import { REFINE_FEATURE_TITLE, featurePrompt } from './feature-prompt.js';
@@ -275,7 +275,8 @@ export function saidLines(said) {
  * @param {string} agent
  * @param {string} trigger
  * @param {{ note?: string | null, kind?: string, pr?: number | null, routine?: string | null, attachments?: number,
- *   repo?: { slug: string, github: string } | null, plan?: any, actKey?: string | null, runIt?: string | null,
+ *   repo?: { slug: string, github: string } | null, plan?: any, actKey?: string | null, runKey?: string | null,
+ *   runIt?: string | null,
  *   captain?: any, risky?: string | null, beside?: any[] | null, forLine?: string | null, starter?: string | null }} [parts]
  */
 export function firePayload(
@@ -291,6 +292,7 @@ export function firePayload(
     repo = null,
     plan = null,
     actKey = null,
+    runKey = null,
     runIt = null,
     captain = null,
     risky = null,
@@ -326,6 +328,8 @@ export function firePayload(
     ...(kind === 'captain' && captain ? ['Mode: captain', `Chase: ${captain.slug}`] : []),
     // A runbook's run's own key for `infra act` (BRK-252): only this payload carries it.
     ...(actKey ? [`Act key: ${actKey}`] : []),
+    // A start on a lent routine's own key (BRK-324): the agent's only credential, capped to the person it's for.
+    ...(runKey ? [`Run key: ${runKey}`] : []),
     // Only a count: the images stay on the board, and the agent fetches them by task ID.
     ...(attachments > 0 ? [`Attachments: ${attachments}`] : []),
     // The agents already running in the repository and what each is changing (IDEA-55 section 4): information.
@@ -350,7 +354,9 @@ export function firePayload(
 
 /** Whose Claude a person's run is on, for its `For:` line (BRK-302). */
 const runsOn = (lent) =>
-  lent ? 'on the repository’s routine, which the owner lends them' : 'on their own Claude routine';
+  lent
+    ? 'on a routine the owner lends them, with a run key that holds it to their role'
+    : 'on their own Claude routine';
 
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const agentsMethods = {
@@ -446,7 +452,8 @@ export const agentsMethods = {
    */
   routineHold(slug, person = null) {
     // A person's own routine is held apart from the repository's (BRK-302): it's another routine, on another account.
-    const hold = JSON.parse(this.meta(person ? personHoldKey(slug, person) : `routine_hold:${slug}`) ?? 'null');
+    // So is the routine the owner lends there (BRK-324, `person` LENT_HOLDER).
+    const hold = JSON.parse(this.meta(holdKeyOf(slug, person)) ?? 'null');
     if (hold && person) return hold.kind === 'paused' || hold.until > Date.now() ? hold : null;
     if (!hold) return null;
     if (hold.kind !== 'paused') return hold.until > Date.now() ? hold : null;
@@ -466,7 +473,7 @@ export const agentsMethods = {
   /** Holds repository `slug`'s routine after `error`, a refused start, against the credentials it was fired with. */
   async holdRoutine(slug, error, credentials, person = null) {
     this.setMeta(
-      person ? personHoldKey(slug, person) : `routine_hold:${slug}`,
+      holdKeyOf(slug, person),
       JSON.stringify({
         kind: error.hold,
         status: error.status,
@@ -1652,12 +1659,17 @@ export const agentsMethods = {
    * null: Claude's 429, the board's agents at once and starts an hour, Claude's limit for the account, and the
    * repository's caps. `force` skips the board's own limits. Risky-path reviewers (BRK-280) hold no claim, so
    * runningAgents doesn't show them: they're counted here. The board's limits count every person's agents; Claude's
-   * count the routine it fires, `routineOf`'s (BRK-302).
+   * count the routine it fires, `routineOf`'s (BRK-302). `holder` is whose hold that routine is under: the
+   * repository's (null), a person's own, or the lent one (BRK-324).
    */
-  agentRoomBlocker(slug, views, { force = false, routineOf = OWNER } = {}) {
+  agentRoomBlocker(
+    slug,
+    views,
+    { force = false, routineOf = OWNER, holder = routineOf === OWNER ? null : routineOf } = {},
+  ) {
     const extra = this.riskReviewersRunning();
     // Claude said when to try again after its 429 (BRK-144): no start fires before then, forced or not.
-    const hold = this.routineHold(slug, routineOf === OWNER ? null : routineOf);
+    const hold = this.routineHold(slug, holder);
     if (hold?.kind === 'limit')
       return new AgentError(
         `Claude’s hourly limit for starting sessions is reached (try again after ${Math.max(1, Math.round((hold.until - Date.now()) / 1000))} seconds, at ${clock(hold.until)})`,
@@ -1695,7 +1707,7 @@ export const agentsMethods = {
    * it, and a refusal only the board's limits caused says so (`forceable`). The run records `forced`.
    *
    * `forPerson` is who the run is for (BRK-302): the owner's starts and the board's fire the repository's routine; a
-   * person's fire their own routine for the repository, else the repository's when the owner lends it, within the
+   * person's fire their own routine for the repository, else the one the owner lends there (BRK-324), within the
    * person's caps as well as the board's. Force start never skips a person's caps.
    */
   async startAgent(
@@ -1734,8 +1746,8 @@ export const agentsMethods = {
     if (!repo) throw new AgentError(`${map.wid ?? 'This task'} is in ${map.repo}, which isn’t a registered repository`);
     const isDefault = repo.slug === this.defaultRepoSlug();
     const { credentials, routineOf, lent } = await this.routineForStart(repo.slug, forPerson);
-    // The person's own routine is held apart from the repository's (BRK-302).
-    const holder = routineOf === OWNER ? null : routineOf;
+    // The person's own routine, and the lent one, are held apart from the repository's (BRK-302, BRK-324).
+    const holder = lent ? LENT_HOLDER : routineOf === OWNER ? null : routineOf;
 
     // Everything from here to the claim is synchronous: two starts can't both pass.
     const views = this.views();
@@ -1758,7 +1770,7 @@ export const agentsMethods = {
         );
     }
     const hold = this.routineHold(repo.slug, holder);
-    const room = this.agentRoomBlocker(repo.slug, views, { force, routineOf });
+    const room = this.agentRoomBlocker(repo.slug, views, { force, routineOf, holder });
     if (room) throw room;
     if (forPerson !== OWNER) {
       const theirs = this.personRoomBlocker(forPerson, lent, this.runningAgents(views));
@@ -1816,6 +1828,9 @@ export const agentsMethods = {
       const attachments = this.sql.exec('SELECT COUNT(*) AS n FROM attachments WHERE task = ?', uuid).one().n;
       const plan = trigger === 'chase' || trigger === 'chase-fix' || kind === 'captain' ? this.planForTask(uuid) : null;
       const actKey = await this.runbookActKey(uuid, agent);
+      // A lent start's agent has no board token in its environment: its run key is how it reaches the board, as its
+      // person and no more (BRK-324).
+      const runKey = lent ? await this.runKeyMake(uuid, agent, forPerson, repo.slug) : null;
       const runIt =
         kind === 'kickoff'
           ? (this.sql.exec('SELECT run_it FROM kickoffs WHERE idea = ?', uuid).toArray()[0]?.run_it ?? null)
@@ -1831,6 +1846,7 @@ export const agentsMethods = {
           repo,
           plan,
           actKey,
+          runKey,
           runIt,
           captain: captainOf ? { slug: captainOf.slug, log: this.captainLastLog(captainOf.slug) } : null,
           beside: this.ridingBesideFor(uuid, kind),
@@ -1849,7 +1865,7 @@ export const agentsMethods = {
       // A start that waited for room has started (BRK-334): nobody's waiting on it any more.
       this.queueFor(uuid, OWNER);
       // Claude took it, so whatever held the routine is over.
-      if (hold) this.setMeta(holder ? personHoldKey(repo.slug, holder) : `routine_hold:${repo.slug}`, null);
+      if (hold) this.setMeta(holdKeyOf(repo.slug, holder), null);
       return { run: this.agentRun(runId), task: this.detail(uuid) };
     } catch (error) {
       const held = error instanceof AgentError ? error.hold : null;

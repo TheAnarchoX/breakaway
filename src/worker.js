@@ -24,7 +24,16 @@ import { unreadableSecrets } from './secrets.js';
 import { BREAKAWAY_REPO } from './updates.js';
 import { RUNNER_HEADER } from './infra-runner.js';
 import { plansDates } from './store-features.js';
-import { endPersonSession, guardStore, peopleOwnerApi, peoplePublic, personApi, personOf } from './people.js';
+import {
+  RUN_KEY_POSTED,
+  endPersonSession,
+  guardStore,
+  peopleOwnerApi,
+  peoplePublic,
+  personApi,
+  personOf,
+  personOfRunKey,
+} from './people.js';
 import { ACTIONS, agentOf, ownerActor } from './permissions.js';
 import { isHidden, lostTarget, readOf, scrub, writeReads } from './reads.js';
 
@@ -381,6 +390,10 @@ async function handleApi(request, env, url, ctx) {
   // Signing in with a passkey, and joining by invite, need no credential: they're how a person gets one (BRK-300).
   const open = await peoplePublic(request, env, url, store(env));
   if (open) return open;
+  // A run key (BRK-324) is its run's person, whatever else the request carries: the board's token beside it was added
+  // by a cloud session's proxy, and the key still holds the agent to its person.
+  const run = await personOfRunKey(request, env, store(env));
+  if (run) return 'error' in run ? json(401, { error: run.error }) : runKeyRoute(request, env, url, ctx, run.person);
   const via = await authenticate(request, env);
   if (via) return routeApi(request, env, url, ctx, via, null);
   // Not the owner: a person, or nobody (docs/specs/BRK-299-people-and-roles.md, points 2 and 3).
@@ -393,6 +406,28 @@ async function handleApi(request, env, url, ctx) {
 }
 
 const PUSH_PRESS = 'only the signed-in web board can change notifications';
+
+/**
+ * A request with a run key (BRK-324): the run's agent, as its person. It reads and writes what the person may, through
+ * the same gates as their personal token, and never their settings or notifications. A body that holds the key itself
+ * is refused before anything reads it: the key never reaches a task, a comment, a post, or Activity.
+ * @param {Request} request
+ * @param {any} env
+ * @param {URL} url
+ * @param {any} ctx
+ * @param {{ handle: string, name: string, via: string, agent: string, key: string }} person
+ */
+async function runKeyRoute(request, env, url, ctx, person) {
+  if (request.method !== 'GET' && (await request.clone().text()).includes(person.key))
+    return json(400, { error: RUN_KEY_POSTED });
+  const first = url.pathname.split('/')[2];
+  if (first === 'session') return personApi(request, env, url, person, store(env));
+  if (first === 'me' || first === 'push')
+    return json(403, {
+      error: `a run key works on its run’s tasks, never on ${person.handle}’s settings: they change those on the web board`,
+    });
+  return personRoute(request, env, url, ctx, person);
+}
 
 /**
  * /api/push for a person (BRK-340, docs/specs/BRK-299-people-and-roles.md, point 3): their own notifications, like
@@ -589,6 +624,16 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     const items = Array.isArray(body) ? body : Array.isArray(body?.tasks) ? body.tasks : [body];
     if (items.some((item) => /^(owner|board)$|^routine:/u.test(String(item?.by ?? '').trim())))
       return json(403, { error: 'by names an agent: owner, board, and routines are the board’s own names' });
+    // A run key is its run's agent (BRK-324): it names no other, and a write that names none is that agent's.
+    if (person.agent) {
+      const other = (name) => typeof name === 'string' && !['', person.agent].includes(name.trim());
+      if (items.some((item) => other(item?.by) || other(item?.agent)))
+        return json(403, { error: `this run key is ${person.agent}’s: name that agent, or none` });
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        if (!body.by) by = body.by = person.agent;
+        if (!body.agent) agent = body.agent = person.agent;
+      }
+    }
   }
 
   const parts = url.pathname.split('/').slice(2).map(decodeURIComponent);
@@ -596,7 +641,7 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
   /** A task write by a person names them (BRK-301): with no agent's `by`, it's theirs, by handle. */
   const theirs = (item) =>
     person && item && typeof item === 'object' && !agentOf(item.by, person.handle)
-      ? { ...item, by: person.handle }
+      ? { ...item, by: person.agent ?? person.handle }
       : item;
 
   if (parts[0] === 'session' && method === 'GET') {
@@ -785,7 +830,8 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
       if (no) return no;
       return send(await s.boardFilesApi(parts[1], { by: body.by, actor, origin: install(env).url ?? url.origin }));
     }
-    // Lend the repository's routine to people with none of their own (BRK-302): the owner's press, like connecting it.
+    // Lend a routine to people with none of their own (BRK-302): a second routine, without the board's token in its
+    // environment (BRK-324). The owner's press, like connecting the repository's.
     if (
       parts.length === 4 &&
       parts[2] === 'routine' &&
@@ -794,7 +840,9 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
     ) {
       const no = await gate('repo.routine', { install: true }, 'only the signed-in web board can lend a routine');
       if (no) return no;
-      return send(await s.repoRoutineLendApi(parts[1], method === 'PUT', body));
+      return send(
+        method === 'PUT' ? await s.repoRoutineLendApi(parts[1], body) : await s.repoRoutineUnlendApi(parts[1], body),
+      );
     }
     // Connect a routine from the board (BRK-133): the owner's form, the signed-in browser only, never the bearer token.
     if (parts.length === 3 && parts[2] === 'routine' && (method === 'PUT' || method === 'DELETE')) {

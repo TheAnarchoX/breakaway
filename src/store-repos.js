@@ -244,8 +244,10 @@ export const reposMethods = {
         removed: gone?.removed ?? null,
         areas,
         ...(await this.routineConnectedState(name)),
-        // Whether the owner lends its routine to people with none of their own there (BRK-302).
+        // Whether the owner lends a routine to people with none of their own there (BRK-302), and how it stands: the
+        // lent routine is a second one, in an environment without the board's token (BRK-324).
         routineLent: this.routineLent(name),
+        lend: await this.lendState(name),
         routines,
         open: tasks.filter(isOpen).length,
         running: row

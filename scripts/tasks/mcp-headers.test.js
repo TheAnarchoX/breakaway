@@ -36,6 +36,15 @@ describe('mcpHeaders: what the plugin’s headersHelper hands Claude Code (CLI-9
     expect(mcpHeaders({ agent: 'me@host', repo: 'widgets' })).not.toHaveProperty('Authorization');
     expect(mcpHeaders({ agent: 'me@host' })).toEqual({});
   });
+
+  it('sends a lent run’s key in its own header, beside whatever token the proxy adds (BRK-324)', () => {
+    const runKey = `bkr_${'4d'.repeat(32)}`;
+    expect(mcpHeaders({ runKey, agent: 'claude-wid-3', named: 'claude-wid-3', repo: 'widgets' })).toEqual({
+      'X-Breakaway-Run-Key': runKey,
+      'X-Breakaway-Agent': 'claude-wid-3',
+      'X-Breakaway-Repo': 'widgets',
+    });
+  });
 });
 
 describe('headersRepo: the repository the headers name', () => {

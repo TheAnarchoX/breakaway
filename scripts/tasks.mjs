@@ -113,6 +113,8 @@ import { cwdOf, parentOf, sessionDir } from './tasks/session-dir.js';
 import { parseInstall, secretName } from '../src/install.js';
 import {
   NAMES,
+  RUN_KEY,
+  authHeaders,
   boardUrl,
   configDir,
   parseEnvFile,
@@ -306,6 +308,9 @@ Reading                (list, next, claim, and add work in this checkout's repos
 Working
   claim <ref>            take a task (atomic: fails if someone else has it)  [--force]
                          refuses another repository's task unless --repo names it
+  run-key <key>          a run on a routine the owner lends: save the Run key from its payload in tasks.env, so this
+                         CLI, its hooks, and mcp --headers send it in its own header (BRK-324). It's the run's only
+                         credential, with its person's rights, until its claim ends  [--forget] drops it
   release <ref>          give it back  [--force]
   comment <ref> <text>   add a comment (signed with your agent name); note is the same command
   quote <ref> <words> --from <source>   put the owner's exact words on a task you hold, quoted and marked as yours:
@@ -573,6 +578,7 @@ const FLAGS = new Set([
   'no-captain',
   'handover',
   'anyway',
+  'forget',
 ]);
 /** Flags only in repos init (BRK-91): --pipeline takes a file in repos modify, and is a flag there. */
 const INIT_FLAGS = new Set(['pipeline', 'copies']);
@@ -620,14 +626,15 @@ function fail(message) {
  */
 async function call(method, path, body, { soft = false, raw = false } = {}) {
   // Without a token the request still goes out: in a Claude cloud environment with an API
-  // credential for this host, the agent proxy adds the Authorization header on the way.
+  // credential for this host, the agent proxy adds the Authorization header on the way. A lent run's key goes in its
+  // own header, which the proxy leaves alone (BRK-324).
   const token = setting('TOKEN');
   let res;
   try {
     res = await fetch(`${BASE}/api/${path}`, {
       method,
       headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...authHeaders(token, setting('RUN_KEY')),
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -639,7 +646,7 @@ async function call(method, path, body, { soft = false, raw = false } = {}) {
     );
   }
   warnIfStale(res.headers.get('X-Tasks-Cli'), res.headers.get('X-Tasks-Release'));
-  if (res.status === 401 && !token)
+  if (res.status === 401 && !token && !setting('RUN_KEY'))
     fail(
       `no token. Set BREAKAWAY_TOKEN, put it in ${ENV_FILE}, set it in the breakaway plugin's settings, or add it as an API credential in the cloud environment (see docs/tasks.md#cloud-agents).`,
     );
@@ -711,7 +718,7 @@ async function upload(taskRef, file, alt = '') {
     res = await fetch(`${BASE}/api/tasks/${enc(taskRef)}/attachments`, {
       method: 'POST',
       headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...authHeaders(token, setting('RUN_KEY')),
         'Content-Type': 'application/octet-stream',
         'X-Attachment-Name': enc(basename(file)),
         'X-Attachment-Alt': enc(alt),
@@ -805,7 +812,7 @@ async function startSessionLog(t) {
   try {
     const res = await fetch(`${BASE}/api/tasks/${enc(t.uuid)}/session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(token, setting('RUN_KEY')) },
       body: JSON.stringify({
         agent: t.claim,
         remote: process.env.CLAUDE_CODE_REMOTE === 'true',
@@ -2074,7 +2081,7 @@ const commands = {
       const token = setting('TOKEN');
       for (const image of attachments) {
         const res = await fetch(`${BASE}/api/attachments/${image.id}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: authHeaders(token, setting('RUN_KEY')),
         });
         if (!res.ok) fail(`couldn't download ${image.name} (HTTP ${res.status})`);
         const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[image.type];
@@ -2231,15 +2238,17 @@ const commands = {
       }
       // Claude Code says which server it's connecting: the plugin's board_url, when the CLI's settings don't name one.
       const server = process.env.CLAUDE_CODE_MCP_SERVER_URL?.replace(/\/mcp\/?$/u, '');
+      const runKey = setting('RUN_KEY') ?? null;
       const repo = await headersRepo({
         base: BASE ?? (server?.startsWith('http') ? server : null),
         token,
+        runKey,
         named: opts.repo ?? setting('REPO'),
         remote,
         fetch,
       });
       // Standard output is Claude Code's, and only the headers go there: never --json's wrapping, never a line of text.
-      console.log(JSON.stringify(mcpHeaders({ token, named, agent: name, repo })));
+      console.log(JSON.stringify(mcpHeaders({ token, runKey, named, agent: name, repo })));
       return;
     }
     const tokenVar = envName('TOKEN');
@@ -2251,12 +2260,44 @@ const commands = {
     const checked = await checkMcp({
       endpoint: config.endpoint,
       token: setting('TOKEN'),
+      runKey: setting('RUN_KEY') ?? null,
       agent: name,
       repo: slug,
       fetch,
     });
     print(checked, (c) => c.lines.join('\n'));
     if (!checked.ok) process.exitCode = 1;
+  },
+  /**
+   * A lent run's key (BRK-324), saved in tasks.env (0600, outside the checkout) because the hooks don't share the
+   * agent's shell: an exported variable never reaches them. --forget drops it.
+   */
+  async 'run-key'() {
+    const name = envName('RUN_KEY');
+    const env = readEnvFile();
+    if (opts.forget) {
+      if (!(name in env)) return print({ forgotten: false }, () => `There's no run key in ${ENV_FILE}.`);
+      const { [name]: _gone, ...rest } = env;
+      writePrivate(`${ENV_FILE}.next`, envFile(rest));
+      renameSync(`${ENV_FILE}.next`, ENV_FILE);
+      return print({ forgotten: true }, () => `Dropped the run key from ${ENV_FILE}.`);
+    }
+    const key = String(need(args[0], 'run key')).trim();
+    if (!RUN_KEY.test(key))
+      fail('that isn’t a run key: copy the whole Run key line’s value from your payload (bkr_…).');
+    writePrivate(`${ENV_FILE}.next`, envFile({ ...env, [name]: key }));
+    renameSync(`${ENV_FILE}.next`, ENV_FILE);
+    process.env[name] = key;
+    const session = await call('GET', 'session', undefined, { raw: true });
+    if (!session.ok) fail(`saved, but the board refused it: ${session.data?.error ?? `HTTP ${session.status}`}`);
+    print({ saved: true, person: session.data.person ?? null }, (d) =>
+      [
+        `Saved the run key in ${ENV_FILE}. This CLI, its hooks, and mcp --headers send it from now on.`,
+        d.person ? `The board knows it: you act for ${d.person.name ?? d.person.handle}, with their rights.` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
   },
   async health() {
     const settings = settingSources();

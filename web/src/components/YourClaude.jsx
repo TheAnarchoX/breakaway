@@ -14,11 +14,11 @@ import { Dialog, Segmented } from './ui.jsx';
  * personal token, never the board's. And, for the owner on People, a person's Claude and the limits the owner sets on it.
  */
 
-const ROUTINES_URL = 'https://claude.ai/code/routines';
+export const ROUTINES_URL = 'https://claude.ai/code/routines';
 /** Where a repository keeps its agent prompt when it doesn't say (src/repos.js, promptPathOf). */
 const DEFAULT_PROMPT_PATH = 'tools/tasks/routine-prompt.md';
 /** The routine's instructions on claude.ai: the stub, pointed at the repository's prompt (src/repos.js, stubFor). */
-const stubFor = (slug) =>
+export const stubFor = (slug) =>
   STUB.replaceAll('<prompt path>', repoBySlug.value.get(slug)?.routine?.prompt || DEFAULT_PROMPT_PATH);
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -69,7 +69,8 @@ export function YourClaude() {
       {claude.routines.some((r) => r.lent && !r.connected) && (
         <p class="meta">
           On a routine the owner lends you, you can run {claude.lentCaps.max} at once and start {claude.lentCaps.hourly}{' '}
-          an hour: it spends the owner’s plan, and its agents hold the board’s token.
+          an hour: it spends the owner’s plan. Each agent there gets a run key with your role and nothing more, which
+          ends with its claim.
         </p>
       )}
     </div>

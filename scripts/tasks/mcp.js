@@ -3,6 +3,7 @@
  * board's /mcp, and whether it answers. Pure apart from the `fetch` it's handed, so it's tested without a board.
  */
 import { githubFromRemote, pickRepo } from './repo.js';
+import { authHeaders } from './settings.js';
 
 /** The MCP revision `--check` speaks: the one with an `initialize` handshake, which /mcp accepts (src/mcp.js, LEGACY). */
 export const CHECK_PROTOCOL = '2025-11-25';
@@ -57,12 +58,14 @@ export function mcpConfig({ url, agent, repo = null, tokenVar }) {
  * tasks.env). Otherwise it's `agent`, claude-<branch>, as X-Breakaway-Agent-Default: the helper can't see the plugin's
  * agent_name, which the plugin sends as a static X-Breakaway-Agent that this one would override, and /mcp takes the
  * default only when that's empty (CLI-16).
- * @param {{ token?: string | null, named?: string | null, agent: string, repo?: string | null }} options
+ *
+ * A lent run's key (`runKey`, BRK-324) goes in its own header, which a cloud session's proxy leaves alone.
+ * @param {{ token?: string | null, runKey?: string | null, named?: string | null, agent: string, repo?: string | null }} options
  * @returns {Record<string, string>}
  */
-export function mcpHeaders({ token = null, named = null, agent, repo = null }) {
+export function mcpHeaders({ token = null, runKey = null, named = null, agent, repo = null }) {
   return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...authHeaders(token, runKey),
     ...(repo
       ? {
           ...(named ? { 'X-Breakaway-Agent': named } : { 'X-Breakaway-Agent-Default': agent }),
@@ -77,15 +80,15 @@ export function mcpHeaders({ token = null, named = null, agent, repo = null }) {
  * null when it tracks none of them. A plugin's headersHelper runs without the plugin's settings, so with only the
  * plugin set up there's no token to ask with: then it's the checkout's GitHub `owner/name`, which /mcp matches against
  * its repositories itself (src/mcp.js). `named` is --repo or BREAKAWAY_REPO. Never throws: Claude Code is waiting.
- * @param {{ base?: string | null, token?: string | null, named?: string | null, remote?: string | null, fetch: typeof globalThis.fetch }} options
+ * @param {{ base?: string | null, token?: string | null, runKey?: string | null, named?: string | null, remote?: string | null, fetch: typeof globalThis.fetch }} options
  * @returns {Promise<string | null>}
  */
-export async function headersRepo({ base = null, token = null, named = null, remote = null, fetch }) {
+export async function headersRepo({ base = null, token = null, runKey = null, named = null, remote = null, fetch }) {
   let registry = null;
   if (base)
     try {
       const res = await fetch(`${String(base).replace(/\/+$/u, '')}/api/repos`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authHeaders(token, runKey),
         signal: AbortSignal.timeout(5000),
       });
       if (res.ok) registry = await res.json();
@@ -133,12 +136,12 @@ export function mcpLines(config, { repo = null, tokenVar }) {
 /**
  * `--check`: an `initialize` and a `tools/list` against /mcp with the same headers the config sends, and what came
  * back. `ok` is false with the board's own error when either fails.
- * @param {{ endpoint: string, token?: string | null, agent: string, repo?: string | null, fetch: typeof globalThis.fetch }} options
+ * @param {{ endpoint: string, token?: string | null, runKey?: string | null, agent: string, repo?: string | null, fetch: typeof globalThis.fetch }} options
  * @returns {Promise<{ ok: boolean, lines: string[] }>}
  */
-export async function checkMcp({ endpoint, token = null, agent, repo = null, fetch }) {
+export async function checkMcp({ endpoint, token = null, runKey = null, agent, repo = null, fetch }) {
   const headers = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...authHeaders(token, runKey),
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
     'X-Breakaway-Agent': agent,

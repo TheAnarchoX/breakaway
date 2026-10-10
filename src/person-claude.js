@@ -4,9 +4,9 @@
  * A person connects their own Claude routine for a repository and picks the Claude plan it runs on. Their agents at
  * once and starts an hour come from that plan the way the owner's come from theirs (src/plans.js): the plan's defaults,
  * which the person may change up to the plan's ceilings, and never above what the owner allows them. A person with no
- * routine of their own in a repository starts there only when the owner lends the repository's routine, and then on
- * the owner's plan, so those starts get the owner's decision (BRK-322): 1 at once and 5 an hour, which the owner may
- * lower too.
+ * routine of their own in a repository starts there only when the owner lends a routine there (a second routine of the
+ * owner's, whose environment adds no board token: BRK-324), and then on the owner's plan, so those starts get the
+ * owner's decision (BRK-322): 1 at once and 5 an hour, which the owner may lower too.
  *
  * Pure: no storage and no network, so the store and the tests share it.
  */
@@ -17,6 +17,18 @@ export const LENT_CAPS = Object.freeze({ max: 1, hourly: 5 });
 
 /** The hold key of a person's own routine in a repository: Claude holds each routine apart (BRK-144). */
 export const personHoldKey = (slug, handle) => `routine_hold:${slug}:person:${handle}`;
+
+/** Who holds a repository's lent routine (BRK-324), in place of a handle: no handle can be it. */
+export const LENT_HOLDER = ':lent';
+
+/**
+ * The hold key of the routine `holder` names in repository `slug`: null for the repository's own, LENT_HOLDER for the
+ * one the owner lends there, else a person's handle for their own.
+ * @param {string} slug
+ * @param {string | null} holder
+ */
+export const holdKeyOf = (slug, holder) =>
+  !holder ? `routine_hold:${slug}` : holder === LENT_HOLDER ? `routine_hold:${slug}:lent` : personHoldKey(slug, holder);
 
 /**
  * @typedef {{ max: number | null, hourly: number | null }} Limits what's set: null is "not set"

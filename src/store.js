@@ -106,6 +106,7 @@ import { peopleMethods } from './store-people.js';
 import { ownerMethods } from './store-owner.js';
 import { permissionsMethods } from './store-permissions.js';
 import { personClaudeMethods } from './store-person-claude.js';
+import { runKeysMethods } from './store-run-keys.js';
 import { OWNER, ROLE_RANK, roleIn } from './permissions.js';
 
 /** Our own snapshot after this many versions, so replicas never have to send one. */
@@ -205,6 +206,7 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     this.initInfraShortLived();
     this.initPeople();
     this.initPersonClaude();
+    this.initRunKeys();
   }
 
   // ---- storage helpers -------------------------------------------------------------------
@@ -305,6 +307,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
     const providerTokens = await this.resealedProviderTokens(keyBase64.trim());
     // People's own routines (BRK-302) are sealed the same way.
     const personRoutines = await this.resealedPersonRoutines(keyBase64.trim());
+    // So are the routines the owner lends (BRK-324).
+    const lentRoutines = await this.resealedLentRoutines(keyBase64.trim());
     let count = 0;
     try {
       this.atomically(() => {
@@ -330,6 +334,8 @@ export class TaskStore extends /** @type {new (ctx: any, env: any) => DurableObj
             r.handle,
             r.repo,
           );
+        for (const r of lentRoutines)
+          this.sql.exec('UPDATE lent_routines SET sealed = ? WHERE repo = ?', r.sealed, r.repo);
         for (const t of providerTokens)
           this.sql.exec('UPDATE infra_connections SET sealed = ? WHERE provider = ?', t.sealed, t.provider);
         this.setMeta('client_id', clientId.toLowerCase());
@@ -1874,6 +1880,7 @@ Object.assign(
   ownerMethods,
   permissionsMethods,
   personClaudeMethods,
+  runKeysMethods,
 );
 
 // ---- agent API actions (thin wrappers that map errors to responses) --------------------------

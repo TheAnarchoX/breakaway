@@ -177,8 +177,10 @@ describe('a person’s later starts check their role again (BRK-348)', () => {
   });
 
   it('starts nothing more in a chase on a lent routine once the person loses their grant there', async () => {
-    expect((await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: session, body: {} })).status).toBe(
-      200,
+    // A lent routine of its own, in an environment without the board's token (BRK-324).
+    const lent = { url: fireOf('lent'), token: 'sk-ant-oat01-lent-made-up' };
+    expect((await call('/api/repos/widgets/routine/lend', { method: 'PUT', cookie: session, body: lent })).status).toBe(
+      201,
     );
     try {
       const dev = await person('dev');
