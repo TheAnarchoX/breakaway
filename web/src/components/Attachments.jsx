@@ -5,6 +5,7 @@ import { MAX_IMAGES, isImage, prepareImage } from '../lib/images.js';
 import { ref } from '../lib/model.js';
 import { confirmDialog, toast } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
+import { taskLock } from './Who.jsx';
 
 const src = (image) => `/api/attachments/${image.id}`;
 
@@ -110,7 +111,8 @@ function Viewer({ images, index, onIndex, onClose }) {
 }
 
 /**
- * Thumbnails of a task's images. `onRemove` gets the image; `viewer` state lives here so focus returns to the thumbnail.
+ * Thumbnails of a task's images. `onRemove` gets the image (without one, they're only viewed); `viewer` state lives
+ * here so focus returns to the thumbnail.
  * @param {Record<string, any>} props
  */
 export function Thumbnails({ images, onRemove }) {
@@ -124,14 +126,16 @@ export function Thumbnails({ images, onRemove }) {
             <button type="button" class="thumb" aria-label={`View ${image.name}`} onClick={() => setOpen(i)}>
               <img src={image.url ?? src(image)} alt={image.alt || image.name} />
             </button>
-            <button
-              type="button"
-              class="thumb-remove"
-              aria-label={`Remove ${image.name}`}
-              onClick={() => onRemove(image)}
-            >
-              <X size={14} aria-hidden="true" />
-            </button>
+            {onRemove && (
+              <button
+                type="button"
+                class="thumb-remove"
+                aria-label={`Remove ${image.name}`}
+                onClick={() => onRemove(image)}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -156,6 +160,8 @@ export function AttachmentsSection({ task }) {
   const [images, setImages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState(false);
+  // Someone who can't change the task sees its images, and adds or removes none (WEB-137).
+  const lock = taskLock(task);
 
   useEffect(() => {
     let live = true;
@@ -171,6 +177,7 @@ export function AttachmentsSection({ task }) {
   }, [id]);
 
   const add = async (files) => {
+    if (lock) return;
     const room = MAX_IMAGES - images.length;
     if (!files.length) return;
     if (files.length > room)
@@ -209,7 +216,7 @@ export function AttachmentsSection({ task }) {
       class={`panel-section attach ${over ? 'attach-over' : ''}`}
       aria-labelledby={`images-${task.uuid}`}
       onDragOver={(e) => {
-        if (e.dataTransfer?.types.includes('Files')) {
+        if (!lock && e.dataTransfer?.types.includes('Files')) {
           e.preventDefault();
           setOver(true);
         }
@@ -229,10 +236,18 @@ export function AttachmentsSection({ task }) {
       }}
     >
       <h3 id={`images-${task.uuid}`}>Images</h3>
-      <Thumbnails images={images} onRemove={remove} />
-      <div class="attach-actions">
-        <ImagePicker onFiles={add} disabled={busy || images.length >= MAX_IMAGES} full={images.length >= MAX_IMAGES} />
-      </div>
+      <Thumbnails images={images} onRemove={lock ? null : remove} />
+      {lock ? (
+        !images.length && <p class="muted small">No images.</p>
+      ) : (
+        <div class="attach-actions">
+          <ImagePicker
+            onFiles={add}
+            disabled={busy || images.length >= MAX_IMAGES}
+            full={images.length >= MAX_IMAGES}
+          />
+        </div>
+      )}
     </section>
   );
 }

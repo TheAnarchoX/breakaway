@@ -4,6 +4,7 @@ import { ago, plural } from '../lib/model.js';
 import { actions, agents, features, hashFor, loadFeatures } from '../lib/store.js';
 import { Title } from '../lib/richtext.jsx';
 import { sentence } from './Chase.jsx';
+import { taskLock } from './Who.jsx';
 
 /**
  * A feature as a task shows it (WEB-77): the feature its tag puts it in, with the feature's release, progress, and
@@ -162,6 +163,8 @@ export function FeatureSection({ task: t }) {
     actions.update(t, changes, message).then(() => loadFeatures());
   };
   const chase = f?.chase ? chaseWords(f.chase) : null;
+  // A task joins a feature by its tag, a task write: someone who can't change the task reads it (WEB-137).
+  const lock = taskLock(t);
   return (
     <section class="panel-section tp-feature" aria-labelledby={`feature-${t.uuid}`}>
       <h3 id={`feature-${t.uuid}`}>
@@ -205,7 +208,11 @@ export function FeatureSection({ task: t }) {
         state.loaded &&
         !state.error && (
           <p class="muted small">
-            {open.length ? 'Not in a feature yet. Pick one to add it.' : 'No features yet. Add one on the Roadmap.'}
+            {lock
+              ? 'Not in a feature.'
+              : open.length
+                ? 'Not in a feature yet. Pick one to add it.'
+                : 'No features yet. Add one on the Roadmap.'}
           </p>
         )
       )}
@@ -214,7 +221,7 @@ export function FeatureSection({ task: t }) {
           {state.error}
         </p>
       )}
-      {open.length > 0 && (
+      {open.length > 0 && !lock && (
         <label class="tp-feature-pick">
           <span class="meta">{f ? 'Move to' : 'Add to'}</span>
           <select
