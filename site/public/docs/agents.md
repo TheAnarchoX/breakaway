@@ -30,7 +30,7 @@ The board starts Claude Code cloud sessions on tasks and shows what each one is 
 - **To review a pull request.** **Review with an agent** on a pull request’s page ([GitHub](https://leavethepack.dev/docs/github/#review-with-an-agent)).
 - **For a whole feature.** **Chase** on a feature, or `chase <slug>`: the board starts an agent on every ready task in the feature and on what blocks it, until they’re all done or in review ([Features, chase, and the peloton](https://leavethepack.dev/docs/features/#chase)).
 
-Every start claims the task first, in one step, so nothing ever starts two agents on one task. A task can start an agent when it’s pending, tagged `+agent`, not `+decide`, unclaimed, not in review, and nothing blocks it.
+Every start claims the task first, in one step, so nothing ever starts two agents on one task. A task can start an agent when it’s pending, an agent’s (`who: agent`), unclaimed, not in review, and nothing blocks it.
 
 ### Modes
 
@@ -51,7 +51,7 @@ An agent has a mode, set by how it was started.
 
 When only the board’s own limits stop a start (agents at once, starts an hour, a repository’s caps, a routine’s daily caps, Agents per area or another agent’s files, or the auto-start switch), the start says which one and offers **Force start**. It’s on every start, and `--force` on every command that starts an agent.
 
-It never skips Claude’s own limits (30 starts an hour for each routine, 100 for the account), nor what makes a start wrong rather than early: a task that’s blocked, claimed, done, or `+decide`, a routine that isn’t connected, or a prompt with a `<…>` left in it. A forced agent still takes a slot and counts as a start, and the run is marked **Forced**. Only you force a start; agents never ask for one, and a chase never forces.
+It never skips Claude’s own limits (30 starts an hour for each routine, 100 for the account), nor what makes a start wrong rather than early: a task that’s blocked, claimed, done, or a decision, a routine that isn’t connected, or a prompt with a `<…>` left in it. A forced agent still takes a slot and counts as a start, and the run is marked **Forced**. Only you force a start; agents never ask for one, and a chase never forces.
 
 ### From a prompt: New agent
 
@@ -98,6 +98,8 @@ Claude has no API that says which plan an account is on, so you pick it at the t
 | Max 20x | 10, up to 24 | 60 | 50, up to 500 | 10, up to 200 |
 
 Each repository’s routine is held to Claude’s 30 starts an hour, and a repository can be capped below the board’s limits (on its page in Settings, the Agents view’s Repositories section, or `repos modify <slug> --agents-max <n> --agents-hourly <n>`) so a busy one can’t take every slot.
+
+On a board with [people](https://leavethepack.dev/docs/people/), each person starts agents on their own Claude routine, with caps of their own from its plan, and the board’s limits above count everyone’s agents together. A routine you lend them runs 1 agent at once and 5 starts an hour for each person.
 
 ## Connecting the routine
 
@@ -146,7 +148,7 @@ While a routine is Paused, auto-start and chase don’t fire it, so a refused to
 
 Under a running agent’s live output, and from **Message** in the Agents view, you can send it a note of up to 2,000 characters. The board queues it for the agent that holds the claim. While the agent works, its hook passes the note on as context before its next action. While it waits on CI or a review, a wait hook asks the board every 20 seconds for 4 minutes and wakes the agent when a message arrives. After that, the message waits for the agent’s next turn.
 
-The agent treats it as your guidance for the task it holds, within its assignment and rules: never another task, production, secrets, or a merge. It answers with a comment on the task. Only the signed-in web board can send one. No secrets or personal data in a message.
+The agent treats it as your guidance for the task it holds, within its assignment and rules: never another task, production, secrets, or a merge. It answers with a comment on the task. Only the signed-in web board can send one: you, and on a board with [people](https://leavethepack.dev/docs/people/), the person the agent works for or a maintainer of its repository, whose message names them. No secrets or personal data in a message.
 
 ## The peloton
 

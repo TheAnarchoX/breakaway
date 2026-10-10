@@ -12,7 +12,7 @@ Commercial use is by exception: the owner grants a free commercial licence case 
 
 The licence applies from 2.0.0. Every release before it stays under FSL-1.1-Apache-2.0, the licence it shipped with.
 
-There is no hosted version, and no accounts, teams, pricing, paid features, or ads.
+There is no hosted version, and no sign-up, hosted accounts, tenants, pricing, paid features, or ads. You can invite the people you work with to your own install, each with a role per repository ([People and roles](/docs/people/)), and you stay its owner.
 
 ## Who hosts this site?
 

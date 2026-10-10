@@ -318,11 +318,10 @@ The owner answered these on BRK-322 (9 Oct). They're no longer open:
 | 3a | BRK-302 | Bring your own Claude: a person's routine connections, lending the repository's routine, starts on the starter's routine, caps per person and in total, a person's plan | BRK-301 | merged |
 | 3b | BRK-303 | Who did it: the person on every write, in Activity, the audit, the inbox, and pull requests; approval rules and the two-person rule | BRK-301 | merged |
 | 3c | WEB-124 | People on the web: the sign-in page, People, invites, grants, Reset, each person's settings (passkeys, tokens, their routine, push), the owner's passkeys and name and the passkey step in Set up the board, the person in the header, and controls a role can't use shown with who can | BRK-301, BRK-323, BRK-328, BRK-329 | merged |
-| 3d | BRK-324 | Run keys: a short-lived key in a lent routine's payload that carries the rights of the person the run is for, sent in its own header; lending on a second routine without the board's token | BRK-302, BRK-345 | this pull request |
+| 3d | BRK-324 | Run keys: a short-lived key in a lent routine's payload that carries the rights of the person the run is for, sent in its own header; lending on a second routine without the board's token | BRK-302, BRK-345 | merged |
 | 3e | BRK-328 | The owner's own sign-in: the owner's passkeys, the owner's display name with the handle still `owner`, and the optional passkey step in Set up the board (points 1, 2, and 9) | BRK-301 | merged |
 | 3f | BRK-329 | Profiles: each person's work and notes for agents, the owner's too, and the `For:` line in every run's payload (point 1) | BRK-328 | merged |
-| 4 | DOC-46 | The manual, the site, the README, and point 8's changes to the brand guide, `AGENTS.md`, the decision log, and `prompts/core.md` | BRK-302, BRK-303, WEB-124, BRK-324, BRK-328 | last, after BRK-324 |
-
+| 4 | DOC-46 | The manual, the site, the README, and point 8's changes to the brand guide, `AGENTS.md`, the decision log, and `prompts/core.md` | BRK-302, BRK-303, WEB-124, BRK-324, BRK-328 | this pull request, last |
 | 5 | BRK-327 | `/mcp` for people: a personal token, reads by grant, writes by role | BRK-323 | merged |
 | 5 | BRK-330, BRK-343, WEB-133 | Who does it: one field and an assignee in place of the agent, owner, and decide tags (point 11), its review's gaps, and the web's treatment | BRK-301 | merged |
 | 5 | BRK-333 | Who pressed, in the last words that said the owner, and the two-person rule off while the owner is alone | BRK-303 | merged |
@@ -331,7 +330,7 @@ The owner answered these on BRK-322 (9 Oct). They're no longer open:
 | 5 | BRK-340 | People's own notifications | BRK-303 | merged |
 | 5 | BRK-346, BRK-347 | Taskwarrior can add who:decision; finishing a decision needs the role that answers it | BRK-330 | merged |
 | 5 | ID-9, WEB-134, WEB-136, WEB-137, WEB-138, WEB-139, WEB-140 | Avatars, your own Claude on the web, viewer locks, removed people, the task menu, and decision locks | WEB-124 | merged |
-| 6 | BRK-331 | The sweep: every stopgap the build left removed, the legacy fixed forward, and this spec made true | all of the above but BRK-324 | merged |
+| 6 | BRK-331 | The sweep: every stopgap the build left removed, the legacy fixed forward, and this spec made true | all of the above but BRK-324 and DOC-46 | merged |
 | 7 | BRK-349 | The old who tags' mapping and the questions' old key removed, once every copy is past them | BRK-331, a stable release after 2.0.2-main.2 | waits until 10 Nov 2026 |
 
 2b follows BRK-301 because both change every store file's reads and writes. 3a, 3b, and 3c can run in parallel, and 3d follows 3a. They share only the settings page, which WEB-124 owns.

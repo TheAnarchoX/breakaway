@@ -13,10 +13,10 @@ An agent works best on a task that fits one pull request. If you can’t say wha
 - **One outcome per task.** If the brief has an “and” joining two outcomes, make two tasks and add a `depends` where one waits.
 - **Name the files and the behaviour you care about,** not the steps. “The inbox sorts by age; the oldest ping is first” beats “edit `Inbox.jsx`”.
 - **Put the checks in the repository,** not in the task. The agent follows the repository’s **Checks** (see below), so a task never has to say “and run the tests”.
-- **Tag honestly.** `+agent` for work an agent can do in the repository, `+owner` for production, accounts, and sign-offs, and `+decide` when you have to choose first. An agent never starts a `+decide` task.
+- **Say who does it, honestly.** `--who agent` for work an agent can do in the repository, `--who person` for production, accounts, and sign-offs (with `--assignee owner` when it’s yours), and `--who decision` when you have to choose first. An agent never starts a decision.
 
 ```sh
-npx breakaway add "Sort the inbox by age" --project web --tag agent --horizon now \
+npx breakaway add "Sort the inbox by age" --project web --who agent --horizon now \
   --brief "The inbox lists pings in the order they arrived. The oldest should be first, so nothing waits unseen." \
   --done-when "The inbox shows the oldest open ping first, in both themes, narrow and wide."
 ```

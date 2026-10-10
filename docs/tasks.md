@@ -6,10 +6,10 @@ There are four ways in, all on the same data:
 
 | Way in | For | How |
 | --- | --- | --- |
-| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with a token. Claims work, as MCP does. |
+| **The CLI** (`npx breakaway`) | Agents anywhere, including cloud sessions; anyone without Taskwarrior | The JSON API, with the board's token or a person's personal token. Claims work, as MCP does. |
 | **MCP** (`/mcp`) | Claude Code and other MCP clients, without the CLI | The board's MCP server, with the same token ([MCP clients](#mcp-clients)). An agent's tools only: claim, comment, hand over. |
-| **Taskwarrior** (`task`, 3.x) | The owner and local agents who want filters, reports, and offline work | Syncs with the server's TaskChampion sync protocol. |
-| **The web board** | The owner in a browser or on a phone; anyone reviewing the work | The board's address, signed in with the same token. A board, a list, a dependency graph, and an activity feed. |
+| **Taskwarrior** (`task`, 3.x) | The owner and their local agents, who want filters, reports, and offline work ([people](#people-and-roles) use the others) | Syncs with the server's TaskChampion sync protocol. |
+| **The web board** | The owner and the people they invite, in a browser or on a phone | The board's address, signed in with the token or a passkey ([People and roles](#people-and-roles)). A board, a list, a dependency graph, and an activity feed. |
 
 ## How work is organised
 
@@ -390,7 +390,7 @@ A cloud session reaches the internet through a proxy (`HTTPS_PROXY`), and that's
 
 ### The web board, and on a phone
 
-Open the board's address and paste the token once (let your password manager keep it: the form has a username field with the install's name). The browser stays signed in for 180 days; rotating the token signs every browser out. On a phone, add it to your home screen (Safari: Share → Add to Home Screen; Chrome: ⋮ → Add to Home screen) and it opens like an app, with the views behind the menu button at the top left. Taskwarrior's own phone apps weren't checked for TaskChampion sync; the web board is the supported way.
+Open the board's address and paste the token once (let your password manager keep it: the form has a username field with the install's name), or sign in with a passkey once you've added one. The browser stays signed in for 180 days; rotating the token signs every browser of the owner's out. People you invite sign in with their passkey ([People and roles](#people-and-roles)). On a phone, add it to your home screen (Safari: Share → Add to Home Screen; Chrome: ⋮ → Add to Home screen) and it opens like an app, with the views behind the menu button at the top left. Taskwarrior's own phone apps weren't checked for TaskChampion sync; the web board is the supported way.
 
 - **The frame** (`CLD-156`): the views are in a sidebar on the left that collapses to a rail of icons (its **Collapse** button, or `[`; this browser remembers it, and it starts as icons on a window under 1280 px). Inbox, Agents, and GitHub carry counts there (what's open in the inbox; agents working, with a dot while one is live; pull requests ready to merge), and the bottom of it says whether the board reaches its server and opens **Settings**. On a phone the same sidebar is a drawer behind the menu button. The top bar keeps search, **New agent** (when an agent routine is connected; [New agent](#new-agent-general-agents)), **New task**, and the bell.
 - **Inbox**: in the sidebar, between Dependencies and Activity (`WEB-71`), and behind the bell at the top right, which counts the open pings too; it opens the latest five, each going to the inbox at that ping (`#/inbox?ping=<id>`), and **Open inbox** for the full view, where you apply, mark handled, or dismiss ([Pings and proposals](#pings-and-proposals)). Each item in the bell's list can be dismissed there too, without opening the inbox (`WEB-53`). `o` opens the inbox.
@@ -415,8 +415,10 @@ Open the board's address and paste the token once (let your password manager kee
 
 | Section | Settings | Kept |
 | --- | --- | --- |
+| **You** | Your name, profile, avatar, passkeys, personal tokens, where you're signed in, your roles, and your Claude ([People and roles](#people-and-roles)) | On the board |
 | **This browser** | Claim as, theme, open tasks in, notifications ([Pings and proposals](#pings-and-proposals)), and the merge method (what Merge starts with and Merge when green uses; picking one in the merge dialog changes it here too) | In `localStorage`, for this browser only |
 | **The board** | Agents: your Claude plan, agents at once, starts an hour, Agents per area ([Footprints](#footprints)), start by itself, and new security alerts (`PATCH /api/agents/settings`). Routines: routines can run, and all routines a day (`routines/settings`). Updates: self-updates on or off, with a link to Connections for the rest ([Updates](#updates)) | On the board |
+| **People** | Who works on the board with you, their roles, Invite, Open invites, Reset, and Remove ([People and roles](#people-and-roles)). The owner and maintainers manage them | On the board |
 | **Repositories** | Each registered repository with its GitHub repository and areas, linking to its page; **Add a repository** (the wizard); the ones taken off the board, collapsed. With no repository yet, the wizard's first step | On the board |
 
 The server's health, Connections (with its count of what needs attention), Refresh, Shortcuts, and Sign out are at the foot. **The Agents and Routines views keep their settings too** (the owner's answer in `WEB-29`): each group is one component both places render, saving through the same route, so a change in either shows in both. A routine's own settings (its schedule, triggers, and caps) stay on Routines.
@@ -436,9 +438,86 @@ A repository taken off the board shows its page read only, with **Release its sh
 
 **CLI only.** What holds a secret or changes the install itself has no button in the web app, and the pages show the command to copy where one is needed: `agents-connect` (a routine's URL and token, which the wizard and Connections can also take, `WEB-38`), `github-connect` (the GitHub App's keys), `rotate-sync`, `rotate-token`, `init-secrets`, and `repos remove` (it drops the repository's routine secrets from the Secrets Store). `repos modify` still changes everything a repository's page does, with the same checks; it sends no `edited`, so it saves as it always did.
 
+## People and roles
+
+One install can be a whole group's board ([spec](specs/BRK-299-people-and-roles.md)). The owner, the person behind the board's token, invites the people they work with; each signs in with a passkey, holds a role in each repository they're given, and starts agents on their own Claude. Every change names who made it. It all stays inside the install: there's no sign-up, no hosted account, no email, and nothing new leaves the board. An install where nobody is invited behaves exactly as before, and **People** in Settings says "Just you."
+
+### The owner and the token
+
+The owner is the person behind the board's token, and stays so whatever anyone else does. The token always signs in, on any sign-in page; nobody can demote, remove, Reset, or replace the owner, and there's no second owner or "make owner" button. The only way to change the token is `npx breakaway rotate-token`, which needs the owner's Cloudflare login and signs out every browser the owner signed in on, leaving people's sessions alone. A group that wants a second person with every right gives them maintainer on every repository.
+
+Under **Settings, You**, the owner can add **passkeys** of their own (to sign in with a fingerprint, face, or device PIN instead of pasting the token) and a **display name**, which people see beside "(owner)", like "Ana (owner)"; empty, the board says "the owner". The handle stays `owner`. **Set up the board** on a new install has an optional step, **Add a passkey for yourself**; an install that's already set up shows no prompt. The owner keeps Taskwarrior sync: it replicates every task, so it isn't a way in for anyone else.
+
+### Inviting someone
+
+**Settings, People, Invite**: pick a role and the repositories it's for, how long the link works (7 days unless you pick 1 to 30), and copy the link (`https://<board>/#/join/<code>`) to share by hand. Opening it shows who invited them and the role, asks for their name and a handle, and makes their first passkey; the invite is used up once that passkey is saved. A link works once, can be revoked under **Open invites**, and an expired, used, or revoked one says which and to ask for a new one. The board keeps only a hash of the code.
+
+A handle is lowercase, up to 32 characters, unique, and fixed: it's what Activity shows. It's never `owner`, `board`, or `routine:…`, and never looks like an agent's name (`claude-…`, `codex-…`). A person can change their display name.
+
+### Roles
+
+A person holds at most one role in each repository, and sees only the repositories they hold one in: their tasks, Activity, pings, routines, pull requests, peloton, Infrastructure, and specs. A task that waits on one they can't see stays blocked and says it waits on "a task you can’t see".
+
+| Role | In a repository they're given |
+| --- | --- |
+| **viewer** | Reads everything about the repository, Infrastructure and its costs included. Changes nothing. |
+| **member** | A viewer, plus: add, edit, claim, comment on, and hand over tasks; add ideas; start agents on their own Claude, within their caps; message, quote, and answer the pings of agents they started; post on the peloton; propose changes (a change on an environment's console, a policy change, a feature's title, brief, and release), which wait for a maintainer. |
+| **maintainer** | A member, plus: merge, publish, and update pull requests; promote and roll back; run workflows; approve and reject plans and changes (under the environment's [approval rule](#two-people-to-approve)); envelopes outside production; freeze; answer decisions; resolve any ping; routines; general, review, and routine-making agents, Force start, and chases; specs' status; features' dates and state; releases; and the people in their repositories. |
+| **the owner** | Everything, everywhere, and what stays the owner's below. |
+
+Giving **every repository** (`*`) covers repositories added later. Controls a role can't use stay on the page, locked, saying who can ("Only a maintainer of widgets can merge a pull request.").
+
+**Always the owner's:** the token and `rotate-token`; making maintainers and the every-repository grant; connections and secrets (the GitHub App, providers' tokens, the repository's own Claude routine, push's keys); adding, removing, and kicking off repositories; the install (self-update, import, rebuild, rekey, and the board-wide settings: agent caps, routines' cap and pause, the currency, the plan of the owner's routines, closing a horizon); loosening a policy or an approval rule; and envelopes on production.
+
+**Who manages whom.** The owner invites anyone with any role, changes and removes roles, Resets, and removes anyone. A maintainer invites members and viewers to the repositories they maintain, and changes, Resets, or removes a person only when every role that person holds is in those repositories and they aren't a maintainer. Making, Resetting, or removing a maintainer is the owner's.
+
+### Signing in
+
+| Who | Web board | CLI and MCP | Agents |
+| --- | --- | --- | --- |
+| The owner | The token, or a passkey of their own | The board's token | The board's token, in the repository's cloud environment |
+| A person | Their passkey | A personal token | A personal token in their own cloud environment, or a run key on a lent routine |
+
+- **Passkeys**: under **Settings, You, Passkeys**, add one on each device you use, name them, and remove any but your last. The board checks them itself (no outside service) and keeps only each one's public key. **Sign in with a passkey** shows on the sign-in page once anyone has one.
+- **Personal tokens**: under **Settings, You, Personal tokens**, make one per place you use it ("laptop", "cloud environment"). It starts `bkp_`, shows once, and works wherever the board's token does for the CLI and MCP (`BREAKAWAY_TOKEN`, the plugin's settings, or an API credential in a cloud environment, as [Cloud agents](#cloud-agents) says), with your role. It can't sign in to the web board, so a token in an agent's environment can never press. Revoke one and whatever uses it stops at once.
+- **MCP sign-in from apps** ([MCP clients](#mcp-clients)) signs in whoever is on the board, so the app acts as that person; each person sees and revokes their own, and the owner sees everyone's.
+- **Sessions** last 30 days, renewed on use; **Sign out everywhere** ends every browser of yours, and your tokens keep working.
+
+### Reset and removing
+
+**Reset**, on a person in People, is for a lost passkey: it revokes their passkeys, personal tokens, sessions, and MCP sign-ins, and gives you a new link with the same roles to send them. There's no self-service reset and no recovery codes: "Lost your passkey? Ask whoever invited you to Reset you." **The owner recovers with the token**; if the token itself is lost, see [When something's lost](#when-somethings-lost).
+
+**Remove** revokes all of that, forgets their own routines and their profile, and frees nobody's handle: theirs stays on what they did, drawn as removed, and can't be given to anyone else.
+
+### Profiles and avatars
+
+Under **Settings, You, Profile**, each person, the owner included, may say what **work** they do (Engineering, Design, Product, Writing, Operations, Research, Organising, or Other in their own words) and give **notes for agents**, one line ("new to Git, explain the steps"). Agents started for them read both from a `For:` line in their payload and pitch their answers to it. It's never a permission: what someone may do is their role. Each person's **avatar** is a pattern drawn from their handle (**Shuffle** picks another); agents look different, so a person and an agent never look alike.
+
+### Your own Claude
+
+A person's agents run on their own Claude, never on the owner's plan unless the owner lends a routine. Under **Settings, You, Your Claude**, a member or maintainer picks a repository, follows the same steps the owner's routine took (the routine's name, the repository, the stub prompt, the board's host to allow), and pastes its API trigger's URL and token. The board seals them like the owner's and never shows them again. Their cloud environment gets **their personal token** as its credential for the board's host, never the board's token.
+
+- **Their caps** come from the routine's Claude plan (Pro, Max 5x, or Max 20x), which they pick when they connect it: agents at once and starts an hour start at the plan's defaults, and they may change them up to its ceilings. The owner can lower anyone's caps from People. The board's own caps still count everyone's agents together, so one person can't crowd out the rest; Force start skips the board's caps, never a person's.
+- **Where agents run.** An agent a person starts, a chase they start, and a routine they made run on their routine. Start when ready, and agents the owner starts, run on the repository's routine, as before. The Agents view shows running agents and the queue per person, and the queue says when a start waits on a person's own cap.
+- **Without their own routine** a person can't start agents in that repository, unless the owner lends one.
+
+**Lending a routine.** On a repository's page, **Lend a routine** takes a second routine of the owner's, on the owner's Claude plan, in a cloud environment **without** the board's token. People with no routine of their own start agents on it, 1 at once and 5 an hour each (the owner can lower it). Each agent on it gets a **run key** in its payload (`Run key: bkr_…`): its only way in, with exactly its person's rights, sent in its own header (`X-Breakaway-Run-Key`), kept by the board only as a hash, and ended by any change to the task's claim or status, a new start, the person leaving, or a day at most. The agent saves it with `npx breakaway run-key <key>`, outside the checkout. The board refuses the repository's own routine as the lent one, and if a lent agent arrives with the board's token too, the page warns that its environment adds it: take `BREAKAWAY_TOKEN` out of that environment and connect it again. **Stop lending** forgets it; agents running on it finish their runs.
+
+### Who did it
+
+Every write records the person behind the credential (`owner` or a handle), and when an agent made it, the agent and who it was for: "claude-brk-12 for Ana". Activity, comments, the inbox, decisions, the peloton, the infrastructure audit, routines, features, and the comment the board leaves on a pull request it merges ("Merged on the board by Ana") all say so. A request's `by` names only an agent; leaving it out means the person behind the credential. Records from before people say `owner`, which was true.
+
+**What an agent may do** is the least of three: the person behind its credential, the person its run is for, and what agents may ever do. So an agent never merges, deploys, approves, answers a decision, or resolves a ping, whoever started it. A person's message to an agent they started reads `Message from <handle> (via the board, …)`, and a person's peloton post reads `<handle> via the board`; only the owner's say "the owner".
+
+### Two people to approve
+
+Each environment has an **approval rule**, under **Who approves its plans** beside each environment on its repository's page: **One maintainer** (the default; the owner always counts as one), **Two different maintainers**, **The owner**, or **The owner and one other person**. With two, neither approver may be the person who proposed the change. A plan that waits shows who has approved and who else may, and the push goes to everyone who can approve it. Making the rule stricter is a maintainer's; loosening it is the owner's. The rule lives on the board, not in the repository, so a pull request can't lower the bar for its own plans.
+
+**Approve alone**: when nobody else could give the second approval, the owner may approve alone after a second confirm, and the audit trail records it with the rule it overrode. **While the owner is the only person on the board**, there's no rule to pick: environments show none, plans show no second approver, and a rule of two set earlier acts as one until someone is invited again. Envelopes, freezes, and the guards don't change: a plan inside an envelope still applies without a press.
+
 ## Pings and proposals
 
-An agent that can't finish a task because only the owner can help, or whose task turns out to be done or not reproducible, **pings** the owner instead of leaving a comment nobody sees ([spec](specs/IDEA-12-agent-pings.md)). `ping <ID> --kind <kind> "<message>"` (you must hold the task) writes a `Ping (<kind>): …` comment and an entry in the owner's inbox. Kinds: `blocked`, `question`, `stale`, `done` (each sends a push) and `fyi` (inbox only). The message is up to 500 characters and is refused if it looks like a token. There's no cap per task: a repeat of the same kind and message on a task is dropped, and an agent is stopped at 50 pings a day, a runaway guard against a loop rather than a budget (BRK-261). A ping stays open until the owner resolves it or the task is finished.
+An agent that can't finish a task because only the owner can help, or whose task turns out to be done or not reproducible, **pings** the owner instead of leaving a comment nobody sees ([spec](specs/IDEA-12-agent-pings.md)). `ping <ID> --kind <kind> "<message>"` (you must hold the task) writes a `Ping (<kind>): …` comment and an entry in the owner's inbox. Kinds: `blocked`, `question`, `stale`, `done` (each sends a push) and `fyi` (inbox only). The message is up to 500 characters and is refused if it looks like a token. There's no cap per task: a repeat of the same kind and message on a task is dropped, and an agent is stopped at 50 pings a day, a runaway guard against a loop rather than a budget (BRK-261). A ping stays open until the owner resolves it or the task is finished. On a board with [people](#people-and-roles), a ping from an agent a person started reaches them too: they may dismiss it or mark it handled, and a maintainer of the repository may also apply its proposal.
 
 An optional **proposal** (`--proposal <file.json>`, `ping --template` prints one) is any number of changes, up to 64 KB, the owner can apply in one press: `add` tasks (with local `ref`s), `depend` (add or remove dependencies), `modify` (horizon, tags, brief, done when), `done` (with a note), `delete` (with a note, for a task the agent may not delete itself), and `release`. The server checks it when it's proposed, refusing cycles, dependencies another path already implies, `autostart`, changes to `horizon-*` tags, and finishing a task in review. Agents propose; only the owner applies, dismisses, or marks a ping handled, with the cookie, so the API token can't. The routes are `POST /api/pings/<id>/apply` (body `{ chosen?: [change numbers], edits?: { <number>: { fields of an add } } }`), `/dismiss`, and `/handled` (only for a ping with no proposal); each answers 403 to the bearer token. Apply checks every chosen change again against the board as it is then and, if any no longer holds, changes nothing and answers 409 with the reason; otherwise it is one version, with a `board` comment on the ping's task ("Applied: added BRK-21; BRK-14 now waits for BRK-21"). Dismissed and handled pings show in Activity.
 

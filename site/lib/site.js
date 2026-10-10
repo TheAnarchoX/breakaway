@@ -46,7 +46,7 @@ export const FILM = ['2-0-0-film.mp4', '2-0-0-film-poster.png'];
 /** The docs, in reading order, in groups. `file` is in site/content/docs. */
 export const DOCS = [
   { group: 'Start', pages: ['index', 'quickstart', 'concepts', 'playbook'] },
-  { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'features', 'ideas-decisions-pings', 'routines'] },
+  { group: 'Use it', pages: ['web-board', 'cli', 'agents', 'features', 'ideas-decisions-pings', 'routines', 'people'] },
   { group: 'Connect', pages: ['github', 'plugin', 'mcp', 'taskwarrior'] },
   { group: 'Run it', pages: ['deploying', 'updating-to-2', 'operations', 'recovery', 'architecture', 'api'] },
   // Architect (DOC-48): its own section, in the same four parts as the board's.

@@ -30,6 +30,7 @@ These docs cover all of it. Start where you are.
 | Features, the Roadmap, chasing a feature, and the peloton | [Features, chase, and the peloton](https://leavethepack.dev/docs/features/) |
 | Ideas, decisions, and pings | [Ideas, decisions, and pings](https://leavethepack.dev/docs/ideas-decisions-pings/) |
 | Saved agent runs on a schedule or an event | [Routines](https://leavethepack.dev/docs/routines/) |
+| Invite the people you work with, each with a role per repository | [People and roles](https://leavethepack.dev/docs/people/) |
 | What Architect is, and how a change to infrastructure goes | [Architect](https://leavethepack.dev/docs/architect/) |
 | Environments, plans you approve, policy, envelopes, signals, incidents, and cost | [The Architect section](https://leavethepack.dev/docs/architect/#read-on) |
 | The GitHub view, packages, pull requests, Review with an agent, merging, Promote and Roll back | [GitHub](https://leavethepack.dev/docs/github/) |

@@ -43,7 +43,7 @@ When you want a feature finished, **chase** it: **Chase** on the feature’s pag
 
 ### What a chase works on
 
-The feature’s open tasks, and every open task that blocks one of them, followed through `depends` across the whole board: any area, any repository. A blocker pulled in that way says which tasks of the chase it blocks, and needs no feature tag. Agents start only on `+agent` tasks.
+The feature’s open tasks, and every open task that blocks one of them, followed through `depends` across the whole board: any area, any repository. A blocker pulled in that way says which tasks of the chase it blocks, and needs no feature tag. Agents start only on an agent’s tasks (`who: agent`).
 
 Every ready task starts at once, without waiting for the others. A task that becomes ready when its blocker’s pull request merges starts on the next tick: right after anything that could unblock a task, and every 5 minutes. Each start goes through the routine and prompt of its own repository, so a blocker in another repository works when that repository’s routine is connected.
 
@@ -55,7 +55,7 @@ A chase has no budget of its own. It shares the board’s agents at once and sta
 
 ### Needs you, and Stuck
 
-A chase never answers a decision, does a `+owner` step or a task without `+agent`, or merges a pull request, and it can’t start in a repository whose routine isn’t connected. Each of those shows as **Needs you** on the feature, with why and what it unblocks, and the chase keeps going on everything that doesn’t wait for them.
+A chase never answers a decision, does a person’s task or one nobody says who does, or merges a pull request, and it can’t start in a repository whose routine isn’t connected. Each of those shows as **Needs you** on the feature, with why and what it unblocks, and the chase keeps going on everything that doesn’t wait for them.
 
 A task refused twice (a start that failed, or an agent that let go without a pull request) is **Stuck**. It shows the last refusal and the agent’s last comment, and isn’t tried again.
 
