@@ -21,6 +21,7 @@ import { WhoChip } from '../components/Who.jsx';
 import { personLabel } from '../lib/people.js';
 import { EmptyBoard } from '../components/EmptyBoard.jsx';
 import { Title } from '../lib/richtext.jsx';
+import { Named } from '../lib/avatar.jsx';
 
 const STATE_ORDER = Object.fromEntries(STATES.map((s, i) => [s.id, i]));
 const H_ORDER = { now: 0, next: 1, later: 2 };
@@ -211,7 +212,13 @@ export function ListView() {
                         </td>
                         <td>{HORIZON_LABEL[t.horizon] ?? '—'}</td>
                         <td>{PRIORITY_LABEL[t.priority] ?? '—'}</td>
-                        <td>{whoLabel(t) ?? <span class="muted">Nobody yet</span>}</td>
+                        <td>
+                          {t.who === 'person' && t.assignee ? (
+                            <Named name={t.assignee} label={whoLabel(t)} size={20} />
+                          ) : (
+                            (whoLabel(t) ?? <span class="muted">Nobody yet</span>)
+                          )}
+                        </td>
                         <td>{t.claim ? <ClaimChip task={t} /> : '—'}</td>
                         <td class="col-deps">
                           <Deps task={t} />

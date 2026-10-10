@@ -3,6 +3,7 @@ import { CircleAlert, CircleCheck, Info, Mic, Square } from 'lucide-preact';
 import { confirmState, dismissToast, forceOffer, multiRepo, repoBySlug, repos, toasts } from '../lib/store.js';
 import { STATE_LABEL, age, isStale, stateOf } from '../lib/model.js';
 import { canDictate, checkOnDevice, dictate } from '../lib/dictation.js';
+import { Avatar } from '../lib/avatar.jsx';
 
 /**
  * A native <dialog>, shown modally while `open`. Escape and a click on the backdrop call
@@ -287,19 +288,12 @@ export const widClass = (task, extra = '') =>
 export function ClaimChip({ task, compact = false }) {
   if (!task.claim) return null;
   const stale = isStale(task);
-  const initial =
-    task.claim
-      .replace(/^(claude|codex)-/u, '')
-      .charAt(0)
-      .toUpperCase() || '?';
   return (
     <span
       class={`claim ${stale ? 'claim-stale' : ''}`}
       title={`Claimed by ${task.claim}${stale ? ', no change for 2 days or more' : ''}`}
     >
-      <span class="claim-avatar" aria-hidden="true">
-        {initial}
-      </span>
+      <Avatar name={task.claim} size={20} />
       {!compact && <span class="claim-name">{task.claim}</span>}
       <span class="claim-age">
         {age(task.start)}
