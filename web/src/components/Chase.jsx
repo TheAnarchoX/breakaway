@@ -6,6 +6,7 @@ import { Dialog, RepoChip, Segmented, widClass, Dictate } from './ui.jsx';
 import { PelotonPanel } from './Peloton.jsx';
 import { HeldReason, HitRates } from './Footprint.jsx';
 import { Title } from '../lib/richtext.jsx';
+import { Named } from '../lib/avatar.jsx';
 
 /**
  * A feature's chase (docs/specs/IDEA-28-features-and-chase.md, section 3.9): Chase and Stop chase, how many
@@ -288,8 +289,10 @@ function Captain({ feature, chase, onChange }) {
       <p class="meta">
         {captain.agent ? (
           <>
-            <a href={hashFor({ task: captain.task.uuid })}>{captain.agent}</a> since {ago(captain.since)}. Its{' '}
-            {captain.hours}-hour watch ends at {clockTime(captain.watchEndsAt)}
+            <a href={hashFor({ task: captain.task.uuid })}>
+              <Named name={captain.agent} size={16} />
+            </a>{' '}
+            since {ago(captain.since)}. Its {captain.hours}-hour watch ends at {clockTime(captain.watchEndsAt)}
             {captain.askedAt ? ': asked to hand over' : ', then a fresh one takes over'}.
           </>
         ) : (
@@ -301,7 +304,8 @@ function Captain({ feature, chase, onChange }) {
           {shown.map((entry) => (
             <li key={entry.id} class="ch-row">
               <span class="meta">
-                {entry.agent === 'board' ? 'The board' : entry.agent} · {ago(entry.at)}
+                <Named name={entry.agent} label={entry.agent === 'board' ? 'The board' : entry.agent} size={16} /> ·{' '}
+                {ago(entry.at)}
                 {entry.handover ? ' · handed over' : ''}
               </span>
               <span class="ch-last">{entry.text}</span>

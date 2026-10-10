@@ -21,6 +21,7 @@ import { Tile } from './EnvironmentStatus.jsx';
 import { PrBadge } from './GitHub.jsx';
 import { usePace } from './RoadmapTimeline.jsx';
 import { RepoChip, widClass } from './ui.jsx';
+import { Named } from '../lib/avatar.jsx';
 
 /**
  * A feature page's overview (WEB-118): where it stands at a glance in the console's tiles (WEB-103), what waits for
@@ -198,7 +199,7 @@ function Rider({ r, t, run, arriving }) {
         ) : (
           <Bike size={14} aria-hidden="true" />
         )}
-        <span class="fo-agent">{r.agent}</span>
+        <Named name={r.agent} size={20} class="fo-agent" />
         {run?.startedAt && <span class="meta">started {ago(run.startedAt)}</span>}
       </span>
       <a class="fo-rider-task" href={taskHref(r)} data-task={r.uuid}>

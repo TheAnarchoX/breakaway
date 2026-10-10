@@ -78,6 +78,7 @@ import { Title } from '../lib/richtext.jsx';
 import { Dialog, Kbd, Popover, RepoChip, Segmented } from './ui.jsx';
 import { Logo } from './Logo.jsx';
 import { whoami } from '../lib/people.js';
+import { Avatar } from '../lib/avatar.jsx';
 
 const VIEW_ICONS = {
   board: Kanban,
@@ -431,9 +432,7 @@ function SignedIn() {
       }}
       title={w.owner ? `${name} (owner): your settings` : `${name} (${w.handle}): your settings`}
     >
-      <span class="signed-in-mark" aria-hidden="true">
-        {String(name).trim().charAt(0).toUpperCase()}
-      </span>
+      <Avatar name={w.owner ? 'owner' : w.handle} size={32} />
       <span class="signed-in-name">
         {name}
         {w.owner && <span class="meta"> · owner</span>}

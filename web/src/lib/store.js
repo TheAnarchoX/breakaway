@@ -9,6 +9,7 @@ import { sidebarDefault } from './layout.js';
 import { setRepoBase } from './links.js';
 import { readSpecParam, specParam } from './specs.js';
 import { isOwner, loadWhoami, whoami } from './people.js';
+import { loadAvatars } from './avatar.jsx';
 
 // ---- preferences (this browser only) -------------------------------------------------------
 
@@ -349,7 +350,8 @@ export async function checkSession() {
   } catch {
     session.value = 'offline';
   }
-  if (session.value === 'in') await Promise.all([loadTasks(), loadHealth(), loadAgents(), loadPings(), loadRepos()]);
+  if (session.value === 'in')
+    await Promise.all([loadTasks(), loadHealth(), loadAgents(), loadPings(), loadRepos(), loadAvatars()]);
 }
 
 export async function loadTasks() {

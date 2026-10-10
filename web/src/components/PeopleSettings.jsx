@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Link2, Plus, Trash2, UserPlus } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
 import { copy } from '../lib/clipboard.js';
+import { Avatar, Named } from '../lib/avatar.jsx';
 import { ROLES, ago, inviteLink, isOwner, loadPeople, people, repoWords, roleLabel, whoami } from '../lib/people.js';
 import { confirmDialog, repoName, repos, toast } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
@@ -144,6 +145,7 @@ export function PeopleSettings() {
                 return (
                   <li key={p.handle}>
                     <div class="people-who">
+                      <Avatar name={p.handle} size={32} />
                       <strong>{p.name}</strong>
                       <span class="meta">
                         {p.handle}
@@ -221,7 +223,7 @@ export function PeopleSettings() {
                 {removed.map((p) => (
                   <li key={p.handle}>
                     <span class="st-repo-name">
-                      {p.name} <span class="meta">{p.handle} (removed)</span>
+                      <Named name={p.handle} label={p.name} size={24} /> <span class="meta">{p.handle} (removed)</span>
                     </span>
                     <span class="meta">Removed {new Date(p.removed).toLocaleDateString()}</span>
                   </li>

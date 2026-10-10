@@ -60,6 +60,7 @@ import {
 } from '../lib/store.js';
 import { Popover, RepoChip, StateBadge, useAutosize, widClass, Dictate } from './ui.jsx';
 import { RichText, Title } from '../lib/richtext.jsx';
+import { Named } from '../lib/avatar.jsx';
 import { copy } from '../lib/clipboard.js';
 import { inSpecsDir, specsDirOf } from '../lib/specs.js';
 import { PrRow } from './GitHub.jsx';
@@ -627,7 +628,12 @@ function Comments({ task: t }) {
           {shown.map((c, i) => (
             <li key={`${c.at}-${i}`} class={`note ${c.by === 'board' ? 'note-board' : ''}`}>
               <span class="meta">
-                <strong class="note-by">{authorLabel(c.by)}</strong> ·{' '}
+                {c.by === null ? (
+                  <strong class="note-by">{authorLabel(c.by)}</strong>
+                ) : (
+                  <Named name={c.by} label={<strong class="note-by">{authorLabel(c.by)}</strong>} />
+                )}{' '}
+                ·{' '}
                 <time dateTime={c.at} title={c.at}>
                   {day(c.at)}
                 </time>
@@ -948,7 +954,7 @@ function PanelBody({ task: t, onClose, headingRef }) {
       {t.claim && (
         <p class={`claim-line ${isStale(t) ? 'claim-line-stale' : ''}`}>
           {isStale(t) && <TriangleAlert size={16} aria-hidden="true" />}
-          Claimed by <strong>{t.claim}</strong> {ago(t.start)}
+          Claimed by <Named name={t.claim} label={<strong>{t.claim}</strong>} size={20} /> {ago(t.start)}
           {isStale(t) ? '. No change for 2 days or more.' : '.'}
         </p>
       )}
@@ -1048,7 +1054,7 @@ function ModalBody({ task: t, onClose, headingRef }) {
             {t.claim && (
               <p class={`claim-line ${isStale(t) ? 'claim-line-stale' : ''}`}>
                 {isStale(t) && <TriangleAlert size={16} aria-hidden="true" />}
-                Claimed by <strong>{t.claim}</strong> {ago(t.start)}
+                Claimed by <Named name={t.claim} label={<strong>{t.claim}</strong>} size={20} /> {ago(t.start)}
                 {isStale(t) ? '. No change for 2 days or more.' : '.'}
               </p>
             )}

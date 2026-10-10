@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import {
   ArrowLeft,
@@ -15,6 +16,7 @@ import {
   Undo2,
 } from 'lucide-preact';
 import { ago } from '../lib/model.js';
+import { Named } from '../lib/avatar.jsx';
 import { api, enc } from '../lib/api.js';
 import { auditActor, auditSummary, auditWords } from '../lib/infra-audit.js';
 import { githubRun, runWords } from '../lib/env-stream.js';
@@ -428,9 +430,14 @@ function Steps({ run, audit, names, envId }) {
 /** A person as the board names them (BRK-303): "you" for the owner, anyone else by handle. */
 const personName = (p) => (p === 'owner' ? 'you' : p);
 
-/** A list in words: "ana", "ana and ben", "ana, ben, and you". */
-const listWords = (items) =>
-  items.length < 3 ? items.join(' and ') : `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+/** A list of people in words, each with their avatar before their name: "ana", "ana and ben", "ana, ben, and you". */
+const listNamed = (people) =>
+  people.map((p, i) => (
+    <Fragment key={p}>
+      {i === 0 ? '' : i === people.length - 1 ? (people.length > 2 ? ', and ' : ' and ') : ', '}
+      <Named name={p} label={personName(p)} size={20} />
+    </Fragment>
+  ));
 
 /**
  * Who must approve a waiting plan under its environment's rule (BRK-303), who has, and who else may.
@@ -438,13 +445,13 @@ const listWords = (items) =>
  */
 function Approvals({ approval }) {
   if (!approval) return null;
-  const have = approval.approvals.map((a) => personName(a.person));
-  const others = approval.mayApprove.map(personName);
+  const have = approval.approvals.map((a) => a.person);
+  const others = approval.mayApprove;
   return (
     <div class="infra-plan-approvals">
       <p>
         <strong>Approved by:</strong> {approval.words}
-        {have.length ? <>. {listWords(have)} approved</> : null}
+        {have.length ? <>. {listNamed(have)} approved</> : null}
         {approval.needs > 0 && have.length ? (
           <>, so it waits for {approval.needs === 1 ? 'one more' : `${approval.needs} more`}</>
         ) : null}
@@ -452,9 +459,11 @@ function Approvals({ approval }) {
       </p>
       {approval.needs > 0 && (
         <p class="meta">
-          {others.length
-            ? `Who else can approve it: ${listWords(others)}.`
-            : 'Nobody else can approve it: the owner can approve it alone.'}
+          {others.length ? (
+            <>Who else can approve it: {listNamed(others)}.</>
+          ) : (
+            'Nobody else can approve it: the owner can approve it alone.'
+          )}
         </p>
       )}
     </div>

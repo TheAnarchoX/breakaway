@@ -1,10 +1,48 @@
 import { useEffect, useState } from 'preact/hooks';
-import { KeyRound, Plus } from 'lucide-preact';
+import { KeyRound, Plus, Shuffle } from 'lucide-preact';
 import { api, enc } from '../lib/api.js';
+import { Avatar, shuffleAvatar } from '../lib/avatar.jsx';
 import { copy } from '../lib/clipboard.js';
 import { PasskeyCancelled, makePasskey, passkeysWork } from '../lib/passkey.js';
 import { ago, loadMine, mine, repoWords, roleLabel, whoami } from '../lib/people.js';
 import { confirmDialog, repoName, toast } from '../lib/store.js';
+
+/**
+ * Your avatar (WEB-134, docs/specs/ID-9-avatars.md): a pattern drawn from a seed, your handle until you shuffle.
+ * Shuffle picks a new one at once, and you keep it until you shuffle again.
+ * @param {{ handle: string }} props
+ */
+function AvatarShuffle({ handle }) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const shuffle = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await shuffleAvatar();
+    } catch (err) {
+      setProblem(err.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <div class="you-avatar">
+      <Avatar name={handle} size={40} />
+      <p class="muted small">
+        Everyone sees this beside your name. Shuffle draws a new one, and it stays until you shuffle again.
+      </p>
+      <button type="button" class="btn btn-outline btn-sm" onClick={shuffle} disabled={busy} aria-busy={busy}>
+        <Shuffle size={15} aria-hidden="true" />
+        Shuffle
+      </button>
+      {problem && (
+        <p class="field-error" role="alert">
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * You, in Settings (WEB-124, docs/specs/BRK-299-people-and-roles.md, points 1 and 2): your name, your profile, your
@@ -39,6 +77,10 @@ export function YouSettings() {
             <div class="st-group">
               <h3>Name</h3>
               <NameForm data={data} />
+            </div>
+            <div class="st-group">
+              <h3>Avatar</h3>
+              <AvatarShuffle handle={data.person.handle} />
             </div>
             {!data.person.owner && (
               <div class="st-group">
