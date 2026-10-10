@@ -13,7 +13,7 @@
  * A store method that isn't here is refused: deny by default, like the API's guarded store (src/people.js). The
  * owner's /mcp never comes through here.
  */
-import { NOT_YET } from './people.js';
+import { NOT_FOR_PEOPLE } from './people.js';
 import { isHidden, lostTarget, scrub, writeReads } from './reads.js';
 
 /**
@@ -151,7 +151,7 @@ export function personStore(store, person, agent) {
     {
       get(_, name) {
         const rule = CALLS[/** @type {string} */ (name)];
-        if (!rule) return async () => ({ status: 403, body: { error: NOT_YET } });
+        if (!rule) return async () => ({ status: 403, body: { error: NOT_FOR_PEOPLE } });
         return async (/** @type {any[]} */ ...args) => {
           const call = rule(actor, agent, ...args);
           if ('board' in call) return store[name](...args);
