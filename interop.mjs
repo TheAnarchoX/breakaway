@@ -264,6 +264,25 @@ try {
   a.task('add', 'Loose end', 'who:person', 'assignee:owner');
   // An older habit (BRK-330): the tag who replaced still means who does it, and the board takes the tag off.
   a.task('add', 'Old habit', '+decide', '+docs');
+  // No attribute is named decision any more (BRK-346), so Taskwarrior stores the word.
+  a.task('add', 'Decide in Taskwarrior', 'who:decision');
+  // A replica with an older shared taskrc kept a decision's questions in `decision`: the board moves them forward.
+  const older = join(work, 'older-taskrc.json');
+  const asked = [{ id: 'go', type: 'yesno', prompt: 'Should we do this?' }];
+  writeFileSync(
+    older,
+    JSON.stringify([
+      {
+        uuid: randomUUID(),
+        description: 'Asked on an older taskrc',
+        status: 'pending',
+        entry: '20261010T000000Z',
+        who: 'decision',
+        decision: JSON.stringify(asked),
+      },
+    ]),
+  );
+  a.task('import', older);
   a.sync();
   await check('the API sees tasks added in Taskwarrior, with a work ID for known projects', async () => {
     const tasks = await apiTasks();
@@ -277,12 +296,23 @@ try {
     assert.deepEqual([loose.who, loose.assignee], ['person', 'owner']);
     const old = tasks.find((t) => t.description === 'Old habit');
     assert.deepEqual([old.who, old.tags], ['decision', ['docs']]);
+    assert.equal(tasks.find((t) => t.description === 'Decide in Taskwarrior').who, 'decision');
+    const fromOlder = tasks.find((t) => t.description === 'Asked on an older taskrc');
+    assert.deepEqual([fromOlder.who, fromOlder.decision], ['decision', asked]);
   });
   a.sync();
   await check('Taskwarrior gets who back for the old tag, and loses the tag', () => {
     const old = a.byDescription('Old habit');
     assert.equal(old.who, 'decision');
     assert.deepEqual(old.tags, ['docs']);
+  });
+  await check("who:decision round-trips, and an older replica's questions move to decision_questions", () => {
+    const decide = a.byDescription('Decide in Taskwarrior');
+    assert.equal(decide.who, 'decision');
+    assert.match(a.task('who:decision', 'uuids'), new RegExp(decide.uuid, 'u'));
+    const fromOlder = a.byDescription('Asked on an older taskrc');
+    assert.equal(fromOlder.decision, undefined);
+    assert.deepEqual(JSON.parse(fromOlder.decision_questions), asked);
   });
 
   step('server → Taskwarrior');
@@ -327,7 +357,7 @@ try {
       .map((l) => l.trim())
       .filter((l) => /^[0-9a-f-]{36}$/u.test(l));
     assert.deepEqual(shown.sort(), listed.sort());
-    assert.ok(listed.length >= 3, 'the old decision, the loose end, and the task for anyone');
+    assert.ok(listed.length >= 3, 'the decisions, the loose end, and the task for anyone');
   });
 
   step('repositories');

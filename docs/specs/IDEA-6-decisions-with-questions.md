@@ -45,7 +45,7 @@ Every question can also take a short **comment** next to its answer ("yes, but o
 - **No decision structure?** A `+decide` task made before this (there are about a dozen) still works. The task view offers **Decide…**, a single note box: the text becomes a comment by the owner, `+decide` is removed, and the task is done. That is the missing "resolve" button, and it needs no data.
 
 ### Storage
-- `decision`: a JSON string property (Taskwarrior UDA `decision`, declared in [`taskrc`](../../taskrc)), the questions. Capped at 20 questions and 20 KB.
+- `decision`: a JSON string property (Taskwarrior UDA `decision_questions` since BRK-346, declared in [`taskrc`](../../taskrc); the API keeps the name `decision`), the questions. Capped at 20 questions and 20 KB.
 - `decision_answers`: a JSON string with `{ by, at, answers: { <id>: { value, comment? } } }`. `value` is a string, an id or list of ids, a number, or a date string, by type.
 - The submit-time summary is an ordinary comment; nothing depends on parsing it.
 - Both properties are plain strings, so `task sync`, Activity, and the interop test are unchanged in shape. Editing `decision` after answers exist keeps answers for ids that still exist and drops the rest with a note.

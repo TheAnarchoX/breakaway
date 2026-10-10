@@ -134,7 +134,7 @@ describe('validating answers', () => {
 describe('a decision in the model', () => {
   it('stores questions as JSON, tags the task, and shows them parsed', () => {
     const map = withChanges(null, { description: 'Pick', decision: QUESTIONS }, NOW);
-    expect(JSON.parse(map.decision)).toHaveLength(7);
+    expect(JSON.parse(map.decision_questions)).toHaveLength(7);
     expect(map.who).toBe('decision');
     const v = view('u', map, new Map([['u', map]]), NOW);
     expect(v.decision).toHaveLength(7);

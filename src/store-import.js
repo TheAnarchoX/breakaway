@@ -68,7 +68,7 @@ export function importedMap(task, repo, now) {
   const map = withChanges(null, Object.fromEntries(Object.entries(changes).filter(([, v]) => v !== undefined)), now);
   map.entry = epochOf(task.entry, `${label}'s entry`) ?? map.entry;
   // The decision as it was asked and answered: setting it through withChanges would make it a decision again.
-  if (Array.isArray(task.decision)) map.decision = JSON.stringify(task.decision);
+  if (Array.isArray(task.decision)) map.decision_questions = JSON.stringify(task.decision);
   if (task.decisionAnswers && typeof task.decisionAnswers === 'object')
     map.decision_answers = JSON.stringify(task.decisionAnswers);
   // Comments: every annotation (the export's `annotations` keep the ones `comments` hides for repeating the
