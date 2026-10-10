@@ -71,7 +71,7 @@ describe('routines', () => {
       claim: 'claude-run-1',
       horizon: 'next',
     });
-    expect(res.task.tags).toContain('agent');
+    expect(res.task.who).toBe('agent');
     expect(res.task.description).toMatch(/^Routine changelog · \d{4}-\d\d-\d\d$/);
     expect(res.run).toMatchObject({ kind: 'routine', trigger: 'manual', status: 'started' });
     expect(routine.fires[0]).toContain('Task: RUN-1');

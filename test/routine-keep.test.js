@@ -108,10 +108,10 @@ describe('connecting a routine from the board (BRK-133)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Gadget one', project: 'gizmo', repo: 'gadgets', tags: ['agent'], horizon: 'now' },
-          { description: 'Gadget two', project: 'gizmo', repo: 'gadgets', tags: ['agent'], horizon: 'now' },
-          { description: 'Gadget three', project: 'gizmo', repo: 'gadgets', tags: ['agent'], horizon: 'now' },
-          { description: 'Breakaway one', project: 'product', repo: 'breakaway', tags: ['agent'], horizon: 'now' },
+          { description: 'Gadget one', project: 'gizmo', repo: 'gadgets', who: 'agent', horizon: 'now' },
+          { description: 'Gadget two', project: 'gizmo', repo: 'gadgets', who: 'agent', horizon: 'now' },
+          { description: 'Gadget three', project: 'gizmo', repo: 'gadgets', who: 'agent', horizon: 'now' },
+          { description: 'Breakaway one', project: 'product', repo: 'breakaway', who: 'agent', horizon: 'now' },
         ],
       }),
     );

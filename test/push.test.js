@@ -145,7 +145,7 @@ async function signIn() {
 const held = async (description, by) => {
   const made = await api('tasks', {
     method: 'POST',
-    body: { description, project: 'cloud', horizon: 'now', tags: ['agent'] },
+    body: { description, project: 'cloud', horizon: 'now', who: 'agent' },
   });
   const wid = (await made.json()).tasks[0].wid;
   await api(`tasks/${wid}/claim`, { method: 'POST', body: { agent: by } });

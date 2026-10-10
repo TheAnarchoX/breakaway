@@ -53,13 +53,14 @@ describe('peloton posts: kinds, mentions, limits, and the owner (IDEA-36)', () =
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Crew one', project: 'product', tags: ['agent', 'crew'], horizon: 'now' },
-          { description: 'Crew two', project: 'product', tags: ['agent', 'crew'], horizon: 'now' },
-          { description: 'Solo three', project: 'product', tags: ['agent'], horizon: 'now' },
+          { description: 'Crew one', project: 'product', who: 'agent', tags: ['crew'], horizon: 'now' },
+          { description: 'Crew two', project: 'product', who: 'agent', tags: ['crew'], horizon: 'now' },
+          { description: 'Solo three', project: 'product', who: 'agent', horizon: 'now' },
           {
             description: 'Road captain for Crew',
             project: 'product',
-            tags: ['agent', 'general', 'crew'],
+            who: 'agent',
+            tags: ['general', 'crew'],
             horizon: 'now',
           },
         ],

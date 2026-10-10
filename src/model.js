@@ -6,7 +6,8 @@
  * (`wid`, `horizon`, `spec`, `claim`, `pr`) as plain properties. The task structure (IDEA-5): `brief`
  (the current description), `brief_by`, `done_when`, `rel_<uuid>` plus a `related` list, and `by_<epoch>`
  beside `annotation_<epoch>` for a comment's author. The owner's words (BRK-284): `said_<epoch>` (the quote),
- `said_from_<epoch>` (where it came from), and `said_by_<epoch>` (who put it on the task).
+ `said_from_<epoch>` (where it came from), and `said_by_<epoch>` (who put it on the task). Who does it (BRK-330):
+ `who` (agent, person, or decision) and, on a person's task, `assignee` (a person's handle, or owner).
  */
 
 import { keepAnswers, validateQuestions } from './decision.js';
@@ -42,6 +43,61 @@ export const AREA_NAMES = {
 export const HORIZONS = ['now', 'next', 'later', 'archive'];
 export const PRIORITIES = ['H', 'M', 'L'];
 export const STATUSES = ['pending', 'completed', 'deleted'];
+/**
+ * Who does a task (BRK-330, docs/specs/BRK-299-people-and-roles.md, "Who does it"): an agent builds it, a person does
+ * it (its `assignee`, or any member of its repository when it has none), or the owner decides it first.
+ */
+export const WHO = ['agent', 'person', 'decision'];
+/** A person's handle (src/store-people.js), or `owner`: who a person's task is assigned to. */
+const ASSIGNEE = /^[a-z][a-z0-9-]{0,31}$/u;
+
+/**
+ * The tags `who` replaced (BRK-330), and what each one means now. A task carried them before the migration, and an
+ * older CLI copied into another repository, a Taskwarrior replica, or an older prompt still sends them: withChanges
+ * and legacyWho map them onto the field, so none is ever stored. BRK-331 decides when this mapping goes.
+ */
+export const LEGACY_WHO_TAGS = {
+  decide: { who: 'decision' },
+  agent: { who: 'agent' },
+  owner: { who: 'person', assignee: 'owner' },
+};
+/**
+ * When a task carried several of them, the one that wins, as the board read them: a decision held every start, and
+ * +agent let agents start a task whatever else it carried, so it beats +owner.
+ */
+const LEGACY_ORDER = ['decide', 'agent', 'owner'];
+export const isLegacyTag = (/** @type {string} */ tag) => Object.hasOwn(LEGACY_WHO_TAGS, tag);
+
+/**
+ * What the tags `who` replaced among `tags` mean (BRK-330): `{ who, assignee? }`, or null when there are none.
+ * @param {string[]} tags
+ * @returns {{ who: string, assignee?: string } | null}
+ */
+export function whoFromTags(tags) {
+  const tag = LEGACY_ORDER.find((t) => tags.includes(t));
+  return tag ? LEGACY_WHO_TAGS[tag] : null;
+}
+
+/**
+ * A task's map with the tags `who` replaced (BRK-330) turned into `who` and `assignee`: what the migration and a
+ * Taskwarrior replica's version go through. A map without them comes back as it is (the same object).
+ * @param {Record<string, string>} map
+ */
+export function legacyWho(map) {
+  const tags = tagsOf(map);
+  const mapped = whoFromTags(tags);
+  if (!mapped) return map;
+  const after = { ...map };
+  setTags(
+    after,
+    tags.filter((tag) => !isLegacyTag(tag)),
+  );
+  const { who, assignee } = mapped;
+  after.who = who;
+  if (assignee && !(map.who === 'person' && map.assignee)) after.assignee = assignee;
+  if (who !== 'person') delete after.assignee;
+  return after;
+}
 /** Properties the API may set directly (strings, or null to remove). */
 export const PLAIN = [
   'description',
@@ -181,6 +237,8 @@ export function view(uuid, map, all, now = new Date()) {
     priority: map.priority ?? '',
     horizon: map.horizon ?? null,
     tags: tagsOf(map),
+    who: map.who ?? null,
+    assignee: map.assignee ?? null,
     depends,
     blockedBy,
     blocked: blockedBy.length > 0,
@@ -300,7 +358,9 @@ function setRelated(map, rel) {
  *   status, due, wait, scheduled (date text or null), start: true|false, entry, end (epoch),
  *   brief, done_when (text or null), addTags, removeTags, addDepends, removeDepends, addRelated,
  *   removeRelated (arrays), annotate (text), by (who wrote the annotation or the brief),
- *   said ({ text, from, by }: the owner's words, quoted), unsay (a quote's id, to remove it)}
+ *   said ({ text, from, by }: the owner's words, quoted), unsay (a quote's id, to remove it),
+ *   who (agent, person, decision, or null), assignee (a handle, owner, or null: a person's task only)}
+ * A tag `who` replaced (LEGACY_WHO_TAGS) in addTags or removeTags changes `who` instead.
  */
 export function withChanges(before, changes, now = new Date()) {
   const map = { ...(before ?? {}) };
@@ -355,7 +415,6 @@ export function withChanges(before, changes, now = new Date()) {
         const { answers } = keepAnswers(questions, old.answers);
         map.decision_answers = JSON.stringify({ ...old, answers });
       }
-      setTags(map, [...new Set([...tagsOf(map), 'decide'])]);
     }
   }
   if ('decisionAnswers' in changes) {
@@ -367,7 +426,32 @@ export function withChanges(before, changes, now = new Date()) {
     for (const tag of changes.addTags ?? []) tags.add(checkTag(tag));
     for (const tag of changes.removeTags ?? []) tags.delete(tag);
     setTags(map, [...tags]);
+    // An older CLI's +agent, +owner, or +decide (BRK-330): removing the one that names who does it clears it.
+    for (const tag of changes.removeTags ?? [])
+      if (isLegacyTag(tag) && map.who === LEGACY_WHO_TAGS[tag].who) {
+        delete map.who;
+        delete map.assignee;
+      }
   }
+  const mapped = legacyWho(map);
+  if (mapped !== map) {
+    for (const key of Object.keys(map)) if (!(key in mapped)) delete map[key];
+    Object.assign(map, mapped);
+  }
+  // Questions make it a decision, whatever else the same change says about who does it (an older CLI's --tag owner too).
+  const asking = Boolean(changes.decision);
+  if (asking) map.who = 'decision';
+  for (const key of ['who', 'assignee']) {
+    if (asking || !(key in changes) || changes[key] === undefined) continue;
+    const value = changes[key];
+    if (value === null || value === '') delete map[key];
+    else map[key] = String(value).trim().toLowerCase();
+  }
+  if (map.who && !WHO.includes(map.who)) throw new InputError('who is agent, person, or decision');
+  if ((asking || 'who' in changes) && map.who !== 'person' && (asking || !changes.assignee)) delete map.assignee;
+  if (map.assignee && !ASSIGNEE.test(map.assignee)) throw new InputError("an assignee is a person's handle, or owner");
+  if (map.assignee && map.who !== 'person')
+    throw new InputError("only a person's task has an assignee: set who to person too");
   if (changes.addDepends || changes.removeDepends) {
     const deps = new Set(dependsOf(map));
     for (const dep of changes.addDepends ?? []) deps.add(dep);

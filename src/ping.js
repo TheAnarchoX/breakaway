@@ -3,7 +3,7 @@
  * before anything is stored. Pure functions over the board's tasks, so the rules are tested without
  * a Durable Object. The same checks run again when the owner applies a proposal (CLD-112).
  */
-import { InputError, MAX_TEXT, PROJECTS, dependsOf } from './model.js';
+import { InputError, MAX_TEXT, PROJECTS, WHO, dependsOf, isLegacyTag, whoFromTags } from './model.js';
 
 export const PING_KINDS = ['blocked', 'question', 'stale', 'done', 'fyi'];
 /** The kinds that send a push; `fyi` only shows in the inbox. */
@@ -29,6 +29,7 @@ export const PINGS_PER_AGENT_PER_DAY = 50;
 const REF = /^[a-z][a-z0-9_-]{0,19}$/u;
 const WID = /^[A-Z]+-\d+$/u;
 const TAG = /^[a-z][\w-]{0,39}$/u;
+const ASSIGNEE = /^[a-z][a-z0-9-]{0,31}$/u;
 const MAX_TITLE = 200;
 const MAX_NOTE = 1000;
 const NEW_HORIZONS = ['now', 'next', 'later'];
@@ -110,6 +111,14 @@ const checkTags = (tags, where) => {
       throw new InputError(`${where}: horizon tags are the owner's choice; a proposal never sets or removes "${tag}"`);
   }
   return tags;
+};
+/** A proposed assignee (BRK-330): a handle or owner, on a person's task only. The store checks their role on apply. */
+const assigneeOf = (value, who, where) => {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !ASSIGNEE.test(value))
+    throw new InputError(`${where}: assignee is a person's handle, or owner`);
+  if (who !== 'person') throw new InputError(`${where}: only a person's task has an assignee: set who to person too`);
+  return value;
 };
 
 /**
@@ -206,7 +215,20 @@ export function validateProposal(raw, ctx) {
     if (change.type === 'add') {
       only(
         change,
-        ['type', 'ref', 'title', 'project', 'horizon', 'tags', 'brief', 'done_when', 'depends', 'priority'],
+        [
+          'type',
+          'ref',
+          'title',
+          'project',
+          'horizon',
+          'who',
+          'assignee',
+          'tags',
+          'brief',
+          'done_when',
+          'depends',
+          'priority',
+        ],
         where,
       );
       const title = text(change.title, 'title', MAX_TITLE, where, true);
@@ -217,9 +239,18 @@ export function validateProposal(raw, ctx) {
         throw new InputError(`${where}: horizon is one of ${NEW_HORIZONS.join(', ')}`);
       if (change.priority !== undefined && !PRIORITIES.includes(change.priority))
         throw new InputError(`${where}: priority is H, M, or L`);
-      const tags = checkTags(strings(change.tags, 'tags'), where);
-      if (!tags.some((t) => ['agent', 'owner', 'decide'].includes(t)))
-        throw new InputError(`${where}: tags need agent, owner, or decide, so the board knows who does it`);
+      const given = checkTags(strings(change.tags, 'tags'), where);
+      // An older proposal says who does it with a tag (BRK-330): it still means who.
+      const mapped = whoFromTags(given);
+      const tags = given.filter((t) => !isLegacyTag(t));
+      const who = change.who === undefined ? mapped?.who : change.who;
+      if (!WHO.includes(who))
+        throw new InputError(`${where}: who is agent, person, or decision, so the board knows who does it`);
+      const assignee = assigneeOf(
+        change.assignee === undefined && who === 'person' ? mapped?.assignee : change.assignee,
+        who,
+        where,
+      );
       const brief = text(change.brief, 'brief', MAX_TEXT, where, true);
       const doneWhen = text(change.done_when, 'done_when', MAX_TEXT, where, true);
       const depends = [];
@@ -235,6 +266,8 @@ export function validateProposal(raw, ctx) {
         title,
         project: change.project,
         horizon: change.horizon,
+        who,
+        ...(assignee ? { assignee } : {}),
         tags,
         brief,
         done_when: doneWhen,
@@ -272,7 +305,11 @@ export function validateProposal(raw, ctx) {
       }
       changes.push({ type: 'depend', task: from.token, add: added, remove: removed });
     } else if (change.type === 'modify') {
-      only(change, ['type', 'task', 'horizon', 'addTags', 'removeTags', 'brief', 'done_when'], where);
+      only(
+        change,
+        ['type', 'task', 'horizon', 'who', 'assignee', 'addTags', 'removeTags', 'brief', 'done_when'],
+        where,
+      );
       const uuid = existing(change.task, where, { open: true });
       if (ctx.tasks.get(uuid).claim === ctx.by)
         throw new InputError(
@@ -284,6 +321,12 @@ export function validateProposal(raw, ctx) {
           throw new InputError(`${where}: horizon is one of ${NEW_HORIZONS.join(', ')}`);
         out.horizon = change.horizon;
       }
+      if (change.who !== undefined) {
+        if (!WHO.includes(change.who)) throw new InputError(`${where}: who is agent, person, or decision`);
+        out.who = change.who;
+      }
+      const assignee = assigneeOf(change.assignee, change.who ?? ctx.tasks.get(uuid).who, where);
+      if (assignee) out.assignee = assignee;
       const addTags = checkTags(strings(change.addTags, 'addTags'), where);
       const removeTags = checkTags(strings(change.removeTags, 'removeTags'), where);
       if (addTags.length) out.addTags = addTags;
@@ -293,7 +336,9 @@ export function validateProposal(raw, ctx) {
       if (brief) out.brief = brief;
       if (doneWhen) out.done_when = doneWhen;
       if (Object.keys(out).length === 2)
-        throw new InputError(`${where}: say what changes (horizon, addTags, removeTags, brief, or done_when)`);
+        throw new InputError(
+          `${where}: say what changes (horizon, who, assignee, addTags, removeTags, brief, or done_when)`,
+        );
       changes.push(out);
     } else if (change.type === 'done') {
       only(change, ['type', 'task', 'note'], where);

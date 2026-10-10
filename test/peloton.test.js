@@ -30,10 +30,10 @@ describe('the peloton (IDEA-32)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Peloton one', project: 'ops', tags: ['agent', 'pack'], horizon: 'now' },
-          { description: 'Peloton two', project: 'ops', tags: ['agent', 'pack'], horizon: 'now' },
-          { description: 'Peloton three', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Peloton four', project: 'ops', tags: ['agent'], horizon: 'now' },
+          { description: 'Peloton one', project: 'ops', who: 'agent', tags: ['pack'], horizon: 'now' },
+          { description: 'Peloton two', project: 'ops', who: 'agent', tags: ['pack'], horizon: 'now' },
+          { description: 'Peloton three', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Peloton four', project: 'ops', who: 'agent', horizon: 'now' },
         ],
       }),
     );

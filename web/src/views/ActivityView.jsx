@@ -563,7 +563,7 @@ function Dashboard({ data }) {
               </div>
               <div>
                 <dt>Need a decision</dt>
-                <dd>{data.open.decide}</dd>
+                <dd>{data.open.decision}</dd>
               </div>
               <div>
                 <dt>Pull requests open</dt>

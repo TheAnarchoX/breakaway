@@ -190,7 +190,7 @@ export const pipelineMethods = {
             project: this.boardArea(repo.slug),
             repo: repo.slug,
             horizon: 'now',
-            tags: ['agent'],
+            who: 'agent',
             by: 'board',
           },
         ]);

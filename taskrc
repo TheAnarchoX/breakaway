@@ -52,24 +52,33 @@ uda.decision.label=Decision
 uda.decision_answers.type=string
 uda.decision_answers.label=Answers
 
+# Who does it (BRK-330): an agent builds it, a person does it, or the owner decides first. A person's task
+# names who it's for in `assignee` (a person's handle, or owner); without one, any member of its repository
+# does it. Set them with who:agent, who:person assignee:owner, and so on.
+uda.who.type=string
+uda.who.label=Who
+uda.who.values=agent,person,decision,
+uda.assignee.type=string
+uda.assignee.label=Assignee
+
 # Order work like the board: horizon first, then priority. Waiting on a decision sinks.
 urgency.uda.horizon.now.coefficient=8.0
 urgency.uda.horizon.next.coefficient=2.0
 urgency.uda.horizon.later.coefficient=-4.0
 urgency.uda.horizon.archive.coefficient=-8.0
-urgency.user.tag.decide.coefficient=-3.0
+urgency.uda.who.decision.coefficient=-3.0
 
 # Reports: `task board`, `task agent`, `task claimed`, `task owner`.
 report.board.description=Open work, best first
-report.board.columns=id,wid,priority,horizon,project,tags,claim,depends.indicator,description.count
-report.board.labels=ID,Work,P,Horizon,Area,Tags,Claimed by,D,Description
+report.board.columns=id,wid,priority,horizon,project,who,tags,claim,depends.indicator,description.count
+report.board.labels=ID,Work,P,Horizon,Area,Who,Tags,Claimed by,D,Description
 report.board.filter=status:pending -WAITING
 report.board.sort=urgency-
 
 report.agent.description=Ready for an agent: unblocked, unclaimed, not waiting on a decision
 report.agent.columns=id,wid,priority,horizon,project,tags,description.count
 report.agent.labels=ID,Work,P,Horizon,Area,Tags,Description
-report.agent.filter=status:pending +READY +agent -decide claim:
+report.agent.filter=status:pending +READY who:agent claim:
 report.agent.sort=urgency-
 
 report.claimed.description=In progress, oldest claim first
@@ -78,10 +87,10 @@ report.claimed.labels=ID,Work,Claimed by,For,Area,Description
 report.claimed.filter=status:pending claim.any:
 report.claimed.sort=start+
 
-report.owner.description=Needs the owner: owner work and open decisions
-report.owner.columns=id,wid,priority,horizon,project,tags,description.count
-report.owner.labels=ID,Work,P,Horizon,Area,Tags,Description
-report.owner.filter=status:pending (+owner or +decide)
+report.owner.description=Needs the owner: the owner's work, work for anyone, and open decisions
+report.owner.columns=id,wid,priority,horizon,project,who,assignee,tags,description.count
+report.owner.labels=ID,Work,P,Horizon,Area,Who,For,Tags,Description
+report.owner.filter=status:pending ( who:decision or ( who:person and ( assignee:owner or assignee.none: ) ) )
 report.owner.sort=urgency-
 
 # Repositories (IDEA-14): one report and one context each, for every repository the board tracks. This file

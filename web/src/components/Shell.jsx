@@ -28,7 +28,7 @@ import {
   Settings,
   X,
 } from 'lucide-preact';
-import { HORIZONS, NOTICE_LABEL, PING_KIND_LABEL, ROLES, ago, plural } from '../lib/model.js';
+import { HORIZONS, NOTICE_LABEL, PING_KIND_LABEL, WHO, ago, plural } from '../lib/model.js';
 import {
   EMPTY_FILTERS,
   VIEWS,
@@ -769,13 +769,7 @@ function Filters() {
         value={f.horizons}
         onChange={(v) => setFilter({ horizons: v })}
       />
-      <Segmented
-        label="Who can move it"
-        multiple
-        options={ROLES}
-        value={f.roles}
-        onChange={(v) => setFilter({ roles: v })}
-      />
+      <Segmented label="Who does it" multiple options={WHO} value={f.who} onChange={(v) => setFilter({ who: v })} />
       <label class="inline-select">
         <span>Claimed</span>
         <select class="select select-sm" value={f.claim} onChange={(e) => setFilter({ claim: e.currentTarget.value })}>

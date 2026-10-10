@@ -40,14 +40,15 @@ describe('the road captain (BRK-275)', () => {
     const items = Array.from({ length: 11 }, (_, i) => ({
       description: `Crew ${i + 1}`,
       project: 'ops',
-      tags: ['agent', 'crew'],
+      who: 'agent',
+      tags: ['crew'],
       horizon: 'now',
       ...(i ? { depends: [`OPS-${i}`] } : {}),
     }));
     items.push(
-      { description: 'Duo one', project: 'product', tags: ['agent', 'duo'], horizon: 'now' },
-      { description: 'Duo two', project: 'product', tags: ['agent', 'duo'], horizon: 'now', depends: ['PRD-1'] },
-      { description: 'Alone', project: 'ops', tags: ['agent'], horizon: 'later' },
+      { description: 'Duo one', project: 'product', who: 'agent', tags: ['duo'], horizon: 'now' },
+      { description: 'Duo two', project: 'product', who: 'agent', tags: ['duo'], horizon: 'now', depends: ['PRD-1'] },
+      { description: 'Alone', project: 'ops', who: 'agent', horizon: 'later' },
     );
     const res = await body(await api('tasks', { method: 'POST', body: items }));
     expect(res).toMatchObject({ status: 201 });
@@ -83,7 +84,8 @@ describe('the road captain (BRK-275)', () => {
     expect(captain).toMatchObject({ on: true, hours: 6, agent: 'claude-captain-crew-1', log: [] });
     expect(Date.parse(captain.watchEndsAt) - Date.parse(captain.since)).toBe(6 * 3_600_000);
     const t = await task(captain.task.uuid);
-    expect(t.tags).toEqual(expect.arrayContaining(['agent', 'captain', 'crew']));
+    expect(t.tags).toEqual(expect.arrayContaining(['captain', 'crew']));
+    expect(t.who).toBe('agent');
     expect(t.tags).not.toContain('general');
     expect(t.brief).toMatch(/^You're the road captain of the chase on Crew \(\+crew\)/);
     expect(t.brief).toContain('1 running');
