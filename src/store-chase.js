@@ -16,8 +16,10 @@
  */
 import { prVerdict } from './github.js';
 import { AgentError } from './store-agents.js';
+import { noRoutineWords } from './store-person-claude.js';
 import { NO_FILES } from './store-collision.js';
 import { InputError, rank } from './model.js';
+import { OWNER } from './permissions.js';
 import { looksLikeSecret } from './ping.js';
 
 const DEFAULT_PARALLEL = 3;
@@ -84,6 +86,9 @@ function unblocks(uuid, waiters) {
   return seen.size;
 }
 
+/** Who a chase's starts are for (BRK-334): the person who pressed Chase, or the owner. */
+const chaseFor = (row) => row.chase_by || OWNER;
+
 /** @type {Record<string, (this: any, ...args: any[]) => any>} */
 export const chaseMethods = {
   initChase() {
@@ -107,6 +112,8 @@ export const chaseMethods = {
       this.sql.exec(`ALTER TABLE features ADD COLUMN chase_captain_hours INTEGER NOT NULL DEFAULT ${CAPTAIN_HOURS}`);
     if (!columns.includes('chase_captain_asked'))
       this.sql.exec('ALTER TABLE features ADD COLUMN chase_captain_asked INTEGER');
+    // Who started the chase (BRK-334): its agents and its captain start on that person's Claude. Null is the owner.
+    if (!columns.includes('chase_by')) this.sql.exec('ALTER TABLE features ADD COLUMN chase_by TEXT');
     // Chase started, stopped, stalled, and ended, and the owner's changes of plan (WEB-104), for Activity; an ended
     // chase's row is also its inbox note.
     this.sql.exec(`
@@ -617,10 +624,19 @@ export const chaseMethods = {
       if (plan.tasks.every((x) => x.state === 'done'))
         throw new AgentError(`every task in ${row.title} is done: there’s nothing to chase`);
       const withCaptain = captain ?? plan.tasks.length > CAPTAIN_OVER;
+      // Whoever presses Chase is who its agents run for (BRK-334): the owner's routine, or theirs. A person with no
+      // routine in any of the chase's repositories, and none lent, could start nothing: refused, not left stalled.
+      const starter = this.startsFor({ actor, by });
+      if (starter !== OWNER) {
+        const startable = await this.personStartable(starter);
+        const repos = [...new Set(plan.tasks.map((x) => x.repo))];
+        if (!repos.some((r) => startable.has(r))) throw new AgentError(noRoutineWords(repos[0]), 403);
+      }
       this.sql.exec(
-        "UPDATE features SET chase = 'on', chase_started = ?, chase_stalled = NULL, chase_ended = NULL, chase_captain = ?, chase_captain_asked = NULL WHERE slug = ?",
+        "UPDATE features SET chase = 'on', chase_started = ?, chase_stalled = NULL, chase_ended = NULL, chase_captain = ?, chase_captain_asked = NULL, chase_by = ? WHERE slug = ?",
         Date.now(),
         withCaptain ? 1 : 0,
+        starter === OWNER ? null : starter,
         row.slug,
       );
       this.sql.exec("UPDATE chase_events SET dismissed = 1 WHERE slug = ? AND kind = 'chase_ended'", row.slug);
@@ -692,7 +708,12 @@ export const chaseMethods = {
     const started = [];
     for (const row of rows) {
       const on = row.chase === 'on';
-      const plan = this.chaseQueue(row, this.views(), connected);
+      // A person's chase starts where they have a routine of their own, or the owner lends one (BRK-334).
+      const plan = this.chaseQueue(
+        row,
+        this.views(),
+        row.chase_by ? await this.personStartable(row.chase_by) : connected,
+      );
       for (const w of plan.watch)
         this.sql.exec(
           'INSERT OR IGNORE INTO chase_fixes (task, pr, head, problem, slug, seen) VALUES (?, ?, ?, ?, ?, ?)',
@@ -710,7 +731,7 @@ export const chaseMethods = {
         if (this.routineHold(t.repo)) continue;
         try {
           if (t.fix) await this.chaseFix(row, t);
-          else await this.startAgent(t.uuid, { trigger: 'chase' });
+          else await this.startAgent(t.uuid, { trigger: 'chase', forPerson: chaseFor(row) });
           started.push(label(t));
           startedHere += 1;
         } catch {
@@ -751,6 +772,7 @@ export const chaseMethods = {
         repo: t.repo,
         chase: { slug: row.slug, title: row.title },
         trigger: 'chase-fix',
+        forPerson: chaseFor(row),
       });
     } catch (error) {
       tried();
@@ -929,7 +951,14 @@ export const chaseMethods = {
     }
     this.sql.exec('UPDATE features SET chase_captain_asked = NULL WHERE slug = ?', row.slug);
     // Activity shows the start as the agent run it is (trigger road-captain).
-    return await this.startAgent(uuid, { trigger: 'road-captain', kind: 'captain', note, force: true });
+    // The captain runs for whoever started the chase (BRK-334), on their routine and within their caps.
+    return await this.startAgent(uuid, {
+      trigger: 'road-captain',
+      kind: 'captain',
+      note,
+      force: true,
+      forPerson: chaseFor(row),
+    });
   },
 
   /**

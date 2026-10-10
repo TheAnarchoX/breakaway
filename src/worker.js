@@ -1417,6 +1417,9 @@ async function routeApi(request, env, url, ctx, via, person, readable = false) {
           horizon: body.horizon ?? null,
           repo: body.repo ?? null,
           dryRun: Boolean(body.dryRun),
+          // Who presses, or the person an agent asking works for (BRK-334): the starts run on their Claude.
+          by: body.by,
+          actor,
         }),
       );
     }

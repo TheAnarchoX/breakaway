@@ -7,7 +7,7 @@
  * with no actor is the board's own (the cron, a webhook, a run's steps) or the MCP server's, which is the owner's
  * token, as before: every write there names an agent, so the agent ceiling applies to it.
  */
-import { ACTIONS, OTHER_STARTS, OWNER, PERSON_STARTS, agentOf, refusal } from './permissions.js';
+import { ACTIONS, OWNER, agentOf, refusal } from './permissions.js';
 import { AgentError } from './store-agents.js';
 import { repoSlugOf } from './repos.js';
 import { resolveRef } from './model.js';
@@ -168,8 +168,8 @@ export const permissionsMethods = {
 
   /**
    * The Worker's gate for a person's request (BRK-301): may `actor` do `action` on `target`? `target.by` is the agent
-   * the request names, if any. A start runs on the starter's own Claude (BRK-302): Start, fixing a pull request, and
-   * fixing an alert do, and the store picks the person's routine; the other starts wait for BRK-334.
+   * the request names, if any. Every start runs on the starter's own Claude (BRK-302, BRK-334): the store picks the
+   * person's routine, or the one the owner lends.
    * @param {{ person: string, press?: boolean }} actor
    * @param {string} action
    * @param {Record<string, any>} [target]
@@ -189,7 +189,6 @@ export const permissionsMethods = {
       const person = actor?.person && actor.person !== OWNER;
       if (person) this.seesWhereItActs(actor, action, target ?? {}, repos);
       for (const repo of repos) this.allow({ actor, by: target?.by }, action, repo);
-      if (ACTIONS[action]?.starts && person && !PERSON_STARTS.has(action)) throw new AgentError(OTHER_STARTS, 403);
       return { status: 200, body: { ok: true, repos } };
     });
   },
