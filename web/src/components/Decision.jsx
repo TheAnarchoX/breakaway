@@ -15,7 +15,7 @@ import {
 import { RichText, Title } from '../lib/richtext.jsx';
 import { useAutosize, Dictate } from './ui.jsx';
 import { RefineFromAnswers } from './RefineFromAnswers.jsx';
-import { taskLock } from './Who.jsx';
+import { decidesLock, taskLock } from './Who.jsx';
 
 /** @param {Record<string, any>} props */
 function Comment({ id, value, onInput }) {
@@ -371,9 +371,8 @@ function Decide({ task: t }) {
   useEffect(() => {
     if (open) area.current?.focus();
   }, [open]);
-  // Deciding finishes the task, a task write today (WEB-137). Stopgap: BRK-347 makes finishing a decision need
-  // decision.answer, like its answers; this lock follows it then.
-  const lock = taskLock(t, 'task.write', 'decide it');
+  // Deciding finishes the task, which on a decision is answering it (BRK-347).
+  const lock = decidesLock(t, 'decide it');
   const submit = async (e) => {
     e?.preventDefault();
     if (!text.trim()) return;
@@ -448,8 +447,9 @@ export function DecisionSection({ task: t }) {
   const pending = t.status === 'pending';
   if (!structured && !(pending && t.who === 'decision')) return null;
   if (structured && !answered && !pending) return null;
-  // Answering, and reopening the answers, is a maintainer's (decision.answer); a viewer or a member reads them.
-  const lock = structured ? taskLock(t, 'decision.answer') : taskLock(t);
+  // Answering, deciding, and reopening the answers is a maintainer's (decision.answer, BRK-347); a viewer or a member
+  // reads them.
+  const lock = taskLock(t, 'decision.answer');
   return (
     <section class="panel-section decision" aria-labelledby={`decision-${t.uuid}`}>
       <h3 id={`decision-${t.uuid}`}>{answered ? 'Decision' : lock ? 'Needs a decision' : 'Needs your decision'}</h3>

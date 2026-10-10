@@ -24,6 +24,16 @@ export function taskLock(t, action = 'task.write', what = undefined) {
 }
 
 /**
+ * Who can, when the signed-in person can't finish, open again, or change who does task `t`: on a decision, that's
+ * answering it (decision.answer), as the Worker checks it (BRK-347); on any other task, a task write.
+ * @param {Record<string, any>} t the task
+ * @param {string} what the action in the control's own words
+ */
+export function decidesLock(t, what) {
+  return taskLock(t, 'task.write', what) ?? (t.who === 'decision' ? taskLock(t, 'decision.answer', what) : null);
+}
+
+/**
  * Who a person's task is for, on a card or a row: "For you", "For Ana", or "Any member"; "Nobody yet" for an open task
  * nobody has said who does. Nothing for an agent's task (most of the board) or a decision (its column says so).
  * @param {Record<string, any>} props
@@ -58,7 +68,7 @@ export function WhoChip({ task: t }) {
 export function WhoField({ task: t }) {
   useEffect(ensurePeople, []);
   const slug = slugOf(t);
-  const no = taskLock(t, 'task.write', 'change who does it');
+  const no = decidesLock(t, 'change who does it');
   const options = t.who === 'person' ? assignable(slug, t.assignee) : [];
   return (
     <div class="who-field">
