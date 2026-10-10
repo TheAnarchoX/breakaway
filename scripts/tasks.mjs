@@ -88,6 +88,7 @@ import {
   staleCliWarning,
   releaseBehind,
   removedRepoByHand,
+  needsOwner,
   unknownSubcommand,
 } from './tasks/cli.js';
 import { InfraReadError, infraRead } from './tasks/infra-read.js';
@@ -242,7 +243,7 @@ const HELP = `npx breakaway <command> [options]
 Reading                (list, next, claim, and add work in this checkout's repository; see Repositories below)
   list                   open tasks, best first (the default command)
     --ready --blocked --active --mine   narrow it down
-    --who agent|person|decision --assignee <handle|owner>   who does it (--owner: decisions and people's tasks)
+    --who agent|person|decision --assignee <handle|owner>   who does it (--owner: decisions, and people's tasks for the owner or anyone)
     --project <p> --tag <t> --horizon <h> --status pending|completed|deleted|all
   show <ref>             one task: description, done when, related, comments, dependencies, and what it blocks
   next                   the best ready task for an agent (who: agent, unclaimed)
@@ -1120,7 +1121,7 @@ const commands = {
         (!opts.blocked || t.blocked) &&
         (!opts.active || t.claim || t.active) &&
         (!opts.mine || t.claim === me) &&
-        (!opts.owner || t.who === 'decision' || t.who === 'person') &&
+        (!opts.owner || needsOwner(t)) &&
         (!opts.who || t.who === String(opts.who).toLowerCase()) &&
         (!opts.assignee || t.assignee === String(opts.assignee).toLowerCase()) &&
         (!opts.project || t.project === opts.project) &&

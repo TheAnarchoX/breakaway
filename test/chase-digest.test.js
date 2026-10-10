@@ -68,6 +68,24 @@ describe('what a digest says', () => {
     expect(order.map((x) => x.wid)).toEqual(['D', 'E', 'C', 'B', 'A']);
   });
 
+  it('sorts and shows the kinds a digest stored before BRK-330 names as their new ones', async () => {
+    const order = ownerOrder([
+      { wid: 'A', kind: 'untagged' },
+      { wid: 'B', kind: 'owner' },
+      { wid: 'C', kind: 'nobody' },
+      { wid: 'D', kind: 'decide' },
+      { wid: 'E', kind: 'merge' },
+      { wid: 'F', kind: 'person' },
+    ]);
+    expect(order.map((x) => x.wid)).toEqual(['E', 'D', 'B', 'F', 'A', 'C']);
+    const waiting = ['decide', 'owner', 'untagged', 'merge'].map((kind, i) => ({ wid: `W-${i}`, kind, why: 'x' }));
+    const shown = await runInDurableObject(stub(), (instance) =>
+      instance.digestView({ id: 1, at: 0, kind: 'hourly', pushed: 0, data: JSON.stringify({ waiting, merged: [] }) }),
+    );
+    expect(shown.waiting.map((x) => x.kind)).toEqual(['decision', 'person', 'nobody', 'merge']);
+    expect(shown.kind).toBe('hourly');
+  });
+
   it('says it in a line, and pushes a link to its page', () => {
     const base = {
       feature: { slug: 'crew', title: 'Crew' },
