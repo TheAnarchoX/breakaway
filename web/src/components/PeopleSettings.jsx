@@ -5,6 +5,7 @@ import { copy } from '../lib/clipboard.js';
 import { ROLES, ago, inviteLink, isOwner, loadPeople, people, repoWords, roleLabel, whoami } from '../lib/people.js';
 import { confirmDialog, repoName, repos, toast } from '../lib/store.js';
 import { Dialog } from './ui.jsx';
+import { PersonClaudeDialog } from './YourClaude.jsx';
 
 /**
  * People, in Settings (WEB-124, docs/specs/BRK-299-people-and-roles.md, point 3, "Managing people"): who's on the
@@ -63,6 +64,7 @@ export function PeopleSettings() {
   const { data, error } = people.value;
   const [inviting, setInviting] = useState(false);
   const [editing, setEditing] = useState(/** @type {any} */ (null));
+  const [capping, setCapping] = useState(/** @type {any} */ (null));
   const [link, setLink] = useState(/** @type {null | { code: string, who: string | null }} */ (null));
   const active = (data?.people ?? []).filter((p) => !p.removed);
   const removed = (data?.people ?? []).filter((p) => p.removed);
@@ -167,6 +169,11 @@ export function PeopleSettings() {
                         !self && <span class="meta">{no}</span>
                       ) : (
                         <>
+                          {isOwner.value && (
+                            <button type="button" class="btn btn-quiet btn-sm" onClick={() => setCapping(p)}>
+                              Set limits<span class="visually-hidden"> on {p.name}’s agents</span>
+                            </button>
+                          )}
                           <button type="button" class="btn btn-quiet btn-sm" onClick={() => setEditing(p)}>
                             Change roles<span class="visually-hidden"> of {p.name}</span>
                           </button>
@@ -241,6 +248,7 @@ export function PeopleSettings() {
         }}
       />
       <GrantsDialog person={editing} onClose={() => setEditing(null)} />
+      <PersonClaudeDialog person={capping} onClose={() => setCapping(null)} />
       <LinkDialog link={link} onClose={() => setLink(null)} />
     </section>
   );

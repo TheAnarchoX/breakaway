@@ -18,6 +18,9 @@ import { DeployCard } from '../components/DeployCard.jsx';
 import { InfraSettings } from '../components/InfraSettings.jsx';
 import { KickoffSummary } from '../components/KickoffRunIt.jsx';
 import { WORKFLOWS, deployField, missingOf, pipelineForm, pipelineOf } from '../lib/pipeline-form.js';
+import { isOwner, loadPeople, people } from '../lib/people.js';
+import { LENT_CAPS } from '../../../src/person-claude.js';
+import { Segmented } from '../components/ui.jsx';
 import {
   agents,
   confirmDialog,
@@ -901,6 +904,7 @@ function Agents({ data, onSaved, readOnly }) {
             </>
           )}
         </div>
+        {isOwner.value && <Lend data={data} />}
         <div class="field">
           <span class="field-label">Saved routines</span>
           <span>
@@ -910,6 +914,63 @@ function Agents({ data, onSaved, readOnly }) {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Lend the repository's routine (WEB-136, docs/specs/BRK-299-people-and-roles.md, point 5): the owner's switch that
+ * lets people with no routine of their own here start agents on the repository's, within the lent caps. Off by default:
+ * it spends the owner's plan, and its agents hold the board's token. It shows once someone is invited, since nobody
+ * else starts agents before that.
+ * @param {Record<string, any>} props
+ */
+function Lend({ data }) {
+  const [lent, setLent] = useState(Boolean(data.routineLent));
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!people.peek().loaded) loadPeople();
+  }, []);
+  useEffect(() => setLent(Boolean(data.routineLent)), [data.routineLent]);
+  if (!people.value.data?.people?.some((p) => !p.removed) && !lent) return null;
+  const repo = data.repo;
+  const change = async (on) => {
+    if (on === lent || busy) return;
+    if (on) {
+      const sure = await confirmDialog({
+        title: `Lend ${repo.name}’s routine?`,
+        body: `People who can start agents here and have no routine of their own start them on this one: on your Claude plan, with the board’s token, ${LENT_CAPS.max} at once and ${LENT_CAPS.hourly} an hour each unless you lower it on People.`,
+        confirmLabel: 'Lend it',
+      });
+      if (!sure) return;
+    }
+    setBusy(true);
+    try {
+      const res = await api(`repos/${enc(repo.slug)}/routine/lend`, { method: on ? 'PUT' : 'DELETE', body: {} });
+      setLent(res.lent);
+      toast(res.lent ? 'Lent.' : 'No longer lent.', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    setBusy(false);
+  };
+  return (
+    <div class="field">
+      <span class="field-label">Lend the routine</span>
+      <Segmented
+        label="Lend the routine"
+        options={[
+          { id: 'off', label: 'Off' },
+          { id: 'on', label: 'Lend it' },
+        ]}
+        value={lent ? 'on' : 'off'}
+        onChange={(v) => change(v === 'on')}
+      />
+      <span class="field-hint">
+        {lent
+          ? `People with no routine of their own start agents in ${repo.name} on this one, on your Claude plan and with the board’s token.`
+          : `People start agents in ${repo.name} only on their own Claude routine. Lending this one spends your plan, and its agents hold the board’s token.`}
+      </span>
+    </div>
   );
 }
 
