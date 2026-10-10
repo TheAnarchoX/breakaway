@@ -878,6 +878,85 @@ describe('a person’s writes (BRK-301)', () => {
     await owner(`/api/routines/${routine}`, { method: 'DELETE' });
   });
 
+  it('takes a name widgets and gadgets share as widgets’ for a person who sees only widgets (BRK-341)', async () => {
+    const { member, maintainer } = world.people;
+    const shared = unique('perm-both');
+    const theirs = unique('perm-gad');
+    await inStore((store) => {
+      const now = Date.now();
+      const add = (repo, name) =>
+        store.sql.exec(
+          "INSERT INTO infra_environments (repo, name, kind, gates, created, edited) VALUES (?, ?, 'staging', 0, ?, ?)",
+          repo,
+          name,
+          now,
+          now,
+        );
+      add('widgets', shared);
+      add('gadgets', shared);
+      add('gadgets', theirs);
+    });
+    // The store's gates look the name up only where they see, and say which repository they found it in.
+    const gate = await inStore((store) =>
+      store.readGateApi({ person: member.handle }, { target: { environment: shared } }),
+    );
+    expect([gate.status, gate.body.repo]).toEqual([200, 'widgets']);
+    const permit = await inStore((store) =>
+      store.permitApi({ person: member.handle, press: true }, 'plan.create', { environment: shared }),
+    );
+    expect(permit.body.repos).toEqual(['widgets']);
+    // Reads, by the path and by ?environment=, with a cookie and a token: widgets' environment, never a 409.
+    for (const [path, auth] of [
+      [`/api/infra/environments/${shared}`, { cookie: member.cookie }],
+      [`/api/infra/environments/${shared}`, { token: member.token }],
+      [`/api/infra/desired/${shared}`, { cookie: member.cookie }],
+      [`/api/infra/plans?environment=${shared}`, { cookie: member.cookie }],
+    ]) {
+      const res = await call(path, auth);
+      const text = await res.text();
+      expect(res.status, `${path}: ${text}`).not.toBe(409);
+      expect(text, path).not.toContain('gadgets');
+    }
+    const read = await call(`/api/infra/environments/${shared}`, { cookie: member.cookie });
+    expect(read.status).toBe(200);
+    expect((await read.json()).environment).toMatchObject({ name: shared, repo: 'widgets' });
+    // A write by the name: the maintainer's change lands on widgets' environment, and gadgets' stays as it was.
+    const changed = await call(`/api/infra/environments/${shared}`, {
+      method: 'PATCH',
+      cookie: maintainer.cookie,
+      body: { gates: true },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(200);
+    expect((await changed.json()).environment).toMatchObject({ name: shared, repo: 'widgets' });
+    const gates = await inStore((store) =>
+      store.sql
+        .exec('SELECT repo, gates FROM infra_environments WHERE name = ? ORDER BY repo', shared)
+        .toArray()
+        .map((r) => [r.repo, r.gates]),
+    );
+    expect(gates).toEqual([
+      ['gadgets', 0],
+      ['widgets', 1],
+    ]);
+    const plan = await call('/api/infra/plans', {
+      method: 'POST',
+      cookie: member.cookie,
+      body: { environment: shared },
+    });
+    const planText = await plan.text();
+    expect(plan.status, planText).not.toBe(409);
+    expect(planText).not.toContain('gadgets');
+    // One only gadgets has isn't there, in the words of one that never was.
+    const none = await call(`/api/infra/environments/${theirs}`, { cookie: member.cookie });
+    expect(none.status).toBe(404);
+    expect((await none.json()).error).toBe(`no environment ${theirs}`);
+    // The owner sees both, so the owner is asked which, as before.
+    const owners = await owner(`/api/infra/environments/${shared}`);
+    expect(owners.status).toBe(409);
+    expect((await owners.json()).error).toMatch(/^(widgets and gadgets|gadgets and widgets) each have an environment/u);
+    await inStore((store) => store.sql.exec('DELETE FROM infra_environments WHERE name IN (?, ?)', shared, theirs));
+  });
+
   it('lets a maintainer manage members and viewers of their repositories, and nobody else', async () => {
     const max = world.people.maintainer;
     const invite = (grants) => call('/api/people/invites', { method: 'POST', cookie: max.cookie, body: { grants } });
