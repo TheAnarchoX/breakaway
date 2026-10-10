@@ -17,6 +17,7 @@ import { describeBrief, describeTitle, draftDesired } from './infra-adopt.js';
 import { desiredPath } from './infra-desired.js';
 import { runsTheBoard } from './infra-environments.js';
 import { repoSlugOf } from './repos.js';
+import { OWNER } from './permissions.js';
 
 /** What the environment page shows of the task describing an environment: enough to link it and its pull request. */
 function describeTask(t) {
@@ -149,22 +150,32 @@ export const infraAdoptMethods = {
       const blocker = this.describeBlocker(env);
       if (blocker) throw new AgentError(blocker, 409);
       this.infraDraftOf(env);
-      await this.checkRoutineReady(env.repo);
-      const res = await this.create([
-        {
-          description: describeTitle(env.name),
-          horizon: 'now',
-          who: 'agent',
-          tags: ['general'],
-          brief: describeBrief({ name: env.name, repo: env.repo }),
-          ...(env.repo === this.defaultRepoSlug() ? {} : { repo: env.repo }),
-          by: 'owner',
-        },
-      ]);
+      // The agent is the presser's (BRK-334): on their own routine, or the lent one, and the task names them.
+      const forPerson = this.startsFor({ actor, by });
+      await this.routineForStart(env.repo, forPerson);
+      const res = await this.create(
+        [
+          {
+            description: describeTitle(env.name),
+            horizon: 'now',
+            who: 'agent',
+            tags: ['general'],
+            brief: describeBrief({ name: env.name, repo: env.repo }),
+            ...(env.repo === this.defaultRepoSlug() ? {} : { repo: env.repo }),
+            by: forPerson,
+          },
+        ],
+        { actor: forPerson === OWNER ? null : { person: forPerson } },
+      );
       if (res.status !== 201) throw new AgentError(res.body.error ?? 'couldn’t add the task', res.status);
       const uuid = res.body.tasks[0].uuid;
       try {
-        const started = await this.startAgent(uuid, { trigger: 'describe', kind: 'general', force: Boolean(force) });
+        const started = await this.startAgent(uuid, {
+          trigger: 'describe',
+          kind: 'general',
+          force: Boolean(force),
+          forPerson,
+        });
         return {
           status: 201,
           body: { task: describeTask(this.detail(uuid)), run: started.run, waiting: null, already: false },
