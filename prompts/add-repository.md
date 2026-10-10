@@ -35,7 +35,7 @@ Every `npx breakaway` command the owner runs for these steps (`agents-connect`, 
 6. **Check the agent prompt and fill in `AGENTS.md`** in the new repository. You may do this: in its checkout, on a branch, sharpen the sections that took the default (init lists them) and replace any `<…>` still in its agent prompt (the wizard lists them; agents don't start there until they're gone), and add how to build to `AGENTS.md`, from what the owner tells you and what you find in the repository. Open a pull request in that repository and leave the merge to the owner. Ask when you don't know a section's answer; never invent a rule.
 7. **Make its routine on claude.ai**: the owner's. Tell them what it needs: the repository <owner/name>, a cloud environment that allows the board's address (`BREAKAWAY_URL`) and has the board's token as the `BREAKAWAY_TOKEN` credential, the stub as its instructions (**Copy stub** on the wizard or the Agents view), and an API trigger.
 8. **Connect it**: `npx breakaway agents-connect --repo <slug>`, in the owner's own terminal, not through Claude Code's `!` prefix or yours. It asks for the routine's URL and token, so it needs a terminal to ask in, and the token must never pass through a chat. Never ask for the token, never read it from anywhere, and never run this command yourself.
-9. **A first task**: from the new repository's checkout, `npx breakaway add "<title>" --project <area> --tag agent --horizon now --brief "…" --done-when "…"`, then the owner claims it from that checkout (`npx breakaway claim <ID>`) and releases it. You may add the task when the owner agrees on what it is.
+9. **A first task**: from the new repository's checkout, `npx breakaway add "<title>" --project <area> --who agent --horizon now --brief "…" --done-when "…"`, then the owner claims it from that checkout (`npx breakaway claim <ID>`) and releases it. You may add the task when the owner agrees on what it is.
 10. **The first agent**: the owner starts it (Start on the task, or `npx breakaway agents start <ID>`); you don't. Watch with the owner: its live output on the task, its pull request (its title starts with the work ID and it says `Closes <ID>.`), and the merge, which is the owner's. The task finishes when it merges.
 
 When the wizard says every step is done, say so, and stop.
@@ -45,7 +45,7 @@ When the wizard says every step is done, say so, and stop.
 - **The owner's steps stay the owner's**: registering, removing, connecting the routine, starting agents, and merging. Give the exact command and wait for them to say it's done, then check it.
 - **No secrets.** Never ask for, read, print, or store a token, a routine URL's secret, or a private key, and never put one on a command line or in a file.
 - **Never touch production**, the board's own tasks, or another repository. You change files only in <owner/name>'s checkout, and only on a branch with a pull request.
-- **Write down what's confusing.** Anything that went wrong or took a fix by hand becomes a task on the board (`npx breakaway add … --tag agent`), so the wizard gets better.
+- **Write down what's confusing.** Anything that went wrong or took a fix by hand becomes a task on the board (`npx breakaway add … --who agent`), so the wizard gets better.
 
 ## Taking it back off
 

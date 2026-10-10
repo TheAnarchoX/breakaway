@@ -51,7 +51,8 @@ describe('shape a new feature as an idea (WEB-42)', () => {
     const idea = res.idea;
     expect(idea).toMatchObject({ project: 'ideas', description: 'Dark mode', autostart: true });
     expect(idea.wid).toMatch(/^IDEA-\d+$/u);
-    expect(idea.tags).toEqual(expect.arrayContaining(['agent', 'idea', 'horizon-next', 'dark-mode']));
+    expect(idea.tags).toEqual(expect.arrayContaining(['idea', 'horizon-next', 'dark-mode']));
+    expect(idea.who).toBe('agent');
     expect(idea.brief).toMatch(/^Let people pick a \*\*dark\*\* theme\.\n\n## The feature\n/u);
     expect(idea.brief).toContain('Dark mode (+dark-mode), aimed at release 1.4.0');
     expect(idea.brief).toContain('give each one --tag dark-mode');
@@ -96,10 +97,10 @@ describe('refine a feature with an agent (BRK-150)', () => {
   it('writes the prompt from the feature and its tasks, tags it with the feature, and starts a general agent', async () => {
     await addFeature({ slug: 'inbox', title: 'A calmer inbox', brief: 'Fewer, better pings.' });
     const [open, done, claimed] = await add([
-      { description: 'Sort by age', project: 'ops', tags: ['agent', 'inbox'] },
+      { description: 'Sort by age', project: 'ops', who: 'agent', tags: ['inbox'] },
       { description: 'Show the age', project: 'ops', tags: ['inbox'] },
-      { description: 'Mute a task', project: 'ops', tags: ['agent', 'inbox'] },
-      { description: 'Unrelated', project: 'ops', tags: ['agent'] },
+      { description: 'Mute a task', project: 'ops', who: 'agent', tags: ['inbox'] },
+      { description: 'Unrelated', project: 'ops', who: 'agent' },
     ]);
     await api(`tasks/${done.wid}/done`, { method: 'POST' });
     await api(`tasks/${claimed.wid}/claim`, { method: 'POST', body: { agent: 'claude-other' } });
@@ -108,7 +109,8 @@ describe('refine a feature with an agent (BRK-150)', () => {
     const t = res.task;
     expect(t).toMatchObject({ wid: null, project: null, horizon: 'now', autostart: true });
     expect(t.description).toBe('Refine the feature: A calmer inbox');
-    expect(t.tags).toEqual(['agent', 'general', 'inbox']);
+    expect(t.tags).toEqual(['general', 'inbox']);
+    expect(t.who).toBe('agent');
     expect(t.brief).toMatch(
       /^The owner wants the tasks of the feature A calmer inbox \(\+inbox\), with no release yet refined\./u,
     );
@@ -125,7 +127,7 @@ describe('refine a feature with an agent (BRK-150)', () => {
 
   it('links to the open one instead of starting a second, and leaves it out of the next prompt', async () => {
     await addFeature({ slug: 'badges', brief: 'Badges on cards.' });
-    await add([{ description: 'Draw the badge', project: 'ops', tags: ['agent', 'badges'] }]);
+    await add([{ description: 'Draw the badge', project: 'ops', who: 'agent', tags: ['badges'] }]);
     const first = await body(await refine({ feature: 'badges', note: 'Smaller.' }));
     expect(first.code).toBe(201);
     const fired = fires.length;

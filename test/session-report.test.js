@@ -109,9 +109,9 @@ describe('a session’s first claim verifies its routine', () => {
     await api('tasks', {
       method: 'POST',
       body: [
-        { description: 'Publish security.txt', project: 'ops', tags: ['agent'], horizon: 'now' },
-        { description: 'Status page', project: 'ops', tags: ['agent'], horizon: 'now' },
-        { description: 'Route table', project: 'ops', tags: ['agent'], horizon: 'now' },
+        { description: 'Publish security.txt', project: 'ops', who: 'agent', horizon: 'now' },
+        { description: 'Status page', project: 'ops', who: 'agent', horizon: 'now' },
+        { description: 'Route table', project: 'ops', who: 'agent', horizon: 'now' },
       ],
     });
     expect((await start('OPS-1')).status).toBe(200);

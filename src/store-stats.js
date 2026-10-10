@@ -159,6 +159,7 @@ export const statsMethods = {
       status: t.status,
       horizon: t.horizon,
       tags: t.tags,
+      who: t.who,
       claim: t.claim,
       entry: ms(t.entry),
       end: ms(t.end),

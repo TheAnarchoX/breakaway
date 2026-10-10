@@ -336,7 +336,7 @@ function Form({ task: t }) {
 }
 
 /**
- * A +decide task without questions: one note that resolves it.
+ * A decision without questions: one note that resolves it.
  * @param {Record<string, any>} props
  */
 function Decide({ task: t }) {
@@ -411,14 +411,14 @@ function Decide({ task: t }) {
  */
 export function DecisionSection({ task: t }) {
   const structured = Array.isArray(t.decision) && t.decision.length > 0;
-  // A kickoff's IDEA and a routine maker's task stay pending once answered: the answers stand while +decide is off.
+  // A kickoff's IDEA and a routine maker's task stay pending once answered: the answers stand while it's an agent's again.
   const answered =
     structured &&
     Boolean(t.decisionAnswers) &&
     (t.status === 'completed' ||
-      ((isKickoffIdea(t) || isRoutineMaker(t)) && t.status === 'pending' && !t.tags.includes('decide')));
+      ((isKickoffIdea(t) || isRoutineMaker(t)) && t.status === 'pending' && t.who !== 'decision'));
   const pending = t.status === 'pending';
-  if (!structured && !(pending && t.tags.includes('decide'))) return null;
+  if (!structured && !(pending && t.who === 'decision')) return null;
   if (structured && !answered && !pending) return null;
   return (
     <section class="panel-section decision" aria-labelledby={`decision-${t.uuid}`}>

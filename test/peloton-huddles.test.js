@@ -75,13 +75,14 @@ describe('huddles and the chase’s plan (IDEA-36)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Squad one', project: 'product', tags: ['agent', 'squad'], horizon: 'now' },
-          { description: 'Squad two', project: 'product', tags: ['agent', 'squad'], horizon: 'now' },
-          { description: 'Solo three', project: 'product', tags: ['agent'], horizon: 'now' },
+          { description: 'Squad one', project: 'product', who: 'agent', tags: ['squad'], horizon: 'now' },
+          { description: 'Squad two', project: 'product', who: 'agent', tags: ['squad'], horizon: 'now' },
+          { description: 'Solo three', project: 'product', who: 'agent', horizon: 'now' },
           {
             description: 'Road captain for Squad',
             project: 'product',
-            tags: ['agent', 'general', 'squad'],
+            who: 'agent',
+            tags: ['general', 'squad'],
             horizon: 'now',
           },
         ],
@@ -346,7 +347,7 @@ describe('huddles and the chase’s plan (IDEA-36)', () => {
       const created = await body(
         await api('tasks', {
           method: 'POST',
-          body: [{ description: 'Squad five', project: 'product', tags: ['agent', 'squad'], horizon: 'now' }],
+          body: [{ description: 'Squad five', project: 'product', who: 'agent', tags: ['squad'], horizon: 'now' }],
         }),
       );
       expect(created.tasks[0].wid).toBe('PRD-5');

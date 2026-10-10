@@ -342,7 +342,8 @@ describe('Describe it as code (WEB-92)', () => {
       claim: `claude-${task.short}`,
     });
     expect(task.autostart).toBeFalsy();
-    expect(task.tags).toEqual(['agent', 'general']);
+    expect(task.tags).toEqual(['general']);
+    expect(task.who).toBe('agent');
     expect(res.run).toMatchObject({ agent: `claude-${task.short}`, trigger: 'describe', kind: 'general' });
     const payload = fires.at(-1);
     expect(payload).toContain(`Task: ${task.uuid}`);

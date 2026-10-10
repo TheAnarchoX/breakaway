@@ -85,10 +85,10 @@ describe('a routine Claude refuses (BRK-144)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'One', project: 'ops', tags: ['agent'], horizon: 'now' },
-          { description: 'Two', project: 'debt', tags: ['agent'], horizon: 'now' },
-          { description: 'Three', project: 'product', tags: ['agent'], horizon: 'now' },
-          { description: 'Four', project: 'compliance', tags: ['agent'], horizon: 'now' },
+          { description: 'One', project: 'ops', who: 'agent', horizon: 'now' },
+          { description: 'Two', project: 'debt', who: 'agent', horizon: 'now' },
+          { description: 'Three', project: 'product', who: 'agent', horizon: 'now' },
+          { description: 'Four', project: 'compliance', who: 'agent', horizon: 'now' },
         ],
       }),
     );
@@ -219,8 +219,8 @@ describe('a routine Claude refuses (BRK-144)', () => {
       await api('tasks', {
         method: 'POST',
         body: [
-          { description: 'Fast one', project: 'product', tags: ['agent', 'speed'], horizon: 'now' },
-          { description: 'Fast two', project: 'compliance', tags: ['agent', 'speed'], horizon: 'now' },
+          { description: 'Fast one', project: 'product', who: 'agent', tags: ['speed'], horizon: 'now' },
+          { description: 'Fast two', project: 'compliance', who: 'agent', tags: ['speed'], horizon: 'now' },
         ],
       }),
     );

@@ -104,7 +104,8 @@ describe('routine makers on the board', () => {
       brief: 'Every Monday morning, update the changelog from what merged last week',
       claim: agent,
     });
-    expect(made.tags).toEqual(['agent', 'general', 'routine-maker']);
+    expect(made.tags).toEqual(['general', 'routine-maker']);
+    expect(made.who).toBe('agent');
     expect(res.run).toMatchObject({ agent, trigger: 'routines', kind: 'routines' });
     expect(fires.at(-1)).toContain('Mode: routines');
     expect(fires.at(-1)).not.toContain('Mode: general');
@@ -202,7 +203,7 @@ describe('routine makers on the board', () => {
     expect(asked.status).toBe(200);
     const released = await body(await api(`tasks/${made.uuid}/release`, { method: 'POST', body: { agent } }));
     expect(released.task).toMatchObject({ status: 'pending', claim: null });
-    expect(released.task.tags).toContain('decide');
+    expect(released.task.who).toBe('decision');
     // Released, its agent may no longer write routines.
     expect((await routine('late', { by: agent })).status).toBe(403);
 

@@ -118,7 +118,8 @@ describe('Prepare the next version from the board (BRK-100)', () => {
     expect(res.status).toBe(201);
     const t = res.task;
     expect(t).toMatchObject({ wid: null, project: null, horizon: 'now', autostart: true });
-    expect(t.tags).toEqual(['agent', 'general', 'version']);
+    expect(t.tags).toEqual(['general', 'version']);
+    expect(t.who).toBe('agent');
     expect(t.description).toBe('Set widgets’s version to 1.4.0 for the next minor release');
     expect(t.brief).toContain('- Set "version" in package.json to 1.4.0.');
     expect(t.brief).toMatch(/\n\nNote from the owner:\nShip BRK-1 first\.$/);

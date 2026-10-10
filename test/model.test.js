@@ -5,16 +5,17 @@ const A = '1dd497fc-7d89-4c7b-adfb-b74856043b81';
 const B = 'f5e733e5-10da-453a-99df-17181953eb1c';
 const NOW = new Date('2026-09-28T12:00:00Z');
 
-// Exactly what Taskwarrior 3.5 wrote for `task add … +agent depends:1` and an annotation.
+// Exactly what Taskwarrior 3.5 wrote for `task add … who:agent +docs depends:1` and an annotation.
 const twA = {
   project: 'ops',
-  tag_agent: 'x',
+  who: 'agent',
+  tag_docs: 'x',
   annotation_1790630931: 'a note',
   wid: 'OPS-5',
   priority: 'H',
   status: 'pending',
   modified: '1790630931',
-  tags: 'agent',
+  tags: 'docs',
   description: 'First thing',
   entry: '1790630931',
 };
@@ -43,7 +44,7 @@ describe('view', () => {
       wid: 'OPS-5',
       project: 'ops',
       priority: 'H',
-      tags: ['agent'],
+      who: 'agent',
       ready: true,
       blocked: false,
       active: false,
@@ -68,8 +69,8 @@ describe('view', () => {
   });
 
   it('reads legacy tags and depends strings too', () => {
-    const t = { status: 'pending', description: 'x', tags: 'owner,decide', depends: B };
-    expect(view(A, t, new Map([[A, t]]), NOW)).toMatchObject({ tags: ['decide', 'owner'], depends: [B] });
+    const t = { status: 'pending', description: 'x', tags: 'speed,docs', depends: B };
+    expect(view(A, t, new Map([[A, t]]), NOW)).toMatchObject({ tags: ['docs', 'speed'], depends: [B] });
   });
 });
 
@@ -77,24 +78,24 @@ describe('changes and operations', () => {
   it('writes tags and dependencies both ways, like Taskwarrior', () => {
     const after = withChanges(
       null,
-      { description: 'New', project: 'cloud', addTags: ['agent', 'owner'], addDepends: [A] },
+      { description: 'New', project: 'cloud', addTags: ['docs', 'speed'], addDepends: [A] },
       NOW,
     );
     expect(after).toMatchObject({
       description: 'New',
       status: 'pending',
       project: 'cloud',
-      tag_agent: 'x',
-      tag_owner: 'x',
-      tags: 'agent,owner',
+      tag_docs: 'x',
+      tag_speed: 'x',
+      tags: 'docs,speed',
       [`dep_${A}`]: 'x',
       depends: A,
       entry: '1790596800',
       modified: '1790596800',
     });
-    const removed = withChanges(after, { removeTags: ['owner'], removeDepends: [A] }, NOW);
-    expect(removed.tag_owner).toBeUndefined();
-    expect(removed.tags).toBe('agent');
+    const removed = withChanges(after, { removeTags: ['speed'], removeDepends: [A] }, NOW);
+    expect(removed.tag_speed).toBeUndefined();
+    expect(removed.tags).toBe('docs');
     expect(removed.depends).toBeUndefined();
   });
 

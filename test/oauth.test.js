@@ -125,8 +125,8 @@ describe('sign-in from MCP apps (BRK-157)', () => {
         await api('tasks', {
           method: 'POST',
           body: [
-            { description: 'A widgets task', project: 'ops', tags: ['agent'], horizon: 'now' },
-            { description: 'A gizmos task', repo: 'gizmos', project: 'gizmo', tags: ['agent'], horizon: 'now' },
+            { description: 'A widgets task', project: 'ops', who: 'agent', horizon: 'now' },
+            { description: 'A gizmos task', repo: 'gizmos', project: 'gizmo', who: 'agent', horizon: 'now' },
           ],
         })
       ).status,

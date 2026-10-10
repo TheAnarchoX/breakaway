@@ -202,7 +202,7 @@ describe('the release flow: Promote and Roll back', () => {
   });
 
   it('shows both environments, what a promote carries, and what may be pressed', async () => {
-    await api('tasks', { method: 'POST', body: [{ description: 'Something', project: 'cloud', tags: ['agent'] }] });
+    await api('tasks', { method: 'POST', body: [{ description: 'Something', project: 'cloud', who: 'agent' }] });
     stagingAhead();
     const flow = await sync();
     expect(flow.staging).toMatchObject({
