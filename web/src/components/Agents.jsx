@@ -26,6 +26,7 @@ import { actions, agents, go, hashFor, openPull } from '../lib/store.js';
 import { RichText } from '../lib/richtext.jsx';
 import { Dialog, useAutosize, Dictate } from './ui.jsx';
 import { ChaseLine } from './Feature.jsx';
+import { taskLock } from './Who.jsx';
 import { Named } from '../lib/avatar.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -754,7 +755,15 @@ export function AgentSection({ task: t }) {
   const [writing, setWriting] = useState(false);
   const [busy, setBusy] = useState(false);
   const connected = agents.value.data?.connected;
-  const { blocker, canAuto, canStart, queued } = startState(t);
+  const state = startState(t);
+  const { blocker, canAuto } = state;
+  // What the signed-in person may do here (WEB-137): start or refine an agent (agent.start), force one past the
+  // board's room (agent.force), set Start by itself (task.plan: others read whether it's on), and message the agent
+  // (agent.message).
+  const startNo = taskLock(t, 'agent.start', 'start or refine an agent');
+  const canStart = state.canStart && !startNo;
+  const queued = state.queued && { ...state.queued, forceable: state.queued.forceable && !taskLock(t, 'agent.force') };
+  const autoNo = Boolean(taskLock(t, 'task.plan'));
   const run = t.agentRun;
   // A run whose start failed has no session, but its state (and Try again) still shows (WEB-41).
   const hasSession = Boolean(run?.url || run?.lastAt || runWords(run?.state));
@@ -815,11 +824,12 @@ export function AgentSection({ task: t }) {
                 Add a note
               </button>
             )}
-            <RefineButton task={t} />
+            {!startNo && <RefineButton task={t} />}
           </div>
+          {startNo && <p class="meta">{startNo}</p>}
         </div>
       )}
-      {canAuto && !connected && agents.value.loaded && (
+      {canAuto && !startNo && !connected && agents.value.loaded && (
         <p class="muted small">
           Connect the agent routine to start agents from here.{' '}
           <button type="button" class="linkish" onClick={() => go('agents')}>
@@ -827,7 +837,12 @@ export function AgentSection({ task: t }) {
           </button>
         </p>
       )}
-      {canAuto && !t.claim && (
+      {canAuto && !t.claim && autoNo && t.autostart && (
+        <p class="meta">
+          <Zap size={13} aria-hidden="true" /> Starts by itself when ready.
+        </p>
+      )}
+      {canAuto && !t.claim && !autoNo && (
         <label class="check-row agent-auto">
           <input type="checkbox" checked={t.autostart} onChange={(e) => setAutostart(t, e.currentTarget.checked)} />
           <span>
@@ -861,7 +876,9 @@ export function AgentSection({ task: t }) {
         </div>
       )}
       {hasSession && <LiveLog task={t} onRetry={canStart ? start : null} busy={busy} />}
-      {hasSession && t.status === 'pending' && t.claim && <MessageAgent task={t} url={run?.url ?? t.session ?? null} />}
+      {hasSession && t.status === 'pending' && t.claim && !taskLock(t, 'agent.message') && (
+        <MessageAgent task={t} url={run?.url ?? t.session ?? null} />
+      )}
     </section>
   );
 }
