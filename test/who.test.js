@@ -1,7 +1,7 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { LEGACY_WHO_TAGS, diffOps, legacyWho, view, whoFromTags, withChanges } from '../src/model.js';
-import { api, latestVersion, pushOps, readChild, twCreate } from './helpers.js';
+import { api, boardApi, latestVersion, pushOps, readChild, twCreate } from './helpers.js';
 
 // Who does it (BRK-330): `who` and `assignee` replace the +agent, +owner, and +decide tags.
 
@@ -220,6 +220,66 @@ describe('who does it, on the board', () => {
     expect(open).toMatchObject({ who: 'person', assignee: null });
     expect((await body(await patch(open.uuid, { assignee: 'val' }))).status).toBe(400);
     expect((await body(await patch(open.uuid, { assignee: 'mia' }))).task.assignee).toBe('mia');
+  });
+
+  it('checks a proposed task’s assignee in the repository the task is made in', async () => {
+    const repo = { slug: 'sprockets', github: 'acme/sprockets', areas: ['parts:SPR'] };
+    expect((await api('repos', { method: 'POST', body: repo })).status).toBe(201);
+    await inStore(async (store) => {
+      const person = (handle, where) => {
+        store.sql.exec(
+          'INSERT INTO people (handle, name, webauthn_id, invited_by, created) VALUES (?, ?, ?, ?, ?)',
+          handle,
+          handle,
+          `wa-${handle}`,
+          'owner',
+          Date.now(),
+        );
+        store.sql.exec('INSERT INTO grants (handle, repo, role) VALUES (?, ?, ?)', handle, where, 'member');
+      };
+      person('sam', 'sprockets');
+      person('wes', store.defaultRepoSlug());
+    });
+    const by = 'claude-sprockets-1';
+    const pinged = (
+      await body(await add({ description: 'Needs a hand', project: 'parts', repo: 'sprockets', who: 'agent' }))
+    ).tasks[0];
+    await api(`tasks/${pinged.wid}/claim`, { method: 'POST', body: { agent: by } });
+    const proposeFor = async (assignee) => {
+      const proposal = [
+        {
+          type: 'add',
+          ref: 'n1',
+          title: `Hand for ${assignee}`,
+          project: 'parts',
+          horizon: 'now',
+          who: 'person',
+          assignee,
+          brief: 'What and why.',
+          done_when: 'It is done.',
+        },
+      ];
+      const made = await body(
+        await api(`tasks/${pinged.wid}/pings`, {
+          method: 'POST',
+          body: { by, kind: 'blocked', message: `For ${assignee}`, proposal },
+        }),
+      );
+      expect(made.status).toBe(201);
+      return body(await boardApi(`pings/${made.ping.id}/apply`, { method: 'POST', body: {} }));
+    };
+    const applied = await proposeFor('sam');
+    expect(applied.status).toBe(200);
+    const [wid] = applied.created;
+    expect(wid).toMatch(/^SPR-/);
+    expect((await body(await api(`tasks/${wid}`))).task).toMatchObject({
+      repo: 'sprockets',
+      who: 'person',
+      assignee: 'sam',
+    });
+    const refused = await proposeFor('wes');
+    expect(refused.status).toBe(409);
+    expect(refused.error).toMatch(/wes has no role in sprockets/);
   });
 
   it('shows who does it changing in Activity', async () => {
