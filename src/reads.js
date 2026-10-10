@@ -164,6 +164,26 @@ export function readOf(parts, q) {
 }
 
 /**
+ * The reads a person's write on `target` (the Worker's gate's: a task, a plan, a repository, …) would be (BRK-337),
+ * for the store's read gate to answer first: a write on something in a repository they can't read is a 404 with the
+ * read's words, as if it weren't there, never the role's refusal, which names the repository. A write with no
+ * repository is the default's, as `?repo=` is. The install's own writes, and a release's pull and a planning change's
+ * undo, which aren't one thing in one repository, have none: their refusal is the role's.
+ * @param {Record<string, any>} target
+ * @returns {Read[]}
+ */
+export function writeReads(target) {
+  /** @type {(repo: any) => ByRepo} */
+  const byRepo = (repo) => ({ repo: repo === undefined || repo === null || repo === '' ? null : String(repo), absent: 'default' });
+  if (target.install || 'release' in target || 'planning' in target) return [];
+  if (Array.isArray(target.tasks)) return target.tasks.map((task) => ({ target: { task } }));
+  if (Array.isArray(target.repos)) return (target.repos.length ? target.repos : [null]).map(byRepo);
+  const things = ['task', 'plan', 'change', 'policyChange', 'environment', 'ping', 'attachment', 'feature', 'routine', 'peloton'];
+  if (things.some((key) => key in target)) return [{ target }];
+  return [byRepo(target.repo)];
+}
+
+/**
  * What a person can't see: the repositories they have no grant in (their slugs and GitHub names) and those
  * repositories' tasks (their UUIDs and work IDs).
  * @typedef {{ repos: Set<string>, tasks: Set<string> }} Hidden
