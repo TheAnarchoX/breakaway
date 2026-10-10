@@ -2,7 +2,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { FastForward, Hand, Layers, Milestone } from 'lucide-preact';
 import { plural, rank, ref, stateOf } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
-import { byUuid, features, filters, graphShowDone, hashFor, loadFeatures, navOrder, visible } from '../lib/store.js';
+import {
+  byUuid,
+  features,
+  filters,
+  graphShowDone,
+  hashFor,
+  loadFeatures,
+  navOrder,
+  repos,
+  visible,
+} from '../lib/store.js';
 import { criticalPath, foldDone, isFold, isPass, layered, orderSteps } from '../lib/graph-layout.js';
 import { TaskCard } from '../components/TaskCard.jsx';
 import { EmptyBoard } from '../components/EmptyBoard.jsx';
@@ -10,6 +20,7 @@ import { Dialog } from '../components/ui.jsx';
 import { ChasePanel } from '../components/Chase.jsx';
 import { FeatureForm } from '../components/FeatureForm.jsx';
 import { Title } from '../lib/richtext.jsx';
+import { forMe } from '../lib/people.js';
 
 /**
  * Chains of tasks that wait for each other, each laid out left to right: a task sits one
@@ -77,9 +88,6 @@ function buildChains(list, all) {
   chains.sort((a, b) => b.size - a.size || rank(a.columns[0][0], b.columns[0][0]));
   return chains;
 }
-
-/** Whether the owner holds a task's next step: a person's step or a decision they haven't answered. */
-const forOwner = (t) => t.who === 'person' || t.who === 'decision' || Boolean(t.decision && !t.decisionAnswers);
 
 /**
  * How a chain is drawn (WEB-98): finished work folded into one card a step unless `showDone` or the step is
@@ -242,7 +250,7 @@ function Chain({ chain, layout, unfolded, onFold }) {
             }
             const t = layout.tasks.get(id);
             const open = t.status === 'pending';
-            const yours = open && forOwner(t);
+            const yours = open && forMe(t, t.repo || repos.value.default);
             const state = [
               stateOf(t) === 'done' ? 'node-done' : '',
               onPath.has(id) ? 'node-path' : open && layout.path.length ? 'node-aside' : '',
