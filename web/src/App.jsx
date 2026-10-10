@@ -11,6 +11,7 @@ import {
   cycleRepo,
   go,
   helpOpen,
+  joinCode,
   loadHealth,
   loadTasks,
   me,
@@ -62,6 +63,7 @@ import { TaskPanel } from './components/TaskPanel.jsx';
 import { NewTaskDialog } from './components/NewTask.jsx';
 import { NewAgentDialog } from './components/NewAgent.jsx';
 import { SignIn } from './components/SignIn.jsx';
+import { Join } from './components/Join.jsx';
 import { Authorize } from './components/Authorize.jsx';
 import { FilterBar, HelpContent, MenuDrawer, Sidebar, TopBar } from './components/Shell.jsx';
 import { ConfirmHost, Dialog, ForceStartHost, Toasts } from './components/ui.jsx';
@@ -260,6 +262,8 @@ function Board() {
 }
 
 export function App() {
+  // An invite's link stands alone, signed in or not (WEB-124).
+  if (joinCode.value) return <Join code={joinCode.value} />;
   const s = session.value;
   if (s === 'checking')
     return (

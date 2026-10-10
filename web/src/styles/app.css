@@ -13147,3 +13147,250 @@ button.infra-plan-row {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+/* ---------- people (WEB-124) ---------- */
+
+/* The sign-in page's passkey, above the token form, and the join page's roles. */
+.signin-passkey {
+  display: grid;
+  gap: 12px;
+}
+.signin-passkey .btn,
+.join-grants + .signin-form .btn-primary {
+  gap: 8px;
+}
+.signin-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.signin-or::before,
+.signin-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.join-grants {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+/* Who's signed in, at the end of the top bar: their mark (WEB-134 makes it their avatar) and, when there's room,
+ * their name. */
+.signed-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--radius-s);
+  color: var(--text);
+  text-decoration: none;
+}
+.signed-in:hover {
+  background: var(--surface-2);
+}
+.signed-in-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--surface-3);
+  font: 650 13px / 1 var(--font-body);
+}
+.signed-in-name {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+@media (max-width: 1023.98px) {
+  .signed-in {
+    padding-right: 4px;
+  }
+  .signed-in-name {
+    display: none;
+  }
+}
+
+/* You, in Settings: lists of passkeys, tokens, and sessions, and the profile's kinds of work. */
+.you-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+.you-row .field {
+  flex: 1 1 220px;
+  max-width: 420px;
+}
+.you-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.you-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.you-list li > .btn {
+  margin-left: auto;
+}
+.you-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.you-rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.you-profile {
+  display: grid;
+  gap: 16px;
+  max-width: 900px;
+}
+.you-works {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.you-work {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.you-work.is-on {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+.you-work span {
+  display: grid;
+  gap: 2px;
+}
+.you-work input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.you-clear,
+.grant-add {
+  justify-self: start;
+  margin-top: 6px;
+}
+.you-made {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-s);
+  background: var(--warn-bg);
+}
+.you-made p {
+  margin: 0;
+}
+.you-token {
+  display: block;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font: 13px / 1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* People, in Settings: each person with their roles, when they were last seen, and what you may do. */
+.people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.people-list > li {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(160px, 1.4fr) minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  min-width: 0;
+}
+.people-who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.people-grants {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.pill-role {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.people-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+@media (max-width: 759.98px) {
+  .people-list > li {
+    grid-template-columns: 1fr;
+  }
+  .people-actions {
+    justify-content: flex-start;
+  }
+}
+.grant-rows {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 8px;
+}
+.grant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.grant-hints {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.invite-days {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.invite-days .input {
+  width: 6em;
+}
