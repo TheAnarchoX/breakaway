@@ -1682,7 +1682,8 @@ export const connectionsMethods = {
     } catch {
       keys = null;
     }
-    const subs = this.sql.exec('SELECT COUNT(*) AS n FROM push_subscriptions').one().n;
+    // The owner's browsers: people's own (BRK-340) don't tell the owner their pings will reach them.
+    const subs = this.sql.exec("SELECT COUNT(*) AS n FROM push_subscriptions WHERE person = 'owner'").one().n;
     const last = JSON.parse(this.meta('conn_push_last') ?? 'null');
     if (!keys) {
       return entry('push', 'push', 'Push notifications', 'off', {
