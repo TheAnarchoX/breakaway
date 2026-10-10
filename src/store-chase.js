@@ -399,13 +399,18 @@ export const chaseMethods = {
           const why = `it was refused ${refused.count} times`;
           add('stuck', why);
           stuck.push({ ...item, why, last: refused.last });
-        } else if (connected && !connected.has(t.repo)) {
+        } else if (row.chase_by && this.personStartWhy(row.chase_by, t.repo)) {
+          // A person's chase starts on their Claude, while they may start agents there (BRK-348).
+          const why = this.personStartWhy(row.chase_by, t.repo);
+          add('needs-you', why);
+          needsYou.push({ ...item, kind: 'connect', why });
+        } else if (!row.chase_by && connected && !connected.has(t.repo)) {
           const why = `${t.repo}’s agent routine isn’t connected: connect ${t.repo}`;
           add('needs-you', why);
           needsYou.push({ ...item, kind: 'connect', why });
-        } else if (connected && this.routineHold(t.repo)?.kind === 'paused') {
-          // Claude refused the routine (BRK-144): connecting it again is the owner's.
-          const why = this.holdReason(t.repo, this.routineHold(t.repo));
+        } else if (connected && this.startHold(t.repo, chaseFor(row))?.kind === 'paused') {
+          // Claude refused the routine (BRK-144): connecting it again is its holder's.
+          const why = this.holdReason(t.repo, this.startHold(t.repo, chaseFor(row)));
           add('needs-you', why);
           needsYou.push({ ...item, kind: 'connect', why });
         } else candidates.push({ t, item });
@@ -423,7 +428,7 @@ export const chaseMethods = {
       let hit = null;
       const area = areaOf(t);
       const name = this.areaName(t.repo, t.project);
-      const hold = connected ? this.routineHold(t.repo) : null;
+      const hold = connected ? this.startHold(t.repo, chaseFor(row)) : null;
       if (autoNow.has(t.uuid)) reason = 'auto-start starts it now';
       else if (hold) reason = this.holdReason(t.repo, hold);
       else if (!fix && review.full) {
@@ -684,6 +689,28 @@ export const chaseMethods = {
   },
 
   /**
+   * Stops chase `row` because of `why`, something the board saw rather than a press (BRK-348): it starts nothing
+   * more, its road captain stands down, and its peloton closes, as Stop does; one that ended by itself stops fixing
+   * its pull requests. The owner's inbox notes it, since nobody pressed Stop.
+   */
+  chaseStopFor(row, why) {
+    const on = row.chase === 'on';
+    this.sql.exec(
+      "UPDATE features SET chase = 'stopped', chase_ended = ?, chase_stalled = NULL WHERE slug = ?",
+      on ? Date.now() : row.chase_ended,
+      row.slug,
+    );
+    if (!on) return;
+    this.chaseEvent(row.slug, 'chase_ended', `${why}, so it stopped.`);
+    this.captainStandDown(row, `The chase stopped (${why}): its road captain stands down.`);
+    this.pelotonLine(
+      row.slug,
+      'close',
+      `The chase on ${row.title} stopped: ${why}. This peloton takes no new posts and goes in a day.`,
+    );
+  },
+
+  /**
    * Starts every ready task in every chase that's on, after auto-start (the alarm and the cron call it), then
    * ends a chase with nothing left to do and pings once about one that can't move without the owner.
    * A chase that ended by itself in the last 30 days only fixes its open pull requests: it starts nothing else.
@@ -727,8 +754,8 @@ export const chaseMethods = {
       let startedHere = 0;
       for (const t of plan.start) {
         if (!on && !t.fix) continue;
-        // A start refused earlier this tick may hold the routine (BRK-144).
-        if (this.routineHold(t.repo)) continue;
+        // A start refused earlier this tick may hold the routine (BRK-144): the person's own, on a person's chase.
+        if (this.startHold(t.repo, chaseFor(row))) continue;
         try {
           if (t.fix) await this.chaseFix(row, t);
           else await this.startAgent(t.uuid, { trigger: 'chase', forPerson: chaseFor(row) });
