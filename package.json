@@ -88,7 +88,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/chivo-mono": "^5.3.0",
     "@noble/ciphers": "^2.4.0",
