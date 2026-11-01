@@ -3,7 +3,7 @@ import { Cable, Copy, ExternalLink, KeyRound, Puzzle, Unplug } from 'lucide-prea
 import { ago } from '../lib/model.js';
 import { api, enc } from '../lib/api.js';
 import { copy } from '../lib/clipboard.js';
-import { confirmDialog, inScope, navOrder, repoScope, repos, toast } from '../lib/store.js';
+import { confirmDialog, inScope, multiRepo, navOrder, repoScope, repos, toast } from '../lib/store.js';
 import { RepoChip } from '../components/ui.jsx';
 
 const ext = { target: '_blank', rel: 'noopener noreferrer' };
@@ -55,8 +55,8 @@ function When({ iso, prefix }) {
 }
 
 /**
- * The apps you approved to work on the board through MCP (BRK-157): each connection's name, repository, and agent
- * name, and Revoke. The owner approves them on the consent page the app opens; listing and revoking are cookie-only.
+ * The apps you approved to work on the board through MCP (BRK-157): each connection's name, repositories (or the whole
+ * board, BRK-352), and agent name, and Revoke. The owner approves them on the consent page the app opens; listing and revoking are cookie-only.
  */
 function ConnectedApps() {
   const [list, setList] = useState(/** @type {any[] | null} */ (null));
@@ -68,7 +68,8 @@ function ConnectedApps() {
   useEffect(() => {
     load();
   }, []);
-  const shownList = (list ?? []).filter((c) => inScope(c.repo));
+  // A connection to the whole board shows under every repository; one to several, under each of them.
+  const shownList = (list ?? []).filter((c) => c.all || (c.repos ?? []).some((slug) => inScope(slug)));
   const revoke = async (/** @type {any} */ c) => {
     const ok = await confirmDialog({
       title: `Revoke ${c.name}?`,
@@ -95,20 +96,23 @@ function ConnectedApps() {
         Connected apps
       </h2>
       <p class="muted small">
-        Apps you approved to work on the board through MCP, each as one agent in one repository, with a token of its
-        own. Revoke one, and it stops at once.
+        Apps you approved to work on the board through MCP, each as one agent in the repositories you picked, or the
+        whole board, with a token of its own. Revoke one, and it stops at once.
       </p>
       {list === null ? (
         <p class="muted small" aria-busy="true">
           Loading connected apps…
         </p>
       ) : shownList.length ? (
-        <ul class="conn-repos">
+        <ul class="mcp-apps">
           {shownList.map((c) => (
             <li key={c.id}>
               <span class="conn-signin">
                 <span>
-                  <strong>{c.name}</strong> <RepoChip slug={c.repo} />
+                  <strong>{c.name}</strong>{' '}
+                  {c.all
+                    ? multiRepo.value && <span class="repo-chip">Whole board</span>
+                    : (c.repos ?? []).map((slug) => <RepoChip key={slug} slug={slug} />)}
                 </span>
                 <span class="meta">
                   {c.client} as <code>{c.agent}</code> · <When iso={c.created} prefix="approved" />
@@ -135,12 +139,16 @@ function ConnectedApps() {
   );
 }
 
-/** For clients that send headers: the board's token, an agent name, and a repository, as `npx breakaway mcp` prints. */
+/**
+ * For clients that send headers: the board's token, an agent name, and a repository, as `npx breakaway mcp` prints. Any
+ * repository leaves the header out, so each call names one with its tools' repo argument (BRK-352).
+ */
 function TokenConfig({ endpoint }) {
   const list = repos.value.list;
   const [picked, setRepo] = useState(/** @type {string | null} */ (null));
   // The repositories load after the page can open, so the pick follows the switcher until you choose one.
   const repo = picked ?? repoScope.value ?? repos.value.default ?? list[0]?.slug ?? '';
+  const ANY = '';
   const [agent, setAgent] = useState('my-agent');
   const name = AGENT.test(agent) ? agent : 'my-agent';
   const json = JSON.stringify(
@@ -196,8 +204,13 @@ function TokenConfig({ endpoint }) {
                   {r.name}
                 </option>
               ))}
+              {list.length > 1 && <option value={ANY}>Any repository</option>}
             </select>
-            <span class="field-hint">The only repository it works in.</span>
+            <span class="field-hint">
+              {repo === ANY
+                ? 'Each call names its repository, so one config works in all of them.'
+                : 'Where it works unless a call names another.'}
+            </span>
           </label>
         )}
       </div>
@@ -237,8 +250,8 @@ export function McpView() {
         <ol class="mcp-steps">
           <li>In your app, add it as a remote MCP server over HTTP. Some apps call it a custom connector.</li>
           <li>
-            The app opens this board. Name the connection, pick its repository and the agent name it claims as, and
-            press Approve.
+            The app opens this board. Name the connection, pick its repositories or the whole board, and the agent name
+            it claims as, and press Approve.
           </li>
           <li>It shows under Connected apps below. Ask it for the next task on the board.</li>
         </ol>

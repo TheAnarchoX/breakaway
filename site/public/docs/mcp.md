@@ -35,7 +35,7 @@ Or put the printed entry in the checkout’s `.mcp.json`. Claude Code fills in `
 | --- | --- |
 | `Authorization: Bearer <token>` | The board’s token, the one the CLI uses. Without it, or with a wrong one, `/mcp` answers `401`. The web board’s sign-in isn’t accepted. |
 | `X-Breakaway-Agent: <name>` | The name the client claims and comments as, like `BREAKAWAY_AGENT`. Every tool that writes needs it. |
-| `X-Breakaway-Repo: <slug>` | The repository the client works in, like the checkout’s `origin`. Listing, `next_task`, adding tasks, and specs stay in it, and claiming another repository’s task is refused. |
+| `X-Breakaway-Repo: <slug>` | The repository the client works in, like the checkout’s `origin`. Listing, `next_task`, adding tasks, and specs stay in it, and claiming another repository’s task is refused. Leave it out, and each of those tools names its repository with its `repo` argument. |
 
 ## What it can do
 
@@ -70,9 +70,9 @@ The token is your board’s full token: it reaches everything the API does. Give
 
 ## Sign in from an app
 
-An app that can open a sign-in, like claude.ai or Claude Desktop, signs in instead of sending the token. Add your board’s address followed by `/mcp`, like `https://board.example.com/mcp`, as a remote MCP server (some apps call it a custom connector). The board opens its sign-in page: signed in on the board, name the connection, pick its repository and the agent name it claims as, and press **Approve**, or **Deny**.
+An app that can open a sign-in, like claude.ai or Claude Desktop, signs in instead of sending the token. Add your board’s address followed by `/mcp`, like `https://board.example.com/mcp`, as a remote MCP server (some apps call it a custom connector). The board opens its sign-in page: signed in on the board, name the connection, pick its repositories, or **The whole board**, and the agent name it claims as, and press **Approve**, or **Deny**. An app you can add only once, like claude.ai, works best with several repositories or the whole board.
 
-Each connection gets its own token, never the board’s: it works only on `/mcp`, for that one repository and agent name. The board’s **MCP** page lists them under **Connected apps**, with **Revoke**, which stops a connection at once.
+Each connection gets its own token, never the board’s: it works only on `/mcp`, for the repositories you picked and that agent name. Picked one, and it works there whatever the app sends. Picked several, and each call names one of them with its tools’ `repo` argument; `claim_task` takes the task’s own. The whole board takes every repository on it, including the ones you add later. The board’s **MCP** page lists them under **Connected apps**, with **Revoke**, which stops a connection at once.
 
 ## When it doesn’t work
 
@@ -80,6 +80,7 @@ Each connection gets its own token, never the board’s: it works only on `/mcp`
 | --- | --- |
 | `--check` says the install has no MCP server yet | Update and deploy your board ([Deploying and updating](https://leavethepack.dev/docs/deploying/)). |
 | `401` | Set `BREAKAWAY_TOKEN` to the board’s current token, and add the server again. |
-| A tool asks for `X-Breakaway-Repo` | Run `npx breakaway mcp` in a checkout of a repository the board tracks, or add the repository on the board. |
+| A tool asks for `X-Breakaway-Repo` | Run `npx breakaway mcp` in a checkout of a repository the board tracks, add the repository on the board, or pass the tool’s `repo` argument. |
+| A tool says the connection doesn’t work in a repository | You didn’t pick it when you approved the app. Revoke it on **MCP**, and connect it again with that repository, or the whole board. |
 | A tool asks you to name yourself | Add the `X-Breakaway-Agent` header. |
 | `409` on claim | Someone holds the task, or it waits on another. Pick another, or call `next_task`. |

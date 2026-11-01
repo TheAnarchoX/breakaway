@@ -91,10 +91,11 @@ async function start({ verifier = VERIFIER, state = 'xyz' } = {}) {
 }
 
 /** The whole flow, approved as `agent` for `repo`: the client and its tokens. */
-async function connect({ name = 'Claude on my phone', repo = 'widgets', agent = 'claude-app' } = {}) {
+async function connect({ name = 'Claude on my phone', repo = 'widgets', repos, all, agent = 'claude-app' } = {}) {
   const { client, request } = await start();
+  const scope = all ? { all: true } : repos ? { repos } : { repo };
   const approved = await json(
-    await board(`oauth/requests/${request}/approve`, { method: 'POST', body: { name, repo, agent } }),
+    await board(`oauth/requests/${request}/approve`, { method: 'POST', body: { name, ...scope, agent } }),
   );
   expect(approved.status).toBe(200);
   const back = new URL(approved.redirect);
@@ -364,6 +365,99 @@ describe('sign-in from MCP apps (BRK-157)', () => {
       await api(`tasks/${widget.wid}/release`, { method: 'POST', body: { agent: 'claude-app' } });
     });
 
+    it('works in each repository the owner picked, named per call, and never in another (BRK-352)', async () => {
+      expect(
+        (
+          await api('repos', {
+            method: 'POST',
+            body: { slug: 'sprockets', github: 'acme/sprockets', areas: ['spr:SP'] },
+          })
+        ).status,
+      ).toBe(201);
+      const { tokens } = await connect({ repos: ['widgets', 'gizmos'], agent: 'claude-both' });
+      const bearer = tokens.access_token;
+      const call = async (name, args, headers) =>
+        (await json(await mcp('tools/call', { name, arguments: args }, bearer, headers))).result;
+
+      // With two repositories, a repository's tool needs to be told which.
+      const unnamed = await call('list_tasks', {});
+      expect(unnamed.isError).toBe(true);
+      expect(unnamed.content[0].text).toMatch(/widgets, gizmos/u);
+      expect(unnamed.content[0].text).toMatch(/repo/u);
+
+      const gizmos = await call('list_tasks', { repo: 'gizmos' });
+      expect(gizmos.structuredContent.tasks.map((t) => t.description)).toEqual(['A gizmos task']);
+      // The header picks among them too, as it does for the board's token.
+      const byHeader = await call('list_tasks', {}, { 'X-Breakaway-Repo': 'widgets' });
+      expect(byHeader.structuredContent.repo).toBe('widgets');
+      // A repository on the board that the owner didn't pick is refused, by argument or header.
+      for (const [args, headers] of [
+        [{ repo: 'sprockets' }, {}],
+        [{}, { 'X-Breakaway-Repo': 'sprockets' }],
+        [{ repo: 'acme/sprockets' }, {}],
+      ]) {
+        const refused = await call('list_tasks', args, headers);
+        expect(refused.isError, JSON.stringify([args, headers])).toBe(true);
+        expect(refused.content[0].text).toMatch(/sprockets/u);
+      }
+
+      // claim_task finds the repository from the task when the call doesn't name one.
+      const all = (await json(await api('tasks'))).tasks;
+      const gizmo = all.find((t) => t.description === 'A gizmos task');
+      const claimed = await call('claim_task', { task: gizmo.wid });
+      expect(claimed.isError).toBeUndefined();
+      expect((await json(await api(`tasks/${gizmo.wid}`))).task.claim).toBe('claude-both');
+      await api(`tasks/${gizmo.wid}/release`, { method: 'POST', body: { agent: 'claude-both' } });
+
+      const list = await json(await board('oauth/connections'));
+      const mine = list.connections.find((c) => c.agent === 'claude-both');
+      expect(mine).toMatchObject({ repos: ['widgets', 'gizmos'], all: false });
+    });
+
+    it('works in every repository on the board, today’s and those added later, when the owner picks the whole board', async () => {
+      const { tokens } = await connect({ all: true, agent: 'claude-all' });
+      const bearer = tokens.access_token;
+      const call = async (name, args) =>
+        (await json(await mcp('tools/call', { name, arguments: args }, bearer))).result;
+      expect((await call('list_tasks', { repo: 'gizmos' })).structuredContent.repo).toBe('gizmos');
+      expect(
+        (
+          await api('repos', {
+            method: 'POST',
+            body: { slug: 'thingamajigs', github: 'acme/thingamajigs', areas: ['thing:TJ'] },
+          })
+        ).status,
+      ).toBe(201);
+      expect((await call('list_tasks', { repo: 'thingamajigs' })).structuredContent.repo).toBe('thingamajigs');
+      const unknown = await call('list_tasks', { repo: 'nowhere' });
+      expect(unknown.isError).toBe(true);
+
+      const list = await json(await board('oauth/connections'));
+      expect(list.connections.find((c) => c.agent === 'claude-all')).toMatchObject({ repos: [], all: true });
+    });
+
+    it('refuses an approval with no repositories, or one the board doesn’t track among them', async () => {
+      const { request } = await start();
+      for (const body of [
+        { name: 'x', repos: [], agent: 'claude-x' },
+        { name: 'x', repos: ['widgets', 'nowhere'], agent: 'claude-x' },
+        { name: 'x', repos: 'widgets', agent: 'claude-x' },
+      ]) {
+        const res = await board(`oauth/requests/${request}/approve`, { method: 'POST', body });
+        expect(res.status, JSON.stringify(body)).toBe(400);
+      }
+      expect((await board(`oauth/requests/${request}`)).status).toBe(200);
+    });
+
+    it('keeps a one-repository connection to its repository, whatever a tool’s repo argument says', async () => {
+      const { tokens } = await connect({ repo: 'widgets', agent: 'claude-one' });
+      const res = await json(
+        await mcp('tools/call', { name: 'list_tasks', arguments: { repo: 'gizmos' } }, tokens.access_token),
+      );
+      expect(res.result.isError).toBe(true);
+      expect(res.result.content[0].text).toMatch(/gizmos/u);
+    });
+
     it('refuses its repository’s tools once that repository leaves the board, and says to revoke it', async () => {
       expect(
         (
@@ -432,7 +526,7 @@ describe('sign-in from MCP apps (BRK-157)', () => {
 
       const list = await json(await board('oauth/connections'));
       const mine = list.connections.find((c) => c.name === 'Revoke me');
-      expect(mine).toMatchObject({ repo: 'widgets', agent: 'claude-app', client: 'Claude' });
+      expect(mine).toMatchObject({ repos: ['widgets'], all: false, agent: 'claude-app', client: 'Claude' });
       expect(mine.used).toBeTruthy();
       expect(JSON.stringify(list)).not.toContain(tokens.access_token);
 
