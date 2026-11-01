@@ -4,7 +4,11 @@
  * the connections with their tokens.
  *
  * The Worker makes every code and token and sends only its SHA-256 here, so the store never holds one it could give
- * back. A connection is good on /mcp only, for one repository and one agent name, until the owner revokes it.
+ * back. A connection is good on /mcp only, for the repositories the owner picked (or the whole board) and one agent
+ * name, until the owner revokes it.
+ *
+ * Its `repo` column holds that pick (BRK-352): one slug, several joined by commas, or `*` for every repository on the
+ * board, today's and those added later. Slugs never hold a comma or a star, so the old rows read as they were.
  */
 import { InputError } from './model.js';
 
@@ -25,6 +29,21 @@ const AGENT = /^[\w.@:/-]{1,64}$/u;
 /** The owner's and the board's own names: an agent never signs as one of them (as on /mcp, section 2). */
 const RESERVED = /^(owner|board|routine:.*)$/iu;
 const ID = /^[\w-]{20,64}$/u;
+/** The `repo` column's value for the whole board. */
+export const ALL_REPOS = '*';
+/** At most this many repositories picked one by one; the whole board has no cap. */
+const MAX_PICKED = 50;
+
+/**
+ * A connection's `repo` column as what it may work in: `{ all: true }`, or the slugs the owner picked.
+ * @param {string} value
+ * @returns {{ all: boolean, repos: string[] }}
+ */
+export function repoScopeOf(value) {
+  const text = String(value ?? '');
+  if (text === ALL_REPOS) return { all: true, repos: [] };
+  return { all: false, repos: text.split(',').filter(Boolean) };
+}
 
 const ok = (body, status = 200) => ({ status, body });
 const fail = (status, error) => ({ status, body: { error } });
@@ -140,17 +159,7 @@ export const oauthMethods = {
       const name = String(body?.name ?? '').trim();
       if (!name) throw new InputError('name the connection, so you know it when you revoke it');
       if (name.length > MAX_NAME) throw new InputError(`a connection’s name is up to ${MAX_NAME} characters`);
-      const repo = String(body?.repo ?? '')
-        .trim()
-        .toLowerCase();
-      if (!this.repoBySlug(repo))
-        throw new InputError(
-          `pick a repository on the board: ${
-            this.repos()
-              .map((r) => r.slug)
-              .join(', ') || 'none yet'
-          }`,
-        );
+      const repo = this.oauthPickedRepos(body);
       const agent = String(body?.agent ?? '').trim();
       if (!AGENT.test(agent))
         throw new InputError('the agent name is up to 64 letters, digits, and . @ : / - _, like mcp-agent');
@@ -172,6 +181,37 @@ export const oauthMethods = {
       );
       return ok({ redirect: row.redirect, state: row.state });
     });
+  },
+
+  /**
+   * The approval's repositories as the `repo` column holds them: `all: true` for the whole board, `repos` for the ones
+   * picked, or `repo` for one (as before BRK-352). Refused when it names none, or one the board doesn't track.
+   */
+  oauthPickedRepos(body) {
+    const known = this.repos().map((r) => r.slug);
+    const onBoard = `the board has ${known.join(', ') || 'none yet'}`;
+    if (body?.all === true) {
+      if (!known.length) throw new InputError('the board has no repository yet: add one on Connections first');
+      return ALL_REPOS;
+    }
+    const raw = body?.repos !== undefined ? body.repos : body?.repo !== undefined ? [body.repo] : [];
+    if (!Array.isArray(raw)) throw new InputError('repos is a list of repositories’ slugs');
+    const picked = [
+      ...new Set(
+        raw
+          .map((r) =>
+            String(r ?? '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (!picked.length) throw new InputError(`pick a repository, or the whole board: ${onBoard}`);
+    if (picked.length > MAX_PICKED) throw new InputError(`pick up to ${MAX_PICKED} repositories, or the whole board`);
+    const unknown = picked.find((slug) => !known.includes(slug));
+    if (unknown) throw new InputError(`"${unknown.slice(0, 40)}" isn’t a repository on the board: ${onBoard}`);
+    return picked.join(',');
   },
 
   /** POST /api/oauth/requests/<id>/deny (the signed-in board): the client hears access_denied. */
@@ -255,7 +295,7 @@ export const oauthMethods = {
     if (!row || row.expires < now) return null;
     if (!row.used || row.used < now - USED_EVERY_MS)
       this.sql.exec('UPDATE oauth_connections SET used = ? WHERE id = ?', now, row.id);
-    return { id: row.id, name: row.name, repo: row.repo, agent: row.agent };
+    return { id: row.id, name: row.name, ...repoScopeOf(row.repo), agent: row.agent };
   },
 
   /** GET /api/oauth/connections (the signed-in board): every sign-in, newest first, never a token. */
@@ -272,7 +312,7 @@ export const oauthMethods = {
           id: r.id,
           name: r.name,
           client: r.client ?? 'An MCP client',
-          repo: r.repo,
+          ...repoScopeOf(r.repo),
           agent: r.agent,
           created: iso(r.created),
           used: iso(r.used),

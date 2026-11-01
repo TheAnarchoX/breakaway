@@ -219,10 +219,13 @@ export async function getPrompt(name, args, ctx) {
 
   const registry = await ctx.registry();
   const repo = task.repo || registry.default || null;
+  // A connection to several repositories claims in the task's own when it's one of them (BRK-352).
   const elsewhere =
-    ctx.repo && repo && ctx.repo !== repo
-      ? `${wid} is ${repo}’s task, and this connection names ${ctx.repo}: claim_task refuses it here. Work on it from a checkout of ${repo}, with X-Breakaway-Repo set to ${repo}.`
-      : null;
+    repo && !ctx.allows(repo)
+      ? `${wid} is ${repo}’s task, and this connection doesn’t work in ${repo}: claim_task refuses it here. The owner picks a connection’s repositories when they approve it on the board.`
+      : ctx.repo && repo && ctx.repo !== repo && !ctx.several
+        ? `${wid} is ${repo}’s task, and this connection names ${ctx.repo}: claim_task refuses it here. Work on it from a checkout of ${repo}, with X-Breakaway-Repo set to ${repo}.`
+        : null;
   const steps = name === 'work_on_task' ? workSteps(wid, repo) : ideaSteps(wid, repo);
   const text = [
     `${name === 'work_on_task' ? 'Work on' : 'Shape'} ${wid}, “${task.description}”, on breakaway’s task board${repo ? `, in ${repo}` : ''}. Follow the board’s loop, the same one agents using its CLI follow:`,

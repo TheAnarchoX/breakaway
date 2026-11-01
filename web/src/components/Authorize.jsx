@@ -18,15 +18,18 @@ export function agentFor(/** @type {string} */ client) {
 
 /**
  * The consent page of a sign-in from an MCP app (BRK-157, docs/specs/IDEA-24-mcp-server.md, section 8): the
- * owner names the connection and picks its repository and agent name, then approves or denies it. Either way the
- * browser goes back to the app.
+ * owner names the connection and picks its repositories (or the whole board, BRK-352) and agent name, then approves or
+ * denies it. Either way the browser goes back to the app.
  * @param {{ id: string }} props
  */
 export function Authorize({ id }) {
   const [state, setState] = useState(
     /** @type {{ loading: boolean, data?: any, error?: string }} */ ({ loading: true }),
   );
-  const [form, setForm] = useState({ name: '', repo: '', agent: '' });
+  const [form, setForm] = useState({ name: '', agent: '' });
+  // The repositories it works in, or the whole board: today's and those added later (BRK-352).
+  const [picked, setPicked] = useState(/** @type {string[]} */ ([]));
+  const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(/** @type {null | 'approve' | 'deny'} */ (null));
   const [problem, setProblem] = useState(/** @type {string | null} */ (null));
 
@@ -38,8 +41,9 @@ export function Authorize({ id }) {
           ...f,
           name: data.request.client,
           agent: agentFor(data.request.client),
-          repo: data.default ?? data.repos[0]?.slug ?? '',
         }));
+        const first = data.default ?? data.repos[0]?.slug;
+        setPicked(first ? [first] : []);
       })
       .catch((error) => setState({ loading: false, error: error.message }));
   }, [id]);
@@ -50,7 +54,7 @@ export function Authorize({ id }) {
     try {
       const { redirect } = await api(`oauth/requests/${enc(id)}/${how}`, {
         method: 'POST',
-        body: how === 'approve' ? form : {},
+        body: how === 'approve' ? { ...form, ...(all ? { all: true } : { repos: picked }) } : {},
       });
       location.assign(redirect);
     } catch (error) {
@@ -61,7 +65,9 @@ export function Authorize({ id }) {
 
   const { loading, data, error } = state;
   const request = data?.request;
-  const field = (/** @type {'name' | 'repo' | 'agent'} */ key) => ({
+  const toggle = (/** @type {string} */ slug, /** @type {boolean} */ on) =>
+    setPicked((list) => (on ? [...new Set([...list, slug])] : list.filter((s) => s !== slug)));
+  const field = (/** @type {'name' | 'agent'} */ key) => ({
     value: form[key],
     onInput: (/** @type {any} */ e) => setForm({ ...form, [key]: e.currentTarget.value }),
   });
@@ -98,9 +104,9 @@ export function Authorize({ id }) {
           >
             <p class="display signin-tagline">Connect {request.client}.</p>
             <p class="muted">
-              {request.client} wants to work on this board as an agent, through MCP. It can read the repository’s tasks,
-              claim them, comment, and post on the peloton. It can’t merge, deploy, start agents, or answer decisions.
-              You can revoke it on MCP at any time.
+              {request.client} wants to work on this board as an agent, through MCP. It can read the tasks of the
+              repositories you pick, claim them, comment, and post on the peloton. It can’t merge, deploy, start agents,
+              or answer decisions. You can revoke it on MCP at any time.
             </p>
             <p class="authorize-host">
               After you answer, the board sends you back to <strong>{request.redirectHost}</strong>.
@@ -122,17 +128,36 @@ export function Authorize({ id }) {
                   <input class="input" required maxLength={80} {...field('name')} />
                   <span class="field-hint">So you know it on MCP when you want to revoke it.</span>
                 </label>
-                <label class="field">
-                  <span class="field-label">Repository</span>
-                  <select class="select" {...field('repo')}>
+                <fieldset class="field" aria-describedby="authorize-repos-hint">
+                  <legend class="field-label">Repositories</legend>
+                  <div class="check-list">
+                    <label class="check-row">
+                      <input type="checkbox" checked={all} onChange={(e) => setAll(e.currentTarget.checked)} />
+                      <span>The whole board</span>
+                    </label>
                     {data.repos.map((/** @type {any} */ r) => (
-                      <option key={r.slug} value={r.slug}>
-                        {r.name} ({r.github})
-                      </option>
+                      <label key={r.slug} class="check-row">
+                        <input
+                          type="checkbox"
+                          checked={all || picked.includes(r.slug)}
+                          disabled={all}
+                          onChange={(e) => toggle(r.slug, e.currentTarget.checked)}
+                        />
+                        <span>{r.name}</span>
+                        <span class="meta">{r.github}</span>
+                      </label>
                     ))}
-                  </select>
-                  <span class="field-hint">The only repository it works in.</span>
-                </label>
+                  </div>
+                  <span class="field-hint" id="authorize-repos-hint">
+                    {all
+                      ? 'It works in every repository on the board, and in each one you add later.'
+                      : picked.length > 1
+                        ? 'It works only in these, and names one on each call.'
+                        : picked.length === 1
+                          ? 'The only repository it works in. Pick more, or the whole board, for an app you connect once.'
+                          : 'Pick a repository, or the whole board.'}
+                  </span>
+                </fieldset>
                 <label class="field">
                   <span class="field-label">Agent name</span>
                   <input
@@ -166,7 +191,7 @@ export function Authorize({ id }) {
               <button
                 type="submit"
                 class="btn btn-primary"
-                disabled={busy !== null || data.repos.length === 0}
+                disabled={busy !== null || data.repos.length === 0 || (!all && picked.length === 0)}
                 aria-busy={busy === 'approve'}
               >
                 {busy === 'approve' ? 'Approving…' : 'Approve'}

@@ -520,6 +520,23 @@ describe('the MCP endpoint (BRK-154)', () => {
       expect((await call('show_task', { task: elsewhere.wid })).structuredContent.task.wid).toBe(elsewhere.wid);
     });
 
+    it('takes the repository from a tool’s repo argument, over the header (BRK-352)', async () => {
+      const bare = await call('list_tasks', { repo: 'gadgets' }, { repo: null });
+      expect(bare.isError).toBeUndefined();
+      expect(bare.structuredContent.tasks.map((t) => t.wid)).toEqual([elsewhere.wid]);
+      const over = await call('list_tasks', { repo: 'gadgets' }, { repo: 'widgets' });
+      expect(over.structuredContent.repo).toBe('gadgets');
+      const unknown = await call('list_tasks', { repo: 'nowhere' }, { repo: null });
+      expect(unknown.isError).toBe(true);
+      expect(text(unknown)).toMatch(/no repository "nowhere"/u);
+      // The tools that work in a repository say so in their schema; the others take no repo.
+      const { tools } = (await json(await modern('tools/list'))).result;
+      const schema = (name) => tools.find((t) => t.name === name).inputSchema.properties;
+      expect(schema('list_tasks').repo).toBeTruthy();
+      expect(schema('claim_task').repo).toBeTruthy();
+      expect(schema('show_task').repo).toBeUndefined();
+    });
+
     it('takes the checkout’s owner/name for the repository, as the plugin’s headersHelper sends it (CLI-9)', async () => {
       const listed = await call('list_tasks', {}, { repo: 'Acme/Gadgets' });
       expect(listed.isError).toBeUndefined();
@@ -738,7 +755,7 @@ describe('the MCP endpoint (BRK-154)', () => {
       const horizon = await call('add_task', { title: 'Sneak in', tags: ['horizon-now'] }, as(WRITER));
       expect(horizon.isError).toBe(true);
       expect(text(horizon)).toMatch(/horizon-\* tag/u);
-      for (const extra of [{ autostart: 'yes' }, { status: 'completed' }, { repo: 'gadgets' }]) {
+      for (const extra of [{ autostart: 'yes' }, { status: 'completed' }, { repo: 'nowhere' }]) {
         const refused = await call('add_task', { title: 'Sneak in', ...extra }, as(WRITER));
         expect(refused.isError, JSON.stringify(extra)).toBe(true);
       }
